@@ -1,19 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "../index.module.less";
 
 interface ScrollToBottomButtonProps {
   visible: boolean;
   onClick: () => void;
+  /** Live generation below the fold — emphasize "new replies". */
+  hasNewActivity?: boolean;
 }
 
 export default function ScrollToBottomButton({
   visible,
   onClick,
+  hasNewActivity = false,
 }: ScrollToBottomButtonProps) {
   const { t } = useTranslation();
-  const label = t("chat.scrollToBottom");
+  const label = hasNewActivity
+    ? t("chat.newRepliesBelow", { defaultValue: "有新回复" })
+    : t("chat.scrollToBottom");
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [overlapsTool, setOverlapsTool] = useState(false);
 
@@ -65,17 +71,19 @@ export default function ScrollToBottomButton({
       window.removeEventListener("resize", updateOverlap);
       resizeObserver?.disconnect();
     };
-  }, [visible]);
+  }, [visible, hasNewActivity]);
 
   const actuallyVisible = visible && !overlapsTool;
   return (
     <button
       ref={buttonRef}
-      className={`${styles.scrollToBottomBtn} ${
+      className={cx(
+        styles.scrollToBottomBtn,
         actuallyVisible
           ? styles.scrollToBottomBtnVisible
-          : styles.scrollToBottomBtnHidden
-      }`}
+          : styles.scrollToBottomBtnHidden,
+        hasNewActivity && actuallyVisible && styles.scrollToBottomBtnHasNew,
+      )}
       onClick={onClick}
       type="button"
       title={label}

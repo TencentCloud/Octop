@@ -168,8 +168,8 @@ exit /b 0
 
 ::detect_chrome
 set "OCTOP_SYSTEM_CHROME="
-REM Prefer harness-browser's own detector (same path used at runtime)
-"%VENV_PYTHON%" -c "from harness_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" > "%TEMP%\_octop_chrome.tmp" 2>nul
+REM Prefer octop-browser's own detector (same path used at runtime)
+"%VENV_PYTHON%" -c "from octop_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" > "%TEMP%\_octop_chrome.tmp" 2>nul
 if not errorlevel 1 (
     set /p _CHROME=<"%TEMP%\_octop_chrome.tmp"
 )

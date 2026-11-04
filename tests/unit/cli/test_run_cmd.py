@@ -103,6 +103,52 @@ def test_run_cli_args_override_config(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert captured["port"] == 8080
 
 
+def test_run_rejects_unbindable_port_before_saving_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``--port 70000`` is a usage error: uvicorn can never bind it.
+
+    Before the range check, Click accepted the value, ``_save_configfile_overrides``
+    persisted it, and uvicorn died in ``socket.bind`` with ``OverflowError`` — so
+    every later ``octop run`` inherited the unusable port from config.json.
+    """
+    _patch_home(monkeypatch, tmp_path)
+
+    def _fake(**_kw: object) -> None:
+        raise AssertionError("uvicorn must not be started")
+
+    import octop.cli.commands.run as run_cmd
+
+    monkeypatch.setattr(run_cmd, "_run_uvicorn", _fake)
+
+    runner = CliRunner()
+    for value in ("70000", "-1"):
+        r = runner.invoke(cli, ["run", "--port", value])
+        assert r.exit_code != 0, _all_output(r)
+        assert "is not in the range" in _all_output(r)
+    assert not (tmp_path / "config.json").exists()
+
+
+def test_run_accepts_zero_port_as_os_assigned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Port 0 is the "let the OS pick a free port" request, so it stays valid."""
+    _patch_home(monkeypatch, tmp_path)
+    captured: dict[str, object] = {}
+
+    def _fake(**kw: object) -> None:
+        captured.update(kw)
+
+    import octop.cli.commands.run as run_cmd
+
+    monkeypatch.setattr(run_cmd, "_run_uvicorn", _fake)
+
+    runner = CliRunner()
+    r = runner.invoke(cli, ["run", "--port", "0"])
+    assert r.exit_code == 0, r.output
+    assert captured["port"] == 0
+
+
 def test_run_writes_config_before_uvicorn_starts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

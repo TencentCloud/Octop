@@ -8,6 +8,7 @@ import { App, Button, Card, Switch, Tooltip } from "antd";
 
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
@@ -52,10 +53,19 @@ export function ProviderCard({
   const isLocalRuntime = isOllama || isOnnx;
 
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
-  const statusReady = hasApiKey;
-  const statusLabel = hasApiKey
-    ? t("models.authorized")
-    : t("models.unauthorized");
+  /** green = ready, blue = configured but off, gray = missing credentials */
+  const statusTone: "active" | "configured" | "inactive" = !hasApiKey
+    ? "inactive"
+    : provider.enabled
+    ? "active"
+    : "configured";
+  const statusReady = statusTone === "active";
+  const statusLabel =
+    statusTone === "active"
+      ? t("models.statusReady")
+      : statusTone === "configured"
+      ? t("models.statusConfigured")
+      : t("models.statusNeedsKey");
 
   const handleTestConnection = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -219,14 +229,14 @@ export function ProviderCard({
         hoverable
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover}`
-            : statusReady
-            ? `${styles.providerCard} ${styles.enabled}`
-            : `${styles.providerCard} ${styles.normal}`
-        }
-        style={{ opacity: provider.enabled ? 1 : 0.7 }}
+        onClick={() => setModalOpen(true)}
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          !isHover && statusReady && styles.enabled,
+          !isHover && !statusReady && styles.normal,
+        )}
+        style={provider.enabled ? undefined : { opacity: 0.85 }}
       >
         <div className={styles.cardContent}>
           <div className={styles.cardHeader}>
@@ -242,14 +252,24 @@ export function ProviderCard({
             </span>
             <div className={styles.statusContainer}>
               <span
-                className={`${styles.statusDot} ${
-                  statusReady ? styles.active : styles.inactive
-                }`}
+                className={cx(
+                  styles.statusDot,
+                  statusTone === "active"
+                    ? styles.active
+                    : statusTone === "configured"
+                    ? styles.configured
+                    : styles.inactive,
+                )}
               />
               <span
-                className={`${styles.statusText} ${
-                  statusReady ? styles.enabled : styles.disabled
-                }`}
+                className={cx(
+                  styles.statusText,
+                  statusTone === "active"
+                    ? styles.enabled
+                    : statusTone === "configured"
+                    ? styles.configured
+                    : styles.disabled,
+                )}
               >
                 {statusLabel}
               </span>

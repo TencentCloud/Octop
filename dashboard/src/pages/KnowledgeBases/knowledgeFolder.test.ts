@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildKnowledgeFileTree,
   isDirectKnowledgeChild,
   joinKnowledgePath,
   knowledgeBasename,
@@ -21,6 +22,32 @@ describe("knowledgeFolder", () => {
     expect(isDirectKnowledgeChild("notes/readme.md", "")).toBe(false);
     expect(isDirectKnowledgeChild("notes/readme.md", "notes")).toBe(true);
     expect(isDirectKnowledgeChild("notes/deep/file.md", "notes")).toBe(false);
+  });
+
+  it("builds a folder tree and fills missing parents", () => {
+    expect(
+      buildKnowledgeFileTree([
+        { filename: "readme.md", path: "readme.md" },
+        { filename: "law.md", path: "notes/law/law.md" },
+        { filename: "notes", path: "notes", is_dir: true },
+      ]),
+    ).toEqual([
+      {
+        key: "notes",
+        path: "notes",
+        name: "notes",
+        isDir: true,
+        children: [
+          {
+            key: "notes/law",
+            path: "notes/law",
+            name: "law",
+            isDir: true,
+            children: [],
+          },
+        ],
+      },
+    ]);
   });
 
   it("builds breadcrumb segments", () => {

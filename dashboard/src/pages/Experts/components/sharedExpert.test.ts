@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
+  canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isOwnedExpert,
   isSharedExpertViewer,
   ownedExperts,
   ownedSoloExperts,
+  ownedTeamAgents,
 } from "../../../utils/sharedExpert";
+
+describe("canReadAgentRuntimeStatus", () => {
+  const shared = { is_shared: true, is_owner: false };
+
+  it("allows the owner and an admin, and skips a shared viewer", () => {
+    expect(canReadAgentRuntimeStatus(shared, { role: "user" })).toBe(false);
+    expect(canReadAgentRuntimeStatus(shared, { role: "admin" })).toBe(true);
+    expect(
+      canReadAgentRuntimeStatus(
+        { is_shared: true, is_owner: true },
+        { role: "user" },
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("isSharedExpertViewer", () => {
   it("identifies a shared expert viewed by someone other than its owner", () => {
@@ -66,5 +83,21 @@ describe("ownedSoloExperts", () => {
       { agent_id: "crew", is_owner: true, kind: "team" },
     ];
     expect(ownedSoloExperts(agents).map((a) => a.agent_id)).toEqual(["writer"]);
+  });
+});
+
+describe("ownedTeamAgents", () => {
+  it("keeps owned team hosts only", () => {
+    const agents = [
+      { agent_id: "writer", is_owner: true, kind: "expert" },
+      { agent_id: "crew", is_owner: true, kind: "team" },
+      {
+        agent_id: "shared-crew",
+        is_shared: true,
+        is_owner: false,
+        kind: "team",
+      },
+    ];
+    expect(ownedTeamAgents(agents).map((a) => a.agent_id)).toEqual(["crew"]);
   });
 });

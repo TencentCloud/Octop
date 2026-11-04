@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from langchain_core.messages import HumanMessage
+from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.api.routers.chat import history as history_mod
 from octop.api.routers.chat.serialize import (
@@ -25,7 +27,9 @@ from octop.infra.db.repos.thread_messages import (
     ThreadProjectionSummary,
 )
 from octop.infra.db.repos.threads import ThreadRow
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import thread_row_has_messages
+from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
 
 
 def test_clamp_history_limit() -> None:
@@ -72,9 +76,9 @@ def test_slice_message_page_long_thread_no_gaps_or_overlaps() -> None:
 
 
 def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> None:
-    from harness_memory import Memory
     from langchain_core.messages import AIMessage
     from langgraph.checkpoint.base import empty_checkpoint
+    from octop_memory import Memory
 
     db_path = tmp_path / "checkpoint.db"
     memory = Memory(
@@ -94,7 +98,7 @@ def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> N
         {"messages": 1},
     )
     # Prove the migration opens its own read-only connection rather than using
-    # harness-memory 0.9.7's live synchronous saver connection.
+    # octop-memory 0.9.7's live synchronous saver connection.
     memory._checkpointer.conn.close()
     try:
         harness = SimpleNamespace(_checkpointer_instance=memory)
@@ -110,7 +114,7 @@ def test_isolated_sqlite_history_supports_pypi_memory_0_9_7(tmp_path: Path) -> N
 def test_isolated_history_reads_compact_checkpoint_with_closed_live_connection(
     tmp_path: Path, warm_cache: bool
 ) -> None:
-    compact = pytest.importorskip("harness_memory.storage.backends.sqlite_checkpoint")
+    compact = pytest.importorskip("octop_memory.storage.backends.sqlite_checkpoint")
     from langgraph.checkpoint.base import empty_checkpoint
 
     path = tmp_path / "compact.sqlite"
@@ -215,6 +219,10 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
         "list_threads must not touch harness"
     )
     server.app_runtime.gateway.thread_registry = thread_registry
+    server.app_runtime.gateway.ws_hub.is_turn_active.side_effect = lambda tid: tid == "thr_used"
+    server.app_runtime.gateway.processor.hitl_coordinator.store.pending_thread_ids.return_value = (
+        frozenset({"thr_empty"})
+    )
 
     user = MagicMock(id=1, is_admin=False)
 
@@ -222,7 +230,11 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
 
     assert len(out) == 2
     assert out[0]["has_messages"] is False
+    assert out[0]["turn_active"] is False
+    assert out[0]["awaiting_user"] is True
     assert out[1]["has_messages"] is True
+    assert out[1]["turn_active"] is True
+    assert out[1]["awaiting_user"] is False
 
 
 @pytest.mark.asyncio
@@ -417,3 +429,108 @@ async def test_load_checkpoint_messages_paginates_with_aget_history() -> None:
     assert more1 is True
     assert [m.content for m in page2] == [f"m{i}" for i in range(0, 10)]
     assert more2 is False
+
+
+def _delete_server(hub: WebSocketHub) -> tuple[MagicMock, MagicMock]:
+    server = MagicMock()
+    agent_row = MagicMock()
+    agent_row.user_id = 1
+    agent_row.is_shared = 0
+    server.app_runtime.agent_registry.get_row.return_value = agent_row
+    thread = MagicMock()
+    thread.agent_id = "agt_1"
+    thread.user_id = 1
+    server.app_runtime.gateway.thread_registry.get_thread.return_value = thread
+    server.app_runtime.gateway.ws_hub = hub
+    server.app_runtime.agent_registry.delete_thread_checkpoint = AsyncMock()
+    server.app_runtime.trajectory_service = None
+    user = MagicMock()
+    user.id = 1
+    user.is_admin = False
+    return server, user
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_rejects_active_turn() -> None:
+    hub = WebSocketHub()
+    hub.mark_turn_active("thr_1")
+    server, user = _delete_server(hub)
+
+    with pytest.raises(OctopError) as raised:
+        await history_mod.delete_thread("agt_1", "thr_1", compact=None, user=user, server=server)
+
+    assert raised.value.code is ErrorCode.THREAD_TURN_ACTIVE
+    assert raised.value.status == 409
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_not_awaited()
+    server.app_runtime.gateway.thread_registry.delete_thread.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_without_compact_returns_204_when_idle() -> None:
+    hub = WebSocketHub()
+    server, user = _delete_server(hub)
+
+    response = await history_mod.delete_thread(
+        "agt_1", "thr_1", compact=None, user=user, server=server
+    )
+
+    assert response.status_code == 204
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
+        "agt_1", "thr_1"
+    )
+    server.app_runtime.gateway.thread_registry.delete_thread.assert_called_once_with("thr_1")
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_compact_false_does_not_vacuum() -> None:
+    hub = WebSocketHub()
+    server, user = _delete_server(hub)
+
+    response = await history_mod.delete_thread(
+        "agt_1", "thr_1", compact=False, user=user, server=server
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"compacted": False, "scheduled": False}
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
+        "agt_1", "thr_1", reclaim=False
+    )
+    server.app_runtime.gateway.thread_registry.delete_thread.assert_called_once_with("thr_1")
+    server.app_runtime.agent_registry.schedule_store_reclaim.assert_not_called()
+    server.app_runtime.agent_registry.compact_agent_database.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_turn_exception_clears_flag_so_delete_is_not_stuck() -> None:
+    hub = WebSocketHub()
+
+    class _Boom:
+        async def iter_turn_chunks(self, _msg: InboundMessage):
+            yield {"type": "token", "content": "partial"}
+            raise RuntimeError("boom")
+
+    channel = WebSocketChannel(_Boom(), hub=hub)  # type: ignore[arg-type]
+
+    async def _capture(_frame: dict[str, Any]) -> None:
+        return None
+
+    hub.register("conn-1", _capture)
+    message = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agt_1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="hi")],
+        metadata={"ws_connection_id": "conn-1", "session_key": "sk", "thread_id": "thr_1"},
+    )
+    await channel.handle_inbound(message)
+    assert hub.is_turn_active("thr_1") is False
+
+    server, user = _delete_server(hub)
+    response = await history_mod.delete_thread(
+        "agt_1", "thr_1", compact=None, user=user, server=server
+    )
+    assert response.status_code == 204
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
+        "agt_1", "thr_1"
+    )

@@ -77,23 +77,51 @@ function toTreeNodes(infos: FileInfo[]): TreeDataNode[] {
   });
 }
 
+/** Strip leading ``/skills/{slug}/`` so package APIs get a skill-relative path. */
+export function packageSkillRelativePath(
+  fullPath: string,
+  skillRoot: string,
+): string {
+  const normalized = fullPath.replace(/\\/g, "/").replace(/^\/+/, "");
+  const root = skillRoot
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+  if (!root) return normalized;
+  if (normalized === root) return "";
+  const prefix = `${root}/`;
+  return normalized.startsWith(prefix)
+    ? normalized.slice(prefix.length)
+    : normalized;
+}
+
+export type SkillFileTreeSource =
+  | {
+      type: "workspace";
+      agentId: string;
+      skillRoot: string;
+      workspaceReady: boolean;
+    }
+  | {
+      type: "package";
+      packageId: string;
+      slug: string;
+      skillRoot: string;
+    };
+
 interface SkillFileTreeProps {
-  agentId: string;
-  skillRoot: string;
+  source: SkillFileTreeSource;
   selectedPath: string | null;
   onSelectPath: (path: string) => void;
   onCollapse: () => void;
-  workspaceReady: boolean;
   selectionDisabled?: boolean;
 }
 
 export function SkillFileTree({
-  agentId,
-  skillRoot,
+  source,
   selectedPath,
   onSelectPath,
   onCollapse,
-  workspaceReady,
   selectionDisabled = false,
 }: SkillFileTreeProps) {
   const { t } = useTranslation();
@@ -101,14 +129,32 @@ export function SkillFileTree({
   const [loading, setLoading] = useState(false);
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
+  const skillRoot = source.skillRoot;
+  const sourceType = source.type;
+  const packageId = source.type === "package" ? source.packageId : "";
+  const packageSlug = source.type === "package" ? source.slug : "";
+  const agentId = source.type === "workspace" ? source.agentId : "";
+  const treeReady =
+    source.type === "package" ? true : Boolean(source.workspaceReady);
+
   const fetchTree = useCallback(
-    async (path: string) =>
-      request<FileInfo[]>(
+    async (path: string) => {
+      if (sourceType === "package") {
+        const relative = packageSkillRelativePath(path, skillRoot);
+        const qs = relative ? `?path=${encodeURIComponent(relative)}` : "";
+        return request<FileInfo[]>(
+          `/skill-packages/${encodeURIComponent(
+            packageId,
+          )}/skills/${encodeURIComponent(packageSlug)}/tree${qs}`,
+        );
+      }
+      return request<FileInfo[]>(
         withFromWorkspace(
           `/agents/${agentId}/workspace/tree?path=${encodeURIComponent(path)}`,
         ),
-      ),
-    [agentId],
+      );
+    },
+    [agentId, packageId, packageSlug, skillRoot, sourceType],
   );
 
   const refreshRoot = useCallback(async () => {
@@ -124,7 +170,7 @@ export function SkillFileTree({
   }, [fetchTree, skillRoot]);
 
   useEffect(() => {
-    if (!workspaceReady) {
+    if (!treeReady) {
       setExpandedKeys([]);
       setTreeData([]);
       setLoading(false);
@@ -133,7 +179,15 @@ export function SkillFileTree({
     setExpandedKeys([]);
     setTreeData([]);
     void refreshRoot();
-  }, [agentId, skillRoot, refreshRoot, workspaceReady]);
+  }, [
+    agentId,
+    packageId,
+    packageSlug,
+    refreshRoot,
+    skillRoot,
+    sourceType,
+    treeReady,
+  ]);
 
   const onLoadData = async (node: TreeDataNode): Promise<void> => {
     const { path, is_dir } = pathFromKey(String(node.key));
@@ -177,7 +231,7 @@ export function SkillFileTree({
         </Tooltip>
       </div>
       <div className={styles.treeScroll}>
-        {!workspaceReady ? (
+        {!treeReady ? (
           <div className={styles.treeEmpty}>
             {t("skills.fileTreeAgentNotReady")}
           </div>

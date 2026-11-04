@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import { ArrowRightLeft, X, ChevronDown } from "lucide-react";
+import { ArrowRightLeft, ChevronDown, X } from "lucide-react";
+import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import { useUserRole } from "../hooks/useUserRole";
@@ -24,20 +25,28 @@ import type { MinimalNavPane } from "./layoutModeStorage";
 import MinimalRecordsHost from "./MinimalRecordsHost";
 import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
 import SidebarMinimalPaneToggle from "./SidebarMinimalPaneToggle";
+import { preferencesApi } from "../api/modules/preferences";
+import { publicUrl } from "../utils/publicUrl";
 import {
   COLLAPSED_WIDTH,
   EXPANDED_WIDTH,
   buildNavSections,
+  navSectionLabel,
   type NavItem,
   type NavSection,
 } from "./sidebarNav";
+import { sectionsFromLayout, type SidebarNavLayout } from "./sidebarNavLayout";
+import SidebarNavCustomizer from "./SidebarNavCustomizer";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
 import { DESKTOP_DRAG_REGION_CLASS } from "../utils/desktopChrome";
 
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
-/** Minimal settings pane: skip the "设置" group header (duplicates the pane title). */
-const MINIMAL_SETTINGS_HIDDEN_HEADERS = new Set(["nav.settings"]);
+const LEGACY_COLLAPSED_GROUP_IDS: Record<string, string> = {
+  "nav.settings": "settings",
+  "nav.control": "control",
+  "nav.admin": "admin",
+};
 
 function loadCollapsedGroups(): Set<string> {
   try {
@@ -45,7 +54,11 @@ function loadCollapsedGroups(): Set<string> {
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     if (Array.isArray(parsed)) {
-      return new Set(parsed.filter((x): x is string => typeof x === "string"));
+      return new Set(
+        parsed
+          .filter((x): x is string => typeof x === "string")
+          .map((id) => LEGACY_COLLAPSED_GROUP_IDS[id] ?? id),
+      );
     }
   } catch {
     /* ignore */
@@ -68,37 +81,36 @@ function useNavGroupCollapse(navSections: NavSection[], selectedKey: string) {
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
     loadCollapsedGroups(),
   );
-  const activeGroupKey = navSections.find(
+  const activeGroupId = navSections.find(
     (section) =>
-      section.groupKey &&
-      section.items.some((item) => item.key === selectedKey),
-  )?.groupKey;
+      section.id && section.items.some((item) => item.key === selectedKey),
+  )?.id;
 
-  const toggleGroup = useCallback((groupKey: string) => {
+  const toggleGroup = useCallback((groupId: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(groupKey)) next.delete(groupKey);
-      else next.add(groupKey);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
       saveCollapsedGroups(next);
       return next;
     });
   }, []);
 
   const isGroupCollapsed = useCallback(
-    (groupKey: string) => collapsedGroups.has(groupKey),
+    (groupId: string) => collapsedGroups.has(groupId),
     [collapsedGroups],
   );
 
   useEffect(() => {
-    if (!activeGroupKey) return;
+    if (!activeGroupId) return;
     setCollapsedGroups((prev) => {
-      if (!prev.has(activeGroupKey)) return prev;
+      if (!prev.has(activeGroupId)) return prev;
       const next = new Set(prev);
-      next.delete(activeGroupKey);
+      next.delete(activeGroupId);
       saveCollapsedGroups(next);
       return next;
     });
-  }, [activeGroupKey, selectedKey]);
+  }, [activeGroupId, selectedKey]);
 
   return { toggleGroup, isGroupCollapsed };
 }
@@ -115,8 +127,9 @@ function NavItemButton({
   active,
   isMobile,
   onNavigate,
-  onExpandChatRail,
-  showChatRailExpand,
+  onToggleChatRail,
+  showChatRailToggle,
+  chatRailOpen,
   role,
   hasUpdate,
   t,
@@ -125,15 +138,20 @@ function NavItemButton({
   active: boolean;
   isMobile?: boolean;
   onNavigate: (path: string) => void;
-  onExpandChatRail?: () => void;
-  showChatRailExpand?: boolean;
-  role: "admin" | "user" | null;
+  onToggleChatRail?: () => void;
+  showChatRailToggle?: boolean;
+  /** History rail is currently visible (classic chat route, panel open). */
+  chatRailOpen?: boolean;
+  role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
-  const showExpand = Boolean(
-    showChatRailExpand && item.key === "chat" && onExpandChatRail,
+  const showToggle = Boolean(
+    showChatRailToggle && item.key === "chat" && onToggleChatRail,
   );
+  const railLabel = chatRailOpen
+    ? t("chat.collapseHistorySidebar", "收起对话历史")
+    : t("chat.expandHistorySidebar", "展开对话历史");
 
   return (
     <div
@@ -163,7 +181,7 @@ function NavItemButton({
             : "var(--fn-text-secondary)",
           fontSize: typeSize(14, isMobile),
           fontWeight: active ? 500 : 400,
-          paddingRight: showExpand ? 4 : 12,
+          paddingRight: showToggle ? 4 : 12,
         }}
       >
         <span
@@ -201,8 +219,6 @@ function NavItemButton({
               style={{
                 fontSize: typeSize(9, isMobile),
                 fontWeight: 600,
-                color: "#fff",
-                backgroundColor: "#ff4d4f",
                 padding: "1px 4px",
                 borderRadius: "2px",
                 whiteSpace: "nowrap",
@@ -217,16 +233,17 @@ function NavItemButton({
           )}
         </span>
       </button>
-      {showExpand ? (
+      {showToggle ? (
         <button
           type="button"
           className={styles.chatRailExpandBtn}
           onClick={(e) => {
             e.stopPropagation();
-            onExpandChatRail?.();
+            onToggleChatRail?.();
           }}
-          aria-label={t("chat.expandHistorySidebar", "展开对话历史")}
-          title={t("chat.expandHistorySidebar", "展开对话历史")}
+          aria-expanded={Boolean(chatRailOpen)}
+          aria-label={railLabel}
+          title={railLabel}
         >
           <ArrowRightLeft size={14} strokeWidth={1.8} aria-hidden />
         </button>
@@ -236,40 +253,40 @@ function NavItemButton({
 }
 
 function NavList({
+  sections,
   selectedKey,
   onNavigate,
-  onExpandChatRail,
-  showChatRailExpand,
+  onToggleChatRail,
+  showChatRailToggle,
+  chatRailOpen,
   isMobile,
   isGroupCollapsed,
   toggleGroup,
   sectionFilter = "all",
-  /** Group keys whose section headers are omitted (items still render). */
-  hideGroupHeaderKeys,
+  /** Group ids whose headers are omitted (items still render). */
+  hideHeaderIds,
 }: {
+  sections: NavSection[];
   selectedKey: string;
   onNavigate: (path: string) => void;
-  onExpandChatRail?: () => void;
-  showChatRailExpand?: boolean;
+  onToggleChatRail?: () => void;
+  showChatRailToggle?: boolean;
+  chatRailOpen?: boolean;
   isMobile?: boolean;
-  isGroupCollapsed: (groupKey: string) => boolean;
-  toggleGroup: (groupKey: string) => void;
-  /** all = classic; primary = top flat entries; grouped = settings/control/admin */
+  isGroupCollapsed: (groupId: string) => boolean;
+  toggleGroup: (groupId: string) => void;
+  /** all = classic; primary = ungrouped; grouped = named groups */
   sectionFilter?: "all" | "primary" | "grouped";
-  hideGroupHeaderKeys?: ReadonlySet<string>;
+  hideHeaderIds?: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
   const role = useUserRole();
-  const user = useCurrentUser();
   const { hasUpdate } = useUpdateStatus();
-  const { mobileEnabled } = useServerCapabilities();
-  const navSections = buildNavSections(user, { mobileEnabled }).filter(
-    (section) => {
-      if (sectionFilter === "primary") return !section.groupKey;
-      if (sectionFilter === "grouped") return Boolean(section.groupKey);
-      return true;
-    },
-  );
+  const navSections = sections.filter((section) => {
+    if (sectionFilter === "primary") return !section.id;
+    if (sectionFilter === "grouped") return Boolean(section.id);
+    return true;
+  });
 
   const MOBILE_HIDDEN_KEYS = new Set<string>();
 
@@ -290,13 +307,13 @@ function NavList({
           : section.items;
         if (visibleItems.length === 0) return null;
 
-        const sectionKey = section.groupKey ?? `flat-${sectionIndex}`;
-        const hideHeader =
-          Boolean(section.groupKey) &&
-          Boolean(hideGroupHeaderKeys?.has(section.groupKey!));
-        const isFlat = !section.groupKey || hideHeader;
-        const groupCollapsed = section.groupKey
-          ? isGroupCollapsed(section.groupKey)
+        const sectionKey = section.id ?? `flat-${sectionIndex}`;
+        const hideHeader = Boolean(
+          section.id && hideHeaderIds?.has(section.id),
+        );
+        const isFlat = !section.id || hideHeader;
+        const groupCollapsed = section.id
+          ? isGroupCollapsed(section.id)
           : false;
 
         if (isFlat) {
@@ -310,8 +327,9 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
-                    onExpandChatRail={onExpandChatRail}
-                    showChatRailExpand={showChatRailExpand}
+                    onToggleChatRail={onToggleChatRail}
+                    showChatRailToggle={showChatRailToggle}
+                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -327,18 +345,19 @@ function NavList({
             <button
               type="button"
               className={styles.navGroupHeader}
-              onClick={() => toggleGroup(section.groupKey!)}
+              onClick={() => toggleGroup(section.id!)}
               aria-expanded={!groupCollapsed}
             >
               <span className={styles.navGroupLabel}>
-                {t(section.groupKey!)}
+                {navSectionLabel(section, t)}
               </span>
               <ChevronDown
                 size={12}
                 strokeWidth={2}
-                className={`${styles.navGroupChevron} ${
-                  groupCollapsed ? styles.navGroupChevronFolded : ""
-                }`}
+                className={cx(
+                  styles.navGroupChevron,
+                  groupCollapsed && styles.navGroupChevronFolded,
+                )}
                 aria-hidden
               />
             </button>
@@ -352,8 +371,9 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
-                    onExpandChatRail={onExpandChatRail}
-                    showChatRailExpand={showChatRailExpand}
+                    onToggleChatRail={onToggleChatRail}
+                    showChatRailToggle={showChatRailToggle}
+                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -386,16 +406,45 @@ export default function Sidebar({
   const { layoutMode, minimalPane, setMinimalPane } = useLayoutMode();
   const isMinimal = layoutMode === "minimal";
   const onChatPath = isChatPath(location.pathname);
-  const navSections = buildNavSections(user, { mobileEnabled });
+  const catalog = useMemo(
+    () => buildNavSections(user, { mobileEnabled }),
+    [user, mobileEnabled],
+  );
+  const [savedLayout, setSavedLayout] = useState<SidebarNavLayout | null>(null);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const navSections = useMemo(
+    () => sectionsFromLayout(catalog, savedLayout),
+    [catalog, savedLayout],
+  );
   const { toggleGroup, isGroupCollapsed } = useNavGroupCollapse(
     navSections,
     selectedKey,
   );
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void preferencesApi
+      .get()
+      .then((prefs) => {
+        if (!cancelled) setSavedLayout(prefs.sidebar_nav ?? null);
+      })
+      .catch(() => {
+        /* keep the default nav */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
   const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
-  const showChatRailExpand = !isMinimal && !chatSidebarOpen;
+  // Classic only: keep the control beside Chat whether the history rail is open or closed.
+  const showChatRailToggle = !isMinimal;
+  const chatRailOpen = showChatRailToggle && onChatPath && chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
-  const wordmarkSrc = isDark ? "/logo_name_dark.png" : "/logo_name.png";
+  const wordmarkSrc = isDark
+    ? publicUrl("logo_horizontal_white.png")
+    : publicUrl("logo_horizontal_dark.png");
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -434,21 +483,27 @@ export default function Sidebar({
     if (isMobile) onToggle();
   };
 
-  const handleExpandChatRail = useCallback(() => {
+  const handleToggleChatRail = useCallback(() => {
     if (isMinimal) {
       selectMinimalPane("records", { expand: true });
       return;
     }
+    if (onChatPath && chatSidebarOpen) {
+      setChatSidebarOpen(false);
+      return;
+    }
     window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
     setChatSidebarOpen(true);
-    if (!window.location.pathname.startsWith("/chat")) {
+    if (!onChatPath) {
       navigate("/chat");
     }
     if (isMobile) onToggle();
   }, [
+    chatSidebarOpen,
     isMinimal,
     isMobile,
     navigate,
+    onChatPath,
     onToggle,
     selectMinimalPane,
     setChatSidebarOpen,
@@ -494,33 +549,49 @@ export default function Sidebar({
         placement="sidebar"
         compact={isRailCollapsed}
         onBeforeOpenSettings={isMobile && !collapsed ? onToggle : undefined}
+        onCustomizeNav={() => setCustomizerOpen(true)}
       />
     </div>
   );
 
-  const primaryItems =
-    navSections.find((section) => !section.groupKey)?.items ?? [];
-  const groupedItems = navSections
-    .filter((section) => section.groupKey)
-    .flatMap((section) =>
-      section.groupKey && isGroupCollapsed(section.groupKey)
-        ? []
-        : section.items,
-    );
+  const customizer = (
+    <SidebarNavCustomizer
+      open={customizerOpen}
+      catalog={catalog}
+      layout={savedLayout}
+      onClose={() => setCustomizerOpen(false)}
+      onSaved={setSavedLayout}
+    />
+  );
 
-  const paneToggle = (
+  const primaryItems = navSections.find((section) => !section.id)?.items ?? [];
+  const namedSections = navSections.filter((section) => section.id);
+  const firstNamed = namedSections[0];
+  const settingsPaneLabel = firstNamed ? navSectionLabel(firstNamed, t) : null;
+  const groupedItems = namedSections.flatMap((section) =>
+    section.id && isGroupCollapsed(section.id) ? [] : section.items,
+  );
+
+  useEffect(() => {
+    if (isMinimal && !settingsPaneLabel && minimalPane === "settings") {
+      setMinimalPane("records");
+    }
+  }, [isMinimal, settingsPaneLabel, minimalPane, setMinimalPane]);
+
+  const paneToggle = settingsPaneLabel ? (
     <SidebarMinimalPaneToggle
+      settingsLabel={settingsPaneLabel}
       minimalPane={minimalPane}
       collapsed={isRailCollapsed}
       onSelect={selectMinimalPane}
     />
-  );
+  ) : null;
 
   const classicNavBody = isRailCollapsed ? (
     <div style={{ padding: "8px 0" }}>
       <SidebarCollapsedIconNav
         items={navSections.flatMap((section) => {
-          if (section.groupKey && isGroupCollapsed(section.groupKey)) {
+          if (section.id && isGroupCollapsed(section.id)) {
             return [];
           }
           return section.items;
@@ -534,10 +605,12 @@ export default function Sidebar({
     </div>
   ) : (
     <NavList
+      sections={navSections}
       selectedKey={selectedKey}
       onNavigate={handleNavigate}
-      onExpandChatRail={handleExpandChatRail}
-      showChatRailExpand={showChatRailExpand}
+      onToggleChatRail={handleToggleChatRail}
+      showChatRailToggle={showChatRailToggle}
+      chatRailOpen={chatRailOpen}
       isMobile={isMobile}
       isGroupCollapsed={isGroupCollapsed}
       toggleGroup={toggleGroup}
@@ -572,10 +645,11 @@ export default function Sidebar({
         <>
           <div className={styles.minimalPrimaryBlock}>
             <NavList
+              sections={navSections}
               selectedKey={selectedKey}
               onNavigate={handleNavigate}
-              onExpandChatRail={handleExpandChatRail}
-              showChatRailExpand={false}
+              onToggleChatRail={handleToggleChatRail}
+              showChatRailToggle={false}
               isMobile={isMobile}
               isGroupCollapsed={isGroupCollapsed}
               toggleGroup={toggleGroup}
@@ -588,13 +662,16 @@ export default function Sidebar({
             hidden={minimalPane !== "settings"}
           >
             <NavList
+              sections={navSections}
               selectedKey={selectedKey}
               onNavigate={handleNavigate}
               isMobile={isMobile}
               isGroupCollapsed={isGroupCollapsed}
               toggleGroup={toggleGroup}
               sectionFilter="grouped"
-              hideGroupHeaderKeys={MINIMAL_SETTINGS_HIDDEN_HEADERS}
+              hideHeaderIds={
+                firstNamed?.id ? new Set([firstNamed.id]) : undefined
+              }
             />
           </div>
         </>
@@ -622,9 +699,12 @@ export default function Sidebar({
         style={{
           position: "fixed",
           top: 0,
+          bottom: 0,
           left: 0,
-          height: "100dvh",
+          height: "auto",
           width: EXPANDED_WIDTH,
+          boxSizing: "border-box",
+          paddingLeft: "env(safe-area-inset-left, 0px)",
           background: "var(--fn-sidebar-bg)",
           borderRight: "1px solid var(--fn-sidebar-border)",
           zIndex: 100,
@@ -700,6 +780,7 @@ export default function Sidebar({
           }}
         >
           {userFooter}
+          {customizer}
         </div>
       </div>
     );
@@ -725,7 +806,7 @@ export default function Sidebar({
       }}
     >
       <div
-        className={`${styles.sidebarBrand} ${DESKTOP_DRAG_REGION_CLASS}`}
+        className={cx(styles.sidebarBrand, DESKTOP_DRAG_REGION_CLASS)}
         style={{
           display: "flex",
           alignItems: "center",
@@ -753,6 +834,7 @@ export default function Sidebar({
       </div>
 
       {userFooter}
+      {customizer}
     </div>
   );
 }

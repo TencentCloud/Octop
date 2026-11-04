@@ -1,7 +1,5 @@
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import {
-  Avatar,
-  Modal,
   Drawer,
   Form,
   Input,
@@ -24,19 +22,18 @@ import {
   Github,
   RefreshCw,
   KeyRound,
+  ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { authApi } from "../api/modules/auth";
 import { preferencesApi } from "../api/modules/preferences";
 import { clearAuthToken } from "../api/request";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { apiErrorMessage } from "../utils/apiError";
 import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
-import {
-  MIN_PASSWORD_LENGTH,
-  passwordPolicyIssue,
-} from "../utils/passwordPolicy";
 import { useUserRole } from "../hooks/useUserRole";
 import { useIsMobile } from "../hooks/useIsMobile";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -48,6 +45,11 @@ import { userCan } from "../utils/permissions";
 import feishuIcon from "../assets/channels/feishu.svg";
 import dingtalkIcon from "../assets/channels/dingtalk.svg";
 import wecomIcon from "../assets/channels/wecom.svg";
+import {
+  ProfileAvatar,
+  ProfileAvatarPicker,
+} from "../pages/Admin/Users/ProfileAvatar";
+import AccountSecurityDrawer from "./AccountSecurityDrawer";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
@@ -77,8 +79,10 @@ interface AvatarDropdownProps {
   placement?: "default" | "sidebar";
   /** When placement is sidebar and true, show avatar only (collapsed rail). */
   compact?: boolean;
-  /** Called before opening settings / password panels (e.g. close mobile nav drawer). */
+  /** Called before opening settings or account security (e.g. close mobile nav drawer). */
   onBeforeOpenSettings?: () => void;
+  /** Opens the sidebar layout editor. Omitted when that editor is unavailable. */
+  onCustomizeNav?: () => void;
 }
 
 export default function AvatarDropdown({
@@ -87,6 +91,7 @@ export default function AvatarDropdown({
   placement = "default",
   compact = false,
   onBeforeOpenSettings,
+  onCustomizeNav,
 }: AvatarDropdownProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -95,19 +100,13 @@ export default function AvatarDropdown({
   const { layoutMode, setLayoutMode } = useLayoutMode();
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<
     { kind: string; display_name: string; enabled: boolean }[]
   >([]);
   const [ssoBindingKind, setSsoBindingKind] = useState<string | null>(null);
-  const [changingPw, setChangingPw] = useState(false);
   const [profileForm] = Form.useForm<{ display_name: string }>();
-  const [pwForm] = Form.useForm<{
-    old_password: string;
-    new_password: string;
-    confirm: string;
-  }>();
 
   const handleLogout = useCallback(async () => {
     setMenuOpen(false);
@@ -129,41 +128,6 @@ export default function AvatarDropdown({
       message.error(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleChangePw = async (values: {
-    old_password: string;
-    new_password: string;
-    confirm: string;
-  }) => {
-    setChangingPw(true);
-    try {
-      await authApi.changePassword(values.old_password, values.new_password);
-      message.success(t("account.passwordChanged"));
-      pwForm.resetFields();
-      setPasswordOpen(false);
-    } catch (e) {
-      message.error(apiErrorMessage(e, t("account.passwordChangeFailed"), t));
-    } finally {
-      setChangingPw(false);
-    }
-  };
-
-  const passwordPolicyMessage = (
-    issue: ReturnType<typeof passwordPolicyIssue>,
-  ) => {
-    switch (issue) {
-      case "same_as_old":
-        return t("account.passwordSameAsOld");
-      case "too_short":
-        return t("account.passwordTooShort", { min: MIN_PASSWORD_LENGTH });
-      case "need_letter_and_digit":
-        return t("account.passwordNeedLetterAndDigit");
-      case "too_common":
-        return t("account.passwordTooCommon");
-      default:
-        return t("account.passwordTooWeak");
     }
   };
 
@@ -251,9 +215,6 @@ export default function AvatarDropdown({
     role === "admin" ? t("account.roleAdmin") : t("account.roleUser");
 
   const displayName = user?.display_name || user?.username || "—";
-  const initials = (user?.display_name || user?.username || "?")
-    .charAt(0)
-    .toUpperCase();
 
   /** Defer panel open so the account Popover / mobile sidebar can unmount first. */
   const deferOpen = (open: () => void) => {
@@ -267,15 +228,19 @@ export default function AvatarDropdown({
     deferOpen(() => setSettingsOpen(true));
   };
 
-  const openPassword = () => {
+  const openSecurity = () => {
     setMenuOpen(false);
     onBeforeOpenSettings?.();
-    pwForm.resetFields();
-    deferOpen(() => setPasswordOpen(true));
+    deferOpen(() => setSecurityOpen(true));
+  };
+
+  const openCustomizeNav = () => {
+    setMenuOpen(false);
+    onBeforeOpenSettings?.();
+    deferOpen(() => onCustomizeNav?.());
   };
 
   const closeSettings = () => setSettingsOpen(false);
-  const closePassword = () => setPasswordOpen(false);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -317,17 +282,13 @@ export default function AvatarDropdown({
   }, [onUserChange, t]);
 
   const avatar = (
-    <Avatar
-      size={32}
-      style={{
-        background: "var(--fn-color-brand)",
-        fontSize: 14,
-        userSelect: "none",
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </Avatar>
+    <ProfileAvatar
+      key={`${user?.avatar_icon ?? ""}:${user?.avatar_url ?? ""}`}
+      url={user?.avatar_url}
+      icon={user?.avatar_icon}
+      kind="user"
+      className={styles.accountAvatar}
+    />
   );
 
   const menuContent = (
@@ -379,14 +340,25 @@ export default function AvatarDropdown({
         <span>{t("account.projectUrl")}</span>
       </a>
 
+      {onCustomizeNav ? (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={openCustomizeNav}
+        >
+          <SlidersHorizontal size={16} strokeWidth={1.8} />
+          <span>{t("nav.customize")}</span>
+        </button>
+      ) : null}
+
       <button type="button" className={styles.menuItem} onClick={openSettings}>
         <Settings size={16} strokeWidth={1.8} />
         <span>{t("account.settings")}</span>
       </button>
 
-      <button type="button" className={styles.menuItem} onClick={openPassword}>
-        <KeyRound size={16} strokeWidth={1.8} />
-        <span>{t("account.changePassword")}</span>
+      <button type="button" className={styles.menuItem} onClick={openSecurity}>
+        <ShieldCheck size={16} strokeWidth={1.8} />
+        <span>{t("account.security")}</span>
       </button>
 
       {userCan(user, "update") && (
@@ -407,7 +379,7 @@ export default function AvatarDropdown({
 
       <button
         type="button"
-        className={`${styles.menuItem} ${styles.menuItemDanger}`}
+        className={cx(styles.menuItem, styles.menuItemDanger)}
         onClick={() => void handleLogout()}
       >
         <LogOut size={16} strokeWidth={1.8} />
@@ -459,33 +431,78 @@ export default function AvatarDropdown({
   const settingsBody = (
     <div className={styles.settingsBody}>
       <div className={styles.settingsIdentity}>
-        <Avatar
-          size={44}
-          style={{
-            background: "var(--fn-color-brand)",
-            fontSize: 18,
-            flexShrink: 0,
-          }}
+        <span className={styles.settingsIdentityName}>{displayName}</span>
+        {user?.username ? (
+          <span className={styles.settingsIdentityHandle}>
+            @{user.username}
+          </span>
+        ) : null}
+        <Tag
+          color={role === "admin" ? "blue" : "default"}
+          className={styles.roleTag}
         >
-          {initials}
-        </Avatar>
-        <div className={styles.settingsIdentityText}>
-          <div className={styles.settingsIdentityName}>
-            <span>{displayName}</span>
-            <Tag
-              color={role === "admin" ? "blue" : "default"}
-              className={styles.roleTag}
-            >
-              {roleLabel}
-            </Tag>
-          </div>
-          {user?.username && (
-            <span className={styles.settingsIdentityHandle}>
-              @{user.username}
-            </span>
-          )}
-        </div>
+          {roleLabel}
+        </Tag>
       </div>
+
+      <section className={styles.settingsSection}>
+        <div className={styles.settingsSectionHead}>
+          <h3 className={styles.settingsSectionTitle}>{t("account.avatar")}</h3>
+          <p className={styles.settingsSectionDesc}>
+            {t("account.avatarHint")}
+          </p>
+        </div>
+        {user ? (
+          <div className={styles.settingsAvatarPicker}>
+            <ProfileAvatarPicker
+              kind="user"
+              avatarUrl={user.avatar_url}
+              icon={user.avatar_icon}
+              onSelectIcon={async (icon) => {
+                if (user) {
+                  onUserChange?.({
+                    ...user,
+                    avatar_icon: icon,
+                    avatar_url: null,
+                  });
+                }
+                try {
+                  onUserChange?.(await authApi.setAvatarIcon(icon));
+                } catch (err) {
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                  );
+                  throw err;
+                }
+              }}
+              onPick={async (file) => {
+                try {
+                  const result = await authApi.uploadAvatar(file);
+                  onUserChange?.({ ...user, avatar_url: result.avatar_url });
+                } catch (err) {
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                  );
+                  throw err;
+                }
+              }}
+              onRemove={async () => {
+                try {
+                  await authApi.deleteAvatar();
+                  onUserChange?.({ ...user, avatar_url: null });
+                } catch (err) {
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                  );
+                  throw err;
+                }
+              }}
+            />
+          </div>
+        ) : null}
+      </section>
+
+      <Divider className={styles.settingsDivider} />
 
       <section className={styles.settingsSection}>
         <div className={styles.settingsSectionHead}>
@@ -506,7 +523,7 @@ export default function AvatarDropdown({
         >
           <Form.Item
             name="display_name"
-            style={{ marginBottom: 12 }}
+            style={{ marginBottom: 0 }}
             rules={[
               {
                 max: 64,
@@ -519,9 +536,6 @@ export default function AvatarDropdown({
               maxLength={64}
             />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={saving} block>
-            {t("account.saveDisplayName")}
-          </Button>
         </Form>
       </section>
 
@@ -649,93 +663,6 @@ export default function AvatarDropdown({
     </div>
   );
 
-  const passwordBody = (
-    <div className={styles.settingsBody}>
-      <section className={styles.settingsSection}>
-        <div className={styles.settingsSectionHead}>
-          <p className={styles.settingsSectionDesc}>
-            {t("account.changePasswordHint")}
-          </p>
-        </div>
-        <Form
-          form={pwForm}
-          onFinish={handleChangePw}
-          layout="vertical"
-          requiredMark={false}
-          className={styles.settingsForm}
-        >
-          <Form.Item
-            name="old_password"
-            label={t("account.currentPassword")}
-            rules={[
-              {
-                required: true,
-                message: t("account.currentPasswordRequired"),
-              },
-            ]}
-          >
-            <Input.Password autoComplete="current-password" />
-          </Form.Item>
-          <Form.Item
-            name="new_password"
-            label={t("account.newPassword")}
-            dependencies={["old_password"]}
-            rules={[
-              {
-                required: true,
-                message: t("account.newPasswordRequired"),
-              },
-              ({ getFieldValue }) => ({
-                validator(_, value: string) {
-                  if (!value) return Promise.resolve();
-                  const issue = passwordPolicyIssue(
-                    value,
-                    getFieldValue("old_password") as string | undefined,
-                  );
-                  if (issue) {
-                    return Promise.reject(
-                      new Error(passwordPolicyMessage(issue)),
-                    );
-                  }
-                  return Promise.resolve();
-                },
-              }),
-            ]}
-          >
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
-          <Form.Item
-            name="confirm"
-            label={t("account.confirmPassword")}
-            dependencies={["new_password"]}
-            rules={[
-              {
-                required: true,
-                message: t("account.confirmPasswordRequired"),
-              },
-              ({ getFieldValue }) => ({
-                validator(_, value: string) {
-                  if (!value || getFieldValue("new_password") === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(
-                    new Error(t("account.passwordMismatch")),
-                  );
-                },
-              }),
-            ]}
-            style={{ marginBottom: 12 }}
-          >
-            <Input.Password autoComplete="new-password" />
-          </Form.Item>
-          <Button type="primary" htmlType="submit" loading={changingPw} block>
-            {t("account.changePassword")}
-          </Button>
-        </Form>
-      </section>
-    </div>
-  );
-
   return (
     <>
       <Popover
@@ -752,71 +679,34 @@ export default function AvatarDropdown({
         {triggerButton}
       </Popover>
 
-      {isMobile ? (
-        <Drawer
-          title={t("account.settings")}
-          open={settingsOpen}
-          onClose={closeSettings}
-          placement="bottom"
-          height="min(92dvh, 100%)"
-          destroyOnHidden
-          className={styles.settingsDrawer}
-          styles={{
-            body: {
-              paddingTop: 8,
-              paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-            },
-          }}
-        >
-          {settingsBody}
-        </Drawer>
-      ) : (
-        <Modal
-          title={t("account.settings")}
-          open={settingsOpen}
-          onCancel={closeSettings}
-          footer={null}
-          destroyOnHidden
-          centered
-          width={480}
-          className={styles.settingsModal}
-        >
-          {settingsBody}
-        </Modal>
-      )}
+      <Drawer
+        title={t("account.settings")}
+        open={settingsOpen}
+        onClose={closeSettings}
+        placement="right"
+        width={isMobile ? "100%" : 480}
+        destroyOnHidden
+        className={styles.settingsDrawer}
+        footer={
+          <div className={styles.settingsDrawerFooter}>
+            <Button onClick={closeSettings}>{t("common.cancel")}</Button>
+            <Button
+              type="primary"
+              loading={saving}
+              onClick={() => profileForm.submit()}
+            >
+              {t("common.save")}
+            </Button>
+          </div>
+        }
+      >
+        {settingsBody}
+      </Drawer>
 
-      {isMobile ? (
-        <Drawer
-          title={t("account.changePassword")}
-          open={passwordOpen}
-          onClose={closePassword}
-          placement="bottom"
-          height="auto"
-          destroyOnHidden
-          className={styles.settingsDrawer}
-          styles={{
-            body: {
-              paddingTop: 8,
-              paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
-            },
-          }}
-        >
-          {passwordBody}
-        </Drawer>
-      ) : (
-        <Modal
-          title={t("account.changePassword")}
-          open={passwordOpen}
-          onCancel={closePassword}
-          footer={null}
-          destroyOnHidden
-          centered
-          width={420}
-          className={styles.settingsModal}
-        >
-          {passwordBody}
-        </Modal>
-      )}
+      <AccountSecurityDrawer
+        open={securityOpen}
+        onClose={() => setSecurityOpen(false)}
+      />
     </>
   );
 }

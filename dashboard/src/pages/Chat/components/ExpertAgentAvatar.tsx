@@ -1,3 +1,5 @@
+import cx from "classnames";
+
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import styles from "../index.module.less";
 
@@ -10,6 +12,13 @@ export interface ChatAgentOption {
   is_shared?: boolean;
   is_owner?: boolean;
   owner_username?: string | null;
+  /** Remote cloud-collab shadow expert. */
+  bridge?: boolean;
+  bridge_connection_id?: string | null;
+  bridge_connection_name?: string | null;
+  bridge_connection_icon?: string | null;
+  bridge_disconnected?: boolean;
+  bridge_inbound?: boolean;
 }
 
 interface ExpertAgentAvatarProps {
@@ -42,7 +51,7 @@ export default function ExpertAgentAvatar({
 
   return (
     <span
-      className={`${styles.expertAgentAvatar} ${className ?? ""}`}
+      className={cx(styles.expertAgentAvatar, className)}
       style={{
         width: size,
         height: size,

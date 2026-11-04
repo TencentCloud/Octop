@@ -1,4 +1,4 @@
-"""Tests for Octop context-usage adapter over harness-agent."""
+"""Tests for Octop context-usage adapter over octop-harness."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from octop.infra.agents.context_breakdown import (
+from octop.infra.agents.threads.context_breakdown import (
     SEGMENT_KEYS,
     compute_context_breakdown,
 )
@@ -20,8 +20,8 @@ def test_segment_keys_stable() -> None:
 
 
 def test_segment_keys_match_harness_when_available() -> None:
-    pytest.importorskip("harness_agent.context_usage")
-    from harness_agent.context_usage import SEGMENT_KEYS as HARNESS_KEYS
+    pytest.importorskip("octop_harness.context_usage")
+    from octop_harness.context_usage import SEGMENT_KEYS as HARNESS_KEYS
 
     assert SEGMENT_KEYS == HARNESS_KEYS
 

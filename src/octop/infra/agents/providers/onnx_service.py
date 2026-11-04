@@ -254,6 +254,31 @@ def _alias_cache_names(model_name: str) -> list[str]:
     return names
 
 
+def _local_model_snapshot(model_name: str) -> Path | None:
+    """Resolve a downloaded model directory without consulting Hugging Face."""
+    for name in _alias_cache_names(model_name):
+        repo_dir = model_cache_dir(name)
+        ref = repo_dir / "refs" / "main"
+        if ref.is_file():
+            try:
+                revision = ref.read_text(encoding="utf-8").strip()
+            except OSError:
+                revision = ""
+            if revision:
+                snapshot = _safe_under_cache(repo_dir / "snapshots" / revision)
+                if snapshot is not None and _cache_has_onnx_weights(snapshot):
+                    return snapshot
+
+        suffix = name.split("/")[-1] if "/" in name else name
+        for candidate in (
+            embedding_models_dir() / suffix,
+            embedding_models_dir() / f"fast-{suffix}",
+        ):
+            if _cache_has_onnx_weights(candidate):
+                return candidate
+    return None
+
+
 def is_model_downloaded(model_name: str) -> bool:
     """True only when catalog-safe id has actual ONNX weight files on disk."""
     try:
@@ -295,7 +320,18 @@ def list_downloaded_models() -> list[str]:
 
 
 def delete_downloaded_model(model_name: str) -> bool:
+    global _embedding_instance
     name = assert_catalog_model(model_name)
+    with _embedding_inference_lock:
+        if _embedding_instance is not None and _embedding_instance[:2] == (
+            name,
+            str(embedding_models_dir()),
+        ):
+            _embedding_instance = None
+        return _delete_downloaded_model_files(name)
+
+
+def _delete_downloaded_model_files(name: str) -> bool:
     removed = False
     targets = [model_cache_dir(name), _downloaded_marker_path(name)]
     for alias in _alias_cache_names(name):
@@ -386,21 +422,50 @@ def require_embedding_prerequisites(settings_get: Any) -> OnnxServiceConfig:
     return cfg
 
 
+# One resident model and one inference at a time, shared by indexing, retrieval,
+# and probes. A document-only semaphore would leave queries free to load copies.
+_embedding_inference_lock = threading.Lock()
+_embedding_instance: tuple[str, str, Any] | None = None
+
+
 def _build_text_embedding(model: str) -> Any:
     from fastembed import TextEmbedding
 
-    return TextEmbedding(model_name=model, cache_dir=str(embedding_models_dir()))
+    cache = embedding_models_dir()
+    local_snapshot = _local_model_snapshot(model)
+    if local_snapshot is not None:
+        return TextEmbedding(
+            model_name=model,
+            cache_dir=str(cache),
+            threads=2,
+            specific_model_path=str(local_snapshot),
+            local_files_only=True,
+        )
+    return TextEmbedding(model_name=model, cache_dir=str(cache), threads=2)
 
 
 def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:
+    global _embedding_instance
     if not texts:
         return []
     require_local_embedding_deps()
     model = assert_catalog_model(model)
-    emb = _build_text_embedding(model)
-    out = [[float(x) for x in vec] for vec in emb.embed(list(texts))]
-    if len(out) != len(texts):
-        raise RuntimeError("embedding count mismatch")
+    cache_path = str(embedding_models_dir())
+    out: list[list[float]] = []
+    for text in texts:
+        # Release between chunks so a query need not wait for the whole document.
+        with _embedding_inference_lock:
+            if _embedding_instance is None or _embedding_instance[:2] != (model, cache_path):
+                # Release the old session before loading another model's weights.
+                _embedding_instance = None
+                _embedding_instance = (model, cache_path, _build_text_embedding(model))
+            vectors = [
+                [float(x) for x in vec]
+                for vec in _embedding_instance[2].embed([text], batch_size=1)
+            ]
+            if len(vectors) != 1:
+                raise RuntimeError("embedding count mismatch")
+            out.extend(vectors)
     return out
 
 
@@ -587,10 +652,8 @@ class OnnxDownloadManager:
             logger.info("ONNX model %s fetched from %s", model_name, winner)
             mark_model_downloaded(model_name)
             try:
-                from fastembed import TextEmbedding
-
                 self._set(status=OnnxDownloadStatus.LOADING)
-                TextEmbedding(model_name=model_name, cache_dir=str(cache))
+                _build_text_embedding(model_name)
             except ImportError:
                 pass
         finally:

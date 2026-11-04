@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import { Tooltip } from "antd";
+import cx from "classnames";
 import { prefetchRoute } from "../routes/prefetch";
 import { COLLAPSED_WIDTH, type NavItem } from "./sidebarNav";
 import styles from "./Sidebar.module.less";
@@ -15,7 +16,7 @@ export default function SidebarCollapsedIconNav({
   items: NavItem[];
   selectedKey: string;
   onNavigate: (path: string) => void;
-  role: "admin" | "user" | null;
+  role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
@@ -77,9 +78,12 @@ export default function SidebarCollapsedIconNav({
               {item.icon}
               {showUpdateBadge ? (
                 <span
-                  className={`${styles.navUpdateBadge} ${styles.navUpdateBadgeCollapsed}`}
+                  className={cx(
+                    styles.navUpdateBadge,
+                    styles.navUpdateBadgeCollapsed,
+                  )}
                 >
-                  新
+                  {t("nav.newVersionBadgeShort", "新")}
                 </span>
               ) : null}
               {item.badge && (
@@ -92,8 +96,6 @@ export default function SidebarCollapsedIconNav({
                     zIndex: 2,
                     fontSize: 7,
                     fontWeight: 700,
-                    color: "#fff",
-                    backgroundColor: "#ff4d4f",
                     width: 14,
                     height: 14,
                     display: "flex",

@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
+import cx from "classnames";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
@@ -29,7 +30,10 @@ interface ChatSidebarPanelProps {
   onAgentSelect: (agentId: string) => void;
   /** Start a fresh chat from an expert row (classic + minimal). */
   onNewChatWithAgent: (agentId: string) => void;
-  onDeleteSession: (id: string) => void;
+  onDeleteSession: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
@@ -134,9 +138,11 @@ export default function ChatSidebarPanel({
 
   return (
     <div
-      className={`${styles.sidebarWrapper} ${
-        layoutRail ? styles.sidebarWrapperLayoutRail : ""
-      } ${!isMobile && !sidebarOpen ? styles.sidebarWrapperCollapsed : ""}`}
+      className={cx(
+        styles.sidebarWrapper,
+        layoutRail && styles.sidebarWrapperLayoutRail,
+        !isMobile && !sidebarOpen && styles.sidebarWrapperCollapsed,
+      )}
     >
       {isMobile && sidebarOpen && (
         <div
@@ -147,9 +153,11 @@ export default function ChatSidebarPanel({
 
       <div
         ref={sidebarElRef}
-        className={`${styles.sidebar} ${
-          sidebarOpen ? styles.sidebarOpen : ""
-        } ${isSidebarResizing ? styles.sidebarResizing : ""}`}
+        className={cx(
+          styles.sidebar,
+          sidebarOpen && styles.sidebarOpen,
+          isSidebarResizing && styles.sidebarResizing,
+        )}
         style={
           !isMobile && sidebarOpen
             ? { width: sidebarWidth, minWidth: sidebarWidth }
@@ -159,9 +167,10 @@ export default function ChatSidebarPanel({
         {sessionList}
         {!isMobile && sidebarOpen && (
           <div
-            className={`${styles.sidebarResizeHandle} ${
-              isSidebarResizing ? styles.sidebarResizeHandleActive : ""
-            }`}
+            className={cx(
+              styles.sidebarResizeHandle,
+              isSidebarResizing && styles.sidebarResizeHandleActive,
+            )}
             onPointerDown={onSidebarResizeStart}
             role="separator"
             aria-orientation="vertical"
@@ -177,6 +186,7 @@ export default function ChatSidebarPanel({
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}
+          placement={sidebarOpen ? "center" : "after"}
           className={
             sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
           }

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from octop.config import DatabaseConfig, OctopConfig
-from octop.infra.agents.memory_backend import memory_backend_from_agent_config, open_memory_kwargs
+from octop.infra.agents.memory.backend import memory_backend_from_agent_config, open_memory_kwargs
 from octop.infra.errors import OctopError
 
 

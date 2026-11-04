@@ -1,3 +1,5 @@
+import { routerBasename } from "../utils/publicUrl";
+
 declare const BASE_URL: string;
 
 /**
@@ -6,7 +8,8 @@ declare const BASE_URL: string;
  * @returns Full API URL (e.g., "http://localhost:8088/api/models" or "/api/models")
  */
 export function getApiUrl(path: string): string {
-  const base = BASE_URL || "";
+  // Absolute API host (define BASE_URL) wins; otherwise Vite public base.
+  const base = BASE_URL || routerBasename() || "";
   const apiPrefix = "/api";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${base}${apiPrefix}${normalizedPath}`;
@@ -20,7 +23,7 @@ export function getApiUrl(path: string): string {
  * @returns Full WebSocket URL
  */
 export function getWsUrl(path: string): string {
-  const base = BASE_URL || "";
+  const base = BASE_URL || routerBasename() || "";
   const apiPrefix = "/api";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const httpUrl = `${base}${apiPrefix}${normalizedPath}`;

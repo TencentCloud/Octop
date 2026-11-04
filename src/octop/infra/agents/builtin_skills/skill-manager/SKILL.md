@@ -14,7 +14,7 @@ metadata:
 
 # Skill Manager
 
-只管理当前实例的 `{{OCTOP_SKILLS}}/`。当前实例工作区固定为 `{{OCTOP_WORKSPACE}}`；上传文件通常位于其中的 `inbound/`。系统文件（skills、内置 skills、会话等）在 `{{OCTOP_SKILLS}}` 所在目录。不要用 `pwd`、`$HOME`、`~/.harness-agent/workspace`、记忆文件或搜索结果重新猜测工作区。不要改其他实例、全局 Skill 目录或 `{{OCTOP_BUILTIN_SKILLS}}/`。
+只管理当前实例的 `{{OCTOP_SKILLS}}/`。当前实例工作区固定为 `{{OCTOP_WORKSPACE}}`；上传文件通常位于其中的 `inbound/`。系统文件（skills、内置 skills、会话等）在 `{{OCTOP_SKILLS}}` 所在目录。不要用 `pwd`、`$HOME`、`~/.octop-harness/workspace`、记忆文件或搜索结果重新猜测工作区。不要改其他实例、全局 Skill 目录或 `{{OCTOP_BUILTIN_SKILLS}}/`。
 
 ## 操作入口
 

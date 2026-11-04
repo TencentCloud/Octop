@@ -1,4 +1,9 @@
-import { request, requestBlob, requestUpload } from "../request";
+import {
+  bridgeAgentHeaders,
+  request,
+  requestBlob,
+  requestUpload,
+} from "../request";
 
 export interface KnowledgeLimits {
   max_bases_per_owner: number;
@@ -45,7 +50,10 @@ export interface KnowledgeBase {
   description: string;
   default_open: boolean;
   shared: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
   icon_name: string;
+  icon_url?: string;
   embedding_model: string;
   embedding_dim: number;
   doc_count: number;
@@ -114,8 +122,10 @@ export const DEFAULT_KNOWLEDGE_LIMITS: KnowledgeLimits = {
 };
 
 export const knowledgeBasesApi = {
-  getCapability: () =>
-    request<KnowledgeCapability>("/knowledge-bases/capability"),
+  getCapability: (agentId?: string | null) =>
+    request<KnowledgeCapability>("/knowledge-bases/capability", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
 
   setFeature: (body: {
     enabled: boolean;
@@ -132,7 +142,10 @@ export const knowledgeBasesApi = {
       body: JSON.stringify(body),
     }),
 
-  list: () => request<KnowledgeBase[]>("/knowledge-bases"),
+  list: (agentId?: string | null) =>
+    request<KnowledgeBase[]>("/knowledge-bases", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
   getEmbeddingOptions: (opts?: { allOnnx?: boolean }) =>
     request<KnowledgeEmbeddingOptions>(
       opts?.allOnnx
@@ -181,7 +194,10 @@ export const knowledgeBasesApi = {
     description?: string;
     default_open?: boolean;
     shared?: boolean;
+    visibility?: "all" | "groups" | "owner";
+    group_ids?: string[];
     icon_name?: string;
+    icon_url?: string;
     max_documents?: number;
   }) =>
     request<KnowledgeBase>("/knowledge-bases", {
@@ -196,7 +212,10 @@ export const knowledgeBasesApi = {
       description?: string;
       default_open?: boolean;
       shared?: boolean;
+      visibility?: "all" | "groups" | "owner";
+      group_ids?: string[];
       icon_name?: string;
+      icon_url?: string;
       max_documents?: number;
     },
   ) =>
@@ -207,6 +226,20 @@ export const knowledgeBasesApi = {
 
   delete: (id: string) =>
     request<void>(`/knowledge-bases/${id}`, { method: "DELETE" }),
+
+  uploadAvatar: (id: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/knowledge-bases/${encodeURIComponent(id)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (id: string) =>
+    request<void>(`/knowledge-bases/${encodeURIComponent(id)}/avatar`, {
+      method: "DELETE",
+    }),
 
   listDocuments: (id: string, prefix?: string) =>
     request<KnowledgeDocument[]>(
@@ -286,6 +319,13 @@ export const knowledgeBasesApi = {
     request<{ id: string; filename: string; text: string }>(
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
     ),
+
+  listDocumentChunks: (id: string, documentId: string) =>
+    request<{
+      id: string;
+      filename: string;
+      chunks: { ordinal: number; text: string }[];
+    }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
 
   /** Authenticated original-file bytes (download or preview). */
   fetchDocumentFile: (

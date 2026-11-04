@@ -19,8 +19,10 @@ import {
   Code2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { probeAuthResource, request, requestBlob } from "../../../api/request";
 import { isNotFoundApiError } from "../../../utils/apiError";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import FileViewer from "../../Agent/Workspace/components/FileViewer";
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
@@ -188,11 +190,7 @@ export default function FilePanelContent({
           apiFilePath,
         )}`,
       );
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = dockFileBasename(resolvedPath) || "download";
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await saveBlobAsFile(blob, dockFileBasename(resolvedPath) || "download");
     } catch (err: unknown) {
       if (isNotFoundApiError(err)) {
         setFileMissing(true);
@@ -230,9 +228,10 @@ export default function FilePanelContent({
           >
             <button
               type="button"
-              className={`${styles.fileModalIconBtn} ${
-                previewMode ? styles.fileModalIconBtnActive : ""
-              }`}
+              className={cx(
+                styles.fileModalIconBtn,
+                previewMode && styles.fileModalIconBtnActive,
+              )}
               onClick={() => setPreviewMode((v) => !v)}
               aria-label={
                 previewMode
@@ -275,7 +274,10 @@ export default function FilePanelContent({
             <Tooltip title={t("common.save")}>
               <button
                 type="button"
-                className={`${styles.fileModalIconBtn} ${styles.fileModalIconBtnPrimary}`}
+                className={cx(
+                  styles.fileModalIconBtn,
+                  styles.fileModalIconBtnPrimary,
+                )}
                 onClick={() => void save()}
                 disabled={saving}
                 aria-label={t("common.save")}
@@ -335,9 +337,10 @@ export default function FilePanelContent({
   return (
     <div className={styles.filePanelBody}>
       <div
-        className={`${styles.fileModalBody} ${
-          bodyFill ? styles.fileModalBodyFill : ""
-        }`}
+        className={cx(
+          styles.fileModalBody,
+          bodyFill && styles.fileModalBodyFill,
+        )}
       >
         {fileMissing ? (
           <div className={styles.fileMissingState} role="status">

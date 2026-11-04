@@ -6,7 +6,7 @@ import base64
 from pathlib import Path
 
 import pytest
-from harness_gateway.models import ImageContent, TextContent
+from octop_gateway.models import ImageContent, TextContent
 
 from octop.infra.gateway.media.tool_media import iter_media_blocks
 from octop.infra.gateway.process import (
@@ -40,7 +40,7 @@ def test_build_content_with_image_data():
 
 
 def test_build_content_reads_media_backend_key(tmp_path: Path) -> None:
-    from harness_gateway.media import FileSystemMediaBackend
+    from octop_gateway.media import FileSystemMediaBackend
 
     media_root = tmp_path / "media"
     media_root.mkdir()
@@ -87,6 +87,50 @@ def test_build_harness_request_with_messages_override():
     )
     assert req["messages"] == [{"role": "user", "content": "ping"}]
     assert req["thread_id"] == "t1"
+
+
+def test_build_harness_request_stores_dashboard_message_id() -> None:
+    from langchain_core.messages import HumanMessage
+
+    req = build_harness_request(
+        thread_id="t1",
+        user_id=1,
+        source="dashboard/ws",
+        text="画一张图",
+        message_id="1710000000000-ab12cd",
+    )
+    message = req["messages"][0]
+    assert isinstance(message, HumanMessage)
+    assert message.id == "1710000000000-ab12cd"
+    assert message.content == "画一张图"
+
+
+def test_overwrite_last_user_text_keeps_message_id() -> None:
+    from langchain_core.messages import HumanMessage
+
+    from octop.infra.gateway.process.processor import _overwrite_last_user_text
+
+    request = {
+        "messages": [HumanMessage(content="原话", id="1710000000000-ab12cd")],
+    }
+    _overwrite_last_user_text(request, "改写后的计划指令")
+    message = request["messages"][0]
+    assert isinstance(message, HumanMessage)
+    assert message.id == "1710000000000-ab12cd"
+    assert message.content == "改写后的计划指令"
+
+
+def test_build_harness_request_marks_auto_route() -> None:
+    req = build_harness_request(
+        thread_id="t1",
+        user_id=1,
+        source="web",
+        text="hello",
+        model="p/a",
+        auto_route=True,
+    )
+
+    assert req["configurable"]["octop_auto_route"] is True
 
 
 @pytest.mark.asyncio

@@ -6,14 +6,17 @@ import base64
 import io
 import tempfile
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends.workspace import BackendWorkspace
-from harness_gateway.models import FileContent, ImageContent, TextContent
+from langchain_core.messages import HumanMessage
+from octop_gateway.models import FileContent, ImageContent, InboundMessage, TextContent
+from octop_harness.backends.workspace import BackendWorkspace
 from PIL import Image
 
 from octop.api.routers.chat.models import ChatTurnBody
+from octop.api.routers.chat.serialize import _serialize_history_message
 from octop.api.routers.chat.turn import (
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
@@ -22,6 +25,7 @@ from octop.api.routers.chat.turn import (
 )
 from octop.infra.gateway.media.attachment_hints import (
     VISION_MAX_BYTES,
+    VISION_SAFE_MAX_SIDE,
     format_attachment_path_hint,
     hints_from_content_parts,
     inbound_attachments_from_parts,
@@ -33,6 +37,8 @@ from octop.infra.gateway.media.inbound_store import (
 )
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.harness_request import build_content_from_message
+from octop.infra.gateway.process.processor import GlobalProcessor
+from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
@@ -56,6 +62,18 @@ def _tiny_png() -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _jpeg(size: tuple[int, int]) -> bytes:
+    img = Image.new("RGB", size, (12, 80, 160))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+def _long_side(data: bytes) -> int:
+    with Image.open(io.BytesIO(data)) as img:
+        return max(img.size)
 
 
 def test_hints_from_file_content() -> None:
@@ -171,7 +189,7 @@ async def test_file_typed_image_path_still_materializes_via_content_parts() -> N
         parts = content_parts_from_dashboard_turn(turn)
         assert any(isinstance(p, ImageContent) for p in parts)
         backend = AgentBackedMediaBackend(workspace)
-        from harness_gateway.models import InboundMessage
+        from octop_gateway.models import InboundMessage
 
         msg = InboundMessage(
             channel_id=WS_CHANNEL_ID,
@@ -281,6 +299,58 @@ async def test_small_image_is_path_ref_then_byte_identical_on_expand() -> None:
         assert base64.b64decode(url.split(",", 1)[1]) == small
 
 
+@pytest.mark.asyncio
+async def test_image_at_safe_edge_stays_byte_identical() -> None:
+    """A photo already inside the shared provider edge is not re-encoded."""
+    raw = _jpeg((VISION_SAFE_MAX_SIDE, 8))
+    assert len(raw) <= VISION_MAX_BYTES
+    part = ImageContent(data=base64.b64encode(raw).decode(), mime_type="image/jpeg")
+    block = await materialize_image_part(part, media_backend=None)
+    assert block is not None
+    url = block["image_url"]["url"]
+    assert base64.b64decode(url.split(",", 1)[1]) == raw
+
+
+@pytest.mark.asyncio
+async def test_inline_long_screenshot_is_fitted_to_safe_edge() -> None:
+    """A small-file long screenshot is scaled before it is inlined."""
+    raw = _jpeg((64, VISION_SAFE_MAX_SIDE + 1000))
+    assert len(raw) <= VISION_MAX_BYTES
+    part = ImageContent(data=base64.b64encode(raw).decode(), mime_type="image/jpeg")
+    block = await materialize_image_part(part, media_backend=None)
+    assert block is not None
+    fitted = base64.b64decode(block["image_url"]["url"].split(",", 1)[1])
+    assert len(fitted) <= VISION_MAX_BYTES
+    assert _long_side(fitted) <= VISION_SAFE_MAX_SIDE
+
+
+@pytest.mark.asyncio
+async def test_long_screenshot_refit_on_expand_keeps_stored_bytes() -> None:
+    """History replays the original file; only the outgoing request is scaled."""
+    raw = _jpeg((64, VISION_SAFE_MAX_SIDE + 1000))
+    assert len(raw) <= VISION_MAX_BYTES
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        stored = await write_inbound(
+            workspace,
+            raw,
+            filename="long.jpg",
+            media_type="image/jpeg",
+        )
+        backend = AgentBackedMediaBackend(workspace)
+        part = ImageContent(local_path=stored.path, mime_type="image/jpeg", size=len(raw))
+        block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
+        assert block is not None
+        assert block["image_url"]["url"].startswith("workspace://")
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        fitted = base64.b64decode(expanded["image_url"]["url"].split(",", 1)[1])
+        assert len(fitted) <= VISION_MAX_BYTES
+        assert _long_side(fitted) <= VISION_SAFE_MAX_SIDE
+        assert await workspace.adownload_bytes(stored.path) == raw
+
+
 def test_inbound_attachments_from_parts() -> None:
     parts = [
         TextContent(text="see"),
@@ -328,9 +398,43 @@ def test_build_dashboard_inbound_uses_content_parts_not_messages_meta() -> None:
         ws_connection_id="conn",
     )
     assert "messages" not in inbound.metadata
+    assert "client_message_id" not in inbound.metadata
     assert inbound.metadata[COMPOSER_CTX_KEY] == {"skills": ["pdf"]}
     assert INBOUND_ATTACHMENTS_KEY in inbound.metadata
     assert any(isinstance(p, FileContent) for p in inbound.content)
+
+
+def test_build_dashboard_inbound_keeps_client_message_id() -> None:
+    from octop.api.routers.chat.turn import PreparedDashboardTurn, client_message_id_from_turn
+
+    prepared = PreparedDashboardTurn(
+        thread_id="t1",
+        session_key="sk",
+        mcp_servers=None,
+        skills=None,
+        model_ref=None,
+        inbound_content=[TextContent(text="画一张图")],
+        composer_context=None,
+        inbound_attachments=[],
+    )
+    turn = ChatTurnBody(
+        text="画一张图",
+        messages=[{"role": "user", "content": "画一张图", "id": "1710000000000-ab12cd"}],
+    )
+    assert client_message_id_from_turn(turn) == "1710000000000-ab12cd"
+    inbound = build_dashboard_inbound(
+        agent_id="agent-1",
+        user_id=1,
+        prepared=prepared,
+        turn=turn,
+        ws_connection_id="conn",
+    )
+    assert inbound.metadata["client_message_id"] == "1710000000000-ab12cd"
+    rejected = ChatTurnBody(
+        text="画一张图",
+        messages=[{"role": "user", "content": "画一张图", "id": "../etc/passwd"}],
+    )
+    assert client_message_id_from_turn(rejected) is None
 
 
 def test_serialize_history_exposes_inbound_attachments() -> None:
@@ -353,6 +457,75 @@ def test_serialize_history_exposes_inbound_attachments() -> None:
     entry = _serialize_history_message(msg)
     assert entry is not None
     assert entry["inbound_attachments"] == attachments
+
+
+@pytest.mark.asyncio
+async def test_weixin_pdf_history_is_downloadable_attachment() -> None:
+    manager = MagicMock()
+    manager.get_row.return_value = None
+    manager.get_thread_model.return_value = None
+    manager.resolve_fallback_model_ref.return_value = None
+    manager.default_mcp_servers.return_value = None
+    manager.merge_turn_mcp_servers.return_value = None
+    manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    registry = MagicMock()
+    registry.get_thread.return_value = None
+    registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    agent_repo = MagicMock()
+    agent_repo.get.return_value = None
+    user_repo = MagicMock()
+    user_repo.get.return_value = None
+    processor = GlobalProcessor(
+        agent_manager=manager,
+        thread_registry=registry,
+        audit_repo=MagicMock(),
+        agent_repo=agent_repo,
+        user_repo=user_repo,
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+    )
+    processor.teams.stamp_host_runtime = MagicMock()
+    inbound = InboundMessage(
+        channel_id="weixin-1",
+        channel_type="weixin",
+        tenant_id="agent-1",
+        content=[
+            FileContent(
+                local_path="weixin/01M3KH/1790583376_笔试准考证.pdf",
+                filename="笔试准考证.pdf",
+                mime_type="application/pdf",
+                size=409157,
+            )
+        ],
+    )
+
+    captured: dict[str, object] = {}
+
+    async def fake_project_stream(_manager, _agent_id, request, **_kwargs):
+        captured["request"] = request
+        yield MagicMock()
+
+    with (
+        patch("octop.infra.gateway.process.processor.media_backend_for_agent", return_value=None),
+        patch("octop.infra.gateway.process.processor.project_stream", new=fake_project_stream),
+    ):
+        _ = [event async for event in processor(inbound)]
+
+    request = captured["request"]
+    assert isinstance(request, dict)
+    raw = request["messages"][0]
+    persisted = raw if isinstance(raw, HumanMessage) else HumanMessage(content=raw["content"])
+    entry = _serialize_history_message(persisted)
+    assert entry is not None
+    assert entry["content"] == []
+    assert entry["inbound_attachments"] == [
+        {
+            "filename": "笔试准考证.pdf",
+            "media_type": "application/pdf",
+            "kind": "file",
+            "workspace_path": "inbound/weixin/01M3KH/1790583376_笔试准考证.pdf",
+        }
+    ]
 
 
 def test_content_blocks_need_vision_detects_image_url() -> None:

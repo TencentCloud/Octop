@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolRenderProps } from "../types";
 import { isSilentPluginUiData } from "../isPinnedToolUi";
 
@@ -25,34 +26,60 @@ export function BuiltinOctopUiFallback({
   textFallback,
   status,
   output,
-}: ToolRenderProps) {
+  annotateMissingPlugin = false,
+}: ToolRenderProps & { annotateMissingPlugin?: boolean }) {
+  const { t } = useTranslation();
   if (isSilentPluginUiData(data)) return null;
   const obj =
     data && typeof data === "object" && !Array.isArray(data)
       ? (data as Record<string, unknown>)
       : null;
-  const title =
-    (obj && typeof obj.title === "string" && obj.title) ||
-    textFallback ||
-    displayName ||
-    toolName ||
-    "Tool result";
+  const showReturnedText = annotateMissingPlugin && Boolean(textFallback);
+  const title = showReturnedText
+    ? displayName || toolName || "Tool result"
+    : (obj && typeof obj.title === "string" && obj.title) ||
+      textFallback ||
+      displayName ||
+      toolName ||
+      "Tool result";
   const entries = obj ? Object.entries(obj).filter(([k]) => k !== "title") : [];
+  const running = status === "running";
 
   return (
     <div
       className="octop-builtin-ui-fallback"
       data-octop-plugin-ui="builtin-fallback"
-      style={cardStyle}
+      style={{
+        ...cardStyle,
+        ...(running
+          ? {
+              borderColor: "#93c5fd",
+              boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.12)",
+            }
+          : null),
+      }}
+      aria-busy={running || undefined}
     >
       <div style={{ fontWeight: 600, marginBottom: 4, fontSize: 15 }}>
         {title}
       </div>
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
         {toolName || "tool"}
-        {status === "running" ? " · running" : ""}
+        {running ? ` · ${t("common.running", "Running")}` : ""}
       </div>
-      {entries.length > 0 ? (
+      {annotateMissingPlugin ? (
+        <div
+          data-octop-plugin-ui-note=""
+          style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}
+        >
+          {t("chat.pluginUiNotInstalled")}
+        </div>
+      ) : null}
+      {showReturnedText ? (
+        <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>
+          {textFallback}
+        </div>
+      ) : entries.length > 0 ? (
         <dl style={{ margin: 0, fontSize: 13 }}>
           {entries.map(([k, v]) => (
             <div key={k} style={{ marginBottom: 4 }}>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import threading
@@ -12,11 +13,11 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from octop.config import OctopConfig
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
-from octop.infra.agents.experts.catalog import default_library_root
 from octop.infra.agents.manager import AgentManager, _memory_extract_settings
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
@@ -38,7 +39,7 @@ async def _collect_async(iterator: AsyncIterator[Any]) -> list[Any]:
 
 
 def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str, Any]:
-    from octop.infra.agents.execute_env import inject_agent_execute_env
+    from octop.infra.agents.workspace.execute_env import inject_agent_execute_env
 
     ws = manager._paths.ensure_agent_workspace(agent_id)
     return inject_agent_execute_env(
@@ -69,6 +70,87 @@ def _seed_test_provider(manager: AgentManager) -> None:
             [{"id": "gpt-4o-mini", "name": "gpt-4o-mini", "enabled": True}],
         ),
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_review", [False, True])
+async def test_manual_review_serializes_profile_edits_without_changing_session(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_review: bool
+) -> None:
+    from deepagents.backends import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    ws = BackendWorkspace(FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True), tmp_path)
+    ws.write_text("USER.md", "Original profile", force=True)
+    entered, release = threading.Event(), threading.Event()
+
+    def review(documents: dict[str, str], *, is_current: Any) -> dict[str, Any]:
+        entered.set()
+        assert release.wait(timeout=3)
+        assert documents["USER.md"] == "Original profile" and is_current()
+        return {"status": "complete"}
+
+    service = SimpleNamespace(reconcile_manual_documents=review)
+    agent = SimpleNamespace(_memory_runtime=SimpleNamespace(service=service))
+    monkeypatch.setattr(manager, "workspace_for_agent", lambda _: ws)
+    monkeypatch.setattr(manager, "get_agent", lambda _: agent)
+    task = asyncio.create_task(manager.review_manual_memory_documents("a1"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    edit = asyncio.create_task(
+        manager.save_manual_memory_document("a1", "USER.md", "Updated profile")
+    )
+    if cancel_review:
+        task.cancel()
+    await asyncio.sleep(0.01)
+    assert not edit.done() and ws.read_text("USER.md") == "Original profile"
+    release.set()
+    if cancel_review:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        assert await task == {"status": "complete"}
+    await edit
+    assert ws.read_text("USER.md") == "Updated profile"
+    with pytest.raises(ValueError, match="Unsupported"):
+        await manager.save_manual_memory_document("a1", "AGENTS.md", "invalid")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_stopped_agent_manual_review_closes_temporary_runtime(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: bool
+) -> None:
+    from deepagents.backends import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    ws = BackendWorkspace(FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True), tmp_path)
+    ws.write_text("USER.md", "Current profile", force=True)
+    monkeypatch.setattr(manager, "workspace_for_agent", lambda _: ws)
+
+    def stopped(_: str) -> Any:
+        raise OctopError(ErrorCode.AGENT_NOT_RUNNING, "stopped")
+
+    monkeypatch.setattr(manager, "get_agent", stopped)
+    monkeypatch.setattr(manager, "get_row", lambda _: _row())
+    cfg = SimpleNamespace(memory_enabled=True, providers=[], workspace_dir=str(tmp_path))
+    monkeypatch.setattr(manager, "_build_harness_config", lambda _: cfg)
+    factory, runtime = MagicMock(), MagicMock()
+    runtime.service.reconcile_manual_documents.return_value = {"status": "complete"}
+    if failure:
+        runtime.service.reconcile_manual_documents.side_effect = RuntimeError("audit failed")
+    factory_type = MagicMock(return_value=factory)
+    runtime_type = MagicMock(return_value=runtime)
+    monkeypatch.setattr("octop_harness.llm.factory.ChatModelFactory", factory_type)
+    monkeypatch.setattr("octop_harness.memory.runtime.MemoryRuntime", runtime_type)
+    if failure:
+        with pytest.raises(RuntimeError, match="audit failed"):
+            await manager.review_manual_memory_documents("a1")
+    else:
+        assert await manager.review_manual_memory_documents("a1") == {"status": "complete"}
+        assert runtime.service.reconcile_manual_documents.call_args.kwargs["is_current"]()
+    assert runtime_type.call_args.kwargs["workspace"] is ws
+    runtime.close.assert_called_once()
+    factory.close.assert_called_once()
 
 
 def _row(
@@ -160,7 +242,7 @@ def test_strip_team_host_runtime_tools_drops_mcp(manager: AgentManager) -> None:
 def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) -> None:
     from dataclasses import replace as dc_replace
 
-    from harness_agent.config import HarnessAgentConfig
+    from octop_harness.config import HarnessAgentConfig
 
     manager._teams.member_ids = MagicMock(return_value=["mem-a", "mem-b"])  # type: ignore[method-assign]
     cfg = HarnessAgentConfig(workspace_dir=manager.paths.ensure_agent_workspace("host"))
@@ -173,10 +255,11 @@ def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) ->
     assert "ask_agent" not in disabled
     assert "agent_list" not in disabled
     assert out.bootstrap_enabled is False
+    assert "Host dispatch" in (out.system_prompt or "") or "主持人调度" in (out.system_prompt or "")
 
 
 def test_apply_expert_config_forces_sync_ask_agent(manager: AgentManager) -> None:
-    from harness_agent.config import HarnessAgentConfig
+    from octop_harness.config import HarnessAgentConfig
 
     cfg = HarnessAgentConfig(workspace_dir=manager.paths.ensure_agent_workspace("expert"))
     out = manager._apply_team_host_config(cfg, _row(agent_id="expert"))
@@ -390,7 +473,7 @@ async def test_install_async_dispatch_streams_non_team_inbox(manager: AgentManag
 
 
 @pytest.mark.asyncio
-async def test_install_team_host_enrich_uses_user_question(manager: AgentManager) -> None:
+async def test_install_team_host_enrich_uses_host_assignment(manager: AgentManager) -> None:
     from langchain_core.messages import HumanMessage, SystemMessage
 
     team = MagicMock()
@@ -402,15 +485,19 @@ async def test_install_team_host_enrich_uses_user_question(manager: AgentManager
     manager._harness_manager = SimpleNamespace(team=team)
     manager._team_processor = SimpleNamespace(
         take_team_peer_prompt=MagicMock(
-            return_value=("我最近总失眠", "以下是当前群聊记录\n\n用户: 我最近总失眠")
+            return_value=(
+                "请给出可执行的睡眠建议，聚焦作息而不是诊断",
+                "[团队派工，不是用户在直接问你]\n用户: 我最近总失眠",
+            )
         ),
     )
     manager._install_team_host_dispatch()
-    req = SimpleNamespace(thread_id="t~child", messages="请给出睡眠建议")
+    req = SimpleNamespace(thread_id="t~child", messages="我最近总失眠")
     out = await team._enrich_request("child", req)
     assert isinstance(out.messages[0], SystemMessage)
     assert isinstance(out.messages[1], HumanMessage)
-    assert out.messages[1].content == "我最近总失眠"
+    assert out.messages[1].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
+    assert "团队派工" in out.messages[0].content
 
 
 @pytest.mark.asyncio
@@ -600,6 +687,133 @@ def test_memory_extract_settings_skips_aux_model_on_legacy_harness() -> None:
     assert settings == {}
 
 
+def test_memory_extract_settings_forwards_aux_call_options() -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": 42,
+                "extract_heavy_timeout_s": 90,
+                "extract_max_tokens": 1024,
+                "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_aux_light_timeout_s",
+                "memory_aux_heavy_timeout_s",
+                "memory_extract_max_tokens",
+                "memory_aux_extra_body",
+            }
+        ),
+    )
+    assert settings == {
+        "memory_aux_light_timeout_s": 42.0,
+        "memory_aux_heavy_timeout_s": 90.0,
+        "memory_extract_max_tokens": 1024,
+        "memory_aux_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+
+
+def test_memory_extract_settings_handles_legacy_limits_and_stale_model() -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "aux_model": "deleted/Qwen3",
+                "extract_max_tokens": 1,
+                "extract_light_timeout_s": 604800,
+                "extract_heavy_timeout_s": 1,
+                "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            }
+        },
+        is_ref_usable=lambda _ref: False,
+    )
+    assert settings["memory_extract_max_tokens"] == 128
+    assert settings["memory_aux_light_timeout_s"] == 3600
+    assert settings["memory_aux_heavy_timeout_s"] == 30
+    # A deleted model falls back before the LLM client is built; its vendor
+    # options must not reach that replacement model either.
+    assert "memory_aux_extra_body" not in settings
+
+
+def test_memory_extract_settings_skips_aux_call_options_on_legacy_harness() -> None:
+    # Older octop-harness releases predate the aux call options; the stored
+    # values must be ignored (not rejected) so hot reload keeps working.
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": 42,
+                "extract_max_tokens": 1024,
+                "extract_extra_body": {"enable_thinking": False},
+            }
+        },
+        supported_fields=frozenset({"memory_enabled"}),
+    )
+    assert settings == {}
+
+
+def test_memory_extract_budget_reaches_actual_extractor(tmp_path: Path) -> None:
+    from dataclasses import fields
+
+    from octop_harness.config import HarnessAgentConfig
+    from octop_harness.memory.runtime import MemoryRuntime
+    from octop_memory.pipeline.extractor import CandidateExtractor
+
+    settings = _memory_extract_settings(
+        {"memory": {"extract_max_tokens": 1024, "extract_light_timeout_s": 45}},
+        supported_fields=frozenset(field.name for field in fields(HarnessAgentConfig)),
+    )
+    model = MagicMock()
+    model.bind.return_value = model
+    model.invoke.return_value = SimpleNamespace(content='{"candidates": []}')
+    factory = MagicMock()
+    factory.get_chat_model.return_value = model
+    config = HarnessAgentConfig(
+        name="budget-test",
+        workspace_dir=tmp_path,
+        default_model="local/test",
+        memory_backend={"type": "sqlite", "db_path": str(tmp_path / "memory.sqlite")},
+        session_log_enabled=False,
+        checkpointer=False,
+        **settings,
+    )
+    runtime = MemoryRuntime(config=config, workspace_path=tmp_path, model_factory=factory)
+    try:
+        service = runtime.service
+        assert service is not None
+        extractor = CandidateExtractor(
+            llm=runtime._llm_client, max_tokens=service._runtime._extraction_cfg()["max_tokens"]
+        )
+        result = extractor._call_with_retry(prompt="test", session_id="test", raw_event_ids=set())
+        assert result.failure_reason is None
+        assert model.bind.call_args.kwargs["max_tokens"] == 1024
+        assert model.bind.call_args.kwargs["timeout"] == 45
+    finally:
+        runtime.close()
+
+
+def test_memory_extract_settings_ignores_unset_aux_call_options() -> None:
+    # None / zero / empty values fall through to the harness defaults.
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": None,
+                "extract_heavy_timeout_s": 0,
+                "extract_max_tokens": 0,
+                "extract_extra_body": {},
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_aux_light_timeout_s",
+                "memory_aux_heavy_timeout_s",
+                "memory_aux_max_tokens",
+                "memory_aux_extra_body",
+            }
+        ),
+    )
+    assert settings == {}
+
+
 def test_build_harness_config_accepts_memory_extract_settings(manager: AgentManager) -> None:
     row = _row(
         config_json=json.dumps(
@@ -683,6 +897,17 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_softens_mcp_output_schema_errors(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.mcp_output_schema import (
+        McpOutputSchemaMiddleware,
+        harness_handles_mcp_tool_errors,
+    )
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+    mounted = any(isinstance(item, McpOutputSchemaMiddleware) for item in (cfg.middleware or []))
+    assert mounted is not harness_handles_mcp_tool_errors()
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")
@@ -694,14 +919,22 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
 
 
 @pytest.mark.asyncio
-async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
+async def test_boot_reuses_process_log_instead_of_dated_harness_files(
+    manager: AgentManager,
+) -> None:
+    from octop_harness.observability.logging import teardown_logging
+
     await manager.boot()
     try:
         hm = manager._harness_manager
         assert hm is not None
-        assert hm._log_dir == manager.paths.logs_dir.resolve()
+        assert hm._log_file is None
+        log_dir = manager.paths.logs_dir
+        dated = list(log_dir.glob("????-??-??.log")) if log_dir.is_dir() else []
+        assert dated == []
     finally:
         await manager.shutdown()
+        teardown_logging()
 
 
 @pytest.mark.asyncio
@@ -769,7 +1002,9 @@ def test_build_harness_config_disables_bootstrap_for_team_host(manager: AgentMan
     )
     cfg = manager._build_harness_config(row)
     assert cfg.bootstrap_enabled is False
-    assert cfg.system_prompt == "Team coordinator prompt"
+    assert cfg.system_prompt is not None
+    assert cfg.system_prompt.startswith("Team coordinator prompt")
+    assert "主持人调度" in cfg.system_prompt or "Host dispatch" in cfg.system_prompt
     assert cfg.memory is None
     assert cfg.skills_dir is None
 
@@ -821,6 +1056,26 @@ def test_build_harness_config_keeps_memory_after_bootstrap(
     )
     cfg = manager._build_harness_config(row)
     assert cfg.memory is None
+
+
+def test_build_harness_config_language_follows_owner_locale(manager: AgentManager) -> None:
+    from dataclasses import replace
+
+    user_id = manager._repos.user_repo.create(
+        username="en-owner", password_hash="x", role="user", locale="en"
+    )
+    agent_id = "AGT_LOCALE"
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+    row = replace(
+        _row(agent_id=agent_id),
+        user_id=user_id,
+        config_json=json.dumps({"backend": _fs_backend(ws)}),
+    )
+    assert manager._build_harness_config(row).language == "en"
+
+    missing = replace(row, user_id=None)
+    assert manager._build_harness_config(missing).language == "zh"
 
 
 def test_build_harness_config_keeps_system_prompt_after_bootstrap(
@@ -877,6 +1132,21 @@ def test_is_bootstrapped_returns_false_when_agent_not_running(manager: AgentMana
     assert manager.is_bootstrapped("NOPE") is False
 
 
+def test_is_bootstrapped_does_not_cache_an_incomplete_marker(manager: AgentManager) -> None:
+    agent = MagicMock()
+    agent.is_bootstrapped.side_effect = [False, True]
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+    manager._repos.agent_repo.create(agent_id="AGT_COS", user_id=None, name="cos", config_json="{}")
+
+    assert manager.is_bootstrapped("AGT_COS") is False
+    assert manager.is_bootstrapped("AGT_COS") is True
+    assert agent.is_bootstrapped.call_count == 2
+    assert manager.is_bootstrapped("AGT_COS") is True
+    assert agent.is_bootstrapped.call_count == 2
+
+
 def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentManager) -> None:
     agent = MagicMock()
     agent.is_bootstrapped.side_effect = OSError("TLS CA bundle missing")
@@ -888,13 +1158,82 @@ def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentMan
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
-    manager: AgentManager,
+async def test_delete_thread_checkpoint_missing_agent_raises(manager: AgentManager) -> None:
+    with pytest.raises(OctopError) as exc:
+        await manager.delete_thread_checkpoint("NOPE", "thr_1")
+    assert exc.value.code == ErrorCode.AGENT_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_also_clears_configured_store(
+    manager: AgentManager, monkeypatch: Any
 ) -> None:
-    # Fresh fixture has no _harness_manager wired up — get_agent raises
-    # OctopError, which must be swallowed (checkpoint cleanup is best-effort).
-    result = await manager.delete_thread_checkpoint("NOPE", "thr_1")
-    assert result is False
+    """A live checkpointer delete must not skip the SQLite or Postgres store."""
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=user_id, name="a")
+    agent = MagicMock()
+    agent.adelete_thread = AsyncMock(return_value=True)
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+    seen: dict[str, Any] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["thread_id"] = kwargs["thread_id"]
+        seen["reclaim"] = kwargs["reclaim"]
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
+        _capture,
+    )
+
+    await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+    agent.adelete_thread.assert_awaited_once_with("thr_1")
+    assert seen["thread_id"] == "thr_1"
+    assert seen["reclaim"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_can_skip_sqlite_reclaim(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=user_id, name="a")
+    seen: dict[str, bool] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["reclaim"] = kwargs["reclaim"]
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
+        _capture,
+    )
+
+    await manager.delete_thread_checkpoint("AGT1", "thr_1", reclaim=False)
+
+    assert seen["reclaim"] is False
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_every_agent_directory(manager: AgentManager) -> None:
+    agent_id = "AGT_DIRS"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="dirs")
+    agents = manager._paths.agent_workspace(agent_id)
+    scoped = manager._paths.root / "workspaces" / agent_id
+    agents.mkdir(parents=True)
+    scoped.mkdir(parents=True)
+    (agents / "a.txt").write_text("a", encoding="utf-8")
+    (scoped / "b.txt").write_text("b", encoding="utf-8")
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    await manager.delete(agent_id)
+
+    assert not agents.exists()
+    assert not scoped.exists()
+    assert manager.get_row(agent_id) is None
 
 
 @pytest.mark.asyncio
@@ -909,12 +1248,12 @@ async def test_delete_thread_checkpoint_delegates_to_harness_adelete_thread(
 
     result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
-    assert result is True
+    assert result is None
     agent.adelete_thread.assert_awaited_once_with("thr_1")
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete_thread(
+async def test_delete_thread_checkpoint_opens_store_when_harness_cannot_delete(
     manager: AgentManager,
 ) -> None:
     agent = MagicMock(spec=[])  # no adelete_thread attribute at all
@@ -924,7 +1263,7 @@ async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete
 
     result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
-    assert result is False
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -938,8 +1277,9 @@ async def test_delete_thread_checkpoint_propagates_unexpected_errors(
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
 
-    with pytest.raises(RuntimeError, match="db unavailable"):
+    with pytest.raises(OctopError) as exc:
         await manager.delete_thread_checkpoint("AGT1", "thr_1")
+    assert exc.value.code == ErrorCode.CHECKPOINT_DELETE_FAILED
 
 
 @pytest.mark.asyncio
@@ -1045,6 +1385,98 @@ async def test_reload_agent_clears_bootstrap_refresh_pending(manager: AgentManag
 
 
 @pytest.mark.asyncio
+async def test_compact_now_runs_when_idle(manager: AgentManager, monkeypatch: Any) -> None:
+    seen: list[str] = []
+
+    def _sync(agent_id: str) -> bool:
+        seen.append(agent_id)
+        return True
+
+    monkeypatch.setattr(manager, "_compact_agent_database_sync", _sync)
+    assert await manager.compact_agent_database("AGT1") is True
+    assert seen == ["AGT1"]
+    assert "AGT1" not in manager._reclaim_pending
+
+
+@pytest.mark.asyncio
+async def test_compact_now_defers_while_a_turn_is_running(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    manager._active_invocations["AGT1"] = 1
+    monkeypatch.setattr(manager, "_compact_agent_database_sync", lambda _agent_id: True)
+    try:
+        assert await manager.compact_agent_database("AGT1", wait_s=0) is False
+        assert "AGT1" in manager._reclaim_pending
+    finally:
+        manager._reclaim_pending.clear()
+        task = manager._reclaim_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+@pytest.mark.asyncio
+async def test_delete_purges_memory_before_removing_row(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    """Checkpoints and memory are removed while the agent row still exists."""
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    agent_id = "AGT_PURGE"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="purge")
+    manager._repos.thread_repo.insert(
+        thread_id="thr_purge",
+        agent_id=agent_id,
+        user_id=user_id,
+        channel_type="dashboard",
+        session_key="purge",
+    )
+    seen: dict[str, Any] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["threads"] = set(kwargs["thread_ids"])
+        seen["row_still_present"] = manager.get_row(agent_id) is not None
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_agent_memory_and_checkpoints",
+        _capture,
+    )
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    await manager.delete(agent_id)
+
+    assert seen["threads"] == {"thr_purge"}
+    assert seen["row_still_present"] is True
+    assert manager.get_row(agent_id) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_keeps_row_when_memory_purge_fails(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    agent_id = "AGT_PURGE_FAIL"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="purge-fail")
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    def _boom(**kwargs: Any) -> None:
+        raise RuntimeError("store locked")
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_agent_memory_and_checkpoints",
+        _boom,
+    )
+
+    with pytest.raises(RuntimeError, match="store locked"):
+        await manager.delete(agent_id)
+
+    assert manager.get_row(agent_id) is not None
+
+
+@pytest.mark.asyncio
 async def test_delete_removes_workspace_directory(manager: AgentManager) -> None:
     """Deleting an agent must clean up its workspace directory on disk."""
     agent_id = "AGT_DELETE_WS"
@@ -1139,9 +1571,9 @@ async def test_delete_still_removes_db_row_when_workspace_rmtree_fails(
 
 
 def test_bootstrap_pending_detects_unfinished_onboarding(tmp_path: Path) -> None:
-    from harness_agent.backends import resolve_backend
-    from harness_agent.backends.workspace import BackendWorkspace
-    from harness_agent.middleware.bootstrap import bootstrap_marker_exists
+    from octop_harness.backends import resolve_backend
+    from octop_harness.backends.workspace import BackendWorkspace
+    from octop_harness.middleware.bootstrap import bootstrap_marker_exists
 
     backend = resolve_backend(
         {"type": "filesystem", "root_dir": str(tmp_path), "virtual_mode": False},
@@ -1188,8 +1620,8 @@ def test_build_harness_config_keeps_fs_permissions_for_local_shell_guard(
 
     Octop must not re-mount the guard (or ModelSettings) via cfg.middleware.
     """
-    from harness_agent.middleware.filesystem_guard import FilesystemGuardMiddleware
-    from harness_agent.middleware.model_settings import ModelSettingsMiddleware
+    from octop_harness.middleware.filesystem_guard import FilesystemGuardMiddleware
+    from octop_harness.middleware.model_settings import ModelSettingsMiddleware
 
     cfg = manager._build_harness_config(
         _row(config_json=json.dumps({"backend": {"type": "local_shell", "virtual_mode": True}})),
@@ -1216,6 +1648,154 @@ def test_build_harness_config_without_default_model(manager: AgentManager) -> No
     assert cfg.backend == _expected_default_backend(manager, "01AGENT")
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_type", [TypeError, httpx.ReadTimeout])
+async def test_model_retry_exhaustion_fails_background_job(
+    manager: AgentManager, failure_type: type[Exception]
+) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware
+    from langchain_core.messages import AIMessage
+    from octop_harness.teams.inbox import HarnessAgentInboxManager, InboxMessage
+    from octop_harness.teams.processor import default_compose_followup
+
+    cfg = manager._build_harness_config(_row())
+    retries = [m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware)]
+    assert len(retries) == 1
+    assert not cfg.model_retry_enabled  # The host installs exactly one retry middleware.
+    retry = retries[0]
+    assert retry.on_failure == "error"
+    assert retry.retry_on is ModelRetryMiddleware().retry_on
+    assert retry.max_retries == cfg.model_retry_max_retries
+    assert retry.initial_delay == cfg.model_retry_initial_delay
+    assert retry.max_delay == cfg.model_retry_max_delay
+    retry.initial_delay = 0
+    failure = failure_type("provider unavailable")
+    attempts = 0
+
+    async def fail(request: Any) -> Any:
+        nonlocal attempts
+        attempts += 1
+        raise failure
+
+    async def target(msg: Any) -> dict[str, Any]:
+        response = await retry.awrap_model_call(None, fail)
+        return {"messages": response.result}
+
+    with pytest.raises(failure_type) as caught:
+        await retry.awrap_model_call(None, fail)
+    assert caught.value is failure
+    assert attempts == cfg.model_retry_max_retries + 1
+    attempts = 0
+
+    source = AsyncMock(return_value={"messages": [AIMessage(content="failure relayed")]})
+    processor = SimpleNamespace(
+        compose_followup=MagicMock(side_effect=default_compose_followup),
+        on_reply=AsyncMock(),
+    )
+    inbox = HarnessAgentInboxManager(call_agent=source, processor=processor, invoke_target=target)
+    msg = InboxMessage(
+        id="retry-failure",
+        target_agent_id="B",
+        source_agent_id="A",
+        source_thread_id="thread",
+        message="test",
+        user_id=1,
+    )
+    await inbox._process(msg)
+    assert attempts == cfg.model_retry_max_retries + 1
+    assert msg.status == "failed"
+    event = processor.on_reply.call_args.args[0]
+    assert event.status == "failed"
+    assert "provider unavailable" in event.error_text
+    assert processor.compose_followup.call_args.kwargs["result_text"] is None
+    assert processor.compose_followup.call_args.kwargs["error_text"] == event.error_text
+
+
+def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
+    from langchain.agents.middleware import ModelResponse, ModelRetryMiddleware
+    from langchain_core.messages import AIMessage
+
+    cfg = manager._build_harness_config(_row())
+    retry = next(m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware))
+    retry.initial_delay = 0
+    failure = TypeError("model failed")
+    handler = MagicMock(side_effect=failure)
+    with pytest.raises(TypeError) as caught:
+        retry.wrap_model_call(None, handler)
+    assert caught.value is failure
+    assert handler.call_count == cfg.model_retry_max_retries + 1
+    response = ModelResponse(result=[AIMessage(content="recovered")])
+    handler = MagicMock(side_effect=[failure, response])
+    assert retry.wrap_model_call(None, handler) is response
+    assert handler.call_count == 2
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 422])
+def test_host_model_sdk_errors_keep_original_retry_budget(
+    manager: AgentManager, status: int
+) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware
+    from openai import APIStatusError
+
+    cfg = manager._build_harness_config(_row())
+    retry = next(m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware))
+    retry.initial_delay = 0
+    error = APIStatusError(
+        "opaque rejection",
+        response=httpx.Response(
+            status, request=httpx.Request("POST", "https://provider.example/v1/messages")
+        ),
+        body={},
+    )
+    handler = MagicMock(side_effect=error)
+    with pytest.raises(APIStatusError) as caught:
+        retry.wrap_model_call(None, handler)
+    assert caught.value is error
+    assert handler.call_count == cfg.model_retry_max_retries + 1
+
+
+def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.model_failover import SafeModelFailoverMiddleware
+
+    _seed_test_provider(manager)
+    factory = MagicMock()
+    factory.get_chat_model.return_value = object()
+    manager._harness_manager = MagicMock(shared_factory=factory)
+
+    cfg = manager._build_harness_config(_row())
+
+    failovers = [
+        item for item in (cfg.middleware or []) if isinstance(item, SafeModelFailoverMiddleware)
+    ]
+    assert len(failovers) == 1
+    assert not cfg.model_retry_enabled
+    assert failovers[0]._on_failure == "error"
+
+
+def test_auto_route_fallback_skips_model_in_cooldown(manager: AgentManager) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    manager._repos.provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "bad", "enabled": True},
+                {"id": "ready", "enabled": True},
+            ]
+        ),
+    )
+    manager._model_health.record_failure(
+        "p/bad",
+        kind="provider_unavailable",
+        scope=FailureScope.MODEL,
+    )
+
+    assert manager.resolve_fallback_model_ref() == "p/ready"
+
+
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
     manager: AgentManager,
 ) -> None:
@@ -1224,6 +1804,23 @@ def test_build_harness_config_auto_expert_falls_back_to_first_model(
     cfg = manager._build_harness_config(_row(default_model=None))
     assert cfg.default_model == "test-openai/gpt-4o-mini"
     assert cfg.providers == []
+
+
+def test_build_harness_config_keeps_model_during_runtime_cooldown(
+    manager: AgentManager,
+) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    _seed_test_provider(manager)
+    manager._model_health.record_failure(
+        "test-openai/gpt-4o-mini",
+        kind="timeout",
+        scope=FailureScope.MODEL,
+    )
+
+    cfg = manager._build_harness_config(_row(default_model=None))
+
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
 
 
 def test_build_harness_config_uses_active_model_before_first(
@@ -1322,7 +1919,7 @@ def test_build_harness_config_tolerates_bad_config_json(manager: AgentManager) -
 @pytest.mark.asyncio
 async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -> None:
     """Uses real HarnessAgentManager — no LLM call, only workspace init."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1338,7 +1935,7 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
     row = manager._repos.agent_repo.get("REAL01")
     assert row is not None
 
-    from harness_agent import HarnessAgent
+    from octop_harness import HarnessAgent
 
     agent = await manager._start_agent(row)
     assert isinstance(agent, HarnessAgent)
@@ -1353,7 +1950,7 @@ async def test_start_agent_real_harness_seeds_agents_md(manager: AgentManager) -
 
 @pytest.mark.asyncio
 async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1388,8 +1985,8 @@ async def test_stop_and_start_round_trip(manager: AgentManager) -> None:
 
 
 @pytest.mark.asyncio
-async def test_save_security_rebuilds_running_harness_agent(manager: AgentManager) -> None:
-    from harness_agent import HarnessAgentManager
+async def test_save_security_rebuilds_running_octop_harness(manager: AgentManager) -> None:
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1418,7 +2015,7 @@ async def test_save_security_rebuilds_running_harness_agent(manager: AgentManage
 
 @pytest.mark.asyncio
 async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1449,7 +2046,7 @@ async def test_reload_skips_stopped_agent(manager: AgentManager) -> None:
 @pytest.mark.asyncio
 async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     """create() must seed harness workspace (BOOTSTRAP.md, AGENTS.md, …) before start."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -1480,7 +2077,7 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
 @pytest.mark.asyncio
 async def test_start_team_host_does_not_copy_builtin_skills(manager: AgentManager) -> None:
     """Team hosts skip harness init_workspace so skills are never copied."""
-    from harness_agent import HarnessAgent, HarnessAgentManager
+    from octop_harness import HarnessAgent, HarnessAgentManager
 
     _seed_test_provider(manager)
     manager._harness_manager = HarnessAgentManager(
@@ -1512,7 +2109,7 @@ async def test_create_keeps_user_workspace_dir(
     tmp_path: Path,
 ) -> None:
     """Explicit config.workspace_dir must not be replaced by the scoped default."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -1551,7 +2148,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
     tmp_path: Path,
 ) -> None:
     """Non-host root_dir → config.workspace_dir is rootfs-absolute under that root."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.manager import AgentCreateSpec
 
@@ -1606,6 +2203,75 @@ def test_resolve_workspace_dir_uses_persisted_path(manager: AgentManager, tmp_pa
     assert manager.resolve_workspace_dir("WSDIR1") == custom.resolve()
 
 
+def test_resolve_workspace_dir_remaps_unwritable_host_path(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    manager._repos.agent_repo.create(
+        agent_id="YZQ7X4",
+        user_id=None,
+        name="stale-root",
+        config_json=json.dumps(
+            {
+                "workspace_dir": str(stale),
+                "backend": {"type": "local_shell", "virtual_mode": True, "root_dir": "/"},
+            }
+        ),
+    )
+    resolved = manager.resolve_workspace_dir("YZQ7X4")
+    assert resolved == manager.paths.ensure_agent_workspace("YZQ7X4").resolve()
+    assert manager.get_config("YZQ7X4")["workspace_dir"] == str(resolved)
+
+
+def test_build_harness_config_remaps_unwritable_workspace(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    manager._repos.agent_repo.create(
+        agent_id="YZQ7X4",
+        user_id=None,
+        name="stale-root",
+        config_json=json.dumps({"workspace_dir": str(stale), **_MEMORY_OFF}),
+    )
+    row = manager.get_row("YZQ7X4")
+    assert row is not None
+    cfg = manager._build_harness_config(row)
+    expected = manager.paths.ensure_agent_workspace("YZQ7X4").resolve()
+    assert Path(cfg.workspace_dir) == expected
+    assert manager.get_config("YZQ7X4")["workspace_dir"] == str(expected)
+
+
+def test_resolve_workspace_dir_remaps_unwritable_scoped_root(
+    manager: AgentManager, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    manager._repos.agent_repo.create(
+        agent_id="F46T8Y",
+        user_id=None,
+        name="stale-jail",
+        config_json=json.dumps(
+            {
+                "workspace_dir": "/.octop/workspaces/F46T8Y",
+                "backend": {
+                    "type": "local_shell",
+                    "virtual_mode": True,
+                    "root_dir": str(blocker),
+                },
+            }
+        ),
+    )
+    resolved = manager.resolve_workspace_dir("F46T8Y")
+    assert resolved == manager.paths.ensure_agent_workspace("F46T8Y").resolve()
+    cfg = manager.get_config("F46T8Y")
+    assert cfg["workspace_dir"] == str(resolved)
+    assert cfg["backend"]["root_dir"] == "/"
+
+
 def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> None:
     manager._repos.agent_repo.create(
         agent_id="WSDIR2",
@@ -1619,17 +2285,33 @@ def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> No
 
 
 @pytest.mark.asyncio
-async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager) -> None:
+async def test_templated_agent_keeps_expert_soul_on_reload(
+    manager: AgentManager, tmp_path: Path
+) -> None:
     """Reload must not overwrite expert template SOUL.md with persona defaults."""
-    from harness_agent import HarnessAgentManager
+    from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.experts.catalog import ExpertCatalog
     from octop.infra.agents.manager import AgentCreateSpec
 
-    catalog = ExpertCatalog(default_library_root())
+    expected_soul = "# Expert soul\n"
+    expert_dir = tmp_path / "demo"
+    expert_dir.mkdir()
+    (expert_dir / "SOUL.md").write_text(expected_soul, encoding="utf-8")
+    (expert_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "demo",
+                "label": {"zh": "演示", "en": "Demo"},
+                "description": {"zh": "", "en": ""},
+                "prompt_files": ["SOUL.md"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
-    ga = catalog.get("general-assistant")
-    assert ga is not None
+    assert catalog.get("demo") is not None
 
     manager._expert_catalog = catalog
     _seed_test_provider(manager)
@@ -1640,14 +2322,11 @@ async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager
     row = await manager.create(
         AgentCreateSpec(
             name="tpl-bot",
-            template_name="general-assistant",
+            template_name="demo",
             config=dict(_MEMORY_OFF),
         ),
     )
     agent = manager.get_agent(row.agent_id)
-    expected_soul = (default_library_root() / "general-assistant" / "SOUL.md").read_text(
-        encoding="utf-8"
-    )
     soul_text = agent.workspace.read_text("SOUL.md") or ""
     assert expected_soul.strip() in soul_text.strip()
 
@@ -1981,7 +2660,7 @@ def test_build_mcp_configs_shared_agent_uses_connector_user_override(manager: Ag
 
 def test_mcp_tool_filter_uses_server_prefix(manager: AgentManager) -> None:
     """Harness exposes MCP tools as {mcp_server_name}_{tool}; chat filters by prefix."""
-    from harness_agent.mcp import filter_tools_for_mcp_servers, mcp_tool_names
+    from octop_harness.mcp import filter_tools_for_mcp_servers, mcp_tool_names
 
     mcp_name = "tencent-ima__01INST"
     tools = [{"name": f"{mcp_name}_list_notes"}, {"name": f"{mcp_name}_search_notes"}]
@@ -2163,3 +2842,91 @@ async def test_stream_and_resume_hitl_serialize_per_thread(
     await turn
     await resume
     assert peak == 1
+
+
+def test_memory_extract_settings_preserves_zero_retries() -> None:
+    memory = {"extract_thinking": "off", "extract_max_retries": 0, "extract_retry_backoff_s": 0}
+    supported = frozenset(
+        {"memory_aux_thinking", "memory_aux_max_retries", "memory_aux_retry_backoff_s"}
+    )
+    assert _memory_extract_settings({"memory": memory}, supported_fields=supported) == {
+        "memory_aux_thinking": "off",
+        "memory_aux_max_retries": 0,
+        "memory_aux_retry_backoff_s": 0,
+    }
+    assert _memory_extract_settings({"memory": memory}, supported_fields=frozenset()) == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_runtime", [False, True])
+async def test_restore_respects_runtime_capability_and_expert_scope(
+    manager, monkeypatch, legacy_runtime
+):
+    import sqlite3
+    from contextlib import closing
+
+    from langgraph.checkpoint.base import empty_checkpoint
+    from octop_harness import HarnessAgentManager
+    from octop_harness.middleware.memory import MemoryMiddleware
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.agents.memory.sqlite_restore import restore_sqlite
+
+    monkeypatch.setattr(MemoryMiddleware, "_arm_maintenance", lambda *a, **k: None)
+    if legacy_runtime:
+        monkeypatch.setattr(MemoryMiddleware, "pause_background", None, raising=False)
+    _seed_test_provider(manager)
+    manager._harness_manager = HarnessAgentManager(
+        providers=manager.providers.build_harness_configs(), log_dir=str(manager.paths.logs_dir)
+    )
+    rows = []
+    try:
+        for name in ("restore-one", "restore-other"):
+            rows.append(await manager.create(AgentCreateSpec(name=name)))
+        first, other = [manager.get_agent(row.agent_id) for row in rows]
+        old_memory = first._memory_runtime.memory
+        assert old_memory is not None
+        old_memory.put(
+            {"configurable": {"thread_id": "one", "checkpoint_ns": ""}}, empty_checkpoint(), {}, {}
+        )
+        path = Path(old_memory.backend._db_path)
+        backup = path.with_name(path.name + ".before-slim." + "a" * 32 + ".bak")
+        with closing(sqlite3.connect(path)) as source, closing(sqlite3.connect(backup)) as target:
+            source.backup(target)
+        old_memory.put(
+            {"configurable": {"thread_id": "two", "checkpoint_ns": ""}}, empty_checkpoint(), {}, {}
+        )
+        assert manager.try_begin_history_backfill(rows[0].agent_id)
+        if not callable(getattr(MemoryMiddleware, "pause_background", None)):
+            operation = MagicMock()
+            with pytest.raises(ValueError, match="does not support"):
+                await manager.restore_memory_store(
+                    rows[0].agent_id, old_memory, operation, locale="en"
+                )
+            operation.assert_not_called()
+            assert manager.get_agent(rows[0].agent_id) is first
+            assert first._memory_runtime.memory is old_memory
+            assert manager.get_agent(rows[1].agent_id) is other
+            with closing(sqlite3.connect(path)) as conn:
+                assert conn.execute("SELECT count(*) FROM checkpoints").fetchone()[0] == 2
+            manager.end_history_backfill(rows[0].agent_id)
+            return
+        result = await manager.restore_memory_store(
+            rows[0].agent_id,
+            old_memory,
+            lambda: restore_sqlite(
+                path, old_memory.backend._ns, backup.name, locale="en", progress=lambda _: None
+            ),
+            locale="en",
+        )
+        manager.end_history_backfill(rows[0].agent_id)
+        new_agent = manager.get_agent(rows[0].agent_id)
+        assert new_agent is not first
+        assert new_agent._memory_runtime.memory is not old_memory
+        assert manager.get_agent(rows[1].agent_id) is other
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute("SELECT count(*) FROM checkpoints").fetchone()[0] == 1
+        assert Path(result["backup_path"]).exists()
+    finally:
+        for row in rows:
+            await manager.stop(row.agent_id)

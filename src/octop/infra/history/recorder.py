@@ -5,25 +5,54 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 from typing import Any, cast
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from octop.infra.gateway.process.history_projection import (
-    TurnHistoryTracker,
-    _role,
-    live_message_input,
-    message_input,
-)
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
     STREAM_ERROR_CODE_KEY,
     STREAM_ERROR_FLAG,
 )
+from octop.infra.history.projection import (
+    TurnHistoryTracker,
+    _role,
+    live_message_input,
+    message_input,
+)
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.store import dumps
 from octop.infra.history.trajectory.projector import _tool_result_fields
+
+logger = logging.getLogger(__name__)
+
+
+def _is_stream_error_part(part: dict[str, Any]) -> bool:
+    data = part.get("data")
+    if not isinstance(data, dict):
+        return False
+    extra = data.get("additional_kwargs")
+    return isinstance(extra, dict) and bool(extra.get(STREAM_ERROR_FLAG))
+
+
+def _foreign_turn_speaker(turn: dict[str, Any], chunk: dict[str, Any]) -> bool:
+    """True when a live frame belongs to a different agent than this history turn."""
+    owner = str(turn.get("agent_id") or "").strip()
+    if not owner:
+        return False
+    speaker = ""
+    for key in ("agent_id", "speaker_agent_id", "agent"):
+        raw = chunk.get(key)
+        if not isinstance(raw, str):
+            continue
+        value = raw.strip()
+        if not value or (key == "agent" and value == "agent"):
+            continue
+        speaker = value
+        break
+    return bool(speaker) and speaker != owner
 
 
 def _live_wire(message: Any) -> dict[str, Any] | None:
@@ -31,6 +60,23 @@ def _live_wire(message: Any) -> dict[str, Any] | None:
     if item is None:
         return None
     return cast(dict[str, Any], json.loads(item.message_json))
+
+
+def _chunk_artifact(chunk: dict[str, Any]) -> Any:
+    """Best-effort artifact extraction for the no-messages fallback path."""
+    artifact = chunk.get("artifact")
+    if artifact is not None:
+        return artifact
+    messages = chunk.get("messages")
+    if isinstance(messages, list):
+        for message in messages:
+            if isinstance(message, dict):
+                value = message.get("artifact")
+            else:
+                value = getattr(message, "artifact", None)
+            if value is not None:
+                return value
+    return None
 
 
 class RecordingTracker(TurnHistoryTracker):
@@ -116,10 +162,12 @@ class RecordingTracker(TurnHistoryTracker):
         return self._assistant["data"]  # type: ignore[no-any-return]
 
     def observe(self, chunk: dict[str, Any]) -> None:
+        if _foreign_turn_speaker(self.turn, chunk):
+            return
         super().observe(chunk)
         kind = chunk.get("type")
         if kind in ("state_snapshot", "state_update"):
-            from octop.infra.gateway.process.history_projection import (
+            from octop.infra.history.projection import (
                 _chunk_messages,  # noqa: PLC0415
             )
 
@@ -184,12 +232,18 @@ class RecordingTracker(TurnHistoryTracker):
                         wires.append(wire)
             if not wires:
                 call_id, name, result = _tool_result_fields(chunk)
+                logger.info(
+                    "tool_result fallback used for %s (%s): no wire-able messages",
+                    name,
+                    call_id,
+                )
                 fallback = _live_wire(
                     ToolMessage(
                         content=result if isinstance(result, (str, list)) else dumps(result),
                         name=name,
                         tool_call_id=call_id,
                         id=f"{self.turn['id']}:tool:{call_id}",
+                        artifact=_chunk_artifact(chunk),
                     )
                 )
                 wires = [fallback] if fallback is not None else []
@@ -261,7 +315,13 @@ class RecordingTracker(TurnHistoryTracker):
                     None,
                 )
             if role == "ai":
-                assistants = [p for p in self._parts if p["type"] == "ai"]
+                # A later checkpoint must not reuse the error row as a normal
+                # assistant message — that drops the failure from history.
+                if target is not None and _is_stream_error_part(target):
+                    target = None
+                assistants = [
+                    p for p in self._parts if p["type"] == "ai" and not _is_stream_error_part(p)
+                ]
                 if (
                     target is None
                     and not self._identified
@@ -370,7 +430,34 @@ class RecordingTracker(TurnHistoryTracker):
             self._write_failure = exc
             raise
 
+    def _stamp_turn_duration(self) -> None:
+        ms = self._turn_duration_ms
+        if not isinstance(ms, int) or ms < 0:
+            return
+        chosen: dict[str, Any] | None = None
+        for part in reversed(self._parts):
+            if part.get("type") != "ai":
+                continue
+            data = part.get("data")
+            if not isinstance(data, dict):
+                continue
+            if chosen is None:
+                chosen = part
+            if not data.get("tool_calls"):
+                chosen = part
+                break
+        if chosen is None:
+            return
+        data = chosen["data"]
+        extra = data.get("additional_kwargs")
+        if not isinstance(extra, dict):
+            extra = {}
+            data["additional_kwargs"] = extra
+        extra["turn_duration_ms"] = ms
+        self._mark_changed(chosen)
+
     async def finish(self, *, completed: bool) -> None:
+        self._stamp_turn_duration()
         if self._write_failure is None:
             await self.flush()
         status = (

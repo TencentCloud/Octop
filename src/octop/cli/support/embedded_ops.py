@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from collections.abc import Awaitable, Callable
+from contextlib import suppress
+from pathlib import Path
+from typing import Any, cast
 
 from octop.cli.repl.embedded_session import embedded_runtime
 from octop.infra.agents.providers.probe import probe_provider_row
@@ -97,3 +100,227 @@ async def test_channel_async(
 
 def test_channel(agent_id: str, channel_id: str, *, locale: str = "zh") -> dict[str, Any]:
     return asyncio.run(test_channel_async(agent_id, channel_id, locale=locale))
+
+
+# ── Bridge (lightweight manager; no full OctopServer) ────────────────────────
+
+
+def _make_bridge_manager(svc: Any) -> Any:
+    from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
+
+    cfg = svc.config
+    return BridgeManager(
+        bridge_repo=svc.bridge_connection_repo,
+        secret_repo=svc.secret_repo,
+        user_repo=svc.user_repo,
+        advertise_base_url=public_base_url_from_config(cfg.bind_host, cfg.port),
+    )
+
+
+def _bridge_sync(fn: Callable[[Any], Any], *, home: Path | None = None) -> Any:
+    from octop.cli.support.db import open_cli_services
+
+    with open_cli_services(home) as svc:
+        return fn(_make_bridge_manager(svc))
+
+
+async def _bridge_async(fn: Callable[[Any], Awaitable[Any]], *, home: Path | None = None) -> Any:
+    from octop.cli.support.db import open_cli_services
+
+    with open_cli_services(home) as svc:
+        return await fn(_make_bridge_manager(svc))
+
+
+async def _close_cli_session(mgr: Any, connection_id: str) -> None:
+    """CLI cannot keep a Bridge WS after the process exits."""
+    with suppress(Exception):
+        await mgr.disconnect(connection_id)
+
+
+def list_bridge_connections(
+    owner_user_id: int, *, home: Path | None = None
+) -> list[dict[str, Any]]:
+    def _run(mgr: Any) -> Any:
+        return [mgr.connection_public(r) for r in mgr.list_connections(owner_user_id)]
+
+    return cast(list[dict[str, Any]], _bridge_sync(_run, home=home))
+
+
+def get_bridge_connection(
+    connection_id: str, owner_user_id: int, *, home: Path | None = None
+) -> dict[str, Any]:
+    def _run(mgr: Any) -> Any:
+        return mgr.connection_public(mgr.get_owned(connection_id, owner_user_id))
+
+    return cast(dict[str, Any], _bridge_sync(_run, home=home))
+
+
+def probe_bridge_peer(
+    *,
+    peer_base_url: str,
+    peer_username: str,
+    password: str,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    async def _run(mgr: Any) -> Any:
+        return await mgr.probe_peer(
+            peer_base_url=peer_base_url,
+            peer_username=peer_username,
+            password=password,
+        )
+
+    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+
+
+def probe_bridge_connection(
+    connection_id: str,
+    owner_user_id: int,
+    *,
+    peer_base_url: str | None = None,
+    peer_username: str | None = None,
+    password: str | None = None,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    async def _run(mgr: Any) -> Any:
+        row = mgr.get_owned(connection_id, owner_user_id)
+        return await mgr.probe_owned_connection(
+            connection_id,
+            owner_user_id=owner_user_id,
+            peer_base_url=peer_base_url or row.peer_base_url,
+            peer_username=peer_username or row.peer_username,
+            password=password,
+        )
+
+    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+
+
+def create_bridge_connection(
+    owner_user_id: int,
+    *,
+    peer_base_url: str,
+    peer_username: str,
+    password: str,
+    display_name: str,
+    notes: str | None = None,
+    icon_name: str | None = None,
+    connect: bool = True,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    async def _run(mgr: Any) -> Any:
+        row = await mgr.create_connection(
+            owner_user_id=owner_user_id,
+            peer_base_url=peer_base_url,
+            peer_username=peer_username,
+            password=password,
+            display_name=display_name,
+            notes=notes,
+            icon_name=icon_name,
+            connect=connect,
+        )
+        if connect:
+            await _close_cli_session(mgr, row.connection_id)
+            row = mgr.get_owned(row.connection_id, owner_user_id)
+        return mgr.connection_public(row)
+
+    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+
+
+def patch_bridge_connection(
+    connection_id: str,
+    owner_user_id: int,
+    *,
+    display_name: str | None = None,
+    notes: str | None = None,
+    update_notes: bool = False,
+    icon_name: str | None = None,
+    update_icon: bool = False,
+    peer_base_url: str | None = None,
+    peer_username: str | None = None,
+    password: str | None = None,
+    auto_reconnect: bool | None = None,
+    home: Path | None = None,
+) -> dict[str, Any]:
+    async def _run(mgr: Any) -> Any:
+        cred_touch = (
+            peer_base_url is not None or peer_username is not None or bool((password or "").strip())
+        )
+        meta_touch = any(
+            (
+                display_name is not None,
+                update_notes,
+                update_icon,
+                cred_touch,
+            )
+        )
+        opened = False
+        row = mgr.get_owned(connection_id, owner_user_id)
+        if meta_touch:
+            row = await mgr.update_connection_meta(
+                connection_id,
+                owner_user_id=owner_user_id,
+                display_name=display_name,
+                notes=notes,
+                update_notes=update_notes,
+                icon_name=icon_name,
+                update_icon=update_icon,
+                peer_base_url=peer_base_url,
+                peer_username=peer_username,
+                password=password,
+            )
+            # Credential edits re-dial when auto_reconnect is on.
+            opened = cred_touch and bool(row.auto_reconnect)
+        if auto_reconnect is not None:
+            row = await mgr.set_auto_reconnect(
+                connection_id, owner_user_id=owner_user_id, enabled=auto_reconnect
+            )
+            opened = opened or bool(auto_reconnect)
+        if opened:
+            await _close_cli_session(mgr, connection_id)
+            row = mgr.get_owned(connection_id, owner_user_id)
+        return mgr.connection_public(row)
+
+    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+
+
+def delete_bridge_connection(
+    connection_id: str, owner_user_id: int, *, home: Path | None = None
+) -> None:
+    async def _run(mgr: Any) -> None:
+        await mgr.delete_connection(connection_id, owner_user_id=owner_user_id)
+
+    asyncio.run(_bridge_async(_run, home=home))
+
+
+def connect_bridge_connection(
+    connection_id: str, owner_user_id: int, *, home: Path | None = None
+) -> dict[str, Any]:
+    async def _run(mgr: Any) -> Any:
+        await mgr.connect(connection_id, owner_user_id=owner_user_id)
+        await _close_cli_session(mgr, connection_id)
+        return mgr.connection_public(mgr.get_owned(connection_id, owner_user_id))
+
+    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+
+
+def disconnect_bridge_connection(
+    connection_id: str, owner_user_id: int, *, home: Path | None = None
+) -> dict[str, Any]:
+    async def _run(mgr: Any) -> Any:
+        mgr.get_owned(connection_id, owner_user_id)
+        await mgr.disconnect(connection_id)
+        return mgr.connection_public(mgr.get_owned(connection_id, owner_user_id))
+
+    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+
+
+def list_bridge_remote_agents(
+    connection_id: str, owner_user_id: int, *, home: Path | None = None
+) -> list[dict[str, Any]]:
+    async def _run(mgr: Any) -> Any:
+        await mgr.connect(connection_id, owner_user_id=owner_user_id)
+        try:
+            return await mgr.list_remote_agents(connection_id, owner_user_id=owner_user_id)
+        finally:
+            await _close_cli_session(mgr, connection_id)
+
+    return cast(list[dict[str, Any]], asyncio.run(_bridge_async(_run, home=home)))

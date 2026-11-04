@@ -168,39 +168,137 @@ func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
 }
 
 func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
+	for _, test := range []struct {
+		name, installed, recorded, bundled string
+	}{
+		{"stable", "0.9.33", "0.9.31", "0.9.32"},
+		{"in-app prerelease upgrade", "1.0.2b6", "1.0.2b4", "1.0.2b5"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("OCTOP_HOME", home)
+			root := portableDir()
+
+			newZip := filepath.Join(t.TempDir(), "new.zip")
+			writeTestGreenZip(t, newZip, test.installed)
+			if err := unzipGreen(newZip, root); err != nil {
+				t.Fatal(err)
+			}
+			// An in-app package upgrade can leave the original VERSION.txt behind.
+			preserved := map[string]string{
+				filepath.Join(root, "VERSION.txt"): "octop_version=" + test.recorded + "\n",
+				filepath.Join(root, "keep.txt"):    "keep",
+				filepath.Join(home, "octop.db"):    "database",
+			}
+			for path, content := range preserved {
+				if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			oldZip := filepath.Join(t.TempDir(), "old.zip")
+			writeTestGreenZip(t, oldZip, test.bundled)
+			t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", oldZip)
+			if got, err := bundledPortableVersion(); err != nil || got != test.bundled {
+				t.Fatalf("bundled version = %q, err = %v, want %q", got, err, test.bundled)
+			}
+			backupCalls := 0
+			previousBackup := runSQLiteBackup
+			runSQLiteBackup = func(_, _, _ string) error {
+				backupCalls++
+				return errors.New("unexpected backup for a newer installed runtime")
+			}
+			t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+			for startup := 0; startup < 2; startup++ {
+				var statuses []string
+				if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
+					t.Fatal(err)
+				}
+				if got := portableVersion(root); got != test.installed {
+					t.Fatalf("portable version = %q, want %q", got, test.installed)
+				}
+				if got := installedPackageVersion(root); got != test.installed {
+					t.Fatalf("installed package version = %q, want %q", got, test.installed)
+				}
+				for path, want := range preserved {
+					if data, err := os.ReadFile(path); err != nil || string(data) != want {
+						t.Fatalf("startup %d changed %s: %q, %v", startup, path, data, err)
+					}
+				}
+				if len(statuses) != 1 || statuses[0] != desktopText(LocaleZH, copyStatusUsingRuntime) {
+					t.Fatalf("unexpected startup statuses: %v", statuses)
+				}
+				if backupCalls != 0 {
+					t.Fatalf("newer installed runtime triggered %d backups", backupCalls)
+				}
+			}
+		})
+	}
+}
+
+func TestPortableVersionPrefersNewerMetadataOverVersionTxt(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OCTOP_HOME", home)
 	root := portableDir()
-
-	newZip := filepath.Join(t.TempDir(), "new.zip")
-	writeTestGreenZip(t, newZip, "0.9.33")
-	if err := unzipGreen(newZip, root); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(
-		filepath.Join(root, "VERSION.txt"),
-		[]byte("octop_version=0.9.31\n"),
-		0o644,
-	); err != nil {
-		t.Fatal(err)
-	}
-	sentinel := filepath.Join(root, "keep.txt")
-	if err := os.WriteFile(sentinel, []byte("keep"), 0o644); err != nil {
+	b4Zip := filepath.Join(t.TempDir(), "b4.zip")
+	writeTestGreenZip(t, b4Zip, "1.0.2b4")
+	if err := unzipGreen(b4Zip, root); err != nil {
 		t.Fatal(err)
 	}
 
-	oldZip := filepath.Join(t.TempDir(), "old.zip")
-	writeTestGreenZip(t, oldZip, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", oldZip)
-	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+	// An in-app upgrade can leave both the old VERSION.txt and old dist-info.
+	metadata := filepath.Join(root, "packages", "octop-1.0.2b5.dist-info", "METADATA")
+	if err := os.MkdirAll(filepath.Dir(metadata), 0o755); err != nil {
 		t.Fatal(err)
 	}
-
-	if got := portableVersion(root); got != "0.9.33" {
-		t.Fatalf("portable version = %q, want 0.9.33", got)
+	if err := os.WriteFile(metadata, []byte("Name: octop\nVersion: 1.0.2b5\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(sentinel); err != nil {
-		t.Fatalf("newer runtime was unexpectedly replaced: %v", err)
+	if got := portableVersion(root); got != "1.0.2b5" {
+		t.Fatalf("portable version = %q, want newer package metadata 1.0.2b5", got)
+	}
+
+	preserved := map[string]string{
+		filepath.Join(root, "VERSION.txt"): "octop_version=1.0.2b4\n",
+		filepath.Join(root, "keep.txt"):    "keep",
+		filepath.Join(home, "octop.db"):    "database",
+	}
+	for path, content := range preserved {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b5Zip := filepath.Join(t.TempDir(), "b5.zip")
+	writeTestGreenZip(t, b5Zip, "1.0.2b5")
+	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", b5Zip)
+	backupCalls := 0
+	previousBackup := runSQLiteBackup
+	runSQLiteBackup = func(_, _, _ string) error {
+		backupCalls++
+		return errors.New("unexpected backup for an already installed version")
+	}
+	t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+	for startup := 0; startup < 2; startup++ {
+		var statuses []string
+		if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
+			t.Fatal(err)
+		}
+		if got := portableVersion(root); got != "1.0.2b5" {
+			t.Fatalf("portable version = %q, want preserved 1.0.2b5", got)
+		}
+		for path, want := range preserved {
+			if data, err := os.ReadFile(path); err != nil || string(data) != want {
+				t.Fatalf("startup %d changed %s: %q, %v", startup, path, data, err)
+			}
+		}
+		if len(statuses) != 1 || statuses[0] != desktopText(LocaleZH, copyStatusUsingRuntime) {
+			t.Fatalf("unexpected startup statuses: %v", statuses)
+		}
+		if backupCalls != 0 {
+			t.Fatalf("already installed version triggered %d backups", backupCalls)
+		}
 	}
 }
 
@@ -275,6 +373,7 @@ func TestBundledPortableVersionFallsBackToMetadata(t *testing.T) {
 	}
 }
 
+// Keep these cases aligned with octop.infra.setup.self_update.parse_version.
 func TestCompareVersions(t *testing.T) {
 	for _, test := range []struct {
 		left, right string
@@ -285,10 +384,119 @@ func TestCompareVersions(t *testing.T) {
 		{"0.9.31", "0.9.32", -1},
 		{"1.0", "1.0.0", 0},
 		{"0.9.32rc1", "0.9.31", 1},
+		{"0.9.34-beta.1", "0.9.34b1", 0},
+		{"1.0.2b5", "1.0.2b4", 1},
+		{"1.0.2b4", "1.0.2b5", -1},
+		{"1.0.2b10", "1.0.2b9", 1},
+		{"1.0.2", "1.0.2b5", 1},
+		{"1.0.2b5", "1.0.2", -1},
+		{"1.0.2a2", "1.0.2b1", -1},
+		{"1.0.2b5", "1.0.2rc1", -1},
+		{"1.0.2rc1", "1.0.2", -1},
+		{"v1.0.2B05", "1.0.2b5", 0},
+		{"1.0.2+local.10", "1.0.2+local.9", 0},
+		{"1.0.2+local.10", "1.0.2", 0},
+		{"1.0.2-custom", "1.0.1", 1},
+		{"dev", "dev", 0},
 	} {
-		if got := compareVersions(test.left, test.right); got != test.want {
-			t.Fatalf("compareVersions(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
-		}
+		t.Run(test.left+"/"+test.right, func(t *testing.T) {
+			if got := compareVersions(test.left, test.right); got != test.want {
+				t.Fatalf("compareVersions(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
+			}
+		})
+	}
+}
+
+func TestEnsurePortablePrereleaseUpgrade(t *testing.T) {
+	for _, test := range []struct {
+		name, installed, bundled string
+		upgrade, backupFails     bool
+	}{
+		{"beta", "1.0.2b4", "1.0.2b5", true, false},
+		{"two-digit beta", "1.0.2b9", "1.0.2b10", true, false},
+		{"final", "1.0.2b5", "1.0.2", true, false},
+		{"same", "1.0.2b5", "1.0.2b5", false, false},
+		{"backup failure", "1.0.2b4", "1.0.2b5", true, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("OCTOP_HOME", home)
+			root := portableDir()
+			oldZip := filepath.Join(t.TempDir(), "old.zip")
+			writeTestGreenZip(t, oldZip, test.installed)
+			if err := unzipGreen(oldZip, root); err != nil {
+				t.Fatal(err)
+			}
+			marker := filepath.Join(root, "keep.txt")
+			database := filepath.Join(home, "octop.db")
+			for _, path := range []string{marker, database} {
+				if err := os.WriteFile(path, []byte("preserve"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			newZip := filepath.Join(t.TempDir(), "new.zip")
+			writeTestGreenZip(t, newZip, test.bundled)
+			t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+
+			backupCalls := 0
+			previousBackup := runSQLiteBackup
+			runSQLiteBackup = func(_ string, source, destination string) error {
+				backupCalls++
+				if source != database || portableVersion(root) != test.installed {
+					t.Fatal("backup must precede replacement of the installed runtime")
+				}
+				if test.backupFails {
+					return errors.New("backup unavailable")
+				}
+				return os.WriteFile(destination, []byte("backup"), 0o600)
+			}
+			t.Cleanup(func() { runSQLiteBackup = previousBackup })
+
+			err := ensurePortable(LocaleZH, func(string) {})
+			if (err != nil) != test.backupFails {
+				t.Fatalf("ensurePortable error = %v, backupFails = %v", err, test.backupFails)
+			}
+			wantVersion := test.installed
+			if test.upgrade && !test.backupFails {
+				wantVersion = test.bundled
+			}
+			if got := portableVersion(root); got != wantVersion {
+				t.Fatalf("portable version = %q, want %q", got, wantVersion)
+			}
+			wantBackups := 0
+			if test.upgrade {
+				wantBackups = 1
+			}
+			if backupCalls != wantBackups {
+				t.Fatalf("backup calls = %d, want %d", backupCalls, wantBackups)
+			}
+			if data, err := os.ReadFile(database); err != nil || string(data) != "preserve" {
+				t.Fatalf("database changed: %q, %v", data, err)
+			}
+			_, markerErr := os.Stat(marker)
+			if test.upgrade && !test.backupFails {
+				if !os.IsNotExist(markerErr) {
+					t.Fatalf("old runtime was not replaced: %v", markerErr)
+				}
+			} else if markerErr != nil {
+				t.Fatalf("installed runtime was not preserved: %v", markerErr)
+			}
+			if test.backupFails {
+				return
+			}
+			if err := os.WriteFile(marker, []byte("keep on restart"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
+				t.Fatal(err)
+			}
+			if data, err := os.ReadFile(marker); err != nil || string(data) != "keep on restart" {
+				t.Fatalf("runtime was replaced again: %q, %v", data, err)
+			}
+			if backupCalls != wantBackups {
+				t.Fatal("repeated startup unexpectedly backed up the database again")
+			}
+		})
 	}
 }
 

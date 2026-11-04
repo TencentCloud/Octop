@@ -12,6 +12,7 @@ Navigation guide for AI coding agents working in this repository.
 - When multiple interpretations exist, list them and let the user choose — do not pick silently.
 - Suggest simpler approaches when they exist; push back when appropriate.
 - Stop when blocked; name exactly what is unclear.
+- Name the owning repository before editing (see [Runtime libraries](#runtime-libraries)).
 
 ### Simplicity first
 
@@ -38,6 +39,20 @@ Navigation guide for AI coding agents working in this repository.
 One Python wheel: FastAPI backend + React dashboard + Click CLI.
 No external queue. No required services beyond an LLM provider.
 
+### Runtime libraries
+
+Octop hosts four libraries. Put the change in the library that owns the behavior. This repo only wires users, the control-plane database, HTTP, CLI, dashboard, and cron.
+
+| Change | Repository |
+|--------|------------|
+| Agent loop, tools, skills, backends, middleware; turn wiring for memory and `browser_use` | [octop-harness](https://github.com/TencentCloud/octop-harness) |
+| IM platform protocol, media upload, group activation | [octop-gateway](https://github.com/TencentCloud/octop-gateway) |
+| Memory capture, recall, ranking, schema, storage | [octop-memory](https://github.com/TencentCloud/octop-memory) |
+| Chrome CDP, profiles, DOM, `browser_tool` | [octop-browser](https://github.com/TencentCloud/octop-browser) |
+| Users, auth, threads, cron, experts, dashboard | this repo |
+
+Do not copy that behavior into `src/octop/`. Follow the library's `AGENTS.md`. When the library releases, bump its pin in `pyproject.toml`.
+
 ## 3. Tech stack
 
 | Layer | Technology |
@@ -46,8 +61,10 @@ No external queue. No required services beyond an LLM provider.
 | Web framework | FastAPI + uvicorn |
 | Async runtime | asyncio (no threads except `run_in_executor`) |
 | Database | SQLite via sync `sqlite3` (WAL) **or** PostgreSQL via `psycopg` / `psycopg_pool` |
-| LLM runtime | `harness-agent` (LangGraph) at `/workspace/harness-agent` |
-| Gateway | `harness-gateway` at `/workspace/harness-gateway` |
+| Agent runtime | `octop-harness` |
+| IM channels | `octop-gateway` |
+| Memory | `octop-memory` |
+| Browser | `octop-browser` |
 | Frontend | React 18 + TypeScript + Vite |
 | Package manager | uv — always `uv run pytest`, never bare `pytest` |
 | API docs UI | Scalar (`scalar-fastapi`) at `/api/docs` |
@@ -73,7 +90,7 @@ tests/                        pytest (`unit/`, `integration/`)
 
 ## 5. Module boundaries
 
-**Rule of thumb:** dependencies flow **inward** — transport layers call domain; domain never calls HTTP/CLI. Within `infra/`, leaf modules (`utils/`, `db/repos/`, `errors.py`) stay free of higher-level orchestration.
+**Rule of thumb:** dependencies flow **inward** — transport layers call domain; domain never calls HTTP/CLI. Within `infra/`, leaf modules (`utils/`, `db/repos/`, `errors.py`) stay free of higher-level orchestration. Library behavior stays in that library (see [Runtime libraries](#runtime-libraries)).
 
 ### Layer overview
 
@@ -107,13 +124,16 @@ cli/ ──► launch.py ──► api/ + infra/
 
 | Path | Owns | Typical importers |
 |------|------|-------------------|
-| `infra/agents/` | Agent registry (`manager.py`), harness runtime, provider store (`providers/`), settings stores (`security/`, `acp_settings`, `langfuse`), MBTI personas, expert catalog (`experts/`) | `server.py`, `gateway/`, `api/routers/agents.py` |
+| `infra/agents/` | Agent registry (`manager.py`), harness runtime, providers, settings (`settings/`), workspace paths (`workspace/`), threads helpers (`threads/`), security, persona/MBTI, experts, plugins, teams, memory | `server.py`, `gateway/`, `api/routers/agents.py` |
 | `infra/backend/` | Workspace storage adapter, resolver, remote probe (COS/S3/…) | `agents/`, `api/routers/workspace*.py` |
 | `infra/connectors/` | Connector catalog, OAuth, MCP gateway, credential crypto | `api/routers/connectors.py`, `internal_mcp.py`, `agents/manager.py` (MCP assembly) |
+| `infra/control/` | Host control surfaces: `browser/`, `desktop/`, `mobile/` | `api/routers/browser/`, `desktop/`, `mobile/` |
 | `infra/cron/` | Cron jobs, triggers, agent tool hooks | `server.py`, `api/routers/cron.py` |
 | `infra/db/` | `SqlitePool`, migrations, `RepoBundle` / `SharedServices` in `services.py` | all domain code needing persistence |
 | `infra/gateway/` | IM ingress (`processor.py`), threads, slash commands (`slash/`), bot setup (`bot_creators/`) | `server.py`, `api/routers/chat.py`, `channels.py` |
+| `infra/history/` | Versioned message archive, trajectory, turn projection (`projection.py`) | `gateway/`, `api/routers/chat`, `cron/`, `agents/teams` |
 | `infra/setup/` | First-run wizard, system service install, TLS / Let's Encrypt | `server.py`, `launch.py`, `api/routers/setup.py`, `api/routers/tls.py` |
+| `infra/skills/` | Skill packages, SkillHub HTTP client (`skillhub_market`, `skillhub_common`) | `api/routers/skills.py`, `agents/experts` |
 | `infra/users/` | Users, roles, password hashing, `UserManager` | `server.py`, `api/routers/auth.py`, `users.py` |
 | `infra/errors.py` | `OctopError`, `ErrorCode` — shared exception types | everywhere in `infra/` and `api/` |
 | `infra/metrics.py` | In-process counters (`METRICS`) | lazy-import inside hot paths |
@@ -137,7 +157,7 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 | `api/openapi_meta.py` | Scalar tags, API intro text | route handlers |
 | `api/errors.py` | Map `OctopError` → HTTP status + JSON | new error semantics (add to `infra/errors.py`) |
 | `api/routers/` | One resource per module; Pydantic request/response models | persistence, harness calls — delegate to `infra/` |
-| `api/routers/browser/` | Browser session/stream/harness HTTP surface | Playwright logic (stays in harness or helpers here only as glue) |
+| `api/routers/browser/` | Browser session/stream HTTP surface | CDP, profiles, and DOM stay in `octop-browser`; this router is glue |
 
 ### `cli/` layout
 
@@ -158,8 +178,9 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 
 | Layer | When | Examples |
 |-------|------|----------|
-| **Offline** | Read/write local `~/.octop` SQLite only | `user *`, `provider *`, `cron` list/create/delete, `agent list/delete`, `chats` CRUD, `models` presets/list/active, `channel` CRUD, `admin`, `skills` enable/disable |
+| **Offline** | Read/write local `~/.octop` SQLite only | `user *`, `provider *`, `cron` list/create/delete, `agent list/delete`, `chats` CRUD, `models` presets/list/active, `channel` CRUD, `admin`, `skills` enable/disable, `bridge` list/get |
 | **Embedded** | Needs harness/gateway runtime; boots in-process `OctopServer` | `chats send/repl`, `chats get` (history), `cron run-now`, `agent` create/start/stop/reload, `provider test`, `channel test`, `skills list`, `acp` |
+| **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep Bridge WS after exit | `bridge` probe/create/patch/delete/connect/disconnect/agents |
 | **External** | Talks to OS/daemon directly, no Octop HTTP | `models ollama-*`, channel QR bind (WeCom/WeChat), Feishu bot-creator subprocess |
 
 No `octop user login` — CLI trusts local filesystem access to `~/.octop`. Pin acting user with `octop config set-user` or root `--user`; pin agent with `octop agent use` or root `--agent`. If `octop run` is already running, config CLI writes take effect after server restart (cron, channels loaded at boot).
@@ -204,7 +225,7 @@ make build-frontend                     # dashboard/ → src/octop/dashboard/
 
 **Agent scope:** Most agent routes use `/api/agents/{agent_id}/…` in the URL. A few legacy endpoints (e.g. MBTI) still take `X-Octop-Agent-Id`. Always validate ownership: load the agent row → `_assert_agent_owner(row, user)` (or admin bypass).
 
-**Agent workspace I/O:** All reads/writes of agent workspace **content files** go through `HarnessAgent.workspace` (`BackendWorkspace` from `harness-agent`). Do **not** use `agent.backend` directly, `resolve_harness_backend`, or `Path.write_text` / `read_text` on `~/.octop/agents/<id>/` for workspace content. Do **not** branch on backend type or `virtual_mode` in Octop — path rules live in `BackendWorkspace`.
+**Agent workspace I/O:** All reads/writes of agent workspace **content files** go through `HarnessAgent.workspace` (`BackendWorkspace` from `octop-harness`). Do **not** use `agent.backend` directly, `resolve_harness_backend`, or `Path.write_text` / `read_text` on `~/.octop/agents/<id>/` for workspace content. Do **not** branch on backend type or `virtual_mode` in Octop — path rules live in `BackendWorkspace`.
 
 New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.g. sessions/sqlite, skills/agents system trees, auth tokens under `.octop/auth`). `system_files_path` is internal and not user-configurable; the `.octop` directory is created on first harness workspace init. Legacy agents keep auth at `{workspace}/.octop-auth`.
 
@@ -220,7 +241,7 @@ New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.
 
 **Database:** SQLite and PostgreSQL share one schema. Add or change tables via a numbered pair
 `infra/db/migrations/00N_description.sql` **and** `00N_description.pg.sql`, then bump the
-version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 7`). Rebuilds that SQLite
+version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 22`). Rebuilds that SQLite
 cannot express as `ALTER` live in `infra/db/migrate.py` helpers and must stay idempotent.
 
 Unreleased schema work on `develop` **folds into the current unreleased `00N`**, not a new
@@ -276,7 +297,7 @@ i18n/
 
 **API errors:** `ErrorCode` values map to `errors.<CODE>` in JSON. `OctopError.to_envelope(locale=…)` and the global exception handler localize `message`. Dashboard mirrors codes under `apiErrors.*` in `dashboard/src/locales/{en,zh}.json` — tests require backend and frontend keys to match.
 
-**IM channels:** Tool names and hint lines must be localized in `stream_project.py` — pass localized `tool_name` and pre-formatted `tool_hint_text` on `MessageEvent.tool_start/end` (harness-gateway reads `tool_hint_text` when present). Do not rely on English `ChannelConstraints.tool_hint_template` alone.
+**IM channels:** Tool names and hint lines must be localized in `stream_project.py` — pass localized `tool_name` and pre-formatted `tool_hint_text` on `MessageEvent.tool_start/end` (octop-gateway reads `tool_hint_text` when present). Do not rely on English `ChannelConstraints.tool_hint_template` alone.
 
 **Frontend split**
 
@@ -333,6 +354,7 @@ User-facing datetime display and cron/scheduling defaults MUST use the server ti
 
 Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
+- Do not reimplement `octop-harness`, `octop-gateway`, `octop-memory`, or `octop-browser` under `src/octop/` (see [Runtime libraries](#runtime-libraries)).
 - Do not import legacy top-level modules — use current paths:
   - `octop.agents.*` → `octop.infra.agents.*`
   - `octop.channels.*` → `octop.infra.gateway.*`
@@ -352,11 +374,12 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Question | Location |
 |----------|----------|
 | How does auth work? | `api/deps.py`, `api/middleware/jwt_auth.py`, `api/routers/auth.py` |
+| LDAP (directory) login | `infra/auth/ldap/`, `api/routers/auth_ldap.py`; config row is `sso_providers.kind='ldap'`; guide: `docs/ldap.md` |
 | Setup wizard (password file, tokens) | `infra/setup/`, `api/routers/setup.py` |
 | TLS / Let's Encrypt | `infra/setup/tls/`, `api/routers/tls.py` |
 | `octop run` boot sequence | `launch.py`, `cli/run_cmd.py` |
 | How is a message processed? | `infra/gateway/processor.py` → harness agent |
-| How are agents started/stopped? | `infra/agents/manager.py`, `infra/agents/runtime.py` |
+| How are agents started/stopped? | `infra/agents/manager.py` |
 | How does cron work? | `infra/cron/manager.py`, `infra/cron/job.py` |
 | What DB tables exist? | `infra/db/migrations/` + `infra/db/repos/` |
 | What env vars are supported? | `config.py` |
@@ -368,7 +391,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` incl. `format-all` + dashboard build) |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |
-| Connectors & OAuth | `infra/connectors/`, `api/routers/connectors.py` |
+| Connectors & OAuth | `infra/connectors/catalog.json` (built-in metadata + i18n), `infra/connectors/`, `api/routers/connectors.py`; human list: `docs/connectors.md` |
 | OpenAPI tags and API intro | `api/openapi_meta.py` |
 | Human-readable API reference | `docs/api.md` |
 | SharedServices / RepoBundle | `infra/db/services.py` |
@@ -376,7 +399,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
 ## 10. Change workflow
 
-1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)).
+1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)). If the behavior belongs to a runtime library, change that repo (see [Runtime libraries](#runtime-libraries)).
 2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
 3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
 4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc -b` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).

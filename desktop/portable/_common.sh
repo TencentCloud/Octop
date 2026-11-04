@@ -7,6 +7,8 @@ GREEN_RUNTIMES="${GREEN_ROOT}/runtimes"
 GREEN_WHEELS="${GREEN_ROOT}/wheels"
 GREEN_CACHE="${GREEN_ROOT}/.cache"
 GREEN_RELEASE="${GREEN_ROOT}/release"
+# Bundled installer for online upgrades of --target portable environments.
+GREEN_UV_VERSION="0.12.22"
 
 # Pin a known-good python-build-standalone release (override with PBS_TAG / PBS_PY).
 PBS_TAG="${PBS_TAG:-20251209}"

@@ -36,6 +36,7 @@ import {
 import dayjs, { type Dayjs } from "dayjs";
 import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { UsageStats, type UsageStatItem } from "./UsageStats";
@@ -45,6 +46,7 @@ import { useAgent } from "../../../context/AgentContext";
 import { useTheme } from "../../../context/ThemeContext";
 import { brandPrimary } from "../../../styles/themePalettes";
 import { message } from "../../../utils/antdMessage";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import styles from "./index.module.less";
 
 interface UsageUserOption {
@@ -170,11 +172,7 @@ function UsageBarChart({
 }) {
   return (
     <div
-      className={
-        fillParent
-          ? `${styles.chartFrame} ${styles.chartFrameFill}`
-          : styles.chartFrame
-      }
+      className={cx(styles.chartFrame, fillParent && styles.chartFrameFill)}
       style={fillParent ? undefined : { height }}
     >
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -322,7 +320,7 @@ function DailyTrendCharts({
       <Card
         size="small"
         title={tokensTitle}
-        className={`${styles.chartCard} ${styles.trendCard}`}
+        className={cx(styles.chartCard, styles.trendCard)}
       >
         {empty ? (
           <Empty
@@ -358,7 +356,7 @@ function DailyTrendCharts({
       <Card
         size="small"
         title={turnsTitle}
-        className={`${styles.chartCard} ${styles.trendCard}`}
+        className={cx(styles.chartCard, styles.trendCard)}
       >
         {empty ? (
           <Empty
@@ -505,7 +503,7 @@ function DonutCard({
     <Card
       size="small"
       title={title}
-      className={`${styles.chartCard} ${styles.donutCard}`}
+      className={cx(styles.chartCard, styles.donutCard)}
     >
       {empty ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
@@ -619,7 +617,7 @@ function SummaryView({
       <Card
         size="small"
         title={t("tokenUsage.dailyTrend")}
-        className={`${styles.chartCard} ${styles.summaryTrendCard}`}
+        className={cx(styles.chartCard, styles.summaryTrendCard)}
       >
         {dayBars.length === 0 ? (
           <Empty
@@ -704,7 +702,7 @@ function DimensionView({
           <Card
             size="small"
             title={t("tokenUsage.ioBarChart")}
-            className={`${styles.chartCard} ${styles.dimBarCard}`}
+            className={cx(styles.chartCard, styles.dimBarCard)}
           >
             <UsageBarChart
               data={chartBuckets}
@@ -745,7 +743,7 @@ function DimensionView({
       <Card
         size="small"
         title={t("tokenUsage.detail")}
-        className={`${styles.chartCard} ${styles.dimTableCard}`}
+        className={cx(styles.chartCard, styles.dimTableCard)}
         styles={{ body: { padding: isMobile ? 0 : 16 } }}
       >
         {buckets.length === 0 ? (
@@ -1002,15 +1000,10 @@ export default function TokenUsagePage() {
       const blob = await requestBlob(
         usageExportPath(windowKey, agentFilter, adminUserFilter),
       );
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = usageExportFilename(
-        t("tokenUsage.exportFilenamePrefix"),
-        windowKey,
+      await saveBlobAsFile(
+        blob,
+        usageExportFilename(t("tokenUsage.exportFilenamePrefix"), windowKey),
       );
-      link.click();
-      URL.revokeObjectURL(url);
     } catch {
       message.error(t("tokenUsage.exportFailed"));
     } finally {

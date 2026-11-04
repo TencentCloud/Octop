@@ -37,7 +37,7 @@ async def _run_acp_server(*, agent_id: str | None, debug: bool) -> None:
     except Exception as exc:
         raise click.ClickException(f"agent {aid!r} is not running: {exc}") from exc
 
-    from harness_agent.acp.server import run_harness_acp_server
+    from octop_harness.acp.server import run_harness_acp_server
 
     try:
         await run_harness_acp_server(harness, agent_id=aid)

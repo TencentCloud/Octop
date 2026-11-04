@@ -1,5 +1,5 @@
 /**
- * Remote Browser page — harness-browser sessions (same backend as chat).
+ * Remote Browser page — octop-browser sessions (same backend as chat).
  *
  * UI matches the original Playwright page: install flow, address bar,
  * tab bar, canvas interaction, viewport / refresh controls.
@@ -38,11 +38,13 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
 import BrowserViewer, {
@@ -106,6 +108,8 @@ interface EnvStatus {
   /** "system" | "playwright" when browsers_ok */
   chrome_source?: "system" | "playwright" | null;
   error: string | null;
+  /** Image shipped Chromium; the user has not confirmed enablement. */
+  needs_enable?: boolean;
 }
 
 type InstallPhase =
@@ -906,18 +910,6 @@ export default function RemoteBrowserPage({
     [aiPanelHeight, aiPanelWidth, isMobile],
   );
 
-  const handleCanvasKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLCanvasElement>) => {
-      e.preventDefault();
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        sendEvent({ type: "type", text: e.key });
-      } else {
-        sendEvent({ type: "keydown", key: e.key });
-      }
-    },
-    [sendEvent],
-  );
-
   // --- Skill recording guide ---
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
@@ -978,6 +970,7 @@ export default function RemoteBrowserPage({
   }, [antMessage, t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
+  const needsEnable = Boolean(envStatus?.needs_enable) && !envReady;
   const showEdgeControls = Boolean(session) && isStreaming && frameReady;
 
   const renderInstallLog = (
@@ -987,7 +980,7 @@ export default function RemoteBrowserPage({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -1137,7 +1130,7 @@ export default function RemoteBrowserPage({
     }
 
     if (!envStatus?.playwright) {
-      // harness-browser works without Playwright, so this is informational
+      // octop-browser works without Playwright, so this is informational
       // rather than a blocking error
       if (envStatus?.harness_browser) {
         return (
@@ -1150,7 +1143,7 @@ export default function RemoteBrowserPage({
             )}
             description={t(
               "remoteBrowser.playwrightOptionalDesc",
-              "harness-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
+              "octop-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
             )}
           />
         );
@@ -1168,11 +1161,19 @@ export default function RemoteBrowserPage({
     return (
       <Result
         icon={<AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />}
-        title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
-        subTitle={t(
-          "remoteBrowser.notInstalledHint",
-          "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
-        )}
+        title={
+          needsEnable
+            ? t("remoteBrowser.enableTitle", "浏览器已安装，尚未启用")
+            : t("remoteBrowser.notInstalled", "未检测到可用浏览器")
+        }
+        subTitle={
+          needsEnable
+            ? t("remoteBrowser.enableHint")
+            : t(
+                "remoteBrowser.notInstalledHint",
+                "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+              )
+        }
         style={{ padding: "8px 0" }}
       />
     );
@@ -1204,7 +1205,9 @@ export default function RemoteBrowserPage({
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
           <Button type="primary" onClick={startInstall}>
-            {t("remoteBrowser.install", "安装浏览器")}
+            {needsEnable
+              ? t("remoteBrowser.enable", "启用浏览器")
+              : t("remoteBrowser.install", "安装浏览器")}
           </Button>
         </Space>
       );
@@ -1294,24 +1297,18 @@ export default function RemoteBrowserPage({
   );
 
   const checkAction = {
-    label: (
-      <>
-        {t("remoteBrowser.checkInstallShort", "检查")}
-        {envReady && !envLoading ? (
-          <CheckCircle2
-            size={14}
-            style={{
-              marginLeft: 4,
-              color: "var(--fn-color-success,#52c41a)",
-              verticalAlign: "-2px",
-            }}
-          />
-        ) : null}
-      </>
-    ),
+    label: t("remoteBrowser.checkInstallShort", "检查"),
     onClick: openEnvModal,
-    icon: <Globe size={14} />,
-    type: "default" as const,
+    icon:
+      envReady && !envLoading ? (
+        <CheckCircle2
+          size={14}
+          style={{ color: "var(--fn-color-success,#52c41a)" }}
+        />
+      ) : (
+        <Globe size={14} />
+      ),
+    type: envReady ? ("default" as const) : ("primary" as const),
     title: t(
       "remoteBrowser.checkInstallTip",
       "检查本机是否已准备好浏览器，未安装时可一键安装",
@@ -1366,11 +1363,13 @@ export default function RemoteBrowserPage({
       </Drawer>
 
       <div className={styles.pageBody}>
-        <div
-          className={`${styles.mainRow} ${
-            isMobile ? styles.mainRowMobile : ""
-          }`}
-        >
+        {!embedded ? (
+          <PeerOnlyRemoteAlert
+            hintKey="peerOnlyBrowser"
+            style={{ marginBottom: 0 }}
+          />
+        ) : null}
+        <div className={cx(styles.mainRow, isMobile && styles.mainRowMobile)}>
           <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
               <>
@@ -1462,7 +1461,6 @@ export default function RemoteBrowserPage({
                       onOpenControls={openControlsDrawer}
                     />
                   }
-                  onCanvasKeyDown={handleCanvasKeyDown}
                   onFrameReadyChange={handleFrameReadyChange}
                 />
               </>
@@ -1474,12 +1472,8 @@ export default function RemoteBrowserPage({
                   renderViewportUninstallProgress()
                 ) : (
                   <StreamSetupGuide
-                    icon={
-                      <OctopEmptyMascot
-                        size={120}
-                        className={styles.setupMascot}
-                      />
-                    }
+                    plain
+                    icon={<OctopEmptyMascot />}
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
@@ -1605,7 +1599,7 @@ export default function RemoteBrowserPage({
       title={t("pageShell.browser.title", "浏览器 AI+")}
       subtitle={t(
         "pageShell.browser.subtitle",
-        "基于 Chromium 的无头浏览器会话",
+        "查看并操控远端无头浏览器，实时接管专家的网页操作",
       )}
       fill
     >

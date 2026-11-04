@@ -18,6 +18,7 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
+import cx from "classnames";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
@@ -25,6 +26,8 @@ import { teamsApi } from "../../../api/modules/teams";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { canReadAgentRuntimeStatus } from "../../../utils/sharedExpert";
 import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
@@ -32,7 +35,14 @@ import {
   isAgentChatReady,
   isAgentModelConfigError,
 } from "../../../utils/agentError";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
+import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
+import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
+import {
+  expertDeleteConfirm,
+  isRemoteShadowAgent,
+} from "../../../utils/remoteExpert";
 import styles from "../index.module.less";
 
 const STATE_META: Record<
@@ -99,7 +109,9 @@ export const TeamCard = memo(function TeamCard({
 }: TeamCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const user = useCurrentUser();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
+  const statusReadable = canReadAgentRuntimeStatus(agent, user);
 
   const [localState, setLocalState] = useState(agent.state);
   const [localError, setLocalError] = useState(agent.last_error);
@@ -121,8 +133,9 @@ export const TeamCard = memo(function TeamCard({
     setLocalError(agent.last_error);
   }, [agent.state, agent.last_error]);
 
+  // Poll during transient states. Bridge shadows and shared viewers have no readable status.
   useEffect(() => {
-    if (!TRANSIENT.has(localState)) {
+    if (agent.bridge || !statusReadable || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -147,11 +160,20 @@ export const TeamCard = memo(function TeamCard({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [localState, agent.agent_id, onStateChange, refreshAgents]);
+  }, [
+    localState,
+    agent.agent_id,
+    agent.bridge,
+    statusReadable,
+    onStateChange,
+    refreshAgents,
+  ]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
   const chatReady = isAgentChatReady(localState);
+  const isOwner = agent.is_owner !== false;
+  const deleteConfirm = expertDeleteConfirm(agent, t);
   const meta = getStateMeta(localState);
   const friendlyError = formatAgentError(localError, t);
 
@@ -170,11 +192,15 @@ export const TeamCard = memo(function TeamCard({
           onStateChange(agent.agent_id, "stopping");
           message.success(t("experts.agentStopped", { name: agent.name }));
         }
-      } catch {
+      } catch (error) {
         message.error(
-          checked
-            ? t("experts.agentStartFailed")
-            : t("experts.agentStopFailed"),
+          apiErrorMessage(
+            error,
+            checked
+              ? t("experts.agentStartFailed")
+              : t("experts.agentStopFailed"),
+            t,
+          ),
         );
       } finally {
         setActionLoading(false);
@@ -185,13 +211,17 @@ export const TeamCard = memo(function TeamCard({
 
   const handleDelete = useCallback(async () => {
     try {
-      await teamsApi.remove(agent.agent_id);
+      if (isRemoteShadowAgent(agent)) {
+        await request(`/agents/${agent.agent_id}`, { method: "DELETE" });
+      } else {
+        await teamsApi.remove(agent.agent_id);
+      }
       message.success(t("experts.agentDeleted", { name: agent.name }));
       onDeleted(agent.agent_id);
     } catch {
       message.error(t("experts.agentDeleteFailed"));
     }
-  }, [agent.agent_id, agent.name, t, onDeleted]);
+  }, [agent, t, onDeleted]);
 
   const handleReload = useCallback(async () => {
     setActionLoading(true);
@@ -212,15 +242,21 @@ export const TeamCard = memo(function TeamCard({
 
   return (
     <>
-      <div className={`${styles.agentCard2} ${styles.teamCard}`}>
+      <div className={cx(styles.agentCard2, styles.teamCard)}>
         <div className={styles.agentCard2Header}>
-          <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
-            <ExpertIcon
-              iconUrl={teamPortraitUrl(agent.icon_url)}
-              iconName={TEAM_ICON_NAME}
-              size={40}
-            />
-          </div>
+          <SharedAvatarMark
+            shared={agent.is_shared}
+            owned={isOwner}
+            ownerName={agent.owner_username}
+          >
+            <div className={cx(styles.agentCard2Icon, styles.teamCardIcon)}>
+              <ExpertIcon
+                iconUrl={teamPortraitUrl(agent.icon_url)}
+                iconName={TEAM_ICON_NAME}
+                size={40}
+              />
+            </div>
+          </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>
@@ -229,6 +265,7 @@ export const TeamCard = memo(function TeamCard({
                 <Users size={10} strokeWidth={2.4} aria-hidden />
                 {t("chat.teamBadge")}
               </span>
+              <RemoteExpertHint agent={agent} />
               <Tooltip title={formatAgentState(localState, t)}>
                 <span
                   className={
@@ -241,15 +278,17 @@ export const TeamCard = memo(function TeamCard({
             </div>
           </div>
 
-          <div className={styles.agentCard2HeaderActions}>
-            <Switch
-              size="small"
-              checked={switchChecked}
-              loading={isTransient || actionLoading}
-              onChange={(checked) => void handleToggle(checked)}
-              className={styles.agentCard2Switch}
-            />
-          </div>
+          {isOwner && (
+            <div className={styles.agentCard2HeaderActions}>
+              <Switch
+                size="small"
+                checked={switchChecked}
+                loading={isTransient || actionLoading}
+                onChange={(checked) => void handleToggle(checked)}
+                className={styles.agentCard2Switch}
+              />
+            </div>
+          )}
         </div>
 
         {agent.description?.trim() ? (
@@ -336,17 +375,19 @@ export const TeamCard = memo(function TeamCard({
             </button>
           </Tooltip>
 
-          <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              disabled={isTransient || actionLoading}
-              onClick={() => void handleReload()}
-              aria-label={t("experts.reloadAgent")}
-            >
-              <RefreshCw size={13} />
-            </button>
-          </Tooltip>
+          {isOwner && (
+            <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
+              <button
+                type="button"
+                className={styles.agentCard2EditBtn}
+                disabled={isTransient || actionLoading}
+                onClick={() => void handleReload()}
+                aria-label={t("experts.reloadAgent")}
+              >
+                <RefreshCw size={13} />
+              </button>
+            </Tooltip>
+          )}
 
           <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
             <button
@@ -359,24 +400,29 @@ export const TeamCard = memo(function TeamCard({
             </button>
           </Tooltip>
 
-          <Popconfirm
-            title={t("experts.confirmDelete", { name: agent.name })}
-            description={t("experts.confirmDeleteHint")}
-            onConfirm={() => void handleDelete()}
-            okText={t("common.delete", "Delete")}
-            cancelText={t("common.cancel")}
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title={t("common.delete", "Delete")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.agentCard2DelBtn}
-                aria-label={t("common.delete", "Delete")}
+          {isOwner ? (
+            <Popconfirm
+              title={deleteConfirm.title}
+              description={deleteConfirm.description}
+              onConfirm={() => void handleDelete()}
+              okText={t("common.delete", "Delete")}
+              cancelText={t("common.cancel")}
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip
+                title={t("common.delete", "Delete")}
+                mouseEnterDelay={0.5}
               >
-                <Trash2 size={13} />
-              </button>
-            </Tooltip>
-          </Popconfirm>
+                <button
+                  type="button"
+                  className={styles.agentCard2DelBtn}
+                  aria-label={t("common.delete", "Delete")}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </Tooltip>
+            </Popconfirm>
+          ) : null}
 
           <Dropdown
             menu={{
@@ -412,19 +458,20 @@ export const TeamCard = memo(function TeamCard({
           {chatReady ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               onClick={handleOpenChat}
             >
               <MessageSquare size={13} />
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : localState === "failed" ||
-            localState === "stopped" ||
-            localState === "created" ? (
+          ) : isOwner &&
+            (localState === "failed" ||
+              localState === "stopped" ||
+              localState === "created") ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               disabled={isTransient || actionLoading}
               onClick={() => void handleToggle(true)}
             >

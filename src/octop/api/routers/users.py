@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.auth.ldap.config import LDAP_KIND
+from octop.infra.auth.mfa import MfaService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
-from octop.infra.users.permissions import PERMISSIONS
+from octop.infra.users.permissions import (
+    PERMISSIONS,
+    effective_permissions,
+    expand_permission_grants,
+)
 from octop.infra.users.resource_policy import (
+    normalize_max_agents,
     normalize_token_quota,
     normalize_workspace_root_dir,
     public_policy_fields,
@@ -20,38 +28,113 @@ from octop.infra.users.resource_policy import (
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+UserBatchAction = Literal["enable", "disable", "delete", "set_token_quota", "set_max_agents"]
 
 
 class UserCreateBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=200)
-    role: str = "user"
+    password: str | None = Field(default=None, max_length=200)
+    directory: bool = Field(
+        default=False,
+        description=(
+            "Create a passwordless account reserved for the configured LDAP directory. "
+            "The username must match the directory login name. A local password is ignored."
+        ),
+    )
+    role: str = Field(
+        default="user",
+        description="Role-template public id (admin | user | custom ULID).",
+    )
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     permissions: list[str] = Field(default_factory=list)
+    role_name: str | None = Field(default=None, max_length=64)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
+    max_agents: int | None = Field(default=None, ge=0)
+    create_default_expert: bool = Field(
+        default=False,
+        description="When true, create one expert from expert_template_id in this request.",
+    )
+    expert_template_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Expert catalog id. Defaults to general-assistant when omitted.",
+    )
 
 
 class UserPatchBody(BaseModel):
-    role: str | None = None
+    role: str | None = Field(
+        default=None,
+        description="Role-template public id (admin | user | custom ULID).",
+    )
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     disabled: bool | None = None
     permissions: list[str] | None = None
+    role_name: str | None = Field(default=None, max_length=64)
+    avatar_icon: str | None = Field(default=None, max_length=32)
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
+    max_agents: int | None = Field(default=None, ge=0)
 
 
 class ResetPasswordBody(BaseModel):
     new_password: str = Field(min_length=1, max_length=200)
 
 
-def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
+class UserBatchBody(BaseModel):
+    user_ids: list[int] = Field(min_length=1, max_length=500)
+    action: UserBatchAction
+    token_quota: int | None = Field(
+        default=None,
+        ge=0,
+        description="Used by set_token_quota. null clears the limit (unlimited).",
+    )
+    max_agents: int | None = Field(
+        default=None,
+        ge=0,
+        description="Used by set_max_agents. null clears the limit (unlimited).",
+    )
+
+
+class UserBatchItemResult(BaseModel):
+    user_id: int
+    ok: bool
+    error: str | None = None
+    code: str | None = None
+
+
+class UserBatchResponse(BaseModel):
+    action: UserBatchAction
+    results: list[UserBatchItemResult]
+    succeeded: int
+    failed: int
+
+
+def _directory_provider_id(server: Any) -> int | None:
+    if server is None or getattr(server, "services", None) is None:
+        return None
+    row = server.services.sso_repo.get_by_kind(LDAP_KIND)
+    return int(row.id) if row is not None else None
+
+
+def _row_to_dict(
+    r: Any,
+    policy: Any | None = None,
+    server: Any = None,
+    *,
+    directory_provider_id: int | None = None,
+) -> dict[str, Any]:
     now = int(time.time())
     locked_until = int(getattr(r, "login_locked_until", 0) or 0)
     locked = locked_until > now and not bool(r.disabled)
     retry_after = max(0, locked_until - now) if locked else 0
+    mfa_active = False
+    if server is not None and getattr(server, "services", None) is not None:
+        mfa_active = MfaService(server.services).has_verified_factor(int(r.id))
     return {
         "id": r.id,
         "username": r.username,
@@ -60,15 +143,96 @@ def _row_to_dict(r: Any, policy: Any | None = None) -> dict[str, Any]:
         "email": r.email,
         "has_password": r.password_hash is not None,
         "sso_linked": r.sso_provider_id is not None and r.sso_subject is not None,
+        "directory": bool(
+            directory_provider_id is not None
+            and r.password_hash is None
+            and r.sso_provider_id == directory_provider_id
+        ),
+        "mfa_active": mfa_active,
         "disabled": bool(r.disabled),
         "login_failed_count": int(getattr(r, "login_failed_count", 0) or 0),
         "login_locked": locked,
         "login_locked_until": locked_until if locked else 0,
         "login_retry_after_seconds": retry_after,
         "created_at": int(r.created_at),
-        "permissions": list(getattr(r, "permissions", None) or []),
+        "permissions": expand_permission_grants(list(getattr(r, "permissions", None) or [])),
+        "role_name": getattr(r, "role_name", None) or None,
+        "avatar_icon": getattr(r, "avatar_icon", None) or None,
+        "avatar_url": _user_avatar_url(server, int(r.id)) if server is not None else None,
         **public_policy_fields(policy),
     }
+
+
+def _user_avatar_url(server: Any, user_id: int) -> str | None:
+    from octop.infra.users.profile_avatar import profile_avatar_url
+
+    return profile_avatar_url(
+        server.services.avatars("user"),
+        str(user_id),
+        f"/api/users/{user_id}/avatar",
+    )
+
+
+def _require_admin_to_grant_admin(actor: Any, role_id: str) -> None:
+    if role_id != Role.ADMIN:
+        return
+    if not bool(getattr(actor, "is_admin", False)):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "only an administrator can assign the administrator account",
+        )
+
+
+def _resolve_role_template(
+    server: Any, role_id: str
+) -> tuple[str, str, list[str], list[tuple[str, str]]]:
+    """Return ``(role_id, role_name, permissions, policies)`` for a template id."""
+    from octop.infra.db.repos.user_roles import UserRoleRepo
+    from octop.infra.users.permissions import PERMISSIONS
+
+    cleaned = (role_id or "").strip()
+    if not cleaned:
+        raise OctopError(ErrorCode.FORBIDDEN, "role is required", status=400)
+    role = UserRoleRepo(server.services.db).get(cleaned)
+    if role is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "role not found")
+    if role.is_admin:
+        return role.user_role_id, role.user_role_name, [], []
+    permissions = [key for key in role.permissions if key in PERMISSIONS]
+    return role.user_role_id, role.user_role_name, permissions, list(role.policies)
+
+
+def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str, Any]:
+    """Full replace: every known policy is set or cleared.
+
+    Used when applying a role template so limits from a previous role cannot
+    linger after a switch (including to admin, which has no resource limits).
+    """
+    from octop.infra.users.resource_policy import (
+        POLICY_MAX_AGENTS,
+        POLICY_TOKEN_QUOTA,
+        POLICY_WORKSPACE_ROOT_DIR,
+        max_agents_of,
+        token_quota_of,
+    )
+
+    by_name = dict(pairs)
+    return {
+        "workspace_root_dir": by_name.get(POLICY_WORKSPACE_ROOT_DIR),
+        "token_quota": token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
+        "max_agents": max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
+    }
+
+
+def _clean_role_name(raw: str | None) -> str | None:
+    if raw is None:
+        return None
+    name = raw.strip()
+    if not name:
+        return None
+    if len(name) > 64:
+        raise OctopError(ErrorCode.FORBIDDEN, "role name must be 1-64 characters", status=400)
+    return name
 
 
 def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, Any]:
@@ -77,6 +241,8 @@ def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, 
         policy_kwargs["workspace_root_dir"] = body.workspace_root_dir
     if "token_quota" in body.model_fields_set:
         policy_kwargs["token_quota"] = body.token_quota
+    if "max_agents" in body.model_fields_set:
+        policy_kwargs["max_agents"] = body.max_agents
     return policy_kwargs
 
 
@@ -84,7 +250,8 @@ def _assert_can_assign(actor: User, permissions: list[str]) -> None:
     """Non-admin actors may only grant permissions they themselves hold."""
     if actor.is_admin:
         return
-    missing = sorted(set(permissions) - set(actor.permissions or []))
+    held = set(expand_permission_grants(list(actor.permissions or [])))
+    missing = sorted(set(expand_permission_grants(permissions)) - held)
     if missing:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -133,6 +300,8 @@ async def list_permission_catalog(
     items: list[dict[str, str]] = []
     zh = locale.startswith("zh")
     for key, p in PERMISSIONS.items():
+        if not p.assignable:
+            continue
         labels = [(p.label_zh, p.label_en), *p.extra_tabs]
         for label_zh, label_en in labels:
             items.append(
@@ -153,35 +322,203 @@ async def list_users(
 ) -> list[dict[str, Any]]:
     rows = server.user_manager.list_all(include_disabled=True)
     policy_map = server.services.user_policy_repo.list_by_user_ids([r.id for r in rows])
-    return [_row_to_dict(r, policy_map.get(r.id)) for r in rows]
+    ldap_id = _directory_provider_id(server)
+    return [
+        _row_to_dict(r, policy_map.get(r.id), server, directory_provider_id=ldap_id) for r in rows
+    ]
+
+
+def _expert_template_id(body: UserCreateBody) -> str | None:
+    """Market template id to bootstrap, or ``None`` when the caller opted out.
+
+    The id is not checked against the local catalog. Creation pulls it from
+    the expert market and still succeeds when that pull fails.
+    """
+    if not body.create_default_expert:
+        return None
+    from octop.infra.agents.experts.default_agent import DEFAULT_EXPERT_ID
+
+    return (body.expert_template_id or "").strip() or DEFAULT_EXPERT_ID
 
 
 @router.post("", status_code=201)
 async def create_user(
     body: UserCreateBody,
+    request: Request,
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    _assert_can_assign(actor, body.permissions)
-    policy_kwargs = _policy_kwargs_from_body(body)
+    template_id = _expert_template_id(body)
+    role_id, template_name, template_perms, template_policies = _resolve_role_template(
+        server, body.role
+    )
+    _require_admin_to_grant_admin(actor, role_id)
+    if role_id == Role.ADMIN:
+        permissions: list[str] = []
+    elif "permissions" in body.model_fields_set:
+        permissions = list(body.permissions)
+    else:
+        permissions = list(template_perms)
+    _assert_can_assign(actor, permissions)
+    # Template is a full replace; request body fields overlay on top.
+    policy_kwargs = _policy_kwargs_replace_from_pairs(template_policies)
+    policy_kwargs.update(_policy_kwargs_from_body(body))
     if "workspace_root_dir" in policy_kwargs:
         normalize_workspace_root_dir(policy_kwargs["workspace_root_dir"])
     if "token_quota" in policy_kwargs:
         normalize_token_quota(policy_kwargs["token_quota"])
-    role = Role(body.role)
+    if "max_agents" in policy_kwargs:
+        normalize_max_agents(policy_kwargs["max_agents"])
+    role_name = (
+        _clean_role_name(body.role_name) if "role_name" in body.model_fields_set else template_name
+    )
+    directory_provider_id = None
+    password = body.password
+    if body.directory:
+        provider = server.services.sso_repo.get_by_kind(LDAP_KIND)
+        if provider is None:
+            raise OctopError(ErrorCode.LDAP_NOT_CONFIGURED, "LDAP is not configured")
+        directory_provider_id = int(provider.id)
+        password = None
     user = await server.user_manager.create(
         username=body.username,
-        password=body.password,
-        role=role,
+        password=password,
+        role=role_id,
         display_name=body.display_name,
         email=body.email,
-        permissions=body.permissions,
+        permissions=permissions,
+        role_name=role_name,
+        directory_provider_id=directory_provider_id,
     )
-    if policy_kwargs:
-        await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
+    await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
+    if template_id is not None:
+        from octop.infra.agents.experts.default_agent import (  # noqa: PLC0415
+            try_bootstrap_default_agent,
+        )
+
+        await try_bootstrap_default_agent(
+            server,
+            user_id=user.id,
+            locale=resolve_request_locale(request),
+            expert_id=template_id,
+        )
     row = server.user_manager.get_row(user.id)
     assert row is not None
-    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
+    return _row_to_dict(
+        row,
+        server.services.user_policy_repo.list_for_user(row.id),
+        server,
+        directory_provider_id=_directory_provider_id(server),
+    )
+
+
+def _batch_fail(user_id: int, *, code: str, error: str) -> UserBatchItemResult:
+    return UserBatchItemResult(user_id=user_id, ok=False, code=code, error=error)
+
+
+async def _batch_apply_one(
+    *,
+    server: Any,
+    actor: User,
+    user_id: int,
+    action: UserBatchAction,
+    token_quota: int | None,
+    max_agents: int | None,
+) -> UserBatchItemResult:
+    if action in ("disable", "delete") and user_id == actor.id:
+        return _batch_fail(
+            user_id,
+            code=ErrorCode.FORBIDDEN.value,
+            error="cannot apply this action to yourself",
+        )
+    row = server.user_manager.get_row(user_id)
+    if row is None:
+        return _batch_fail(
+            user_id,
+            code=ErrorCode.NOT_FOUND.value,
+            error="user not found",
+        )
+    try:
+        if action == "enable":
+            await server.user_manager.enable(row.username)
+        elif action == "disable":
+            await server.user_manager.disable(row.username)
+        elif action == "delete":
+            registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+            await server.user_manager.remove(row.username, agent_manager=registry)
+        elif action == "set_token_quota":
+            await server.user_manager.set_resource_policy(
+                row.username,
+                token_quota=token_quota,
+            )
+        elif action == "set_max_agents":
+            await server.user_manager.set_resource_policy(
+                row.username,
+                max_agents=max_agents,
+            )
+        else:
+            return _batch_fail(
+                user_id,
+                code=ErrorCode.SLASH_BAD_ARGS.value,
+                error=f"unknown action: {action}",
+            )
+    except OctopError as exc:
+        return _batch_fail(
+            user_id,
+            code=exc.code.value,
+            error=exc.message,
+        )
+    return UserBatchItemResult(user_id=user_id, ok=True)
+
+
+@router.post(
+    "/batch",
+    summary="Batch enable, disable, delete, or set resource policies",
+    description=(
+        "Apply one action to many users. Per-user failures do not abort the batch. "
+        "Disable and delete skip the current actor. For set_token_quota / set_max_agents, "
+        "a null value clears the limit."
+    ),
+    response_model=UserBatchResponse,
+)
+async def batch_users(
+    body: UserBatchBody,
+    actor: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> UserBatchResponse:
+    if body.action == "set_token_quota":
+        normalize_token_quota(body.token_quota)
+    if body.action == "set_max_agents":
+        normalize_max_agents(body.max_agents)
+
+    # Preserve order while dropping duplicates.
+    seen: set[int] = set()
+    user_ids: list[int] = []
+    for uid in body.user_ids:
+        if uid in seen:
+            continue
+        seen.add(uid)
+        user_ids.append(uid)
+
+    results: list[UserBatchItemResult] = []
+    for user_id in user_ids:
+        results.append(
+            await _batch_apply_one(
+                server=server,
+                actor=actor,
+                user_id=user_id,
+                action=body.action,
+                token_quota=body.token_quota,
+                max_agents=body.max_agents,
+            )
+        )
+    succeeded = sum(1 for item in results if item.ok)
+    return UserBatchResponse(
+        action=body.action,
+        results=results,
+        succeeded=succeeded,
+        failed=len(results) - succeeded,
+    )
 
 
 @router.get("/{user_id}")
@@ -193,7 +530,12 @@ async def get_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id))
+    return _row_to_dict(
+        row,
+        server.services.user_policy_repo.list_for_user(row.id),
+        server,
+        directory_provider_id=_directory_provider_id(server),
+    )
 
 
 @router.patch("/{user_id}")
@@ -208,16 +550,37 @@ async def patch_user(
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     if body.permissions is not None:
         _assert_can_assign(actor, body.permissions)
-        _assert_not_last_user_manager(
-            server,
-            actor=actor,
-            target_user_id=user_id,
-            new_permissions=body.permissions,
+        # An administrator account keeps full access. The form stores that as
+        # an empty permission list, which is not a removal of user management.
+        stays_admin = (
+            body.role == Role.ADMIN if body.role is not None else str(row.role) == Role.ADMIN
         )
+        if not stays_admin:
+            _assert_not_last_user_manager(
+                server,
+                actor=actor,
+                target_user_id=user_id,
+                new_permissions=body.permissions,
+            )
     if body.role is not None:
-        if user_id == actor.id and Role(body.role) is not Role.ADMIN:
+        role_id, template_name, template_perms, template_policies = _resolve_role_template(
+            server, body.role
+        )
+        if user_id == actor.id and role_id != Role.ADMIN:
             raise OctopError(ErrorCode.FORBIDDEN, "cannot demote yourself")
-        await server.user_manager.set_role(row.username, Role(body.role))
+        _require_admin_to_grant_admin(actor, role_id)
+        await server.user_manager.set_role(row.username, role_id)
+        if "role_name" not in body.model_fields_set:
+            server.services.user_repo.set_role_name(user_id, template_name)
+        if body.permissions is None:
+            await server.user_manager.set_permissions(
+                row.username,
+                [] if role_id == Role.ADMIN else template_perms,
+            )
+        # Always replace policies from the new template; body fields overlay below.
+        await server.user_manager.set_resource_policy(
+            row.username, **_policy_kwargs_replace_from_pairs(template_policies)
+        )
     if body.display_name is not None:
         await server.user_manager.set_display_name(row.username, body.display_name)
     if "email" in body.model_fields_set:
@@ -228,6 +591,13 @@ async def patch_user(
         await server.user_manager.enable(row.username)
     if body.permissions is not None:
         await server.user_manager.set_permissions(row.username, body.permissions)
+    if "role_name" in body.model_fields_set:
+        server.services.user_repo.set_role_name(user_id, _clean_role_name(body.role_name))
+    if "avatar_icon" in body.model_fields_set:
+        from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
+
+        server.services.user_repo.set_avatar_icon(user_id, clean_avatar_icon(body.avatar_icon))
+        delete_profile_avatar(server.services.avatars("user"), str(user_id))
     policy_kwargs = _policy_kwargs_from_body(body)
     if policy_kwargs:
         await server.user_manager.set_resource_policy(row.username, **policy_kwargs)
@@ -236,6 +606,8 @@ async def patch_user(
     return _row_to_dict(
         updated,
         server.services.user_policy_repo.list_for_user(updated.id),
+        server,
+        directory_provider_id=_directory_provider_id(server),
     )
 
 
@@ -250,6 +622,20 @@ async def unlock_user_login(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     await server.user_manager.unlock_login(row.username)
+
+
+@router.delete("/{user_id}/mfa", status_code=204, summary="Admin reset MFA factors")
+async def admin_reset_mfa(
+    user_id: int,
+    actor: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Clear TOTP, passkeys, and recovery codes for ``user_id``; bump their mfa_version."""
+    row = server.user_manager.get_row(user_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    MfaService(server.services).admin_reset(target_user_id=user_id, actor=actor.username)
+    return Response(status_code=204)
 
 
 @router.post("/{user_id}/reset-password", status_code=204)
@@ -276,4 +662,52 @@ async def delete_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    await server.user_manager.remove(row.username)
+    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+    await server.user_manager.remove(row.username, agent_manager=registry)
+
+
+@router.post("/{user_id}/avatar", status_code=201)
+async def upload_user_avatar(
+    user_id: int,
+    file: UploadFile = File(...),  # noqa: B008
+    _: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> dict[str, str | None]:
+    if server.user_manager.get_row(user_id) is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    from octop.infra.users.profile_avatar import write_profile_avatar
+
+    write_profile_avatar(
+        server.services.avatars("user"),
+        str(user_id),
+        await file.read(),
+    )
+    return {"avatar_url": _user_avatar_url(server, user_id)}
+
+
+@router.get("/{user_id}/avatar")
+async def get_user_avatar(
+    user_id: int,
+    actor: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    if actor.id != user_id and "users" not in effective_permissions(actor):
+        raise OctopError(ErrorCode.FORBIDDEN, "not allowed to read this avatar")
+    from octop.infra.users.profile_avatar import avatar_response
+
+    if server.user_manager.get_row(user_id) is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    return avatar_response(server.services.avatars("user"), str(user_id))
+
+
+@router.delete("/{user_id}/avatar", status_code=204)
+async def delete_user_avatar(
+    user_id: int,
+    _: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> None:
+    if server.user_manager.get_row(user_id) is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    delete_profile_avatar(server.services.avatars("user"), str(user_id))

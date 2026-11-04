@@ -8,8 +8,10 @@ from octop.infra.utils.locale import Locale
 _START_ERROR_PREFIX = "octop:"
 NO_MODELS_CONFIGURED = f"{_START_ERROR_PREFIX}agent_errors.no_models_configured"
 MODEL_REF_UNAVAILABLE = f"{_START_ERROR_PREFIX}agent_errors.model_ref_unavailable"
+AGENT_START_TIMEOUT = f"{_START_ERROR_PREFIX}agent_errors.start_timeout"
 
 __all__ = [
+    "AGENT_START_TIMEOUT",
     "MODEL_REF_UNAVAILABLE",
     "NO_MODELS_CONFIGURED",
     "agent_error_message",

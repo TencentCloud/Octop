@@ -2,6 +2,7 @@ import { Popconfirm, Switch, Table, Tag, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Eye, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
 import styles from "../index.module.less";
@@ -12,6 +13,8 @@ interface SkillsTableProps {
   onView: (skill: SkillSpec) => void;
   onToggleEnabled: (skill: SkillSpec) => void;
   onDelete?: (skill: SkillSpec) => void;
+  selectedSlugs?: ReadonlySet<string>;
+  onSelectedSlugsChange?: (slugs: string[]) => void;
 }
 
 export default function SkillsTable({
@@ -20,6 +23,8 @@ export default function SkillsTable({
   onView,
   onToggleEnabled,
   onDelete,
+  selectedSlugs,
+  onSelectedSlugsChange,
 }: SkillsTableProps) {
   const { t } = useTranslation();
   const skillDisplayName = useSkillDisplayName();
@@ -98,7 +103,7 @@ export default function SkillsTable({
             >
               <button
                 type="button"
-                className={`${styles.tableActionBtn} ${styles.tableActionDanger}`}
+                className={cx(styles.tableActionBtn, styles.tableActionDanger)}
                 aria-label={t("common.delete")}
                 onClick={(e) => e.stopPropagation()}
               >
@@ -111,17 +116,40 @@ export default function SkillsTable({
     },
   ];
 
+  const rowKey = (row: SkillSpec) => `${row.kind}-${row.slug}`;
+
   return (
     <Table<SkillSpec>
       className={styles.skillsTable}
-      rowKey={(row) => `${row.kind}-${row.slug}`}
+      rowKey={rowKey}
       columns={columns}
       dataSource={skills}
       pagination={false}
       size="middle"
       scroll={{ x: 720 }}
+      rowSelection={
+        selectedSlugs && onSelectedSlugsChange
+          ? {
+              selectedRowKeys: skills
+                .filter((row) => selectedSlugs.has(row.slug))
+                .map(rowKey),
+              onChange: (keys) => {
+                const chosen = new Set(keys.map(String));
+                onSelectedSlugsChange(
+                  skills
+                    .filter((row) => chosen.has(rowKey(row)))
+                    .map((row) => row.slug),
+                );
+              },
+            }
+          : undefined
+      }
       onRow={(row) => ({
-        onClick: () => onView(row),
+        onClick: (event) => {
+          const target = event.target as HTMLElement;
+          if (target.closest(".ant-checkbox, .ant-checkbox-wrapper")) return;
+          onView(row);
+        },
         style: { cursor: "pointer" },
       })}
     />

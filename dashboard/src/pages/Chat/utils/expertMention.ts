@@ -1,7 +1,7 @@
 /**
  * Composer helpers for expert / subagent @mentions.
  *
- * harness-agent no longer intercepts ``target_agent_ids``; the host must put
+ * octop-harness no longer intercepts ``target_agent_ids``; the host must put
  * ``@Name`` in the user message so the model can call ``ask_agent`` (teammate)
  * or ``task`` (workspace subagent).
  */

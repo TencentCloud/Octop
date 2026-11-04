@@ -53,7 +53,8 @@ wheel_cache_usable() {
   local count
   count="$(find "$wheel_dir" -maxdepth 1 -type f -name '*.whl' 2>/dev/null | wc -l | tr -d ' ')"
   # Need octop + a reasonable set of deps.
-  [[ "${count:-0}" -ge 10 ]]
+  [[ "${count:-0}" -ge 10 ]] &&
+    compgen -G "${wheel_dir}/uv-${GREEN_UV_VERSION}-*.whl" >/dev/null
 }
 
 # Copy pywin32 DLLs beside portable python.exe so ``import pywintypes`` works.
@@ -106,6 +107,9 @@ assemble_one() {
   local req_file="${GREEN_ROOT}/requirements-${plat}.txt"
   echo "[package] ${plat}: exporting frozen deps → ${req_file}" >&2
   uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  # Online --target upgrades need uv to reuse the bundled dependencies. pip
+  # ignores installed packages with --target and resolves/downloads them again.
+  echo "uv==${GREEN_UV_VERSION}" >> "$req_file"
 
   # Platform-specific pins / exclusions (see write_green_overrides in _common.sh).
   local override_file=""
@@ -173,7 +177,7 @@ assemble_one() {
 
   if [[ "${OCTOP_GREEN_OFFLINE:-0}" == "1" ]]; then
     if ! wheel_cache_usable "$wheel_dir"; then
-      echo "[package] OCTOP_GREEN_OFFLINE=1 but wheels cache incomplete: ${wheel_dir}" >&2
+      echo "[package] OCTOP_GREEN_OFFLINE=1 but wheels cache incomplete (requires uv==${GREEN_UV_VERSION}): ${wheel_dir}" >&2
       echo "  Run: bash desktop/portable/vendor-wheels.sh ${plat}" >&2
       exit 1
     fi

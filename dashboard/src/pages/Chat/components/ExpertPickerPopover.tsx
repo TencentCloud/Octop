@@ -1,11 +1,16 @@
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, GraduationCap } from "lucide-react";
+import { Eye, EyeOff, GraduationCap, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
+import { message } from "@/utils/antdMessage";
 import ExpertAgentAvatar, { type ChatAgentOption } from "./ExpertAgentAvatar";
+import RemoteExpertHint from "./RemoteExpertHint";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import { groupExpertsByConnection } from "../../../utils/remoteExpert";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import styles from "../index.module.less";
 
@@ -16,6 +21,7 @@ interface ExpertPickerPopoverProps {
   selectedAgentIds: string[];
   onSelect: (agent: ChatAgentOption) => void;
   onNavigateAway?: () => void;
+  remoteManaged?: boolean;
 }
 
 export default function ExpertPickerPopover({
@@ -23,6 +29,7 @@ export default function ExpertPickerPopover({
   selectedAgentIds,
   onSelect,
   onNavigateAway,
+  remoteManaged = false,
 }: ExpertPickerPopoverProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -42,6 +49,15 @@ export default function ExpertPickerPopover({
   // Leave the hidden-only view once nothing remains hidden.
   const viewingHidden = showingHidden && hiddenAgents.length > 0;
   const listAgents = viewingHidden ? hiddenAgents : visibleAgents;
+  const grouped = useMemo(
+    () => groupExpertsByConnection(listAgents, t("agentSelector.localGroup")),
+    [listAgents, t],
+  );
+  const showGroups = grouped.length > 1;
+  const pickerItems = useMemo(
+    () => (showGroups ? grouped.flatMap((group) => group.agents) : listAgents),
+    [grouped, listAgents, showGroups],
+  );
 
   const filterFn = useCallback(
     (agent: ChatAgentOption, query: string) =>
@@ -52,7 +68,7 @@ export default function ExpertPickerPopover({
 
   return (
     <SearchablePickerPanel
-      items={listAgents}
+      items={pickerItems}
       filterFn={filterFn}
       searchPlaceholder={
         viewingHidden
@@ -65,9 +81,49 @@ export default function ExpertPickerPopover({
           : t("chat.expertPickerEmpty")
       }
       width="compact"
-      footerIcon={<GraduationCap size={15} aria-hidden />}
-      footerLabel={t("chat.expertPickerManage")}
+      getGroupKey={
+        showGroups
+          ? (agent) =>
+              agent.bridge
+                ? agent.bridge_connection_id ??
+                  agent.bridge_connection_name ??
+                  "_"
+                : "local"
+          : undefined
+      }
+      renderGroupHeader={
+        showGroups
+          ? (key, first) => (
+              <div className={styles.expertPickerGroup}>
+                {first.bridge
+                  ? `${first.bridge_connection_name || key}${
+                      first.bridge_disconnected
+                        ? ` · ${t("agentSelector.disconnected")}`
+                        : ""
+                    }`
+                  : t("agentSelector.localGroup")}
+              </div>
+            )
+          : undefined
+      }
+      footerIcon={
+        remoteManaged ? (
+          <Info size={15} aria-hidden />
+        ) : (
+          <GraduationCap size={15} aria-hidden />
+        )
+      }
+      footerLabel={
+        remoteManaged
+          ? t("chat.remoteExpert.manageOnPeer")
+          : t("chat.expertPickerManage")
+      }
+      footerMuted={remoteManaged}
       onFooterClick={() => {
+        if (remoteManaged) {
+          message.info(t("chat.remoteExpert.manageToast"));
+          return;
+        }
         onNavigateAway?.();
         navigate("/experts");
       }}
@@ -90,9 +146,11 @@ export default function ExpertPickerPopover({
         return (
           <div
             key={agent.agent_id}
-            className={`${styles.skillPickerItem} ${
-              active ? styles.expertPickerItemActive : ""
-            } ${styles.expertPickerRow}`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.expertPickerItemActive,
+              styles.expertPickerRow,
+            )}
           >
             <button
               type="button"
@@ -108,11 +166,12 @@ export default function ExpertPickerPopover({
               />
               <span className={styles.expertPickerItemText}>
                 <span className={pickerStyles.itemName}>{agent.name}</span>
-                {agent.is_shared && (
-                  <span className={styles.expertSharedBadge}>
-                    {t("chat.expertSharedBadge", "共享")}
-                  </span>
-                )}
+                <SharedResourceBadge
+                  shared={agent.is_shared}
+                  owned={agent.is_owner !== false}
+                  ownerName={agent.owner_username}
+                />
+                <RemoteExpertHint agent={agent} />
               </span>
             </button>
             {hideable ? (

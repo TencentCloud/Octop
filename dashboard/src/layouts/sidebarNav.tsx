@@ -11,6 +11,7 @@ import {
   Users as UsersIcon,
   Activity,
   Share2,
+  Cloudy,
   Sparkles,
   Puzzle,
   Package,
@@ -28,6 +29,22 @@ export const COLLAPSED_WIDTH = 56;
 const iconSize = 16;
 const iconStroke = 1.8;
 
+const PERSONALIZATION_NAV_TABS = [
+  { key: "skills", path: "/personalization/skills" },
+  { key: "subagents", path: "/personalization/subagents" },
+  { key: "tools", path: "/personalization/tools" },
+  { key: "agent_plugins", path: "/personalization/plugins" },
+  { key: "mbti", path: "/personalization/mbti" },
+  { key: "memory", path: "/personalization/memory" },
+] as const;
+
+function personalizationNavPath(user: OctopUser | null): string {
+  for (const tab of PERSONALIZATION_NAV_TABS) {
+    if (userCan(user, tab.key)) return tab.path;
+  }
+  return PERSONALIZATION_NAV_TABS[0].path;
+}
+
 export interface NavItem {
   key: string;
   path: string;
@@ -37,9 +54,67 @@ export interface NavItem {
 }
 
 export interface NavSection {
-  /** When omitted, items render flat without a group header. */
+  /** Stable group id. Omitted for the ungrouped block at the top. */
+  id?: string;
+  /** Built-in label key. Omitted when {@link title} is set or the block is ungrouped. */
   groupKey?: string;
+  /** User-defined group title. Wins over {@link groupKey}. */
+  title?: string;
   items: NavItem[];
+}
+
+/** Every nav item key the sidebar can show. Keep in sync with `SIDEBAR_NAV_KEYS` in `octop.infra.users.preferences`. */
+export const SIDEBAR_NAV_KEYS = [
+  "chat",
+  "experts",
+  "tasks",
+  "token-usage",
+  "personalization",
+  "channels",
+  "connectors",
+  "skill-packages",
+  "knowledge-bases",
+  "bridge",
+  "workbench",
+  "remote-desktop",
+  "acp",
+  "admin-users",
+  "models",
+  "admin-storage",
+  "admin-plugins",
+  "admin-security",
+  "admin-advanced",
+] as const;
+
+export const BUILTIN_NAV_GROUP_IDS = ["settings", "control", "admin"] as const;
+
+const BUILTIN_NAV_GROUP_LABEL_KEYS: Record<
+  (typeof BUILTIN_NAV_GROUP_IDS)[number],
+  string
+> = {
+  settings: "nav.settings",
+  control: "nav.control",
+  admin: "nav.admin",
+};
+
+export function isBuiltinNavGroupId(id: string): boolean {
+  return (BUILTIN_NAV_GROUP_IDS as readonly string[]).includes(id);
+}
+
+export function builtinNavGroupLabelKey(id: string): string | null {
+  if (!isBuiltinNavGroupId(id)) return null;
+  return BUILTIN_NAV_GROUP_LABEL_KEYS[
+    id as (typeof BUILTIN_NAV_GROUP_IDS)[number]
+  ];
+}
+
+export function navSectionLabel(
+  section: NavSection,
+  translate: (key: string) => string,
+): string {
+  if (section.title) return section.title;
+  if (section.groupKey) return translate(section.groupKey);
+  return "";
 }
 
 /**
@@ -53,6 +128,7 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "connectors",
   "skill-packages",
   "knowledge-bases",
+  "bridge",
   "workbench",
   "remote-desktop",
   "acp",
@@ -75,45 +151,49 @@ export function buildNavSections(
   user: OctopUser | null,
   opts?: { mobileEnabled?: boolean },
 ): NavSection[] {
-  const sections: NavSection[] = [
+  const topItems: NavItem[] = [
     {
-      items: [
-        {
-          key: "chat",
-          path: "/chat",
-          icon: <MessageSquareText size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.chat",
-        },
-        {
-          key: "experts",
-          path: "/experts",
-          icon: <GraduationCap size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.experts",
-        },
-        {
-          key: "tasks",
-          path: "/tasks",
-          icon: <Timer size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.tasks",
-        },
-        {
-          key: "token-usage",
-          path: "/token-usage",
-          icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
-          labelKey: "nav.tokenUsage",
-        },
-      ],
+      key: "chat",
+      path: "/chat",
+      icon: <MessageSquareText size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.chat",
     },
   ];
+  if (navAllowed(user, "experts")) {
+    topItems.push({
+      key: "experts",
+      path: "/experts",
+      icon: <GraduationCap size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.experts",
+    });
+  }
+  if (navAllowed(user, "tasks")) {
+    topItems.push({
+      key: "tasks",
+      path: "/tasks",
+      icon: <Timer size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.tasks",
+    });
+  }
+  if (navAllowed(user, "token-usage")) {
+    topItems.push({
+      key: "token-usage",
+      path: "/token-usage",
+      icon: <Activity size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.tokenUsage",
+    });
+  }
+  const sections: NavSection[] = [{ items: topItems }];
 
-  const settingsItems: NavItem[] = [
-    {
+  const settingsItems: NavItem[] = [];
+  if (navAllowed(user, "personalization")) {
+    settingsItems.push({
       key: "personalization",
-      path: "/personalization/skills",
+      path: personalizationNavPath(user),
       icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.personalization",
-    },
-  ];
+    });
+  }
   if (navAllowed(user, "channels")) {
     settingsItems.push({
       key: "channels",
@@ -146,8 +226,20 @@ export function buildNavSections(
       labelKey: "nav.knowledgeBases",
     });
   }
+  if (navAllowed(user, "bridge")) {
+    settingsItems.push({
+      key: "bridge",
+      path: "/bridge",
+      icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.bridge",
+    });
+  }
   if (settingsItems.length > 0) {
-    sections.push({ groupKey: "nav.settings", items: settingsItems });
+    sections.push({
+      id: "settings",
+      groupKey: "nav.settings",
+      items: settingsItems,
+    });
   }
 
   const controlItems: NavItem[] = [];
@@ -181,7 +273,11 @@ export function buildNavSections(
     });
   }
   if (controlItems.length > 0) {
-    sections.push({ groupKey: "nav.control", items: controlItems });
+    sections.push({
+      id: "control",
+      groupKey: "nav.control",
+      items: controlItems,
+    });
   }
 
   const adminItems: NavItem[] = [];
@@ -234,7 +330,7 @@ export function buildNavSections(
     });
   }
   if (adminItems.length > 0) {
-    sections.push({ groupKey: "nav.admin", items: adminItems });
+    sections.push({ id: "admin", groupKey: "nav.admin", items: adminItems });
   }
   return sections;
 }

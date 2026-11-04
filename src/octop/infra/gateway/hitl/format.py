@@ -20,8 +20,41 @@ _OPTION_KEYS = string.ascii_lowercase
 _SELECTION_RE = re.compile(r"^[0-9a-z]+(?:[,，、/\s]+[0-9a-z]+)*$")
 
 
+def normalize_hitl_request(raw: Any) -> dict[str, Any]:
+    """Unwrap LangGraph ``Interrupt`` envelopes so ``action_requests`` is top-level.
+
+    LangGraph v2 streams interrupts as ``{"value": HITLRequest, "id": "..."}``
+    (or a dict that still has ``value`` after ``model_dump``). Hosts that look
+    for top-level ``action_requests`` would otherwise register an empty pause.
+    """
+    current: Any = raw
+    for _ in range(3):
+        if not isinstance(current, dict):
+            return raw if isinstance(raw, dict) else {}
+        if isinstance(current.get("action_requests"), list):
+            return current
+        nested = current.get("value")
+        if isinstance(nested, dict):
+            current = nested
+            continue
+        break
+    return raw if isinstance(raw, dict) else {}
+
+
+def _parse_action_args(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
 def parse_action_requests(raw: dict[str, Any]) -> list[dict[str, Any]]:
-    requests = raw.get("action_requests")
+    requests = normalize_hitl_request(raw).get("action_requests")
     if not isinstance(requests, list):
         return []
     out: list[dict[str, Any]] = []
@@ -29,7 +62,7 @@ def parse_action_requests(raw: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         name = str(item.get("name") or "tool")
-        args = item.get("args") if isinstance(item.get("args"), dict) else {}
+        args = _parse_action_args(item.get("args"))
         description = item.get("description")
         row: dict[str, Any] = {"name": name, "args": args}
         if isinstance(description, str) and description.strip():
@@ -39,7 +72,7 @@ def parse_action_requests(raw: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def parse_review_configs(raw: dict[str, Any]) -> list[dict[str, Any]] | None:
-    configs = raw.get("review_configs")
+    configs = normalize_hitl_request(raw).get("review_configs")
     if not isinstance(configs, list):
         return None
     out = [c for c in configs if isinstance(c, dict)]
@@ -60,6 +93,12 @@ def extract_questions(action_requests: list[dict[str, Any]]) -> list[dict[str, A
         if not isinstance(args, dict):
             continue
         raw = args.get("questions")
+        if isinstance(raw, str) and raw.strip():
+            try:
+                parsed = json.loads(raw)
+            except ValueError:
+                continue
+            raw = parsed
         if not isinstance(raw, list):
             continue
         return [q for q in raw if isinstance(q, dict)]
@@ -269,6 +308,7 @@ __all__ = [
     "format_ask_card",
     "format_hitl_card",
     "is_ask_action_requests",
+    "normalize_hitl_request",
     "parse_action_requests",
     "parse_ask_reply",
     "parse_review_configs",

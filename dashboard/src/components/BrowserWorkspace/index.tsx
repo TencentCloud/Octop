@@ -15,7 +15,9 @@ import {
   RefreshCw,
   User,
 } from "lucide-react";
+import cx from "classnames";
 import { api } from "../../api";
+import { bridgeApi } from "../../api/modules/bridge";
 import type {
   BrowserSession,
   DisplayEnvironment,
@@ -52,6 +54,8 @@ interface BrowserWorkspaceProps {
   hideHeaderRefresh?: boolean;
   /** Expose reconnect handler to the parent dock toolbar. */
   onRefreshReady?: (refresh: () => void) => void;
+  /** When set, sessions / handoff / screencast go through the peer Bridge. */
+  bridgeConnectionId?: string | null;
 }
 
 const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
@@ -62,6 +66,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   onToggleBookmark,
   hideHeaderRefresh = false,
   onRefreshReady,
+  bridgeConnectionId = null,
 }) => {
   const { t } = useTranslation();
   // Viewport defaults to a fixed 1280×800 — suitable when the view is small
@@ -114,6 +119,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     resolveViewport,
     defaultViewport: { width: 1440, height: 900 },
     onError: (msg) => showApiError(msg, t("browserViewer.connectFailed"), t),
+    bridgeConnectionId,
   });
 
   // Connect on mount and whenever the attached session or viewport mode
@@ -126,7 +132,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
       disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, vpMode]);
+  }, [sessionId, vpMode, bridgeConnectionId]);
 
   // Keep the URL bar in sync with the active tab — but never stomp while typing.
   useEffect(() => {
@@ -191,18 +197,23 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
 
   // Initial HTTP fetch for session metadata (handoff buttons, current URL).
   useEffect(() => {
-    if (!sessionId) {
-      setSession(null);
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
-        const resp = await api.getSessions();
+        const resp = bridgeConnectionId
+          ? await bridgeApi.getBrowserSessions(bridgeConnectionId)
+          : await api.getSessions();
         if (cancelled) return;
         if (resp.ok) {
-          const found = resp.sessions.find((s) => s.session_id === sessionId);
-          if (found) setSession(found);
+          if (sessionId) {
+            const found = resp.sessions.find((s) => s.session_id === sessionId);
+            if (found) setSession(found);
+            else if (resp.sessions[0]) setSession(resp.sessions[0]);
+          } else if (resp.sessions[0]) {
+            setSession(resp.sessions[0]);
+          } else {
+            setSession(null);
+          }
         }
       } catch {
         // Ignore
@@ -211,31 +222,13 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, bridgeConnectionId]);
 
   const controlOwner: "agent" | "user" = session?.control_owner ?? "agent";
   const stateLabel = session?.state ?? "idle";
   const isInteractive = controlOwner === "user";
   const isAuthNeeded =
     stateLabel === "awaiting_user_auth" || stateLabel === "authenticating";
-
-  // Keyboard input — only forward when the user is in control.
-  useEffect(() => {
-    if (!isStreaming || !isInteractive) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only when the panel itself is focused (avoids capturing chat input).
-      if (!panelRef.current?.contains(document.activeElement)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        sendEvent({ type: "type", text: e.key });
-      } else {
-        sendEvent({ type: "keydown", key: e.key });
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isStreaming, isInteractive, sendEvent]);
 
   // -------------------------------------------------------------------------
   // Top URL bar — "Go" button so the user can navigate the agent's browser.
@@ -256,17 +249,24 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   // -------------------------------------------------------------------------
   const handleHandoff = useCallback(
     async (target: "agent" | "user") => {
-      const sid = sessionId ?? sessionInfo?.session_id;
+      const sid = sessionId ?? sessionInfo?.session_id ?? session?.session_id;
       if (!sid) return;
       try {
-        const resp = await api.handoff(sid, target, "user_button");
-        if (resp.ok) setSession(resp.session);
+        const resp = bridgeConnectionId
+          ? await bridgeApi.browserHandoff(
+              bridgeConnectionId,
+              sid,
+              target,
+              "user_button",
+            )
+          : await api.handoff(sid, target, "user_button");
+        if (resp.ok) setSession(resp.session as BrowserSession);
       } catch (err) {
         console.error("Handoff failed:", err);
         showApiError(err, t("browserWorkspace.handoffFailed"), t);
       }
     },
-    [sessionId, sessionInfo, t],
+    [sessionId, sessionInfo, session, bridgeConnectionId, t],
   );
 
   const handleRetry = useCallback(() => {
@@ -379,11 +379,12 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
         {hasSession ? (
           <>
             <div className={styles.footerLeft}>
-              <span className={`${styles.statusDot} ${styles[controlOwner]}`} />
+              <span className={cx(styles.statusDot, styles[controlOwner])} />
               <span
-                className={`${styles.controlLabel} ${
-                  controlOwner === "user" ? styles.takeoverActive : ""
-                }`}
+                className={cx(
+                  styles.controlLabel,
+                  controlOwner === "user" && styles.takeoverActive,
+                )}
               >
                 {controlOwner === "agent"
                   ? t("browserWorkspace.agentControl")
@@ -395,9 +396,11 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
                 </Tag>
               )}
               <Tag
-                className={`${styles.stateTag} ${
-                  isStreaming ? styles.stateTagStreaming : ""
-                } ${controlOwner === "user" ? styles.stateTagTakeover : ""}`}
+                className={cx(
+                  styles.stateTag,
+                  isStreaming && styles.stateTagStreaming,
+                  controlOwner === "user" && styles.stateTagTakeover,
+                )}
               >
                 {streamStatusLabel}
               </Tag>

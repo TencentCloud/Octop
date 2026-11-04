@@ -4,60 +4,122 @@ name: Docker Publish
 # 文档与对外引用统一使用：ghcr.io/tencentcloud/octop
 # （Hub 仍用 DOCKERHUB_* secrets 同步推送。）
 #
+# 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64。
+# 每个架构先在本机启动镜像并跑 live 启动测试，通过后才推送该架构 tag，
+# 再合并为 :{version} / :latest 多架构清单。精简版同样打 :{version}-lite / :lite，
+# 不含桌面、本地向量和 OCR。飞牛 Docker 版 FPK 各用一个标签，
+# NAS 按本机架构拉取对应镜像层。某一架构启动失败（例如 ARM 上 Illegal
+# instruction / 退出码 132）只丢掉该架构，不挡住另一架构和后续 FPK。
+#
 # 触发路径：
 #   1. 人工推送 v* tag → on.push.tags
 #   2. Auto Tag 用 GITHUB_TOKEN 推 tag 后显式 workflow_dispatch（token push 不会触发 push 工作流）
+#   3. 在任意分支 Run workflow，填 tag=vX.Y.Z（用该分支的 workflow 文件，checkout 指定 tag）
 #
 # 注意：workflow_dispatch 下 metadata-action 的 type=semver 不可靠，
-# 必须从 GITHUB_REF_NAME 显式解析版本号。
+# 必须从 tag / 输入显式解析版本号。
+# 不要把 DOCKERHUB_USERNAME 放进 job outputs：跨 job 传递会被抹成空，
+# 导致只推 GHCR，合并清单时再对空 Hub 名失败。
 #
 # FnOS FPK 由 Release 成功后自动 dispatch，并等待本工作流推送的 :{version} 就绪。
 #
 # 拉取示例：
 #   docker pull ghcr.io/tencentcloud/octop:latest
 #   docker pull ghcr.io/tencentcloud/octop:0.9.28
+#   docker pull ghcr.io/tencentcloud/octop:0.9.28-lite
 on:
   push:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "v* tag to publish (e.g. v1.0.2b6). Required when not running on a tag."
+        required: false
+        type: string
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  docker:
-    name: Build and push image
+  prepare:
+    name: Resolve version
     runs-on: ubuntu-latest
-    # 拒绝在非 v* ref 上误跑（例如 UI 里对 main 点 Run workflow）
-    if: startsWith(github.ref, 'refs/tags/v')
+    # 拒绝在非 v* ref 上误跑（例如 UI 里对 main 点 Run workflow 且未填 tag）
+    if: >-
+      startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v'))
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      tag: ${{ steps.ver.outputs.tag }}
+      ghcr: ${{ steps.image.outputs.ghcr }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - name: Resolve version from tag ref
         id: ver
+        env:
+          DISPATCH_TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          ref="${GITHUB_REF_NAME}"
+          if [ -n "${DISPATCH_TAG:-}" ]; then
+            ref="$DISPATCH_TAG"
+          else
+            ref="${GITHUB_REF_NAME}"
+          fi
           case "$ref" in
             v*)
               echo "version=${ref#v}" >> "$GITHUB_OUTPUT"
               echo "tag=$ref" >> "$GITHUB_OUTPUT"
               ;;
             *)
-              echo "::error::Expected refs/tags/v*, got ref_name=$ref"
+              echo "::error::Expected v* tag, got ref=$ref"
               exit 1
               ;;
           esac
+
+      - name: Image names
+        id: image
+        run: |
+          echo "ghcr=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.arch }} ${{ matrix.variant }}
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    env:
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+            variant: full
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+            variant: lite
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+            variant: full
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+            variant: lite
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USER != ''
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -70,32 +132,141 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Image names
-        id: image
-        run: |
-          echo "ghcr=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-          echo "hub=${{ secrets.DOCKERHUB_USERNAME }}/octop" >> "$GITHUB_OUTPUT"
-
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
-            ${{ steps.image.outputs.hub }}
-            ${{ steps.image.outputs.ghcr }}
-          # 显式 raw tag：兼容 push.tags 与 Auto Tag 的 workflow_dispatch
+            ${{ env.DOCKERHUB_USER != '' && format('{0}/octop', env.DOCKERHUB_USER) || '' }}
+            ${{ needs.prepare.outputs.ghcr }}
+          # 单架构中间 tag。full → :{version}-{arch}；lite → :{version}-lite-{arch}。
           tags: |
-            type=raw,value=${{ steps.ver.outputs.version }}
-            type=raw,value=latest
+            type=raw,value=${{ needs.prepare.outputs.version }}${{ matrix.variant == 'lite' && '-lite' || '' }}-${{ matrix.arch }}
 
-      - name: Build and push
+      # load 与 registry 导出不能同时开。先载入本机做启动测试，通过后再 docker push。
+      # docker 导出不支持 provenance，这里关掉，避免 --load 失败。
+      - name: Build and load
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
-          push: true
-          platforms: linux/amd64
-          tags: ${{ steps.meta.outputs.tags }}
+          push: false
+          load: true
+          provenance: false
+          sbom: false
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            OCTOP_IMAGE_VARIANT=${{ matrix.variant }}
+          tags: |
+            octop:ci-${{ matrix.variant }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-${{ matrix.variant }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.variant }}-${{ matrix.arch }}
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Report image size
+        run: |
+          docker image inspect "octop:ci-${{ matrix.variant }}" \
+            --format '::notice::${{ matrix.variant }} ${{ matrix.arch }} {{.Size}} bytes'
+
+      - name: Boot-test image before publish
+        env:
+          OCTOP_TEST_IMAGE: octop:ci-${{ matrix.variant }}
+          OCTOP_IMAGE_VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          uv venv /tmp/octop-docker-test
+          uv pip install --python /tmp/octop-docker-test/bin/python pytest pytest-asyncio
+          /tmp/octop-docker-test/bin/pytest \
+            tests/integration/test_docker_image_boot.py::test_docker_image_runs_on_this_cpu_and_stays_disabled \
+            -q --tb=short
+
+      - name: Push image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            case "$tag" in
+              */*) docker push "$tag" ;;
+            esac
+          done <<< "$TAGS"
+
+  merge:
+    name: Multi-arch manifest
+    needs: [prepare, build]
+    # ARM runner 偶发失败时仍发布已有架构，避免卡住 :{version} 与 Docker FPK。
+    if: always() && needs.prepare.result == 'success' && !cancelled()
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USER != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifests
+        env:
+          VER: ${{ needs.prepare.outputs.version }}
+          GHCR: ${{ needs.prepare.outputs.ghcr }}
+          HUB: ${{ env.DOCKERHUB_USER != '' && format('{0}/octop', env.DOCKERHUB_USER) || '' }}
+        run: |
+          set -euo pipefail
+          publish_variant() {
+            local mid="$1" tag_a="$2" tag_b="$3" required="$4"
+            local reg arch ref
+            for reg in "$GHCR" "$HUB"; do
+              [ -n "$reg" ] || continue
+              local -a sources=()
+              for arch in amd64 arm64; do
+                ref="${reg}:${VER}${mid}-${arch}"
+                if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+                  sources+=("$ref")
+                else
+                  echo "::warning::missing ${ref}"
+                fi
+              done
+              if [ "${#sources[@]}" -eq 0 ]; then
+                if [ "$required" = "yes" ]; then
+                  echo "::error::No platform images published for ${reg}:${tag_a}"
+                  exit 1
+                fi
+                echo "::warning::skip ${reg}:${tag_a} (no platform images)"
+                continue
+              fi
+              if [ "${#sources[@]}" -lt 2 ]; then
+                echo "::warning:::${tag_a} is not multi-arch. A package on the missing CPU will not run."
+                # 精简版对外是一份 x86/ARM 通用标签。缺任一架构就不要发，避免装上后拉取失败。
+                if [ "$required" != "yes" ]; then
+                  echo "::warning::skip ${reg}:${tag_a} until both amd64 and arm64 exist"
+                  continue
+                fi
+              fi
+              docker buildx imagetools create \
+                -t "${reg}:${tag_a}" \
+                -t "${reg}:${tag_b}" \
+                "${sources[@]}"
+              echo "=== ${reg}:${tag_a} ==="
+              docker buildx imagetools inspect "${reg}:${tag_a}"
+            done
+          }
+          publish_variant "" "$VER" latest yes
+          publish_variant "-lite" "${VER}-lite" lite no

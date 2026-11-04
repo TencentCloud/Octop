@@ -66,11 +66,26 @@ export default function AgentNotReadyScreen({
   const state = agent.state;
   const errorText = formatAgentError(agent.last_error, t);
   const isModelError = isAgentModelConfigError(agent.last_error);
+  const disconnected = Boolean(agent.bridge && agent.bridge_disconnected);
 
   let title = t("chat.agentNotRunning");
   let subTitle = t("chat.agentNotRunningHint");
 
-  if (state === "failed") {
+  if (disconnected) {
+    const inbound = Boolean(agent.bridge_inbound);
+    title = t("chat.remoteExpert.disconnectedTitle");
+    subTitle = inbound
+      ? agent.bridge_connection_name
+        ? t("chat.remoteExpert.waitForPeerNamed", {
+            name: agent.bridge_connection_name,
+          })
+        : t("chat.remoteExpert.waitForPeer")
+      : agent.bridge_connection_name
+      ? t("chat.remoteExpert.disconnectedHintNamed", {
+          name: agent.bridge_connection_name,
+        })
+      : t("chat.remoteExpert.disconnectedHint");
+  } else if (state === "failed") {
     title = t("chat.agentFailed");
     subTitle = errorText || t("chat.agentFailedHint");
   } else if (state === "stopped" || state === "created") {
@@ -85,7 +100,9 @@ export default function AgentNotReadyScreen({
     <div className={styles.agentNotReady}>
       <Result
         status={
-          state === "failed"
+          disconnected
+            ? "warning"
+            : state === "failed"
             ? "error"
             : state === "stopped" || state === "created"
             ? "warning"
@@ -94,7 +111,15 @@ export default function AgentNotReadyScreen({
         title={title}
         subTitle={subTitle}
         extra={
-          isModelError ? (
+          disconnected ? (
+            <Button type="primary" onClick={() => navigate("/bridge")}>
+              {t(
+                agent.bridge_inbound
+                  ? "chat.remoteExpert.openBridge"
+                  : "chat.remoteExpert.reconnect",
+              )}
+            </Button>
+          ) : isModelError ? (
             <Button
               type="primary"
               icon={<Settings size={14} />}

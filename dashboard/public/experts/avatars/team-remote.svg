@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="team-remote">
+  <defs>
+    <linearGradient id="bg-team-remote" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CFFAFE"/>
+      <stop offset="1" stop-color="#A5F3FC"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-team-remote)"/>
+
+  <path d="M8 118 Q12 96 32 90 Q50 86 58 94 L56 118 Z" fill="#0891B2"/>
+  <path d="M18 58 Q16 36 38 30 Q60 36 58 58 Q52 42 38 40 Q24 42 18 58Z" fill="#164E63"/>
+  <rect x="32" y="80" width="12" height="12" rx="5" fill="#F5D0B0"/>
+  <ellipse cx="38" cy="64" rx="18" ry="20" fill="#F5D0B0"/>
+  <ellipse cx="22" cy="66" rx="3.2" ry="4.4" fill="#F5D0B0"/>
+  <path d="M24 50 Q38 58 52 50 Q48 44 38 42 Q28 44 24 50Z" fill="#164E63"/>
+  <ellipse cx="31" cy="62" rx="2.3" ry="2.8" fill="#164E63"/>
+  <ellipse cx="45" cy="62" rx="2.3" ry="2.8" fill="#164E63"/>
+  <circle cx="32" cy="61" r="0.75" fill="#fff"/>
+  <circle cx="46" cy="61" r="0.75" fill="#fff"/>
+  <path d="M31 73 Q38 79 45 73" fill="none" stroke="#B45309" stroke-width="1.7" stroke-linecap="round"/>
+  <circle cx="26" cy="72" r="2.8" fill="#F9A8D4" opacity="0.32"/>
+
+  <rect x="70" y="52" width="50" height="38" rx="6" fill="#155E75"/>
+  <rect x="74" y="56" width="42" height="28" rx="3" fill="#ECFEFF"/>
+  <!-- remote face sitting on the screen, neck tucked into bezel -->
+  <path d="M84 66 Q86 56 95 54 Q104 56 106 66 Q102 58 95 58 Q88 58 84 66Z" fill="#0F172A"/>
+  <rect x="91" y="74" width="8" height="7" rx="3" fill="#E8C4A0"/>
+  <ellipse cx="95" cy="68" rx="10" ry="11" fill="#E8C4A0"/>
+  <ellipse cx="91" cy="67" rx="1.5" ry="1.8" fill="#0F172A"/>
+  <ellipse cx="99" cy="67" rx="1.5" ry="1.8" fill="#0F172A"/>
+  <circle cx="91.6" cy="66.3" r="0.5" fill="#fff"/>
+  <circle cx="99.6" cy="66.3" r="0.5" fill="#fff"/>
+  <path d="M91 74 Q95 77 99 74" fill="none" stroke="#B45309" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M74 94 H116 L122 104 H68 Z" fill="#0E7490"/>
+
+  <circle cx="62" cy="72" r="2.2" fill="#22D3EE"/>
+  <circle cx="68" cy="72" r="2.2" fill="#67E8F9"/>
+
+</svg>

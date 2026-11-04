@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 
+from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.backend.adapter import row_to_backend_spec, storage_spec_previewable
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import (
+    RESOURCE_STORAGE_BACKEND,
+    STORAGE_FEATURE_KEY,
+    GroupAccess,
+)
 
 admin_router = APIRouter()
 
@@ -35,6 +42,8 @@ class StorageBackendCreateBody(BaseModel):
     region: str | None = None
     config_json: str | None = None
     note: str | None = None
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class StorageBackendPatchBody(BaseModel):
@@ -48,6 +57,8 @@ class StorageBackendPatchBody(BaseModel):
     config_json: str | None = None
     note: str | None = None
     enabled: bool | None = None
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class StorageBackendProbeBody(BaseModel):
@@ -62,7 +73,7 @@ class StorageBackendProbeBody(BaseModel):
     backend_id: int | None = None
 
 
-def _row_to_dict(r: Any) -> dict[str, Any]:
+def _row_to_dict(r: Any, *, access: GroupAccess | None = None) -> dict[str, Any]:
     """Serialize a BackendRow to API response dict.
 
     secret_key is intentionally omitted from responses.
@@ -71,7 +82,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     ak = r.access_key or ""
     masked_ak = f"{ak[:4]}{'*' * 8}" if len(ak) > 4 else "*" * len(ak)
     spec = row_to_backend_spec(r)
-    return {
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
@@ -86,6 +97,24 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "created_at": r.created_at,
         "updated_at": r.updated_at,
     }
+    if access is not None:
+        payload.update(access.visibility(RESOURCE_STORAGE_BACKEND, r.name, shared=None))
+    return payload
+
+
+def _apply_storage_visibility(
+    server: Any,
+    backend_name: str,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+) -> None:
+    if visibility is None:
+        return
+    access = GroupAccess(server.services.repos)
+    # Drop the legacy feature-wide grant if present.
+    access.clear(RESOURCE_STORAGE_BACKEND, STORAGE_FEATURE_KEY)
+    access.set_visibility(RESOURCE_STORAGE_BACKEND, backend_name, visibility, group_ids)
 
 
 @admin_router.get("")
@@ -93,7 +122,10 @@ async def list_storage_backends(
     _: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.storage_backend_repo.list_all()]
+    access = GroupAccess(server.services.repos)
+    return [
+        _row_to_dict(row, access=access) for row in server.services.storage_backend_repo.list_all()
+    ]
 
 
 @admin_router.post("", status_code=201)
@@ -116,7 +148,14 @@ async def create_storage_backend(
         config_json=body.config_json,
         note=body.note,
     )
-    return _row_to_dict(server.services.storage_backend_repo.get(bid))
+    _apply_storage_visibility(
+        server,
+        body.name,
+        visibility=body.visibility or "all",
+        group_ids=body.group_ids,
+    )
+    access = GroupAccess(server.services.repos)
+    return _row_to_dict(server.services.storage_backend_repo.get(bid), access=access)
 
 
 @admin_router.patch("/{backend_id}")
@@ -145,6 +184,7 @@ async def patch_storage_backend(
                 )
             new_name = candidate
 
+    old_name = row.name
     if new_name is not None:
         from octop.infra.backend.resolver import (  # noqa: PLC0415
             rewrite_named_storage_backend_refs,
@@ -174,7 +214,29 @@ async def patch_storage_backend(
         note=body.note,
         enabled=body.enabled,
     )
-    return _row_to_dict(server.services.storage_backend_repo.get(backend_id))
+    access = GroupAccess(server.services.repos)
+    final_name = new_name or old_name
+    if new_name is not None and new_name != old_name:
+        vis = access.visibility(RESOURCE_STORAGE_BACKEND, old_name, shared=None)
+        access.clear(RESOURCE_STORAGE_BACKEND, old_name)
+        if vis["visibility"] == "groups":
+            access.set_visibility(
+                RESOURCE_STORAGE_BACKEND,
+                new_name,
+                "groups",
+                vis["group_ids"],
+            )
+    if body.visibility is not None:
+        _apply_storage_visibility(
+            server,
+            final_name,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+        )
+    from octop.infra.backend.browse import release_browse_session
+
+    await release_browse_session(backend_id)
+    return _row_to_dict(server.services.storage_backend_repo.get(backend_id), access=access)
 
 
 @admin_router.delete("/{backend_id}", status_code=204)
@@ -194,6 +256,10 @@ async def delete_storage_backend(
             f"storage backend {row.name!r} is referenced by {len(refs)} agent(s)",
             details={"agents": refs},
         )
+    from octop.infra.backend.browse import release_browse_session
+
+    await release_browse_session(backend_id)
+    GroupAccess(server.services.repos).clear(RESOURCE_STORAGE_BACKEND, row.name)
     server.services.storage_backend_repo.delete(backend_id)
 
 
@@ -224,6 +290,25 @@ async def probe_storage_backend_config(
     return probe_storage_backend(row)
 
 
+def _storage_browse_octop_error(exc: BaseException) -> OctopError:
+    from octop_harness.backends.storage_errors import classify_storage_error
+
+    from octop.infra.backend.browse import StorageBrowseError
+
+    if isinstance(exc, StorageBrowseError):
+        classified = exc.classified
+    else:
+        classified = classify_storage_error(exc)
+    details: dict[str, Any] = {"reason": classified.message}
+    if classified.message_key:
+        details["message_key"] = classified.message_key
+    return OctopError(
+        ErrorCode.STORAGE_BROWSE_FAILED,
+        classified.message,
+        details=details,
+    )
+
+
 @admin_router.get("/{backend_id}/tree")
 async def list_storage_backend_tree(
     backend_id: int,
@@ -235,12 +320,87 @@ async def list_storage_backend_tree(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    from octop.infra.backend.browse import list_storage_backend_tree as _list_tree
+    from octop.infra.backend.browse import (
+        StorageBrowseError,
+    )
+    from octop.infra.backend.browse import (
+        list_storage_backend_tree as _list_tree,
+    )
 
     try:
         return await _list_tree(row, path)
-    except ValueError as exc:
-        raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
+    except (StorageBrowseError, ValueError) as exc:
+        raise _storage_browse_octop_error(exc) from exc
+
+
+@admin_router.get("/{backend_id}/file")
+async def read_storage_backend_file(
+    backend_id: int,
+    path: str = Query(..., min_length=1),
+    _: Any = Depends(require_permission("storage_backends")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Read a UTF-8 text file for the storage browse preview pane."""
+    row = server.services.storage_backend_repo.get(backend_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backend.browse import StorageBrowseError, read_storage_backend_text
+
+    try:
+        content = await read_storage_backend_text(row, path)
+    except FileNotFoundError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, str(exc)) from exc
+    except (StorageBrowseError, ValueError) as exc:
+        raise _storage_browse_octop_error(exc) from exc
+    return {"path": path, "content": content}
+
+
+@admin_router.get("/{backend_id}/download")
+async def download_storage_backend_file(
+    backend_id: int,
+    path: str = Query(..., min_length=1),
+    preview: bool = Query(default=False),
+    _: Any = Depends(require_permission("storage_backends")),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Return file bytes for media / document preview and download."""
+    row = server.services.storage_backend_repo.get(backend_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backend.browse import (
+        StorageBrowseError,
+    )
+    from octop.infra.backend.browse import (
+        download_storage_backend_file as _download_file,
+    )
+
+    try:
+        data = await _download_file(row, path, preview=preview)
+    except FileNotFoundError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, str(exc)) from exc
+    except (StorageBrowseError, ValueError) as exc:
+        raise _storage_browse_octop_error(exc) from exc
+    fname = path.replace("\\", "/").rsplit("/", 1)[-1] or "download.bin"
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": content_disposition(fname)},
+    )
+
+
+@admin_router.delete("/{backend_id}/browse", status_code=204)
+async def close_storage_backend_browse(
+    backend_id: int,
+    _: Any = Depends(require_permission("storage_backends")),
+    server: Any = Depends(get_server),
+) -> None:
+    """Release the cached browse backend (Docker container + temp dir)."""
+    row = server.services.storage_backend_repo.get(backend_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backend.browse import release_browse_session
+
+    await release_browse_session(backend_id)
 
 
 @admin_router.post("/{backend_id}/test")
@@ -263,8 +423,21 @@ user_router = APIRouter()
 
 @user_router.get("")
 async def list_storage_backends_for_user(
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """Read-only storage backend list for regular users (secrets masked)."""
-    return [_row_to_dict(r) for r in server.services.storage_backend_repo.list_all()]
+    access = GroupAccess(server.services.repos)
+    is_admin = bool(user.is_admin)
+    out: list[dict[str, Any]] = []
+    for row in server.services.storage_backend_repo.list_all():
+        if not access.allows(
+            user_id=user.id,
+            is_admin=is_admin,
+            resource_type=RESOURCE_STORAGE_BACKEND,
+            resource_key=row.name,
+            is_owner=False,
+        ):
+            continue
+        out.append(_row_to_dict(row, access=access))
+    return out

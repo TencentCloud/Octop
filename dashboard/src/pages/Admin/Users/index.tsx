@@ -1,12 +1,15 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Users } from "lucide-react";
+import { Group, IdCard, Network, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { TAB_ICON_SIZE } from "../../../components/TabLabel";
 import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
+import RolesPanel from "./RolesPanel";
+import GroupsPanel from "./GroupsPanel";
 import UsersListPanel from "./UsersListPanel";
 import SsoPanel from "./SsoPanel";
+import LdapPanel from "./LdapPanel";
 import OauthProviderCard from "./OauthProviderCard";
 import { OAUTH_APP_PROVIDERS, type OauthAppKind } from "./oauthProviders";
 import ForbiddenPage from "../../../components/ForbiddenPage";
@@ -18,7 +21,7 @@ import dingtalkIcon from "../../../assets/channels/dingtalk.svg";
 import openidIcon from "../../../assets/providers/openid.svg";
 import styles from "./index.module.less";
 
-type TabKey = "local" | OauthAppKind | "oidc";
+type TabKey = "local" | "roles" | "groups" | OauthAppKind | "oidc" | "ldap";
 
 const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
   feishu: feishuIcon,
@@ -38,6 +41,8 @@ function BrandTabIcon({
 
 const TABS: TabBarItem<TabKey>[] = [
   { key: "local", labelKey: "adminUsers.tabLocal", icon: Users },
+  { key: "roles", labelKey: "adminUsers.tabRoles", icon: IdCard },
+  { key: "groups", labelKey: "adminUsers.tabGroups", icon: Group },
   {
     key: "feishu",
     labelKey: "adminUsers.tabFeishu",
@@ -58,14 +63,22 @@ const TABS: TabBarItem<TabKey>[] = [
     labelKey: "adminUsers.tabOidc",
     icon: <BrandTabIcon src={openidIcon} />,
   },
+  {
+    key: "ldap",
+    labelKey: "adminUsers.tabLdap",
+    icon: Network,
+  },
 ];
 
 function parseTab(raw: string | null): TabKey {
+  if (raw === "roles") return "roles";
+  if (raw === "groups") return "groups";
   if (
     raw === "feishu" ||
     raw === "wecom" ||
     raw === "dingtalk" ||
-    raw === "oidc"
+    raw === "oidc" ||
+    raw === "ldap"
   ) {
     return raw;
   }
@@ -106,7 +119,11 @@ export default function AdminUsersPage() {
   if (forbidden) return <ForbiddenPage />;
 
   let body: ReactNode = <UsersListPanel />;
-  if (activeTab === "oidc") {
+  if (activeTab === "roles") {
+    body = <RolesPanel />;
+  } else if (activeTab === "groups") {
+    body = <GroupsPanel />;
+  } else if (activeTab === "oidc") {
     body = (
       <div className={styles.ssoPanel}>
         <TabPanelHeader
@@ -115,6 +132,17 @@ export default function AdminUsersPage() {
           description={t("adminSso.oidcDesc")}
         />
         <SsoPanel />
+      </div>
+    );
+  } else if (activeTab === "ldap") {
+    body = (
+      <div className={styles.ssoPanel}>
+        <TabPanelHeader
+          icon={<Network size={22} />}
+          title={t("adminSso.ldapTitle")}
+          description={t("adminSso.ldapDesc")}
+        />
+        <LdapPanel />
       </div>
     );
   } else if (

@@ -1,8 +1,13 @@
 .card {
-  border: 1px solid var(--fn-border-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--fn-color-brand) 42%, var(--fn-border-primary));
   border-radius: var(--fn-radius-lg);
   padding: 14px 16px;
-  background: var(--fn-bg-primary);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 7%,
+    var(--fn-bg-primary)
+  );
   box-shadow: var(--fn-shadow-xs);
   box-sizing: border-box;
   width: 100%;

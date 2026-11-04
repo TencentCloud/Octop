@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from octop.infra.agents.execute_env import inject_agent_execute_env
+from octop.infra.agents.workspace.execute_env import inject_agent_execute_env
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.utils.env_file import save_env_file
 from octop.infra.utils.paths import PathLayout

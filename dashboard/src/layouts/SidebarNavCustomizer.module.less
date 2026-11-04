@@ -1,0 +1,106 @@
+.hint {
+  margin: 0 0 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.section {
+  margin-bottom: 16px;
+}
+
+.sectionLabel {
+  margin-bottom: 6px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 36px;
+  padding: 4px 4px 14px;
+  border: 1px dashed var(--fn-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--fn-radius-md);
+}
+
+.group {
+  margin-bottom: 10px;
+  padding: 8px;
+  border: 1px solid var(--fn-border, rgba(0, 0, 0, 0.08));
+  border-radius: var(--fn-radius-md);
+}
+
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.groupName {
+  flex: 1;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 6px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-sidebar-bg, transparent);
+}
+
+.row:hover {
+  background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.04));
+}
+
+.handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--fn-text-tertiary);
+  cursor: grab;
+}
+
+.itemIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--fn-text-secondary);
+}
+
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.empty {
+  padding: 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.footerActions {
+  display: flex;
+  gap: 8px;
+}

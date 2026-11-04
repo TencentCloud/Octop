@@ -1,4 +1,4 @@
-import { request, getAuthToken } from "../request";
+import { bridgeAgentHeaders, request, getAuthToken } from "../request";
 import { getApiUrl, getWsUrl } from "../config";
 import type {
   BrowserReplayRequest,
@@ -99,7 +99,10 @@ export const browserApi = {
   // -- Environment (Setup Wizard) --
 
   /** Check if a usable browser is available on the host. */
-  checkEnvStatus: () => request<BrowserEnvStatus>("/browser/env-status"),
+  checkEnvStatus: (agentId?: string | null) =>
+    request<BrowserEnvStatus>("/browser/env-status", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
 
   /**
    * Start Playwright Chromium installation via SSE stream (POST).

@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers.onnx_service import embed_texts
+from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 from octop.infra.agents.providers.probe import provider_headers
 
 # Remote OpenAI-compatible embedding APIs cap the number of inputs per request.
@@ -26,7 +27,11 @@ def embed_knowledge_texts(services: Any, texts: list[str]) -> list[list[float]]:
     if provider is None or not provider.base_url or not provider.api_key:
         raise RuntimeError("knowledge remote embedding provider is not ready")
     headers: dict[str, str] = {"Authorization": f"Bearer {provider.api_key}"}
-    extra = provider_headers(provider)
+    extra = ensure_opencode_session_header(
+        getattr(provider, "name", None),
+        provider_headers(provider),
+        base_url=provider.base_url,
+    )
     if extra:
         headers.update(extra)
     with httpx.Client(timeout=60.0) as client:
@@ -59,7 +64,22 @@ def _embed_remote_batched(
         data = response.json().get("data")
         if not isinstance(data, list):
             raise RuntimeError("knowledge embedding response has no data")
-        out.extend(list(item["embedding"]) for item in data)
+        ordered: list[list[float] | None] = [None] * len(batch)
+        for item in data:
+            if not isinstance(item, dict):
+                raise RuntimeError("knowledge embedding response has invalid data item")
+            index = item.get("index")
+            if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(batch):
+                raise RuntimeError("knowledge embedding response has invalid index")
+            if ordered[index] is not None:
+                raise RuntimeError("knowledge embedding response has duplicate index")
+            embedding = item.get("embedding")
+            if not isinstance(embedding, list):
+                raise RuntimeError("knowledge embedding response has invalid embedding")
+            ordered[index] = list(embedding)
+        if any(embedding is None for embedding in ordered):
+            raise RuntimeError("knowledge embedding response has missing index")
+        out.extend(embedding for embedding in ordered if embedding is not None)
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
     return out

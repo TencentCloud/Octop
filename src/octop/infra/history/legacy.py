@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from octop.infra.gateway.process.history_projection import _role, message_inputs
+from octop.infra.history.projection import _role, message_inputs
 
 
 async def checkpoint_snapshot(

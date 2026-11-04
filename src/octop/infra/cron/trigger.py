@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from typing import Literal
 
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -12,8 +13,22 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from octop.infra.errors import ErrorCode, OctopError
 
+# Recurring jobs only catch a short outage; the next tick covers the rest.
+RECURRING_MISFIRE_GRACE_SECONDS = 60
+# One-shot jobs have no next tick. Keep a day of downtime before calling them missed.
+ONE_SHOT_MISFIRE_GRACE_SECONDS = 24 * 60 * 60
+
+OneShotDisposition = Literal["schedule", "close", "miss"]
+
 _NUMERIC_DAY_OF_WEEK = re.compile(r"(?P<first>\*|\d+)(?:-(?P<last>\d+))?(?:/(?P<step>\d+))?")
 _UNIX_WEEKDAYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+class AgentlyMailTrigger:
+    """An external event source, never scheduled on the wall clock."""
+
+    def __init__(self, instance_id: str) -> None:
+        self.instance_id = instance_id
 
 
 def _unix_day_of_week(expression: str) -> str:
@@ -59,8 +74,8 @@ def _cron_trigger_from_unix_crontab(expression: str, *, timezone: str | None = N
     return CronTrigger.from_crontab(" ".join(fields), timezone=timezone)
 
 
-def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
-    """Parse 'cron:<expr>' / 'interval:<seconds>' / 'date:<ISO>'.
+def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger | AgentlyMailTrigger:
+    """Parse time schedules or 'agently:<connector instance id>'.
 
     ``timezone`` carries the configured server timezone (``config.default_timezone``) into
     wall-clock specs (``cron:`` and naive ``date:`` ISO times). APScheduler only injects the
@@ -75,6 +90,10 @@ def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
     if not value:
         raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"trigger value empty: {spec!r}")
     try:
+        if kind == "agently":
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
+                raise ValueError("invalid Agent Mail connector instance id")
+            return AgentlyMailTrigger(value)
         if kind == "interval":
             seconds = int(value)
             # A non-positive interval is a hot loop: the computed fire time stays
@@ -95,3 +114,27 @@ def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
             f"trigger spec {spec!r} could not be parsed: {exc}",
         ) from exc
     raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"unknown trigger kind: {kind!r}")
+
+
+def one_shot_disposition(
+    run_at: dt.datetime,
+    *,
+    now: dt.datetime,
+    last_run_at: int | None,
+    grace_seconds: int = ONE_SHOT_MISFIRE_GRACE_SECONDS,
+) -> OneShotDisposition:
+    """Whether a ``date:`` job should arm, stay finished, or be marked missed.
+
+    A run that already happened for this slot (or any earlier run once the slot
+    is in the past) does not fire again. A slot that was never reached, and is
+    older than *grace_seconds*, is missed. Anything else is still scheduled,
+    including a catch-up inside the grace window.
+    """
+    run_ts = int(run_at.timestamp())
+    if last_run_at is not None and last_run_at >= run_ts:
+        return "close"
+    if now >= run_at and last_run_at is not None:
+        return "close"
+    if now > run_at + dt.timedelta(seconds=grace_seconds):
+        return "miss"
+    return "schedule"

@@ -2,12 +2,8 @@
 #
 # Octop — 安装后回调
 #
-# 密码策略（修复 issue #502：旧版写死 Octop123 被应用弱密码黑名单拒绝，
-# 容器首次 init 报 "password is too common" 退出、反复重启）：
-# 安装向导提供「自己输入密码 / 自动生成随机密码」两种方式，此处预校验
-# 自定义密码，随机密码本地生成，统一写入 docker/.env 供容器首次 init 使用；
-# 并把凭据回落保存到数据共享目录 octop-login.txt（容器内 credential.txt 之外
-# 的宿主机侧备份），渲染应用「设置」窗口的当前密码显示。
+# 安装向导只收集用户自己设的管理员账号（用户名 / 密码确认，显示名与邮箱可选）。
+# 凭据写入 .env、data-share 引导文件与 octop-login.txt，供容器首次 init / 改密。
 #
 set -euo pipefail
 
@@ -25,9 +21,8 @@ free_octop_ports
 ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-# 容器数据目录在宿主机侧的挂载源（与 docker-compose.yaml 的卷映射保持一致），
-# 凭据回落保存到这里，升级/重建容器都保留。
-DATA_DIR="/var/apps/octop/share/octop/data"
+# 挂飞牛 data-share（TRIM_DATA_SHARE_PATHS），升级/重启都保留；旧 share/ 路径会迁过来。
+DATA_DIR="$(octop_prepare_docker_persist "$ENV_FILE")"
 mkdir -p "$DATA_DIR"
 
 fail_install() {
@@ -39,63 +34,46 @@ fail_install() {
 # ---------------------------------------------------------------------------
 # 解析向导字段（wizard/install 的 field 名即环境变量名）
 # ---------------------------------------------------------------------------
-ADMIN_USER="$(octop_sanitize_value "${wizard_admin_username:-admin}")"
-PASSWORD_MODE="$(octop_sanitize_value "${wizard_password_mode:-random}")"
+ADMIN_USER="$(octop_sanitize_value "${wizard_admin_username:-}")"
+ADMIN_DISPLAY="$(octop_sanitize_value "${wizard_admin_display_name:-}")"
+ADMIN_EMAIL="$(octop_sanitize_value "${wizard_admin_email:-}")"
 WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
-LOG_LEVEL="$(octop_sanitize_value "${wizard_log_level:-info}")"
-OPENAI="$(octop_sanitize_value "${wizard_openai_api_key:-}")"
-DASHSCOPE="$(octop_sanitize_value "${wizard_dashscope_api_key:-}")"
+WIZARD_CONFIRM="$(octop_sanitize_value "${wizard_admin_password_confirm:-}")"
 
-if [ -z "$ADMIN_USER" ]; then
-    fail_install "管理员用户名不能为空"
+if ! ADMIN_PASS_REASON="$(octop_validate_install_fields "$ADMIN_USER" "$WIZARD_PASSWORD" "$WIZARD_CONFIRM" "$ADMIN_EMAIL" "$ADMIN_DISPLAY" 2>&1)"; then
+    fail_install "$ADMIN_PASS_REASON"
 fi
-if ! printf '%s' "$ADMIN_USER" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}$'; then
-    fail_install "管理员用户名「${ADMIN_USER}」无效：只能包含字母、数字、点、下划线和连字符（2-32 位）"
-fi
-
-# ---------------------------------------------------------------------------
-# 密码：两种方式（自定义 / 随机生成），无效密码让安装直接失败并给出原因
-# ---------------------------------------------------------------------------
-case "$PASSWORD_MODE" in
-    custom)
-        if [ -z "$WIZARD_PASSWORD" ]; then
-            fail_install "您选择了自己输入密码，但密码为空。请返回安装向导输入密码，或改选「自动生成随机密码」。"
-        fi
-        if ! ADMIN_PASS_REASON="$(octop_validate_password "$WIZARD_PASSWORD" 2>&1)"; then
-            fail_install "管理员密码不符合要求：${ADMIN_PASS_REASON}（要求：至少 8 位，且同时包含字母和数字，不能使用过于常见的密码）"
-        fi
-        ADMIN_PASS="$WIZARD_PASSWORD"
-        ;;
-    random)
-        ADMIN_PASS="$(octop_generate_password 16)"
-        ;;
-    *)
-        fail_install "密码设置方式无效：${PASSWORD_MODE}（应为 custom 或 random）"
-        ;;
-esac
+ADMIN_PASS="$WIZARD_PASSWORD"
 
 {
     echo "OCTOP_PORT=8088"
     echo "OCTOP_BIND_HOST=0.0.0.0"
-    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
+    echo "OCTOP_LOG_LEVEL=info"
     echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
     echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
-    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
-    echo "OPENAI_API_KEY=${OPENAI}"
-    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
+    echo "OCTOP_ADMIN_DISPLAY_NAME=${ADMIN_DISPLAY}"
+    echo "OCTOP_ADMIN_EMAIL=${ADMIN_EMAIL}"
+    echo "TRIM_DATA_SHARE_PATHS=${DATA_DIR}"
+    echo "OCTOP_DATA=${DATA_DIR}"
 } > "$ENV_FILE"
 
 chmod 600 "$ENV_FILE"
-echo "[octop] 已写入配置: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+octop_persist_docker_env "$ENV_FILE"
+octop_write_fnos_bootstrap "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" "$ADMIN_DISPLAY" "$ADMIN_EMAIL"
+octop_distribute_docker_env "$ENV_FILE" "$DATA_DIR"
+if [ -f "${DATA_DIR}/.octop/octop.db" ]; then
+    octop_mark_fnos_passwd_pending "$DATA_DIR"
+fi
+echo "[octop] 已写入配置: $ENV_FILE（data-share=${DATA_DIR}）" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# 凭据回落保存（octop-login.txt）+ 「设置」窗口当前密码显示渲染
+# 凭据应急备份（octop-login.txt）+ 渲染「设置」窗口用户名
 # ---------------------------------------------------------------------------
 octop_write_login_file "$DATA_DIR" "$ADMIN_USER" "$ADMIN_PASS" 8088
 
 WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/wizard/config.template"
 WIZARD_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/wizard"
 [ -f "$WIZARD_TEMPLATE" ] || WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/../wizard/config"
-octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$ADMIN_USER" "$ADMIN_PASS"
+octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$ADMIN_USER" "$ADMIN_PASS" "$DATA_DIR"
 
 exit 0

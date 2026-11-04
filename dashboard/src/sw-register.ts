@@ -1,3 +1,5 @@
+import { publicUrl } from "./utils/publicUrl";
+
 /**
  * Service Worker registration and lifecycle management.
  *
@@ -64,10 +66,14 @@ export async function applyUpdate(): Promise<void> {
 
 /** Production registration. Exported for unit tests (vitest always sets DEV). */
 export async function registerProductionSW(): Promise<void> {
-  const registration = await navigator.serviceWorker.register("/sw.js", {
-    scope: "/",
-    updateViaCache: "none",
-  });
+  const scope = import.meta.env.BASE_URL || "/";
+  const registration = await navigator.serviceWorker.register(
+    publicUrl("sw.js"),
+    {
+      scope,
+      updateViaCache: "none",
+    },
+  );
 
   // Intentionally no controllerchange → location.reload() listener.
   // Chrome and Safari both pick up new assets via applyUpdate() instead.
@@ -107,6 +113,16 @@ export async function registerProductionSW(): Promise<void> {
     },
     60 * 60 * 1000,
   );
+
+  // Mobile Chrome often keeps a waiting worker forever unless something
+  // polls; check again when the tab becomes visible.
+  const onVisible = () => {
+    if (document.visibilityState === "visible") {
+      void registration.update();
+    }
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("pageshow", onVisible);
 }
 
 export async function registerSW(): Promise<void> {

@@ -6,6 +6,8 @@ export type MemoryMaintenancePhase =
   | "queued"
   | "waiting"
   | "backing_up"
+  | "inspecting"
+  | "cleaning"
   | "deduplicating"
   | "pruning"
   | "compacting"
@@ -15,6 +17,8 @@ export type MemoryMaintenancePhase =
 export interface MemoryMaintenanceStatus {
   phase: MemoryMaintenancePhase | string;
   kind?: string;
+  backend?: string;
+  scope?: string;
   percent?: number;
   detail?: string | null;
   file_bytes?: number | null;
@@ -29,12 +33,26 @@ const VISIBLE = new Set([
   "queued",
   "waiting",
   "backing_up",
+  "draining",
+  "validating",
+  "backing_up_current",
+  "restoring",
+  "restarting",
+  "inspecting",
+  "cleaning",
   "deduplicating",
   "pruning",
   "compacting",
 ]);
 const BLOCKING = new Set([
   "backing_up",
+  "draining",
+  "validating",
+  "backing_up_current",
+  "restoring",
+  "restarting",
+  "inspecting",
+  "cleaning",
   "deduplicating",
   "pruning",
   "compacting",
@@ -46,11 +64,13 @@ export function useMemoryMaintenance(
 ) {
   const [status, setStatus] = useState<MemoryMaintenanceStatus | null>(null);
   const [connectionLost, setConnectionLost] = useState(false);
+  const bridgeAgent = Boolean(agentId?.startsWith("bridge:"));
 
   useEffect(() => {
     setStatus(null);
     setConnectionLost(false);
-    if (!agentId || !enabled) {
+    // Bridge shadows have no local harness status / memory maintenance.
+    if (!agentId || !enabled || bridgeAgent) {
       return;
     }
     let stop = false;
@@ -78,7 +98,7 @@ export function useMemoryMaintenance(
       stop = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [agentId, enabled]);
+  }, [agentId, enabled, bridgeAgent]);
 
   const phase = status?.phase ?? "idle";
   return {

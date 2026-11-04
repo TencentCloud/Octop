@@ -86,3 +86,33 @@ async def test_preferences_timezone_rejects_invalid_value(env) -> None:
     client, _srv, auth = env
     r = await client.patch("/api/preferences", headers=auth, json={"timezone": "BAD_ZONE"})
     assert r.status_code in (400, 422)
+
+
+@pytest.mark.asyncio
+async def test_preferences_sidebar_nav_roundtrip(env) -> None:
+    client, _srv, auth = env
+    r = await client.get("/api/preferences", headers=auth)
+    assert r.status_code == 200
+    assert r.json()["sidebar_nav"] is None
+
+    payload = {
+        "sidebar_nav": {
+            "groups": [{"id": "settings"}, {"id": "c_aabbccdd1122", "name": "常用"}],
+            "items": [
+                {"key": "chat"},
+                {"key": "experts", "group": "c_aabbccdd1122"},
+                {"key": "tasks", "hidden": True},
+            ],
+        }
+    }
+    r = await client.patch("/api/preferences", headers=auth, json=payload)
+    assert r.status_code == 200
+    saved = r.json()["sidebar_nav"]
+    assert saved["groups"][1]["name"] == "常用"
+    assert saved["items"][1]["group"] == "c_aabbccdd1122"
+    assert saved["items"][2]["key"] == "tasks"
+    assert saved["items"][2]["hidden"] is True
+
+    r = await client.patch("/api/preferences", headers=auth, json={"sidebar_nav": None})
+    assert r.status_code == 200
+    assert r.json()["sidebar_nav"] is None

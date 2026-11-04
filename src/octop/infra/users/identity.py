@@ -7,6 +7,8 @@ from enum import StrEnum
 
 
 class Role(StrEnum):
+    """Built-in role-template public ids (also stored on ``users.role``)."""
+
     ADMIN = "admin"
     USER = "user"
 
@@ -15,7 +17,7 @@ class Role(StrEnum):
 class User:
     id: int
     username: str
-    role: Role
+    role: str  # role-template public id: admin | user | custom ULID
     display_name: str | None
     locale: str = "zh"
     permissions: list[str] = field(default_factory=list)
@@ -26,4 +28,4 @@ class User:
 
     @property
     def is_admin(self) -> bool:
-        return self.role is Role.ADMIN
+        return self.role == Role.ADMIN

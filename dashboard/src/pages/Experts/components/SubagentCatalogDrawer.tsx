@@ -29,6 +29,7 @@ export default function SubagentCatalogDrawer({
       open={open}
       onClose={onClose}
       mobileBodyPadding={0}
+      agentId={agentId}
     >
       {/*
         Flex column + overflow:hidden so fillHeight SubagentManager gets a

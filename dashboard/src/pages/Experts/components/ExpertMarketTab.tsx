@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, Drawer, Input, Segmented, Spin, Tag } from "antd";
+import { Button, Drawer, Input, Result, Spin, Tag } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -13,13 +13,21 @@ import {
 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
+import PillScroller from "../../../components/PillScroller";
 import {
   expertMarketApi,
   type ExpertMarketQuickPrompt,
   type MarketExpert,
 } from "../../../api/modules/expertMarket";
+import type { PublishedExpert } from "../../../api/modules/publishedExperts";
+import { PublishedExpertCard } from "./PublishedExpertCard";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
+import { FadeInImg } from "../../../components/FadeInImg";
+import { CardSkeleton } from "../../../components/Skeleton";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { isCatalogNetworkError } from "../../../utils/networkError";
 import { pickLocale } from "../../../utils/localizedText";
 import { pastelIconBackground } from "../../../utils/pastelIconBackground";
 import {
@@ -33,9 +41,15 @@ interface ExpertMarketTabProps {
   lang: "zh" | "en";
   installedExpertIds: Set<string>;
   onRequestCreate: (expert: MarketExpert) => void;
+  publishedExperts: PublishedExpert[];
+  publishedLoading: boolean;
+  onInstallPublished: (expert: PublishedExpert) => void;
+  onPublishedChanged: () => void;
 }
 
 const SCENE_ALL = "";
+const SOURCE_REMOTE = "remote";
+const SOURCE_PUBLISHED = "published";
 
 function descOf(expert: MarketExpert, lang: "zh" | "en"): string {
   return pickLocale(expert.description, lang) || "";
@@ -43,14 +57,6 @@ function descOf(expert: MarketExpert, lang: "zh" | "en"): string {
 
 function labelOf(expert: MarketExpert, lang: "zh" | "en"): string {
   return pickLocale(expert.label, lang) || expert.slug;
-}
-
-function marketErrorMessage(err: unknown, fallback: string): string {
-  const raw = err instanceof Error ? err.message : String(err || "");
-  if (raw.includes("404") || raw.includes("Not Found")) {
-    return fallback;
-  }
-  return raw || fallback;
 }
 
 function sceneLabel(scene: string, t: TFunction): string {
@@ -79,52 +85,84 @@ export default function ExpertMarketTab({
   lang,
   installedExpertIds,
   onRequestCreate,
+  publishedExperts,
+  publishedLoading,
+  onInstallPublished,
+  onPublishedChanged,
 }: ExpertMarketTabProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<MarketExpert[]>([]);
   const [scenes, setScenes] = useState<string[]>([]);
   const [activeScene, setActiveScene] = useState(SCENE_ALL);
+  const [source, setSource] = useState<
+    typeof SOURCE_REMOTE | typeof SOURCE_PUBLISHED
+  >(SOURCE_REMOTE);
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [networkFailure, setNetworkFailure] = useState(false);
+  const [listQuery, setListQuery] = useState<string | null>(null);
+  const listQueryRef = useRef<string | null>(null);
+  const reqGen = useRef(0);
   const [selected, setSelected] = useState<MarketExpert | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchMarket = useCallback(
-    async (query = keyword, scene = activeScene, force = false) => {
+    async (query: string, gen: number, force = false) => {
+      if (gen !== reqGen.current) return;
+      const trimmed = query.trim();
       if (force) setRefreshing(true);
-      else setLoading(true);
+      else if (listQueryRef.current === null) setLoading(true);
       try {
-        const resp = await expertMarketApi.list(query, scene);
+        const resp = await expertMarketApi.list(trimmed);
+        if (gen !== reqGen.current) return;
         setItems(resp?.items ?? []);
         if (Array.isArray(resp?.scenes) && resp.scenes.length > 0) {
           setScenes(resp.scenes);
         }
-        setErrorMessage(null);
+        listQueryRef.current = trimmed;
+        setListQuery(trimmed);
+        setLoadFailed(false);
+        setNetworkFailure(false);
       } catch (err) {
-        const msg = marketErrorMessage(err, t("experts.marketBackendMissing"));
-        setErrorMessage(msg);
-        message.error(msg);
+        if (gen !== reqGen.current) return;
+        const network = isCatalogNetworkError(err, "NETWORK_ERROR");
+        setNetworkFailure(network);
+        if (listQueryRef.current === null) {
+          setLoadFailed(true);
+        } else {
+          listQueryRef.current = trimmed;
+          setListQuery(trimmed);
+          message.error(
+            network
+              ? t("apiErrors.NETWORK_ERROR")
+              : t("experts.marketUnavailable"),
+          );
+        }
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (gen === reqGen.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [activeScene, keyword, t],
+    [t],
   );
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const scene = keyword.trim() ? SCENE_ALL : activeScene;
-      void fetchMarket(keyword, scene);
+    const gen = ++reqGen.current;
+    const query = keyword;
+    const timer = setTimeout(() => {
+      void fetchMarket(query, gen);
     }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [keyword, activeScene, fetchMarket]);
+    return () => clearTimeout(timer);
+  }, [keyword, fetchMarket]);
+
+  const reloadMarket = useCallback(() => {
+    const gen = ++reqGen.current;
+    void fetchMarket(keyword, gen, true);
+  }, [fetchMarket, keyword]);
 
   const openDetail = useCallback(
     async (expert: MarketExpert) => {
@@ -154,10 +192,12 @@ export default function ExpertMarketTab({
 
   const selectedTaskExamples = selected ? taskExampleTexts(selected, lang) : [];
 
-  const totalText = useMemo(
-    () => t("experts.totalMarket", { count: items.length }),
-    [items.length, t],
-  );
+  const visibleItems = useMemo(() => {
+    const queryText = keyword.trim();
+    if ((queryText && listQuery === queryText) || !activeScene) return items;
+    const scene = activeScene.toLowerCase();
+    return items.filter((item) => (item.scene || "").toLowerCase() === scene);
+  }, [activeScene, items, keyword, listQuery]);
 
   const sceneOptions = useMemo(
     () => [
@@ -189,156 +229,259 @@ export default function ExpertMarketTab({
     };
   }, [lang, selected]);
 
-  if (loading && items.length === 0) {
-    return (
-      <div className={styles.loadingState}>
-        <Spin />
-      </div>
+  const queryText = keyword.trim();
+  const catalogReady = listQuery !== null;
+  const catalogFailed = loadFailed && !catalogReady;
+  const initialLoading = loading && !catalogReady;
+  const marketAwaiting = catalogReady && listQuery !== queryText;
+  const visiblePublished = useMemo(() => {
+    const query = queryText.toLowerCase();
+    if (!query) return publishedExperts;
+    return publishedExperts.filter((expert) =>
+      [expert.name, expert.description, expert.creator_username].some((part) =>
+        (part ?? "").toLowerCase().includes(query),
+      ),
     );
-  }
+  }, [publishedExperts, queryText]);
+  const publishedOnly = source === SOURCE_PUBLISHED;
+  const publishedCards =
+    visiblePublished.length > 0 ? (
+      <div className={styles.cardGrid}>
+        {visiblePublished.map((expert) => (
+          <PublishedExpertCard
+            key={expert.id}
+            expert={expert}
+            onInstall={onInstallPublished}
+          />
+        ))}
+      </div>
+    ) : null;
+  const showSceneTabs =
+    source === SOURCE_REMOTE &&
+    !catalogFailed &&
+    catalogReady &&
+    !marketAwaiting &&
+    !queryText &&
+    sceneOptions.length > 1;
 
   return (
     <div className={styles.marketContainer}>
-      <div className={styles.gridToolbar}>
-        <span className={styles.gridCount}>{totalText}</span>
-        <div
-          className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
-        >
-          <Input
-            className={styles.marketSearch}
-            prefix={<Search size={14} />}
-            allowClear
-            value={keyword}
-            placeholder={t("experts.marketSearchPlaceholder")}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          <button
-            className={styles.toolbarIconBtn}
-            disabled={refreshing}
-            onClick={() => void fetchMarket(keyword, activeScene, true)}
-            type="button"
+      {!initialLoading && (
+        <div className={cx(styles.gridToolbar, styles.marketSourceRow)}>
+          <div className={styles.marketSourceTabs} role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === SOURCE_REMOTE}
+              className={cx(
+                styles.marketSourceTab,
+                source === SOURCE_REMOTE && styles.marketSourceTabActive,
+              )}
+              onClick={() => setSource(SOURCE_REMOTE)}
+            >
+              {t("experts.marketSourceRemote")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === SOURCE_PUBLISHED}
+              className={cx(
+                styles.marketSourceTab,
+                source === SOURCE_PUBLISHED && styles.marketSourceTabActive,
+              )}
+              onClick={() => setSource(SOURCE_PUBLISHED)}
+            >
+              {t("experts.published.scene")}
+            </button>
+          </div>
+          <div
+            className={cx(styles.gridToolbarRight, styles.marketToolbarRight)}
           >
-            <RefreshCw
-              size={14}
-              className={refreshing ? styles.spinning : undefined}
+            <Input
+              className={styles.marketSearch}
+              prefix={<Search size={14} />}
+              allowClear
+              value={keyword}
+              placeholder={t("experts.marketSearchPlaceholder")}
+              onChange={(e) => setKeyword(e.target.value)}
             />
-          </button>
-        </div>
-      </div>
-
-      {!keyword && sceneOptions.length > 1 && (
-        <div className={styles.marketSceneTabsWrap}>
-          <Segmented
-            block
-            size="large"
-            value={activeScene}
-            onChange={(v) => setActiveScene(String(v))}
-            options={sceneOptions}
-            className={styles.marketSceneTabs}
-          />
+            <button
+              className={styles.toolbarIconBtn}
+              disabled={refreshing}
+              onClick={() => {
+                onPublishedChanged();
+                reloadMarket();
+              }}
+              type="button"
+            >
+              <RefreshCw
+                size={14}
+                className={refreshing ? styles.spinning : undefined}
+              />
+            </button>
+          </div>
         </div>
       )}
 
-      {items.length === 0 ? (
-        <div className={styles.emptyState}>
-          <Layers size={48} style={{ color: "var(--fn-text-tertiary)" }} />
-          <div className={styles.emptyTitle}>
-            {errorMessage
-              ? t("experts.marketLoadFailed")
-              : t("experts.emptyMarket")}
+      {showSceneTabs ? (
+        <PillScroller
+          options={sceneOptions}
+          active={activeScene}
+          onSelect={setActiveScene}
+          prevLabel={t("experts.marketScenePrev")}
+          nextLabel={t("experts.marketSceneNext")}
+        />
+      ) : null}
+
+      {initialLoading ? (
+        <div className={styles.marketStage}>
+          <Spin />
+        </div>
+      ) : publishedOnly ? (
+        publishedCards ?? (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyHint}>
+              {publishedLoading
+                ? null
+                : queryText
+                ? t("experts.filterEmpty")
+                : t("experts.published.emptyHint")}
+            </div>
           </div>
-          <div className={styles.emptyHint}>
-            {errorMessage || t("experts.emptyMarketHint")}
+        )
+      ) : catalogFailed ? (
+        <>
+          <div className={styles.marketStage}>
+            <Result
+              className={styles.marketLoadResult}
+              icon={<OctopEmptyMascot size={120} />}
+              title={t("experts.marketLoadFailed")}
+              subTitle={
+                networkFailure
+                  ? t("apiErrors.NETWORK_ERROR")
+                  : t("experts.marketUnavailable")
+              }
+              extra={
+                <Button
+                  type="primary"
+                  loading={refreshing}
+                  onClick={() => {
+                    onPublishedChanged();
+                    reloadMarket();
+                  }}
+                >
+                  {t("common.retry")}
+                </Button>
+              }
+            />
           </div>
-          {errorMessage && (
-            <div className={styles.emptyActions}>
-              <button
-                className={styles.emptyAction}
-                onClick={() => void fetchMarket(keyword, activeScene, true)}
-                type="button"
-              >
-                {t("common.refresh")}
-              </button>
+        </>
+      ) : (
+        <>
+          {marketAwaiting ? (
+            <div className={styles.loadingSkeleton}>
+              <CardSkeleton
+                count={6}
+                containerStyle={{
+                  gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                  rowGap: 16,
+                  columnGap: 12,
+                  padding: "20px 0 24px",
+                }}
+              />
+            </div>
+          ) : visibleItems.length === 0 ? (
+            <div className={styles.emptyState}>
+              <Layers size={48} style={{ color: "var(--fn-text-tertiary)" }} />
+              <div className={styles.emptyTitle}>
+                {t("experts.emptyMarket")}
+              </div>
+              <div className={styles.emptyHint}>
+                {t("experts.emptyMarketHint")}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.cardGrid}>
+              {visibleItems.map((expert) => {
+                const installed = installedExpertIds.has(expert.id);
+                const label = labelOf(expert, lang);
+                const desc = descOf(expert, lang);
+                const accent = expert.color || "#6366f1";
+                return (
+                  <div
+                    key={expert.id}
+                    className={styles.expertTemplateCard}
+                    onClick={() => void openDetail(expert)}
+                    style={
+                      {
+                        "--expert-accent": accent,
+                      } as CSSProperties
+                    }
+                  >
+                    <div className={styles.marketCardHeader}>
+                      <div
+                        className={styles.agentCardIcon}
+                        style={{
+                          color: accent,
+                          background: `${accent}18`,
+                        }}
+                      >
+                        {expert.icon_url ? (
+                          <FadeInImg
+                            src={expert.icon_url}
+                            alt=""
+                            crossOrigin="anonymous"
+                            className={styles.marketIconImg}
+                          />
+                        ) : (
+                          iconForName(expert.icon_name || "zap", 20)
+                        )}
+                      </div>
+                      <div className={styles.agentCardTitleBlock}>
+                        <div className={styles.agentCardName}>{label}</div>
+                      </div>
+                    </div>
+                    <div className={styles.agentCardDesc}>
+                      {desc || t("experts.noMarketDescription")}
+                    </div>
+                    <div className={styles.marketCardFooter}>
+                      <div className={styles.marketCardFooterStart}>
+                        <span className={styles.marketMeta}>
+                          <Zap size={13} />
+                          {t("experts.marketSkillCount", {
+                            count:
+                              expert.skill_count ??
+                              expert.skill_slugs?.length ??
+                              0,
+                          })}
+                        </span>
+                        {installed && (
+                          <div className={styles.expertInstalledLabel}>
+                            <CheckCircle size={12} />
+                            {t("experts.installedBadge")}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<Download size={14} />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openCreate(expert);
+                        }}
+                      >
+                        {installed
+                          ? t("experts.createAgainFromMarket")
+                          : t("experts.createFromMarket")}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
-      ) : (
-        <div className={styles.cardGrid}>
-          {items.map((expert) => {
-            const installed = installedExpertIds.has(expert.id);
-            const label = labelOf(expert, lang);
-            const desc = descOf(expert, lang);
-            const accent = expert.color || "#6366f1";
-            return (
-              <div
-                key={expert.id}
-                className={styles.expertTemplateCard}
-                onClick={() => void openDetail(expert)}
-                style={
-                  {
-                    "--expert-accent": accent,
-                  } as CSSProperties
-                }
-              >
-                <div className={styles.marketCardHeader}>
-                  <div
-                    className={styles.agentCardIcon}
-                    style={{
-                      color: accent,
-                      background: `${accent}18`,
-                    }}
-                  >
-                    {expert.icon_url ? (
-                      <img
-                        src={expert.icon_url}
-                        alt=""
-                        className={styles.marketIconImg}
-                      />
-                    ) : (
-                      iconForName(expert.icon_name || "zap", 20)
-                    )}
-                  </div>
-                  <div className={styles.agentCardTitleBlock}>
-                    <div className={styles.agentCardName}>{label}</div>
-                  </div>
-                </div>
-                <div className={styles.agentCardDesc}>
-                  {desc || t("experts.noMarketDescription")}
-                </div>
-                <div className={styles.marketCardFooter}>
-                  <div className={styles.marketCardFooterStart}>
-                    <span className={styles.marketMeta}>
-                      <Zap size={13} />
-                      {t("experts.marketSkillCount", {
-                        count:
-                          expert.skill_count ?? expert.skill_slugs?.length ?? 0,
-                      })}
-                    </span>
-                    {installed && (
-                      <div className={styles.expertInstalledLabel}>
-                        <CheckCircle size={12} />
-                        {t("experts.installedBadge")}
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<Download size={14} />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openCreate(expert);
-                    }}
-                  >
-                    {installed
-                      ? t("experts.createAgainFromMarket")
-                      : t("experts.createFromMarket")}
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        </>
       )}
 
       <Drawer

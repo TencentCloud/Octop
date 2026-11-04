@@ -1,4 +1,4 @@
-"""Project harness stream chunks into harness-gateway MessageEvent objects."""
+"""Project harness stream chunks into octop-gateway MessageEvent objects."""
 
 from __future__ import annotations
 
@@ -6,20 +6,28 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from harness_gateway.media import MediaBackend
-from harness_gateway.models import MessageEvent
+from octop_gateway.media import MediaBackend
+from octop_gateway.models import MessageEvent
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
-from octop.infra.gateway.hitl.format import format_hitl_card
-from octop.infra.gateway.media.tool_media import media_events_from_tool_result
+from octop.infra.gateway.hitl.format import format_hitl_card, normalize_hitl_request
+from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
+from octop.infra.gateway.media.tool_media import (
+    media_events_from_tool_result,
+    note_live_tool_call,
+    select_turn_tool_results,
+)
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker
 from octop.infra.gateway.process.usage_record import UsageTracker
+from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
+
+install_harness_hitl_compat()
 
 
 @dataclass
@@ -35,49 +43,14 @@ class _ToolProjectionState:
     tool_started: set[str] = field(default_factory=set)
     active_tool_idx: str | None = None
     # True once we've seen at least one tool_call_chunk in this stream.
-    # Media events are only emitted when a tool was actually called this turn;
-    # historical tool results (replayed via PatchToolCallsMiddleware / Overwrite)
-    # must not trigger re-sends.
+    # Failed-tool logging uses this; media delivery uses live_tool_call_ids.
     saw_tool_call: bool = False
-    # Track tool_call_ids whose media we've already emitted to prevent
-    # re-emission when PatchToolCallsMiddleware emits Overwrite(full_history).
+    # Ids opened by this turn's tool_call_chunk. Full-history updates that
+    # arrive after the call still contain every prior ToolMessage.
+    live_tool_call_ids: set[str] = field(default_factory=set)
+    # Ids whose media was already pushed this turn (intra-turn replay).
     emitted_media_ids: set[str] = field(default_factory=set)
-
-
-def _dedup_tool_result_messages(
-    chunk: dict[str, Any],
-    emitted_ids: set[str],
-) -> dict[str, Any] | None:
-    """Filter ``tool_result`` messages to those not yet emitted this stream.
-
-    When ``PatchToolCallsMiddleware`` returns ``Overwrite(full_history)`` the
-    ``tool_result`` chunk contains every ToolMessage ever (including ones from
-    previous turns).  We keep only messages whose ``tool_call_id`` hasn't been
-    seen yet in this stream, then record the new ones.
-
-    Returns the (possibly trimmed) chunk, or ``None`` when all messages are
-    duplicates.
-    """
-    messages = chunk.get("messages")
-    if not isinstance(messages, list):
-        return chunk
-
-    new_messages = []
-    for msg in messages:
-        msg_id = getattr(msg, "tool_call_id", None) or (
-            msg.get("tool_call_id") if isinstance(msg, dict) else None
-        )
-        if msg_id and msg_id in emitted_ids:
-            continue
-        new_messages.append(msg)
-        if msg_id:
-            emitted_ids.add(msg_id)
-
-    if not new_messages:
-        return None
-    if len(new_messages) == len(messages):
-        return chunk
-    return {**chunk, "messages": new_messages}
+    emitted_tool_error_ids: set[str] = field(default_factory=set)
 
 
 def enrich_tool_stream_chunk(
@@ -131,6 +104,8 @@ async def _project_chunks(
         return MessageEvent.tool_start(
             label,
             tool_hint_text=channel_tool_hint_start(label, loc),
+            # Raw tool id for invoke-collapse / team channel UX (label is localized).
+            tool_key=raw,
         )
 
     def _tool_end(raw: str) -> MessageEvent:
@@ -166,6 +141,7 @@ async def _project_chunks(
 
         elif ctype == "tool_call_chunk":
             tool_state.saw_tool_call = True
+            note_live_tool_call(chunk, tool_state.live_tool_call_ids)
             idx_key = f"_idx_{chunk.get('index', 0)}"
             tool_state.active_tool_idx = idx_key
 
@@ -186,6 +162,13 @@ async def _project_chunks(
                 yield _tool_start(tool_state.tool_name_buf[idx_key])
 
         elif ctype == "tool_result":
+            log_failed_tool_results(
+                chunk,
+                agent_id=agent_id,
+                thread_id=(hitl_ctx.thread_id if hitl_ctx is not None else ""),
+                seen=tool_state.emitted_tool_error_ids,
+                live=tool_state.saw_tool_call,
+            )
             final_name = (
                 tool_state.tool_name_buf.get(tool_state.active_tool_idx or "", "") or "tool"
             )
@@ -198,8 +181,12 @@ async def _project_chunks(
                 tool_state.tool_name_buf.pop(idx, None)
                 tool_state.tool_started.discard(idx)
                 tool_state.active_tool_idx = None
-            if harness_workspace is not None and tool_state.saw_tool_call:
-                chunk_for_media = _dedup_tool_result_messages(chunk, tool_state.emitted_media_ids)
+            if harness_workspace is not None:
+                chunk_for_media = select_turn_tool_results(
+                    chunk,
+                    tool_state.live_tool_call_ids,
+                    tool_state.emitted_media_ids,
+                )
                 if chunk_for_media is not None:
                     async for media_event in media_events_from_tool_result(
                         chunk_for_media,
@@ -212,8 +199,10 @@ async def _project_chunks(
             request = chunk.get("request")
             if not isinstance(request, dict):
                 request = {}
+            request = normalize_hitl_request(request)
             if hitl_coordinator is not None and hitl_ctx is not None:
                 record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
+                request["pending_id"] = record.pending_id
                 card = format_hitl_card(
                     record.action_requests,
                     pending_id=record.pending_id,
@@ -231,6 +220,27 @@ async def _project_chunks(
             tool_state.current_node = node
 
 
+def _with_session_auto_approve(
+    source: AsyncIterator[dict[str, Any]],
+    *,
+    agent_manager: AgentManager,
+    agent_id: str,
+    thread_id: str,
+    hitl_coordinator: HitlChannelCoordinator | None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Skip a follow-up card when this chat already allows the tool."""
+    if hitl_coordinator is None or not thread_id:
+        return source
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    return iter_with_session_auto_approve(
+        source,
+        thread_id=thread_id,
+        policies=hitl_coordinator.session_policies,
+        resume=lambda decisions: agent_manager.resume_hitl(agent_id, thread_id, decisions),
+    )
+
+
 async def project_stream(
     agent_manager: AgentManager,
     agent_id: str,
@@ -245,8 +255,15 @@ async def project_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
+    thread_id = hitl_ctx.thread_id if hitl_ctx is not None else ""
     async for ev in _project_chunks(
-        agent_manager.stream(agent_id, request),
+        _with_session_auto_approve(
+            agent_manager.stream(agent_id, request),
+            agent_manager=agent_manager,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            hitl_coordinator=hitl_coordinator,
+        ),
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,
@@ -273,7 +290,13 @@ async def project_resume_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     async for ev in _project_chunks(
-        agent_manager.resume_hitl(agent_id, thread_id, decisions),
+        _with_session_auto_approve(
+            agent_manager.resume_hitl(agent_id, thread_id, decisions),
+            agent_manager=agent_manager,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            hitl_coordinator=hitl_coordinator,
+        ),
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,

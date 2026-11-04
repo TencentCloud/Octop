@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../hooks/sseHelpers";
 import {
+  findAutoResumableApproval,
   findPendingApproval,
   findPendingAsk,
   hasPendingHitl,
+  promoteAskUserToolMessage,
 } from "./pendingHitl";
 
 function msg(
@@ -79,6 +81,7 @@ describe("pendingHitl", () => {
             },
           ],
           status: "pending",
+          pending_id: "ab12",
         },
       }),
     ]);
@@ -122,6 +125,53 @@ describe("pendingHitl", () => {
     expect(pending?.actions[0]?.name).toBe("execute");
   });
 
+  it("auto-resumes tool approvals under allow-all but not questions", () => {
+    const messages = [
+      msg({
+        id: "tool",
+        role: "assistant",
+        hitlData: {
+          action_requests: [{ name: "execute", args: { command: "ls" } }],
+          status: "pending",
+        },
+      }),
+    ];
+    expect(
+      findAutoResumableApproval({ mode: "allow_all" }, messages)?.messageId,
+    ).toBe("tool");
+    expect(
+      findAutoResumableApproval(
+        { mode: "allow_tools", tools: ["execute"] },
+        messages,
+      )?.messageId,
+    ).toBe("tool");
+    expect(
+      findAutoResumableApproval(
+        { mode: "allow_tools", tools: ["write_file"] },
+        messages,
+      ),
+    ).toBeNull();
+    expect(findAutoResumableApproval({ mode: "ask" }, messages)).toBeNull();
+    expect(
+      findAutoResumableApproval({ mode: "allow_all" }, [
+        msg({
+          id: "ask",
+          role: "assistant",
+          hitlData: {
+            action_requests: [
+              {
+                name: "ask_user_question",
+                args: { questions: [{ question: "Which?" }] },
+              },
+            ],
+            status: "pending",
+            pending_id: "ab12",
+          },
+        }),
+      ]),
+    ).toBeNull();
+  });
+
   it("ignores ask pauses without parseable questions", () => {
     expect(
       findPendingAsk([
@@ -135,5 +185,23 @@ describe("pendingHitl", () => {
         }),
       ]),
     ).toBeNull();
+  });
+
+  it("ignores reconstructed asks that the server cannot resume", () => {
+    const reconstructed = promoteAskUserToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "ask_user_question",
+          arguments: JSON.stringify({
+            questions: [{ question: "Which DB?", options: [{ label: "PG" }] }],
+          }),
+        },
+      }),
+    );
+    expect(reconstructed.hitlData?.status).toBe("pending");
+    expect(findPendingAsk([reconstructed])).toBeNull();
+    expect(hasPendingHitl([reconstructed])).toBe(false);
   });
 });

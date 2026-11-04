@@ -34,6 +34,14 @@ function payloadNumber(
   return typeof value === "number" ? value : null;
 }
 
+function payloadString(
+  payload: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = payload[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 /** Prefer the assistant row for a request; fall back to any matching event. */
 export function findSourceEventId(
   events: readonly TrajectoryEvent[],
@@ -125,6 +133,8 @@ function SummaryPane({
   onSelectEvent?: (eventId: string) => void;
 }) {
   const { t } = useTranslation();
+  const model =
+    event.kind === "assistant" ? payloadString(event.payload, "model") : null;
   const inputTokens = payloadNumber(event.payload, "input_tokens");
   const outputTokens = payloadNumber(event.payload, "output_tokens");
   const sourceId =
@@ -145,6 +155,12 @@ function SummaryPane({
           <dt>{t("chat.trajectoryInspectorKind", "Kind")}</dt>
           <dd>{kindLabelFor(event.kind)}</dd>
         </div>
+        {model != null ? (
+          <div className={styles.field}>
+            <dt>{t("chat.trajectoryInspectorModel", "Model")}</dt>
+            <dd>{model}</dd>
+          </div>
+        ) : null}
         {event.request_seq != null ? (
           <div className={styles.field}>
             <dt>{t("chat.trajectoryInspectorSource", "Source")}</dt>
@@ -196,10 +212,12 @@ function RawPane({
   agentId,
   threadId,
   eventId,
+  contentSource,
 }: {
   agentId: string;
   threadId: string;
   eventId: string;
+  contentSource?: string | null;
 }) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -226,7 +244,7 @@ function RawPane({
     return () => {
       cancelled = true;
     };
-  }, [agentId, eventId, threadId]);
+  }, [agentId, contentSource, eventId, threadId]);
 
   return (
     <pre className={styles.raw} data-testid="trajectory-raw">
@@ -283,7 +301,8 @@ function PreviewPane({
   event: TrajectoryEvent;
 }) {
   const { t } = useTranslation();
-  const plain = event.kind === "tool";
+  const plain =
+    event.kind === "tool" || event.payload.source === "model_system";
   const initial = plain
     ? coerceToolResultText(event.payload.result) ||
       coerceToolResultText(event.payload.output) ||
@@ -324,6 +343,7 @@ function PreviewPane({
     agentId,
     event.event_id,
     event.kind,
+    event.payload.content_source,
     event.payload.result,
     event.payload.output,
     event.summary,
@@ -367,7 +387,10 @@ export default function TrajectoryInspector({
   }
 
   const kindLabel = kindLabelFor(event.kind);
+  const headerLabel =
+    typeof event.payload.label === "string" ? event.payload.label.trim() : "";
   const locationParts = [
+    headerLabel || null,
     event.request_seq != null ? `Request #${event.request_seq}` : null,
     `Step ${event.seq}`,
   ].filter(Boolean);
@@ -432,6 +455,11 @@ export default function TrajectoryInspector({
                 agentId={agentId}
                 threadId={threadId}
                 eventId={event.event_id}
+                contentSource={
+                  typeof event.payload.content_source === "string"
+                    ? event.payload.content_source
+                    : null
+                }
               />
             ),
           },

@@ -14,6 +14,7 @@ export {
 export {
   parseOctopToolOutput,
   mergePatchedToolOutput,
+  resolvePluginUiData,
 } from "./parseToolOutput";
 export {
   registerToolRenderer,

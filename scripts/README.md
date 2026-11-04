@@ -10,9 +10,9 @@
 
 | 平台 | 命令 |
 |------|------|
-| macOS / Linux | `curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh \| bash` |
-| Windows (PowerShell) | `irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 \| iex` |
-| Windows (cmd) | 下载 `…/octop/install.bat` 后运行，或使用下方本地脚本 |
+| macOS / Linux | `curl -fsSL https://download.octop.cloud/octop/scripts/install.sh \| bash` |
+| Windows (PowerShell) | `irm https://download.octop.cloud/octop/scripts/install.ps1 \| iex` |
+| Windows (cmd) | 下载 `…/octop/scripts/install.bat` 后运行，或使用下方本地脚本 |
 
 ### 本地脚本（仓库内）
 
@@ -31,9 +31,8 @@ bash scripts/install.sh
 # 指定版本
 bash scripts/install.sh --version 0.1.0
 
-# 安装可选附加组件
+# 安装可选附加组件（下载 Playwright Chromium）
 bash scripts/install.sh --extras browser
-bash scripts/install.sh --extras browser,channels-feishu
 
 # 从本地源码安装（开发/离线）
 bash scripts/install.sh --from-source
@@ -81,7 +80,7 @@ powershell -File scripts/wheel_build.ps1
 
 输出：`dist/*.whl`、`dist/*.tar.gz`
 
-发布前请确认 `pyproject.toml` 中的 `orcakit-harness-agent`、`harness-gateway` 等依赖已发布到 PyPI（`[tool.uv.sources]` 仅对 uv 本地开发生效，pip/PyPI 不读取）。
+发布前请确认 `pyproject.toml` 中的 `octop-harness`、`octop-gateway` 等依赖已发布到 PyPI（`[tool.uv.sources]` 仅对 uv 本地开发生效，pip/PyPI 不读取）。
 
 ---
 

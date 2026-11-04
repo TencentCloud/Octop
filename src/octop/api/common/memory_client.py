@@ -1,6 +1,6 @@
 """Per-agent ``Memory`` instance management for the dashboard router.
 
-Owns a tiny LRU cache of ``harness_memory.core.Memory`` instances
+Owns a tiny LRU cache of ``octop_memory.core.Memory`` instances
 keyed by ``agent_id``. Backend may be sqlite (default workspace file) or
 postgres when ``config_json.memory.backend`` says so.
 """
@@ -14,8 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from octop.api.common.agent import require_agent_owner_row
-from octop.infra.agents.memory_backend import open_memory_kwargs
-from octop.infra.agents.workspace_dir import host_system_dir
+from octop.infra.agents.memory.backend import open_memory_kwargs
+from octop.infra.agents.workspace.dir import host_system_dir
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ _MEMORY_NS_PREFIX = "agent_"
 
 
 def memory_namespace(agent_id: str) -> str:
-    """Return the memory namespace harness-memory uses for ``agent_id``."""
+    """Return the memory namespace octop-memory uses for ``agent_id``."""
     return f"{_MEMORY_NS_PREFIX}{agent_id}"
 
 
@@ -70,8 +70,8 @@ class _MemoryCache:
         backend_config: dict[str, Any] | None,
         fingerprint: str,
     ) -> tuple[Any, Any]:
-        from harness_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
-        from harness_memory.core import Memory  # noqa: PLC0415
+        from octop_memory.adapters.bridge.handlers import Bridge  # noqa: PLC0415
+        from octop_memory.core import Memory  # noqa: PLC0415
 
         with self._lock:
             cached = self._entries.get(agent_id)
@@ -126,6 +126,11 @@ def _open_memory_for_agent(server: Any, agent_id: str) -> tuple[Any, Any]:
         workspace_dir=workspace,
     )
     fingerprint = f"{ns}:{backend}:{backend_config}"
+    runtime = getattr(server, "app_runtime", None)
+    if runtime is not None:
+        status = runtime.agent_registry.memory_slim.status(agent_id)
+        if isinstance(status, dict) and status.get("operation") == "restore":
+            fingerprint += f":restore:{status.get('job_id')}:{status.get('phase')}"
     if backend == "sqlite":
         db_path = Path(
             (backend_config or {}).get("db_path") or memory_db_path_for_cfg(workspace, cfg)
@@ -159,13 +164,33 @@ def call_memory_rpc(
         status = coordinator.status(agent_id)
         if isinstance(status, dict) and status.get("phase") in {
             "backing_up",
+            "inspecting",
+            "cleaning",
             "deduplicating",
             "compacting",
+            "draining",
+            "validating",
+            "backing_up_current",
+            "restoring",
+            "restarting",
         }:
             # Avoid synchronous dashboard writes holding the event loop in a
             # SQLite busy wait while maintenance status needs to remain visible.
             raise OctopError.localized(ErrorCode.AGENT_BUSY)
     _memory, bridge = _open_memory_for_agent(server, agent_id)
+    if method == "promote_candidate":
+        candidate = _memory.get_candidate((params or {}).get("candidate_id", ""))
+        if candidate is not None and candidate.payload.get("manual_revision"):
+            workspace = runtime.agent_registry.workspace_for_agent(agent_id)
+            if workspace is None:
+                raise OctopError.localized(ErrorCode.AGENT_BUSY)
+            params = {
+                **(params or {}),
+                "manual_documents": {
+                    name: (workspace.download_bytes(name) or b"").decode("utf-8")
+                    for name in ("USER.md", "MEMORY.md")
+                },
+            }
     payload = {
         "jsonrpc": "2.0",
         "id": 1,

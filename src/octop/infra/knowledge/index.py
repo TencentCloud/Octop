@@ -91,6 +91,15 @@ class KnowledgeIndex:
                 rows,
             )
 
+    def list_doc_chunks(self, doc_id: str) -> list[tuple[int, str]]:
+        """Return stored slices for one document, in ordinal order."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT ordinal, text FROM chunks WHERE doc_id = ? ORDER BY ordinal",
+                (doc_id,),
+            ).fetchall()
+        return [(int(ordinal), str(text)) for ordinal, text in rows]
+
     def delete_doc(self, doc_id: str) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))

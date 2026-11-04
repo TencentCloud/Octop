@@ -5,9 +5,10 @@ import { Button, Drawer, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
+import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
-const MonacoEditor = lazy(() => import("@monaco-editor/react"));
+const MonacoEditor = lazy(() => import("@/components/monaco"));
 
 interface FileEditModalProps {
   open: boolean;
@@ -36,6 +37,7 @@ export default function FileEditModal({
   onLocalSave,
 }: FileEditModalProps) {
   const { t } = useTranslation();
+  const { isDark } = useTheme();
   const [value, setValue] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -172,14 +174,16 @@ export default function FileEditModal({
                 minHeight: 240,
               }}
             >
-              <Spin tip="Loading editor…" />
+              <Spin />
             </div>
           }
         >
           <div style={{ flex: 1, minHeight: 0, height: "100%" }}>
             <MonacoEditor
               height="100%"
+              loading={t("common.loading")}
               language="markdown"
+              theme={isDark ? "vs-dark" : "light"}
               value={value}
               onChange={(v) => setValue(v ?? "")}
               options={{

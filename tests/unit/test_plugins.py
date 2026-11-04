@@ -1,4 +1,4 @@
-"""Unit tests for harness-agent plugin loader."""
+"""Unit tests for octop-harness plugin loader."""
 
 from __future__ import annotations
 
@@ -6,15 +6,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_agent.plugins import (
+from langchain_core.tools import StructuredTool
+from octop_harness.plugins import (
     PluginRegistry,
     build_plugin_tools,
     collect_plugin_tool_configs,
     load_plugin_dir,
 )
-from langchain_core.tools import StructuredTool
 
-from octop.infra.agents.plugin_tool_names import (
+from octop.infra.agents.plugins.plugin_tool_names import (
     sanitize_plugin_tool_name,
     sanitize_plugin_tool_names,
 )
@@ -52,7 +52,7 @@ def test_build_plugin_tools_respects_enabled_flag() -> None:
 
 def test_expand_plugin_tools_default_on_without_agent_config() -> None:
     """Octop default-on expansion makes tools bind without an agent opt-in."""
-    from octop.infra.agents.plugin_tool_defaults import expand_plugin_tools_default_on
+    from octop.infra.agents.plugins.plugin_tool_defaults import expand_plugin_tools_default_on
 
     load_plugin_dir(_FIXTURE, install_deps=False)
     expanded = expand_plugin_tools_default_on(
@@ -140,6 +140,31 @@ def test_sanitize_truncates_overlong_names() -> None:
     assert len(sanitized) <= 64
 
 
+def test_sanitize_clamps_prefixed_mcp_tool_name() -> None:
+    # Remote MCP prefixes `{server}_{tool}`; tencent-docs + ULID + this tool is 66.
+    name = "tencent-docs__01ARZ3NDEKTSV4RRFFQ69G5FAV_create_smartcanvas_by_mdx"
+    assert len(name) > 64
+    assert len("create_smartcanvas_by_mdx") <= 64
+    sanitized = sanitize_plugin_tool_name(name)
+    assert len(sanitized) <= 64
+    assert sanitized.isascii()
+    assert all(ch.isalnum() or ch in "_-" for ch in sanitized)
+    tool = _make_tool(name, "create a smart canvas")
+    sanitize_plugin_tool_names([tool])
+    assert len(tool.name) <= 64
+    assert "[原名: " in tool.description
+
+
+def test_sanitize_dedupe_keeps_legal_names_within_limit() -> None:
+    base = "a" * 64
+    first = sanitize_plugin_tool_name(base)
+    second = sanitize_plugin_tool_name(base, used={first})
+    assert first == base
+    assert second != first
+    assert len(second) <= 64
+    assert second.endswith("_2")
+
+
 def test_sanitize_falls_back_to_underscores_without_pypinyin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -167,8 +192,8 @@ def test_sanitize_plugin_tools_reserved_names() -> None:
 
 def test_build_plugin_tools_then_sanitize_keeps_config_keys_original() -> None:
     pytest.importorskip("pypinyin")
-    from harness_agent.plugins.manifest import PluginManifest
-    from harness_agent.plugins.registry import LoadedPlugin, ToolRegistration
+    from octop_harness.plugins.manifest import PluginManifest
+    from octop_harness.plugins.registry import LoadedPlugin, ToolRegistration
 
     manifest = PluginManifest(id="demo", version="1.0.0", name="Demo", kind="tool", entry="main.py")
     PluginRegistry().register(

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.agents.teams.service import HOST_TOOLS_ALLOWED, HOST_TOOLS_DISABLED
-from octop.infra.agents.tool_catalog import (
+from octop.infra.agents.settings.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
     builtin_tool_available,
@@ -12,6 +11,7 @@ from octop.infra.agents.tool_catalog import (
     plugin_tools_disabled_names,
     tools_disabled_set,
 )
+from octop.infra.agents.teams.service import HOST_TOOLS_ALLOWED, HOST_TOOLS_DISABLED
 
 
 def test_team_host_tools_are_dispatch_only() -> None:
@@ -26,6 +26,7 @@ def test_team_host_tools_are_dispatch_only() -> None:
 def test_critical_tools_are_in_catalog() -> None:
     names = {e.name for e in BUILTIN_TOOL_CATALOG}
     assert names >= CRITICAL_TOOLS
+    assert "deepseek_search" in names
 
 
 def test_normalize_strips_critical_and_sorts() -> None:

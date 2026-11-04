@@ -1,6 +1,7 @@
 import { Switch, Tooltip } from "antd";
 import { CheckCircle, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { ACPRunnerConfig } from "../../../../api/types/acp";
 import { runnerIcon, runnerIntroKey, runnerLabelKey } from "../constants";
 import styles from "../../Channels/index.module.less";
@@ -11,6 +12,8 @@ interface ACPCardProps {
   config: ACPRunnerConfig;
   isHover: boolean;
   toggleLoading?: boolean;
+  /** When true (e.g. current agent directory sandbox), runner enable is locked. */
+  interactionDisabled?: boolean;
   onClick: () => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -26,6 +29,7 @@ export function ACPCard({
   config,
   isHover,
   toggleLoading,
+  interactionDisabled = false,
   onClick,
   onMouseEnter,
   onMouseLeave,
@@ -42,26 +46,38 @@ export function ACPCard({
       });
   const configured = isConfigured(config);
   const icon = runnerIcon(runnerKey);
+  // Under sandbox, block turning runners on; still allow turning them off
+  // so account-global config is not stuck while viewing a jailed agent.
+  const switchDisabled =
+    (interactionDisabled && !config.enabled) ||
+    (!configured && !config.enabled);
 
-  const cardClass = [
+  const cardClass = cx(
     styles.channelCard,
     config.enabled ? styles.enabled : styles.normal,
-    isHover ? styles.hover : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isHover && !interactionDisabled && styles.hover,
+    interactionDisabled && acpStyles.runnerCardDisabled,
+  );
 
   const renderStatusBadge = () => {
+    if (interactionDisabled && !config.enabled) {
+      return (
+        <span className={cx(styles.statusBadge, styles.statusInactive)}>
+          <Plug size={14} />
+          {t("acp.runnerUnavailable")}
+        </span>
+      );
+    }
     if (config.enabled) {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusConnected}`}>
+        <span className={cx(styles.statusBadge, styles.statusConnected)}>
           <CheckCircle size={14} />
           {configured ? t("common.enabled") : t("acp.runnerNeedsConfig")}
         </span>
       );
     }
     return (
-      <span className={`${styles.statusBadge} ${styles.statusInactive}`}>
+      <span className={cx(styles.statusBadge, styles.statusInactive)}>
         <Plug size={14} />
         {t("common.disabled")}
       </span>
@@ -71,7 +87,7 @@ export function ACPCard({
   return (
     <div
       className={cardClass}
-      onClick={onClick}
+      onClick={interactionDisabled ? undefined : onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -79,18 +95,18 @@ export function ACPCard({
         <img
           src={icon}
           alt={label}
-          className={[
+          className={cx(
             styles.channelIcon,
-            runnerKey === "pi" ? acpStyles.invertOnDark : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
+            runnerKey === "pi" && acpStyles.invertOnDark,
+          )}
         />
         <span className={styles.cardTitle}>{label}</span>
         <div onClick={(e) => e.stopPropagation()}>
           <Tooltip
             title={
-              !configured && !config.enabled
+              interactionDisabled && !config.enabled
+                ? t("acp.outboundBlockedTooltip")
+                : !configured && !config.enabled
                 ? t("acp.clickCardToConfigure")
                 : undefined
             }
@@ -99,7 +115,7 @@ export function ACPCard({
               size="small"
               checked={config.enabled}
               loading={toggleLoading}
-              disabled={!configured && !config.enabled}
+              disabled={switchDisabled}
               onChange={(checked) => onToggleEnabled(runnerKey, checked)}
             />
           </Tooltip>

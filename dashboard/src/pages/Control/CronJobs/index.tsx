@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
-import { Button, Card, Empty, Form, Segmented, Spin, Tooltip } from "antd";
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Segmented,
+  Spin,
+  Tooltip,
+  Alert,
+} from "antd";
 import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import type { CronJobSpecOutput } from "../../../api/types";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import cx from "classnames";
 import { setPendingPrefillText } from "../../Chat/hooks/chatStore";
 import {
   createColumns,
@@ -48,11 +58,11 @@ function CronJobsEmptyState({
       <p className={styles.emptyStateDesc}>{t("cronJobs.noJobsDesc")}</p>
       {suggestions.length > 0 ? (
         <div
-          className={`${styles.emptyStateSuggestions} ${
-            taskExampleColumns(suggestions.length) === 2
-              ? styles.emptyStateSuggestionsCols2
-              : ""
-          }`}
+          className={cx(
+            styles.emptyStateSuggestions,
+            taskExampleColumns(suggestions.length) === 2 &&
+              styles.emptyStateSuggestionsCols2,
+          )}
         >
           {suggestions.map((text, i) => (
             <button
@@ -265,6 +275,15 @@ function CronJobsPage() {
       subtitle={t("pageShell.tasks.subtitle")}
       agentScoped
     >
+      {activeAgent?.bridge ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("chat.remoteExpert.editBanner")}
+          description={t("chat.remoteExpert.editTasks")}
+          style={{ marginBottom: 12 }}
+        />
+      ) : null}
       {showToolbar ? (
         <div className={styles.gridToolbar}>
           <span className={styles.gridCount}>
@@ -328,9 +347,7 @@ function CronJobsPage() {
         />
       ) : (
         <div
-          className={`${styles.listShell} ${
-            contentBusy ? styles.listShellBusy : ""
-          }`}
+          className={cx(styles.listShell, contentBusy && styles.listShellBusy)}
         >
           {contentBusy ? (
             <div className={styles.listBusyBar} aria-hidden>

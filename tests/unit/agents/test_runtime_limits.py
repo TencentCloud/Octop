@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.agents.runtime_limits import (
+from octop.infra.agents.settings.runtime_limits import (
     CONFIGURABLE_MAX_INPUT_TOKENS,
     CONFIGURABLE_MODEL_SETTINGS,
     agent_max_input_tokens,

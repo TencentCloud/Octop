@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from harness_agent.config import ProviderConfig
+from octop_harness.config import ProviderConfig
 
 from octop.infra.agents.providers.harness_factory import sync_providers_to_harness
 

@@ -25,6 +25,8 @@ vendor_one() {
   req_file="${GREEN_ROOT}/requirements-${plat}.txt"
   echo "[wheels] ${plat}: exporting frozen deps → ${req_file}" >&2
   uv export --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  # Keep offline bundles equipped with the same online updater as package.sh.
+  echo "uv==${GREEN_UV_VERSION}" >> "$req_file"
 
   override_file="$(write_green_overrides "$plat" || true)"
   local extra=()
@@ -36,13 +38,14 @@ vendor_one() {
   # interpreter so requires-python on octop/deps can resolve.
   uv python install 3.12 >/dev/null
   echo "[wheels] ${plat}: downloading → ${wheel_dir}" >&2
+  # bash 3.2 (macOS /bin/bash) + set -u: expanding an empty array is unbound.
   uv pip download \
     --dest "$wheel_dir" \
     --python 3.12 \
     --python-platform "$pyplat" \
     --python-version 3.12 \
     --only-binary cryptography \
-    "${extra[@]}" \
+    "${extra[@]+"${extra[@]}"}" \
     -r "$req_file"
 
   echo "[wheels] ${plat}: done ($(find "$wheel_dir" -maxdepth 1 -type f -name '*.whl' | wc -l | tr -d ' ') wheels)"

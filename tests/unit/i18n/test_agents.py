@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from octop.i18n.domains.agents import (
+    AGENT_START_TIMEOUT,
     MODEL_REF_UNAVAILABLE,
     NO_MODELS_CONFIGURED,
     agent_error_message,
@@ -23,11 +24,15 @@ def test_agent_state_label_unknown_state_passthrough() -> None:
 
 
 def test_agent_error_message_octop_key_zh() -> None:
-    assert "设置" in agent_error_message(NO_MODELS_CONFIGURED, "zh")
+    assert "管理" in agent_error_message(NO_MODELS_CONFIGURED, "zh")
 
 
 def test_agent_error_message_model_ref_key_zh() -> None:
     assert "默认模型" in agent_error_message(MODEL_REF_UNAVAILABLE, "zh")
+
+
+def test_agent_error_message_start_timeout_zh() -> None:
+    assert "超时" in agent_error_message(AGENT_START_TIMEOUT, "zh")
 
 
 def test_agent_error_message_raw_harness_zh() -> None:

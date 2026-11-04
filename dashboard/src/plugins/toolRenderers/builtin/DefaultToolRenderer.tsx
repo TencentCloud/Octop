@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Image, Button } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { builtinToolIcon } from "../../../utils/builtinToolIcons";
 import {
   collectToolMediaFromToolData,
@@ -10,6 +11,8 @@ import {
 import { formatToolArguments } from "../../../utils/formatToolArguments";
 import {
   useToolDisplayNames,
+  deferredCallTargetName,
+  resolveDeferredToolLabel,
   resolveToolLabel,
 } from "../../../pages/Chat/hooks/toolDisplayNames";
 import {
@@ -49,6 +52,7 @@ export function DefaultToolRenderer({
   displayName: displayNameProp,
   args,
   output,
+  status,
   isStreaming,
   hideMediaPreview = false,
   onAcpPermissionSelect,
@@ -111,7 +115,12 @@ export function DefaultToolRenderer({
   const hasMediaPreview =
     structuredOutput.images.length > 0 || structuredOutput.videos.length > 0;
   const hasResult = toolData.output !== undefined;
-  const completed = hasResult || (!isStreaming && hasMediaPreview);
+  const completed =
+    status === "done" ||
+    status === "error" ||
+    hasResult ||
+    (!isStreaming && hasMediaPreview);
+  const running = !completed && (status === "running" || isStreaming);
   const mediaOnly =
     completed &&
     hasMediaPreview &&
@@ -126,18 +135,26 @@ export function DefaultToolRenderer({
   );
   const statusLabel = completed
     ? t("common.done", "Done")
-    : isStreaming
+    : running
     ? t("common.running", "Running")
     : t("common.pending", "Pending");
-  const ToolIcon = builtinToolIcon(toolName);
+  const deferredLabel = resolveDeferredToolLabel(toolName, args, displayName);
+  const deferredTarget = deferredCallTargetName(args);
+  const ToolIcon = builtinToolIcon(
+    deferredLabel && deferredTarget ? deferredTarget : toolName,
+  );
 
   return (
     <div className={styles.inlineToolBlock}>
       <button
         type="button"
-        className={styles.inlineToolSummary}
+        className={cx(
+          styles.inlineToolSummary,
+          running && styles.inlineToolSummaryRunning,
+        )}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        aria-busy={running || undefined}
       >
         <span
           className={styles.inlineToolIcon}
@@ -146,14 +163,25 @@ export function DefaultToolRenderer({
           <ToolIcon size={14} strokeWidth={2.2} aria-hidden />
         </span>
         <code className={styles.inlineToolName}>
-          {resolveToolLabel(toolName, displayNameProp, displayName)}
+          {deferredLabel ??
+            resolveToolLabel(toolName, displayNameProp, displayName)}
         </code>
-        <span className={styles.inlineToolStatus}>{statusLabel}</span>
+        {running ? (
+          <span className={styles.inlineToolLiveDots} aria-hidden>
+            <span className={styles.thinkingDot} />
+            <span className={styles.thinkingDot} />
+            <span className={styles.thinkingDot} />
+          </span>
+        ) : null}
+        <span className={styles.inlineToolStatus} aria-live="polite">
+          {statusLabel}
+        </span>
         <ChevronRight
           size={14}
-          className={`${styles.inlineToolChevron} ${
-            expanded ? styles.inlineToolChevronOpen : ""
-          }`}
+          className={cx(
+            styles.inlineToolChevron,
+            expanded && styles.inlineToolChevronOpen,
+          )}
         />
       </button>
 

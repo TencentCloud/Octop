@@ -78,6 +78,10 @@ class DatabaseSetupBody(BaseModel):
     user: str | None = None
     password: str | None = None
     url: str | None = None
+    adopt_existing: bool = Field(
+        default=False,
+        description="PostgreSQL only: bind a database that already has users and keep those accounts.",
+    )
 
     def as_payload(self) -> dict[str, Any]:
         out: dict[str, Any] = {"driver": self.driver.strip().lower()}
@@ -153,17 +157,20 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
 
 
 async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
-    """Create the first default agent for a fresh install (pinned id ``main``)."""
-    from octop.infra.agents.default_agent import (
+    """Create the first default agent for a fresh install (pinned id ``main``).
+
+    The template is ``general-assistant`` from the expert market. A market miss
+    leaves setup finished without that agent.
+    """
+    from octop.infra.agents.experts.default_agent import (  # noqa: PLC0415
         SETUP_DEFAULT_AGENT_ID,
-        bootstrap_default_agent,
+        bootstrap_first_expert,
     )
 
     if server.app_runtime is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "app_runtime not ready")
-    await bootstrap_default_agent(
-        server.app_runtime.agent_registry,
-        server.expert_catalog,
+    await bootstrap_first_expert(
+        server,
         user_id=user_id,
         locale=locale,
         agent_id=SETUP_DEFAULT_AGENT_ID,
@@ -232,7 +239,7 @@ async def validate_wizard_token(
 @router.get("/setup/status", summary="Setup wizard status")
 async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Whether initial admin creation is still required and wizard password file state."""
-    wizard_path = str(Path.home() / _wizard.WIZARD_FILE_NAME)
+    wizard_path = str(_wizard.resolve_password_path(server.paths.root, legacy_home=Path.home()))
     password_required = _setup_password_required(server)
     um = server.user_manager
     setup_required = um is None or um.count() == 0
@@ -243,7 +250,8 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
         "setup_required": setup_required,
         "wizard_password_required": password_required,
         "wizard_password_exists": (
-            password_required and _wizard.read_password(Path.home()) is not None
+            password_required
+            and _wizard.read_password(server.paths.root, legacy_home=Path.home()) is not None
         ),
         "wizard_password_path": wizard_path if password_required else None,
         "database_driver": database_driver,
@@ -265,8 +273,8 @@ async def test_database(
         db_cfg = database_config_from_payload(body.as_payload())
     except ValueError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
-    probe_database(db_cfg, server.paths)
-    return {"ok": True, "driver": db_cfg.driver}
+    user_count = probe_database(db_cfg, server.paths)
+    return {"ok": True, "driver": db_cfg.driver, "user_count": user_count}
 
 
 @router.post("/setup/database", summary="Persist control-plane database and bind")
@@ -277,7 +285,9 @@ async def apply_database(
     """Write ``config.json`` database section, open the pool, migrate, and boot runtime.
 
     First-run path binds once (no prior pool). If already bound with zero users
-    (e.g. changing engine mid-wizard), swaps via rebind.
+    (e.g. changing engine mid-wizard), swaps via rebind. PostgreSQL may adopt a
+    database that already has users when ``adopt_existing`` is set; SQLite still
+    requires an empty file.
     """
     _enforce_wizard_open(server)
     from octop.infra.db.probe import probe_database
@@ -293,16 +303,20 @@ async def apply_database(
     except ValueError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     probe_database(db_cfg, server.paths)
-    assert_control_plane_database_empty(db_cfg, server.paths)
+    adopt = bool(body.adopt_existing) and db_cfg.is_postgresql
+    if not adopt:
+        assert_control_plane_database_empty(db_cfg, server.paths)
     persist_database_config(server.paths.config, db_cfg)
     if server.database_bound:
-        rebind_control_plane(server)
+        rebind_control_plane(server, adopt_existing=adopt)
     else:
         await server.bind_control_plane()
     assert server.services is not None
+    assert server.user_manager is not None
     return {
         "ok": True,
         "driver": server.services.config.database.driver,
+        "adopted": server.user_manager.count() != 0,
     }
 
 
@@ -331,7 +345,7 @@ async def verify_password(
         server.wizard_tokens.record_attempt(client_ip)
     except RateLimited:
         raise OctopError(ErrorCode.SETUP_RATE_LIMITED, "too many attempts") from None
-    expected = _wizard.read_password(Path.home())
+    expected = _wizard.read_password(server.paths.root, legacy_home=Path.home())
     if expected is None or body.password != expected:
         raise OctopError(ErrorCode.SETUP_PASSWORD_WRONG, "wrong password")
     token, ttl = server.wizard_tokens.issue()
@@ -352,6 +366,9 @@ async def initial_admin(
     locale = normalize_locale(body.locale or resolve_request_locale(request))
     assert server.user_manager is not None
     assert server.services is not None
+    from octop.infra.db.repos.user_roles import ADMIN_USER_ROLE_ID, UserRoleRepo
+
+    admin_role = UserRoleRepo(server.services.db).get(ADMIN_USER_ROLE_ID)
     user = await server.user_manager.create(
         username=body.username,
         password=body.password,
@@ -359,32 +376,33 @@ async def initial_admin(
         display_name=body.display_name,
         email=body.email,
         locale=locale,
+        role_name=admin_role.user_role_name if admin_role is not None else "管理员",
     )
+    from octop.infra.auth.tokens import PURPOSE_ACCESS
+
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
+    row = server.services.user_repo.get(user.id)
+    mfa_version = int(row.mfa_version) if row is not None else 0
+    password_version = int(row.password_version) if row is not None else 0
     access_token = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl,
+        mfa_version=mfa_version,
+        password_version=password_version,
     )
     return {
         "id": user.id,
         "username": user.username,
-        "role": user.role.value,
+        "role": user.role,
         "locale": user.locale,
         "access_token": access_token,
         "expires_in": ttl,
     }
-
-
-@router.post("/setup/resume-wizard", summary="Issue a fresh wizard token mid-setup")
-async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Issue a new wizard token after the admin exists but before finish."""
-    _enforce_wizard_token_phase(server)
-    require_database(server)
-    assert server.user_manager is not None
-    if server.user_manager.count() == 0:
-        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "admin not created yet", status=400)
-    token, ttl = server.wizard_tokens.issue()
-    return {"wizard_token": token, "expires_in": ttl}
 
 
 @router.post("/setup/test-provider", summary="Test provider draft connectivity")

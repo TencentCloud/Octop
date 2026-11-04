@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { chatGeneratingPhase, shouldShowGenerating } from "./generatingGate";
+import {
+  awaitingVisibleAssistantReply,
+  chatGeneratingPhase,
+  shouldShowGenerating,
+} from "./generatingGate";
 
 describe("shouldShowGenerating", () => {
   it("is true while streaming and not loading history", () => {
@@ -17,6 +21,15 @@ describe("shouldShowGenerating", () => {
       false,
     );
   });
+
+  it("stays true for late team members after the host unlocks the composer", () => {
+    expect(
+      shouldShowGenerating({
+        isStreaming: false,
+        hasLiveSpeakers: true,
+      }),
+    ).toBe(true);
+  });
 });
 
 describe("chatGeneratingPhase", () => {
@@ -27,7 +40,11 @@ describe("chatGeneratingPhase", () => {
         loading: false,
         lastMessageRole: "user",
       }),
-    ).toEqual({ showFooter: true, showElapsed: true });
+    ).toEqual({
+      showFooter: true,
+      showElapsed: true,
+      membersOnly: false,
+    });
   });
 
   it("hides elapsed once an assistant bubble exists", () => {
@@ -36,7 +53,11 @@ describe("chatGeneratingPhase", () => {
         isStreaming: true,
         lastMessageRole: "assistant",
       }),
-    ).toEqual({ showFooter: true, showElapsed: false });
+    ).toEqual({
+      showFooter: true,
+      showElapsed: false,
+      membersOnly: false,
+    });
   });
 
   it("hides footer during initial history load", () => {
@@ -46,6 +67,64 @@ describe("chatGeneratingPhase", () => {
         loading: true,
         lastMessageRole: "user",
       }),
-    ).toEqual({ showFooter: false, showElapsed: false });
+    ).toEqual({
+      showFooter: false,
+      showElapsed: false,
+      membersOnly: false,
+    });
+  });
+
+  it("keeps the elapsed wait through a decision-only placeholder", () => {
+    expect(
+      chatGeneratingPhase({
+        isStreaming: true,
+        lastMessageRole: "assistant",
+        awaitingVisibleReply: true,
+      }),
+    ).toEqual({
+      showFooter: true,
+      showElapsed: true,
+      membersOnly: false,
+    });
+  });
+
+  it("shows a members-only footer without cancel-phase elapsed", () => {
+    expect(
+      chatGeneratingPhase({
+        isStreaming: false,
+        hasLiveSpeakers: true,
+        lastMessageRole: "assistant",
+      }),
+    ).toEqual({
+      showFooter: true,
+      showElapsed: false,
+      membersOnly: true,
+    });
+  });
+});
+
+describe("awaitingVisibleAssistantReply", () => {
+  it("stays open for a decision stamp with no text or tool", () => {
+    expect(
+      awaitingVisibleAssistantReply([
+        { role: "user", content: "查一下磁盘" },
+        { role: "assistant", content: "", status: "streaming" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("closes once a tool or answer is visible", () => {
+    expect(
+      awaitingVisibleAssistantReply([
+        { role: "user", content: "查一下磁盘" },
+        { role: "assistant", content: "", toolData: { name: "execute" } },
+      ]),
+    ).toBe(false);
+    expect(
+      awaitingVisibleAssistantReply([
+        { role: "user", content: "查一下磁盘" },
+        { role: "assistant", content: "磁盘正常" },
+      ]),
+    ).toBe(false);
   });
 });

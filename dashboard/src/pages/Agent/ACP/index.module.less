@@ -18,6 +18,16 @@
   border-top: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
 }
 
+.outboundBlockedAlert {
+  margin: 0 0 16px;
+}
+
+.runnerCardDisabled {
+  opacity: 0.55;
+  pointer-events: auto;
+  cursor: default;
+}
+
 .toolbar {
   display: flex;
   justify-content: space-between;
@@ -42,11 +52,18 @@
   color: var(--fn-text-secondary);
 }
 
+.toolToggleDisabled {
+  opacity: 0.55;
+}
+
 .drawerHint {
-  margin: 0 0 16px;
-  font-size: 13px;
-  line-height: 1.55;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
   color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* Pi mark is near-black on transparent; invert so it stays visible on dark cards. */

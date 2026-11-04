@@ -8,9 +8,11 @@ import {
 import { useTranslation } from "react-i18next";
 import { Collapse, Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
+import cx from "classnames";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
+import { useAgent } from "../context/AgentContext";
 import { isAgentChatReady } from "../utils/agentError";
 import { isTeamAgent } from "../utils/teamAgent";
 import {
@@ -84,9 +86,7 @@ function ProfileEntityCard({
       <div className={styles.entityCard}>
         <div className={styles.entityCardHeader}>
           {icon}
-          <div
-            className={`${expertStyles.fileLabel} ${styles.entityCardTitle}`}
-          >
+          <div className={cx(expertStyles.fileLabel, styles.entityCardTitle)}>
             {title}
           </div>
           {trailing}
@@ -113,6 +113,7 @@ export default function AgentProfileDrawer({
   onClose,
 }: AgentProfileDrawerProps) {
   const { t } = useTranslation();
+  const { agents } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -131,6 +132,22 @@ export default function AgentProfileDrawer({
   const installedSlugs = useMemo(
     () => new Set(subagents.map((s) => s.slug)),
     [subagents],
+  );
+  const visibleTeamMembers = useMemo(
+    () =>
+      teamMembers.map((member) => {
+        const found = agents.find((item) => item.agent_id === member.agent_id);
+        if (!found) return member;
+        return {
+          ...member,
+          name: found.name || member.name,
+          color: found.color ?? member.color,
+          icon_name: found.icon_name ?? member.icon_name,
+          icon_url: found.icon_url ?? member.icon_url,
+          state: found.state || member.state,
+        };
+      }),
+    [teamMembers, agents],
   );
 
   const reloadSubagents = useCallback(async () => {
@@ -371,14 +388,14 @@ export default function AgentProfileDrawer({
           <div className={expertStyles.drawerSection}>
             <div className={expertStyles.drawerSectionTitle}>
               {t("chat.teamProfile.members")}
-              {teamMembers.length > 0
+              {visibleTeamMembers.length > 0
                 ? ` · ${t("chat.teamProfile.memberCount", {
-                    count: teamMembers.length,
+                    count: visibleTeamMembers.length,
                   })}`
                 : ""}
             </div>
             <div className={expertStyles.fileList}>
-              {teamMembers.length === 0 ? (
+              {visibleTeamMembers.length === 0 ? (
                 <div
                   style={{
                     fontSize: 13,
@@ -389,7 +406,7 @@ export default function AgentProfileDrawer({
                   {t("chat.teamProfile.emptyMembers")}
                 </div>
               ) : (
-                teamMembers.map((member) => {
+                visibleTeamMembers.map((member) => {
                   const accent = member.color || "#0d9488";
                   const stateKey = member.state || "unknown";
                   return (

@@ -12,7 +12,17 @@ def test_root_help_lists_groups() -> None:
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
     out = result.output
-    for grp in ("service", "user", "agent", "chat", "channel", "cron", "provider", "admin"):
+    for grp in (
+        "service",
+        "user",
+        "agent",
+        "chat",
+        "channel",
+        "cron",
+        "provider",
+        "admin",
+        "bridge",
+    ):
         assert grp in out
 
 

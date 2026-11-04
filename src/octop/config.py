@@ -406,6 +406,13 @@ def env_bind_overrides() -> tuple[str | None, int | None]:
         except ValueError:
             # Do not log the raw env value.
             logger.warning("env %s is not int; ignoring override", "OCTOP_PORT")
+        # ``resolve_bind`` reads port 0 as "let the OS pick a free port", so the
+        # bindable range here is 0-65535. Anything outside it outranks a valid
+        # config.json port and kills startup inside ``socket.bind`` with a bare
+        # ``OverflowError``, which names neither the key nor the value.
+        if port is not None and not 0 <= port <= 65535:
+            logger.warning("env %s is out of range; ignoring override", "OCTOP_PORT")
+            port = None
     return host, port
 
 

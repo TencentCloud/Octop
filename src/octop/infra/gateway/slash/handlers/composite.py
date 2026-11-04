@@ -7,8 +7,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.compaction import display_offload_path
-from harness_agent.slash import SlashCommand, SlashSink, thread_message_count
+from octop_harness.compaction import display_offload_path
+from octop_harness.slash import SlashCommand, SlashSink, thread_message_count
 
 from octop.i18n.domains.agents import agent_error_message
 from octop.i18n.domains.slash import localized_rows, tr
@@ -323,6 +323,12 @@ async def cmd_model(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: 
         if hasattr(sink, "action"):
             await sink.action("clear_model")
         await sink.text(tr("model.cleared", lang))
+        return
+    if ctx.agent_manager is not None and not ctx.agent_manager.model_ref_allowed_for_user(
+        ctx.user_id,
+        name,
+    ):
+        await sink.text(tr("model.denied", lang, model=name))
         return
     d.set_thread_model_override(ctx, tid, name)
     if hasattr(sink, "action"):

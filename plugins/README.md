@@ -2,14 +2,12 @@
 
 [中文版](./README_CN.md)
 
-Sample plugins for Octop / harness-agent `kind` values, plus a **dual
+Sample plugins for Octop / octop-harness `kind` values, plus a **dual
 frontend + backend** demo that renders tool results in chat.
 Layout inspired by [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/main/octop-toolkit).
 
-Product plugins shipped with the wheel live in
-`src/octop/infra/agents/plugins/bundled/`. `octop init` and `octop run`
-copy missing ones into `~/.octop/plugins/` and set them **globally off**
-in `config.json`. Uninstalled ids are not re-copied.
+Product plugins are installed from the plugin market. The wheel no longer
+ships that catalog.
 
 ## Demos
 
@@ -102,7 +100,7 @@ The ZIP must contain **exactly one** plugin root that includes `plugin.yaml`.
 ```bash
 uv run python - <<'PY'
 from pathlib import Path
-from harness_agent.plugins import PluginRegistry, load_plugin_dir
+from octop_harness.plugins import PluginRegistry, load_plugin_dir
 
 for name in ("demo-toolkit", "demo-greeting-skill", "demo-turn-logger", "demo-ui-card"):
     PluginRegistry.reset()

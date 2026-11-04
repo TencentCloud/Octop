@@ -119,6 +119,8 @@ class ChunkRenderer:
             detail = chunk.get("agent_id") or chunk.get("thread_id") or ""
             suffix = f" ({detail})" if detail else ""
             self._console.print(f"  [dim]→ {action}{suffix}[/]", highlight=False)
+        elif ctype == "hitl_required":
+            self._print_hitl_pause(chunk)
         elif ctype == "done":
             pass
 
@@ -256,6 +258,21 @@ class ChunkRenderer:
         if parts:
             self._console.print(f"  [dim]{' · '.join(parts)}[/]", highlight=False)
 
+    def _print_hitl_pause(self, chunk: dict[str, Any]) -> None:
+        from octop.cli.support.db import resolve_cli_locale
+
+        card = format_cli_hitl_pause(chunk, locale=resolve_cli_locale())
+        if not card:
+            return
+        self._dismiss_status()
+        self._console.print()
+        if self._markdown:
+            self._console.print(Markdown(card, code_theme="monokai"), highlight=False)
+        else:
+            self._console.print(card, highlight=False)
+        self._console.print()
+        self._had_output = True
+
     def _print_footer(self) -> None:
         elapsed = self._last_elapsed or (time.monotonic() - self._turn_start)
         width = min(self._console.width, 50)
@@ -264,13 +281,27 @@ class ChunkRenderer:
         self._console.print()
 
 
-def print_slash_help(*, locale: str = "zh") -> None:
+def format_cli_hitl_pause(chunk: dict[str, Any], *, locale: str = "zh") -> str:
+    """Render a ``hitl_required`` chunk as the same card IM users see."""
+    from octop.infra.gateway.hitl.format import format_hitl_card, parse_action_requests
+
+    raw = chunk.get("request")
+    request = raw if isinstance(raw, dict) else {}
+    pending_id = str(chunk.get("pending_id") or request.get("pending_id") or "")
+    return format_hitl_card(
+        parse_action_requests(request),
+        pending_id=pending_id or "—",
+        locale=locale,
+    )
+
+
+def print_slash_help(*, locale: str = "zh", include_hitl_approval: bool = False) -> None:
     """Print slash commands visible to the CLI REPL."""
     import click
 
     from octop.infra.gateway.slash.catalog import list_specs
 
-    commands = list_specs(origin="cli")
+    commands = list_specs(origin="cli", include_hitl_approval=include_hitl_approval)
     if not commands:
         click.echo("  (no slash commands)")
         return

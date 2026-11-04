@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from harness_agent.slash import SlashCommand, SlashSink
+    from octop_harness.slash import SlashCommand, SlashSink
 
     from octop.infra.gateway.slash.ctx import SlashCtx
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher

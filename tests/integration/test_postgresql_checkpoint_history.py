@@ -18,8 +18,8 @@ from tests.support.postgresql import requires_postgresql
 async def test_postgres_checkpoint_history_uses_graph_reader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from harness_memory import Memory
     from langgraph.graph import END, START, MessagesState, StateGraph
+    from octop_memory import Memory
 
     from octop.api.routers.chat.serialize import (
         _isolated_sqlite_checkpoint_messages,

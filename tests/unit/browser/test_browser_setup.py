@@ -9,7 +9,7 @@ from stat import S_IMODE
 
 import pytest
 
-from octop.infra.browser.setup import (
+from octop.infra.control.browser.setup import (
     _probe_dir_writable,
     _relocated_profiles_root_for_uid,
     _runtime_dir_for_uid,
@@ -29,7 +29,7 @@ posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only runtime d
 def test_configure_browser_idle_timeout_updates_harness(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from harness_browser.settings import settings as hb_settings
+    from octop_browser.settings import settings as hb_settings
 
     from octop.infra.utils.browser_media import configure_browser_idle_timeout
 
@@ -70,7 +70,7 @@ def test_clear_profile_locks_removes_singleton_files(tmp_path: Path) -> None:
 def test_chrome_source_classifies_playwright_and_system(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     cache = tmp_path / "ms-playwright"
     pw_chrome = (
@@ -88,7 +88,7 @@ def test_chrome_source_classifies_playwright_and_system(
 async def test_uninstall_only_removes_playwright_chromium(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     cache = tmp_path / "ms-playwright"
     cdir = cache / "chromium-999"
@@ -148,7 +148,7 @@ def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Windows must not use a literal /tmp path (drive-root PermissionError)."""
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     fake_tmp = tmp_path / "WinTemp"
     fake_tmp.mkdir()
@@ -158,8 +158,8 @@ def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
     runtime = _runtime_dir_for_uid(uid=7)
     profiles = _relocated_profiles_root_for_uid(uid=7)
 
-    assert runtime == fake_tmp / "runtime-harness-browser-7"
-    assert profiles == fake_tmp / "harness-browser-profiles-7"
+    assert runtime == fake_tmp / "runtime-octop-browser-7"
+    assert profiles == fake_tmp / "octop-browser-profiles-7"
     # Same inputs → same paths across "process restarts" (no pid in the name).
     assert _runtime_dir_for_uid(uid=7) == runtime
     assert _relocated_profiles_root_for_uid(uid=7) == profiles
@@ -168,7 +168,7 @@ def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
 def test_temp_scope_token_uses_username_when_getuid_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     # Simulate Windows: getuid absent / not callable.
     # Real Windows has no os.getuid — setattr(raising=True) would raise.
@@ -184,7 +184,7 @@ def test_temp_scope_token_uses_username_when_getuid_missing(
 def test_probe_dir_writable_skips_symlink_on_non_linux(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     monkeypatch.setattr(browser_setup.sys, "platform", "win32")
 
@@ -202,7 +202,7 @@ def test_probe_dir_writable_skips_symlink_on_non_linux(
 def test_resolve_browser_display_uses_x_socket(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     monkeypatch.setattr(browser_setup.sys, "platform", "linux")
     sock_dir = tmp_path / "X11"
@@ -217,7 +217,7 @@ def test_resolve_browser_display_uses_x_socket(
     )
     monkeypatch.delenv("DISPLAY", raising=False)
     monkeypatch.setattr(
-        "octop.infra.desktop.setup._display_from_env_file",
+        "octop.infra.control.desktop.setup._display_from_env_file",
         lambda: ":99",
     )
     display = resolve_browser_display()
@@ -230,7 +230,7 @@ def test_resolve_browser_display_clears_stale_display(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Stale $DISPLAY without an X socket must not force headed Chrome."""
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     monkeypatch.setattr(browser_setup.sys, "platform", "linux")
     sock_dir = tmp_path / "X11"
@@ -244,7 +244,7 @@ def test_resolve_browser_display_clears_stale_display(
     )
     monkeypatch.setenv("DISPLAY", ":0")
     monkeypatch.setattr(
-        "octop.infra.desktop.setup._display_from_env_file",
+        "octop.infra.control.desktop.setup._display_from_env_file",
         lambda: None,
     )
 
@@ -255,7 +255,7 @@ def test_resolve_browser_display_clears_stale_display(
 def test_ensure_profile_writable_recreates_when_not_writable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     profile = tmp_path / "default"
     profile.mkdir()
@@ -266,7 +266,7 @@ def test_ensure_profile_writable_recreates_when_not_writable(
         monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
         try:
             result = ensure_profile_writable(profile)
-            assert result == profile or "harness-browser-profiles" in str(result)
+            assert result == profile or "octop-browser-profiles" in str(result)
             assert _probe_dir_writable(result)
         finally:
             if profile.exists():
@@ -279,7 +279,7 @@ def test_ensure_profile_writable_recreates_when_not_writable(
 def test_ensure_profile_writable_relocates_root_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     profile = tmp_path / "under-root" / "default"
     profile.mkdir(parents=True)
@@ -302,7 +302,7 @@ def test_ensure_profile_writable_never_chmods_system_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regression for #84: profile prep must not chmod / or /tmp."""
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
 
     chmod_targets: list[str] = []
     real_chmod = os.chmod
@@ -318,7 +318,7 @@ def test_ensure_profile_writable_never_chmods_system_paths(
     monkeypatch.setattr(browser_setup, "_under_root_home", lambda _p: False)
     monkeypatch.setattr(browser_setup, "_probe_dir_writable", lambda _p: True)
 
-    profile = Path(f"/tmp/harness-browser-profiles-{os.getuid()}") / "default"
+    profile = Path(f"/tmp/octop-browser-profiles-{os.getuid()}") / "default"
     ensure_profile_writable(profile)
 
     # Profile prep no longer chmod/chown at all — recreate/relocate only.
@@ -376,7 +376,7 @@ def test_legacy_profiles_migrated_once(tmp_path: Path, monkeypatch: pytest.Monke
 
 @posix_only
 def test_under_root_home_exempts_octop_home(monkeypatch: pytest.MonkeyPatch) -> None:
-    from octop.infra.browser import setup as browser_setup
+    from octop.infra.control.browser import setup as browser_setup
     from octop.infra.utils.paths import PathLayout
 
     if not Path("/root").is_dir():

@@ -8,17 +8,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
-from octop.api.deps import current_user, get_server
+from octop.api.deps import get_server, require_permission
 from octop.i18n.domains.tools import tool_display_name
-from octop.infra.agents.plugin_tool_defaults import merge_plugins_tool_settings
-from octop.infra.agents.teams import HOST_TOOLS_ALLOWED, is_team_agent
-from octop.infra.agents.tool_catalog import (
+from octop.infra.agents.plugins.plugin_tool_defaults import merge_plugins_tool_settings
+from octop.infra.agents.settings.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
     agent_plugin_enabled,
     builtin_tool_available,
     normalize_tools_disabled,
 )
+from octop.infra.agents.teams import HOST_TOOLS_ALLOWED, is_team_agent
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.utils.locale import resolve_request_locale
@@ -82,7 +82,7 @@ def _plugin_tool_label(
     if labeled != name:
         return labeled
     if description:
-        from octop.infra.agents.plugin_tool_names import (  # noqa: PLC0415
+        from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
             extract_original_plugin_label,
         )
 
@@ -164,7 +164,7 @@ async def get_tool_settings(
     agent_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("tools")),
 ) -> ToolSettingsResponse:
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(agent_id)
@@ -219,7 +219,7 @@ async def put_tool_settings(
     body: ToolSettingsPutBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("tools")),
 ) -> ToolSettingsResponse:
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(agent_id)
@@ -255,7 +255,7 @@ async def patch_tool_setting(
     body: ToolSettingPatchBody,
     request: Request,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("tools")),
 ) -> ToolSettingsResponse:
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(agent_id)

@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 from deepagents.backends import CompositeBackend
-from harness_agent.backends import resolve_backend
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends import resolve_backend
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.backend.resolver import (
     _is_host_root,

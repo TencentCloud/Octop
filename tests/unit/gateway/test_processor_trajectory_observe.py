@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.gateway.process.processor import GlobalProcessor
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher

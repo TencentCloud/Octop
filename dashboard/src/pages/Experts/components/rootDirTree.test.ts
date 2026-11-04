@@ -4,6 +4,9 @@ import {
   ancestorDirPaths,
   insertChild,
   isPathUnderHome,
+  isTreeRoot,
+  makeRootNodes,
+  normalizeTreeRoots,
   pathExistsInTree,
   renameNode,
   sanitizeTree,
@@ -226,5 +229,91 @@ describe("rootDirTree helpers", () => {
       "/Users/jubaoliang/新建文件夹",
     ]);
     expect(next[1].children).toBeUndefined();
+  });
+});
+
+describe("multi-root browse tree (Windows drives)", () => {
+  const drives = ["C:/", "D:/"];
+
+  it("normalizeTreeRoots dedupes case-insensitively and keeps order", () => {
+    expect(normalizeTreeRoots(["C:/", "c:\\", "D:/"])).toEqual(["C:/", "D:/"]);
+    expect(normalizeTreeRoots("C:/")).toEqual(["C:/"]);
+    expect(normalizeTreeRoots([])).toEqual(["/"]);
+  });
+
+  it("makeRootNodes builds one node per drive with a drive-letter title", () => {
+    const nodes = makeRootNodes(drives);
+    expect(nodes.map((n) => n.value)).toEqual(["C:/", "D:/"]);
+    expect(nodes.map((n) => n.title)).toEqual(["C:", "D:"]);
+  });
+
+  it("isTreeRoot recognizes each drive but not its subdirectories", () => {
+    expect(isTreeRoot("C:/", drives)).toBe(true);
+    expect(isTreeRoot("d:\\", drives)).toBe(true);
+    expect(isTreeRoot("D:/projects", drives)).toBe(false);
+    expect(isTreeRoot("E:/", drives)).toBe(false);
+  });
+
+  it("sanitizeTree keeps every root and drops cross-root orphans", () => {
+    const tree: DirTreeNode[] = [
+      {
+        value: "C:/",
+        title: "C:",
+        isLeaf: false,
+        children: [{ value: "C:/Users", title: "Users", isLeaf: false }],
+      },
+      {
+        value: "D:/",
+        title: "D:",
+        isLeaf: false,
+        children: [{ value: "D:/octop", title: "octop", isLeaf: false }],
+      },
+      // Orphan: not under any configured root.
+      { value: "E:/secret", title: "E:", isLeaf: false },
+    ];
+    const next = sanitizeTree(tree, drives);
+    expect(next.map((n) => n.value)).toEqual(["C:/", "D:/"]);
+    expect(pathExistsInTree(next, "D:/octop")).toBe(true);
+    expect(pathExistsInTree(next, "E:/secret")).toBe(false);
+  });
+
+  it("sanitizeTree still dedupes a repeated value across the forest", () => {
+    const dup = { value: "D:/octop", title: "octop", isLeaf: false };
+    const next = sanitizeTree(
+      [
+        {
+          value: "C:/",
+          title: "C:",
+          isLeaf: false,
+          children: [dup],
+        },
+        { value: "D:/", title: "D:", isLeaf: false, children: [dup] },
+      ],
+      drives,
+    );
+    const occurrences = JSON.stringify(next).split("D:/octop").length - 1;
+    expect(occurrences).toBe(1);
+  });
+
+  it("sanitizeTree falls back to the caller's nodes when no root survives", () => {
+    const tree: DirTreeNode[] = [{ value: "E:/", title: "E:", isLeaf: false }];
+    expect(sanitizeTree(tree, drives)).toEqual(tree);
+  });
+
+  it("ancestorDirPaths picks the longest matching root, not the first", () => {
+    expect(ancestorDirPaths("D:/octop/data", drives)).toEqual([
+      "D:/",
+      "D:/octop",
+    ]);
+    expect(ancestorDirPaths("C:/Users/me/docs", drives)).toEqual([
+      "C:/",
+      "C:/Users",
+      "C:/Users/me",
+    ]);
+  });
+
+  it("ancestorDirPaths returns [] for a drive root or a path outside all roots", () => {
+    expect(ancestorDirPaths("D:/", drives)).toEqual([]);
+    expect(ancestorDirPaths("E:/octop", drives)).toEqual([]);
   });
 });

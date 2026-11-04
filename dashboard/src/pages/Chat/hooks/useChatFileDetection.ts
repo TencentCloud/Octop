@@ -159,27 +159,31 @@ export function collectChatFilePaths(
 ): string[] {
   const paths: string[] = [];
   for (const m of messages) {
-    addPath(paths, extractWriteToolPath(m), agentId);
+    const ownerId = m.speakerAgentId?.trim() || agentId;
+    addPath(paths, extractWriteToolPath(m), ownerId);
+    for (const path of m.editedFiles ?? []) {
+      addPath(paths, path, ownerId);
+    }
     for (const att of m.attachments ?? []) {
       if (att.workspacePath) {
-        addPath(paths, att.workspacePath, agentId);
+        addPath(paths, att.workspacePath, ownerId);
       } else if (att.url) {
-        addPath(paths, workspacePathFromAccessUrl(att.url) ?? null, agentId);
+        addPath(paths, workspacePathFromAccessUrl(att.url) ?? null, ownerId);
       }
     }
     const media = collectToolMediaFromToolData(
       m.toolData,
-      agentId,
+      ownerId,
       m.attachments,
     );
     for (const file of media.files) {
-      addPath(paths, workspacePathFromAccessUrl(file.url) ?? null, agentId);
+      addPath(paths, workspacePathFromAccessUrl(file.url) ?? null, ownerId);
     }
     for (const img of media.images) {
-      addPath(paths, workspacePathFromAccessUrl(img.url) ?? null, agentId);
+      addPath(paths, workspacePathFromAccessUrl(img.url) ?? null, ownerId);
     }
     for (const video of media.videos) {
-      addPath(paths, workspacePathFromAccessUrl(video.url) ?? null, agentId);
+      addPath(paths, workspacePathFromAccessUrl(video.url) ?? null, ownerId);
     }
   }
   return dedupeDockFilePaths(paths, agentId);

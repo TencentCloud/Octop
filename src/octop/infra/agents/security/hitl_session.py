@@ -120,17 +120,51 @@ def parse_hitl_session_policy(raw: object) -> HitlSessionPolicy:
     return HitlSessionPolicy()
 
 
-def thread_id_from_request(request: dict[str, Any]) -> str | None:
-    """Read ``thread_id`` from a harness request dict."""
-    raw = request.get("thread_id")
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()
-    cfg = request.get("configurable")
+def _thread_id_from_mapping(raw: object) -> str | None:
+    if not isinstance(raw, dict):
+        return None
+    direct = raw.get("thread_id")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    cfg = raw.get("configurable")
     if isinstance(cfg, dict):
         nested = cfg.get("thread_id")
         if isinstance(nested, str) and nested.strip():
             return nested.strip()
     return None
+
+
+def thread_id_from_request(request: dict[str, Any]) -> str | None:
+    """Read ``thread_id`` from a harness request dict."""
+    return _thread_id_from_mapping(request)
+
+
+def thread_id_from_interrupt_request(req: Any) -> str | None:
+    """Resolve the conversation thread for a HITL ``when`` predicate.
+
+    LangGraph evaluates ``when`` inside ``after_model``. That may run without
+    :func:`hitl_thread_scope`, but the runnable config still carries
+    ``configurable.thread_id``.
+    """
+    bound = current_hitl_thread_id()
+    if bound:
+        return bound
+    runtime = getattr(req, "runtime", None)
+    from_runtime = _thread_id_from_mapping(getattr(runtime, "config", None))
+    if from_runtime:
+        return from_runtime
+    if isinstance(req, dict):
+        from_req = _thread_id_from_mapping(req)
+        if from_req:
+            return from_req
+    try:
+        from langgraph.config import get_config
+    except ImportError:
+        return None
+    try:
+        return _thread_id_from_mapping(get_config())
+    except RuntimeError:
+        return None
 
 
 @contextmanager
@@ -155,10 +189,12 @@ class HitlSessionPolicyStore:
     def __init__(self, threads_repo: ThreadRepo | None = None) -> None:
         self._repo = threads_repo
         self._cache: dict[str, HitlSessionPolicy] = {}
+        self._rev: dict[str, int] = {}
 
     def replace_repo(self, threads_repo: ThreadRepo | None) -> None:
         self._repo = threads_repo
         self._cache.clear()
+        self._rev.clear()
 
     def get(self, thread_id: str) -> HitlSessionPolicy:
         tid = (thread_id or "").strip()
@@ -177,16 +213,49 @@ class HitlSessionPolicyStore:
         if not tid:
             return resolved
         self._cache[tid] = resolved
+        self._rev[tid] = self._rev.get(tid, 0) + 1
         repo = self._repo
         if repo is not None:
             repo.update_composer(tid, hitl_policy=resolved.to_json())
         return resolved
+
+    def revision(self, thread_id: str) -> int:
+        return self._rev.get((thread_id or "").strip(), 0)
+
+    def compare_set(
+        self,
+        thread_id: str,
+        policy: HitlSessionPolicy | object,
+        expected_revision: int,
+    ) -> bool:
+        """Write *policy* only when no later ``set`` has moved *thread_id*."""
+        tid = (thread_id or "").strip()
+        if not tid or self.revision(tid) != expected_revision:
+            return False
+        self.set(tid, policy)
+        return True
+
+    def reset_bypass(self, thread_id: str) -> None:
+        """Restore ask-every-time for one conversation and its loaded member threads."""
+        tid = (thread_id or "").strip()
+        if not tid:
+            return
+        self.set(tid, {"mode": "ask"})
+        prefix = f"{tid}~"
+        for key in [key for key in self._cache if key.startswith(prefix)]:
+            self.set(key, {"mode": "ask"})
 
     def allows(self, thread_id: str, tool_name: str) -> bool:
         return self.get(thread_id).allows(tool_name)
 
     def allows_current(self, tool_name: str) -> bool:
         tid = current_hitl_thread_id()
+        if not tid:
+            return False
+        return self.allows(tid, tool_name)
+
+    def allows_interrupt(self, tool_name: str, req: Any = None) -> bool:
+        tid = thread_id_from_interrupt_request(req)
         if not tid:
             return False
         return self.allows(tid, tool_name)
@@ -222,7 +291,7 @@ def apply_session_bypass(
             _tool: str = name,
             _orig: Any = original_when,
         ) -> bool:
-            if store.allows_current(_tool):
+            if store.allows_interrupt(_tool, req):
                 return False
             if _orig is None:
                 return True
@@ -241,5 +310,6 @@ __all__ = [
     "current_hitl_thread_id",
     "hitl_thread_scope",
     "parse_hitl_session_policy",
+    "thread_id_from_interrupt_request",
     "thread_id_from_request",
 ]

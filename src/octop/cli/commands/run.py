@@ -136,7 +136,10 @@ def _save_configfile_overrides(host: str | None, port: int | None) -> None:
 
 @click.command("run")
 @click.option("--host", default=None, help="Override bind host")
-@click.option("--port", default=None, type=int, help="Override port")
+# 0-65535, not 1-65535: ``resolve_bind`` reads port 0 as "let the OS pick a free
+# port". Without a range the value is persisted to config.json before uvicorn
+# dies in ``socket.bind``, so every later start inherits the unusable port.
+@click.option("--port", default=None, type=click.IntRange(0, 65535), help="Override port")
 @click.option("--reload", is_flag=True, default=False, help="Enable uvicorn auto-reload (dev).")
 @click.option("--workers", default=1, type=int, help="Worker process count (default 1).")
 @click.option(

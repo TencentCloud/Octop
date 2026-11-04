@@ -1,17 +1,19 @@
-"""Derive session keys and user ids from harness-gateway InboundMessage."""
+"""Derive session keys and user ids from octop-gateway InboundMessage."""
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
-from harness_gateway.models import ImageContent, InboundMessage
+from octop_gateway.models import ImageContent, InboundMessage
 
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.utils.weixin_context import with_weixin_send_token
 
 # Persisted on HumanMessage.additional_kwargs for dashboard history UI.
 COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
-# Must match harness_agent.messages.CHECKPOINT_TS_KEY (epoch-ms).
+# Must match octop_harness.messages.CHECKPOINT_TS_KEY (epoch-ms).
 CHECKPOINT_TS_KEY = "checkpoint_ts"
 # Persisted on AIMessage.additional_kwargs when a stream fails mid-turn.
 STREAM_ERROR_FLAG = "octop_stream_error"
@@ -56,8 +58,8 @@ def build_composer_context(
 
 
 try:
-    from harness_gateway.push_routing import EPHEMERAL_PUSH_META
-except ImportError:  # pragma: no cover - older harness-gateway
+    from octop_gateway.push_routing import EPHEMERAL_PUSH_META
+except ImportError:  # pragma: no cover - older octop-gateway
     EPHEMERAL_PUSH_META = frozenset(
         {
             "msg_id",
@@ -92,6 +94,7 @@ def resolve_user_id_for_message(
     if msg.channel_type in (
         ThreadRegistry.CHANNEL_DASHBOARD,
         ThreadRegistry.CHANNEL_CLI,
+        ThreadRegistry.CHANNEL_MCP,
     ):
         sid = subject_id_from_message(msg)
         try:
@@ -161,6 +164,21 @@ _PERSISTED_META_KEYS = (
     "session_id",
     "task_id",
 )
+
+
+def session_metadata_from_message(msg: InboundMessage) -> dict[str, object]:
+    """Durable routing fields for a session row.
+
+    ``context_token`` stays ephemeral for every channel. WeChat also keeps a
+    separate copy so a later cron push can still address the conversation.
+    """
+    meta = sanitize_im_metadata(msg)
+    if (msg.channel_type or "") != "weixin":
+        return meta
+    token = str((msg.metadata or {}).get("context_token") or "").strip()
+    if not token:
+        return meta
+    return with_weixin_send_token(meta, token, int(time.time() * 1000))
 
 
 def sanitize_im_metadata(msg: InboundMessage) -> dict[str, object]:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import stat
+import urllib.error
 import urllib.parse
 import zipfile
 from typing import Any
@@ -124,6 +125,27 @@ def test_download_skillhub_package_follows_endpoint_and_strips_wrapper(
     }
 
 
+def test_download_http_404_is_a_missing_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_urlopen(request: Any, timeout: float) -> _BytesResponse:
+        del timeout
+        raise urllib.error.HTTPError(
+            request.full_url,
+            404,
+            "Not Found",
+            hdrs=None,  # type: ignore[arg-type]
+            fp=io.BytesIO(b"missing"),
+        )
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubSkillNotFound):
+        skillhub_market._download_skillhub_package(
+            "https://api.example.com",
+            "content-writer",
+            timeout=9,
+        )
+
+
 def test_parse_skillhub_package_repairs_invalid_utf8_in_skill_md() -> None:
     corrupted = "---\nname: humanizer\n---\n每句 ".encode() + b"\xe2j$" + "15 字\n".encode()
     buffer = io.BytesIO()
@@ -210,3 +232,55 @@ def test_http_request_rejects_oversized_content_length(
             timeout=1,
             max_bytes=100,
         )
+
+
+def test_fetch_ranking_json_rejects_oversized_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(skillhub_market, "_MAX_JSON_BYTES", 16)
+
+    def fake_urlopen(_request: Any, timeout: float) -> _BytesResponse:
+        return _BytesResponse(b'{"section": "hot"}', headers={"Content-Length": "999"})
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubPackageTooLarge, match="exceeds"):
+        skillhub_market._fetch_ranking_json("https://api.example.com", "hot", timeout=3)
+
+
+def test_fetch_ranking_json_caps_chunked_body_without_content_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(skillhub_market, "_MAX_JSON_BYTES", 16)
+
+    def fake_urlopen(_request: Any, timeout: float) -> _BytesResponse:
+        return _BytesResponse(b'{"skills": [' + b"0" * 64 + b"]}")
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubPackageTooLarge, match="exceeds"):
+        skillhub_market._fetch_ranking_json("https://api.example.com", "hot", timeout=3)
+
+
+def test_fetch_ranking_json_wraps_stream_reset_as_market_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A dropped connection must surface as ``SkillHubMarketError``.
+
+    ``/skills/hub/rankings`` only maps ``SkillHubMarketError`` (502) and
+    ``SkillHubMarketTimeout`` (504); a bare ``OSError`` escaping here turns a
+    retryable upstream hiccup into an opaque 500.
+    """
+
+    class _ResettingResponse(_BytesResponse):
+        def read(self, size: int = -1) -> bytes:
+            raise ConnectionResetError("connection reset by peer")
+
+    def fake_urlopen(_request: Any, timeout: float) -> _ResettingResponse:
+        return _ResettingResponse(b"")
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubMarketError) as excinfo:
+        skillhub_market._fetch_ranking_json("https://api.example.com", "hot", timeout=3)
+    assert not isinstance(excinfo.value, skillhub_market.SkillHubPackageError)

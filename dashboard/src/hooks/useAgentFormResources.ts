@@ -3,6 +3,7 @@ import { providerApi } from "../api/modules/provider";
 import { request } from "../api/request";
 import { isAgentResolvableStorageKind } from "../pages/Admin/Storage/useStorageBackends";
 import type { ModelPickerOption } from "../utils/modelOptions";
+import { isBridgeAgentId } from "../utils/remoteExpert";
 
 export interface AgentStorageBackend {
   id: number;
@@ -21,8 +22,12 @@ export interface AgentFormResources {
 
 /**
  * Load resolved models + enabled storage backends for agent create/edit drawers.
+ * Pass a Bridge shadow ``agentId`` so model lists hop to the peer.
  */
-export function useAgentFormResources(enabled: boolean): AgentFormResources {
+export function useAgentFormResources(
+  enabled: boolean,
+  agentId?: string | null,
+): AgentFormResources {
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [backends, setBackends] = useState<AgentStorageBackend[]>([]);
@@ -40,7 +45,7 @@ export function useAgentFormResources(enabled: boolean): AgentFormResources {
     setBackendsLoading(true);
 
     void providerApi
-      .listResolvedModels()
+      .listResolvedModels(agentId)
       .then((data) => {
         if (!cancelled) setModels(data as ModelPickerOption[]);
       })
@@ -51,27 +56,33 @@ export function useAgentFormResources(enabled: boolean): AgentFormResources {
         if (!cancelled) setModelsLoading(false);
       });
 
-    void request<AgentStorageBackend[]>("/storage-backends")
-      .then((data) => {
-        if (!cancelled) {
-          setBackends(
-            data.filter(
-              (b) => b.enabled && isAgentResolvableStorageKind(b.kind),
-            ),
-          );
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setBackends([]);
-      })
-      .finally(() => {
-        if (!cancelled) setBackendsLoading(false);
-      });
+    // Storage backends are not in the Bridge tunnel allowlist.
+    if (isBridgeAgentId(agentId)) {
+      setBackends([]);
+      setBackendsLoading(false);
+    } else {
+      void request<AgentStorageBackend[]>("/storage-backends")
+        .then((data) => {
+          if (!cancelled) {
+            setBackends(
+              data.filter(
+                (b) => b.enabled && isAgentResolvableStorageKind(b.kind),
+              ),
+            );
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setBackends([]);
+        })
+        .finally(() => {
+          if (!cancelled) setBackendsLoading(false);
+        });
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [enabled]);
+  }, [enabled, agentId]);
 
   return { models, modelsLoading, backends, backendsLoading };
 }

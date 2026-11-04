@@ -162,6 +162,46 @@ describe("<ChannelsPanel /> create-flow default", () => {
     });
   });
 
+  it("renders QQ credentials before the group chat policy", async () => {
+    const row = {
+      id: "qq-channel-1",
+      kind: "qq",
+      name: "qq",
+      enabled: true,
+    };
+    api.mockImplementation(async (url) => {
+      if (url.endsWith("/qq-channel-1")) {
+        return {
+          ...row,
+          config: { app_id: "1905353226", secret: "test-secret" },
+        };
+      }
+      return [row];
+    });
+
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+
+    const channelType = await screen.findByText("channels.channelType");
+    const channelId = screen.getByText("Channel ID");
+    const appId = screen.getByText("App ID");
+    const appSecret = screen.getByText("App Secret");
+    const displaySettings = screen.getByText("channels.channelSettings");
+    const groupPolicy = screen.getByText("channels.qqGroupPolicyTitle");
+    const expectBefore = (first: Element, second: Element) => {
+      expect(
+        first.compareDocumentPosition(second) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    };
+
+    expectBefore(channelType, channelId);
+    expectBefore(channelId, appId);
+    expectBefore(appId, appSecret);
+    expectBefore(appSecret, displaySettings);
+    expectBefore(displaySettings, groupPolicy);
+  });
+
   async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
     // Telegram is collapsed behind "更多通道" until expanded.
@@ -214,6 +254,34 @@ describe("<ChannelsPanel /> create-flow default", () => {
       kind: "telegram",
       name: "telegram",
       config: expect.objectContaining({ bot_token: "123456:ABC-token" }),
+    });
+  });
+
+  it("saves Telegram allowed user IDs as a deduplicated list", async () => {
+    await openTelegramCreateDrawer();
+
+    await userEvent.type(
+      await screen.findByLabelText(/Bot Token/i),
+      "123456:ABC-token",
+    );
+    await userEvent.type(
+      screen.getByLabelText("channels.telegramAllowedUsers"),
+      "123456789, 111222333\n123456789",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+    await waitFor(() => {
+      const post = api.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === "POST",
+      );
+      expect(post).toBeDefined();
+      expect(JSON.parse(String(post![1]!.body))).toMatchObject({
+        kind: "telegram",
+        config: {
+          bot_token: "123456:ABC-token",
+          allowed_user_ids: ["123456789", "111222333"],
+        },
+      });
     });
   });
 

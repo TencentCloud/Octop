@@ -57,8 +57,15 @@ export function formatAgentError(
   return error;
 }
 
-/** Expert harness runtime is loaded (`running`); not storage-backend config. */
-export function isAgentChatReady(state: string | null | undefined): boolean {
+/** Expert harness runtime is loaded (`running`); not storage-backend config.
+ *  A cloud-collab shadow is ready only when the link is up and the peer
+ *  expert itself is running.
+ */
+export function isAgentChatReady(
+  state: string | null | undefined,
+  agent?: { bridge?: boolean; bridge_disconnected?: boolean } | null,
+): boolean {
+  if (agent?.bridge_disconnected) return false;
   return state === "running";
 }
 

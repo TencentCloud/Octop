@@ -98,7 +98,7 @@ def test_docker_probe_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     docker_mod.from_env = lambda: client
     monkeypatch.setitem(__import__("sys").modules, "docker", docker_mod)
     monkeypatch.setattr(
-        "harness_agent.backends.docker_sandbox.ensure_docker_image",
+        "octop_harness.backends.docker_sandbox.ensure_docker_image",
         lambda image, client=None: False,
     )
 
@@ -114,7 +114,7 @@ def test_docker_probe_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
         captured["spec"] = spec
         return backend
 
-    monkeypatch.setattr("harness_agent.backends.resolve_backend", _resolve)
+    monkeypatch.setattr("octop_harness.backends.resolve_backend", _resolve)
 
     result = probe_storage_backend(_row(kind="docker", bucket="python:3.12-slim"))
     assert result["ok"] is True
@@ -135,7 +135,7 @@ def test_docker_probe_user_scope_uses_test_username(monkeypatch: pytest.MonkeyPa
     docker_mod.from_env = lambda: client
     monkeypatch.setitem(__import__("sys").modules, "docker", docker_mod)
     monkeypatch.setattr(
-        "harness_agent.backends.docker_sandbox.ensure_docker_image",
+        "octop_harness.backends.docker_sandbox.ensure_docker_image",
         lambda image, client=None: True,
     )
 
@@ -149,7 +149,7 @@ def test_docker_probe_user_scope_uses_test_username(monkeypatch: pytest.MonkeyPa
         captured["spec"] = spec
         return backend
 
-    monkeypatch.setattr("harness_agent.backends.resolve_backend", _resolve)
+    monkeypatch.setattr("octop_harness.backends.resolve_backend", _resolve)
 
     result = probe_storage_backend(
         _row(
@@ -186,6 +186,37 @@ def test_opensandbox_probe_installs_and_closes(monkeypatch: pytest.MonkeyPatch) 
     )
     assert result["ok"] is True
     assert result.get("message_key") == "opensandbox_probe_ok"
+
+
+def test_postgres_probe_delegates_to_harness(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend import probe as probe_mod
+
+    captured: dict[str, Any] = {}
+
+    def _probe(spec: dict[str, Any]) -> dict[str, Any]:
+        captured["spec"] = spec
+        return {"ok": True, "message_key": "probe_roundtrip_ok"}
+
+    monkeypatch.setattr(probe_mod, "probe_backend", _probe)
+    result = probe_storage_backend(
+        _row(
+            kind="postgres",
+            endpoint="localhost:5432",
+            access_key="octop",
+            secret_key="secret",
+            bucket="octop",
+        )
+    )
+    assert result["ok"] is True
+    assert captured["spec"]["type"] == "postgres"
+    assert captured["spec"]["host"] == "localhost"
+    assert "connection_string" not in captured["spec"]
+
+
+def test_postgres_probe_incomplete() -> None:
+    result = probe_storage_backend(_row(kind="postgres"))
+    assert result["ok"] is False
+    assert "incomplete" in result["message"]
 
 
 def test_opensandbox_probe_reports_install_failure(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,3 +1,5 @@
+import cx from "classnames";
+
 import type { PanelMode } from "../../../components/BrowserWorkspace";
 import type { DisplayEnvironment } from "../../../api/types/browser";
 import type { DockTab, DockTabId } from "../hooks/useChatDockPanel";
@@ -11,13 +13,15 @@ interface ChatDockPanelsProps {
   isResizing: boolean;
   panelSizes: { rightWidth: number; bottomHeight: number };
   agentId: string;
-  filePaths: string[];
+  filePaths: Array<string | { path: string; agentId?: string }>;
+  agentNameById?: Record<string, string>;
   openTabs: DockTab[];
   activeTabId: DockTabId | null;
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, agentId?: string | null) => void;
   browserEnvironment: DisplayEnvironment;
+  bridgeConnectionId?: string | null;
   threadId?: string | null;
   isStreamingTurn?: boolean;
   onModeChange: (mode: PanelMode) => void;
@@ -47,12 +51,14 @@ export default function ChatDockPanels({
   panelSizes,
   agentId,
   filePaths,
+  agentNameById,
   openTabs,
   activeTabId,
   onSelectTab,
   onCloseTab,
   onOpenFile,
   browserEnvironment,
+  bridgeConnectionId = null,
   threadId = null,
   isStreamingTurn = false,
   onModeChange,
@@ -84,12 +90,14 @@ export default function ChatDockPanels({
       }
       agentId={agentId}
       filePaths={filePaths}
+      agentNameById={agentNameById}
       openTabs={openTabs}
       activeTabId={activeTabId}
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onOpenFile={onOpenFile}
       browserEnvironment={browserEnvironment}
+      bridgeConnectionId={bridgeConnectionId}
       threadId={threadId}
       isStreamingTurn={isStreamingTurn}
       surfaceVisible={visible}
@@ -104,9 +112,11 @@ export default function ChatDockPanels({
     <>
       {showBottomResizer && (
         <div
-          className={`${styles.panelResizer} ${styles.vertical} ${
-            isResizing ? styles.resizerActive : ""
-          }`}
+          className={cx(
+            styles.panelResizer,
+            styles.vertical,
+            isResizing && styles.resizerActive,
+          )}
           onPointerDown={(e) => onResizeStart(e, "vertical")}
         >
           <div className={styles.resizerHandle} />
@@ -115,9 +125,11 @@ export default function ChatDockPanels({
 
       {showSideResizer && (
         <div
-          className={`${styles.panelResizer} ${styles.horizontal} ${
-            isResizing ? styles.resizerActive : ""
-          }`}
+          className={cx(
+            styles.panelResizer,
+            styles.horizontal,
+            isResizing && styles.resizerActive,
+          )}
           onPointerDown={(e) => onResizeStart(e, "horizontal")}
         >
           <div className={styles.resizerHandle} />

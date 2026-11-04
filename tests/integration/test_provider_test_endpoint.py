@@ -51,12 +51,16 @@ async def test_provider_test_embedding_skips_chat_probe(
         row: Any,
         *,
         model_id: str | None = None,
+        api_mode: str | None = None,
+        api_fallback: str | None = None,
         embedding: bool | None = None,
         locale: str = "en",
     ) -> dict[str, Any]:
         assert embedding is True
         assert model_id == "text-embedding-3-small"
-        _ = locale
+        assert api_mode is None
+        assert api_fallback is None
+        _ = row, locale
         return {"ok": True, "latency_ms": 12}
 
     with patch(

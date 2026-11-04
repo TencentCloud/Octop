@@ -20,9 +20,10 @@ export function collectTurnToolMedia(
   const files: Array<{ url: string; filename?: string }> = [];
 
   for (const msg of split?.tools ?? []) {
+    const owner = msg.speakerAgentId?.trim() || agentId;
     const batch = collectToolMediaFromToolData(
       msg.toolData,
-      agentId,
+      owner,
       msg.attachments,
     );
     images.push(...batch.images);
