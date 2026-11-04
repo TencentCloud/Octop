@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { useChat } from "./useChat";
@@ -10,6 +10,13 @@ import {
 } from "../utils/inflightTranscriptCache";
 
 const thread = "versioned-history-test";
+
+beforeEach(() => {
+  // attachThread opens a dashboard socket after history loads. A live socket
+  // closes asynchronously and updates the hook outside act. These tests only
+  // cover the history page, so the socket is left unopened.
+  vi.spyOn(chatStore, "attachThread").mockResolvedValue(undefined);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -140,7 +147,10 @@ describe("history failures", () => {
       () => gate as ReturnType<typeof octopThreadsApi.history>,
     );
     const { result } = renderHook(() => useChat(thread, "agent"));
-    const pending = result.current.loadHistory(thread);
+    let pending: Promise<void> = Promise.resolve();
+    act(() => {
+      pending = result.current.loadHistory(thread);
+    });
     // Dynamic import inside the loader yields before the request is awaited.
     await new Promise((resolve) => setTimeout(resolve, 0));
     act(() => {

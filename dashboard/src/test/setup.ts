@@ -122,6 +122,11 @@ if (typeof window !== "undefined") {
     ).IntersectionObserver = _IntersectionObserver;
   }
 
+  // jsdom logs when antd measures a scrollbar with a pseudo-element.
+  const nativeGetComputedStyle = window.getComputedStyle.bind(window);
+  window.getComputedStyle = ((elt: Element) =>
+    nativeGetComputedStyle(elt)) as typeof window.getComputedStyle;
+
   // jsdom doesn't implement ``getComputedStyle().transition`` properly,
   // so antd's wave / motion can throw — silence that one noisy console
   // warning without hiding real errors.
@@ -140,5 +145,19 @@ if (typeof window !== "undefined") {
       return;
     }
     _origError(...args);
+  };
+
+  // pdfjs's browser build warns when Vitest loads it under Node. The dashboard
+  // still ships that build for the browser.
+  const _origWarn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    const first = args[0];
+    if (
+      typeof first === "string" &&
+      first.includes("Please use the `legacy` build in Node.js environments.")
+    ) {
+      return;
+    }
+    _origWarn(...args);
   };
 }

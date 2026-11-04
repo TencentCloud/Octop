@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import JSZip from "jszip";
 
@@ -163,6 +169,9 @@ describe("<SkillImportModal /> local zip import", () => {
   it("requires a zip before confirming", async () => {
     const user = userEvent.setup();
     const onImportZip = vi.fn();
+    const zipFile = await makeZipFile({
+      "demo/SKILL.md": "---\nname: demo\n---\n",
+    });
 
     render(
       <SkillImportModal
@@ -179,9 +188,6 @@ describe("<SkillImportModal /> local zip import", () => {
       screen.getByRole("button", { name: "skills.importSkills" }),
     ).toBeDisabled();
 
-    const zipFile = await makeZipFile({
-      "demo/SKILL.md": "---\nname: demo\n---\n",
-    });
     const fileInput = document.querySelector(
       'input[type="file"]',
     ) as HTMLInputElement;
@@ -193,5 +199,9 @@ describe("<SkillImportModal /> local zip import", () => {
       screen.getByRole("button", { name: "skills.importSkills" }),
     ).toBeDisabled();
     expect(onImportZip).not.toHaveBeenCalled();
+    // antd Modal / Segmented motion updates after the click.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   });
 });

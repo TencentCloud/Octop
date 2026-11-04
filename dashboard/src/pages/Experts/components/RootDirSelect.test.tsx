@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
   within,
+  act,
 } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "../../../i18n";
@@ -233,7 +234,7 @@ describe("<RootDirSelect /> mkdir + rename", () => {
     expect(within(dropdown).queryByTestId("root-dir-rename-/")).toBeNull();
   });
 
-  it("shows the full absolute path in the closed selector", () => {
+  it("shows the full absolute path in the closed selector", async () => {
     mockedRequest.mockResolvedValue({ entries: [] });
 
     const { container } = render(
@@ -241,6 +242,10 @@ describe("<RootDirSelect /> mkdir + rename", () => {
         <RootDirSelect value="/Users/jubaoliang/workspace" />
       </I18nextProvider>,
     );
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
 
     const item = container.querySelector(".ant-select-selection-item");
     expect(item).toHaveTextContent("/Users/jubaoliang/workspace");

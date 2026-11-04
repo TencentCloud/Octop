@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
@@ -21,14 +21,19 @@ vi.mock("../../utils/locale", () => ({
   applyUserLocale: () => Promise.resolve(),
 }));
 
-vi.mock("./CaptchaField", () => ({
-  default: () => null,
-}));
+vi.mock("./CaptchaField", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    default: forwardRef(function CaptchaField() {
+      return null;
+    }),
+  };
+});
 
 import LoginPage from "./index";
 
 describe("Login remember-me checkbox", () => {
-  it("renders checked by default", () => {
+  it("renders checked by default", async () => {
     render(
       <MemoryRouter>
         <LoginPage />
@@ -49,5 +54,8 @@ describe("Login remember-me checkbox", () => {
         /login\.usernameHint|可用安装时设置|set during setup/i,
       ),
     ).not.toBeInTheDocument();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
   });
 });
