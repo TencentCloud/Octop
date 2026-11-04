@@ -9,7 +9,6 @@ import {
 } from "react";
 import {
   Alert,
-  App,
   Button,
   Drawer,
   Dropdown,
@@ -33,6 +32,7 @@ import {
 } from "antd";
 
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import type { MenuProps, TreeDataNode } from "antd";
 import type { InputRef } from "antd/es/input";
 import { ResizableTable } from "@/components/ResizableTable";
@@ -282,7 +282,6 @@ function ReadinessRow({
 
 export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkConsumedRef = useRef<string | null>(null);

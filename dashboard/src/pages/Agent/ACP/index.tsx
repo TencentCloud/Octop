@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, App, Button, Empty, Form, Switch } from "antd";
+import { Alert, Button, Empty, Form, Switch } from "antd";
 
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
@@ -34,7 +35,6 @@ interface ACPPanelProps {
 /** ACP runners manager — shared by `/acp` and Personalization → Tools. */
 export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const { activeAgentId: contextAgentId, agents } = useAgent();
   const activeAgentId =
     agentIdProp !== undefined ? agentIdProp : contextAgentId;

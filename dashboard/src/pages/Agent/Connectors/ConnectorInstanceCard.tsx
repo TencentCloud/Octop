@@ -1,4 +1,6 @@
-import { App, Switch, Tooltip, Typography } from "antd";
+import { Switch, Tooltip, Typography } from "antd";
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import {
   SharedAvatarMark,
   SharedResourceBadge,
@@ -30,7 +32,6 @@ export function ConnectorInstanceCard({
   onChanged,
 }: ConnectorInstanceCardProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const user = useCurrentUser();
   const accent = catalogEntry ? connectorAccent(catalogEntry) : "#8c8c8c";
   const isOwner = user?.id === instance.owner_user_id;

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, App, Button } from "antd";
+import { Alert, Button } from "antd";
+import { message } from "@/utils/antdMessage";
 import { Copy, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
@@ -34,7 +35,6 @@ export function LayaLocalInstall({
   onStatusChange: (status: LayaStatus) => void;
 }) {
   const { t } = useTranslation();
-  const { message } = App.useApp();
   const [status, setStatus] = useState<LayaStatus>(EMPTY);
   const [logs, setLogs] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);

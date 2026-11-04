@@ -4,7 +4,9 @@
  * All providers are admin-managed. Local runtimes cannot be deleted.
  */
 import { useEffect, useState } from "react";
-import { App, Button, Card, Switch, Tooltip } from "antd";
+import { Button, Card, Switch, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -40,7 +42,6 @@ export function ProviderCard({
   apiPrefix = "/admin/providers",
 }: ProviderCardProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const [modalOpen, setModalOpen] = useState(false);
   const [testing, setTesting] = useState(false);
   const [toggling, setToggling] = useState(false);

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
-  App,
   Button,
   Collapse,
   Drawer,
@@ -16,6 +15,7 @@ import {
 } from "antd";
 
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
@@ -240,7 +240,6 @@ function EditAgentDrawerBody({
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);

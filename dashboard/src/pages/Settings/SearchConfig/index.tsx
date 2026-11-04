@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
-import { App, Button, Drawer, Form, Input, Typography, Spin } from "antd";
+import { Button, Drawer, Form, Input, Typography, Spin } from "antd";
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   Activity,
@@ -99,7 +101,6 @@ function ConfigureDrawer({
   onSaved,
 }: ConfigureDrawerProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);

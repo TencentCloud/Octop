@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
-  App,
   AutoComplete,
   Button,
   Card,
@@ -39,6 +38,7 @@ import {
 } from "../../../api/modules/mediaGeneration";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -180,7 +180,6 @@ function providerLogo(provider: MediaProviderName): string {
 
 export function MediaGenerationSettingsPanel() {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const [form] = Form.useForm<ProviderFormValues>();
   const [config, setConfig] = useState<MediaGenerationDraft | null>(null);
   const [presets, setPresets] = useState<MediaProviderPreset[]>([]);

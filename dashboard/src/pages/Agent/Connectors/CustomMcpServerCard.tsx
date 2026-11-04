@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
-import { Alert, App, Button, Input, Select, Switch } from "antd";
+import { Alert, Button, Input, Select, Switch } from "antd";
+import { modal } from "@/utils/antdModal";
 import {
   Activity,
   Cable,
@@ -52,7 +53,6 @@ export function CustomMcpServerCard({
   onSharedChange,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const isHttp = card.transport === "streamable_http";
   const label = friendlyServerLabel(card);
   const accent = accentForServerName(card.name.trim() || label);
