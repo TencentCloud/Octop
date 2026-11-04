@@ -32,6 +32,7 @@ const CATALOG = [
   "sso_dingtalk",
   "sso_oidc",
   "sso_ldap",
+  "sso_external",
   "providers",
   "ollama_models",
   "onnx_models",
@@ -181,6 +182,7 @@ describe("buildPermissionPickerGroups", () => {
               "sso_dingtalk",
               "sso_oidc",
               "sso_ldap",
+              "sso_external",
             ],
           },
           {

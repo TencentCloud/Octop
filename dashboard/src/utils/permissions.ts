@@ -47,6 +47,7 @@ export const PERM = {
     "sso_dingtalk",
     "sso_oidc",
     "sso_ldap",
+    "sso_external",
   ],
   modelsPage: [
     "providers",
@@ -128,6 +129,7 @@ export const USERS_TAB_PERMISSIONS = {
   dingtalk: "sso_dingtalk",
   oidc: "sso_oidc",
   ldap: "sso_ldap",
+  external: "sso_external",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {

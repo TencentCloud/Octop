@@ -130,7 +130,15 @@ def test_legacy_umbrella_expands_to_tabs() -> None:
     assert "sso_wecom" in shown
     assert "browser" in shown
     stored = validate_permission_keys(["sso", "browser"])
-    assert stored == ["sso_feishu", "sso_wecom", "sso_dingtalk", "sso_oidc", "sso_ldap", "browser"]
+    assert stored == [
+        "sso_feishu",
+        "sso_wecom",
+        "sso_dingtalk",
+        "sso_oidc",
+        "sso_ldap",
+        "sso_external",
+        "browser",
+    ]
 
 
 def test_connector_tab_satisfies_legacy_route_key() -> None:

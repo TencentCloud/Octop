@@ -29,6 +29,7 @@ _SSO_KIND_PERMISSION = {
     "wecom": "sso_wecom",
     "dingtalk": "sso_dingtalk",
     "oidc": "sso_oidc",
+    "external": "sso_external",
 }
 
 
@@ -44,7 +45,7 @@ def _require_sso_kind(user: User, kind: str) -> None:
 
 router = APIRouter()
 
-SsoKind = Literal["oidc", "feishu", "dingtalk", "wecom"]
+SsoKind = Literal["oidc", "feishu", "dingtalk", "wecom", "external"]
 
 
 class OauthStartBody(BaseModel):

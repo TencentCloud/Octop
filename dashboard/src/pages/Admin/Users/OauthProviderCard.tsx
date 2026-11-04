@@ -21,6 +21,14 @@ import SsoProviderCard from "./SsoProviderCard";
 import type { OauthProviderDef } from "./oauthProviders";
 import styles from "./index.module.less";
 
+/** 服务器间免登（external）的设置清单：填入凭据→保存→测试→启用。 */
+const SERVER_TO_SERVER_GUIDE_STEPS = [
+  "adminSso.externalGuideStep1",
+  "adminSso.externalGuideStep2",
+  "adminSso.externalGuideStep3",
+  "adminSso.externalGuideStep4",
+] as const;
+
 interface OauthFormValues {
   enabled: boolean;
   display_name: string;
@@ -100,6 +108,7 @@ function OauthProviderCardLive({
   const displayName = Form.useWatch("display_name", form) ?? "";
   const clientId = Form.useWatch("client_id", form) ?? "";
   const agentId = Form.useWatch("agent_id", form) ?? "";
+  const clientSecret = Form.useWatch("client_secret", form) ?? "";
 
   const applyConfig = useCallback(
     (config: OauthAppConfig) => {
@@ -262,10 +271,34 @@ function OauthProviderCardLive({
 
   const previewName = displayName.trim() || t(provider.defaultNameKey);
 
+  // 服务器间免登的对接说明卡：展示换票端点与 HMAC 签名规则
+  const serverToServerAside: ReactNode = provider.isServerToServer ? (
+    <div className={styles.ssoAsideCard}>
+      <div className={styles.ssoAsideTitle}>
+        {t("adminSso.externalExchangeTitle")}
+      </div>
+      <p className={styles.ssoSectionHint}>
+        {t("adminSso.externalExchangeHint")}
+      </p>
+    </div>
+  ) : null;
+
   const guideStep = (() => {
     const credentialsReady =
       Boolean(clientId.trim()) &&
-      (!provider.hasAgentId || Boolean(String(agentId).trim()));
+      (!provider.hasAgentId || Boolean(String(agentId).trim())) &&
+      // 服务器间免登：凭据必须包含共享密钥；已保存过密钥时，即使输入框留空也视为已配置
+      (!provider.isServerToServer ||
+        hasClientSecret ||
+        Boolean(clientSecret.trim()));
+    // 服务器间免登：无回调地址环节，凭据→保存→测试→启用
+    if (provider.isServerToServer) {
+      if (!credentialsReady) return 0;
+      if (dirty) return 1;
+      if (!testResult?.ok) return 2;
+      if (!enabled) return 3;
+      return 4;
+    }
     if (!credentialsReady) return 0;
     if (!redirectUri) return 1;
     if (dirty) return 2;
@@ -381,6 +414,12 @@ function OauthProviderCardLive({
               : undefined
           }
           guideStep={guideStep}
+          guideSteps={
+            provider.isServerToServer ? SERVER_TO_SERVER_GUIDE_STEPS : undefined
+          }
+          hideLoginPreview={provider.isServerToServer}
+          hideRedirectSection={provider.isServerToServer}
+          asideExtra={serverToServerAside}
           enabled={enabled}
           previewName={previewName}
         >
@@ -443,6 +482,25 @@ function OauthProviderCardLive({
                   hasClientSecret
                     ? t("adminSso.clientSecretConfigured")
                     : t("adminSso.oauthClientSecretHint")
+                }
+                rules={
+                  provider.isServerToServer
+                    ? [
+                        {
+                          // 留空（含纯空格）表示保持现有密钥不变；仅当非空且不足 16 位时报错
+                          validator: (_rule, value?: string) => {
+                            const trimmed = value?.trim() ?? "";
+                            if (trimmed === "") return Promise.resolve();
+                            if (trimmed.length < 16) {
+                              return Promise.reject(
+                                new Error(t("adminSso.externalSecretMin")),
+                              );
+                            }
+                            return Promise.resolve();
+                          },
+                        },
+                      ]
+                    : undefined
                 }
               >
                 <Input.Password

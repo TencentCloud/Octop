@@ -7,10 +7,13 @@
 ## [Unreleased]
 
 ### 新增
+- 外部业务系统可用共享密钥 HMAC 免登：管理 → 用户配置 App ID 与共享密钥后，`POST /api/auth/external/exchange` 换取 60 秒一次性登录码并自动开户；浏览器经 `/login/external#code=...` 同源换票，地址栏不出现 JWT（#2702）
+- ragflow 连接器支持配置服务地址、API Key 与默认知识库 ID，专家可列出知识库、检索片段和分页读取文档，凭证沿用加密存储（#2308）
 - PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
 - 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
+
 
 ### 修复
 - Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效

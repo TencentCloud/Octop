@@ -80,6 +80,7 @@ const NAV_PERMISSION_CHIPS: readonly {
       "sso_dingtalk",
       "sso_oidc",
       "sso_ldap",
+      "sso_external",
     ],
   },
   {

@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Group, IdCard, Network, Users } from "lucide-react";
+import { Group, IdCard, KeyRound, Network, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { TAB_ICON_SIZE } from "../../../components/TabLabel";
@@ -23,7 +23,8 @@ import styles from "./index.module.less";
 
 type TabKey = "local" | "roles" | "groups" | OauthAppKind | "oidc" | "ldap";
 
-const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
+// external（外部系统免登）无品牌图标，用 lucide KeyRound 兜底
+const OAUTH_BRAND_ICONS: Record<Exclude<OauthAppKind, "external">, string> = {
   feishu: feishuIcon,
   wecom: wecomIcon,
   dingtalk: dingtalkIcon,
@@ -68,6 +69,13 @@ const TABS: TabBarItem<TabKey>[] = [
     labelKey: "adminUsers.tabLdap",
     icon: Network,
   },
+  {
+    key: "external",
+    labelKey: "adminUsers.tabExternal",
+    icon: KeyRound,
+    // 直链与 F12 检索用的可见中文；i18n 未命中时仍显示
+    fallback: "外部系统登录",
+  },
 ];
 
 function parseTab(raw: string | null): TabKey {
@@ -78,7 +86,8 @@ function parseTab(raw: string | null): TabKey {
     raw === "wecom" ||
     raw === "dingtalk" ||
     raw === "oidc" ||
-    raw === "ldap"
+    raw === "ldap" ||
+    raw === "external"
   ) {
     return raw;
   }
@@ -98,8 +107,18 @@ function OauthTabPanel({ kind }: { kind: OauthAppKind }) {
   return (
     <div className={styles.ssoPanel}>
       <TabPanelHeader
-        icon={<BrandTabIcon src={OAUTH_BRAND_ICONS[kind]} size={22} />}
-        title={t(provider.titleKey)}
+        icon={
+          kind === "external" ? (
+            <KeyRound size={22} />
+          ) : (
+            <BrandTabIcon src={OAUTH_BRAND_ICONS[kind]} size={22} />
+          )
+        }
+        title={
+          kind === "external"
+            ? t(provider.titleKey, "外部系统登录")
+            : t(provider.titleKey)
+        }
         description={t(provider.descKey)}
       />
       <OauthProviderCard provider={provider} standalone />
@@ -148,7 +167,8 @@ export default function AdminUsersPage() {
   } else if (
     activeTab === "feishu" ||
     activeTab === "wecom" ||
-    activeTab === "dingtalk"
+    activeTab === "dingtalk" ||
+    activeTab === "external"
   ) {
     body = <OauthTabPanel kind={activeTab} />;
   }
