@@ -70,6 +70,8 @@ dev = [
 browser = [
     "playwright>=1.40",
 ]
+# Volcengine TOS object storage (Admin storage kind ``tos``).
+tos = ["tos>=2.9,<3"]
 # Kept for backward compatibility; pillow is now a core dependency.
 desktop = ["mss>=9.0", "pynput>=1.7"]
 # Local ONNX / fastembed embedding models (Models admin local tab).
