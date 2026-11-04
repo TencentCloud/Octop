@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "short_link_card", "tools": ["make_short_link"] }]
-}

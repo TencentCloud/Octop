@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "./RailEdgeControl.module.less";
 
 interface RailEdgeControlProps {
@@ -48,25 +49,24 @@ export default function RailEdgeControl({
 
   return (
     <div
-      className={[
+      className={cx(
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
-        expanded ? null : styles.edgeCollapsed,
+        !expanded && styles.edgeCollapsed,
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
     >
       {showLine ? <div className={styles.line} aria-hidden /> : null}
       <button
         type="button"
-        className={`${styles.btn} ${
+        className={cx(
+          styles.btn,
           placement === "before"
             ? styles.btnBefore
             : placement === "after"
             ? styles.btnAfter
-            : ""
-        }`}
+            : "",
+        )}
         onClick={onToggle}
         aria-label={ariaLabel}
         title={ariaLabel}

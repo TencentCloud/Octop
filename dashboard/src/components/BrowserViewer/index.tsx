@@ -17,6 +17,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import type {
   BrowserStreamState,
@@ -253,9 +254,10 @@ export const BrowserViewer = forwardRef<
               >
                 <button
                   type="button"
-                  className={`${styles.bookmarkBtn} ${
-                    bookmarked ? styles.bookmarkBtnActive : ""
-                  }`}
+                  className={cx(
+                    styles.bookmarkBtn,
+                    bookmarked && styles.bookmarkBtnActive,
+                  )}
                   disabled={!navUrlNormalized}
                   aria-label={
                     bookmarked
@@ -283,9 +285,10 @@ export const BrowserViewer = forwardRef<
 
       {/* Viewport (canvas screencast) */}
       <div
-        className={`${styles.viewportContainer} ${
-          interactive ? styles.viewportInteractive : ""
-        }`}
+        className={cx(
+          styles.viewportContainer,
+          interactive && styles.viewportInteractive,
+        )}
       >
         {isError ? (
           <div className={styles.placeholder}>
@@ -317,9 +320,11 @@ export const BrowserViewer = forwardRef<
           <canvas
             ref={canvasRef}
             tabIndex={0}
-            className={`${styles.canvas} ${
-              interactive ? styles.canvasInteractive : ""
-            } ${!frameReady ? styles.canvasHidden : ""}`}
+            className={cx(
+              styles.canvas,
+              interactive && styles.canvasInteractive,
+              !frameReady && styles.canvasHidden,
+            )}
             style={{
               cursor: isDragging ? "grabbing" : "default",
               ...pointerStyle,

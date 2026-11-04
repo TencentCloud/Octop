@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
+import cx from "classnames";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
 
 export type SlashPickerRow = {
@@ -83,7 +84,7 @@ export default function SlashCommandMenu<T extends SlashPickerRow>({
     return (
       <button
         key={`${item.command}-${idx}`}
-        className={`${itemClassName} ${active ? activeClassName : ""}`}
+        className={cx(itemClassName, active && activeClassName)}
         onMouseDown={(e) => {
           e.preventDefault();
           onSelect(item.command);

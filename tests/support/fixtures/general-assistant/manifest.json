@@ -1,0 +1,18 @@
+{
+  "id": "general-assistant",
+  "label": {
+    "zh": "小通 · 通用助手",
+    "en": "Xiao Tong · General Assistant"
+  },
+  "description": {
+    "zh": "友好的通用助手，适合作为起点或日常对话。",
+    "en": "A friendly default assistant."
+  },
+  "welcome_message": {
+    "zh": "无论工作还是生活，说出你的想法",
+    "en": "Share what's on your mind — work or life"
+  },
+  "icon_name": "zap",
+  "color": "#6366f1",
+  "prompt_files": ["SOUL.md"]
+}

@@ -5,6 +5,7 @@ import { message } from "@/utils/antdMessage";
 import { MinusCircle, PanelLeftOpen, Plus, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
+import cx from "classnames";
 import EmojiPicker from "../../../../components/EmojiPicker";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
 import { TextAssistBar } from "../../../../components/TextAssistBar";
@@ -1031,11 +1032,10 @@ export function SkillDrawer({
             />
           ) : null}
           <div
-            className={`${styles.mainPane} ${
-              showFileTree && fileTreeCollapsed
-                ? styles.mainPaneTreeCollapsed
-                : ""
-            }`}
+            className={cx(
+              styles.mainPane,
+              showFileTree && fileTreeCollapsed && styles.mainPaneTreeCollapsed,
+            )}
           >
             {showFileTree && fileTreeCollapsed ? (
               <Tooltip title={t("skills.fileTreeShow")}>

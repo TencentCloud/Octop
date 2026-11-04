@@ -28,7 +28,7 @@ from collections.abc import Coroutine
 from concurrent.futures import Future
 from typing import Any, cast
 
-_REMOTE_SPEC_TYPES = frozenset({"s3", "postgres", "cos", "oss", "obs"})
+_REMOTE_SPEC_TYPES = frozenset({"s3", "postgres", "cos", "oss", "obs", "tos"})
 # One hung List/Get must not pin the server loop (or ``boot()``) indefinitely.
 _BACKEND_IO_TIMEOUT = 30.0
 

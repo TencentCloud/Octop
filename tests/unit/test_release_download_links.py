@@ -40,7 +40,7 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert f"{base}/Octop-portable-linux-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-fnos-docker-0.9.31.fpk" in body
     assert f"{base}/Octop-fnos-docker-lite-0.9.31.fpk" in body
-    assert f"{base}/Octop-fnos-native-0.9.31.fpk" in body
+    assert f"{base}/Octop-fnos-native-amd64-0.9.31.fpk" in body
     assert f"{base}/Octop-fnos-native-arm64-0.9.31.fpk" in body
     assert "ghcr.io/tencentcloud/octop:0.9.31-lite" in body
     assert "Docker lite (x86 and ARM)" in body
@@ -56,14 +56,14 @@ def test_patch_release_body_drops_unpublished_fnos_packages() -> None:
     body = mod.render_download_section("0.9.31") + "\n## What's Changed\n\n- kept\n"
     present = [
         "Octop-fnos-docker-0.9.31.fpk",
-        "Octop-fnos-native-0.9.31.fpk",
+        "Octop-fnos-native-amd64-0.9.31.fpk",
         "Octop-desktop-windows-amd64-0.9.31.exe",
     ]
     patched = mod.patch_release_body(body, "0.9.31", present)
     assert "Octop-fnos-docker-lite-0.9.31.fpk" not in patched
     assert "ghcr.io/tencentcloud/octop:0.9.31-lite" not in patched
     assert "Octop-fnos-docker-0.9.31.fpk" in patched
-    assert "Octop-fnos-native-0.9.31.fpk" in patched
+    assert "Octop-fnos-native-amd64-0.9.31.fpk" in patched
     assert "Native ARM64" not in patched
     assert "Octop-desktop-windows-amd64-0.9.31.exe" in patched
     assert "## What's Changed" in patched

@@ -2,6 +2,7 @@ import { Popconfirm, Switch, Table, Tag, Tooltip } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { Eye, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
 import styles from "../index.module.less";
@@ -102,7 +103,7 @@ export default function SkillsTable({
             >
               <button
                 type="button"
-                className={`${styles.tableActionBtn} ${styles.tableActionDanger}`}
+                className={cx(styles.tableActionBtn, styles.tableActionDanger)}
                 aria-label={t("common.delete")}
                 onClick={(e) => e.stopPropagation()}
               >

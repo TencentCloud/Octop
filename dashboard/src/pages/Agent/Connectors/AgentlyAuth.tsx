@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Spin } from "antd";
 import { CheckCircleOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   connectorsApi,
@@ -105,7 +106,7 @@ export function AgentlyAuth({
   };
 
   return (
-    <div className={`${styles.feishuUserAuthBox} ${styles.agentlyAuthBox}`}>
+    <div className={cx(styles.feishuUserAuthBox, styles.agentlyAuthBox)}>
       <div className={styles.feishuUserAuthTitle}>
         {dingtalk
           ? t("connectors.dingtalkAuthTitle", "钉钉账号授权")

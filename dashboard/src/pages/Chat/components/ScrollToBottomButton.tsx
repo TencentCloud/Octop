@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "../index.module.less";
 
 interface ScrollToBottomButtonProps {
@@ -76,15 +77,13 @@ export default function ScrollToBottomButton({
   return (
     <button
       ref={buttonRef}
-      className={`${styles.scrollToBottomBtn} ${
+      className={cx(
+        styles.scrollToBottomBtn,
         actuallyVisible
           ? styles.scrollToBottomBtnVisible
-          : styles.scrollToBottomBtnHidden
-      }${
-        hasNewActivity && actuallyVisible
-          ? ` ${styles.scrollToBottomBtnHasNew}`
-          : ""
-      }`}
+          : styles.scrollToBottomBtnHidden,
+        hasNewActivity && actuallyVisible && styles.scrollToBottomBtnHasNew,
+      )}
       onClick={onClick}
       type="button"
       title={label}

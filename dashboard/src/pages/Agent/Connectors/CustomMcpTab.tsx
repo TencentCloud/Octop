@@ -4,6 +4,7 @@ import { message } from "@/utils/antdMessage";
 
 import { Globe, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   connectorsApi,
@@ -607,9 +608,10 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
   const saveFooter = (
     <div
-      className={`${styles.customMcpFooter}${
-        showProbeSection ? "" : ` ${styles.customMcpFooterSaveOnly}`
-      }`}
+      className={cx(
+        styles.customMcpFooter,
+        !showProbeSection && styles.customMcpFooterSaveOnly,
+      )}
     >
       {showProbeSection ? (
         <div className={styles.customMcpFooterMain}>

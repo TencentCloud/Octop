@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "qrcode_card", "tools": ["make_qrcode"] }]
-}

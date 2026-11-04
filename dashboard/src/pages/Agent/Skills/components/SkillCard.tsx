@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   resolveBuiltinSkillIcon,
   resolveFigurativeSkillIcon,
@@ -315,9 +316,10 @@ export function SkillCard({
               {showEnableToggle ? (
                 <button
                   type="button"
-                  className={`${styles.applyBtn} ${
-                    skill.enabled ? styles.appliedBtn : styles.applyActiveBtn
-                  }`}
+                  className={cx(
+                    styles.applyBtn,
+                    skill.enabled ? styles.appliedBtn : styles.applyActiveBtn,
+                  )}
                   onClick={(e) => {
                     e.stopPropagation();
                     onToggleEnabled(e);

@@ -73,14 +73,14 @@ async def test_create_with_expert_template_writes_soul(
         AgentCreateSpec(
             name="general",
             default_model=live_openai_config.default_model,
-            template_name="general-assistant",
+            template_name="default",
         ),
     )
 
     ws = live_agent_manager._paths.agent_workspace(row.agent_id)
-    assert (ws / "SOUL.md").is_file()
-    soul = (ws / "SOUL.md").read_text(encoding="utf-8")
-    assert len(soul) > 20
+    assert (ws / "AGENTS.md").is_file()
+    body = (ws / "AGENTS.md").read_text(encoding="utf-8")
+    assert len(body) > 20
 
 
 @pytest.mark.asyncio

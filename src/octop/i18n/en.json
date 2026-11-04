@@ -396,7 +396,7 @@
     "AUTH_FAILED": "Authentication failed.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
-    "DATABASE_NOT_EMPTY": "The target database already has users. Use an empty database, or log in with the existing admin.",
+    "DATABASE_NOT_EMPTY": "The target database already has users. On PostgreSQL, confirm to keep the existing accounts. On SQLite, choose an empty database.",
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
@@ -460,6 +460,7 @@
     "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "CRON_ALREADY_RUNNING": "This task is already running on another instance.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
     "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",
@@ -490,13 +491,16 @@
     "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
     "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
+    "LDAP_NOT_CONFIGURED": "Save LDAP settings before creating a directory account.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
+    "NETWORK_ERROR": "Network error. Check your connection and try again.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect.",
     "BROWSER_NOT_ENABLED": "The browser is installed but not enabled. Confirm it on the Remote Browser page.",
     "PLUGIN_INVALID_ARCHIVE": "The download is not a valid plugin ZIP. Use a direct .zip download URL (on GitHub use raw.githubusercontent.com or the “Download” / “raw” link, not the /blob/ page).",
     "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
+    "PLUGIN_MARKET_FAILED": "Plugin market is temporarily unavailable. Please try again later.",
     "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed.",
     "KNOWLEDGE_FEATURE_DISABLED": "Knowledge bases are disabled by the administrator.",
     "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "The knowledge-base embedding components were installed but cannot be loaded by this process yet. Restart the server for them to take effect.",
@@ -702,7 +706,8 @@
     "runtime": {
       "disabled": "Channel disabled",
       "unregistered": "Not registered",
-      "error": "Connection failed"
+      "error": "Connection failed",
+      "other_instance": "Managed by another instance"
     },
     "probe": {
       "incomplete": "Incomplete credentials: missing {fields}",

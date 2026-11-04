@@ -9,6 +9,7 @@ import { Button, Card, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 import { Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
@@ -189,13 +190,12 @@ export function LocalServiceCard({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={() => void handleOpenSettings()}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover}`
-            : serviceEnabled
-            ? `${styles.providerCard} ${styles.enabled}`
-            : `${styles.providerCard} ${styles.normal}`
-        }
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          !isHover && serviceEnabled && styles.enabled,
+          !isHover && !serviceEnabled && styles.normal,
+        )}
       >
         <div className={styles.cardContent}>
           <div className={styles.cardHeader}>
@@ -214,22 +214,24 @@ export function LocalServiceCard({
             </span>
             <div className={styles.statusContainer}>
               <span
-                className={`${styles.statusDot} ${
+                className={cx(
+                  styles.statusDot,
                   serviceRunning
                     ? styles.active
                     : serviceEnabled
                     ? styles.configured
-                    : styles.inactive
-                }`}
+                    : styles.inactive,
+                )}
               />
               <span
-                className={`${styles.statusText} ${
+                className={cx(
+                  styles.statusText,
                   serviceRunning
                     ? styles.enabled
                     : serviceEnabled
                     ? styles.configured
-                    : styles.disabled
-                }`}
+                    : styles.disabled,
+                )}
               >
                 {serviceRunning
                   ? t("models.localServiceRunning")

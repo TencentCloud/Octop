@@ -18,6 +18,7 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
+import cx from "classnames";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
@@ -241,14 +242,14 @@ export const TeamCard = memo(function TeamCard({
 
   return (
     <>
-      <div className={`${styles.agentCard2} ${styles.teamCard}`}>
+      <div className={cx(styles.agentCard2, styles.teamCard)}>
         <div className={styles.agentCard2Header}>
           <SharedAvatarMark
             shared={agent.is_shared}
             owned={isOwner}
             ownerName={agent.owner_username}
           >
-            <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
+            <div className={cx(styles.agentCard2Icon, styles.teamCardIcon)}>
               <ExpertIcon
                 iconUrl={teamPortraitUrl(agent.icon_url)}
                 iconName={TEAM_ICON_NAME}
@@ -457,7 +458,7 @@ export const TeamCard = memo(function TeamCard({
           {chatReady ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               onClick={handleOpenChat}
             >
               <MessageSquare size={13} />
@@ -470,7 +471,7 @@ export const TeamCard = memo(function TeamCard({
               localState === "created") ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               disabled={isTransient || actionLoading}
               onClick={() => void handleToggle(true)}
             >

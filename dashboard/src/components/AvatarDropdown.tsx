@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { authApi } from "../api/modules/auth";
 import { preferencesApi } from "../api/modules/preferences";
 import { clearAuthToken } from "../api/request";
@@ -378,7 +379,7 @@ export default function AvatarDropdown({
 
       <button
         type="button"
-        className={`${styles.menuItem} ${styles.menuItemDanger}`}
+        className={cx(styles.menuItem, styles.menuItemDanger)}
         onClick={() => void handleLogout()}
       >
         <LogOut size={16} strokeWidth={1.8} />

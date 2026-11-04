@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { App } from "antd";
+import cx from "classnames";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import {
@@ -858,7 +859,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         id="octop-chat-file-drop"
         data-file-drop-target=""
         data-octop-chat-drop="1"
-        className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
+        className={cx(styles.chatInput, showDrop && styles.dropActive)}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}

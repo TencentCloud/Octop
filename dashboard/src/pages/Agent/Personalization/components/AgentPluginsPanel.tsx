@@ -14,6 +14,7 @@ import {
 } from "antd";
 import { Info, Settings2, Wrench } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   pluginsApi,
   type AgentPlugin,
@@ -271,9 +272,10 @@ export default function AgentPluginsPanel({ agentId }: AgentPluginsPanelProps) {
           {filteredPlugins.map((plugin) => (
             <article
               key={plugin.id}
-              className={`${pluginStyles.card} ${
-                plugin.enabled ? "" : pluginStyles.cardDisabled
-              }`}
+              className={cx(
+                pluginStyles.card,
+                !plugin.enabled && pluginStyles.cardDisabled,
+              )}
             >
               <div className={pluginStyles.cardBody}>
                 <div className={pluginStyles.cardTop}>

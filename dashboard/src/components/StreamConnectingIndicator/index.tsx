@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import cx from "classnames";
 import styles from "./StreamConnectingIndicator.module.less";
 
 const MASCOT_TYPE = `${import.meta.env.BASE_URL}octop-mascot-type.webp`;
@@ -24,13 +25,11 @@ export default function StreamConnectingIndicator({
   tone = "default",
   size = "md",
 }: StreamConnectingIndicatorProps) {
-  const rootClass = [
+  const rootClass = cx(
     styles.root,
-    tone === "onDark" ? styles.onDark : "",
-    size === "sm" ? styles.sizeSm : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    tone === "onDark" && styles.onDark,
+    size === "sm" && styles.sizeSm,
+  );
 
   return (
     <div className={rootClass}>

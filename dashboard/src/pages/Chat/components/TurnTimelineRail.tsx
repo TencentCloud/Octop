@@ -10,6 +10,7 @@ import {
 import { Popover } from "antd";
 import type { VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { ChatMessage } from "../hooks/useChat";
 import type { MessageGroup } from "../utils/messageGrouping";
 import {
@@ -312,9 +313,7 @@ export default function TurnTimelineRail({
 
   return (
     <nav
-      className={[styles.rail, showRail ? styles.railVisible : ""]
-        .filter(Boolean)
-        .join(" ")}
+      className={cx(styles.rail, showRail && styles.railVisible)}
       aria-label={t("chat.turnTimeline.label")}
       aria-hidden={!showRail}
       data-testid="turn-timeline-rail"
@@ -344,15 +343,13 @@ export default function TurnTimelineRail({
                   ? 2.6
                   : 1
                 : visual.scaleX;
-            const barClass = [
+            const barClass = cx(
               styles.tickBar,
               visual.colorTone === "focus"
                 ? styles.tickBarFocus
                 : styles.tickBarMuted,
-              scrollActiveNoHover ? styles.tickBarActive : "",
-            ]
-              .filter(Boolean)
-              .join(" ");
+              scrollActiveNoHover && styles.tickBarActive,
+            );
 
             return (
               <div
@@ -373,14 +370,11 @@ export default function TurnTimelineRail({
                     <div className={styles.preview}>
                       <p className={styles.previewUser}>{turn.userPreview}</p>
                       <p
-                        className={[
+                        className={cx(
                           styles.previewAssistant,
-                          turn.assistantPreviewKind !== "text"
-                            ? styles.previewAssistantMuted
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                          turn.assistantPreviewKind !== "text" &&
+                            styles.previewAssistantMuted,
+                        )}
                       >
                         {turn.assistantPreview}
                       </p>

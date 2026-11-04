@@ -40,6 +40,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import { authApi, type OctopUser } from "../../api/modules/auth";
 import { skillPackagesApi } from "../../api/modules/skillPackages";
@@ -674,9 +675,11 @@ export default function SkillPackagesPage() {
         </div>
       ) : (
         <div
-          className={`${styles.layout}${
-            isResizing ? ` ${styles.layoutResizing}` : ""
-          }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
+          className={cx(
+            styles.layout,
+            isResizing && styles.layoutResizing,
+            isMobile && styles.layoutMobile,
+          )}
           style={
             {
               "--skill-packages-sidebar-width": `${sidebarWidth}px`,
@@ -729,9 +732,10 @@ export default function SkillPackagesPage() {
                       onClick={() => selectPackage(item)}
                     >
                       <div
-                        className={`${styles.listItem} ${
-                          item.id === selectedId ? styles.active : ""
-                        }`}
+                        className={cx(
+                          styles.listItem,
+                          item.id === selectedId && styles.active,
+                        )}
                       >
                         <div className={styles.listName}>
                           <SharedAvatarMark
@@ -824,9 +828,10 @@ export default function SkillPackagesPage() {
           {!isMobile ? (
             <div
               data-split-divider=""
-              className={`${styles.splitDivider}${
-                listPanelCollapsed ? ` ${styles.splitDividerCollapsed}` : ""
-              }`}
+              className={cx(
+                styles.splitDivider,
+                listPanelCollapsed && styles.splitDividerCollapsed,
+              )}
             >
               {!listPanelCollapsed ? (
                 <div
@@ -885,7 +890,10 @@ export default function SkillPackagesPage() {
               ) : !selected ? null : (
                 <div className={styles.detailBody}>
                   <div
-                    className={`${skillStyles.gridToolbar} ${styles.skillsToolbar}`}
+                    className={cx(
+                      skillStyles.gridToolbar,
+                      styles.skillsToolbar,
+                    )}
                   >
                     <div className={styles.toolbarStart}>
                       {isMobile ? (
@@ -915,7 +923,7 @@ export default function SkillPackagesPage() {
                         </span>
                       </span>
                       <span
-                        className={`${skillStyles.gridCount} ${styles.skillCount}`}
+                        className={cx(skillStyles.gridCount, styles.skillCount)}
                       >
                         {t("skills.totalCount", { count: skills.length })}
                       </span>

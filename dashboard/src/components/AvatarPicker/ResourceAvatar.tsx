@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import cx from "classnames";
 
 import { useAuthImageSrc } from "../../hooks/useAuthImageSrc";
 import styles from "./AvatarPicker.module.less";
@@ -42,14 +43,12 @@ export function ResourceAvatar({
   const PresetIcon = preset.Icon;
   return (
     <span
-      className={[
+      className={cx(
         styles.preview,
-        large ? styles.previewLarge : "",
-        portrait ? styles.previewPortrait : "",
+        large && styles.previewLarge,
+        portrait && styles.previewPortrait,
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
       style={style}
     >
       {photo ? (

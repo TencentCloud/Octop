@@ -320,6 +320,13 @@ export const knowledgeBasesApi = {
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
     ),
 
+  listDocumentChunks: (id: string, documentId: string) =>
+    request<{
+      id: string;
+      filename: string;
+      chunks: { ordinal: number; text: string }[];
+    }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
+
   /** Authenticated original-file bytes (download or preview). */
   fetchDocumentFile: (
     id: string,

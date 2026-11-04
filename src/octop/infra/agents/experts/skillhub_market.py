@@ -32,12 +32,12 @@ from octop.infra.agents.experts.catalog import (
 )
 from octop.infra.skills.install import valid_skillhub_icon_url
 from octop.infra.skills.skillhub_common import (
-    DEFAULT_SKILLHUB_HOST,
     HTTP_READ_CHUNK,
     MAX_HTTP_BYTES,
     MAX_ZIP_COMPRESSION_RATIO,
     MAX_ZIP_ENTRIES,
     MAX_ZIP_UNCOMPRESSED_BYTES,
+    skillset_origin,
 )
 from octop.infra.utils.ssl_errors import looks_like_ssl_error
 from octop.infra.utils.utf8_text import (
@@ -47,7 +47,6 @@ from octop.infra.utils.utf8_text import (
 
 logger = logging.getLogger(__name__)
 
-MARKET_EXPERT_PREFIX = "skillhub-skillset-"
 _HTTP_TIMEOUT = 30
 _SKILLSET_PAGE_SIZE = 100
 _MAX_SKILLSET_PAGES = 20
@@ -176,7 +175,8 @@ _install_locks: dict[str, threading.Lock] = {}
 
 
 def market_expert_id(slug: str) -> str:
-    return f"{MARKET_EXPERT_PREFIX}{slug}"
+    """Expert directory id for a SkillHub skillset. The id is the skillset slug."""
+    return slug
 
 
 def skillhub_portrait_url(item: SkillHubSkillset) -> str | None:
@@ -485,7 +485,13 @@ def _coerce_nonneg_int(value: Any, *, default: int) -> int:
 
 
 def _api_host() -> str:
-    return (os.environ.get("SKILLHUB_HOST", "").strip() or DEFAULT_SKILLHUB_HOST).rstrip("/")
+    try:
+        return skillset_origin()
+    except ValueError as exc:
+        raise SkillHubMarketError(
+            f"invalid skillset origin: {exc}",
+            kind=SkillHubMarketErrorKind.UPSTREAM_FAILED,
+        ) from exc
 
 
 def _api_url(path: str, params: dict[str, Any] | None = None) -> str:
@@ -907,6 +913,9 @@ def _expert_manifest(
     summary_en = _expert_summary_en(item, name_en)
     return {
         "id": item.expert_id,
+        "version": "1.0.0",
+        "scene": item.scene,
+        "sub_scene": item.sub_scene,
         "label": {"zh": name_zh, "en": name_en},
         "description": {"zh": summary_zh, "en": summary_en},
         "welcome_message": {

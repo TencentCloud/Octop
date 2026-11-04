@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "bilibili_player", "tools": ["bilibili_search_anime"] }]
-}

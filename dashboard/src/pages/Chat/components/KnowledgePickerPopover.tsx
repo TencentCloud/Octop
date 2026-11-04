@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Switch } from "antd";
 import { Info, Settings2 } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
@@ -71,9 +72,10 @@ export default function KnowledgePickerPopover({
         return (
           <div
             key={knowledgeBase.id}
-            className={`${styles.connectorPickerItem} ${
-              active ? styles.connectorPickerItemActive : ""
-            }`}
+            className={cx(
+              styles.connectorPickerItem,
+              active && styles.connectorPickerItemActive,
+            )}
           >
             <span className={styles.knowledgePickerAvatar}>
               {knowledgeIconForName(knowledgeBase.icon_name, 16)}

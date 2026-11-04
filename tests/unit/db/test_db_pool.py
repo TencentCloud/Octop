@@ -110,6 +110,8 @@ def test_run_migrations_idempotent(db: SqlitePool):
         "user_webauthn_credentials",
         "user_recovery_codes",
         "auth_challenges",
+        "profile_avatars",
+        "control_files",
     }.issubset(table_names)
     assert "preferences_json" in cols
     assert "permissions" in cols
@@ -489,6 +491,17 @@ def test_foreign_keys_enabled(db: SqlitePool):
     with db.connect() as conn:
         fk = conn.execute("PRAGMA foreign_keys").fetchone()[0]
     assert fk == 1
+
+
+def test_wal_synchronous_is_normal_only_on_windows(tmp_path: Path):
+    pool = SqlitePool(tmp_path / "octop.db")
+    with pool.connect() as conn:
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        sync = conn.execute("PRAGMA synchronous").fetchone()[0]
+    pool.close()
+    assert mode == "wal"
+    # Windows: NORMAL (1). Elsewhere: SQLite default FULL (2).
+    assert sync == (1 if os.name == "nt" else 2)
 
 
 def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(

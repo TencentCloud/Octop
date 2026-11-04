@@ -10,6 +10,7 @@ import { message as antMessage } from "@/utils/antdMessage";
 
 import { Bot, X, Square, Play, Loader2, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { OctopAgent } from "../context/AgentContext";
 import AgentSelector from "../components/AgentSelector";
 import { useAgentThreadChat } from "../hooks/useAgentThreadChat";
@@ -82,9 +83,10 @@ export default function BrowserAiPanel({
   onSkillNameSet,
 }: BrowserAiPanelProps) {
   const { t } = useTranslation();
-  const panelClassName = `${styles.panel}${
-    layout === "bottom" ? ` ${styles.panelBottom}` : ""
-  }`;
+  const panelClassName = cx(
+    styles.panel,
+    layout === "bottom" && styles.panelBottom,
+  );
   const [inputValue, setInputValue] = useState("");
   const [browserReplayBusy, setBrowserReplayBusy] = useState(false);
   const [pendingSkillContent, setPendingSkillContent] = useState<string | null>(
@@ -661,7 +663,7 @@ export default function BrowserAiPanel({
         </div>
       </div>
 
-      <div className={`${styles.messages} ${chatStyles.messageListWrapper}`}>
+      <div className={cx(styles.messages, chatStyles.messageListWrapper)}>
         {booting ? (
           <div className={styles.messagesLoading}>
             <Spin size="small" />
@@ -683,7 +685,7 @@ export default function BrowserAiPanel({
           <Tooltip title={t("browser.recordReplay.stop", "停止浏览器录制")}>
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
+              className={cx(styles.actionBtn, styles.actionBtnDanger)}
               onClick={handleEndRecording}
             >
               <Square size={14} />

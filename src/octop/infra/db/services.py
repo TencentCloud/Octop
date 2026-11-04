@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from octop.config import OctopConfig
 from octop.infra.crypto.sealed_repos import (
@@ -19,10 +20,12 @@ from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
+from octop.infra.db.repos.control_files import ControlFileRepo
 from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
+from octop.infra.db.repos.profile_avatars import ProfileAvatarRepo
 from octop.infra.db.repos.providers import ProviderRepo
 from octop.infra.db.repos.published_experts import PublishedExpertRepo
 from octop.infra.db.repos.resource_group_grants import ResourceGroupGrantRepo
@@ -82,6 +85,8 @@ class RepoBundle:
     user_webauthn_repo: UserWebauthnRepo
     user_recovery_code_repo: UserRecoveryCodeRepo
     auth_challenge_repo: AuthChallengeRepo
+    profile_avatar_repo: ProfileAvatarRepo
+    control_file_repo: ControlFileRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -120,6 +125,8 @@ class RepoBundle:
             user_webauthn_repo=UserWebauthnRepo(db),
             user_recovery_code_repo=UserRecoveryCodeRepo(db),
             auth_challenge_repo=AuthChallengeRepo(db),
+            profile_avatar_repo=ProfileAvatarRepo(db),
+            control_file_repo=ControlFileRepo(db),
         )
 
 
@@ -248,6 +255,19 @@ class SharedServices:
     @property
     def auth_challenge_repo(self) -> AuthChallengeRepo:
         return self.repos.auth_challenge_repo
+
+    @property
+    def profile_avatar_repo(self) -> ProfileAvatarRepo:
+        return self.repos.profile_avatar_repo
+
+    @property
+    def control_file_repo(self) -> ControlFileRepo:
+        return self.repos.control_file_repo
+
+    def avatars(self, kind: str) -> Any:
+        from octop.infra.users.profile_avatar import AvatarNamespace
+
+        return AvatarNamespace(self.profile_avatar_repo, kind)
 
 
 def build_shared_services(

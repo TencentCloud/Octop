@@ -32,14 +32,22 @@ def test_clean_default_removes_only_cli_state(fake_home: Path) -> None:
 
 
 def test_clean_all_requires_confirmation(fake_home: Path) -> None:
-    db = fake_home / ".octop" / "octop.db"
+    root = fake_home / ".octop"
+    db = root / "octop.db"
     db.parent.mkdir(parents=True)
     db.write_text("DB-CONTENT")
+    runtime = root / "venv" / "bin" / "octop"
+    runtime.parent.mkdir(parents=True)
+    runtime.write_text("launcher", encoding="utf-8")
+    (root / "bin").mkdir()
 
     runner = CliRunner()
     r = runner.invoke(cli, ["clean", "--all", "--yes"])
     assert r.exit_code == 0
     assert not db.exists()
+    assert runtime.is_file()
+    assert (root / "bin").is_dir()
+    assert root.is_dir()
 
 
 def test_clean_dry_run_lists_targets(fake_home: Path) -> None:

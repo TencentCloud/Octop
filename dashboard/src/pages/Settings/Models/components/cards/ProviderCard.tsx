@@ -8,6 +8,7 @@ import { App, Button, Card, Switch, Tooltip } from "antd";
 
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
@@ -229,13 +230,12 @@ export function ProviderCard({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={() => setModalOpen(true)}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover}`
-            : statusReady
-            ? `${styles.providerCard} ${styles.enabled}`
-            : `${styles.providerCard} ${styles.normal}`
-        }
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          !isHover && statusReady && styles.enabled,
+          !isHover && !statusReady && styles.normal,
+        )}
         style={provider.enabled ? undefined : { opacity: 0.85 }}
       >
         <div className={styles.cardContent}>
@@ -252,22 +252,24 @@ export function ProviderCard({
             </span>
             <div className={styles.statusContainer}>
               <span
-                className={`${styles.statusDot} ${
+                className={cx(
+                  styles.statusDot,
                   statusTone === "active"
                     ? styles.active
                     : statusTone === "configured"
                     ? styles.configured
-                    : styles.inactive
-                }`}
+                    : styles.inactive,
+                )}
               />
               <span
-                className={`${styles.statusText} ${
+                className={cx(
+                  styles.statusText,
                   statusTone === "active"
                     ? styles.enabled
                     : statusTone === "configured"
                     ? styles.configured
-                    : styles.disabled
-                }`}
+                    : styles.disabled,
+                )}
               >
                 {statusLabel}
               </span>

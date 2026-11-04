@@ -13,6 +13,7 @@ import { LayoutGrid, List, RefreshCw } from "lucide-react";
 import type { CronJobSpecOutput } from "../../../api/types";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import cx from "classnames";
 import { setPendingPrefillText } from "../../Chat/hooks/chatStore";
 import {
   createColumns,
@@ -57,11 +58,11 @@ function CronJobsEmptyState({
       <p className={styles.emptyStateDesc}>{t("cronJobs.noJobsDesc")}</p>
       {suggestions.length > 0 ? (
         <div
-          className={`${styles.emptyStateSuggestions} ${
-            taskExampleColumns(suggestions.length) === 2
-              ? styles.emptyStateSuggestionsCols2
-              : ""
-          }`}
+          className={cx(
+            styles.emptyStateSuggestions,
+            taskExampleColumns(suggestions.length) === 2 &&
+              styles.emptyStateSuggestionsCols2,
+          )}
         >
           {suggestions.map((text, i) => (
             <button
@@ -346,9 +347,7 @@ function CronJobsPage() {
         />
       ) : (
         <div
-          className={`${styles.listShell} ${
-            contentBusy ? styles.listShellBusy : ""
-          }`}
+          className={cx(styles.listShell, contentBusy && styles.listShellBusy)}
         >
           {contentBusy ? (
             <div className={styles.listBusyBar} aria-hidden>

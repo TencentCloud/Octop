@@ -34,6 +34,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import ForbiddenPage from "../../../components/ForbiddenPage";
 import MobileAiPanel from "../../../components/MobileAiPanel";
@@ -757,12 +758,14 @@ export default function RemoteAndroidPage({
   const railEnabled = streamStatus === "streaming";
   const isLandscape =
     streamSize.width > 0 && streamSize.width > streamSize.height;
-  const statusClass =
-    streamStatus === "streaming"
-      ? `${styles.statusPill} ${styles.statusStreaming}`
-      : streamStatus === "connecting"
-      ? `${styles.statusPill} ${styles.statusConnecting}`
-      : `${styles.statusPill} ${styles.statusIdle}`;
+  const statusClass = cx(
+    styles.statusPill,
+    streamStatus === "streaming" && styles.statusStreaming,
+    streamStatus === "connecting" && styles.statusConnecting,
+    streamStatus !== "streaming" &&
+      streamStatus !== "connecting" &&
+      styles.statusIdle,
+  );
 
   const statusLabel =
     streamStatus === "streaming"
@@ -989,9 +992,10 @@ export default function RemoteAndroidPage({
             type="button"
             role="tab"
             aria-selected={active}
-            className={`${styles.viewSwitcherTab}${
-              active ? ` ${styles.viewSwitcherTabActive}` : ""
-            }`}
+            className={cx(
+              styles.viewSwitcherTab,
+              active && styles.viewSwitcherTabActive,
+            )}
             onClick={() => handlePhoneTabChange(tab.value)}
           >
             <Icon size={14} strokeWidth={2} aria-hidden />
@@ -1147,9 +1151,10 @@ export default function RemoteAndroidPage({
       )}
 
       <div
-        className={`${styles.workspaceRow}${
-          isMobile && isAiPanelOpen ? ` ${styles.workspaceRowColumn}` : ""
-        }`}
+        className={cx(
+          styles.workspaceRow,
+          isMobile && isAiPanelOpen && styles.workspaceRowColumn,
+        )}
       >
         <div className={styles.mainColumn}>
           <div className={styles.phoneViewport}>
@@ -1234,15 +1239,11 @@ export default function RemoteAndroidPage({
                               </div>
                             ) : null}
                             <div
-                              className={`${styles.phoneCluster}${
-                                !frameReady
-                                  ? ` ${styles.phoneClusterOffstage}`
-                                  : ""
-                              }${
-                                isLandscape
-                                  ? ` ${styles.phoneClusterLandscape}`
-                                  : ""
-                              }`}
+                              className={cx(
+                                styles.phoneCluster,
+                                !frameReady && styles.phoneClusterOffstage,
+                                isLandscape && styles.phoneClusterLandscape,
+                              )}
                               aria-hidden={!frameReady}
                             >
                               <div className={styles.phoneFrame}>
@@ -1489,9 +1490,10 @@ export default function RemoteAndroidPage({
               ) : null}
               {mountShellPanel ? (
                 <div
-                  className={`${styles.phoneTabPanel}${
-                    desktopShellOpen ? ` ${styles.splitShellPane}` : ""
-                  }`}
+                  className={cx(
+                    styles.phoneTabPanel,
+                    desktopShellOpen && styles.splitShellPane,
+                  )}
                   style={{
                     display: showShellPanel ? "flex" : "none",
                     ...(desktopShellOpen

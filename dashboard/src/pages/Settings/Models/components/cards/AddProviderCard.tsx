@@ -4,6 +4,7 @@
 import { Card } from "antd";
 import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "../../index.module.less";
 
 interface AddProviderCardProps {
@@ -28,11 +29,12 @@ export function AddProviderCard({
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={
-        isHover
-          ? `${styles.providerCard} ${styles.hover} ${styles.addProviderCard}`
-          : `${styles.providerCard} ${styles.normal} ${styles.addProviderCard}`
-      }
+      className={cx(
+        styles.providerCard,
+        isHover && styles.hover,
+        !isHover && styles.normal,
+        styles.addProviderCard,
+      )}
     >
       <div className={styles.addProviderCardInner}>
         <Plus size={28} strokeWidth={1.75} className={styles.addProviderIcon} />

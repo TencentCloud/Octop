@@ -28,6 +28,20 @@ def _make_gateway(tmp_path: Path) -> Gateway:
     return Gateway(agent_manager=registry, repos=services.repos)
 
 
+def _seed_channel(gw: Gateway, channel_id: str) -> None:
+    uid = gw._repos.user_repo.create(username=f"u-{channel_id}", password_hash="h", role="admin")
+    agent_id = f"agent-{channel_id}"
+    gw._repos.agent_repo.create(agent_id=agent_id, user_id=uid, name=agent_id)
+    gw._repos.channel_repo.create(
+        channel_id=channel_id,
+        agent_id=agent_id,
+        user_id=uid,
+        kind="feishu",
+        name=channel_id,
+        config_json='{"app_id":"x","app_secret":"y"}',
+    )
+
+
 def _fake_row(channel_id: str = "ch1") -> MagicMock:
     row = MagicMock()
     row.channel_id = channel_id
@@ -110,8 +124,10 @@ async def test_register_qq_invoke_when_c2c_streaming_is_off(tmp_path: Path) -> N
 @pytest.mark.asyncio
 async def test_register_failure_sets_runtime_error(tmp_path: Path) -> None:
     gw = _make_gateway(tmp_path)
+    _seed_channel(gw, "ch1")
     gw._channel_manager = MagicMock()
     gw._channel_manager.add_channel = AsyncMock(side_effect=RuntimeError("boom"))
+    gw._channel_manager.remove_channel = AsyncMock()
     gw._processor = MagicMock()
 
     await gw._safe_register_channel(_fake_row())
@@ -145,9 +161,7 @@ async def test_reload_channels_from_db_unregisters_old_and_registers_enabled(
     gw._processor = MagicMock()
     gw._set_runtime_status("old-ch", connected=True)
     gw._set_runtime_status("stale-status", connected=False, reason="error")
-
-    row = _fake_row("new-ch")
-    gw._repos.channel_repo.list_all = MagicMock(return_value=[row])  # type: ignore[method-assign]
+    _seed_channel(gw, "new-ch")
 
     await gw.reload_channels_from_db()
 

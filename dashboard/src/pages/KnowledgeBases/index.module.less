@@ -1141,11 +1141,53 @@
   gap: 8px;
   min-width: 0;
   max-width: 100%;
+}
 
-  > span:nth-child(2) {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.filenameHover {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+}
+
+.filenameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filenameRenameBtn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-color-primary, #1677ff);
+    background: var(--fn-bg-secondary);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .filenameRenameBtn {
+    display: none;
+  }
+
+  .filenameHover:hover .filenameRenameBtn,
+  .filenameHover:focus-within .filenameRenameBtn {
+    display: inline-flex;
   }
 }
 
@@ -1178,6 +1220,45 @@
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chunkCountButton {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--fn-color-primary, #1677ff);
+  cursor: pointer;
+  font: inherit;
+}
+
+.chunkList {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chunkCard {
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--fn-bg-secondary);
+}
+
+.chunkCardLabel {
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.chunkCardText {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .previewModalTitleRow {

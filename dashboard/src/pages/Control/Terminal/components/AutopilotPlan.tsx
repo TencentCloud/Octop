@@ -1,5 +1,6 @@
 import { Button } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type {
   AutopilotStatus,
   AutopilotStep,
@@ -50,9 +51,11 @@ export default function AutopilotPlan({
             {steps.map((step, idx) => (
               <li
                 key={step.id}
-                className={`${styles.autopilotStep} ${
-                  styles[`autopilotStep_${step.status}`] ?? ""
-                } ${idx === currentIndex ? styles.autopilotStepActive : ""}`}
+                className={cx(
+                  styles.autopilotStep,
+                  styles[`autopilotStep_${step.status}`],
+                  idx === currentIndex && styles.autopilotStepActive,
+                )}
               >
                 <code className={styles.autopilotStepCmd}>{step.command}</code>
               </li>

@@ -11,6 +11,7 @@ import {
   Bot,
   RefreshCw,
 } from "lucide-react";
+import cx from "classnames";
 import { ChromeTabBar } from "../../../components/ChromeTabBar";
 import AiPanel, { type AiPanelLayout } from "./components/AiPanel";
 import TerminalView, {
@@ -69,7 +70,7 @@ function ConnBadge({ state }: { state: TerminalConnState }) {
       >
         <Loader
           {...iconProps}
-          className={`${styles.spinning} ${styles.tabLeadIcon}`}
+          className={cx(styles.spinning, styles.tabLeadIcon)}
         />
       </Tooltip>
     );
@@ -539,27 +540,24 @@ export default function TerminalPage({
     </div>
   );
 
-  const contentAreaClass = [
+  const contentAreaClass = cx(
     styles.contentArea,
-    isPanelOpen && effectivePanelLayout === "bottom"
-      ? styles.contentAreaBottom
-      : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isPanelOpen &&
+      effectivePanelLayout === "bottom" &&
+      styles.contentAreaBottom,
+  );
 
-  const tabsCardClass = [
+  const tabsCardClass = cx(
     styles.tabsCard,
-    isPanelOpen ? styles.tabsCardWithPanel : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isPanelOpen && styles.tabsCardWithPanel,
+  );
 
   return (
     <div
-      className={`${styles.terminalPage}${
-        embedded ? ` ${styles.terminalPageEmbedded}` : ""
-      }`}
+      className={cx(
+        styles.terminalPage,
+        embedded && styles.terminalPageEmbedded,
+      )}
     >
       {!embedded && (
         <div className={styles.header}>
@@ -608,11 +606,10 @@ export default function TerminalPage({
                 {sessionIds.map((id) => (
                   <div
                     key={id}
-                    className={
-                      id === activeId
-                        ? styles.sessionPane
-                        : `${styles.sessionPane} ${styles.sessionPaneHidden}`
-                    }
+                    className={cx(
+                      styles.sessionPane,
+                      id !== activeId && styles.sessionPaneHidden,
+                    )}
                     role="tabpanel"
                     aria-hidden={id !== activeId}
                   >

@@ -19,6 +19,7 @@ import { message } from "@/utils/antdMessage";
 
 import { Plus, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../api/request";
 import {
   wizardApi,
@@ -804,9 +805,10 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
                 return (
                   <div
                     key={`group-${group.groupKey}`}
-                    className={`${setupStyles.wizardPresetCard}${
-                      active ? ` ${setupStyles.wizardPresetCardActive}` : ""
-                    }`}
+                    className={cx(
+                      setupStyles.wizardPresetCard,
+                      active && setupStyles.wizardPresetCardActive,
+                    )}
                     onClick={() => setVariantGroup(group)}
                     role="button"
                     tabIndex={0}
@@ -847,9 +849,10 @@ export default function ModelStep({ onBack, onSkip, onContinue }: Props) {
               return (
                 <div
                   key={p.id}
-                  className={`${setupStyles.wizardPresetCard}${
-                    active ? ` ${setupStyles.wizardPresetCardActive}` : ""
-                  }`}
+                  className={cx(
+                    setupStyles.wizardPresetCard,
+                    active && setupStyles.wizardPresetCardActive,
+                  )}
                   onClick={() => applyPreset(p)}
                   role="button"
                   tabIndex={0}

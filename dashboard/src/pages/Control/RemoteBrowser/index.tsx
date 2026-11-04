@@ -38,6 +38,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
@@ -979,7 +980,7 @@ export default function RemoteBrowserPage({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -1368,11 +1369,7 @@ export default function RemoteBrowserPage({
             style={{ marginBottom: 0 }}
           />
         ) : null}
-        <div
-          className={`${styles.mainRow} ${
-            isMobile ? styles.mainRowMobile : ""
-          }`}
-        >
+        <div className={cx(styles.mainRow, isMobile && styles.mainRowMobile)}>
           <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
               <>

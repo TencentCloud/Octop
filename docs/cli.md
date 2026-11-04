@@ -72,7 +72,7 @@ share `~/.octop/cli_state.json`.
 ## `octop init`
 
 Bootstrap a fresh install (DB migrations, JWT secret, first admin).
-Idempotent on the DB; pass `--force` to wipe `~/.octop` first.
+Idempotent on the DB; pass `--force` to delete application state under `~/.octop` first. The install runtime (`venv/`, `bin/`) is kept.
 
 ```
 Usage: octop init [OPTIONS]
@@ -83,7 +83,7 @@ Options:
   --admin-username TEXT       [env: OCTOP_ADMIN_USERNAME]
   --admin-password TEXT       [env: OCTOP_ADMIN_PASSWORD]
   --admin-display-name TEXT   [env: OCTOP_ADMIN_DISPLAY_NAME]
-  --force                     Wipe existing ~/.octop contents before bootstrapping.
+  --force                     Delete Octop data under ~/.octop. Keeps venv/ and bin/.
   --yes                       Skip all interactive prompts.
   -h, --help                  Show this message and exit.
 ```
@@ -478,13 +478,13 @@ runner object schema.
 
 ## `octop clean`
 
-Reset CLI state or wipe the whole `~/.octop` tree. Destructive — read
-the help carefully.
+Reset CLI state, or delete Octop data under `~/.octop`. `--all` keeps the
+install runtime (`venv/`, `bin/`). Destructive — read the help carefully.
 
 ```
 Usage: octop clean [OPTIONS]
 
-  Remove CLI state or wipe all of ~/.octop.
+  Remove CLI state, or delete Octop data under ~/.octop (keeps venv/ and bin/).
 
 Options:
   --state / --all       What to remove.

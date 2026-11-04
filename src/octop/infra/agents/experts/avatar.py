@@ -201,9 +201,13 @@ def display_published_expert_icon_url(
     snapshot_dir: Path,
     updated_at: str | int | None = None,
     fallback_icon_url: str | None = None,
+    has_avatar: bool | None = None,
 ) -> str | None:
     """Public ``icon_url``: snapshot raster first, else a stored public portrait."""
-    if read_snapshot_avatar(snapshot_dir) is not None:
+    present = (
+        has_avatar if has_avatar is not None else read_snapshot_avatar(snapshot_dir) is not None
+    )
+    if present:
         local = published_expert_avatar_api_path(expert_id)
         version = str(updated_at or "").strip()
         if not version:

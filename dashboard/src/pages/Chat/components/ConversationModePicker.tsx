@@ -7,6 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Popover, Tooltip } from "antd";
+import cx from "classnames";
 import type { ConversationMode } from "../utils/conversationMode";
 import styles from "../index.module.less";
 
@@ -55,9 +56,10 @@ export function ConversationModeMenu({
         <button
           key={mode}
           type="button"
-          className={`${styles.modeMenuItem} ${
-            conversationMode === mode ? styles.modeMenuItemActive : ""
-          }`}
+          className={cx(
+            styles.modeMenuItem,
+            conversationMode === mode && styles.modeMenuItemActive,
+          )}
           onClick={() => onChange(mode)}
         >
           <span className={styles.modeMenuTitle}>
@@ -103,9 +105,10 @@ export default function ConversationModePicker({
     >
       <Tooltip title={modeLabel} mouseEnterDelay={0.4}>
         <button
-          className={`${styles.secondaryBtn} ${
-            conversationMode !== "craft" ? styles.secondaryBtnModelActive : ""
-          }`}
+          className={cx(
+            styles.secondaryBtn,
+            conversationMode !== "craft" && styles.secondaryBtnModelActive,
+          )}
           type="button"
           aria-label={`${t("chat.conversationMode.picker")}: ${modeLabel}`}
           data-testid="conversation-mode-picker"

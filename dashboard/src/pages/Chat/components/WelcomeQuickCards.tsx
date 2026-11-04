@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { pastelIconBackground } from "../../../utils/pastelIconBackground";
 import { expertMentionToken, withExpertMention } from "../utils/expertMention";
@@ -83,9 +84,10 @@ export default function WelcomeQuickCards({
           aria-label={
             expanded ? t("chatWelcome.showLess") : t("chatWelcome.showMore")
           }
-          className={`${styles.quickMoreButton}${
-            expanded ? ` ${styles.quickMoreButtonExpanded}` : ""
-          }`}
+          className={cx(
+            styles.quickMoreButton,
+            expanded && styles.quickMoreButtonExpanded,
+          )}
           onClick={onToggle}
         >
           <svg
@@ -115,7 +117,7 @@ export function WelcomeQuickCardProbe({
     <div
       ref={probeRef}
       aria-hidden
-      className={`${styles.quickCard} ${styles.quickCardProbe}`}
+      className={cx(styles.quickCard, styles.quickCardProbe)}
     >
       <div className={styles.quickCardIcon} />
       <div className={styles.quickCardBody}>

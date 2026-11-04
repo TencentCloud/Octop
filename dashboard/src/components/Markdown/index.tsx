@@ -14,6 +14,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   AuthFileDownloadLink,
   isAuthDownloadHref,
@@ -288,9 +289,11 @@ const Markdown = memo(function Markdown({
 
   return (
     <div
-      className={`${styles.markdownBody} ${
-        isStreaming ? styles.markdownStreaming : ""
-      } ${className || ""}`}
+      className={cx(
+        styles.markdownBody,
+        isStreaming && styles.markdownStreaming,
+        className,
+      )}
       style={style}
     >
       <ReactMarkdown

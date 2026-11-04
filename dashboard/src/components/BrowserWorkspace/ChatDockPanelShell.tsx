@@ -18,6 +18,7 @@ import {
   PictureInPicture2,
   X,
 } from "lucide-react";
+import cx from "classnames";
 import { beginPointerDragSession } from "../../hooks/usePointerDragSession";
 import type { PanelMode } from "./index";
 import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
@@ -448,11 +449,14 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     <div
       ref={panelRef}
       data-dock-panel=""
-      className={`${styles.chatBrowserPanel} ${styles[mode]} ${
-        popupPos && !popupFullscreen ? styles.popupPlaced : ""
-      } ${isPopupDragging ? styles.popupDragging : ""} ${
-        isPopupResizing ? styles.popupResizing : ""
-      } ${popupFullscreen ? styles.popupFullscreen : ""}`}
+      className={cx(
+        styles.chatBrowserPanel,
+        styles[mode],
+        popupPos && !popupFullscreen && styles.popupPlaced,
+        isPopupDragging && styles.popupDragging,
+        isPopupResizing && styles.popupResizing,
+        popupFullscreen && styles.popupFullscreen,
+      )}
       style={popupStyle}
     >
       <div
@@ -560,9 +564,10 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   return (
     <>
       <div
-        className={`${styles.popupMask} ${
-          popupFullscreen ? styles.popupMaskFullscreen : ""
-        }`}
+        className={cx(
+          styles.popupMask,
+          popupFullscreen && styles.popupMaskFullscreen,
+        )}
         onClick={handleMaskClick}
         aria-hidden
         style={blockMaskClose ? { pointerEvents: "none" } : undefined}

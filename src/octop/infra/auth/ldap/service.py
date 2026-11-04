@@ -158,7 +158,7 @@ class LdapAuthService:
                 f"LDAP directory unavailable: {exc}",
             ) from exc
 
-    async def resolve_user(self, identity: LdapIdentity) -> User:
+    async def resolve_user(self, identity: LdapIdentity, *, login_name: str = "") -> User:
         """Return the Octop user for a verified directory identity, provisioning if allowed."""
         row = self._row()
         if row is None:
@@ -170,26 +170,55 @@ class LdapAuthService:
             if existing is not None:
                 if existing.disabled:
                     raise OctopError(ErrorCode.USER_DISABLED, "user is disabled")
-                self._services.user_repo.update_sso_profile(
-                    existing.id,
-                    email=self._claimable_email(identity.email, existing.id),
-                    display_name=identity.display_name,
+                return self._finish_login(existing, identity)
+            reserved = self._reservations(row.id, identity, login_name)
+            if len(reserved) > 1:
+                raise OctopError(
+                    ErrorCode.LDAP_USER_NOT_PROVISIONED,
+                    "this directory account has no Octop account yet",
                 )
-                # The directory is authoritative for profile data only. Roles are set
-                # once at provisioning time so group changes never silently move
-                # privileges on an existing account.
-                refreshed = self._services.user_repo.get(existing.id) or existing
-                user = self._cached_or_row(refreshed)
-                self._services.audit_repo.write(
-                    actor=user.username, action="auth.ldap_login", target=user.username
+            if len(reserved) == 1:
+                account = reserved[0]
+                if account.disabled:
+                    raise OctopError(ErrorCode.USER_DISABLED, "user is disabled")
+                self._services.user_repo.upsert_sso_identity(
+                    account.id, provider_id=row.id, subject=identity.subject
                 )
-                return user
+                return self._finish_login(account, identity)
             if not config.auto_provision:
                 raise OctopError(
                     ErrorCode.LDAP_USER_NOT_PROVISIONED,
                     "this directory account has no Octop account yet",
                 )
             return self._provision(row, config, identity)
+
+    def _reservations(self, provider_id: int, identity: LdapIdentity, login_name: str) -> list[Any]:
+        """Admin-created directory accounts that match this login, without guessing."""
+        found: dict[int, Any] = {}
+        for name in (login_name, identity.username):
+            text = (name or "").strip()
+            if not text:
+                continue
+            for row in self._services.user_repo.list_directory_reservations(provider_id, text):
+                found[int(row.id)] = row
+        return list(found.values())
+
+    def _finish_login(self, account: Any, identity: LdapIdentity) -> User:
+        """Refresh directory-owned profile fields and record the login."""
+        self._services.user_repo.update_sso_profile(
+            account.id,
+            email=self._claimable_email(identity.email, account.id),
+            display_name=identity.display_name,
+        )
+        # The directory is authoritative for profile data only. Roles are set
+        # once at provisioning time so group changes never silently move
+        # privileges on an existing account.
+        refreshed = self._services.user_repo.get(account.id) or account
+        user = self._cached_or_row(refreshed)
+        self._services.audit_repo.write(
+            actor=user.username, action="auth.ldap_login", target=user.username
+        )
+        return user
 
     def _assert_group_allowed(self, config: LdapConfig, identity: LdapIdentity) -> None:
         """Refuse directory accounts outside the configured allow-list."""

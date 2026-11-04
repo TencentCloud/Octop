@@ -1,6 +1,7 @@
 import { Checkbox, Button } from "antd";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "../index.module.less";
 
 interface ToolbarProps {
@@ -35,7 +36,7 @@ export function Toolbar({
   const { t } = useTranslation();
 
   return (
-    <div className={`${styles.toolbar} ${className || ""}`}>
+    <div className={cx(styles.toolbar, className)}>
       <div className={styles.toolbarLeft}>
         {workingRowsLength > 0 && (
           <Checkbox

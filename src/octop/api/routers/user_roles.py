@@ -86,7 +86,7 @@ def _public(server: Any, row: UserRoleRow) -> dict[str, Any]:
     return public_role(
         row,
         avatar_url=profile_avatar_url(
-            server.services.paths.role_avatars_dir,
+            server.services.avatars("role"),
             row.user_role_id,
             f"/api/users/roles/{row.user_role_id}/avatar",
         ),
@@ -279,7 +279,7 @@ async def patch_user_role(
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 
         avatar_icon = clean_avatar_icon(body.avatar_icon)
-        delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+        delete_profile_avatar(server.services.avatars("role"), user_role_id)
     if current.is_admin:
         if name is None and description is ... and avatar_icon is ...:
             return _public(server, current)
@@ -349,7 +349,7 @@ async def delete_user_role(
     _repo(server).delete(user_role_id)
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+    delete_profile_avatar(server.services.avatars("role"), user_role_id)
     server.services.audit_repo.write(
         actor=actor.username,
         action="user_role.delete",
@@ -370,7 +370,7 @@ async def upload_role_avatar(
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
-        server.services.paths.role_avatars_dir,
+        server.services.avatars("role"),
         user_role_id,
         await file.read(),
     )
@@ -387,7 +387,7 @@ async def get_role_avatar(
 
     if _repo(server).get(user_role_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
-    return avatar_response(server.services.paths.role_avatars_dir, user_role_id)
+    return avatar_response(server.services.avatars("role"), user_role_id)
 
 
 @router.delete("/{user_role_id}/avatar", status_code=204)
@@ -400,4 +400,4 @@ async def delete_role_avatar(
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+    delete_profile_avatar(server.services.avatars("role"), user_role_id)

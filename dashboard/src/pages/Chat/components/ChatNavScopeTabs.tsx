@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import cx from "classnames";
 import { CHAT_NAV_SCOPES, type ChatNavScope } from "../utils/chatNavScope";
 import styles from "../index.module.less";
 
@@ -94,9 +95,10 @@ export default function ChatNavScopeTabs({
             type="button"
             role="tab"
             aria-selected={selected}
-            className={`${styles.sessionScopeTab} ${
-              selected ? styles.sessionScopeTabActive : ""
-            }`}
+            className={cx(
+              styles.sessionScopeTab,
+              selected && styles.sessionScopeTabActive,
+            )}
             onClick={() => onChange(scope)}
           >
             {t(meta.key, meta.fallback)}

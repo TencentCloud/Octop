@@ -97,6 +97,105 @@ def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:
     assert "already" in out or "exists" in out
 
 
+def test_init_force_keeps_install_runtime(fake_home: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Windows may lock SQLite during init force reset")
+    home = fake_home / ".octop"
+    runner = CliRunner()
+    first = runner.invoke(
+        cli,
+        ["init", "--admin-username", "alice", "--admin-password", "TestPass12", "--yes"],
+    )
+    assert first.exit_code == 0, first.output
+    runtime = home / "venv" / "bin"
+    runtime.mkdir(parents=True)
+    (runtime / "octop").write_text("#!/bin/sh\n", encoding="utf-8")
+    (home / "bin").mkdir()
+    (home / "agents" / "old").mkdir(parents=True)
+    (home / "agents" / "old" / "SOUL.md").write_text("gone", encoding="utf-8")
+
+    second = runner.invoke(
+        cli,
+        [
+            "init",
+            "--force",
+            "--admin-username",
+            "bob",
+            "--admin-password",
+            "TestPass34",
+            "--yes",
+        ],
+    )
+    assert second.exit_code == 0, second.output or str(second.exception)
+    assert "kept install runtime: bin, venv" in second.output
+    assert (runtime / "octop").is_file()
+    assert (home / "bin").is_dir()
+    assert not (home / "agents" / "old").exists()
+
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.users import UserRepo
+    from octop.infra.utils.paths import PathLayout
+
+    repo = UserRepo(SqlitePool(PathLayout(home).db))
+    assert repo.get_by_username("alice") is None
+    assert repo.get_by_username("bob") is not None
+
+
+def test_init_force_refuses_when_home_is_the_runtime(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = fake_home / ".octop"
+    home.mkdir()
+    (home / "octop.db").write_text("db", encoding="utf-8")
+    monkeypatch.setattr("octop.infra.utils.install_reset.sys.prefix", str(home))
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "init",
+            "--force",
+            "--admin-username",
+            "bob",
+            "--admin-password",
+            "TestPass34",
+            "--yes",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "install runtime" in result.output
+    assert "install.sh" in result.output
+    assert (home / "octop.db").is_file()
+
+
+def test_init_interactive_password_mismatch(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.cli.support import prompts as _prompts
+
+    answers = iter(["alice", "Wonderland1", "OtherPass1", "ignored"])
+
+    def _text(message: str, *, default: str = "") -> str:
+        return next(answers)
+
+    def _password(message: str) -> str:
+        return next(answers)
+
+    monkeypatch.setattr(_prompts, "text", _text)
+    monkeypatch.setattr(_prompts, "password", _password)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["init"])
+    assert result.exit_code != 0
+    assert "do not match" in result.output
+
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.users import UserRepo
+    from octop.infra.utils.paths import PathLayout
+
+    assert (
+        UserRepo(SqlitePool(PathLayout(fake_home / ".octop").db)).get_by_username("alice") is None
+    )
+
+
 def test_init_force_resets(fake_home: Path) -> None:
     if os.name == "nt":
         pytest.skip("Windows may lock SQLite during init force reset")

@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Bot, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
@@ -69,9 +70,10 @@ export default function SubagentPickerPopover({
           <button
             key={subagent.slug}
             type="button"
-            className={`${styles.skillPickerItem} ${
-              active ? styles.subagentPickerItemActive : ""
-            }`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.subagentPickerItemActive,
+            )}
             onClick={() => onSelect(subagent)}
           >
             <span className={styles.skillPickerAvatar} aria-hidden>

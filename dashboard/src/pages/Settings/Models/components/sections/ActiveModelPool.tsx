@@ -10,6 +10,7 @@ import { Button, Empty, Popover, Segmented, Select, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { preferencesApi } from "../../../../../api/modules/preferences";
 import type { ProviderRow, ResolvedModel } from "../../useProviders";
@@ -319,9 +320,10 @@ export function ActiveModelPool({
                 return (
                   <div
                     key={key}
-                    className={`${styles.poolModelRow} ${
-                      isPreferred ? styles.poolModelPreferred : ""
-                    }`}
+                    className={cx(
+                      styles.poolModelRow,
+                      isPreferred && styles.poolModelPreferred,
+                    )}
                   >
                     <Tooltip
                       title={
@@ -334,9 +336,10 @@ export function ActiveModelPool({
                         type="text"
                         size="small"
                         loading={isLoading}
-                        className={`${styles.preferredBtn} ${
-                          isPreferred ? styles.preferredActive : ""
-                        }`}
+                        className={cx(
+                          styles.preferredBtn,
+                          isPreferred && styles.preferredActive,
+                        )}
                         onClick={() => void handleSetPreferred(m)}
                         icon={
                           <Star

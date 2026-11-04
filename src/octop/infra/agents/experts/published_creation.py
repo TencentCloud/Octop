@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from sqlite3 import IntegrityError as SqliteIntegrityError
@@ -33,6 +34,12 @@ from octop.infra.agents.experts.publish import (
     assert_can_mutate_published,
     export_agent_workspace_to_dir,
     resolve_published_expert_slug,
+)
+from octop.infra.agents.experts.snapshot_store import (
+    delete_snapshot,
+    materialize_snapshot,
+    persist_snapshot_dir,
+    read_snapshot_manifest,
 )
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
@@ -71,6 +78,54 @@ class PublishedExpertInstallOptions:
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
     return Path(services.paths.published_experts_dir) / expert_id
+
+
+def _control_files(services: Any) -> Any:
+    return getattr(services, "control_file_repo", None)
+
+
+def _manifest_for(services: Any, expert_id: str) -> dict[str, Any]:
+    repo = _control_files(services)
+    if repo is not None:
+        return read_snapshot_manifest(repo, expert_id)
+    return _read_snapshot_manifest(_snapshot_dir(services, expert_id))
+
+
+def _discard_snapshot(services: Any, expert_id: str) -> None:
+    repo = _control_files(services)
+    if repo is not None:
+        delete_snapshot(repo, expert_id)
+    shutil.rmtree(_snapshot_dir(services, expert_id), ignore_errors=True)
+
+
+async def _write_published_snapshot(
+    services: Any,
+    expert_id: str,
+    workspace: Any,
+    metadata: PublishedExpertSnapshotMeta,
+    manifest_id: str,
+) -> None:
+    repo = _control_files(services)
+    if repo is None:
+        await export_agent_workspace_to_dir(
+            workspace=workspace,
+            dest=_snapshot_dir(services, expert_id),
+            metadata=metadata,
+            manifest_id=manifest_id,
+        )
+        return
+    staging = Path(tempfile.mkdtemp(prefix="octop-publish-"))
+    try:
+        dest = staging / "snapshot"
+        await export_agent_workspace_to_dir(
+            workspace=workspace,
+            dest=dest,
+            metadata=metadata,
+            manifest_id=manifest_id,
+        )
+        await asyncio.to_thread(persist_snapshot_dir, repo, expert_id, dest)
+    finally:
+        await asyncio.to_thread(shutil.rmtree, staging, ignore_errors=True)
 
 
 def _read_snapshot_manifest(snapshot_dir: Path) -> dict[str, Any]:
@@ -204,7 +259,6 @@ async def publish_agent_expert(
 
     resolved_slug = resolve_published_expert_slug(repo=repo, name=name, slug=slug)
     expert_id = new_ulid()
-    snapshot_dir = _snapshot_dir(services, expert_id)
     resolved_description = description or source.description or ""
     resolved_quick_prompts = quick_prompts or await _workspace_quick_prompts(workspace)
     resolved_task_examples = (
@@ -213,22 +267,24 @@ async def publish_agent_expert(
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
     source_icon_url = public_portrait_icon_url(getattr(source, "icon_url", None))
+    metadata = _snapshot_meta(
+        source,
+        name=name,
+        description=resolved_description,
+        color=color or None,
+        icon_url=source_icon_url,
+        welcome_message_zh=welcome_message_zh,
+        welcome_message_en=welcome_message_en,
+        quick_prompts=resolved_quick_prompts,
+        task_examples=resolved_task_examples,
+    )
     try:
-        await export_agent_workspace_to_dir(
-            workspace=workspace,
-            dest=snapshot_dir,
-            metadata=_snapshot_meta(
-                source,
-                name=name,
-                description=resolved_description,
-                color=color or None,
-                icon_url=source_icon_url,
-                welcome_message_zh=welcome_message_zh,
-                welcome_message_en=welcome_message_en,
-                quick_prompts=resolved_quick_prompts,
-                task_examples=resolved_task_examples,
-            ),
-            manifest_id=resolved_slug,
+        await _write_published_snapshot(
+            services,
+            expert_id,
+            workspace,
+            metadata,
+            resolved_slug,
         )
         return cast(
             PublishedExpertRow,
@@ -244,14 +300,14 @@ async def publish_agent_expert(
             ),
         )
     except _DB_INTEGRITY_ERRORS as exc:
-        await asyncio.to_thread(shutil.rmtree, snapshot_dir, ignore_errors=True)
+        await asyncio.to_thread(_discard_snapshot, services, expert_id)
         raise OctopError.localized(
             ErrorCode.PUBLISHED_EXPERT_SLUG_TAKEN,
             slug=resolved_slug,
             details={"slug": resolved_slug},
         ) from exc
     except Exception:
-        await asyncio.to_thread(shutil.rmtree, snapshot_dir, ignore_errors=True)
+        await asyncio.to_thread(_discard_snapshot, services, expert_id)
         raise
 
 
@@ -279,8 +335,7 @@ async def refresh_published_expert(
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
     source_icon_url = public_portrait_icon_url(getattr(source, "icon_url", None))
-    snapshot_dir = _snapshot_dir(services, row.id)
-    existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
+    existing_manifest = await asyncio.to_thread(_manifest_for, services, row.id)
     existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
     existing_quick_prompts = _manifest_quick_prompts(existing_manifest)
     existing_task_examples = _manifest_task_examples(existing_manifest)
@@ -301,10 +356,11 @@ async def refresh_published_expert(
         resolved_task_examples = (
             workspace_examples if workspace_examples is not None else existing_task_examples
         )
-    await export_agent_workspace_to_dir(
-        workspace=workspace,
-        dest=snapshot_dir,
-        metadata=_snapshot_meta(
+    await _write_published_snapshot(
+        services,
+        row.id,
+        workspace,
+        _snapshot_meta(
             source,
             name=resolved_name,
             description=resolved_description,
@@ -315,7 +371,7 @@ async def refresh_published_expert(
             task_examples=resolved_task_examples,
             icon_url=source_icon_url,
         ),
-        manifest_id=row.slug,
+        row.slug,
     )
     return cast(
         PublishedExpertRow,
@@ -334,7 +390,7 @@ async def unpublish_expert(*, services: Any, user: User, expert_id: str) -> None
     row = require_published_expert(services, expert_id)
     assert_can_mutate_published(row, user)
     services.published_expert_repo.delete(row.id)
-    await asyncio.to_thread(shutil.rmtree, _snapshot_dir(services, row.id), ignore_errors=True)
+    await asyncio.to_thread(_discard_snapshot, services, row.id)
 
 
 async def install_published_expert(
@@ -352,76 +408,94 @@ async def install_published_expert(
     may pass their own lists on this request.
     """
     row = require_published_expert(services, expert_id)
-    snapshot_dir = _snapshot_dir(services, row.id)
-    if not snapshot_dir.is_dir():
-        raise OctopError(ErrorCode.NOT_FOUND, f"published expert {expert_id!r} snapshot not found")
-
-    package_ids = (
-        registry.validate_skill_package_ids(options.skill_package_ids)
-        if options.skill_package_ids is not None
-        else None
-    )
-    if package_ids:
-        registry.assert_backend_supports_skill_packages(options.backend)
-
-    config_extra: dict[str, Any] = {}
-    if options.providers:
-        config_extra["providers"] = list(options.providers)
-    if options.backend:
-        config_extra["backend"] = options.backend
-    apply_enable_trajectory(config_extra, options.enable_trajectory)
-    if options.conversation_mode:
-        config_extra["conversation_mode"] = options.conversation_mode
-
-    async def seed_snapshot(created_row: Any, workspace: Any) -> None:
-        await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)
-        await bind_workspace_avatar_icon_url(registry, created_row.agent_id, workspace)
-        patch = options.workspace_patch
-        if patch is not None or options.composer_copies:
-            from octop.infra.agents.experts.composer_files import (
-                ComposerWorkspacePatch,
-                apply_composer_workspace_patch,
+    repo = _control_files(services)
+    staging: Path | None = None
+    if repo is not None:
+        staging = Path(tempfile.mkdtemp(prefix="octop-install-"))
+        snapshot_dir = staging / "snapshot"
+        found = await asyncio.to_thread(materialize_snapshot, repo, row.id, snapshot_dir)
+        if not found:
+            await asyncio.to_thread(shutil.rmtree, staging, ignore_errors=True)
+            raise OctopError(
+                ErrorCode.NOT_FOUND, f"published expert {expert_id!r} snapshot not found"
+            )
+    else:
+        snapshot_dir = _snapshot_dir(services, row.id)
+        if not snapshot_dir.is_dir():
+            raise OctopError(
+                ErrorCode.NOT_FOUND, f"published expert {expert_id!r} snapshot not found"
             )
 
-            await apply_composer_workspace_patch(
-                workspace,
-                patch if patch is not None else ComposerWorkspacePatch(),
-                copies=options.composer_copies,
-                report=options.composer_report,
-            )
-        if options.quick_prompts is not None:
-            await apply_workspace_quick_prompts(workspace, options.quick_prompts)
+    try:
+        package_ids = (
+            registry.validate_skill_package_ids(options.skill_package_ids)
+            if options.skill_package_ids is not None
+            else None
+        )
+        if package_ids:
+            registry.assert_backend_supports_skill_packages(options.backend)
 
-    created = await registry.create(
-        AgentCreateSpec(
-            name=options.name,
-            agent_id=options.agent_id,
-            user_id=user.id,
-            description=options.description or row.description,
-            default_model=options.default_model,
-            runtime_config=options.runtime_config or {},
-            config=config_extra,
-            template_name=None,
-            icon_name=row.icon_name or None,
-            icon_url=options.icon_url,
-            color=options.color or row.color or None,
-            skill_package_ids=package_ids,
-            knowledge_base_ids=options.knowledge_base_ids,
-            mcp_servers=options.mcp_servers,
-            published_expert_id=row.id,
-            welcome_message=options.welcome_message,
-        ),
-        defer_bootstrap=True,
-        workspace_initializer=seed_snapshot,
-    )
-    return {
-        "id": created.id,
-        "agent_id": created.agent_id,
-        "user_id": created.user_id,
-        "name": created.name,
-        "description": created.description,
-        "default_model": created.default_model,
-        "state": created.last_state or "unknown",
-        "published_expert_id": row.id,
-        "bootstrap_pending": not registry.is_bootstrapped(created.agent_id),
-    }
+        config_extra: dict[str, Any] = {}
+        if options.providers:
+            config_extra["providers"] = list(options.providers)
+        if options.backend:
+            config_extra["backend"] = options.backend
+        apply_enable_trajectory(config_extra, options.enable_trajectory)
+        if options.conversation_mode:
+            config_extra["conversation_mode"] = options.conversation_mode
+
+        async def seed_snapshot(created_row: Any, workspace: Any) -> None:
+            await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)
+            await bind_workspace_avatar_icon_url(registry, created_row.agent_id, workspace)
+            patch = options.workspace_patch
+            if patch is not None or options.composer_copies:
+                from octop.infra.agents.experts.composer_files import (
+                    ComposerWorkspacePatch,
+                    apply_composer_workspace_patch,
+                )
+
+                await apply_composer_workspace_patch(
+                    workspace,
+                    patch if patch is not None else ComposerWorkspacePatch(),
+                    copies=options.composer_copies,
+                    report=options.composer_report,
+                )
+            if options.quick_prompts is not None:
+                await apply_workspace_quick_prompts(workspace, options.quick_prompts)
+
+        created = await registry.create(
+            AgentCreateSpec(
+                name=options.name,
+                agent_id=options.agent_id,
+                user_id=user.id,
+                description=options.description or row.description,
+                default_model=options.default_model,
+                runtime_config=options.runtime_config or {},
+                config=config_extra,
+                template_name=None,
+                icon_name=row.icon_name or None,
+                icon_url=options.icon_url,
+                color=options.color or row.color or None,
+                skill_package_ids=package_ids,
+                knowledge_base_ids=options.knowledge_base_ids,
+                mcp_servers=options.mcp_servers,
+                published_expert_id=row.id,
+                welcome_message=options.welcome_message,
+            ),
+            defer_bootstrap=True,
+            workspace_initializer=seed_snapshot,
+        )
+        return {
+            "id": created.id,
+            "agent_id": created.agent_id,
+            "user_id": created.user_id,
+            "name": created.name,
+            "description": created.description,
+            "default_model": created.default_model,
+            "state": created.last_state or "unknown",
+            "published_expert_id": row.id,
+            "bootstrap_pending": not registry.is_bootstrapped(created.agent_id),
+        }
+    finally:
+        if staging is not None:
+            await asyncio.to_thread(shutil.rmtree, staging, ignore_errors=True)

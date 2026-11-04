@@ -1,3 +1,5 @@
+import cx from "classnames";
+
 import styles from "./OctopSpinner.module.less";
 
 interface OctopSpinnerProps {
@@ -12,7 +14,7 @@ interface OctopSpinnerProps {
  */
 export default function OctopSpinner({ className }: OctopSpinnerProps) {
   return (
-    <span className={[styles.host, className].filter(Boolean).join(" ")}>
+    <span className={cx(styles.host, className)}>
       <span className={styles.ring} />
     </span>
   );

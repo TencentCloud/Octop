@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ShieldAlert, ShieldCheck, X } from "lucide-react";
 import { Popover, Tooltip } from "antd";
+import cx from "classnames";
 import { useToolDisplayNames } from "../hooks/toolDisplayNames";
 import {
   isHitlBypassPolicy,
@@ -42,9 +43,10 @@ export default function HitlPolicyPicker({
         <div className={styles.modeMenu}>
           <button
             type="button"
-            className={`${styles.modeMenuItem} ${
-              policy.mode === "ask" ? styles.modeMenuItemActive : ""
-            }`}
+            className={cx(
+              styles.modeMenuItem,
+              policy.mode === "ask" && styles.modeMenuItemActive,
+            )}
             onClick={() => {
               onChange({ mode: "ask" });
               setOpen(false);
@@ -60,9 +62,10 @@ export default function HitlPolicyPicker({
           </button>
           <button
             type="button"
-            className={`${styles.modeMenuItem} ${
-              policy.mode === "allow_all" ? styles.modeMenuItemActive : ""
-            }`}
+            className={cx(
+              styles.modeMenuItem,
+              policy.mode === "allow_all" && styles.modeMenuItemActive,
+            )}
             onClick={() => {
               onChange({ mode: "allow_all" });
               setOpen(false);
@@ -106,9 +109,10 @@ export default function HitlPolicyPicker({
     >
       <Tooltip title={triggerLabel} mouseEnterDelay={0.4}>
         <button
-          className={`${styles.secondaryBtn} ${
-            bypass ? styles.secondaryBtnModelActive : ""
-          }`}
+          className={cx(
+            styles.secondaryBtn,
+            bypass && styles.secondaryBtnModelActive,
+          )}
           type="button"
           aria-label={`${t("chat.hitl.policy.picker")}: ${triggerLabel}`}
           data-testid="hitl-policy-picker"

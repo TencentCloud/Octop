@@ -147,14 +147,14 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     r = await c.post("/api/auth/login", json={"username": "bob", "password": "TestPass12"})
     bob_auth = {"Authorization": f"Bearer {r.json()['access_token']}"}
 
-    # 3) list experts — the default expert must be present
+    # 3) list experts — product templates are not bundled; the blank scaffold is hidden
     r = await c.get("/api/experts", headers=bob_auth)
     assert r.status_code == 200
     expert_ids = [e["id"] for e in r.json()]
-    assert "general-assistant" in expert_ids
+    assert "default" not in expert_ids
 
     # 4) get expert detail — must include file_contents
-    r = await c.get("/api/experts/general-assistant", headers=bob_auth)
+    r = await c.get("/api/experts/default", headers=bob_auth)
     assert r.status_code == 200
     expert = r.json()
     assert "file_contents" in expert and len(expert["file_contents"]) > 0
@@ -174,7 +174,7 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
 
     # 7) create agent from expert with default_model
     r = await c.post(
-        "/api/agents/from-expert/general-assistant",
+        "/api/agents/from-expert/default",
         headers=bob_auth,
         json={
             "name": "my-default-bot",
@@ -184,7 +184,7 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     assert r.status_code == 201, r.text
     body = r.json()
     agent_id = body["agent_id"]
-    assert body["expert_id"] == "general-assistant"
+    assert body["expert_id"] == "default"
     assert body["state"] == "starting"
     assert body["bootstrap_pending"] is True
 
@@ -192,7 +192,7 @@ async def test_expert_to_chat_golden_path(env: Any) -> None:
     rows = (await c.get("/api/agents", headers=bob_auth)).json()
     agent_row = next(a for a in rows if a["agent_id"] == agent_id)
     assert agent_row["default_model"] == default_model_val
-    assert agent_row["template_name"] == "general-assistant"
+    assert agent_row["template_name"] == "default"
     assert "expert_id" not in (agent_row.get("config") or {})
 
     # 8) start the agent

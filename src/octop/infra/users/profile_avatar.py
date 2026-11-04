@@ -1,30 +1,31 @@
-"""Portraits for users and roles, stored as files under the Octop home."""
+"""Portraits for users, roles, groups, and other control-plane records.
+
+Bytes live in ``profile_avatars``. Callers pass an :class:`AvatarNamespace`
+for one owner kind.
+"""
 
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from fastapi import Response
 
 from octop.infra.agents.experts.avatar import sniff_avatar_media_type
+from octop.infra.db.repos.profile_avatars import ProfileAvatarRepo
+from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.paths import PathLayout
 
-_EXT_BY_MEDIA = {
-    "image/png": "png",
-    "image/jpeg": "jpg",
-    "image/webp": "webp",
-    "image/gif": "gif",
-}
-_MEDIA_BY_EXT = {
-    "png": "image/png",
-    "jpg": "image/jpeg",
-    "jpeg": "image/jpeg",
-    "webp": "image/webp",
-    "gif": "image/gif",
-}
-_STEM = re.compile(r"[A-Za-z0-9_-]{1,64}")
+KIND_USER = "user"
+KIND_ROLE = "role"
+KIND_GROUP = "group"
+KIND_SKILL_PACKAGE = "skill_package"
+KIND_KNOWLEDGE_BASE = "knowledge_base"
+KIND_BRIDGE = "bridge"
+
 _ICON = re.compile(r"[a-z0-9-]{1,32}")
+_STEM = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_LOCAL_ADOPTED = "profile_avatars.local_adopted"
 
 
 def clean_avatar_icon(raw: str | None) -> str | None:
@@ -46,55 +47,89 @@ def _stem(key: str) -> str:
     return stem
 
 
-def _existing(directory: Path, stem: str) -> Path | None:
-    for ext in _MEDIA_BY_EXT:
-        path = directory / f"{stem}.{ext}"
-        if path.is_file():
-            return path
-    return None
+class AvatarNamespace:
+    """Read and write portraits for one owner kind."""
+
+    def __init__(self, repo: ProfileAvatarRepo, kind: str) -> None:
+        self._repo = repo
+        self.kind = kind
+
+    def url(self, key: str, api_path: str) -> str | None:
+        found = self._repo.get(self.kind, _stem(key))
+        if found is None:
+            return None
+        return f"{api_path}?v={found.updated_at}"
+
+    def write(self, key: str, data: bytes) -> None:
+        media_type = sniff_avatar_media_type(data)
+        self._repo.put(self.kind, _stem(key), data, media_type)
+
+    def read(self, key: str) -> tuple[bytes, str] | None:
+        found = self._repo.get(self.kind, _stem(key))
+        if found is None:
+            return None
+        return found.content, found.media_type
+
+    def delete(self, key: str) -> None:
+        self._repo.delete(self.kind, _stem(key))
+
+    def response(self, key: str) -> Response:
+        found = self.read(key)
+        if found is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "avatar not uploaded")
+        data, media_type = found
+        return Response(
+            content=data,
+            media_type=media_type,
+            headers={"Cache-Control": "private, max-age=60"},
+        )
 
 
-def profile_avatar_url(directory: Path, key: str, api_path: str) -> str | None:
-    path = _existing(directory, _stem(key))
-    if path is None:
-        return None
-    return f"{api_path}?v={int(path.stat().st_mtime)}"
+def profile_avatar_url(store: AvatarNamespace, key: str, api_path: str) -> str | None:
+    return store.url(key, api_path)
 
 
-def write_profile_avatar(directory: Path, key: str, data: bytes) -> None:
-    media_type = sniff_avatar_media_type(data)
-    stem = _stem(key)
-    directory.mkdir(parents=True, exist_ok=True)
-    delete_profile_avatar(directory, stem)
-    destination = directory / f"{stem}.{_EXT_BY_MEDIA[media_type]}"
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    temporary.write_bytes(data)
-    temporary.replace(destination)
+def write_profile_avatar(store: AvatarNamespace, key: str, data: bytes) -> None:
+    store.write(key, data)
 
 
-def read_profile_avatar(directory: Path, key: str) -> tuple[bytes, str] | None:
-    path = _existing(directory, _stem(key))
-    if path is None:
-        return None
-    return path.read_bytes(), _MEDIA_BY_EXT[path.suffix.removeprefix(".").lower()]
+def read_profile_avatar(store: AvatarNamespace, key: str) -> tuple[bytes, str] | None:
+    return store.read(key)
 
 
-def delete_profile_avatar(directory: Path, key: str) -> None:
-    stem = _stem(key)
-    if not directory.is_dir():
+def delete_profile_avatar(store: AvatarNamespace, key: str) -> None:
+    store.delete(key)
+
+
+def avatar_response(store: AvatarNamespace, key: str) -> Response:
+    return store.response(key)
+
+
+def adopt_local_avatars(repo: ProfileAvatarRepo, settings: SettingsRepo, paths: PathLayout) -> None:
+    """Copy leftover portrait files once. A row already stored is left alone."""
+    if settings.get(_LOCAL_ADOPTED) is not None:
         return
-    for path in directory.glob(f"{stem}.*"):
-        if path.is_file():
-            path.unlink()
-
-
-def avatar_response(directory: Path, key: str) -> Response:
-    found = read_profile_avatar(directory, key)
-    if found is None:
-        raise OctopError(ErrorCode.NOT_FOUND, "avatar not uploaded")
-    data, media_type = found
-    return Response(
-        content=data,
-        media_type=media_type,
-        headers={"Cache-Control": "private, max-age=60"},
-    )
+    roots = {
+        KIND_USER: paths.user_avatars_dir,
+        KIND_ROLE: paths.role_avatars_dir,
+        KIND_GROUP: paths.group_avatars_dir,
+        KIND_SKILL_PACKAGE: paths.skill_package_avatars_dir,
+        KIND_KNOWLEDGE_BASE: paths.knowledge_base_avatars_dir,
+        KIND_BRIDGE: paths.bridge_avatars_dir,
+    }
+    for kind, directory in roots.items():
+        if not directory.is_dir():
+            continue
+        for path in directory.iterdir():
+            if not path.is_file() or path.is_symlink():
+                continue
+            owner_id = path.stem
+            if repo.get(kind, owner_id) is not None:
+                continue
+            try:
+                payload = path.read_bytes()
+                media_type = sniff_avatar_media_type(payload)
+            except (OSError, OctopError):
+                continue
+            repo.put(kind, owner_id, payload, media_type)
+    settings.set(_LOCAL_ADOPTED, "1")

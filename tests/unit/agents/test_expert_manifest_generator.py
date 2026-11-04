@@ -64,7 +64,7 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
         generate_and_apply_skillhub_manifest_assets,
     )
 
-    expert_dir = tmp_path / "skillhub-skillset-demo"
+    expert_dir = tmp_path / "demo"
     (expert_dir / "skills" / "demo").mkdir(parents=True)
     (expert_dir / "skills" / "demo" / "SKILL.md").write_text(
         "---\nname: Demo Workflow\ndescription: Demo workflow description\n---\n# Demo\nDo work.",
@@ -78,7 +78,7 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
     (expert_dir / "manifest.json").write_text(
         json.dumps(
             {
-                "id": "skillhub-skillset-demo",
+                "id": "demo",
                 "label": {"zh": "测试专家", "en": "Test Expert"},
                 "description": {"zh": "测试描述", "en": "Test description"},
                 "welcome_message": {"zh": "fallback", "en": "fallback"},
@@ -126,7 +126,7 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
 
     catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
-    expert = catalog.get("skillhub-skillset-demo")
+    expert = catalog.get("demo")
     assert expert is not None
     assert expert.quick_prompts[0].title_zh == "启动任务"
 

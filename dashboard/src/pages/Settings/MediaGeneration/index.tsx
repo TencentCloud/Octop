@@ -27,6 +27,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   mediaGenerationApi,
@@ -564,11 +565,12 @@ export function MediaGenerationSettingsPanel() {
                 onMouseEnter={() => setHoveredCard(provider.id)}
                 onMouseLeave={() => setHoveredCard(null)}
                 onClick={() => openProviderModal("edit", provider)}
-                className={`${styles.providerCard} ${
-                  isHover ? styles.providerCardHover : ""
-                } ${statusReady ? styles.configuredCard : ""} ${
-                  provider.enabled ? "" : styles.disabledCard
-                }`}
+                className={cx(
+                  styles.providerCard,
+                  isHover && styles.providerCardHover,
+                  statusReady && styles.configuredCard,
+                  !provider.enabled && styles.disabledCard,
+                )}
               >
                 <div className={styles.cardMain}>
                   <div className={styles.cardHeader}>
@@ -591,9 +593,10 @@ export function MediaGenerationSettingsPanel() {
                       </div>
                     </div>
                     <div
-                      className={`${styles.status} ${
-                        statusReady ? styles.statusReady : ""
-                      }`}
+                      className={cx(
+                        styles.status,
+                        statusReady && styles.statusReady,
+                      )}
                     >
                       <span className={styles.statusDot} />
                       <span>
@@ -730,9 +733,11 @@ export function MediaGenerationSettingsPanel() {
                 onMouseEnter={() => setHoveredCard(cardId)}
                 onMouseLeave={() => setHoveredCard(null)}
                 onClick={() => openCreateModal(preset.provider)}
-                className={`${styles.providerCard} ${styles.presetCard} ${
-                  isHover ? styles.providerCardHover : ""
-                }`}
+                className={cx(
+                  styles.providerCard,
+                  styles.presetCard,
+                  isHover && styles.providerCardHover,
+                )}
               >
                 <div className={styles.cardMain}>
                   <div className={styles.cardHeader}>

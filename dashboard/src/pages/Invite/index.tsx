@@ -11,6 +11,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { setAuthToken } from "../../api";
 import { invitesApi } from "../../api/modules/invites";
 import { message } from "@/utils/antdMessage";
@@ -135,11 +136,7 @@ export default function InvitePage() {
   return (
     <div className={styles.inviteShell}>
       <div className={styles.inviteShellInner}>
-        <div
-          className={[styles.inviteCard, isDark ? styles.inviteCardDark : ""]
-            .filter(Boolean)
-            .join(" ")}
-        >
+        <div className={cx(styles.inviteCard, isDark && styles.inviteCardDark)}>
           <div className={styles.inviteHeader}>
             <Title level={3} className={styles.inviteTitle}>
               {t("invite.title")}

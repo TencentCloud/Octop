@@ -64,6 +64,9 @@ class HistoryStore:
         self.db = SqlitePool(path)
         try:
             with self.db.connect() as conn:
+                # The Windows control-plane pool is WAL + NORMAL. This archive
+                # stays FULL so a power loss cannot drop the last committed
+                # document.
                 conn.execute("PRAGMA synchronous = FULL")
                 conn.execute("PRAGMA busy_timeout = 5000")
                 if not existed:

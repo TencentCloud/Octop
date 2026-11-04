@@ -15,6 +15,7 @@ import {
   Send,
   Square,
 } from "lucide-react";
+import cx from "classnames";
 import type { OctopAgent } from "../../../../context/AgentContext";
 import { terminalAiApi } from "../../../../api/modules/terminalAi";
 import type { TerminalContext } from "../../../../api/modules/terminalAi";
@@ -322,9 +323,10 @@ export default function AiPanel({
     isStreaming || booting || !threadId || autopilot.isActive;
   const activeInputValue = mode === "autopilot" ? autopilot.goal : inputValue;
 
-  const panelClass = `${styles.panel}${
-    layout === "bottom" ? ` ${styles.panelBottom}` : ""
-  }`;
+  const panelClass = cx(
+    styles.panel,
+    layout === "bottom" && styles.panelBottom,
+  );
 
   return (
     <div className={panelClass}>
@@ -417,9 +419,7 @@ export default function AiPanel({
             />
           )}
 
-          <div
-            className={`${styles.messages} ${chatStyles.messageListWrapper}`}
-          >
+          <div className={cx(styles.messages, chatStyles.messageListWrapper)}>
             {booting ? (
               <div className={styles.messagesLoading}>
                 <Spin size="small" />

@@ -15,6 +15,7 @@ import {
   RefreshCw,
   User,
 } from "lucide-react";
+import cx from "classnames";
 import { api } from "../../api";
 import { bridgeApi } from "../../api/modules/bridge";
 import type {
@@ -378,11 +379,12 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
         {hasSession ? (
           <>
             <div className={styles.footerLeft}>
-              <span className={`${styles.statusDot} ${styles[controlOwner]}`} />
+              <span className={cx(styles.statusDot, styles[controlOwner])} />
               <span
-                className={`${styles.controlLabel} ${
-                  controlOwner === "user" ? styles.takeoverActive : ""
-                }`}
+                className={cx(
+                  styles.controlLabel,
+                  controlOwner === "user" && styles.takeoverActive,
+                )}
               >
                 {controlOwner === "agent"
                   ? t("browserWorkspace.agentControl")
@@ -394,9 +396,11 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
                 </Tag>
               )}
               <Tag
-                className={`${styles.stateTag} ${
-                  isStreaming ? styles.stateTagStreaming : ""
-                } ${controlOwner === "user" ? styles.stateTagTakeover : ""}`}
+                className={cx(
+                  styles.stateTag,
+                  isStreaming && styles.stateTagStreaming,
+                  controlOwner === "user" && styles.stateTagTakeover,
+                )}
               >
                 {streamStatusLabel}
               </Tag>

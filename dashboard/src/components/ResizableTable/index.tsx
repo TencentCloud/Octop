@@ -8,6 +8,7 @@ import type {
 import { Table } from "antd";
 import type { TableProps } from "antd";
 import type { ColumnsType, ColumnType, ColumnGroupType } from "antd/es/table";
+import cx from "classnames";
 import styles from "./ResizableTable.module.css";
 
 const DEFAULT_MIN_WIDTH = 48;
@@ -62,10 +63,7 @@ function ResizableTitle({
     [onResize, width],
   );
 
-  const cellClassName = [styles.cell, className]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  const cellClassName = cx(styles.cell, className);
 
   return (
     <th {...restProps} className={cellClassName}>

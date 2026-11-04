@@ -7,6 +7,7 @@ import { Button, Empty, Space, Tag, Tooltip } from "antd";
 import { Link } from "react-router-dom";
 import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../useProviders";
 import { isEmbeddingModel } from "../useProviders";
@@ -131,9 +132,7 @@ export function EmbeddingModelPool({
     }
   };
 
-  const sectionClass = flash
-    ? `${styles.poolSection} ${styles.poolSectionFlash}`
-    : styles.poolSection;
+  const sectionClass = cx(styles.poolSection, flash && styles.poolSectionFlash);
 
   if (entries.length === 0) {
     return (

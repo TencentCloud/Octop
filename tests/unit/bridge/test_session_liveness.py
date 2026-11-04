@@ -303,9 +303,11 @@ async def test_relay_user_turn_unlistens_when_cancelled() -> None:
 
     sess.send_json = send_json  # type: ignore[method-assign]
     frames: list[dict[str, Any]] = []
+    forwarded = asyncio.Event()
 
     async def on_frame(frame: dict[str, Any]) -> None:
         frames.append(frame)
+        forwarded.set()
 
     task = asyncio.create_task(
         mgr.relay_user_turn(
@@ -317,7 +319,7 @@ async def test_relay_user_turn_unlistens_when_cancelled() -> None:
         )
     )
     await asyncio.wait_for(started.wait(), timeout=1.0)
-    await asyncio.sleep(0.02)
+    await asyncio.wait_for(forwarded.wait(), timeout=1.0)
     assert [frame["type"] for frame in frames] == ["turn.ended"]
     task.cancel()
     with pytest.raises(asyncio.CancelledError):

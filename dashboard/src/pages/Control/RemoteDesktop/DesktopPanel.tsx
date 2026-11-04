@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamConnectingIndicator from "../../../components/StreamConnectingIndicator";
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
@@ -683,9 +684,10 @@ export default function DesktopPanel({
                 disabled={item.disabled}
               >
                 <span
-                  className={`${styles.shortcutIcon} ${
-                    shortcutIconToneClass[item.tone]
-                  }`}
+                  className={cx(
+                    styles.shortcutIcon,
+                    shortcutIconToneClass[item.tone],
+                  )}
                 >
                   <Icon size={16} strokeWidth={2} />
                 </span>
@@ -737,7 +739,7 @@ export default function DesktopPanel({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -1161,9 +1163,7 @@ export default function DesktopPanel({
         )}
         <div
           ref={viewportRef}
-          className={`${styles.viewport} ${
-            isMobile ? styles.viewportMobile : ""
-          }`}
+          className={cx(styles.viewport, isMobile && styles.viewportMobile)}
         >
           {!showStream ? (
             installPhase === "installing" ? (
@@ -1321,9 +1321,11 @@ export default function DesktopPanel({
               />
               <canvas
                 ref={canvasRef}
-                className={`${styles.canvas} ${
-                  isMobile ? styles.canvasMobile : ""
-                } ${!frameReady ? styles.canvasHidden : ""}`}
+                className={cx(
+                  styles.canvas,
+                  isMobile && styles.canvasMobile,
+                  !frameReady && styles.canvasHidden,
+                )}
                 onPointerDown={interaction.onPointerDown}
                 onPointerMove={interaction.onPointerMove}
                 onPointerLeave={interaction.onPointerLeave}

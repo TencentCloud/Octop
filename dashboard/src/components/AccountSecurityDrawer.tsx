@@ -10,6 +10,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import {
   authApi,
@@ -451,9 +452,10 @@ export default function AccountSecurityDrawer({
                   <div className={styles.cardTop}>
                     <div className={styles.cardLead}>
                       <span
-                        className={`${styles.iconWrap} ${
-                          status?.totp_verified ? styles.iconWrapOn : ""
-                        }`}
+                        className={cx(
+                          styles.iconWrap,
+                          status?.totp_verified && styles.iconWrapOn,
+                        )}
                         aria-hidden
                       >
                         <ShieldCheck size={18} strokeWidth={1.75} />
@@ -463,9 +465,10 @@ export default function AccountSecurityDrawer({
                           {t("account.securityTotp")}
                         </h3>
                         <span
-                          className={`${styles.statusPill} ${
-                            status?.totp_verified ? styles.statusPillOn : ""
-                          }`}
+                          className={cx(
+                            styles.statusPill,
+                            status?.totp_verified && styles.statusPillOn,
+                          )}
                         >
                           {status?.totp_verified
                             ? t("account.securityTotpEnabled")
@@ -563,9 +566,10 @@ export default function AccountSecurityDrawer({
                   <div className={styles.cardTop}>
                     <div className={styles.cardLead}>
                       <span
-                        className={`${styles.iconWrap} ${
-                          passkeyCount > 0 ? styles.iconWrapOn : ""
-                        }`}
+                        className={cx(
+                          styles.iconWrap,
+                          passkeyCount > 0 && styles.iconWrapOn,
+                        )}
                         aria-hidden
                       >
                         <Fingerprint size={18} strokeWidth={1.75} />
@@ -576,7 +580,10 @@ export default function AccountSecurityDrawer({
                         </h3>
                         {passkeyCount > 0 ? (
                           <span
-                            className={`${styles.statusPill} ${styles.statusPillOn}`}
+                            className={cx(
+                              styles.statusPill,
+                              styles.statusPillOn,
+                            )}
                           >
                             {t("account.securityPasskeyCount", {
                               count: passkeyCount,
@@ -696,9 +703,10 @@ export default function AccountSecurityDrawer({
                   <div className={styles.cardTop}>
                     <div className={styles.cardLead}>
                       <span
-                        className={`${styles.iconWrap} ${
-                          hasFactor ? styles.iconWrapOn : ""
-                        }`}
+                        className={cx(
+                          styles.iconWrap,
+                          hasFactor && styles.iconWrapOn,
+                        )}
                         aria-hidden
                       >
                         <KeyRound size={18} strokeWidth={1.75} />

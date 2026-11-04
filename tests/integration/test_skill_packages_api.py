@@ -408,7 +408,7 @@ async def test_import_skill_url_into_package(env: Any, monkeypatch: pytest.Monke
 async def test_delete_package_strips_agent_mounts(env_with_main_agent: Any) -> None:
     client, server, auth, _main_agent_id = env_with_main_agent
     created = await client.post(
-        "/api/agents/from-expert/general-assistant",
+        "/api/agents/from-expert/default",
         headers=auth,
         json={
             "name": "Package Mount Agent",

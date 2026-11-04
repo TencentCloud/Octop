@@ -41,6 +41,10 @@ def dashboard_cache_control(full_path: str) -> str | None:
     # Vite emits content-hashed files under assets/ — safe to pin forever.
     if full_path.startswith("assets/"):
         return "public, max-age=31536000, immutable"
+    # monaco-editor's min/vs tree is copied unhashed. Revalidate so an upgrade
+    # does not keep an editor.main.js that points at removed worker names.
+    if full_path.startswith("monaco/"):
+        return "no-cache"
     return None
 
 
@@ -53,8 +57,13 @@ def _dashboard_response(path: Path, full_path: str) -> FileResponse:
 
 
 def is_dashboard_asset_path(full_path: str) -> bool:
-    """True for hashed build artifacts that must 404 instead of falling back."""
-    return full_path.startswith("assets/")
+    """True for build artifacts that must 404 instead of falling back to the SPA.
+
+    ``/assets/*`` are content-hashed scripts. ``/monaco/*`` is the vendored
+    editor tree. Returning ``index.html`` for either makes the browser treat
+    HTML as a script or worker.
+    """
+    return full_path.startswith(("assets/", "monaco/"))
 
 
 def _dashboard_fallback(index_file: Path, full_path: str) -> FileResponse:

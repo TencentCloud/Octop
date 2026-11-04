@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Alert, Drawer } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import styles from "../index.module.less";
 
@@ -45,11 +46,10 @@ export default function CatalogDrawer({
       destroyOnHidden
       // Flex height chain on every viewport so overflow:auto children can scroll
       // (desktop used to clip long catalogs — see #136 / #340).
-      rootClassName={
-        isMobile
-          ? `${styles.catalogDrawerFlex} ${styles.catalogDrawerRoot}`
-          : styles.catalogDrawerFlex
-      }
+      rootClassName={cx(
+        styles.catalogDrawerFlex,
+        isMobile && styles.catalogDrawerRoot,
+      )}
       styles={{
         body: {
           padding: isMobile ? mobileBodyPadding : "16px 20px 20px",

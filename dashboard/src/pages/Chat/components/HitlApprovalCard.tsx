@@ -1,6 +1,7 @@
 import { ChevronDown, ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Dropdown } from "antd";
+import cx from "classnames";
 import type { HitlActionRequest } from "../../../api/types/hitl";
 import { useToolDisplayNames } from "../hooks/toolDisplayNames";
 import type { HitlRequestResolution } from "../hooks/sseHelpers";
@@ -118,7 +119,7 @@ export default function HitlApprovalCard({
         <div className={styles.actions}>
           <button
             type="button"
-            className={`${styles.actionButton} ${styles.primaryAction}`}
+            className={cx(styles.actionButton, styles.primaryAction)}
             onClick={() => emit(actions.map(() => ({ type: "approve" })))}
           >
             {t("chat.hitl.approve", "Approve")}
@@ -155,7 +156,7 @@ export default function HitlApprovalCard({
           >
             <button
               type="button"
-              className={`${styles.actionButton} ${styles.secondaryAction}`}
+              className={cx(styles.actionButton, styles.secondaryAction)}
             >
               {t("chat.hitl.allowMenu", "Allow")}
               <ChevronDown size={14} />
@@ -163,7 +164,7 @@ export default function HitlApprovalCard({
           </Dropdown>
           <button
             type="button"
-            className={`${styles.actionButton} ${styles.dangerAction}`}
+            className={cx(styles.actionButton, styles.dangerAction)}
             onClick={() =>
               emit(
                 actions.map(() => ({
@@ -178,9 +179,10 @@ export default function HitlApprovalCard({
         </div>
       ) : status !== "pending" ? (
         <div
-          className={`${styles.resolved} ${
-            status === "approved" ? styles.approved : styles.rejected
-          }`}
+          className={cx(
+            styles.resolved,
+            status === "approved" ? styles.approved : styles.rejected,
+          )}
         >
           {resolvedLabel}
         </div>
