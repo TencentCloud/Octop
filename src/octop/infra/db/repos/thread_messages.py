@@ -67,18 +67,6 @@ class ThreadMessageRepo:
             ).fetchone()
         return int(row[0])
 
-    def find_by_ids(self, thread_id: str, message_ids: list[str]) -> list[ThreadMessageRow]:
-        if not message_ids:
-            return []
-        placeholders = ",".join("?" for _ in message_ids)
-        with self._db.connect() as conn:
-            rows = conn.execute(
-                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
-                f"WHERE thread_id=? AND message_id IN ({placeholders}) ORDER BY seq",
-                (thread_id, *message_ids),
-            ).fetchall()
-        return [ThreadMessageRow.from_row(row) for row in rows]
-
     def range_rows(self, thread_id: str, start: int, end: int) -> list[ThreadMessageRow]:
         """Read an immutable legacy interval without triggering projection backfill."""
         with self._db.connect() as conn:
@@ -227,20 +215,13 @@ class ThreadMessageRepo:
         *,
         limit: int,
         offset: int = 0,
-        before_seq: int | None = None,
     ) -> tuple[list[ThreadMessageRow], bool]:
         with self._db.connect() as conn:
             rows = conn.execute(
                 "SELECT seq, message_id, role, message_json, created_at "
-                "FROM thread_messages WHERE thread_id = ? AND (? IS NULL OR seq < ?) "
+                "FROM thread_messages WHERE thread_id = ? "
                 "ORDER BY seq DESC LIMIT ? OFFSET ?",
-                (
-                    thread_id,
-                    before_seq,
-                    before_seq,
-                    limit + 1,
-                    0 if before_seq is not None else max(0, offset),
-                ),
+                (thread_id, limit + 1, max(0, offset)),
             ).fetchall()
         has_more = len(rows) > limit
         page = [ThreadMessageRow.from_row(row) for row in rows[:limit]]

@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as store from "./chatStore";
-import {
-  clearInflightTail,
-  readInflightTail,
-} from "../utils/inflightTranscriptCache";
+import { clearInflightTail } from "../utils/inflightTranscriptCache";
 
 const session = "reconnect-ordering";
 class Socket {
@@ -83,7 +80,6 @@ it("ignores late frames and close events from a replaced socket", async () => {
   current.frame({
     type: "turn.started",
     turn_id: "new",
-    client_message_id: "new-user",
   });
   old.frame({ type: "token", content: "ghost old reply" });
   old.frame({ type: "turn.ended", turn_id: "old" });
@@ -93,8 +89,8 @@ it("ignores late frames and close events from a replaced socket", async () => {
   expect(store.getSnapshot(session).isStreaming).toBe(true);
   expect(
     store.getSnapshot(session).messages.find((m) => m.id === "new-user")
-      ?.delivery,
-  ).toBe("accepted");
+      ?.localPending,
+  ).toBe(true);
   current.frame({ type: "token", content: "second reply" });
   current.frame({ type: "turn.ended", turn_id: "new" });
   await second;
@@ -132,11 +128,9 @@ it("reconnects by subscribing without resending the user message", async () => {
     type: "turn_status",
     active: true,
     thread_id: session,
-    client_message_id: "resumed-user",
   });
   old.frame({ type: "token", content: "ghost" });
   resumed.frame({ type: "token", content: " second" });
-  expect(readInflightTail(session)?.[0].id).toBe("resumed-user");
   resumed.frame({ type: "done" });
   expect(store.getSnapshot(session).messages.at(-1)?.content).toBe(
     "first second",

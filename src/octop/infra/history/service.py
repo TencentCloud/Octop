@@ -13,7 +13,6 @@ from typing import Any
 
 from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
-from octop.infra.history.ordering import message_order
 from octop.infra.history.store import HistoryStore, dumps
 
 LegacyReader = Callable[[dict[str, Any]], Awaitable[list[Any]]]
@@ -225,7 +224,7 @@ class HistoryArchive:
                     raise ValueError("Unknown history segment")
             except (ValueError, KeyError, TypeError) as exc:
                 raise ValueError("Invalid history cursor") from exc
-        selected: list[tuple[int, int, Any, dict[str, Any]]] = []
+        selected: list[tuple[int, int, Any]] = []
         skip = max(0, offset) if not cursor else 0
         for segment in reversed(segments):
             if boundary and segment["id"] > boundary["segment"]:
@@ -238,21 +237,11 @@ class HistoryArchive:
                 rows = await asyncio.to_thread(
                     self.store.message_page, thread_id, segment["id"], before, needed
                 )
-                items = [
-                    (
-                        row["seq"],
-                        row["value"],
-                        {
-                            "history_turn_id": row["history_turn_id"],
-                            "turn_status": row["turn_status"],
-                        },
-                    )
-                    for row in rows
-                ]
+                items = [(row["seq"], row["value"]) for row in rows]
             elif segment["anchor"]:
                 raw = await legacy_reader(json.loads(segment["anchor"]))
                 end = len(raw) if before is None else min(before, len(raw))
-                items = [(i, raw[i], {}) for i in range(end - 1, max(-1, end - needed - 1), -1)]
+                items = [(i, raw[i]) for i in range(end - 1, max(-1, end - needed - 1), -1)]
             else:
                 end = segment["legacy_end"]
                 if end is None:
@@ -262,8 +251,8 @@ class HistoryArchive:
                 old_rows = await asyncio.to_thread(
                     self.messages.range_page, thread_id, segment["legacy_start"], end, needed
                 )
-                items = [(row.seq, json.loads(row.message_json), {}) for row in old_rows]
-            selected.extend((segment["id"], seq, wire, meta) for seq, wire, meta in items)
+                items = [(row.seq, json.loads(row.message_json)) for row in old_rows]
+            selected.extend((segment["id"], seq, wire) for seq, wire in items)
             if len(selected) >= limit + 1 + skip:
                 break
         selected = selected[skip:]
@@ -271,21 +260,12 @@ class HistoryArchive:
         selected = selected[:limit]
         next_cursor = None
         if has_more:
-            segment_id, seq, _, _ = selected[-1]
+            segment_id, seq, _ = selected[-1]
             next_cursor = base64.urlsafe_b64encode(
                 dumps({"thread": thread_id, "segment": segment_id, "before": seq}).encode()
             ).decode()
         return {
-            "messages": [wire for _, _, wire, _ in reversed(selected)],
-            "positions": [
-                {
-                    "server_order": message_order(
-                        next(s for s in segments if s["id"] == segment_id), segments[0]["id"], seq
-                    ),
-                    **meta,
-                }
-                for segment_id, seq, _, meta in reversed(selected)
-            ],
+            "messages": [wire for _, _, wire in reversed(selected)],
             "has_more": has_more,
             "next_cursor": next_cursor,
             "history_status": "ready",

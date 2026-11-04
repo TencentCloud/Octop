@@ -62,7 +62,6 @@ async def read_page(
                 archive.messages.page, thread_id, limit=limit, offset=offset
             )
         wires = [json.loads(row.message_json) for row in rows]
-        positions = [{"server_order": [0, row.seq]} for row in rows]
         before = rows[0].seq if rows else 0
     else:
         if boundary:
@@ -83,7 +82,6 @@ async def read_page(
         stop = min(len(raw), boundary["before"]) if boundary else max(0, len(raw) - offset)
         start = max(0, stop - limit)
         wires, has_more, before = raw[start:stop], start > 0, start
-        positions = [{"server_order": [0, index + 1]} for index in range(start, stop)]
         checkpoint_id = (config or {}).get("configurable", {}).get("checkpoint_id")
         if has_more and not checkpoint_id:
             raise ValueError("Cannot pin the legacy history page")
@@ -93,12 +91,7 @@ async def read_page(
         if source == "checkpoint":
             value["checkpoint_id"] = checkpoint_id
         next_cursor = "legacy:" + base64.urlsafe_b64encode(json.dumps(value).encode()).decode()
-    return {
-        "messages": wires,
-        "positions": positions,
-        "has_more": has_more,
-        "next_cursor": next_cursor,
-    }
+    return {"messages": wires, "has_more": has_more, "next_cursor": next_cursor}
 
 
 async def export_messages(

@@ -1863,9 +1863,6 @@
     "loadEarlierMessages": "Load earlier messages",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
     "historyRetry": "Retry",
-    "historyRecoveryTitle": "Some messages are awaiting confirmation",
-    "historyRecoveryDescription": "Your content is retained here. Expand to review it or retry verification. The conversation order stays unchanged until verified.",
-    "historyRecoveryRestore": "Restore to composer",
     "creatingSession": "Creating session…",
     "resizePopup": "Resize window",
     "unreadMessages": "Unread messages"

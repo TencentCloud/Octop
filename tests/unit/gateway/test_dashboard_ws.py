@@ -1138,14 +1138,3 @@ async def test_ws_channel_pure_text_stream_is_never_preempted() -> None:
     types = [f["type"] for f in frames]
     assert "steer.drained" in types
     assert types[-1] == "turn.ended"
-
-
-def test_user_message_reservation_closes_the_enqueue_and_final_commit_gaps() -> None:
-    hub = WebSocketHub()
-    assert hub.claim_user_message("thread", "u") is True
-    assert hub.claim_user_message("thread", "u") is False
-    assert hub.claim_user_message("other-thread", "u") is True
-    hub.finish_user_message("thread", "u", failed=False)
-    assert hub.claim_user_message("thread", "u") is False
-    hub.finish_user_message("other-thread", "u", failed=True)
-    assert hub.claim_user_message("other-thread", "u") is True

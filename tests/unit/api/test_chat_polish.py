@@ -298,11 +298,8 @@ def test_load_projected_falls_back_to_created_at() -> None:
             thread_message_repo=SimpleNamespace(page=lambda *_a, **_k: ([row], False))
         )
     )
-    messages, has_more, cursor = _load_projected_thread_messages(
-        server, "agent", "thread", 25, user=None
-    )
+    messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 25, user=None)
     assert has_more is False
-    assert cursor is None
     assert messages[0]["timestamp"] == 1_700_000_000_000
 
 
@@ -623,14 +620,3 @@ async def test_load_checkpoint_messages_falls_back_to_graph_state() -> None:
     msgs, _has_more = await _load_checkpoint_messages(Harness(), "thr_x", limit=10)
     assert len(msgs) == 1
     assert msgs[0].content == "fallback hello"
-
-
-def test_projection_cursor_is_scoped_and_uses_stable_sequence() -> None:
-    from octop.infra.history.ordering import projection_boundary, projection_cursor
-
-    cursor = projection_cursor("thread-a", 76)
-    assert projection_boundary("thread-a", cursor) == 76
-    with pytest.raises(ValueError, match="Invalid projection cursor"):
-        projection_boundary("thread-b", cursor)
-    with pytest.raises(ValueError, match="Invalid projection cursor"):
-        projection_boundary("thread-a", "not-a-cursor")

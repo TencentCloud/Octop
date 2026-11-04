@@ -1863,9 +1863,6 @@
     "loadEarlierMessages": "加载更早的消息",
     "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
     "historyRetry": "重试",
-    "historyRecoveryTitle": "有部分消息尚未确认保存",
-    "historyRecoveryDescription": "内容已暂存，展开查看或重试核实。核实完成前不会改变对话顺序。",
-    "historyRecoveryRestore": "放回输入框",
     "creatingSession": "正在创建会话，请稍候",
     "resizePopup": "调整窗口大小",
     "unreadMessages": "未读消息"

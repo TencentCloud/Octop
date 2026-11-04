@@ -11,10 +11,7 @@ import type {
   CallEntry,
 } from "../../../api/types";
 import type { HitlSessionPolicy } from "../../../api/types/hitl";
-import type {
-  ThreadArtifact,
-  HistoryReceipts,
-} from "../../../api/modules/octopThreads";
+import type { ThreadArtifact } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
@@ -38,12 +35,10 @@ import {
   preferLocalTranscript,
   serverCaughtUp,
   retainedHistoryPrefix,
-  compareServerOrder,
 } from "../utils/mergeHistoryTail";
 import {
   clearInflightTail,
   readInflightTail,
-  readRecoveryMessages,
 } from "../utils/inflightTranscriptCache";
 import { promoteAskUserToolMessage } from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
@@ -494,15 +489,6 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           ? "error"
           : "done",
       timestamp: resolveEntryTimestamp(entry),
-      serverOrder: Array.isArray(entry.server_order)
-        ? (entry.server_order as [number, number])
-        : undefined,
-      historyTurnId:
-        typeof entry.history_turn_id === "string"
-          ? entry.history_turn_id
-          : undefined,
-      turnStatus:
-        typeof entry.turn_status === "string" ? entry.turn_status : undefined,
       speakerAgentId:
         typeof entry.speaker_agent_id === "string" &&
         entry.speaker_agent_id.trim()
@@ -706,9 +692,6 @@ export function convertHistoryMessages(
     usage?: unknown;
     duration_ms?: number;
     timestamp?: number;
-    server_order?: [number, number];
-    history_turn_id?: string;
-    turn_status?: string;
     composer_context?: unknown;
     inbound_attachments?: unknown;
     status?: string;
@@ -730,9 +713,6 @@ export function convertHistoryMessages(
     }
     return {
       message_id: message.id,
-      server_order: message.server_order,
-      history_turn_id: message.history_turn_id,
-      turn_status: message.turn_status,
       entry_index: `hist-${index}`,
       role: message.role,
       content: toHistoryContentBlocks(message.content),
@@ -788,8 +768,6 @@ async function loadThreadHistory(
   artifacts: ThreadArtifact[];
   projectionLoading: boolean;
   retryAfterMs: number;
-  receipts: HistoryReceipts;
-  activeUserId: string | null;
 }> {
   const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE, normalizeThreadArtifacts } =
     await import("../../../api/modules/octopThreads");
@@ -800,32 +778,6 @@ async function loadThreadHistory(
   } = await import("./useSessions");
   const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
   const offset = params.offset ?? 0;
-  let receipts: HistoryReceipts = {};
-  if (offset === 0) {
-    const candidates = [
-      ...chatStore.getSnapshot(threadId).messages.filter((m) => m.delivery),
-      ...(readInflightTail(threadId) ?? []),
-      ...readRecoveryMessages(threadId),
-    ];
-    const ids = [
-      ...new Set(candidates.filter((m) => m.role === "user").map((m) => m.id)),
-    ];
-    // Resolve before fetching the page: a durable receipt must never retire a
-    // local reply against an older, not-yet-final history snapshot.
-    for (let start = 0; start < ids.length; start += 32) {
-      try {
-        const result = await octopThreadsApi.reconcile(
-          agentId,
-          threadId,
-          ids.slice(start, start + 32),
-        );
-        if (result.thread_id === threadId)
-          receipts = { ...receipts, ...result.receipts };
-      } catch {
-        /* Unknown recovery remains available without changing chronology. */
-      }
-    }
-  }
   const history = await octopThreadsApi.history(agentId, threadId, {
     limit,
     offset,
@@ -866,12 +818,7 @@ async function loadThreadHistory(
     nextOffset: offset + limit,
     nextCursor: history.next_cursor ?? null,
     turnActive: Boolean(history.turn_active),
-    activeUserId:
-      typeof history.active_user_message_id === "string"
-        ? history.active_user_message_id
-        : null,
     artifacts,
-    receipts,
     projectionLoading: Boolean(history.history_loading),
     retryAfterMs:
       typeof history.history_retry_after_ms === "number"
@@ -880,97 +827,38 @@ async function loadThreadHistory(
   };
 }
 
-/** Keep uncertain cache out of the transcript without discarding recoverable text. */
-function reconcileLocalPage(
+function messagesWithInflightCache(
+  sessionId: string,
+  messages: ChatMessage[],
+  loaded: ChatMessage[],
+  turnActive = false,
+): ChatMessage[] {
+  const cached = readInflightTail(sessionId);
+  // A reloaded cache's streaming flag cannot establish that a turn is active.
+  const tail = turnActive
+    ? cached
+    : cached?.map((message) =>
+        message.status === "streaming"
+          ? { ...message, status: "done" as const }
+          : message,
+      );
+  return preferLocalTranscript(messages.length ? messages : loaded, tail);
+}
+
+function dropInflightCacheIfCaughtUp(
   sessionId: string,
   loaded: ChatMessage[],
-  receipts: HistoryReceipts,
-  activeUserId: string | null,
-) {
-  const current = chatStore.getSnapshot(sessionId);
-  const cached = readInflightTail(sessionId) ?? [];
-  const oldRecovery = readRecoveryMessages(sessionId);
-  const pendingIds = new Set(
-    current.messages
-      .filter((m) => m.role === "user" && m.delivery === "pending")
-      .map((m) => m.id),
-  );
-  const loadedIds = new Set(loaded.map((m) => m.id));
-  const effective = { ...receipts };
-  for (const [id, receipt] of Object.entries(effective)) {
-    if (receipt.state === "active" && id !== activeUserId)
-      effective[id] = { ...receipt, state: "stored" };
+): void {
+  const cached = readInflightTail(sessionId);
+  if (!cached || cached.length === 0) return;
+  const snap = chatStore.getSnapshot(sessionId);
+  if (
+    snap.isStreaming ||
+    snap.messages.some((message) => message.status === "streaming")
+  ) {
+    return;
   }
-  if (activeUserId && !effective[activeUserId]?.persisted) {
-    effective[activeUserId] = {
-      ...effective[activeUserId],
-      state: "active",
-      persisted: false,
-      turn_status: "active",
-    };
-    pendingIds.add(activeUserId);
-  }
-  for (const message of loaded) {
-    if (message.role === "user" && message.turnStatus === "complete") {
-      effective[message.id] = {
-        state: "stored",
-        persisted: true,
-        server_order: message.serverOrder,
-      };
-    }
-  }
-  const recovery: ChatMessage[] = [];
-  const verified: ChatMessage[] = [];
-  const candidates = [
-    ...new Map([...oldRecovery, ...cached].map((m) => [m.id, m])).values(),
-  ];
-  const firstUser = candidates.findIndex((m) => m.role === "user");
-  recovery.push(
-    ...candidates.slice(0, firstUser < 0 ? candidates.length : firstUser),
-  );
-  for (let index = 0; index < candidates.length; index++) {
-    if (candidates[index].role !== "user") continue;
-    let end = index + 1;
-    while (end < candidates.length && candidates[end].role !== "user") end++;
-    const user = candidates[index];
-    if (effective[user.id]?.persisted) continue;
-    const turn = candidates.slice(index, end);
-    const receipt = effective[user.id];
-    const lastStored = loaded.filter((m) => m.serverOrder).at(-1);
-    const precedesPage =
-      !loadedIds.has(user.id) &&
-      receipt?.server_order &&
-      lastStored &&
-      compareServerOrder(
-        { ...user, serverOrder: receipt.server_order },
-        lastStored,
-      ) <= 0;
-    const active = receipt?.state === "active" && !precedesPage;
-    if (precedesPage) pendingIds.delete(user.id);
-    if (loadedIds.has(user.id) || active) {
-      if (active) pendingIds.add(user.id);
-      verified.push(
-        ...turn.map((m) => ({
-          ...m,
-          ...(active && m.role === "user"
-            ? { delivery: "accepted" as const }
-            : {}),
-          status: m.status === "streaming" ? ("done" as const) : m.status,
-        })),
-      );
-    } else if (!pendingIds.has(user.id)) recovery.push(...turn);
-  }
-  const local = current.messages.length
-    ? preferLocalTranscript(current.messages, verified)
-    : verified;
-  const messages = mergeHistoryWithLocalTail(loaded, local, {
-    isStreaming: current.isStreaming,
-    pendingUserIds: pendingIds,
-    receipts: effective,
-  });
-  if (cached.length && serverCaughtUp(loaded, cached, effective))
-    clearInflightTail(sessionId);
-  return { messages, recoveryMessages: recovery };
+  if (serverCaughtUp(loaded, cached)) clearInflightTail(sessionId);
 }
 
 // ── The hook ──────────────────────────────────────────────────────────────
@@ -1020,7 +908,6 @@ export function useChat(
   );
   const {
     messages,
-    recoveryMessages,
     isStreaming,
     thinkingStartedAt,
     runUsage,
@@ -1036,46 +923,29 @@ export function useChat(
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const loadGenRef = useRef(0);
-  const loadMoreInFlightRef = useRef(false);
-  const refreshInFlightRef = useRef(false);
+  const loadMoreInFlightRef = useRef<number | null>(null);
+  const refreshInFlightRef = useRef<number | null>(null);
   useEffect(() => {
     const generation = loadGenRef;
     ++generation.current;
-    loadMoreInFlightRef.current = false;
-    refreshInFlightRef.current = false;
+    loadMoreInFlightRef.current = null;
+    refreshInFlightRef.current = null;
     setHistoryLoading(false);
     setHistoryRefreshing(false);
     return () => {
       ++generation.current;
+      loadMoreInFlightRef.current = null;
+      refreshInFlightRef.current = null;
     };
   }, [stableSessionId, agentId]);
 
-  const refreshHistoryRef = useRef<(threadId?: string) => Promise<void>>(
-    async () => {},
-  );
   const attachAfterHistory = useCallback(
-    (key: string, targetThreadId: string, expectedActive = false) => {
+    (key: string, targetThreadId: string) => {
       if (!agentId || !targetThreadId) return;
-      const generation = loadGenRef.current;
-      const epoch = chatStore.beginHistoryRead(key);
-      void chatStore.attachThread(
-        key,
-        agentId,
-        targetThreadId,
-        () => {
-          window.setTimeout(() => {
-            if (
-              loadGenRef.current !== generation ||
-              !chatStore.isHistoryReadCurrent(key, epoch)
-            )
-              return;
-            if (chatStore.getFocusedChatSession() === key)
-              void refreshHistoryRef.current(key);
-          }, 0);
-        },
-        0,
-        { expectedActive },
-      );
+      // No post-stream refreshHistory here: full replace can wipe prepended
+      // older pages and fight “load earlier / jump to bottom” UX. Seal via
+      // stream chunks / done; user overscroll refresh remains available.
+      void chatStore.attachThread(key, agentId, targetThreadId);
     },
     [agentId],
   );
@@ -1162,13 +1032,13 @@ export function useChat(
         (snap.messages.length > 0 || liveTurn) &&
         !chatStore.isHistoryStale(key)
       ) {
-        if (cachedTail && snap.messages.length > 0) {
+        if (cachedTail && snap.messages.length > 0 && snap.isStreaming) {
           chatStore.restoreInflightTail(key, cachedTail);
         }
         // Always listen after hydrate so late team / inbox replies land here.
         // An empty live view still fetches history so the cached tail can be
         // spliced onto the persisted prefix instead of replacing it.
-        attachAfterHistory(key, targetThreadId, liveTurn);
+        attachAfterHistory(key, targetThreadId);
         if (snap.messages.length > 0) return;
       }
 
@@ -1185,8 +1055,8 @@ export function useChat(
         });
         while (
           loaded.projectionLoading &&
-          !loaded.turnActive &&
-          loadGenRef.current === gen
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
         ) {
           await new Promise((resolve) =>
             window.setTimeout(
@@ -1194,7 +1064,11 @@ export function useChat(
               Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
             ),
           );
-          if (loadGenRef.current !== gen) return;
+          if (
+            loadGenRef.current !== gen ||
+            !chatStore.isHistoryReadCurrent(key, epoch)
+          )
+            return;
           loaded = await loadThreadHistory(agentId, targetThreadId, {
             offset: 0,
           });
@@ -1209,24 +1083,39 @@ export function useChat(
         // that bubble while the websocket turn keeps running. A browser cache
         // covers the same gap when this tab discarded the in-memory tail.
         const current = chatStore.getSnapshot(key);
-        const reconciled = reconcileLocalPage(
+        const local = messagesWithInflightCache(
           key,
+          current.messages,
           loaded.messages,
-          loaded.receipts,
-          loaded.activeUserId,
+          loaded.turnActive,
         );
         const keptOlder =
           retainedHistoryPrefix(loaded.messages, current.messages).length > 0;
-        chatStore.setHistoryPage(key, reconciled.messages, {
-          recoveryMessages: reconciled.recoveryMessages,
-          hasMore: keptOlder ? current.historyHasMore : loaded.hasMore,
-          nextOffset: keptOlder ? current.historyNextOffset : loaded.nextOffset,
-          nextCursor: keptOlder ? current.historyNextCursor : loaded.nextCursor,
-        });
+        chatStore.setHistoryPage(
+          key,
+          mergeHistoryWithLocalTail(
+            loaded.messages,
+            local,
+            current.isStreaming,
+          ),
+          {
+            hasMore: keptOlder ? current.historyHasMore : loaded.hasMore,
+            nextOffset: keptOlder
+              ? current.historyNextOffset
+              : loaded.nextOffset,
+            nextCursor: keptOlder
+              ? current.historyNextCursor
+              : loaded.nextCursor,
+          },
+        );
+        dropInflightCacheIfCaughtUp(key, loaded.messages);
         setHistoryError(false);
-        attachAfterHistory(key, targetThreadId, loaded.turnActive);
+        attachAfterHistory(key, targetThreadId);
       } catch {
-        if (loadGenRef.current === gen) {
+        if (
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
+        ) {
           failedHistoryOperation.current = "initial";
           setHistoryError(true);
         }
@@ -1243,7 +1132,7 @@ export function useChat(
     const key = stableSessionId;
     const snap = chatStore.getSnapshot(key);
     if (
-      loadMoreInFlightRef.current ||
+      loadMoreInFlightRef.current !== null ||
       snap.historyLoadingMore ||
       !snap.historyHasMore ||
       !agentId ||
@@ -1252,11 +1141,11 @@ export function useChat(
       return false;
     }
 
-    loadMoreInFlightRef.current = true;
     chatStore.setHistoryLoadingMore(key, true);
     const offset = snap.historyNextOffset;
     const gen = loadGenRef.current;
     const epoch = chatStore.beginHistoryRead(key);
+    loadMoreInFlightRef.current = gen;
 
     try {
       const {
@@ -1281,15 +1170,20 @@ export function useChat(
       if (loadGenRef.current === gen) setHistoryError(false);
       return true;
     } catch {
-      if (loadGenRef.current === gen) {
+      if (
+        loadGenRef.current === gen &&
+        chatStore.isHistoryReadCurrent(key, epoch)
+      ) {
         failedHistoryOperation.current = "older";
         setHistoryError(true);
       }
       return false;
     } finally {
-      loadMoreInFlightRef.current = false;
-      if (chatStore.isHistoryReadCurrent(key, epoch))
-        chatStore.setHistoryLoadingMore(key, false);
+      if (loadMoreInFlightRef.current === gen) {
+        loadMoreInFlightRef.current = null;
+        if (chatStore.isHistoryReadCurrent(key, epoch))
+          chatStore.setHistoryLoadingMore(key, false);
+      }
     }
   }, [agentId, stableSessionId]);
 
@@ -1304,7 +1198,7 @@ export function useChat(
       const key = targetSessionId || stableSessionId;
       const snap = chatStore.getSnapshot(key);
       if (
-        refreshInFlightRef.current ||
+        refreshInFlightRef.current !== null ||
         historyRefreshing ||
         historyLoading ||
         shouldBlockHistoryRefresh({
@@ -1321,11 +1215,11 @@ export function useChat(
         return;
       }
 
-      refreshInFlightRef.current = true;
       // Separate from loadGenRef: loadHistory may bump loadGen while we fetch.
       // Always clear the refreshing flag in finally so the footer cannot stick.
-      const epoch = chatStore.beginHistoryRead(key);
       const gen = ++loadGenRef.current;
+      const epoch = chatStore.beginHistoryRead(key);
+      refreshInFlightRef.current = gen;
       setHistoryRefreshing(true);
 
       try {
@@ -1334,8 +1228,7 @@ export function useChat(
           hasMore,
           nextOffset,
           nextCursor,
-          receipts,
-          activeUserId,
+          turnActive,
         } = await loadThreadHistory(agentId, key, { offset: 0 });
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (
@@ -1348,78 +1241,42 @@ export function useChat(
         // in flight. `snap` is from before the await and must not be the
         // message source — a send during the fetch lives only on the store.
         const current = chatStore.getSnapshot(key);
-        const reconciled = reconcileLocalPage(
+        const local = messagesWithInflightCache(
           key,
+          current.messages,
           latest,
-          receipts,
-          activeUserId,
+          turnActive,
         );
         const keptOlder =
           retainedHistoryPrefix(latest, current.messages).length > 0;
-        chatStore.setHistoryPage(key, reconciled.messages, {
-          recoveryMessages: reconciled.recoveryMessages,
-          hasMore: keptOlder ? current.historyHasMore : hasMore,
-          nextOffset: keptOlder ? current.historyNextOffset : nextOffset,
-          nextCursor: keptOlder ? current.historyNextCursor : nextCursor,
-        });
+        chatStore.setHistoryPage(
+          key,
+          mergeHistoryWithLocalTail(latest, local, current.isStreaming),
+          {
+            hasMore: keptOlder ? current.historyHasMore : hasMore,
+            nextOffset: keptOlder ? current.historyNextOffset : nextOffset,
+            nextCursor: keptOlder ? current.historyNextCursor : nextCursor,
+          },
+        );
+        dropInflightCacheIfCaughtUp(key, latest);
         setHistoryError(false);
       } catch {
-        if (loadGenRef.current === gen) {
+        if (
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
+        ) {
           failedHistoryOperation.current = "latest";
           setHistoryError(true);
         }
       } finally {
-        if (loadGenRef.current === gen) {
-          refreshInFlightRef.current = false;
+        if (refreshInFlightRef.current === gen) {
+          refreshInFlightRef.current = null;
           setHistoryRefreshing(false);
         }
       }
     },
     [agentId, stableSessionId, historyRefreshing, historyLoading],
   );
-
-  refreshHistoryRef.current = refreshHistory;
-
-  const persistenceProbe = useRef({ key: "", attempts: 0 });
-  const wasLive = useRef(false);
-  const needsFinalSync = useRef(false);
-  useEffect(() => {
-    const live =
-      isStreaming ||
-      liveSpeakers.length > 0 ||
-      messages.some((m) => m.status === "streaming");
-    if (wasLive.current && !live) needsFinalSync.current = true;
-    wasLive.current = live;
-    const pending = messages
-      .filter((m) => m.role === "user" && m.delivery)
-      .map((m) => m.id)
-      .join(",");
-    const key = `${stableSessionId}:${pending}`;
-    if (persistenceProbe.current.key !== key)
-      persistenceProbe.current = { key, attempts: 0 };
-    if (
-      (!pending && !needsFinalSync.current) ||
-      live ||
-      historyLoading ||
-      historyRefreshing ||
-      persistenceProbe.current.attempts >= 4
-    )
-      return;
-    const timer = window.setTimeout(() => {
-      ++persistenceProbe.current.attempts;
-      needsFinalSync.current = false;
-      void refreshHistory();
-    }, [400, 1000, 2000, 4000][persistenceProbe.current.attempts]);
-    return () => window.clearTimeout(timer);
-  }, [
-    messages,
-    isStreaming,
-    liveSpeakers,
-    stableSessionId,
-    historyLoading,
-    historyRefreshing,
-    refreshHistory,
-  ]);
 
   const retryHistory = useCallback(async () => {
     if (failedHistoryOperation.current === "older") await loadMoreHistory();
@@ -1505,7 +1362,6 @@ export function useChat(
 
   return {
     messages,
-    recoveryMessages: recoveryMessages ?? [],
     isStreaming,
     thinkingStartedAt,
     runUsage,

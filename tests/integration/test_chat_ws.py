@@ -12,7 +12,7 @@ import httpx
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-from tests.support.app import octop_client, write_octop_config
+from tests.support.app import octop_client
 from tests.support.auth import (
     auth_header,
     bootstrap_admin,
@@ -29,11 +29,7 @@ def _chat_ws(c: httpx.AsyncClient, aid: str, auth: dict[str, str]) -> Any:
 
 
 @pytest.fixture
-async def env(tmp_octop_home: Path, request: pytest.FixtureRequest) -> AsyncIterator[Any]:
-    if getattr(request, "param", None) == "versioned":
-        write_octop_config(tmp_octop_home, history_v2_enabled=True)
-    elif getattr(request, "param", None) == "docs":
-        write_octop_config(tmp_octop_home, enable_api_docs=True)
+async def env(tmp_octop_home: Path) -> AsyncIterator[Any]:
     fake = FakeHarnessAgent(
         chunks=[
             {"type": "token", "node": "agent", "content": "Hello "},
@@ -606,120 +602,3 @@ async def test_fork_thread_from_assistant_message(env: Any) -> None:
         json={"message_id": "a1", "assistant_turns_from_end": 2},
     )
     assert denied.status_code in {403, 404}
-
-
-@pytest.mark.parametrize("env", ["versioned", "legacy"], indirect=True)
-async def test_refresh_reconnect_and_receipts_preserve_ordered_final_history(env: Any) -> None:
-    c, srv, _fake, auth, other_auth, aid = env
-    archive = srv.app_runtime.history_archive
-    if archive is not None:
-        archive.enabled = True
-    response = await c.post(f"/api/agents/{aid}/threads", headers=auth)
-    tid = response.json()["thread_id"]
-    agent = srv.app_runtime.agent_registry.get_agent(aid)
-    gate = asyncio.Event()
-    calls = 0
-
-    async def stream(_request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
-        nonlocal calls
-        calls += 1
-        from langchain_core.messages import AIMessage, HumanMessage
-
-        question = HumanMessage(content="question", id="stable-user")
-        agent._thread_messages[tid] = [question]
-        yield {"type": "token", "node": "agent", "message_id": "stable-answer", "content": "first"}
-        await gate.wait()
-        agent._thread_messages[tid] = [
-            HumanMessage(content="question", id="stable-user"),
-            AIMessage(content="first second", id="stable-answer"),
-        ]
-        yield {
-            "type": "token",
-            "node": "agent",
-            "message_id": "stable-answer",
-            "content": " second",
-        }
-
-        yield {"type": "state_snapshot", "data": {"messages": agent._thread_messages[tid]}}
-
-    agent.stream = stream
-    frame = {
-        "type": "user_turn",
-        "thread_id": tid,
-        "messages": [{"role": "user", "id": "stable-user", "content": "question"}],
-    }
-    async with _chat_ws(c, aid, auth) as ws:
-        await ws.send_json(frame)
-        first = await ws.receive_json()
-        while first.get("type") != "token":
-            first = await ws.receive_json()
-    path = f"/api/agents/{aid}/threads/{tid}/history"
-    partial = await c.get(path, headers=auth)
-    assert partial.status_code == 200
-    assert partial.json()["active_user_message_id"] == "stable-user"
-    if partial.json()["messages"]:
-        assert partial.json()["messages"][0]["id"] == "stable-user"
-    receipts = await c.post(
-        path + "/reconcile", headers=auth, json={"message_ids": ["stable-user"]}
-    )
-    assert receipts.status_code == 200
-    assert receipts.json()["receipts"]["stable-user"]["persisted"] is False
-    async with _chat_ws(c, aid, auth) as duplicate_ws:
-        await duplicate_ws.send_json(frame)
-        assert (await duplicate_ws.receive_json()).get("duplicate") is True
-    assert calls == 1
-    denied = await c.post(
-        path + "/reconcile", headers=other_auth, json={"message_ids": ["stable-user"]}
-    )
-    assert denied.status_code in (403, 404)
-    too_many = await c.post(
-        path + "/reconcile", headers=auth, json={"message_ids": [f"u-{i}" for i in range(33)]}
-    )
-    assert too_many.status_code == 422
-
-    async with _chat_ws(c, aid, auth) as ws:
-        await ws.send_json({"type": "subscribe", "thread_id": tid})
-        assert (await ws.receive_json())["type"] == "turn_status"
-        gate.set()
-        await ws.drain_turn()
-    # A reconnect retries the exact same ID, without executing the agent again.
-    async with _chat_ws(c, aid, auth) as ws:
-        await ws.send_json(frame)
-        duplicate = await ws.receive_json()
-        assert duplicate.get("duplicate") is True
-    assert calls == 1
-    for _attempt in range(20):
-        loaded = await c.get(path, headers=auth)
-        if not loaded.json()["history_loading"]:
-            break
-        await asyncio.sleep(0.05)
-    receipts = await c.post(
-        path + "/reconcile", headers=auth, json={"message_ids": ["stable-user", "never-sent"]}
-    )
-    assert receipts.json()["receipts"]["stable-user"]["persisted"] is True
-    assert receipts.json()["receipts"]["never-sent"]["state"] == "unknown"
-    final = (await c.get(path, headers=auth)).json()["messages"]
-    assert [m["id"] for m in final] == ["stable-user", "stable-answer"]
-    assert final[-1]["content"][-1]["text"] == "first second"
-    assert [m["server_order"] for m in final] == sorted(m["server_order"] for m in final)
-    if partial.json()["messages"]:
-        assert final[0]["server_order"] == partial.json()["messages"][0]["server_order"]
-
-
-@pytest.mark.parametrize("env", ["docs"], indirect=True)
-async def test_reconcile_endpoint_has_readable_openapi_contract(env: Any) -> None:
-    c, _srv, _fake, auth, _other_auth, _aid = env
-    docs = await c.get("/api/docs", headers=auth)
-    assert docs.status_code == 200
-    schema = (await c.get("/api/openapi.json", headers=auth)).json()
-    route = schema["paths"]["/api/agents/{agent_id}/threads/{thread_id}/history/reconcile"]["post"]
-    assert route["summary"] == "Resolve cached user messages"
-    assert route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
-        "HistoryReconcileResponse"
-    )
-    assert (
-        schema["components"]["schemas"]["HistoryReconcileBody"]["properties"]["message_ids"][
-            "maxItems"
-        ]
-        == 32
-    )

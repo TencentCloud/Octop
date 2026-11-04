@@ -1,4 +1,3 @@
-import type { HistoryReceipts } from "../../../api/modules/octopThreads";
 import type { ChatMessage } from "../hooks/sseHelpers";
 
 function lastUserIndex(messages: ChatMessage[]): number {
@@ -8,151 +7,203 @@ function lastUserIndex(messages: ChatMessage[]): number {
   return -1;
 }
 
-/** Keep every unconfirmed send, including a turn followed by another send. */
-export function inFlightTail(messages: ChatMessage[]): ChatMessage[] {
-  const pending = messages.findIndex((m) => m.role === "user" && m.delivery);
-  const index = pending >= 0 ? pending : lastUserIndex(messages);
-  return index < 0 ? messages : messages.slice(index);
-}
-
-export function compareServerOrder(a: ChatMessage, b: ChatMessage): number {
-  if (!a.serverOrder || !b.serverOrder) return 0;
-  return (
-    a.serverOrder[0] - b.serverOrder[0] || a.serverOrder[1] - b.serverOrder[1]
+/** Local turn still on screen: from the latest user message through the end. */
+export function inFlightTail(current: ChatMessage[]): ChatMessage[] {
+  const pending = current.findIndex(
+    (message) => message.role === "user" && message.localPending,
   );
+  if (pending >= 0) return current.slice(pending);
+  const idx = lastUserIndex(current);
+  if (idx < 0) return current;
+  return current.slice(idx);
 }
 
-/** Incoming persisted rows replace duplicates, including a misplaced cached copy. */
-export function mergeOrderedMessages(
-  existing: ChatMessage[],
-  incoming: ChatMessage[],
-): ChatMessage[] {
-  const rows = new Map(existing.map((m) => [m.id, m]));
-  for (const message of incoming) rows.set(message.id, message);
-  return [...rows.values()].sort(compareServerOrder);
+function assistantRichness(messages: ChatMessage[]): number {
+  let score = 0;
+  for (const message of messages) {
+    if (message.role !== "assistant" || message.toolData) continue;
+    score += (message.content || "").length;
+    for (const block of message.contentBlocks ?? []) {
+      if (block.type === "text") score += (block.content || "").length;
+    }
+  }
+  return score;
 }
 
-/** A cached transcript cannot establish that a turn is newer than a server page. */
+function toolRichness(messages: ChatMessage[]): number {
+  let score = 0;
+  for (const message of messages) {
+    if (message.role !== "tool" && !message.toolData) continue;
+    score += 1;
+    score += (message.content || "").length;
+    score += (message.toolData?.output || "").length;
+    score += (message.toolData?.arguments || "").length;
+  }
+  return score;
+}
+
+/** Assistant text decides. Tool bulk is only a tie-break so a long tool result cannot hide a newer reply. */
+function localTailRicher(local: ChatMessage[], server: ChatMessage[]): boolean {
+  const localAssistant = assistantRichness(local);
+  const serverAssistant = assistantRichness(server);
+  if (localAssistant !== serverAssistant)
+    return localAssistant > serverAssistant;
+  return toolRichness(local) > toolRichness(server);
+}
+
+/** Match local and cached turns by the persisted user message id. */
+function sameUserTurn(
+  base: ChatMessage[],
+  tail: ChatMessage[],
+): { baseUserIdx: number; tailUserIdx: number } | null {
+  const baseUserIdx = lastUserIndex(base);
+  const tailUserIdx = lastUserIndex(tail);
+  if (baseUserIdx < 0 || tailUserIdx < 0) return null;
+  if (base[baseUserIdx].id !== tail[tailUserIdx].id) return null;
+  return { baseUserIdx, tailUserIdx };
+}
+
+/**
+ * Fold a cached in-flight tail into messages already on screen.
+ * A tail from a different turn is ignored so a stale cache cannot be appended.
+ */
 export function preferLocalTranscript(
   memory: ChatMessage[],
   cached: ChatMessage[] | null | undefined,
 ): ChatMessage[] {
-  if (!cached?.length || !memory.length) return memory;
-  const userIndex = lastUserIndex(memory);
-  const cachedUser = lastUserIndex(cached);
-  if (
-    userIndex < 0 ||
-    cachedUser < 0 ||
-    memory[userIndex].id !== cached[cachedUser].id
-  )
-    return memory;
-  if (memory.length === userIndex + 1)
-    return [...memory, ...cached.slice(cachedUser + 1)];
+  if (!cached || cached.length === 0) return memory;
+  if (memory.length === 0) return memory;
+  const tail = inFlightTail(cached);
+  const match = sameUserTurn(memory, tail);
+  if (!match) return memory;
+  const baseAfter = memory.slice(match.baseUserIdx + 1);
+  const tailAfter = tail.slice(match.tailUserIdx + 1);
+  if (localTailRicher(tailAfter, baseAfter)) {
+    return [...memory.slice(0, match.baseUserIdx + 1), ...tailAfter];
+  }
   return memory;
 }
 
-/** Only explicit durable confirmation can retire a cached turn. */
+/** True when server history can replace this cached turn. */
 export function serverCaughtUp(
   loaded: ChatMessage[],
   cached: ChatMessage[],
-  receipts: HistoryReceipts = {},
 ): boolean {
-  if (!cached.length) return true;
-  const users = cached.filter((m) => m.role === "user");
-  return (
-    users.length > 0 &&
-    users.every(
-      (user) =>
-        receipts[user.id]?.persisted ||
-        loaded.some((m) => m.id === user.id && m.turnStatus === "complete"),
+  if (cached.length === 0) return true;
+  const loadedIds = new Set(loaded.map((message) => message.id));
+  if (
+    cached.some(
+      (message) => message.role === "user" && !loadedIds.has(message.id),
     )
+  )
+    return false;
+  const tail = inFlightTail(cached);
+  const userIdx = lastUserIndex(tail);
+  if (userIdx < 0) return false;
+  const loadedUserIdx = loaded.findIndex(
+    (message) => message.role === "user" && message.id === tail[userIdx].id,
+  );
+  if (loadedUserIdx < 0) return false;
+  const localReply = tail.slice(userIdx + 1);
+  if (localReply.length === 0) return true;
+  const serverReply = loaded.slice(loadedUserIdx + 1);
+  if (serverReply.length === 0) return false;
+  // A later stored user turn also retires an older cached stream.
+  if (serverReply.some((message) => message.role === "user")) return true;
+  return (
+    !localReply.some((message) => message.status === "streaming") ||
+    !localTailRicher(localReply, serverReply)
   );
 }
 
-/** Preserve only a contiguous, already persisted prefix and its paging cursor. */
+/** Index of a user message in `tail` whose id the server page does not have. */
+function newSendIndex(tail: ChatMessage[], loadedIds: Set<string>): number {
+  return tail.findIndex(
+    (message) =>
+      message.role === "user" &&
+      message.localPending &&
+      !loadedIds.has(message.id),
+  );
+}
+
+/** Keep a paging boundary only when a persisted prefix overlaps this page. */
 export function retainedHistoryPrefix(
   loaded: ChatMessage[],
   current: ChatMessage[],
 ): ChatMessage[] {
-  const ids = new Set(loaded.map((m) => m.id));
-  const overlap = current.findIndex((m) => ids.has(m.id));
-  if (overlap <= 0) return [];
+  const ids = new Set(loaded.map((message) => message.id));
+  const overlap = current.findIndex((message) => ids.has(message.id));
+  if (overlap <= 0 || current[overlap].localPending) return [];
   const prefix = current.slice(0, overlap);
-  const positioned = loaded.some((m) => m.serverOrder);
-  if (positioned && !current[overlap].serverOrder) return [];
   return prefix.every(
-    (m) =>
-      !m.delivery && m.status !== "streaming" && (!positioned || m.serverOrder),
+    (message) => !message.localPending && message.status !== "streaming",
   )
     ? prefix
     : [];
 }
 
-export interface HistoryMergeOptions {
-  isStreaming?: boolean;
-  /** Explicit sends created in this running store, never inferred from a cache. */
-  pendingUserIds?: ReadonlySet<string>;
-  receipts?: HistoryReceipts;
-}
-
-/** Server pages own chronology. Only identified local sends can extend the tail. */
+/**
+ * Apply a server history page without dropping a turn the user just sent.
+ *
+ * The dashboard send stores the optimistic user id on the checkpoint
+ * HumanMessage. A finished turn therefore shares that id with the server
+ * page. Keep a richer local reply while streaming; after it finishes,
+ * the server reply replaces the local bubbles, even if its text is shorter.
+ * A later send keeps its own id until that row is stored.
+ *
+ * Opening an old thread fetches history before the optimistic bubble exists.
+ * The response then replaces the list and the bubble vanishes, while the
+ * WebSocket turn keeps running. Messages after the last shared id are that
+ * local turn and stay on screen until the server page already includes them.
+ */
 export function mergeHistoryWithLocalTail(
   loaded: ChatMessage[],
   current: ChatMessage[],
-  options: HistoryMergeOptions | boolean = {},
+  isStreaming = false,
 ): ChatMessage[] {
-  const opts =
-    typeof options === "boolean" ? { isStreaming: options } : options;
-  const receipts = opts.receipts ?? {};
-  const prefix = retainedHistoryPrefix(loaded, current);
-  let result = mergeOrderedMessages(prefix, loaded);
-  const pendingIds =
-    opts.pendingUserIds ??
-    new Set(current.filter((m) => m.delivery).map((m) => m.id));
+  if (current.length === 0) return loaded;
 
-  for (let i = 0; i < current.length; i++) {
-    const user = current[i];
-    if (user.role !== "user") continue;
-    let end = i + 1;
-    while (end < current.length && current[end].role !== "user") end++;
-    const tail = current.slice(i, end);
-    const index = result.findIndex((m) => m.id === user.id);
-    const receipt = receipts[user.id];
-    if (receipt?.persisted) continue;
-    if (index < 0) {
-      const order = receipt?.server_order ?? user.serverOrder;
-      const lastStored = loaded.filter((m) => m.serverOrder).at(-1);
-      if (
-        order &&
-        lastStored &&
-        compareServerOrder({ ...user, serverOrder: order }, lastStored) <= 0
-      )
-        continue;
-      if (pendingIds.has(user.id) && receipt?.state !== "stored") {
-        result = [
-          ...result,
-          ...tail.filter((m) => !result.some((r) => r.id === m.id)),
-        ];
-      }
-      continue;
-    }
-    let serverEnd = index + 1;
-    while (serverEnd < result.length && result[serverEnd].role !== "user")
-      serverEnd++;
-    if (serverEnd < result.length) continue;
-    const status = result[index].turnStatus;
-    if (status === "complete") continue;
-    if (user.delivery)
-      result[index] = {
-        ...result[index],
-        delivery: user.delivery,
-        turnId: user.turnId,
-      };
-    const localLive =
-      opts.isStreaming || tail.some((m) => m.status === "streaming");
-    if (tail.length > 1 && (localLive || serverEnd === index + 1)) {
-      result = [...result.slice(0, index + 1), ...tail.slice(1)];
+  const loadedIds = new Set(loaded.map((message) => message.id));
+  const firstOverlap = current.findIndex((message) =>
+    loadedIds.has(message.id),
+  );
+
+  if (firstOverlap < 0) {
+    // Missing from the latest page does not mean newer: it may be old cache
+    // outside the page. Only a send created in this running store can append.
+    const pending = newSendIndex(current, loadedIds);
+    return pending < 0 ? loaded : [...loaded, ...current.slice(pending)];
+  }
+
+  let lastOverlap = firstOverlap;
+  for (let i = current.length - 1; i >= 0; i--) {
+    if (loadedIds.has(current[i].id)) {
+      lastOverlap = i;
+      break;
     }
   }
-  return result;
+
+  const olderPrefix = retainedHistoryPrefix(loaded, current);
+  const localTail = current.slice(lastOverlap + 1);
+  const base = [...olderPrefix, ...loaded];
+  if (localTail.length === 0) return base;
+
+  const freshSend = newSendIndex(localTail, loadedIds);
+  if (freshSend >= 0) return [...base, ...localTail.slice(freshSend)];
+
+  const overlapId = current[lastOverlap].id;
+  const loadedOverlap = loaded.findIndex((message) => message.id === overlapId);
+  const serverAfter = loadedOverlap >= 0 ? loaded.slice(loadedOverlap + 1) : [];
+  // User row is stored and the reply is not in this page yet.
+  if (serverAfter.length === 0) return [...base, ...localTail];
+  const live =
+    isStreaming || localTail.some((message) => message.status === "streaming");
+  if (
+    live &&
+    !serverAfter.some((message) => message.role === "user") &&
+    localTailRicher(localTail, serverAfter)
+  ) {
+    return [...base.slice(0, base.length - serverAfter.length), ...localTail];
+  }
+  return base;
 }

@@ -19,7 +19,6 @@ from octop.api.routers.chat.models import UserTurnWsFrame
 from octop.api.routers.chat.sse import json_chunk_default
 from octop.api.routers.chat.turn import (
     build_dashboard_inbound,
-    client_message_id_from_turn,
     prepare_dashboard_turn,
     turn_has_content,
 )
@@ -129,11 +128,6 @@ async def dashboard_chat_ws(
                         "type": "turn_status",
                         "thread_id": thread_id,
                         "active": hub.is_turn_active(thread_id),
-                        **(
-                            {"client_message_id": hub.active_user_message_id(thread_id)}
-                            if hub.active_user_message_id(thread_id)
-                            else {}
-                        ),
                     },
                 )
                 expired = gateway.steer.sweep_expired(thread_id)
@@ -224,31 +218,6 @@ async def dashboard_chat_ws(
             # connections that are not subscribed yet.
             hub.subscribe(prepared_early.thread_id, connection_id)
 
-            client_id = client_message_id_from_turn(turn)
-            if client_id:
-                from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
-
-                archive = getattr(server.app_runtime, "history_archive", None)
-                stored = (
-                    await asyncio.to_thread(
-                        archive.store.user_message_positions, prepared_early.thread_id, [client_id]
-                    )
-                    if isinstance(archive, HistoryArchive)
-                    else {}
-                )
-                if not stored:
-                    rows = await asyncio.to_thread(
-                        server.services.thread_message_repo.find_by_ids,
-                        prepared_early.thread_id,
-                        [client_id],
-                    )
-                    stored = {r.message_id: True for r in rows if r.role in ("human", "user")}
-                if stored or hub.has_user_message(prepared_early.thread_id, client_id):
-                    await send_frame(
-                        {"type": "done", "thread_id": prepared_early.thread_id, "duplicate": True}
-                    )
-                    continue
-
             steered = await _maybe_admit_steer(
                 text=(turn.text or "").strip() or _plain_text_from_turn(turn),
                 thread_id=prepared_early.thread_id,
@@ -277,17 +246,7 @@ async def dashboard_chat_ws(
                 ws_connection_id=connection_id,
                 user_is_admin=bool(getattr(user, "is_admin", False)),
             )
-            if client_id and not hub.claim_user_message(prepared_early.thread_id, client_id):
-                await send_frame(
-                    {"type": "done", "thread_id": prepared_early.thread_id, "duplicate": True}
-                )
-                continue
-            try:
-                channel_manager.enqueue(WS_CHANNEL_ID, inbound)
-            except BaseException:
-                if client_id:
-                    hub.finish_user_message(prepared_early.thread_id, client_id, failed=True)
-                raise
+            channel_manager.enqueue(WS_CHANNEL_ID, inbound)
 
     except WebSocketDisconnect:
         pass

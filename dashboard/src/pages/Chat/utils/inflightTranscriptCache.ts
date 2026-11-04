@@ -8,7 +8,6 @@ const WRITE_DELAY_MS = 200;
 
 const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const latestByThread = new Map<string, ChatMessage[]>();
-const recoveryByThread = new Map<string, ChatMessage[]>();
 
 function storageKey(threadId: string): string {
   return `${STORAGE_PREFIX}${threadId}`;
@@ -28,12 +27,6 @@ function slimMessage(message: ChatMessage): ChatMessage {
       message.role === "user" ? message.content : clipText(message.content),
     attachments: message.attachments,
     composerContext: message.composerContext,
-    hitlData: message.hitlData,
-    delivery: message.delivery,
-    turnId: message.turnId,
-    serverOrder: message.serverOrder,
-    historyTurnId: message.historyTurnId,
-    turnStatus: message.turnStatus,
     contentBlocks: message.contentBlocks?.map((block) => ({
       type: block.type,
       content: clipText(block.content),
@@ -68,21 +61,12 @@ function isRole(value: unknown): value is ChatMessage["role"] {
   );
 }
 
-function parseTail(
-  raw: string,
-  field: "tail" | "recovery" = "tail",
-): ChatMessage[] | null {
+function parseTail(raw: string): ChatMessage[] | null {
   try {
-    const parsed = JSON.parse(raw) as {
-      v?: unknown;
-      tail?: unknown;
-      recovery?: unknown;
-    };
-    const messages = parsed[field];
-    if ((parsed.v !== 1 && parsed.v !== 2) || !Array.isArray(messages))
-      return null;
+    const parsed = JSON.parse(raw) as { v?: unknown; tail?: unknown };
+    if (parsed.v !== 1 || !Array.isArray(parsed.tail)) return null;
     const tail: ChatMessage[] = [];
-    for (const item of messages) {
+    for (const item of parsed.tail) {
       if (!item || typeof item !== "object") return null;
       const row = item as Partial<ChatMessage>;
       if (typeof row.id !== "string" || !isRole(row.role)) return null;
@@ -94,22 +78,6 @@ function parseTail(
           ? row.attachments
           : undefined,
         composerContext: row.composerContext,
-        hitlData: row.hitlData,
-        delivery:
-          row.delivery === "pending" || row.delivery === "accepted"
-            ? row.delivery
-            : undefined,
-        turnId: typeof row.turnId === "string" ? row.turnId : undefined,
-        serverOrder:
-          Array.isArray(row.serverOrder) &&
-          row.serverOrder.length === 2 &&
-          row.serverOrder.every(Number.isSafeInteger)
-            ? row.serverOrder
-            : undefined,
-        historyTurnId:
-          typeof row.historyTurnId === "string" ? row.historyTurnId : undefined,
-        turnStatus:
-          typeof row.turnStatus === "string" ? row.turnStatus : undefined,
         contentBlocks: Array.isArray(row.contentBlocks)
           ? row.contentBlocks.flatMap((block) => {
               if (!block || typeof block !== "object") return [];
@@ -156,12 +124,11 @@ function parseTail(
   }
 }
 
-function encodeTail(
-  messages: ChatMessage[],
-): { v: number; tail: ChatMessage[] } | null | undefined {
+function encodeTail(messages: ChatMessage[]): string | null | undefined {
   const tail = inFlightTail(messages).map(slimMessage);
   if (tail.length === 0) return null;
-  if (JSON.stringify(tail).length <= MAX_CACHE_CHARS) return { v: 2, tail };
+  let raw = JSON.stringify({ v: 1, tail });
+  if (raw.length <= MAX_CACHE_CHARS) return raw;
   const lighter = tail.map((message) =>
     message.toolData
       ? {
@@ -174,33 +141,24 @@ function encodeTail(
         }
       : message,
   );
-  if (JSON.stringify(lighter).length <= MAX_CACHE_CHARS)
-    return { v: 2, tail: lighter };
+  raw = JSON.stringify({ v: 1, tail: lighter });
+  if (raw.length <= MAX_CACHE_CHARS) return raw;
   return undefined;
 }
 
 function writeNow(threadId: string, messages: ChatMessage[]): boolean {
+  const key = storageKey(threadId);
   try {
-    const recovery = readRecoveryMessages(threadId);
-    const recoveryIds = new Set(recovery.map((m) => m.id));
-    const active = messages.filter((m) => !recoveryIds.has(m.id));
-    const payload = encodeTail(active);
-    if (payload === undefined) return false;
-    const key = storageKey(threadId);
-    if (!payload && !recovery.length) sessionStorage.removeItem(key);
-    else
-      sessionStorage.setItem(
-        key,
-        JSON.stringify({
-          v: 2,
-          tail: payload?.tail ?? [],
-          recovery: recovery.map(slimMessage),
-        }),
-      );
+    const raw = encodeTail(messages);
+    if (raw === undefined) return false;
+    if (raw === null) {
+      sessionStorage.removeItem(key);
+      return true;
+    }
+    sessionStorage.setItem(key, raw);
     return true;
   } catch {
-    // One atomic envelope retains both active sends and uncertain recovery.
-    // A failed update must leave the previous successful envelope untouched.
+    // Keep the last successful write if storage is unavailable or full.
     return false;
   }
 }
@@ -209,46 +167,15 @@ function writeNow(threadId: string, messages: ChatMessage[]): boolean {
 export function readInflightTail(threadId: string): ChatMessage[] | null {
   if (!threadId || threadId.startsWith("__")) return null;
   const queued = latestByThread.get(threadId);
-  if (queued) return inFlightTail(queued);
+  // Cache provenance is separate from a send created in the running store.
+  if (queued) return inFlightTail(queued).map(slimMessage);
   try {
     const raw = sessionStorage.getItem(storageKey(threadId));
     if (!raw) return null;
-    const tail = parseTail(raw);
-    return tail?.length ? tail : null;
+    return parseTail(raw);
   } catch {
     return null;
   }
-}
-
-/** Recovery and active sends share an atomic storage envelope, but separate state. */
-export function readRecoveryMessages(threadId: string): ChatMessage[] {
-  const memory = recoveryByThread.get(threadId);
-  if (memory) return memory;
-  try {
-    return (
-      parseTail(
-        sessionStorage.getItem(storageKey(threadId)) || "",
-        "recovery",
-      ) ?? []
-    );
-  } catch {
-    return [];
-  }
-}
-
-export function saveRecoveryMessages(
-  threadId: string,
-  messages: ChatMessage[],
-): void {
-  const active = readInflightTail(threadId) ?? [];
-  // Remember even a failed storage update so a later send cannot overwrite it.
-  recoveryByThread.set(threadId, messages);
-  writeNow(threadId, active);
-}
-
-export function hasInflightTail(threadId: string): boolean {
-  if (writeTimers.has(threadId)) return true;
-  return readInflightTail(threadId) != null;
 }
 
 /**
@@ -295,29 +222,38 @@ export function clearInflightTail(threadId: string): void {
     writeTimers.delete(threadId);
   }
   latestByThread.delete(threadId);
-  writeNow(threadId, []);
+  try {
+    sessionStorage.removeItem(storageKey(threadId));
+  } catch {
+    // ignore
+  }
 }
 
 export function moveInflightTail(fromId: string, toId: string): void {
-  if (!fromId || !toId || fromId === toId || toId.startsWith("__")) return;
-  const active = readInflightTail(fromId) ?? [];
-  const recovery = [
-    ...new Map(
-      [...readRecoveryMessages(toId), ...readRecoveryMessages(fromId)].map(
-        (m) => [m.id, m],
-      ),
-    ).values(),
-  ];
-  recoveryByThread.set(toId, recovery);
-  if (!writeNow(toId, active)) return;
+  if (!fromId || !toId || fromId === toId) return;
   const pending = writeTimers.get(fromId);
-  if (pending !== undefined) clearTimeout(pending);
-  writeTimers.delete(fromId);
+  if (pending !== undefined) {
+    clearTimeout(pending);
+    writeTimers.delete(fromId);
+  }
+  const latest = latestByThread.get(fromId);
   latestByThread.delete(fromId);
-  recoveryByThread.delete(fromId);
+  if (latest && !toId.startsWith("__")) {
+    if (!writeNow(toId, latest)) return;
+    try {
+      sessionStorage.removeItem(storageKey(fromId));
+    } catch {
+      // ignore
+    }
+    return;
+  }
   try {
+    const raw = sessionStorage.getItem(storageKey(fromId));
+    if (raw && !toId.startsWith("__")) {
+      sessionStorage.setItem(storageKey(toId), raw);
+    }
     sessionStorage.removeItem(storageKey(fromId));
   } catch {
-    /* Keep the destination copy. */
+    // ignore
   }
 }

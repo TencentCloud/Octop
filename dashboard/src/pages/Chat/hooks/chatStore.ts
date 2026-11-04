@@ -51,18 +51,13 @@ import {
   promoteAskUserToolMessage,
 } from "../utils/pendingHitl";
 import { frameBelongsToThread } from "./frameThread";
-import {
-  inFlightTail,
-  preferLocalTranscript,
-  mergeOrderedMessages,
-} from "../utils/mergeHistoryTail";
+import { inFlightTail, preferLocalTranscript } from "../utils/mergeHistoryTail";
 import { clipThreadTitle } from "../utils/threadTitle";
 import {
   clearInflightTail,
   flushInflightTail,
   moveInflightTail,
   scheduleInflightTail,
-  saveRecoveryMessages,
 } from "../utils/inflightTranscriptCache";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
@@ -114,9 +109,9 @@ export function setFocusedChatSession(sessionId: string | null): void {
       prevState &&
       (prevState.isStreaming ||
         prevState.messages.some((message) => message.status === "streaming") ||
-        prevState.messages.some((m) => m.delivery))
+        prevState.messages.some((m) => m.localPending))
     ) {
-      flushInflightTail(prev, cacheTail(prevState));
+      flushInflightTail(prev, inFlightTail(prevState.messages));
     }
     // Listen sockets stay open after a turn so late team replies can land.
     // Leaving the room drops that idle bind; an in-flight turn keeps resume.
@@ -167,7 +162,7 @@ const pendingResumeBySession = new Map<
     threadId: string;
     onStreamEnd?: () => void;
     resumeAttempt: number;
-    opts?: { afterUnexpectedDrop?: boolean; expectedActive?: boolean };
+    opts?: { afterUnexpectedDrop?: boolean };
   }
 >();
 
@@ -301,9 +296,9 @@ function flushLiveInflight(): void {
       state.isStreaming ||
       state.liveSpeakers.size > 0 ||
       state.messages.some((message) => message.status === "streaming") ||
-      state.messages.some((m) => m.delivery);
+      state.messages.some((m) => m.localPending);
     if (!live) continue;
-    flushInflightTail(sessionId, cacheTail(state));
+    flushInflightTail(sessionId, inFlightTail(state.messages));
   }
 }
 
@@ -483,8 +478,6 @@ function settleGeneratedTitle(agentId: string, threadId: string): void {
 function buildSnapshot(state: SessionStreamState): SessionSnapshot {
   return {
     messages: state.messages,
-    recoveryMessages: state.recoveryMessages,
-    historyEpoch: state.historyEpoch,
     isStreaming: state.isStreaming,
     thinkingStartedAt: state.thinkingStartedAt,
     runUsage: state.runUsage,
@@ -560,7 +553,6 @@ function getOrCreate(sessionId: string): SessionStreamState {
     state = {
       sessionKey: sessionId,
       messages: [],
-      recoveryMessages: [],
       historyEpoch: ++nextHistoryEpoch,
       isStreaming: false,
       thinkingStartedAt: null,
@@ -623,27 +615,6 @@ function publish(state: SessionStreamState): void {
   }
 }
 
-function cacheTail(state: SessionStreamState): ChatMessage[] {
-  const tail = inFlightTail(state.messages);
-  if (
-    tail.length &&
-    !tail.some((m) => m.role === "user") &&
-    state.streamUserId
-  ) {
-    return [
-      {
-        id: state.streamUserId,
-        role: "user",
-        content: "",
-        timestamp: 0,
-        delivery: "accepted",
-      },
-      ...tail,
-    ];
-  }
-  return tail;
-}
-
 function rememberInflight(state: SessionStreamState): void {
   const sessionId = state.sessionKey || "";
   if (!sessionId || sessionId.startsWith("__")) return;
@@ -651,12 +622,12 @@ function rememberInflight(state: SessionStreamState): void {
     state.isStreaming ||
     state.liveSpeakers.size > 0 ||
     state.messages.some((message) => message.status === "streaming");
-  const tail = cacheTail(state);
+  const tail = inFlightTail(state.messages);
   if (live) {
     scheduleInflightTail(sessionId, tail);
     return;
   }
-  if (state.messages.some((m) => m.delivery)) {
+  if (state.messages.some((m) => m.localPending)) {
     flushInflightTail(sessionId, tail);
   }
 }
@@ -851,7 +822,7 @@ export function subscribe(sessionId: string, listener: () => void): () => void {
   };
 }
 
-/** Get a read-only snapshot of the session state (referentially stable). */
+/** Capture the session revision before an asynchronous history read. */
 export function beginHistoryRead(sessionId: string): number {
   return getOrCreate(sessionId).historyEpoch ?? 0;
 }
@@ -863,6 +834,7 @@ export function isHistoryReadCurrent(
   return sessionStates.get(sessionId)?.historyEpoch === epoch;
 }
 
+/** Get a read-only snapshot of the session state (referentially stable). */
 export function getSnapshot(sessionId: string): SessionSnapshot {
   const state = sessionStates.get(sessionId);
   if (!state) return EMPTY_SNAPSHOT;
@@ -894,19 +866,10 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
 export function setHistoryPage(
   sessionId: string,
   messages: ChatMessage[],
-  opts: {
-    hasMore: boolean;
-    nextOffset: number;
-    nextCursor?: string | null;
-    recoveryMessages?: ChatMessage[];
-  },
+  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
-  if (opts.recoveryMessages) {
-    state.recoveryMessages = opts.recoveryMessages;
-    saveRecoveryMessages(sessionId, opts.recoveryMessages);
-  }
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.historyHasMore = opts.hasMore;
@@ -950,6 +913,15 @@ export function isHistoryStale(sessionId: string): boolean {
   return sessionStates.get(sessionId)?.historyStale ?? false;
 }
 
+function dedupePrependMessages(
+  older: ChatMessage[],
+  existing: ChatMessage[],
+): ChatMessage[] {
+  if (older.length === 0) return older;
+  const seen = new Set(existing.map((message) => message.id));
+  return older.filter((message) => !seen.has(message.id));
+}
+
 /** Prepend older messages when the user scrolls up. */
 export function prependHistoryMessages(
   sessionId: string,
@@ -957,12 +929,10 @@ export function prependHistoryMessages(
   opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
-  const existing = new Set(state.messages.map((m) => m.id));
-  const uniqueOlder = older.filter((m) => !existing.has(m.id));
-  state.messages = mergeOrderedMessages(
-    [...uniqueOlder, ...state.messages],
-    older.filter((m) => m.serverOrder),
-  );
+  const uniqueOlder = dedupePrependMessages(older, state.messages);
+  if (uniqueOlder.length > 0) {
+    state.messages = [...uniqueOlder, ...state.messages];
+  }
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
   state.historyNextCursor = opts.nextCursor ?? null;
@@ -979,7 +949,7 @@ export function setHistoryLoadingMore(sessionId: string, loading: boolean) {
 export function appendUserMessage(sessionId: string, msg: ChatMessage) {
   const state = getOrCreate(sessionId);
   if (state.messages.some((m) => m.id === msg.id)) return;
-  state.messages = [...state.messages, { ...msg, delivery: "pending" }];
+  state.messages = [...state.messages, { ...msg, localPending: true }];
   notify(state);
 }
 
@@ -1012,11 +982,7 @@ export function truncateAndReplaceUserMessage(
       id: replacementId,
       content: newContent,
       status: "done" as const,
-      delivery: "pending" as const,
-      serverOrder: undefined,
-      turnStatus: undefined,
-      historyTurnId: undefined,
-      turnId: undefined,
+      localPending: true,
     },
   ];
   clearStreamingFlags(state);
@@ -1055,6 +1021,7 @@ export function clearMessages(sessionId: string) {
   // the socket keeps streaming into this state and the UI needs it on return.
   // An idle listen socket (team follow-ups) must not block a clear.
   if (state.isStreaming) return;
+  state.historyEpoch = ++nextHistoryEpoch;
   const alreadyEmpty =
     state.messages.length === 0 &&
     !state.isStreaming &&
@@ -1063,10 +1030,6 @@ export function clearMessages(sessionId: string) {
     !state.historyHasMore;
   if (alreadyEmpty) return;
   state.messages = [];
-  state.recoveryMessages = [];
-  state.streamUserId = undefined;
-  saveRecoveryMessages(sessionId, []);
-  state.historyEpoch = ++nextHistoryEpoch;
   clearStreamingFlags(state);
   clearAllLiveSpeakers(state);
   state.runUsage = null;
@@ -1164,7 +1127,6 @@ export function removeSession(sessionId: string) {
   clearStreamActivity(sessionId);
   clearStreamWatchdog(sessionId);
   clearInflightTail(sessionId);
-  saveRecoveryMessages(sessionId, []);
   closeLiveSocket(sessionId, { intentional: true, userCancelled: true });
 }
 
@@ -2761,7 +2723,7 @@ export async function attachThread(
   threadId: string,
   onStreamEnd?: () => void,
   resumeAttempt = 0,
-  opts?: { afterUnexpectedDrop?: boolean; expectedActive?: boolean },
+  opts?: { afterUnexpectedDrop?: boolean },
 ): Promise<void> {
   if (!agentId || !threadId || threadId === "__empty__") return;
 
@@ -2886,8 +2848,6 @@ export async function attachThread(
         if (applyThreadTitleFrame(data)) return;
 
         if (data.type === "turn_status") {
-          if (typeof data.client_message_id === "string")
-            state.streamUserId = data.client_message_id;
           if (turnStatusAction(Boolean(data.active)) === "expect_stream") {
             if (!state.isStreaming) {
               state.runUsage = null;
@@ -2917,8 +2877,6 @@ export async function attachThread(
             if (!hasStreamingMessages(state)) {
               finish();
             }
-          } else if (opts?.expectedActive) {
-            finish("host");
           } else if (state.abortController === controller) {
             state.abortController = previousController;
           }
@@ -3884,15 +3842,6 @@ function applySteerProtocolFrame(
   if (type === "turn.started" || type === "turn.resumed") {
     const turnId = String(data.turn_id || "").trim();
     if (turnId) state.activeTurnId = turnId;
-    const messageId =
-      typeof data.client_message_id === "string" ? data.client_message_id : "";
-    if (messageId) state.streamUserId = messageId;
-    if (messageId)
-      state.messages = state.messages.map((m) =>
-        m.id === messageId && m.delivery
-          ? { ...m, delivery: "accepted", turnId }
-          : m,
-      );
     // Idle commit becomes a normal turn. Keep the optimistic user row —
     // it is the live bubble until history returns the same text. Stop
     // tracking it so a later turn.ended does not delete it.
