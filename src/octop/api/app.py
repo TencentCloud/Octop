@@ -111,7 +111,7 @@ def _install_exception_handlers(app: FastAPI) -> None:
         errors: Any = exc.errors()
         route = request.scope.get("route")
         path_format = getattr(route, "path_format", "") or request.url.path
-        if path_format.endswith("/chat/secret-input/submit"):
+        if path_format.endswith(("/chat/secret-input/submit", "/chat/secure-form/submit")):
             errors = [
                 {k: v for k, v in err.items() if k not in ("input", "ctx")}
                 for err in errors
@@ -242,6 +242,7 @@ def build_app(server: OctopServer) -> FastAPI:
         user_groups,
         user_roles,
         users,
+        vault,
         voice,
         workspace,
     )
@@ -332,6 +333,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(ollama_models.router, "/api", ["ollama"]),
             _RouterMount(onnx_models.router, "/api", ["onnx"]),
             _RouterMount(plugins.router, "/api", ["plugins"]),
+            _RouterMount(vault.router, "/api", ["vault"]),
         ],
     )
 

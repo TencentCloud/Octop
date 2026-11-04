@@ -88,6 +88,15 @@ class VaultItemsRepo:
             ).fetchone()
         return VaultItemRow.from_row(row) if row is not None else None
 
+    def find_by_id(self, vault_item_id: str) -> VaultItemRow | None:
+        """Cross-user metadata-only lookup (admin delete resolution)."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                f"SELECT {_LIST_COLUMNS} FROM vault_items WHERE vault_item_id = ?",
+                (vault_item_id,),
+            ).fetchone()
+        return VaultItemRow.from_row(row) if row is not None else None
+
     def list_for_user(self, user_id: int) -> list[VaultItemRow]:
         """Metadata only; never selects ``fields_blob``."""
         with self._db.connect() as conn:

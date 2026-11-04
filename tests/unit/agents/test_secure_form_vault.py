@@ -176,6 +176,21 @@ def test_cap_256_then_rotation_is_cap_exempt(env: VaultEnv) -> None:
     assert len(env.service.list_items(env.user_id)) == VAULT_ITEMS_MAX_PER_USER
 
 
+def test_check_insert_capacity_pre_claim_guard(
+    env: VaultEnv, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import octop.infra.agents.secure_form.vault_service as vault_service_module
+
+    env.service.check_insert_capacity(env.user_id)  # empty vault: fine
+    env.service.store_item(
+        env.user_id, "login", "GitHub", None, LOGIN_FIELDS, replace_confirmed=False
+    )
+    monkeypatch.setattr(vault_service_module, "VAULT_ITEMS_MAX_PER_USER", 1)
+    with pytest.raises(OctopError) as exc:
+        env.service.check_insert_capacity(env.user_id)
+    assert exc.value.code is ErrorCode.VAULT_CAP_EXCEEDED
+
+
 def test_replace_requires_confirmation(env: VaultEnv) -> None:
     row = env.service.store_item(
         env.user_id, "login", "GitHub", None, LOGIN_FIELDS, replace_confirmed=False

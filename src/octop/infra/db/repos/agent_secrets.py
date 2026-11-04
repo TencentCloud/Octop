@@ -91,27 +91,74 @@ class AgentSecretsRepo:
         """Insert a slot or rotate the stored blob; returns the stored row."""
         ts = now_ts()
         with self._db.transaction() as conn:
-            existing = conn.execute(
-                "SELECT id FROM agent_secrets WHERE agent_id = ? AND slot_name = ?",
-                (agent_id, slot_name),
-            ).fetchone()
-            if existing is not None:
-                conn.execute(
-                    "UPDATE agent_secrets SET secret_blob = ?, display_name = ?, "
-                    "rotated_at = ?, updated_at = ? WHERE agent_id = ? AND slot_name = ?",
-                    (secret_blob, display_name, ts, ts, agent_id, slot_name),
-                )
-            else:
-                conn.execute(
-                    "INSERT INTO agent_secrets "
-                    "(secret_id, agent_id, user_id, slot_name, display_name, "
-                    "secret_blob, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (new_ulid(), agent_id, user_id, slot_name, display_name, secret_blob, ts, ts),
-                )
+            self._upsert_one(
+                conn,
+                agent_id=agent_id,
+                user_id=user_id,
+                slot_name=slot_name,
+                display_name=display_name,
+                secret_blob=secret_blob,
+                ts=ts,
+            )
         stored = self._get_by_slot(agent_id, slot_name)
         assert stored is not None, "agent_secrets upsert lost the row"
         return stored
+
+    def upsert_slots(
+        self,
+        conn: Any,
+        *,
+        agent_id: str,
+        user_id: int,
+        entries: list[tuple[str, str | None, bytes]],
+    ) -> None:
+        """Insert/rotate several slots on a caller-owned connection.
+
+        The secure-form submit unit writes every mapped slot inside one
+        transaction (all-or-nothing), so each method here must not open its
+        own. ``entries`` carries ``(slot_name, display_name, secret_blob)``.
+        """
+        ts = now_ts()
+        for slot_name, display_name, secret_blob in entries:
+            self._upsert_one(
+                conn,
+                agent_id=agent_id,
+                user_id=user_id,
+                slot_name=slot_name,
+                display_name=display_name,
+                secret_blob=secret_blob,
+                ts=ts,
+            )
+
+    def _upsert_one(
+        self,
+        conn: Any,
+        *,
+        agent_id: str,
+        user_id: int,
+        slot_name: str,
+        display_name: str | None,
+        secret_blob: bytes,
+        ts: int,
+    ) -> None:
+        existing = conn.execute(
+            "SELECT id FROM agent_secrets WHERE agent_id = ? AND slot_name = ?",
+            (agent_id, slot_name),
+        ).fetchone()
+        if existing is not None:
+            conn.execute(
+                "UPDATE agent_secrets SET secret_blob = ?, display_name = ?, "
+                "rotated_at = ?, updated_at = ? WHERE agent_id = ? AND slot_name = ?",
+                (secret_blob, display_name, ts, ts, agent_id, slot_name),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO agent_secrets "
+                "(secret_id, agent_id, user_id, slot_name, display_name, "
+                "secret_blob, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (new_ulid(), agent_id, user_id, slot_name, display_name, secret_blob, ts, ts),
+            )
 
     def _get_by_slot(self, agent_id: str, slot_name: str) -> AgentSecretRow | None:
         with self._db.connect() as conn:

@@ -10,7 +10,11 @@ from typing import Any
 from octop.infra.agents.secure_form.envelope import filter_vault_fields, seal_vault_fields
 from octop.infra.crypto.fernet import PURPOSE_VAULT_ITEM, get_fernet
 from octop.infra.db.repos.secrets import SecretRepo
-from octop.infra.db.repos.vault_items import VaultItemRow, VaultItemsRepo
+from octop.infra.db.repos.vault_items import (
+    VAULT_ITEMS_MAX_PER_USER,
+    VaultItemRow,
+    VaultItemsRepo,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_ulid
 
@@ -94,6 +98,19 @@ class VaultService:
     def list_items(self, user_id: int) -> list[VaultItemRow]:
         """Metadata-only listing (no ciphertext, no values)."""
         return self.repo.list_for_user(user_id)
+
+    def check_insert_capacity(self, user_id: int) -> None:
+        """Raise ``VAULT_CAP_EXCEEDED`` when the user is at the insert cap.
+
+        Pre-claim submit check (cheap); rotation is never cap-guarded, so this
+        is only consulted when no colliding item exists. The cap-guarded
+        INSERT remains the authoritative guard inside the write unit.
+        """
+        if len(self.repo.list_for_user(user_id)) >= VAULT_ITEMS_MAX_PER_USER:
+            raise OctopError(
+                ErrorCode.VAULT_CAP_EXCEEDED,
+                "user already has the maximum number of vault items",
+            )
 
     def delete_item(self, user_id: int, vault_item_id: str) -> None:
         if not self.repo.delete(vault_item_id, user_id):

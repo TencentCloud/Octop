@@ -46,6 +46,7 @@ from octop.infra.db.repos.user_recovery_codes import UserRecoveryCodeRepo
 from octop.infra.db.repos.user_totp import UserTotpRepo
 from octop.infra.db.repos.user_webauthn import UserWebauthnRepo
 from octop.infra.db.repos.users import UserRepo
+from octop.infra.db.repos.vault_items import VaultItemsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo
 from octop.infra.utils.paths import PathLayout
 
@@ -67,6 +68,7 @@ class RepoBundle:
     trajectory_event_repo: TrajectoryEventRepo
     secret_repo: SecretRepo
     agent_secret_repo: AgentSecretsRepo
+    vault_items_repo: VaultItemsRepo
     audit_repo: AuditRepo
     usage_repo: UsageRepo
     settings_repo: SettingsRepo
@@ -108,6 +110,7 @@ class RepoBundle:
             trajectory_event_repo=TrajectoryEventRepo(db),
             secret_repo=secret_repo,
             agent_secret_repo=AgentSecretsRepo(db),
+            vault_items_repo=VaultItemsRepo(db),
             audit_repo=AuditRepo(db),
             usage_repo=UsageRepo(db),
             settings_repo=SettingsRepo(db),
@@ -194,6 +197,17 @@ class SharedServices:
     @property
     def agent_secret_repo(self) -> AgentSecretsRepo:
         return self.repos.agent_secret_repo
+
+    @property
+    def vault_items_repo(self) -> VaultItemsRepo:
+        return self.repos.vault_items_repo
+
+    @property
+    def vault_service(self) -> Any:
+        """User-vault storage service (stateless over the shared repos)."""
+        from octop.infra.agents.secure_form.vault_service import VaultService
+
+        return VaultService(repo=self.repos.vault_items_repo, secret_repo=self.repos.secret_repo)
 
     @property
     def audit_repo(self) -> AuditRepo:

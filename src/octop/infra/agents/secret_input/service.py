@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from octop.infra.agents.secret_input.slots import (
     AGENT_SECRET_MAX_SLOTS,
@@ -88,6 +90,54 @@ class AgentSecretService:
             slot in known,
         )
         return row
+
+    def store_slots_in_unit(
+        self,
+        conn: Any,
+        *,
+        agent_id: str,
+        user_id: int,
+        values: Mapping[str, str],
+        display_names: Mapping[str, str] | None = None,
+    ) -> None:
+        """Encrypt and upsert several slots on a caller-owned connection.
+
+        The secure-form submit unit writes all mapped env slots plus the vault
+        item plus the audit row inside ONE transaction; this method only
+        encrypts and delegates to the connection-injecting repo write. Slot
+        names arrive already normalized; values already passed the secure-form
+        pre-claim validation. The purpose key must be warm before the owning
+        transaction opens (SQLite cannot nest the bootstrap).
+        """
+        entries: list[tuple[str, str | None, bytes]] = []
+        for slot_name, value in values.items():
+            slot = normalize_slot_name(slot_name)
+            if slot is None:
+                raise OctopError(
+                    ErrorCode.SECRET_SLOT_INVALID,
+                    f"invalid secret slot name: {slot_name!r}",
+                )
+            if not value.strip():
+                raise OctopError(
+                    ErrorCode.SECRET_SLOT_INVALID,
+                    f"secret value for slot {slot} must not be blank",
+                )
+            if len(value) > AGENT_SECRET_MAX_VALUE_CHARS:
+                raise OctopError(
+                    ErrorCode.SECRET_SLOT_INVALID,
+                    f"secret value for slot {slot} exceeds "
+                    f"{AGENT_SECRET_MAX_VALUE_CHARS} characters",
+                )
+            label = (display_names or {}).get(slot) or slot
+            entries.append(
+                (slot, label, encrypt_str(self.secret_repo, PURPOSE_AGENT_SECRET, value))
+            )
+        self.repo.upsert_slots(conn, agent_id=agent_id, user_id=user_id, entries=entries)
+        logger.info(
+            "agent secret slots stored agent=%s slots=%s",
+            agent_id,
+            ",".join(sorted(slot for slot, _n, _b in entries)),
+        )
 
     def decrypt_env(self, agent_id: str) -> dict[str, str]:
         """All slot values for *agent_id* as an env mapping (decrypting read)."""

@@ -23,6 +23,11 @@ HitlPendingStatus = Literal[
 
 _DEFAULT_TTL_SECONDS = 30 * 60
 
+# Secure-form claim lease: each hard write failure releases the lease and
+# spends one reopen credit; recoverable drift releases without spending.
+# Terminal once exhausted (the user restarts via a new form if needed).
+SECURE_FORM_REOPEN_LIMIT = 5
+
 
 def _same_pause_slot(
     existing: HitlPendingRecord,
@@ -64,6 +69,44 @@ class HitlPendingRecord:
     # Resume still targets the member agent and ``room~member`` thread.
     resume_agent_id: str | None = None
     resume_thread_id: str | None = None
+    # Secure-form lease bookkeeping (single-field secret input shares the
+    # claim but never spends credits — its reopen is unbounded as before).
+    reopen_budget: int = SECURE_FORM_REOPEN_LIMIT
+    # Terminal metadata of a FILLED secure-form submission (ids/statuses
+    # only, never values), replayed idempotently when the client lost the
+    # submit response.
+    secure_form_result: dict[str, Any] | None = None
+
+
+def thread_pending_match(
+    record: HitlPendingRecord,
+    *,
+    thread_id: str,
+    agent_id: str,
+    user_id: int | None,
+    ttl_seconds: float = _DEFAULT_TTL_SECONDS,
+) -> bool:
+    """Whether *record* is a live pause for this thread/agent/user.
+
+    Shared by the store's own resolution and the secure-form endpoints (which
+    must also inspect terminal records for idempotent replays).
+    """
+    if record.status != "pending":
+        return False
+    room_match = record.thread_id == thread_id and record.agent_id == agent_id
+    member_match = bool(
+        record.resume_thread_id
+        and record.resume_thread_id == thread_id
+        and record.resume_agent_id == agent_id
+    )
+    if not room_match and not member_match:
+        return False
+    if user_id is not None and record.user_id != user_id:
+        return False
+    if time.time() - record.created_at >= ttl_seconds:
+        record.status = "expired"
+        return False
+    return True
 
 
 @dataclass
@@ -228,22 +271,13 @@ class HitlPendingStore:
         agent_id: str,
         user_id: int | None,
     ) -> bool:
-        if record.status != "pending":
-            return False
-        room_match = record.thread_id == thread_id and record.agent_id == agent_id
-        member_match = bool(
-            record.resume_thread_id
-            and record.resume_thread_id == thread_id
-            and record.resume_agent_id == agent_id
+        return thread_pending_match(
+            record,
+            thread_id=thread_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            ttl_seconds=self.ttl_seconds,
         )
-        if not room_match and not member_match:
-            return False
-        if user_id is not None and record.user_id != user_id:
-            return False
-        if time.time() - record.created_at >= self.ttl_seconds:
-            record.status = "expired"
-            return False
-        return True
 
     def list_pending_for_session(
         self,
@@ -272,7 +306,7 @@ class HitlPendingStore:
                 continue
             if record.user_id != user_id:
                 continue
-            if now - record.created_at >= self.ttl_seconds:
+            if now - record.created_at >== self.ttl_seconds:
                 continue
             if record.agent_id == agent_id:
                 tid = (record.thread_id or "").strip()
@@ -331,6 +365,26 @@ class HitlPendingStore:
         record = self._records.get(pending_id)
         if record is not None and record.status == "filling":
             record.status = "pending"
+
+    def reopen_secure_form(self, pending_id: str, *, spend_credit: bool = True) -> bool:
+        """Return a claimed secure-form pause to ``pending``.
+
+        ``spend_credit=False`` (recoverable drift — the serialized unit found a
+        refusal, nothing was written) releases the lease without consuming the
+        bounded reopen budget. Hard failures spend one credit; when the budget
+        is exhausted the record goes terminal (``failed``) and further submits
+        are a 409. Returns whether the pause is pending again.
+        """
+        record = self._records.get(pending_id)
+        if record is None or record.status != "filling":
+            return False
+        if spend_credit:
+            if record.reopen_budget <= 0:
+                record.status = "failed"
+                return False
+            record.reopen_budget -= 1
+        record.status = "pending"
+        return True
 
     def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
         """Record one IM answer and advance to the next question."""

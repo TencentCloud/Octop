@@ -172,6 +172,10 @@ class ErrorCode(StrEnum):
     SECRET_WRITE_FAILED = "SECRET_WRITE_FAILED"
     SECURE_FORM_REQUEST_INVALID = "SECURE_FORM_REQUEST_INVALID"
     SECURE_FORM_FIELD_INVALID = "SECURE_FORM_FIELD_INVALID"
+    SECURE_FORM_SLOT_INVALID = "SECURE_FORM_SLOT_INVALID"
+    SECURE_FORM_WRITE_FAILED = "SECURE_FORM_WRITE_FAILED"
+    SECURE_FORM_PENDING_EXPIRED = "SECURE_FORM_PENDING_EXPIRED"
+    SECURE_FORM_ALREADY_HANDLED = "SECURE_FORM_ALREADY_HANDLED"
     VAULT_ITEM_NOT_FOUND = "VAULT_ITEM_NOT_FOUND"
     VAULT_CAP_EXCEEDED = "VAULT_CAP_EXCEEDED"
     VAULT_REPLACE_REQUIRED = "VAULT_REPLACE_REQUIRED"
@@ -339,13 +343,18 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.SECRET_REQUEST_INVALID: 409,
     ErrorCode.SECRET_SLOT_INVALID: 400,
     ErrorCode.SECRET_WRITE_FAILED: 500,
-    # Vault / secure-form codes: i18n keys and dashboard mirrors land with the
-    # secure-form HTTP slice; these statuses are the interim defaults.
+    # Vault / secure-form codes. Pre-claim submit validation failures share
+    # the 422 family so the route-scoped body-stripping hook applies; the
+    # lifecycle codes are terminal (410 expired, 409 already handled).
     ErrorCode.SECURE_FORM_REQUEST_INVALID: 409,
-    ErrorCode.SECURE_FORM_FIELD_INVALID: 400,
+    ErrorCode.SECURE_FORM_FIELD_INVALID: 422,
+    ErrorCode.SECURE_FORM_SLOT_INVALID: 422,
+    ErrorCode.SECURE_FORM_WRITE_FAILED: 500,
+    ErrorCode.SECURE_FORM_PENDING_EXPIRED: 410,
+    ErrorCode.SECURE_FORM_ALREADY_HANDLED: 409,
     ErrorCode.VAULT_ITEM_NOT_FOUND: 404,
-    ErrorCode.VAULT_CAP_EXCEEDED: 409,
-    ErrorCode.VAULT_REPLACE_REQUIRED: 409,
+    ErrorCode.VAULT_CAP_EXCEEDED: 422,
+    ErrorCode.VAULT_REPLACE_REQUIRED: 422,
 }
 
 
