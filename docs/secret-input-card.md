@@ -15,9 +15,9 @@ Model calls request_secret_input(slot, prompt, title?)
 → POST /api/agents/{id}/chat/secret-input/submit   (value travels exactly once)
    → owner + non-shared + pending-scope validation → atomic claim
    → Fernet-encrypt (PURPOSE_AGENT_SECRET) into the agent_secrets table
-   → resume the paused turn; the ToolMessage carries slot + status only
-→ after the resumed turn settles, the agent reloads and the slot value
-   is injected as an env var into command execution (backend spec env)
+   → rebuild the agent harness (awaited) so the slot lands in command env
+   → resume the paused turn; the ToolMessage carries slot + status only,
+     and commands in this same turn already see the injected env var
 ```
 
 ## What the feature guarantees
@@ -41,9 +41,12 @@ Model calls request_secret_input(slot, prompt, title?)
   design — a command the agent runs can read it (`printenv`). It must never be
   printed back into the chat; the tool description, the resume message, and the
   existing PII redaction layer all guard against accidental echo.
-- Env injection is baked at harness build time: after a successful submit the
-  agent is reloaded once the resumed turn settles, so the variable is visible
-  to commands from the next turn onward.
+- Env injection is baked at harness build time: on a successful submit the
+  submit endpoint rebuilds the agent harness (awaited) **before** the paused
+  turn resumes, so the variable is visible to the commands of that same
+  resumed turn — no extra "continue" turn is needed. If the rebuild fails the
+  behavior degrades gracefully: the turn still resumes and the variable
+  reaches the next build.
 - Owner-only and non-shared agents. A shared agent's turns run for many users;
   injecting one user's secret into that shared environment would leak it
   across users.

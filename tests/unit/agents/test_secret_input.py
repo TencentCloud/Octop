@@ -254,6 +254,59 @@ def test_build_harness_config_injects_secret_env(
     assert "OCTOP_AGENT_ID" in env
 
 
+def test_build_harness_config_skips_secret_env_for_shared_agent(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shared agent's commands run for many users; the owner's slots must
+    not ride the env overlay there even if a submit slipped in before the
+    share flag flipped."""
+    from dataclasses import replace as dc_replace
+
+    monkeypatch.setattr(manager, "_agent_secret_env", lambda _aid: {"MY_TOKEN": "tok-plain"})
+    cfg = manager._build_harness_config(dc_replace(_row(), is_shared=1))
+    backend = cfg.backend
+    assert isinstance(backend, dict)
+    assert "MY_TOKEN" not in (backend.get("env") or {})
+    # Platform identity vars are unaffected by the skip.
+    assert "OCTOP_AGENT_ID" in (backend.get("env") or {})
+
+
+def test_team_manager_detects_secret_input_pause() -> None:
+    """Member pauses carrying request_secret_input are refused inline instead
+    of opening a room card the dashboard cannot satisfy."""
+    from octop.infra.agents.teams.team_manager import TeamManager
+
+    secret_chunk = {
+        "type": "hitl_required",
+        "request": {
+            "action_requests": [
+                {"name": REQUEST_SECRET_INPUT_TOOL_NAME, "args": {"slot": "TOKEN", "prompt": "p"}}
+            ]
+        },
+    }
+    approval_chunk = {
+        "type": "hitl_required",
+        "request": {"action_requests": [{"name": "run_command", "args": {"command": "ls"}}]},
+    }
+    actions = TeamManager._secret_input_pause_actions(secret_chunk)
+    assert actions is not None and len(actions) == 1
+    assert TeamManager._secret_input_pause_actions(approval_chunk) is None
+    assert TeamManager._secret_input_pause_actions({"type": "hitl_required"}) is None
+
+
+def test_secret_filled_message_reflects_injection_outcome() -> None:
+    """The resumed tool result must not promise a usable env when the harness
+    rebuild failed — the model would run commands against a missing variable."""
+    from octop.infra.agents.secret_input.submit import _secret_filled_message
+
+    ok = _secret_filled_message("MY_TOKEN", injected=True)
+    assert "use it right now" in ok
+    assert "NEXT turn" not in ok
+    degraded = _secret_filled_message("MY_TOKEN", injected=False)
+    assert "NEXT turn" in degraded
+    assert "use it right now" not in degraded
+
+
 @pytest.mark.asyncio
 async def test_manager_schedule_reload_is_public(
     manager: AgentManager, monkeypatch: pytest.MonkeyPatch
@@ -263,3 +316,15 @@ async def test_manager_schedule_reload_is_public(
     manager.schedule_reload("01AGENT")
     await asyncio.sleep(0)
     reloaded.assert_called_once_with("01AGENT")
+
+
+@pytest.mark.asyncio
+async def test_manager_reload_reports_rebuild_outcome(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The secret submit path must observe the rebuilt env before resuming."""
+    for outcome in (True, False):
+        reloaded = AsyncMock(return_value=outcome)
+        monkeypatch.setattr(manager, "_reload_agent", reloaded)
+        assert await manager.reload("01AGENT") is outcome
+        reloaded.assert_awaited_once_with("01AGENT")
