@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
-import { App } from "antd";
 
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { useTranslation } from "react-i18next";
 import { request, requestBlob } from "../../../api/request";
@@ -111,7 +111,6 @@ export function useSkills(
   options?: { enabled?: boolean },
 ) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const enabled = options?.enabled !== false && !!agentId;
 
   const {
@@ -266,7 +265,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t, modal],
+    [agentId, fetchSkills, t],
   );
 
   const exportSkills = useCallback(

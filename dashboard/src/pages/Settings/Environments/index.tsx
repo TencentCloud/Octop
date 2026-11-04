@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
-import { App, Button } from "antd";
+import { Button } from "antd";
 
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { useTranslation } from "react-i18next";
 
@@ -40,7 +41,6 @@ function shiftIndices(prev: Set<number>, removedIdx: number): Set<number> {
 
 function EnvironmentsPage() {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const isMobile = useIsMobile();
   const { envVars, loading, error, fetchAll } = useEnvVars();
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -148,7 +148,7 @@ function EnvironmentsPage() {
         onOk: doRemove,
       });
     },
-    [workingRows, ensureLocal, envVars.length, t, modal],
+    [workingRows, ensureLocal, envVars.length, t],
   );
 
   const removeSelected = useCallback(() => {
@@ -181,7 +181,7 @@ function EnvironmentsPage() {
       cancelText: t("common.cancel"),
       onOk: doRemove,
     });
-  }, [selected, workingRows, ensureLocal, envVars.length, t, modal]);
+  }, [selected, workingRows, ensureLocal, envVars.length, t]);
 
   /* ---- validate & save ---- */
 

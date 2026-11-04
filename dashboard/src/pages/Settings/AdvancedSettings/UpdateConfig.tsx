@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { App, Collapse, Switch } from "antd";
+import { Collapse, Switch } from "antd";
+import { modal } from "@/utils/antdModal";
 import {
   BookOpen,
   CheckCircle,
@@ -150,7 +151,6 @@ function UpgradeGuide() {
 
 export default function UpdateConfig() {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [savingStableOnly, setSavingStableOnly] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -296,7 +296,7 @@ export default function UpdateConfig() {
       return;
     }
     void runUpgrade();
-  }, [modal, runUpgrade, status, t]);
+  }, [runUpgrade, status, t]);
 
   const stageLabel = (stage: string | null) => {
     switch (stage) {

@@ -8,8 +8,8 @@ import {
   useImperativeHandle,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { App } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 import cx from "classnames";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
@@ -201,7 +201,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     ref,
   ) {
     const { t, i18n } = useTranslation();
-    const { modal } = App.useApp();
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
     const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
@@ -453,7 +452,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         }
         apply();
       });
-    }, [threadId, text, attachments, t, modal, restoreAttachments]);
+    }, [threadId, text, attachments, t, restoreAttachments]);
 
     // Persist draft while typing so leaving /chat and returning keeps content.
     useEffect(() => {
@@ -741,7 +740,6 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onModelChange,
         onReasoningChange,
         availableAgents,
-        modal,
       ],
     );
 

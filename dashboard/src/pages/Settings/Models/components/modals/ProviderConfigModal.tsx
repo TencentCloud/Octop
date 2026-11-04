@@ -9,7 +9,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  App,
   Button,
   Divider,
   Drawer,
@@ -21,6 +20,7 @@ import {
 } from "antd";
 
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -92,7 +92,6 @@ export function ProviderConfigModal({
   apiPrefix = "/providers",
 }: ProviderConfigModalProps) {
   const { t } = useTranslation();
-  const { modal } = App.useApp();
   const [saving, setSaving] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -602,7 +601,6 @@ export function ProviderConfigModal({
       runOnnxDownloadWithProgress,
       startOllamaPolling,
       t,
-      modal,
     ],
   );
 
