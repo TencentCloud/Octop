@@ -30,6 +30,7 @@
 - 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
 - 插件和专家从远程市场安装。目录默认 `https://octop.cloud`，安装包默认 `https://download.octop.cloud`；内网可分别用 `OCTOP_PORTAL_ORIGIN`、`OCTOP_MARKET_REMOTE_ORIGIN` 换成自己的源站，安装包只要放在对象源站上，路径不再限定 `/octop/market/`。说明见 `docs/private-market.md`
 - 技能市场可以换源站。`SKILL_MARKET_ORIGIN` 负责搜索、榜单和单个技能安装，`SKILLSET_ORIGIN` 负责技能集详情和技能集压缩包，默认都是 `https://api.skillhub.cn`。说明见 `docs/skill-market.md`
+- 知识库文本文档编辑抽屉支持修改文件名，保存后按新文件名继续索引；文档列表行内重命名按钮同样适用于文件（#2175）
 
 ### 变更
 - 升级 octop-harness 至 1.0.7，带入 OpenSandbox 路径操作修复，并将 SearchFree 默认搜索深度改为 `basic`

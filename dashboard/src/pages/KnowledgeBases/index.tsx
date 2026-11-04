@@ -1923,6 +1923,7 @@ export default function KnowledgeBasesPage() {
           selected.id,
           textEditorDocId,
           values.content,
+          values.name,
         );
         message.success(t("knowledgeBases.editDocumentSuccess"));
       }
@@ -2018,20 +2019,29 @@ export default function KnowledgeBasesPage() {
                 </Tooltip>
               </Popconfirm>
             )}
-            {document.is_dir ? (
-              <Tooltip title={t("knowledgeBases.renameFolder")}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<PencilLine size={14} />}
-                  aria-label={t("knowledgeBases.renameFolder")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openRenameFolder(document);
-                  }}
-                />
-              </Tooltip>
-            ) : null}
+            <Tooltip
+              title={
+                document.is_dir
+                  ? t("knowledgeBases.renameFolder")
+                  : t("knowledgeBases.renameFile")
+              }
+            >
+              <Button
+                type="text"
+                size="small"
+                icon={<PencilLine size={14} />}
+                aria-label={
+                  document.is_dir
+                    ? t("knowledgeBases.renameFolder")
+                    : t("knowledgeBases.renameFile")
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (document.is_dir) openRenameFolder(document);
+                  else openRenameFile(document);
+                }}
+              />
+            </Tooltip>
             <Popconfirm
               title={
                 document.is_dir

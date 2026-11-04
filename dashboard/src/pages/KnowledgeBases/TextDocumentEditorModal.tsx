@@ -82,16 +82,18 @@ export default function TextDocumentEditorModal({
       const format = values.format ?? initialFormat;
       const nextContent = values.content ?? "";
 
-      // Edit mode: unchanged content → just close; skip API / reindex.
-      if (mode === "edit" && nextContent === initialContent) {
+      // Edit mode: unchanged content and name → just close; skip API / reindex.
+      if (
+        mode === "edit" &&
+        nextContent === initialContent &&
+        name === (initialName || "").trim()
+      ) {
         onCancel();
         return;
       }
 
       setSubmitting(true);
       await onSubmit({
-        // Edit mode does not mount name/format fields, so validateFields() may
-        // omit them — fall back to the props used to open the drawer.
         name,
         format,
         content: nextContent,
@@ -177,40 +179,40 @@ export default function TextDocumentEditorModal({
             content: initialContent,
           }}
         >
-          {mode === "create" ? (
-            <div className={styles.textEditorMeta}>
-              <Form.Item
-                name="name"
-                label={t("knowledgeBases.filename")}
-                rules={[
-                  {
-                    required: true,
-                    message: t("knowledgeBases.filenameRequired"),
-                  },
+          <div className={styles.textEditorMeta}>
+            <Form.Item
+              name="name"
+              label={t("knowledgeBases.filename")}
+              rules={[
+                {
+                  required: true,
+                  whitespace: true,
+                  message: t("knowledgeBases.filenameRequired"),
+                },
+              ]}
+              className={styles.textEditorNameItem}
+            >
+              <Input
+                size="large"
+                placeholder={t("knowledgeBases.filenamePlaceholder")}
+              />
+            </Form.Item>
+            <Form.Item
+              name="format"
+              label={t("knowledgeBases.fileFormat")}
+              rules={[{ required: true }]}
+              className={styles.textEditorFormatItem}
+            >
+              <Select
+                size="large"
+                disabled={mode === "edit"}
+                options={[
+                  { value: "md", label: "Markdown (.md)" },
+                  { value: "txt", label: "Text (.txt)" },
                 ]}
-                className={styles.textEditorNameItem}
-              >
-                <Input
-                  size="large"
-                  placeholder={t("knowledgeBases.filenamePlaceholder")}
-                />
-              </Form.Item>
-              <Form.Item
-                name="format"
-                label={t("knowledgeBases.fileFormat")}
-                rules={[{ required: true }]}
-                className={styles.textEditorFormatItem}
-              >
-                <Select
-                  size="large"
-                  options={[
-                    { value: "md", label: "Markdown (.md)" },
-                    { value: "txt", label: "Text (.txt)" },
-                  ]}
-                />
-              </Form.Item>
-            </div>
-          ) : null}
+              />
+            </Form.Item>
+          </div>
 
           <div className={styles.textEditorWorkspace}>
             <div className={styles.textEditorToolbar}>
