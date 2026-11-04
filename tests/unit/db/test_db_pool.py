@@ -68,6 +68,7 @@ def test_run_migrations_creates_tables(db: SqlitePool):
         "sso_providers",
         "sso_login_states",
         "trajectory_events",
+        "vault_items",
     }
     assert expected.issubset(names)
     assert "knowledge_base_members" not in names
@@ -408,6 +409,58 @@ def test_schema_v10_without_projection_tables_is_repaired(tmp_path: Path) -> Non
     )
     assert "max_documents" in kb_cols
     assert "name" in cron_cols
+
+
+def test_schema_v26_without_vault_items_is_repaired(db: SqlitePool) -> None:
+    """DBs that reached v26 before the vault_items fold still get the table.
+
+    The watermark already says 26, so the numbered 026 file is skipped; the
+    always-run ensure helper must recreate the table and its index.
+    """
+    with db.connect() as conn:
+        conn.execute("DROP TABLE vault_items")
+    run_migrations(db)
+    with db.connect() as conn:
+        version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
+        cols = {r["name"] for r in conn.execute("PRAGMA table_info(vault_items)").fetchall()}
+    assert version == 26
+    assert cols == {
+        "id",
+        "vault_item_id",
+        "user_id",
+        "item_type",
+        "title",
+        "origin",
+        "fields_blob",
+        "created_at",
+        "updated_at",
+    }
+
+
+def test_v026_vault_items_column_parity_between_dialects() -> None:
+    """The folded vault_items DDL must stay column-for-column identical."""
+    root = Path(__file__).resolve().parents[3] / "src/octop/infra/db/migrations"
+
+    def vault_columns(path: Path) -> set[str]:
+        sql = path.read_text(encoding="utf-8")
+        block = sql.split("CREATE TABLE IF NOT EXISTS vault_items (", 1)[1]
+        block = block.split(");", 1)[0]
+        return {line.split()[0] for line in block.strip().splitlines() if line.strip()}
+
+    sqlite_cols = vault_columns(root / "026_agent_secrets.sql")
+    pg_cols = vault_columns(root / "026_agent_secrets.pg.sql")
+    assert sqlite_cols == pg_cols
+    assert {
+        "id",
+        "vault_item_id",
+        "user_id",
+        "item_type",
+        "title",
+        "origin",
+        "fields_blob",
+        "created_at",
+        "updated_at",
+    } <= sqlite_cols
 
 
 def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:

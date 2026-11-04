@@ -19,6 +19,7 @@ PURPOSE_VOICE = "voice_fernet"
 PURPOSE_SETTINGS = "settings_secret_fernet"
 PURPOSE_MFA = "mfa_fernet"
 PURPOSE_AGENT_SECRET = "agent_secret_fernet"
+PURPOSE_VAULT_ITEM = "vault_fernet"
 
 # One Fernet per (SecretRepo, purpose). Avoids a DB round-trip on every
 # seal/open during list_all / hot paths. Cleared when the repo is GC'd.

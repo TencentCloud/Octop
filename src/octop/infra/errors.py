@@ -170,6 +170,10 @@ class ErrorCode(StrEnum):
     SECRET_REQUEST_INVALID = "SECRET_REQUEST_INVALID"
     SECRET_SLOT_INVALID = "SECRET_SLOT_INVALID"
     SECRET_WRITE_FAILED = "SECRET_WRITE_FAILED"
+    SECURE_FORM_FIELD_INVALID = "SECURE_FORM_FIELD_INVALID"
+    VAULT_ITEM_NOT_FOUND = "VAULT_ITEM_NOT_FOUND"
+    VAULT_CAP_EXCEEDED = "VAULT_CAP_EXCEEDED"
+    VAULT_REPLACE_REQUIRED = "VAULT_REPLACE_REQUIRED"
 
 
 _DEFAULT_STATUS: dict[ErrorCode, int] = {
@@ -334,6 +338,12 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.SECRET_REQUEST_INVALID: 409,
     ErrorCode.SECRET_SLOT_INVALID: 400,
     ErrorCode.SECRET_WRITE_FAILED: 500,
+    # Vault / secure-form codes: i18n keys and dashboard mirrors land with the
+    # secure-form HTTP slice; these statuses are the interim defaults.
+    ErrorCode.SECURE_FORM_FIELD_INVALID: 400,
+    ErrorCode.VAULT_ITEM_NOT_FOUND: 404,
+    ErrorCode.VAULT_CAP_EXCEEDED: 409,
+    ErrorCode.VAULT_REPLACE_REQUIRED: 409,
 }
 
 

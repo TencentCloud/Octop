@@ -262,7 +262,11 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "SECURE_FORM_FIELD_INVALID": "部分表单字段无效或无法保存。",
+    "VAULT_ITEM_NOT_FOUND": "该保险库条目已不存在。",
+    "VAULT_CAP_EXCEEDED": "保险库已满，请先删除条目再保存新的。",
+    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。"
   },
   "nav": {
     "chat": "对话",
@@ -561,7 +565,7 @@
     "editDocumentSuccess": "已保存，正在重建索引",
     "editDocumentFailed": "保存文档失败",
     "filenameRequired": "请输入文件名",
-    "filenamePlaceholder": "例如 notes",
+    "filenamePlaceholder": "文件名",
     "fileFormat": "格式",
     "fileContent": "内容",
     "fileContentPlaceholder": "在此编写文档内容…",
@@ -575,7 +579,6 @@
     "renameFile": "重命名文件",
     "renameFileSuccess": "文件已重命名",
     "renameFileFailed": "重命名文件失败",
-    "filenamePlaceholder": "文件名",
     "pathBreadcrumb": "路径导航",
     "deleteFolderConfirm": "删除此文件夹及其内部文档？",
     "uploaded": "文档已上传",
