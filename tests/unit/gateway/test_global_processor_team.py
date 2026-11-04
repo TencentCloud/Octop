@@ -360,6 +360,134 @@ async def test_stream_host_followup_marks_live_and_persists(
 
 
 @pytest.mark.asyncio
+async def test_stream_host_followup_relays_decision_custom(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("conn-wrap-decision", capture)
+    gateway.ws_hub.subscribe("thr_parent", "conn-wrap-decision")
+
+    decision = {
+        "kind": "decision",
+        "model": "laya",
+        "parts": [{"kind": "result", "kept": [{"name": "结果充分, 可以总结", "score": 0.91}]}],
+    }
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "custom", "data": decision}
+        yield {"type": "token", "content": "可以收工。"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="可以收工。")])
+    processor._agent_manager.get_agent.return_value = harness
+    repo = MagicMock()
+    repo.projection_status.return_value = "ready"
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+
+    await processor.teams.stream_host_followup_to_room(
+        ChatRequest(messages="wrap up", thread_id="thr_parent", agent_id="host"),
+        room_thread_id="thr_parent",
+        speaker_id="host",
+    )
+    customs = [frame for frame in frames if frame.get("type") == "custom"]
+    assert len(customs) == 1
+    assert customs[0].get("team_wrapup") is True
+    assert customs[0].get("agent_id") == "host"
+    assert customs[0].get("data") == decision
+    persisted = repo.append_if_ready.call_args.args[1]
+    assert "octop_decision" in str(persisted)
+    assert "result" in str(persisted)
+
+
+@pytest.mark.asyncio
+async def test_member_stream_does_not_relay_decision_custom(processor_env: dict) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    room_frames: list[dict[str, object]] = []
+
+    async def capture_room(frame: dict[str, object]) -> None:
+        room_frames.append(frame)
+
+    gateway.ws_hub.register("conn-room-decision", capture_room)
+    gateway.ws_hub.subscribe("thr_parent", "conn-room-decision")
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "custom", "data": {"kind": "decision", "parts": []}}
+        yield {"type": "token", "content": "成员回答"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="成员回答")])
+    processor._agent_manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child"),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+    assert [frame for frame in room_frames if frame.get("type") == "custom"] == []
+    assert any(frame.get("type") == "token" for frame in room_frames)
+
+
+@pytest.mark.asyncio
+async def test_wrapup_request_marks_decision_followup() -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.agents.teams.team_manager import _patch_inbox_wrapup
+
+    seen: dict[str, object] = {}
+
+    async def stream_followup(req: object, *, room_thread_id: str, speaker_id: str) -> str:
+        seen["req"] = req
+        seen["room"] = room_thread_id
+        seen["speaker"] = speaker_id
+        return "ok"
+
+    async def original(_msg: object, _result_text: str | None, _error_text: str | None) -> str:
+        return "fallback"
+
+    inbox = SimpleNamespace(
+        _synthesize_reply=original,
+        _is_cancelled=lambda _msg: False,
+        _processor=SimpleNamespace(
+            compose_followup=lambda _msg, result_text, error_text: "wakeup",
+        ),
+    )
+    _patch_inbox_wrapup(inbox, stream_followup=stream_followup, is_team=lambda _agent_id: True)
+    msg = SimpleNamespace(
+        user_id=1,
+        source_thread_id="room-1",
+        source_agent_id="host",
+        target_agent_id="agent-research",
+        message="查资料",
+    )
+    await inbox._synthesize_reply(msg, "成员正文", None)
+    req = seen["req"]
+    configurable = getattr(req, "configurable", None)
+    assert configurable["octop_decision_followup"] is True
+    assert configurable["peer_invoke_mode"] == "async"
+    assert configurable["octop_decision_finished_member"] == "agent-research"
+    assert configurable["octop_decision_task"] == "查资料"
+    assert seen["room"] == "room-1"
+    assert seen["speaker"] == "host"
+
+
+@pytest.mark.asyncio
 async def test_stream_host_followup_waits_for_dispatch_turn(
     processor_env: dict,
 ) -> None:
@@ -394,7 +522,7 @@ async def test_stream_host_followup_waits_for_dispatch_turn(
 
 
 @pytest.mark.asyncio
-async def test_stream_host_followup_unwatched_does_not_skip_snapshot(
+async def test_unwatched_wrapup_is_persisted_once(
     processor_env: dict,
 ) -> None:
     from langchain_core.messages import AIMessage
@@ -421,6 +549,22 @@ async def test_stream_host_followup_unwatched_does_not_skip_snapshot(
         speaker_id="host",
     )
     assert result["team_live_streamed"] is False
+    assert "thr_parent" in processor.teams._live_host_replies
+    assert repo.append_if_ready.call_count == 1
+
+    await processor.on_reply(
+        ReplyEvent(
+            inbox_id="job-unwatched-wrap",
+            status="done",
+            source_agent_id="host",
+            source_thread_id="thr_parent",
+            target_agent_id="child",
+            user_id=1,
+            reply_text="可以收工。",
+            metadata={},
+        )
+    )
+    assert repo.append_if_ready.call_count == 1
     assert "thr_parent" not in processor.teams._live_host_replies
 
 
@@ -924,6 +1068,69 @@ async def test_stream_team_peer_relays_tokens_to_room(processor_env: dict) -> No
     )
     assert frames[-1].get("type") == "done"
     harness.aget_history.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_live_member_catchup_replays_partial_then_clears(
+    processor_env: dict,
+) -> None:
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "token", "content": "hello "}
+        started.set()
+        await release.wait()
+        yield {"type": "token", "content": "doc"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[])
+    processor._agent_manager.get_agent.return_value = harness
+
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    caught: list[dict[str, object]] = []
+
+    async def send(frame: dict[str, object]) -> None:
+        caught.append(frame)
+
+    await processor.teams.deliver_live_member_catchup(
+        "thr_parent",
+        subscribe=lambda: None,
+        send=send,
+    )
+    assert caught == [
+        {
+            "type": "token",
+            "content": "hello ",
+            "agent_id": "child",
+            "agent": "child",
+            "team_snapshot": True,
+            "team_live": True,
+            "thread_id": "thr_parent",
+        }
+    ]
+    release.set()
+    await asyncio.wait_for(task, timeout=2)
+    caught.clear()
+    await processor.teams.deliver_live_member_catchup(
+        "thr_parent",
+        subscribe=lambda: gateway.ws_hub.subscribe("thr_parent", "late"),
+        send=send,
+    )
+    assert caught == []
 
 
 @pytest.mark.asyncio
@@ -1848,6 +2055,17 @@ async def test_on_reply_failed_releases_job(processor_env: dict) -> None:
     jobs = TeamJobTracker()
     processor._agent_manager._team_jobs = jobs
     jobs.begin("host", "child", job_id="job-9")
+    frames: list[dict] = []
+
+    async def capture(frame: dict) -> None:
+        frames.append(frame)
+
+    gateway = processor_env["gateway"]
+    gateway.ws_hub.register("failed-task-watch", capture)
+    gateway.ws_hub.subscribe("thr_parent", "failed-task-watch")
+    processor._thread_message_repo = MagicMock()
+    processor._thread_message_repo.projection_status.return_value = "ready"
+    processor.teams._thread_message_repo = processor._thread_message_repo
     await processor.on_reply(
         ReplyEvent(
             inbox_id="job-9",
@@ -1856,11 +2074,46 @@ async def test_on_reply_failed_releases_job(processor_env: dict) -> None:
             source_thread_id="thr_parent",
             target_agent_id="child",
             user_id=1,
-            error_text="offline",
+            error_text="Error code: 401 - token expired",
             metadata={"session_key": parent_sk},
         )
     )
     assert not jobs.is_busy("host", "child")
+    assert any(
+        frame.get("type") == "error" and "失败" in str(frame.get("message")) for frame in frames
+    )
+    assert not any(frame.get("type") == "token" for frame in frames)
+    assert frames[-1]["type"] == "done"
+    inputs = processor._thread_message_repo.append_if_ready.call_args.args[1]
+    assert json.loads(inputs[0].message_json)["data"]["additional_kwargs"]["octop_stream_error"]
+
+
+@pytest.mark.asyncio
+async def test_failed_host_wrapup_is_excluded_from_memory() -> None:
+    from octop.infra.agents.teams.team_manager import _patch_inbox_wrapup
+
+    inbox = SimpleNamespace(
+        _synthesize_reply=AsyncMock(return_value="fallback"),
+        _processor=SimpleNamespace(
+            compose_followup=lambda *args, **kwargs: "System failure notification"
+        ),
+    )
+    stream = AsyncMock(return_value={"messages": []})
+    _patch_inbox_wrapup(inbox, stream_followup=stream, is_team=lambda _: True)
+    msg = InboxMessage(
+        id="failed-wrapup",
+        source_agent_id="host",
+        source_thread_id="room",
+        target_agent_id="child",
+        message="work",
+        user_id=1,
+    )
+    await inbox._synthesize_reply(msg, None, "Authentication failed")
+    request = stream.call_args.args[0]
+    assert request.to_runnable_config()["configurable"]["octop_memory_capture_exclude"] is True
+    configurable = request.to_runnable_config()["configurable"]
+    assert configurable["octop_decision_followup"] is True
+    assert configurable["peer_invoke_mode"] == "async"
 
 
 def test_resolve_harness_model_auto_expert_omits_model() -> None:
@@ -1950,6 +2203,63 @@ def test_resolve_harness_model_dashboard_override_wins() -> None:
         "p/picked",
         needs_multimodal=False,
     )
+
+
+def test_resolve_harness_model_route_marks_dashboard_override_explicit() -> None:
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_manager.providers.is_model_ref_usable.return_value = True
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/picked"
+
+    route = processor._resolve_harness_model_route(
+        "a1",
+        "t1",
+        {"model": "p/picked"},
+        needs_multimodal=False,
+    )
+
+    assert route.model_ref == "p/picked"
+    assert route.automatic is False
+
+
+def test_resolve_harness_model_route_marks_fallback_automatic() -> None:
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_repo.get.return_value = MagicMock(default_model=None)
+    processor._agent_manager.get_config.return_value = {}
+    processor._agent_manager.providers.resolve_explicit_default_model.return_value = None
+    processor._agent_manager.resolve_fallback_model_ref.return_value = "p/auto"
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/auto"
+
+    route = processor._resolve_harness_model_route(
+        "a1",
+        "t1",
+        None,
+        needs_multimodal=False,
+    )
+
+    assert route.model_ref == "p/auto"
+    assert route.automatic is True
 
 
 def test_resolve_harness_model_drops_unusable_dashboard_override() -> None:

@@ -1,5 +1,9 @@
 import { useTranslation } from "react-i18next";
 import { useElapsedSince } from "../../../hooks/useElapsedSeconds";
+import { useAgent } from "../../../context/AgentContext";
+import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
+import { ExpertMessageAvatar } from "./MessageSender";
 import styles from "../index.module.less";
 
 interface GeneratingIndicatorProps {
@@ -13,17 +17,61 @@ interface GeneratingIndicatorProps {
   membersOnly?: boolean;
   /** Named speakers still generating (e.g. ["临床助手"]). */
   speakerNames?: ReadonlyArray<string>;
+  /** Expert whose reply has not drawn a row yet. Keeps the avatar from popping in later. */
+  showAvatar?: boolean;
+  agentId?: string | null;
 }
 
 /**
  * Bottom-left live status for the turn. Stop/cancel stays on the composer —
  * this row is status text only so it can remain visible the whole time.
  */
+function GeneratingAvatar({ agentId }: { agentId?: string | null }) {
+  const { t } = useTranslation();
+  const { agents, activeAgent } = useAgent();
+  const isTeamRoom = isTeamAgent(activeAgent);
+  const speakerId =
+    rewritePeerSpeakerId(activeAgent?.agent_id, agentId) ||
+    agentId ||
+    activeAgent?.agent_id;
+  const hostSpeaker = isTeamHostSpeaker(
+    isTeamRoom,
+    speakerId,
+    activeAgent?.agent_id,
+  );
+  const expert =
+    (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+    (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
+  const avatarProfileId = hostSpeaker
+    ? activeAgent?.agent_id
+    : speakerId || undefined;
+  if (!expert && !avatarProfileId) return null;
+  const avatarTooltip = hostSpeaker
+    ? t("chat.teamHostHover", {
+        name: activeAgent?.name || expert?.name || "",
+      })
+    : expert?.name || undefined;
+  return (
+    <div className={styles.avatarCol}>
+      <ExpertMessageAvatar
+        name={expert?.name || avatarProfileId}
+        color={expert?.color}
+        iconName={expert?.icon_name}
+        iconUrl={expert?.icon_url}
+        tooltip={avatarTooltip}
+        profileAgentId={avatarProfileId}
+      />
+    </div>
+  );
+}
+
 export default function GeneratingIndicator({
   startedAt = null,
   showElapsed = false,
   membersOnly = false,
   speakerNames = [],
+  showAvatar = false,
+  agentId = null,
 }: GeneratingIndicatorProps) {
   const { t } = useTranslation();
   const elapsedAnchor =
@@ -62,15 +110,18 @@ export default function GeneratingIndicator({
 
   return (
     <div className={styles.turnInset}>
-      <div
-        className={styles.generatingIndicator}
-        role="status"
-        aria-live="polite"
-      >
-        <span className={styles.thinkingDot} />
-        <span className={styles.thinkingDot} />
-        <span className={styles.thinkingDot} />
-        <span className={styles.generatingText}>{label}</span>
+      <div className={styles.generatingIndicator}>
+        {showAvatar ? <GeneratingAvatar agentId={agentId} /> : null}
+        <div
+          className={styles.generatingStatus}
+          role="status"
+          aria-live="polite"
+        >
+          <span className={styles.thinkingDot} />
+          <span className={styles.thinkingDot} />
+          <span className={styles.thinkingDot} />
+          <span className={styles.generatingText}>{label}</span>
+        </div>
       </div>
     </div>
   );

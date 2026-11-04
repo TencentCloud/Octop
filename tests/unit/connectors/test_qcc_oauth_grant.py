@@ -338,6 +338,7 @@ async def test_revoke_discovers_validates_and_posts_refresh_token(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_metadata_mismatch_blocks_bearer_transport(monkeypatch):
+    monkeypatch.setattr(qcc, "_metadata_ok_until", {})
     response = httpx.Response(
         200,
         request=httpx.Request("GET", qcc.ISSUER),

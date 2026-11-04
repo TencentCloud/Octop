@@ -60,6 +60,13 @@ _SPECS: dict[str, CliInstallSpec] = {
         doc_url="https://github.com/WecomTeam/wecom-cli",
         guide_url="https://open.work.weixin.qq.com/help2/pc/21676",
     ),
+    "dingtalk-cli": CliInstallSpec(
+        kind="dingtalk-cli",
+        binary="dws",
+        npm_package="dingtalk-workspace-cli",
+        doc_url="https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
+        guide_url="https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli#getting-started",
+    ),
     "obsidian-cli": CliInstallSpec(
         kind="obsidian-cli",
         binary="obsidian",

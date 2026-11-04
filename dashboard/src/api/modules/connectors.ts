@@ -60,6 +60,10 @@ export interface ConnectorInstance {
   /** When true, chat composer pre-selects this connector. */
   default_open?: boolean;
   shared: boolean;
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
+  /** False when this instance is not usable by the current user. */
+  usable?: boolean;
   owner_user_id: number;
   owner_username?: string | null;
   owner_display_name?: string | null;
@@ -110,6 +114,8 @@ export interface ConnectorProbeResult {
   tool_count?: number;
   tools?: { name: string; description: string }[];
   error?: string;
+  error_code?: string;
+  details?: Record<string, unknown>;
   error_type?: string;
   status_code?: number;
   oauth?: {
@@ -223,6 +229,8 @@ export const connectorsApi = {
     credentials: Record<string, unknown>;
     default_open?: boolean;
     shared?: boolean;
+    visibility?: "owner" | "all" | "groups";
+    group_ids?: string[];
   }) =>
     request<ConnectorInstance>("/connector-instances", {
       method: "POST",
@@ -243,6 +251,8 @@ export const connectorsApi = {
       description?: string;
       credentials?: Record<string, unknown>;
       shared?: boolean;
+      visibility?: "owner" | "all" | "groups";
+      group_ids?: string[];
     },
   ) =>
     request<ConnectorInstance>(

@@ -47,6 +47,7 @@ def create_package_from_skillhub(
     description: str | None = None,
     icon_name: str | None = None,
     icon_url: str | None = None,
+    shared: bool = False,
     fetch_skillset_fn: FetchSkillset = fetch_skillset,
     download_skill_files_fn: DownloadSkillFiles = download_skillhub_package_files,
 ) -> CreatePackageFromSkillHubResult:
@@ -77,6 +78,7 @@ def create_package_from_skillhub(
             created_by=created_by,
             icon_name=package_icon_name,
             icon_url=package_icon_url,
+            shared=shared,
         )
     except Exception as exc:
         if is_skill_package_name_conflict(exc):

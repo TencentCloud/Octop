@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from octop.infra.errors import ErrorCode, OctopError
+
 
 async def test_bridge_list_empty(env: Any) -> None:
     client, _srv, auth = env
@@ -70,6 +72,28 @@ async def test_bridge_probe_returns_expert_list(env: Any) -> None:
     # Probe must not create a persisted connection.
     listed = await client.get("/api/bridge/connections", headers=auth)
     assert listed.json() == []
+
+
+async def test_bridge_probe_peer_rejection_stays_logged_in(env: Any) -> None:
+    """Peer credential failure is 400, so the dashboard does not clear the local session."""
+    client, _srv, auth = env
+    with patch(
+        "octop.infra.bridge.manager.login_peer",
+        new=AsyncMock(
+            side_effect=OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "peer rejected credentials")
+        ),
+    ):
+        r = await client.post(
+            "/api/bridge/probe",
+            headers=auth,
+            json={
+                "peer_base_url": "https://demo.octop.chat",
+                "peer_username": "peer",
+                "password": "secret",
+            },
+        )
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["code"] == "BRIDGE_AUTH_FAILED"
 
 
 async def test_bridge_probe_validation(env: Any) -> None:

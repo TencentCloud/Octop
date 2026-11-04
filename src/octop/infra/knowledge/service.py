@@ -10,20 +10,15 @@ from typing import Any, cast
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.db.repos.knowledge import KnowledgeBaseRow, KnowledgeDocumentRow
-from octop.infra.knowledge.files import (
-    delete_document_file,
-    delete_knowledge_base_files,
-    document_path,
-    write_document,
-)
+from octop.infra.knowledge.blobs import KnowledgeBlobs
 from octop.infra.knowledge.gate import assert_knowledge_usable
-from octop.infra.knowledge.index import KnowledgeIndex
 from octop.infra.knowledge.ocr import (
     OCR_IMAGE_SUFFIXES,
     load_ocr_config,
     optional_ocr_extractor,
 )
 from octop.infra.knowledge.parse import parse_document
+from octop.infra.knowledge.plane import open_knowledge_index, postgres_database
 from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path_parent
 
 MAX_DOCS_PER_KB = 100
@@ -103,6 +98,7 @@ class KnowledgeService:
         default_open: bool = False,
         shared: bool = False,
         icon_name: str = "",
+        icon_url: str = "",
         max_documents: int = MAX_DOCS_PER_KB,
     ) -> KnowledgeBaseRow:
         assert_knowledge_usable(
@@ -123,6 +119,7 @@ class KnowledgeService:
                 default_open=default_open,
                 shared=shared,
                 icon_name=icon_name,
+                icon_url=icon_url,
                 embedding_model=model,
                 max_documents=max_documents,
             ),
@@ -145,6 +142,7 @@ class KnowledgeService:
         default_open: bool | None = None,
         shared: bool | None = None,
         icon_name: str | None = None,
+        icon_url: str | None = None,
         max_documents: int | None = None,
         is_admin: bool = False,
     ) -> KnowledgeBaseRow:
@@ -160,6 +158,7 @@ class KnowledgeService:
             default_open=default_open,
             shared=shared,
             icon_name=icon_name,
+            icon_url=icon_url,
             max_documents=max_documents,
         )
         return self._require_base(kb_id)
@@ -188,7 +187,7 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        path = document_path(kb_id, doc_id, document.filename)
+        path = self._blobs().ensure_local(kb_id, doc_id, document.filename)
         text = parse_document(path, ocr=optional_ocr_extractor(self._services))
         if len(text) > _MAX_PREVIEW_CHARS:
             text = text[:_MAX_PREVIEW_CHARS]
@@ -196,6 +195,23 @@ class KnowledgeService:
             "id": document.id,
             "filename": document.filename,
             "text": text,
+        }
+
+    def list_document_chunks(
+        self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
+    ) -> dict[str, object]:
+        """Return the indexed slices actually stored for one document."""
+        from octop.infra.knowledge.plane import open_knowledge_index
+
+        self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id or document.is_dir:
+            raise LookupError("knowledge document not found")
+        rows = open_knowledge_index(self._services, kb_id).list_doc_chunks(document.id)
+        return {
+            "id": document.id,
+            "filename": document.filename,
+            "chunks": [{"ordinal": ordinal, "text": text} for ordinal, text in rows],
         }
 
     def resolve_document_file(
@@ -212,16 +228,16 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        path = document_path(kb_id, doc_id, document.filename)
+        path = self._blobs().ensure_local(kb_id, doc_id, document.filename)
         if not path.is_file():
             raise FileNotFoundError("knowledge document original file not found")
         return path, document.filename, document.content_type
 
     def document_has_original(self, document: KnowledgeDocumentRow) -> bool:
-        """True when the uploaded original still exists on disk."""
+        """True when the uploaded original still exists."""
         if document.is_dir:
             return False
-        return document_path(document.kb_id, document.id, document.filename).is_file()
+        return self._blobs().exists(document.kb_id, document.id, document.filename)
 
     def read_text_document(
         self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
@@ -235,7 +251,7 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.content_type not in _TEXT_CONTENT_TYPES:
             raise ValueError("unsupported knowledge document content type: not editable text")
-        raw = document_path(kb_id, doc_id, document.filename).read_bytes()
+        raw = self._blobs().read_bytes(kb_id, doc_id, document.filename)
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -309,7 +325,7 @@ class KnowledgeService:
         limit = self._max_document_bytes()
         if len(encoded) > limit:
             raise ValueError(f"knowledge document size exceeds maximum of {limit} bytes")
-        write_document(kb_id, document.id, document.filename, encoded)
+        self._blobs().write(kb_id, document.id, document.filename, encoded)
         self._repo.update_document(
             doc_id,
             byte_size=len(encoded),
@@ -326,8 +342,20 @@ class KnowledgeService:
         self, kb_id: str, *, actor_user_id: int, is_admin: bool = False
     ) -> KnowledgeBaseRow:
         base = self._require_base(kb_id)
-        if is_admin or base.owner_user_id == actor_user_id or base.shared:
+        if is_admin or base.owner_user_id == actor_user_id:
             return base
+        if base.shared:
+            from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, GroupAccess
+
+            repos = getattr(self._services, "repos", None)
+            if repos is None or GroupAccess(repos).allows(
+                user_id=actor_user_id,
+                is_admin=False,
+                resource_type=RESOURCE_KNOWLEDGE_BASE,
+                resource_key=base.id,
+                is_owner=False,
+            ):
+                return base
         raise PermissionError("knowledge base read access is required")
 
     def get_writable_base(
@@ -386,7 +414,7 @@ class KnowledgeService:
             max_documents=base.max_documents,
         )
         try:
-            write_document(kb_id, document.id, name, content)
+            self._blobs().write(kb_id, document.id, name, content)
         except Exception:
             self._repo.delete_document(document.id)
             raise
@@ -403,8 +431,8 @@ class KnowledgeService:
         for row in removed:
             if row.is_dir:
                 continue
-            KnowledgeIndex(kb_id).delete_doc(row.id)
-            delete_document_file(kb_id, row.id, row.filename)
+            open_knowledge_index(self._services, kb_id).delete_doc(row.id)
+            self._blobs().delete(kb_id, row.id, row.filename)
 
     def reindex_document(
         self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
@@ -453,8 +481,21 @@ class KnowledgeService:
 
     def delete_base(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        database = postgres_database(self._services)
+        if database is not None:
+            from octop.infra.knowledge.pg_index import PgVectorKnowledgeIndex
+
+            PgVectorKnowledgeIndex(kb_id, database).delete_kb()
         self._repo.delete_base(kb_id)
-        delete_knowledge_base_files(kb_id)
+        from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, GroupAccess
+
+        repos = getattr(self._services, "repos", None)
+        if repos is not None:
+            GroupAccess(repos).clear(RESOURCE_KNOWLEDGE_BASE, kb_id)
+        self._blobs().delete_base(kb_id)
+
+    def _blobs(self) -> KnowledgeBlobs:
+        return KnowledgeBlobs.from_services(self._services)
 
     def _require_base(self, kb_id: str) -> KnowledgeBaseRow:
         base = self._repo.get_base(kb_id)

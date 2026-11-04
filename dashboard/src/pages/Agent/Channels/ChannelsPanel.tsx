@@ -2,7 +2,7 @@
  * Embeddable per-agent channels grid (preset cards + ChannelDrawer).
  * Lives under Agent/Channels — shared by Personalization tab and Experts drawer.
  */
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Form, Button, Empty } from "antd";
 import { message } from "@/utils/antdMessage";
 
@@ -23,8 +23,11 @@ import {
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,
+  replacePluginChannelKinds,
   type ChannelKey,
+  type PluginChannelKindInfo,
 } from "./components";
+import { request } from "../../../api/request";
 import type { ChannelRow } from "./useChannels";
 import type { ChannelFormValues } from "./components/ChannelDrawer";
 import styles from "./index.module.less";
@@ -125,6 +128,27 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   const [deleting, setDeleting] = useState(false);
   const [form] = Form.useForm<ChannelFormValues>();
 
+  const [catalogVersion, setCatalogVersion] = useState(0);
+
+  const refreshPluginKinds = useCallback(async () => {
+    try {
+      const kinds = await request<PluginChannelKindInfo[]>(
+        "/channels/plugin-kinds",
+        { method: "GET" },
+      );
+      if (Array.isArray(kinds)) {
+        replacePluginChannelKinds(kinds);
+        setCatalogVersion((version) => version + 1);
+      }
+    } catch {
+      // Keep the existing catalogue when the backend is unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshPluginKinds();
+  }, [refreshPluginKinds]);
+
   const channelByKind = useMemo<Map<ChannelKey, ChannelRow>>(() => {
     const map = new Map<ChannelKey, ChannelRow>();
     for (const row of channels) {
@@ -136,7 +160,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       }
     }
     return map;
-  }, [channels]);
+  }, [channels, catalogVersion]);
 
   const { featuredChannelKeys, moreChannelKeys } = useMemo(() => {
     const { featured, more } = partitionChannelKeys(
@@ -424,7 +448,10 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         </span>
         <Button
           icon={<RefreshCw size={14} />}
-          onClick={() => void fetchChannels()}
+          onClick={() => {
+            void fetchChannels();
+            void refreshPluginKinds();
+          }}
           loading={loading}
         >
           {t("common.refresh")}

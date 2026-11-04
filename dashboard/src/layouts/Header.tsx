@@ -5,6 +5,7 @@ import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import { useTheme } from "../context/ThemeContext";
 import { typeSize } from "../utils/mobileTypeScale";
+import { publicUrl } from "../utils/publicUrl";
 
 const { Header: AntHeader } = Layout;
 
@@ -22,8 +23,8 @@ interface HeaderProps {
 export default function Header({ onToggle, isMobile }: HeaderProps) {
   const { isDark } = useTheme();
   const mobileLogoSrc = isDark
-    ? "/logo_horizontal_white.png"
-    : "/logo_horizontal_dark.png";
+    ? publicUrl("logo_horizontal_white.png")
+    : publicUrl("logo_horizontal_dark.png");
 
   if (!isMobile) return null;
 

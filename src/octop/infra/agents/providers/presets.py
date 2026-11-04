@@ -67,7 +67,11 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
                 "toggle": False,
                 "default_mode": "enabled",
             }
-        if model.startswith("deepseek-v4-"):
+        if (
+            model.startswith("deepseek-v4-")
+            or model.startswith("deepseek-v3")
+            or model == "deepseek-flash"
+        ):
             return {
                 "supported": True,
                 "adapter": "thinking_nested_effort"
@@ -90,7 +94,7 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
                 "toggle": True,
                 "default_mode": "enabled",
             }
-        if provider == "tencent-hy-token-plan" and model.startswith("hy3"):
+        if model.startswith("hy3") or model.startswith("hy4"):
             return {
                 "supported": True,
                 "adapter": "status_only",
@@ -106,7 +110,7 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
                 "toggle": False,
                 "default_mode": "enabled",
             }
-        if model.startswith("deepseek-v4-"):
+        if model.startswith("deepseek-v4-") or model == "deepseek-flash":
             return {
                 "supported": True,
                 "adapter": "thinking",
@@ -211,6 +215,67 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
     return None
 
 
+def _embedding_model(model_id: str, name: str) -> dict[str, Any]:
+    return {
+        "id": model_id,
+        "name": name,
+        "enabled": True,
+        "embedding": True,
+        "task": "embedding",
+        "input": ["text"],
+    }
+
+
+def _embedding_cloud_presets() -> list[dict[str, Any]]:
+    """Cloud embedding-only presets shown on the Models → Embedding tab."""
+    return [
+        {
+            "id": "siliconflow-embedding-cn",
+            "name": "SiliconFlow",
+            "base_url": "https://api.siliconflow.cn/v1",
+            "protocol": "openai",
+            "api_key_prefix": "sk-",
+            "purpose": "embedding",
+            "vendor": "siliconflow",
+            "vendor_name": "SiliconFlow",
+            "variant": "embedding",
+            "provider_group": "siliconflow",
+            "provider_group_name": "SiliconFlow",
+            "provider_variant": "embedding",
+            "logo_id": "silicon",
+            "models": [
+                _embedding_model("Qwen/Qwen3-Embedding-8B", "Qwen3-Embedding-8B"),
+                _embedding_model("Qwen/Qwen3-Embedding-4B", "Qwen3-Embedding-4B"),
+                _embedding_model("Qwen/Qwen3-Embedding-0.6B", "Qwen3-Embedding-0.6B"),
+                _embedding_model("BAAI/bge-m3", "BGE-M3"),
+            ],
+        },
+        {
+            "id": "dashscope-embedding",
+            "name": "DashScope",
+            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "protocol": "openai",
+            "api_key_prefix": "sk-",
+            "purpose": "embedding",
+            "vendor": "aliyun",
+            "vendor_name": "Aliyun",
+            "variant": "embedding",
+            "provider_group": "aliyun",
+            "provider_group_name": "Aliyun",
+            "provider_variant": "embedding",
+            "logo_id": "dashscope",
+            "models": [
+                _embedding_model("qwen3.7-text-embedding", "qwen3.7-text-embedding"),
+                _embedding_model(
+                    "qwen3.7-text-embedding-flash",
+                    "qwen3.7-text-embedding-flash",
+                ),
+                _embedding_model("text-embedding-v4", "text-embedding-v4"),
+            ],
+        },
+    ]
+
+
 def load_provider_presets() -> list[dict[str, Any]]:
     """Serialize octop-harness provider templates for API / CLI."""
     from importlib import resources
@@ -251,6 +316,7 @@ def load_provider_presets() -> list[dict[str, Any]]:
             "base_url": "",
             "protocol": "openai",
             "api_key_prefix": "",
+            "purpose": "embedding",
             "models": [
                 {
                     "id": mid,
@@ -269,6 +335,8 @@ def load_provider_presets() -> list[dict[str, Any]]:
             len(out),
         )
         out.insert(insert_at, onnx_preset)
+    if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
+        out.extend(_embedding_cloud_presets())
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:

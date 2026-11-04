@@ -12,6 +12,7 @@ import {
 import { Spin, Button } from "antd";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
 import type { ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
@@ -21,7 +22,10 @@ import ScrollToBottomButton from "./ScrollToBottomButton";
 import GeneratingIndicator from "./GeneratingIndicator";
 import TurnTimelineRail from "./TurnTimelineRail";
 import { isLiveAssistantTurn } from "./liveAssistantTurn";
-import { chatGeneratingPhase } from "./generatingGate";
+import {
+  awaitingVisibleAssistantReply,
+  chatGeneratingPhase,
+} from "./generatingGate";
 import { useAutoScroll } from "../hooks/useAutoScroll";
 import { findLastBrowserTurnGroupIndex } from "../utils/messageContent";
 import {
@@ -65,9 +69,7 @@ const VirtuosoList = forwardRef<HTMLDivElement, VirtuosoListProps>(
         ref={ref}
         {...props}
         style={style}
-        className={[styles.messageListInner, className]
-          .filter(Boolean)
-          .join(" ")}
+        className={cx(styles.messageListInner, className)}
       >
         {children}
       </div>
@@ -319,6 +321,10 @@ export default function MessageList(props: MessageListProps) {
 
   const lastMsg = messages[messages.length - 1];
   const hasLiveSpeakers = liveSpeakers.length > 0;
+  const awaitingVisibleReply = useMemo(
+    () => awaitingVisibleAssistantReply(messages),
+    [messages],
+  );
   const {
     showFooter: showGenerating,
     showElapsed: isAwaitingAssistantReply,
@@ -328,6 +334,7 @@ export default function MessageList(props: MessageListProps) {
     loading: Boolean(loading),
     lastMessageRole: lastMsg?.role,
     hasLiveSpeakers,
+    awaitingVisibleReply,
   });
   const liveSpeakerNames = useMemo(
     () =>
@@ -404,6 +411,7 @@ export default function MessageList(props: MessageListProps) {
     historyRefreshing,
     loading,
     isStreaming,
+    liveSpeakerCount: liveSpeakers.length,
     onRefreshHistory,
     hasMessages: messages.length > 0,
     sessionKey: stableSessionKey,
@@ -412,6 +420,7 @@ export default function MessageList(props: MessageListProps) {
     historyRefreshing,
     loading,
     isStreaming,
+    liveSpeakerCount: liveSpeakers.length,
     onRefreshHistory,
     hasMessages: messages.length > 0,
     sessionKey: stableSessionKey,
@@ -421,12 +430,20 @@ export default function MessageList(props: MessageListProps) {
   const requestRefreshMessages = useCallback(() => {
     const s = refreshStateRef.current;
     const now = Date.now();
+    const snap = chatStore.getSnapshot(s.sessionKey);
     if (
       s.historyRefreshing ||
       s.loading ||
       shouldBlockHistoryRefresh({
-        isStreaming: Boolean(s.isStreaming),
+        isStreaming: Boolean(snap.isStreaming || s.isStreaming),
         hasLiveSocket: chatStore.hasLiveSocket(s.sessionKey),
+        liveSpeakerCount: Math.max(
+          snap.liveSpeakers.length,
+          s.liveSpeakerCount,
+        ),
+        hasStreamingMessage: snap.messages.some(
+          (message) => message.status === "streaming",
+        ),
       }) ||
       !s.onRefreshHistory ||
       !s.hasMessages ||
@@ -794,6 +811,8 @@ export default function MessageList(props: MessageListProps) {
               showElapsed={isAwaitingAssistantReply}
               membersOnly={generatingMembersOnly}
               speakerNames={liveSpeakerNames}
+              showAvatar={isAwaitingAssistantReply}
+              agentId={agentId}
             />
           </div>
         )}
@@ -806,6 +825,7 @@ export default function MessageList(props: MessageListProps) {
       isAwaitingAssistantReply,
       generatingMembersOnly,
       liveSpeakerNames,
+      agentId,
       refreshFooter,
     ],
   );

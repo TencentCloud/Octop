@@ -13,12 +13,17 @@ import {
   Modal,
   Select,
   Spin,
-  Switch,
 } from "antd";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import { TextAssistBar } from "../../../components/TextAssistBar";
+import {
+  avatarPickerStyles,
+  expertPresetSrc,
+  isUploadedAvatarUrl,
+} from "../../../components/AvatarPicker";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import AgentTrajectoryField from "./AgentTrajectoryField";
 import { workspaceApi } from "../../../api/modules/workspace";
@@ -82,6 +87,8 @@ import {
   type PathMapping,
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
+import { ResourceVisibilityFormItem } from "../../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -100,6 +107,9 @@ interface AgentDetail {
   top_p?: number | null;
   max_tokens?: number | null;
   welcome_message?: string | null;
+  is_shared?: boolean;
+  visibility?: ResourceVisibilityMode | null;
+  group_ids?: string[];
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
   config?: Record<string, unknown>;
@@ -137,7 +147,6 @@ interface EditFormValues {
   name: string;
   description: string;
   welcome_message?: string;
-  is_shared?: boolean;
   default_model: string;
   conversation_mode: ConversationMode;
   backend_choice: string;
@@ -250,6 +259,9 @@ function EditAgentDrawerBody({
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [expertVisibility, setExpertVisibility] =
+    useState<ResourceVisibilityMode>(agent.is_shared ? "all" : "owner");
+  const [expertGroupIds, setExpertGroupIds] = useState<string[]>([]);
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [listRenameOpen, setListRenameOpen] = useState(false);
@@ -314,7 +326,6 @@ function EditAgentDrawerBody({
           description: ag.description ?? "",
           welcome_message:
             typeof ag.welcome_message === "string" ? ag.welcome_message : "",
-          is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
           conversation_mode: parseConversationMode(cfg.conversation_mode),
           backend_choice: parsedBackend.backendChoice,
@@ -327,6 +338,18 @@ function EditAgentDrawerBody({
             : [],
           mcp_servers: Array.isArray(ag.mcp_servers) ? ag.mcp_servers : [],
         });
+        const nextVisibility: ResourceVisibilityMode =
+          ag.visibility === "groups" ||
+          ag.visibility === "all" ||
+          ag.visibility === "owner"
+            ? ag.visibility
+            : ag.is_shared
+            ? "all"
+            : "owner";
+        setExpertVisibility(nextVisibility);
+        setExpertGroupIds(
+          nextVisibility === "groups" ? ag.group_ids ?? [] : [],
+        );
         setLoading(false);
 
         if (isAgentChatReady(agent.state)) {
@@ -482,7 +505,9 @@ function EditAgentDrawerBody({
         body: JSON.stringify({
           name: values.name,
           description: values.description || null,
-          is_shared: values.is_shared ?? false,
+          is_shared: expertVisibility !== "owner",
+          visibility: expertVisibility,
+          group_ids: expertVisibility === "groups" ? expertGroupIds : [],
           default_model: defaultModelFromForm(values.default_model),
           color: nextColor,
           config: nextConfig,
@@ -515,7 +540,7 @@ function EditAgentDrawerBody({
         name: values.name,
         description: values.description || null,
         default_model: defaultModel,
-        is_shared: values.is_shared ?? false,
+        is_shared: expertVisibility !== "owner",
         color: nextColor,
         icon_url: iconUrl,
       });
@@ -531,6 +556,8 @@ function EditAgentDrawerBody({
     agentConfig,
     remote,
     colorPalette,
+    expertGroupIds,
+    expertVisibility,
     form,
     iconUrl,
     onClose,
@@ -725,31 +752,9 @@ function EditAgentDrawerBody({
             </div>
             <Form form={form} layout="vertical" size="middle">
               <Form.Item
-                name="name"
-                label={t("experts.agentName")}
-                rules={[
-                  { required: true, message: t("experts.pleaseEnterName") },
-                ]}
+                label={t("experts.avatar")}
+                className={avatarPickerStyles.formItem}
               >
-                <Input />
-              </Form.Item>
-              <Form.Item
-                name="description"
-                label={t("experts.agentDescription")}
-              >
-                <Input.TextArea rows={2} />
-              </Form.Item>
-              <Form.Item
-                name="welcome_message"
-                label={t("experts.welcomeMessageTitle")}
-                extra={t("experts.editWelcomeHint")}
-              >
-                <Input.TextArea
-                  rows={2}
-                  placeholder={t("experts.welcomeMessagePlaceholder")}
-                />
-              </Form.Item>
-              <Form.Item label={t("experts.avatar")}>
                 <ExpertAvatarPicker
                   iconUrl={iconUrl}
                   iconName={agent.icon_name}
@@ -778,6 +783,33 @@ function EditAgentDrawerBody({
                           ),
                         );
                         throw err;
+                      } finally {
+                        setAvatarBusy(false);
+                      }
+                    })();
+                  }}
+                  onSelectPreset={(presetId) => {
+                    void (async () => {
+                      setAvatarBusy(true);
+                      try {
+                        if (isUploadedAvatarUrl(iconUrl)) {
+                          await octopAgentsApi.deleteAvatar(agent.agent_id);
+                        }
+                        const nextUrl = expertPresetSrc(presetId ?? "default");
+                        await request(`/agents/${agent.agent_id}`, {
+                          method: "PATCH",
+                          body: JSON.stringify({ icon_url: nextUrl }),
+                        });
+                        setIconUrl(nextUrl);
+                        await refresh({ silent: true });
+                      } catch (err) {
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarUploadFailed"),
+                            t,
+                          ),
+                        );
                       } finally {
                         setAvatarBusy(false);
                       }
@@ -815,12 +847,60 @@ function EditAgentDrawerBody({
                 />
               </Form.Item>
               <Form.Item
-                name="is_shared"
-                label={t("experts.share.toggle")}
-                valuePropName="checked"
+                name="name"
+                label={t("experts.agentName")}
+                rules={[
+                  { required: true, message: t("experts.pleaseEnterName") },
+                ]}
               >
-                <Switch />
+                <Input />
               </Form.Item>
+              <Form.Item
+                name="description"
+                label={t("experts.agentDescription")}
+                className={styles.textAssistField}
+              >
+                <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
+              </Form.Item>
+              <TextAssistBar
+                kind="expert.description"
+                getName={() => String(form.getFieldValue("name") ?? "")}
+                getText={() => String(form.getFieldValue("description") ?? "")}
+                onApply={(text) => form.setFieldsValue({ description: text })}
+              />
+              <Form.Item
+                name="welcome_message"
+                label={t("experts.welcomeMessageTitle")}
+                tooltip={t("experts.editWelcomeHint")}
+                className={styles.textAssistField}
+              >
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 5 }}
+                  placeholder={t("experts.welcomeMessagePlaceholder")}
+                />
+              </Form.Item>
+              <TextAssistBar
+                kind="expert.welcome_message"
+                getName={() => String(form.getFieldValue("name") ?? "")}
+                getText={() =>
+                  String(form.getFieldValue("welcome_message") ?? "")
+                }
+                onApply={(text) =>
+                  form.setFieldsValue({ welcome_message: text })
+                }
+              />
+              <ResourceVisibilityFormItem
+                allowOwner
+                visibility={expertVisibility}
+                groupIds={expertGroupIds}
+                extra={t("experts.visibilityHint")}
+                onChange={(next) => {
+                  setExpertVisibility(next.visibility);
+                  setExpertGroupIds(
+                    next.visibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
               <Form.Item
                 name="conversation_mode"
                 label={t("experts.defaultModeLabel")}
@@ -877,39 +957,27 @@ function EditAgentDrawerBody({
               ) : null}
             </Form>
 
-            <Collapse
-              ghost
-              className={styles.drawerCollapse}
-              style={{ margin: "8px 0 0", width: "100%" }}
-              defaultActiveKey={["configFiles"]}
-              items={[
-                {
-                  key: "advanced",
-                  label: t("experts.advancedOptions"),
-                  children: (
-                    <Form form={form} layout="vertical" size="middle">
-                      <AgentAdvancedConfigFields />
-                    </Form>
-                  ),
-                },
-                ...(isAgentChatReady(agent.state)
-                  ? [
-                      {
-                        key: "pageConfig",
-                        label: t("experts.pageConfigTitle"),
-                        children: (
-                          <div style={{ padding: 0 }}>
-                            <WelcomeConfig
-                              ref={welcomeConfigRef}
-                              agentId={agent.agent_id}
-                            />
-                          </div>
-                        ),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            {isAgentChatReady(agent.state) ? (
+              <Collapse
+                ghost
+                className={styles.drawerCollapse}
+                style={{ width: "100%" }}
+                items={[
+                  {
+                    key: "pageConfig",
+                    label: t("experts.pageConfigTitle"),
+                    children: (
+                      <div style={{ padding: 0 }}>
+                        <WelcomeConfig
+                          ref={welcomeConfigRef}
+                          agentId={agent.agent_id}
+                        />
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
           </div>
 
           {isAgentChatReady(agent.state) && (
@@ -918,7 +986,7 @@ function EditAgentDrawerBody({
                 ghost
                 className={styles.drawerCollapse}
                 defaultActiveKey={["configFiles"]}
-                style={{ margin: 0, width: "100%" }}
+                style={{ width: "100%" }}
                 items={[
                   {
                     key: "configFiles",
@@ -1303,6 +1371,22 @@ function EditAgentDrawerBody({
               />
             </div>
           )}
+          <Collapse
+            ghost
+            className={styles.drawerCollapse}
+            style={{ width: "100%" }}
+            items={[
+              {
+                key: "advanced",
+                label: t("experts.advancedOptions"),
+                children: (
+                  <Form form={form} layout="vertical" size="middle">
+                    <AgentAdvancedConfigFields />
+                  </Form>
+                ),
+              },
+            ]}
+          />
         </>
       )}
       <WorkspaceDrawer

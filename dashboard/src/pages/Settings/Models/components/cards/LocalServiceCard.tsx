@@ -5,10 +5,11 @@
  * Opening settings auto-provisions the provider row when missing, then opens config.
  */
 import { useEffect, useState } from "react";
-import { Button, Card, Switch, Tooltip } from "antd";
+import { Button, Card, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 import { Pencil } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
@@ -115,6 +116,7 @@ export function LocalServiceCard({
           api_key: preset.id,
           models: presetModelsToRows(preset),
           enabled: false,
+          ...(isOnnx ? { purpose: "embedding" as const } : {}),
         }),
       });
       setRow(created);
@@ -165,8 +167,8 @@ export function LocalServiceCard({
     }
   };
 
-  const handleOpenSettings = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleOpenSettings = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     try {
       await ensureProvider();
       setModalOpen(true);
@@ -187,13 +189,13 @@ export function LocalServiceCard({
         hoverable
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover}`
-            : serviceEnabled
-            ? `${styles.providerCard} ${styles.enabled}`
-            : `${styles.providerCard} ${styles.normal}`
-        }
+        onClick={() => void handleOpenSettings()}
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          !isHover && serviceEnabled && styles.enabled,
+          !isHover && !serviceEnabled && styles.normal,
+        )}
       >
         <div className={styles.cardContent}>
           <div className={styles.cardHeader}>
@@ -206,22 +208,35 @@ export function LocalServiceCard({
                 />
               )}
               <span title={preset.name}>{preset.name}</span>
+              {isOnnx ? (
+                <Tag className={styles.laneTag}>{t("models.laneLocal")}</Tag>
+              ) : null}
             </span>
             <div className={styles.statusContainer}>
               <span
-                className={`${styles.statusDot} ${
-                  serviceRunning ? styles.active : styles.inactive
-                }`}
+                className={cx(
+                  styles.statusDot,
+                  serviceRunning
+                    ? styles.active
+                    : serviceEnabled
+                    ? styles.configured
+                    : styles.inactive,
+                )}
               />
               <span
-                className={`${styles.statusText} ${
-                  serviceEnabled ? styles.enabled : styles.disabled
-                }`}
+                className={cx(
+                  styles.statusText,
+                  serviceRunning
+                    ? styles.enabled
+                    : serviceEnabled
+                    ? styles.configured
+                    : styles.disabled,
+                )}
               >
-                {serviceEnabled
-                  ? serviceRunning
-                    ? t("models.localServiceRunning")
-                    : t("models.localServiceOn")
+                {serviceRunning
+                  ? t("models.localServiceRunning")
+                  : serviceEnabled
+                  ? t("models.localServiceOn")
                   : t("models.localServiceOff")}
               </span>
             </div>
@@ -286,7 +301,10 @@ export function LocalServiceCard({
                 type="text"
                 size="small"
                 loading={ensuring}
-                onClick={(e) => void handleOpenSettings(e)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleOpenSettings(e);
+                }}
                 className={styles.cardActionBtn}
                 icon={<Pencil size={14} />}
               />

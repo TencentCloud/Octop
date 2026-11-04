@@ -260,7 +260,7 @@ async def synthesize_edge(
 
     extra = row.get_extra()
     voice = voice_id or str(extra.get("voice_id") or "zh-CN-XiaoxiaoNeural")
-    rate_pct = int((speed - 1.0) * 100)
+    rate_pct = round((speed - 1.0) * 100)
     rate = f"{rate_pct:+d}%"
     communicate = edge_tts.Communicate(text, voice=voice, rate=rate)
     async for chunk in communicate.stream():

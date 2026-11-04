@@ -22,13 +22,13 @@ from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
 from octop.api.common.memory_client import memory_db_path_for_cfg, memory_namespace
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_permission("memory"))])
 
 
 def _agent_config_dict(server: Any, agent_id: str) -> dict[str, Any]:

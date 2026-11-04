@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -90,3 +92,83 @@ async def test_brave_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert result["success"] is True
     assert result["result_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "https://api.deepseek.com/v1/tools/search"
+        assert request.headers.get("Authorization") == "Bearer deepseek-key"
+        assert request.read()
+        return httpx.Response(200, json={"results": [{"url": "https://example.com"}]})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+    )
+    assert result["success"] is True
+    assert result["result_count"] == 1
+    assert result["provider_id"] == "deepseek"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "error_type"),
+    [(402, "insufficient_balance"), (429, "rate_limit")],
+)
+async def test_deepseek_actionable_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+    error_type: str,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, text="probe failed")
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+    )
+    assert result["success"] is False
+    assert result["error_type"] == error_type
+
+
+@pytest.mark.asyncio
+async def test_yuanbao_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.wsa.cloud.tencent.com"
+        assert request.url.path == "/SearchPro"
+        assert request.headers.get("Authorization") == "Bearer sk-test"
+        body = json.loads(request.content)
+        assert body["Query"] == "octop connectivity probe"
+        assert body["Cnt"] == 10
+        return httpx.Response(
+            200,
+            json={"Response": {"Pages": ['{"title":"a"}', '{"title":"b"}']}},
+        )
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "yuanbao",
+        {"TENCENTCLOUD_WSA_APIKEY": "sk-test"},
+    )
+    assert result["success"] is True
+    assert result["result_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_yuanbao_auth_error_in_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"Response": {"Error": {"Code": "UnauthorizedOperation", "Message": "bad key"}}},
+        )
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "yuanbao",
+        {"TENCENTCLOUD_WSA_APIKEY": "sk-bad"},
+    )
+    assert result["success"] is False
+    assert result["error_type"] == "auth_error"

@@ -191,6 +191,20 @@ def get_ocr_capability(settings_get: Any, provider_repo: Any = None) -> dict[str
     }
 
 
+def warn_if_local_ocr_deps_missing(settings_get: Any, provider_repo: Any = None) -> None:
+    """Log when persisted local OCR cannot import its runtime after a recreate."""
+    capability = get_ocr_capability(settings_get, provider_repo)
+    if not capability["enabled"] or capability["backend"] != "onnx":
+        return
+    if capability["checks"]["deps_available"]:
+        return
+    logger.warning(
+        "Knowledge OCR is enabled with the local backend, but its Python packages "
+        "are not importable. Use an image built with the knowledge-ocr extra; "
+        "packages installed into the container writable layer are discarded on recreate."
+    )
+
+
 def set_ocr_settings(
     settings_set: Any,
     *,

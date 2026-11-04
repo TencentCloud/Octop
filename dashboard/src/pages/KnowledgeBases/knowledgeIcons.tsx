@@ -21,6 +21,8 @@ import {
   Wrench,
 } from "lucide-react";
 
+import { useAuthImageSrc } from "../../hooks/useAuthImageSrc";
+
 export const KNOWLEDGE_ICON_NAMES = [
   "book-open",
   "landmark",
@@ -62,4 +64,37 @@ export function knowledgeIconForName(
   if (!name) return <Layers size={size} />;
   const fn = iconMap[name as KnowledgeIconName];
   return fn ? fn(size) : <Layers size={size} />;
+}
+
+/** Portrait when ``iconUrl`` is set; otherwise the Lucide ``iconName`` glyph. */
+export function KnowledgeBaseAvatar({
+  iconUrl,
+  iconName,
+  size = 18,
+  className,
+}: {
+  iconUrl?: string | null;
+  iconName?: string | null;
+  size?: number;
+  className?: string;
+}) {
+  const trimmed = iconUrl?.trim() || "";
+  const { src, loadState } = useAuthImageSrc(trimmed);
+  if (trimmed && loadState === "ready" && src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={className}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: Math.max(4, Math.round(size / 4)),
+          objectFit: "cover",
+          display: "block",
+        }}
+      />
+    );
+  }
+  return knowledgeIconForName(iconName, size);
 }

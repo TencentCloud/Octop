@@ -65,6 +65,47 @@ describe("ChatTitleBar", () => {
     expect(screen.getByLabelText("chat.teamBadge")).toBeInTheDocument();
   });
 
+  it("shows the cloud flag next to a remote conversation title", () => {
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        isTeam
+        agent={{
+          bridge: true,
+          bridge_connection_name: "云端实验室",
+          bridge_connection_icon: "cloudy",
+        }}
+      />,
+    );
+
+    const flag = screen.getByLabelText(/Peer expert|对端专家|remoteExpert/);
+    expect(flag.querySelector("svg")).not.toBeNull();
+    expect(screen.getByText("云端实验室")).toBeInTheDocument();
+  });
+
+  it("keeps icon and fallback text when the connection name is empty", () => {
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        agent={{ bridge: true }}
+      />,
+    );
+
+    const flag = screen.getByLabelText(/Peer expert|对端专家|remoteExpert/);
+    expect(flag.querySelector("svg")).not.toBeNull();
+    expect(flag).toHaveTextContent(/对端|Peer|remoteExpert\.flag/);
+  });
+
   it("waits for the IME to finish before committing a rename", () => {
     const onRename = vi.fn();
     render(

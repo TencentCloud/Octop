@@ -108,6 +108,9 @@ def test_resolve_header_tunneled_paths() -> None:
     assert kb is not None
     env = resolve_tunnel_target("/api/browser/env-status", "bridge:cid1:aid1")
     assert env is not None
+    hitl = resolve_tunnel_target("/api/settings/hitl", "bridge:cid1:aid1")
+    assert hitl is not None
+    assert hitl.remote_path == "/api/settings/hitl"
 
 
 def test_resolve_ignores_local_header_and_unscoped_paths() -> None:

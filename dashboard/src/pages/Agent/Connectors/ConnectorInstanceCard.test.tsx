@@ -62,24 +62,20 @@ describe("<ConnectorInstanceCard />", () => {
     expect(title.className).toContain("typography-ellipsis");
   });
 
-  it("places the shared-from tag on its own line with the title, not next to the switch", () => {
+  it("marks an incoming share on the avatar instead of a title pill", () => {
     renderCard(makeInstance({ can_manage: true }));
 
-    const title = screen.getByText(LONG_TITLE);
-    const tag = screen.getByText("来自 Admin");
-    const switchEl = document.querySelector("button.ant-switch");
-    expect(switchEl).not.toBeNull();
-
-    // Tag shares the title column wrapper (its own line under the title)…
-    expect(tag.parentElement).toBe(title.parentElement);
-    // …and is no longer grouped with the header actions (switch).
-    expect(switchEl!.parentElement).not.toContainElement(tag);
+    expect(screen.queryByTitle("来自 Admin")).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("来自 Admin").querySelector("svg"),
+    ).not.toBeNull();
   });
 
   it("renders no tag for non-shared instances", () => {
     renderCard(makeInstance({ shared: false }));
 
     expect(screen.queryByText("来自 Admin")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("来自 Admin")).not.toBeInTheDocument();
     expect(screen.getByText(LONG_TITLE).className).toContain(
       "typography-ellipsis",
     );

@@ -9,6 +9,8 @@ import {
   CHANNEL_KEYS,
   CHANNEL_FIELDS,
   normalizeChannelFieldValue,
+  replacePluginChannelKinds,
+  CHANNEL_LABELS,
 } from "./constants";
 
 describe("Discord configuration", () => {
@@ -130,5 +132,28 @@ describe("normalizeQqGroupContextConfig", () => {
       history_limit: 25,
       groups,
     });
+  });
+});
+
+describe("plugin channel catalogue reconciliation", () => {
+  it("replaces metadata, removes disabled kinds and preserves builtins", () => {
+    const entry = {
+      kind: "acme",
+      label: "Acme",
+      icon: "",
+      intro_url: "",
+      plugin_id: "owner",
+    };
+    try {
+      replacePluginChannelKinds([entry]);
+      expect(CHANNEL_KEYS).toContain("acme");
+      replacePluginChannelKinds([{ ...entry, label: "Updated" }]);
+      expect((CHANNEL_LABELS as Record<string, string>).acme).toBe("Updated");
+      replacePluginChannelKinds([]);
+      expect(CHANNEL_KEYS).not.toContain("acme");
+      expect(CHANNEL_KEYS).toContain("telegram");
+    } finally {
+      replacePluginChannelKinds([]);
+    }
   });
 });

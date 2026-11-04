@@ -127,7 +127,13 @@ export function buildComposerContext(params: {
 
 export function formatRunUsage(
   usage: TokenUsage | null | undefined,
-  labels: { input: string; output: string; total: string; cacheHit: string },
+  labels: {
+    input: string;
+    output: string;
+    total: string;
+    cacheHit: string;
+    decisionSaved?: string;
+  },
 ): string | null {
   if (!usage) return null;
 
@@ -152,6 +158,13 @@ export function formatRunUsage(
   }
   if (typeof usage.total_tokens === "number") {
     parts.push(`${usage.total_tokens} ${labels.total}`);
+  }
+  if (
+    labels.decisionSaved &&
+    typeof usage.decision_saved === "number" &&
+    usage.decision_saved > 0
+  ) {
+    parts.push(`${usage.decision_saved} ${labels.decisionSaved}`);
   }
   return parts.length > 0 ? parts.join(" / ") : null;
 }

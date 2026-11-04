@@ -2,12 +2,12 @@
  * Experts page — redesigned as Agents Management Centre.
  *
  * Tab A: user's experts, shown as a card grid with start/stop/edit/delete.
- * Tab B: built-in expert templates, shown as a card grid with create-from-template drawer.
- * Tab C: SkillHub expert market, shown as remote skillset cards.
+ * Tab B: octop.cloud expert market, plus templates published by users on this instance.
  *
  * API (all via request() which already prefixes /api):
- *   GET  /experts                         → ExpertSummary[]
- *   GET  /experts/hub                     → SkillHub market cards (+ scenes)
+ *   GET  /experts/default                 → blank expert seed
+ *   GET  /experts/published               → templates published on this instance
+ *   GET  /experts/hub                     → octop.cloud market cards (+ scenes)
  *   GET  /experts/hub/{slug}              → market detail + quick prompts
  *   POST /experts/hub/{slug}/install      → create agent from market
  *   GET  /agents                          → via AgentContext
@@ -19,11 +19,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Input, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
-  BookOpen,
+  Cloudy,
   GraduationCap,
   LayoutGrid,
   List,
@@ -33,6 +34,7 @@ import {
   Store,
   Users,
 } from "lucide-react";
+import cx from "classnames";
 import PageShell from "../../layouts/PageShell";
 import TabLabel from "../../components/TabLabel";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
@@ -47,7 +49,6 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
 import { AgentCard } from "./components/AgentCard";
-import { ExpertCard } from "./components/ExpertCard";
 import type { ExpertSummary } from "./components/ExpertCard";
 import EditAgentDrawer from "./components/EditAgentDrawer";
 import CreateFromExpertDrawer, {
@@ -56,26 +57,33 @@ import CreateFromExpertDrawer, {
 import TeamDrawer from "./components/TeamDrawer";
 import type { TeamRecord } from "../../api/modules/teams";
 import { TeamCard } from "./components/TeamCard";
-import { PublishedExpertCard } from "./components/PublishedExpertCard";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
-import { pickLocale } from "../../utils/localizedText";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
+import {
+  matchesExpertLocation,
+  type ExpertLocationFilter,
+} from "../../utils/resourceAudience";
+import { ResourceAudienceFilter } from "../../components/ResourceAudienceFilter";
 import { apiErrorMessage } from "../../utils/apiError";
+import { navAllowed } from "../../utils/permissions";
 import styles from "./index.module.less";
 
-type TabKey = "my" | "teams" | "library" | "market";
+type TabKey = "my" | "teams" | "market";
+
+function tabFromQuery(raw: string | null): TabKey | null {
+  if (raw === "library" || raw === "market") return "market";
+  if (raw === "my" || raw === "teams") return raw;
+  return null;
+}
+
 type ViewMode = "card" | "table";
 const VIEW_STORAGE_KEY = "octop:experts-view";
 
 function loadViewMode(): ViewMode {
   const stored = localStorage.getItem(VIEW_STORAGE_KEY);
   return stored === "table" ? "table" : "card";
-}
-
-async function fetchExpertLibrary(): Promise<ExpertSummary[]> {
-  return request<ExpertSummary[]>("/experts");
 }
 
 async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
@@ -110,37 +118,48 @@ function installedExpertIdsFromAgents(
 
 export default function ExpertsPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const lang: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
   const isMobile = useIsMobile();
   const { agents, refresh: refreshAgents } = useAgent();
   const currentUser = useCurrentUser();
-
-  const canManagePublished = useCallback(
-    (expert: PublishedExpert) =>
-      currentUser?.role === "admin" ||
-      String(currentUser?.id) === expert.created_by,
-    [currentUser],
-  );
+  const canAddCloudExpert = navAllowed(currentUser, "bridge");
+  const openCloudCollab = useCallback(() => {
+    navigate("/bridge?create=1");
+  }, [navigate]);
 
   // ── Tab state ──────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>("my");
+  // Deep links may arrive as ?tab=. Apply once, then drop the param so the
+  // address bar stays /experts while the user switches tabs.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    () => tabFromQuery(searchParams.get("tab")) ?? "my",
+  );
+  useEffect(() => {
+    if (!searchParams.has("tab")) return;
+    const nextTab = tabFromQuery(searchParams.get("tab"));
+    if (nextTab) setActiveTab(nextTab);
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchNeedle = searchQuery.trim().toLowerCase();
+  const [locationFilter, setLocationFilter] =
+    useState<ExpertLocationFilter>("all");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [agentList, expertList, publishedList] = await Promise.all([
+      const [agentList, publishedList] = await Promise.all([
         request<OctopAgent[]>("/agents"),
-        fetchExpertLibrary(),
         fetchPublishedExperts(),
       ]);
-      setLocalAgents(ownedExperts(agentList));
-      setExperts(expertList);
+      setLocalAgents(agentList);
       setPublishedExperts(publishedList);
       await refreshAgents({ silent: true, force: true });
     } catch (err: unknown) {
@@ -158,9 +177,6 @@ export default function ExpertsPage() {
     localStorage.setItem(VIEW_STORAGE_KEY, mode);
   };
 
-  // ── Built-in expert library ────────────────────────────────────
-  const [experts, setExperts] = useState<ExpertSummary[]>([]);
-  const [expertLoading, setExpertLoading] = useState(false);
   const [publishedExperts, setPublishedExperts] = useState<PublishedExpert[]>(
     [],
   );
@@ -188,12 +204,10 @@ export default function ExpertsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setExpertLoading(true);
     setPublishedExpertLoading(true);
-    Promise.all([fetchExpertLibrary(), fetchPublishedExperts()])
-      .then(([expertData, publishedData]) => {
+    fetchPublishedExperts()
+      .then((publishedData) => {
         if (!cancelled) {
-          setExperts(expertData);
           setPublishedExperts(publishedData);
         }
       })
@@ -205,7 +219,6 @@ export default function ExpertsPage() {
       })
       .finally(() => {
         if (!cancelled) {
-          setExpertLoading(false);
           setPublishedExpertLoading(false);
         }
       });
@@ -216,7 +229,7 @@ export default function ExpertsPage() {
 
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
-  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
+  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(agents);
   const expertAgents = useMemo(
     () => localAgents.filter((item) => item.kind !== "team"),
     [localAgents],
@@ -227,22 +240,37 @@ export default function ExpertsPage() {
   );
   const visibleExpertAgents = useMemo(
     () =>
-      expertAgents.filter((agent) =>
-        textMatchesQuery(
-          searchNeedle,
-          agent.name,
-          agent.description,
-          agent.template_name,
-        ),
+      expertAgents.filter(
+        (agent) =>
+          matchesExpertLocation(agent, locationFilter) &&
+          textMatchesQuery(
+            searchNeedle,
+            agent.name,
+            agent.description,
+            agent.template_name,
+          ),
       ),
-    [expertAgents, searchNeedle],
+    [expertAgents, locationFilter, searchNeedle],
   );
   const visibleTeamAgents = useMemo(
     () =>
-      teamAgents.filter((agent) =>
-        textMatchesQuery(searchNeedle, agent.name, agent.description),
+      teamAgents.filter(
+        (agent) =>
+          matchesExpertLocation(agent, locationFilter) &&
+          textMatchesQuery(searchNeedle, agent.name, agent.description),
       ),
-    [searchNeedle, teamAgents],
+    [locationFilter, searchNeedle, teamAgents],
+  );
+
+  const locationFilterControl = useMemo(
+    () => (
+      <ResourceAudienceFilter
+        includeCloud
+        value={locationFilter}
+        onChange={(value) => setLocationFilter(value as ExpertLocationFilter)}
+      />
+    ),
+    [locationFilter],
   );
   const pickableExperts = useMemo(
     () =>
@@ -259,7 +287,7 @@ export default function ExpertsPage() {
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocalAgents(ownedExperts(agents));
+    setLocalAgents(agents);
   }, [agents]);
 
   const handleStateChange = useCallback((agentId: string, newState: string) => {
@@ -356,8 +384,8 @@ export default function ExpertsPage() {
     }
   }, [t]);
 
-  const openExpertLibrary = useCallback(() => {
-    setActiveTab("library");
+  const openExpertMarket = useCallback(() => {
+    setActiveTab("market");
   }, []);
 
   // ── "Installed" badge lookup (template_name column; legacy config.expert_id) ──
@@ -405,9 +433,10 @@ export default function ExpertsPage() {
     if (expertAgents.length === 0) {
       return (
         <div
-          className={`${styles.emptyLayout}${
-            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-          }`}
+          className={cx(
+            styles.emptyLayout,
+            isMobile && styles.emptyLayoutMobile,
+          )}
         >
           <StreamSetupGuide
             className={styles.emptyGuide}
@@ -438,11 +467,22 @@ export default function ExpertsPage() {
               disabled: defaultCreating,
             }}
             secondaryAction={{
-              label: t("experts.goToLibrary"),
-              onClick: openExpertLibrary,
-              icon: <BookOpen size={14} />,
+              label: t("experts.goToMarket"),
+              onClick: openExpertMarket,
+              icon: <Store size={14} />,
               type: "default",
             }}
+            extraAction={
+              canAddCloudExpert
+                ? {
+                    label: t("experts.addCloudExpert"),
+                    onClick: openCloudCollab,
+                    icon: <Cloudy size={14} />,
+                    type: "default",
+                    title: t("experts.addCloudExpertHint"),
+                  }
+                : undefined
+            }
           />
         </div>
       );
@@ -451,9 +491,12 @@ export default function ExpertsPage() {
     return (
       <>
         <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>
-            {t("experts.totalAgents", { count: visibleExpertAgents.length })}
-          </span>
+          <div className={styles.gridToolbarLeft}>
+            <span className={styles.gridCount}>
+              {t("experts.totalAgents", { count: visibleExpertAgents.length })}
+            </span>
+            {locationFilterControl}
+          </div>
           <div className={styles.gridToolbarRight}>
             {toolbarSearch}
             <Segmented
@@ -482,6 +525,18 @@ export default function ExpertsPage() {
               ]}
             />
             {refreshButton}
+            {canAddCloudExpert ? (
+              <Tooltip title={t("experts.addCloudExpertHint")}>
+                <button
+                  className={styles.toolbarBtn}
+                  type="button"
+                  onClick={openCloudCollab}
+                >
+                  <Cloudy size={14} />
+                  {t("experts.addCloudExpert")}
+                </button>
+              </Tooltip>
+            ) : null}
             <button
               className={styles.toolbarBtnPrimary}
               type="button"
@@ -491,13 +546,17 @@ export default function ExpertsPage() {
               <Plus size={14} />
               {t("experts.newExpert")}
             </button>
-            <button className={styles.toolbarBtn} onClick={openExpertLibrary}>
-              {t("experts.addFromLibrary")}
+            <button className={styles.toolbarBtn} onClick={openExpertMarket}>
+              {t("experts.addFromMarket")}
             </button>
           </div>
         </div>
         {visibleExpertAgents.length === 0 ? (
-          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+          <div className={styles.searchEmpty}>
+            {searchNeedle || locationFilter !== "all"
+              ? t("experts.filterEmpty")
+              : t("experts.searchEmpty")}
+          </div>
         ) : showCardView ? (
           <div className={styles.cardGrid}>
             {visibleExpertAgents.map((agent) => (
@@ -549,16 +608,20 @@ export default function ExpertsPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    canAddCloudExpert,
     defaultCreating,
     expertAgents,
     isMobile,
+    locationFilter,
+    locationFilterControl,
     newAgentId,
+    openCloudCollab,
     openDefaultCreate,
-    openExpertLibrary,
+    openExpertMarket,
     publishedByAgentId,
     refreshButton,
     refreshPublishedExperts,
-    searchQuery,
+    searchNeedle,
     showCardView,
     t,
     toolbarSearch,
@@ -570,9 +633,10 @@ export default function ExpertsPage() {
       const canCreate = localTeamMembers.length >= 2;
       return (
         <div
-          className={`${styles.emptyLayout}${
-            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-          }`}
+          className={cx(
+            styles.emptyLayout,
+            isMobile && styles.emptyLayoutMobile,
+          )}
         >
           <StreamSetupGuide
             className={styles.emptyGuide}
@@ -609,9 +673,12 @@ export default function ExpertsPage() {
     return (
       <>
         <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>
-            {t("experts.teams.total", { count: visibleTeamAgents.length })}
-          </span>
+          <div className={styles.gridToolbarLeft}>
+            <span className={styles.gridCount}>
+              {t("experts.teams.total", { count: visibleTeamAgents.length })}
+            </span>
+            {locationFilterControl}
+          </div>
           <div className={styles.gridToolbarRight}>
             {toolbarSearch}
             {refreshButton}
@@ -625,7 +692,11 @@ export default function ExpertsPage() {
           </div>
         </div>
         {visibleTeamAgents.length === 0 ? (
-          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+          <div className={styles.searchEmpty}>
+            {searchNeedle || locationFilter !== "all"
+              ? t("experts.filterEmpty")
+              : t("experts.searchEmpty")}
+          </div>
         ) : (
           <div className={styles.cardGrid}>
             {visibleTeamAgents.map((agent) => (
@@ -655,158 +726,15 @@ export default function ExpertsPage() {
     handleStateChange,
     isMobile,
     localTeamMembers,
+    locationFilter,
+    locationFilterControl,
     pickableExperts,
     refreshButton,
+    searchNeedle,
     t,
     teamAgents,
     toolbarSearch,
     visibleTeamAgents,
-  ]);
-
-  const visiblePublishedExperts = useMemo(
-    () =>
-      publishedExperts.filter((expert) =>
-        textMatchesQuery(
-          searchNeedle,
-          expert.name,
-          expert.description,
-          expert.creator_username,
-        ),
-      ),
-    [publishedExperts, searchNeedle],
-  );
-  const visibleLibraryExperts = useMemo(
-    () =>
-      experts.filter((expert) =>
-        textMatchesQuery(
-          searchNeedle,
-          expert.id,
-          pickLocale(expert.label, lang),
-          expert.label.zh,
-          expert.label.en,
-          pickLocale(expert.description, lang),
-          expert.description?.zh,
-          expert.description?.en,
-        ),
-      ),
-    [experts, lang, searchNeedle],
-  );
-
-  const libraryContent = useMemo(() => {
-    if (expertLoading || publishedExpertLoading) {
-      return (
-        <div className={styles.loadingState}>
-          <Spin />
-        </div>
-      );
-    }
-    if (experts.length === 0 && publishedExperts.length === 0) {
-      return (
-        <div className={styles.emptyState}>
-          <OctopEmptyMascot />
-          <div className={styles.emptyTitle}>{t("experts.emptyLibrary")}</div>
-          <div className={styles.emptyHint}>
-            {t("experts.emptyLibraryHint")}
-          </div>
-          <div className={styles.emptyActions}>{refreshButton}</div>
-        </div>
-      );
-    }
-    return (
-      <>
-        {publishedExperts.length > 0 && (
-          <>
-            <div className={styles.gridToolbar}>
-              <span className={styles.gridCount}>
-                {t("experts.published.listTitle", {
-                  count: visiblePublishedExperts.length,
-                })}
-              </span>
-              <div className={styles.gridToolbarRight}>{toolbarSearch}</div>
-            </div>
-            <p
-              style={{
-                color: "var(--fn-text-tertiary)",
-                fontSize: 13,
-                margin: "0 0 12px",
-              }}
-            >
-              {t("experts.published.listHint")}
-            </p>
-            {visiblePublishedExperts.length === 0 ? (
-              <div className={styles.searchEmpty}>
-                {t("experts.searchEmpty")}
-              </div>
-            ) : (
-              <div className={styles.cardGrid}>
-                {visiblePublishedExperts.map((expert) => (
-                  <PublishedExpertCard
-                    key={expert.id}
-                    expert={expert}
-                    canManage={canManagePublished(expert)}
-                    onInstall={(item) =>
-                      setCreateSource({ kind: "published", expert: item })
-                    }
-                    onChanged={refreshPublishedExperts}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>
-            {t("experts.totalLibrary", { count: visibleLibraryExperts.length })}
-          </span>
-          <div className={styles.gridToolbarRight}>
-            {publishedExperts.length === 0 ? toolbarSearch : null}
-            {refreshButton}
-          </div>
-        </div>
-        {publishedExperts.length === 0 && (
-          <p
-            style={{
-              color: "var(--fn-text-tertiary)",
-              fontSize: 13,
-              margin: "0 0 12px",
-            }}
-          >
-            {t("experts.published.emptyHint")}
-          </p>
-        )}
-        {visibleLibraryExperts.length === 0 ? (
-          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
-        ) : (
-          <div className={styles.cardGrid}>
-            {visibleLibraryExperts.map((expert) => (
-              <ExpertCard
-                key={expert.id}
-                expert={expert}
-                lang={lang}
-                isInstalled={agentExpertIds.has(expert.id)}
-                onCreate={(item) =>
-                  setCreateSource({ kind: "builtin", expert: item })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </>
-    );
-  }, [
-    agentExpertIds,
-    canManagePublished,
-    expertLoading,
-    experts,
-    lang,
-    publishedExpertLoading,
-    publishedExperts,
-    refreshButton,
-    refreshPublishedExperts,
-    t,
-    toolbarSearch,
-    visibleLibraryExperts,
-    visiblePublishedExperts,
   ]);
 
   const marketContent = useMemo(
@@ -814,12 +742,26 @@ export default function ExpertsPage() {
       <ExpertMarketTab
         lang={lang}
         installedExpertIds={agentExpertIds}
+        publishedExperts={publishedExperts}
+        publishedLoading={publishedExpertLoading}
+        onInstallPublished={(expert) =>
+          setCreateSource({ kind: "published", expert })
+        }
+        onPublishedChanged={() => {
+          void refreshPublishedExperts();
+        }}
         onRequestCreate={(expert) =>
           setCreateSource({ kind: "market", expert })
         }
       />
     ),
-    [agentExpertIds, lang],
+    [
+      agentExpertIds,
+      lang,
+      publishedExpertLoading,
+      publishedExperts,
+      refreshPublishedExperts,
+    ],
   );
 
   return (
@@ -828,6 +770,7 @@ export default function ExpertsPage() {
       subtitle={t("pageShell.experts.subtitle")}
     >
       <Tabs
+        className={styles.shellTabs}
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as TabKey)}
         items={[
@@ -840,22 +783,8 @@ export default function ExpertsPage() {
           },
           {
             key: "teams",
-            label: (
-              <TabLabel icon={Users}>
-                {t("experts.myTeams")}
-                <span className={styles.tabBetaBadge}>
-                  {t("experts.teams.betaBadge")}
-                </span>
-              </TabLabel>
-            ),
+            label: <TabLabel icon={Users}>{t("experts.myTeams")}</TabLabel>,
             children: teamsContent,
-          },
-          {
-            key: "library",
-            label: (
-              <TabLabel icon={BookOpen}>{t("experts.expertLibrary")}</TabLabel>
-            ),
-            children: libraryContent,
           },
           {
             key: "market",

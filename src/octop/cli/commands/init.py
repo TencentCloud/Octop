@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
-
 import click
 
 
@@ -30,7 +28,10 @@ import click
     "--force",
     is_flag=True,
     default=False,
-    help="Wipe existing ~/.octop contents before bootstrapping.",
+    help=(
+        "Delete Octop application state under ~/.octop before bootstrapping. "
+        "Keeps the install runtime (venv/, bin/)."
+    ),
 )
 @click.option(
     "--yes",
@@ -55,6 +56,7 @@ def init(
     from octop.infra.errors import OctopError
     from octop.infra.users.password import hash_password, validate_password_policy
     from octop.infra.utils.env_file import apply_env_file, env_file_path
+    from octop.infra.utils.install_reset import InstallResetError, wipe_octop_state
     from octop.infra.utils.paths import PathLayout
 
     paths = PathLayout.from_env()
@@ -75,11 +77,19 @@ def init(
                 from octop.cli.support import prompts as _prompts
 
                 if not _prompts.confirm(
-                    f"Wipe {home}? This deletes ALL Octop state.", default=False
+                    f"Delete Octop data under {home}? The install runtime (venv, bin) is kept.",
+                    default=False,
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
-            shutil.rmtree(home)
+            try:
+                _removed, kept = wipe_octop_state(home)
+            except InstallResetError as exc:
+                click.echo(f"error: {exc}", err=True)
+                raise SystemExit(1) from None
+            if kept:
+                names = ", ".join(path.name for path in kept)
+                click.echo(f"kept install runtime: {names}")
 
     paths.ensure_root()
     PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
@@ -100,6 +110,10 @@ def init(
                 username = _prompts.text("Admin username:")
             if not password:
                 password = _prompts.password("Admin password:")
+                confirm_password = _prompts.password("Confirm admin password:")
+                if password != confirm_password:
+                    click.echo("error: passwords do not match", err=True)
+                    raise SystemExit(1)
             if display_name is None:
                 display_name = _prompts.text("Display name (optional):", default="") or None
 
@@ -112,12 +126,19 @@ def init(
             click.echo(f"error: {exc.message}", err=True)
             raise SystemExit(1) from None
 
-        UserRepo(db).create(
-            username=username,
-            password_hash=hash_password(password or ""),
-            role="admin",
-            display_name=display_name,
-        )
+        user_repo = UserRepo(db)
+        if user_repo.get_by_username(username) is not None:
+            # 幂等引导（issue #1866）：外部数据库（PostgreSQL）不会在 ~/.octop
+            # 生成 octop.db，容器重启后 entrypoint 会重跑 init；此时跳过创建，
+            # 避免管理员 INSERT 撞 UNIQUE(username) 直接崩溃。
+            click.echo(f"  admin user '{username}' already exists, skipping.")
+        else:
+            user_repo.create(
+                username=username,
+                password_hash=hash_password(password or ""),
+                role="admin",
+                display_name=display_name,
+            )
     finally:
         db.close()
 

@@ -14,6 +14,7 @@ def test_root_paths(tmp_path: Path):
     assert p.logs_dir == tmp_path / ".octop" / "logs"
     assert p.log == tmp_path / ".octop" / "logs" / "octop.log"
     assert p.config == tmp_path / ".octop" / "config.json"
+    assert p.wizard_password_file == tmp_path / ".octop" / "octop-login.txt"
 
 
 def test_log_dir_creation(tmp_path: Path):

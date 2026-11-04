@@ -37,6 +37,7 @@ class _Base:
     default_open: bool = False
     shared: bool = False
     icon_name: str = ""
+    icon_url: str = ""
     embedding_model: str = "model"
     embedding_dim: int = 0
     doc_count: int = 0
@@ -201,6 +202,7 @@ async def test_create_base_uses_selected_model_when_usable(
         "default_open": False,
         "shared": False,
         "icon_name": "",
+        "icon_url": "",
         "max_documents": 100,
     }
 
@@ -732,3 +734,30 @@ def test_map_knowledge_error_prerequisites_distinguished() -> None:
     )
     assert err_model.code == ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
     assert err_model.status == 409
+
+
+class TestRestartRequiredMapping:
+    """#1340: an install that only takes effect after a restart must say so."""
+
+    RESTART_HINT = (
+        "Local embedding components were installed but could not be loaded. "
+        "Restart the server and try again."
+    )
+
+    def test_install_that_needs_a_restart_says_so(self) -> None:
+        from octop.api.routers.knowledge_bases import _map_knowledge_error
+        from octop.infra.errors import ErrorCode
+
+        err = _map_knowledge_error(RuntimeError(self.RESTART_HINT), locale="zh")
+
+        assert err.code is ErrorCode.KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED
+        assert "重启" in err.localized_message("zh")
+        assert "restart" in err.localized_message("en").lower()
+
+    def test_other_prerequisite_failures_keep_the_generic_error(self) -> None:
+        from octop.api.routers.knowledge_bases import _map_knowledge_error
+        from octop.infra.errors import ErrorCode
+
+        err = _map_knowledge_error(RuntimeError("embedding provider is not ready"), locale="zh")
+
+        assert err.code is ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED

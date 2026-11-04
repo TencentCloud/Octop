@@ -15,6 +15,10 @@ described in [Chat (WebSocket)](#chat-websocket).
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |
 
 Tokens expire after `OCTOP_ACCESS_TOKEN_TTL` seconds (default 24 h).
+An authenticated request renews the token once less than two-thirds of that
+lifetime remains, so active use extends the session from the last renewal.
+Changing the password invalidates outstanding tokens; the change-password
+response returns a replacement in `X-Octop-Access-Token`.
 Rotating the JWT secret (`octop admin rotate-jwt-secret`) invalidates
 every outstanding token immediately. Login attempts are rate-limited
 (`OCTOP_LOGIN_MAX_ATTEMPTS` / `OCTOP_LOGIN_LOCKOUT_SECONDS`); the
@@ -33,7 +37,7 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
-`/api/auth/ldap/status`,
+`/api/auth/ldap/status`, `/api/auth/passkey/status`,
 `/api/connectors/oauth/callback`, and `/api/internal/mcp/*`. All other routes are JWT-gated by
 `api/middleware/jwt_auth.py`; the setup lockdown middleware
 (`api/middleware/setup_lockdown.py`) additionally blocks non-setup
@@ -75,7 +79,6 @@ does not set these headers itself.
 | `POST`   | `/setup/verify-password` | public | Exchange the wizard password for a session token |
 | `GET`    | `/setup/validate-token` | public | Check a wizard session token |
 | `POST`   | `/setup/initial-admin` | public | body `{username, password, display_name?, email?}` → `201` |
-| `POST`   | `/setup/resume-wizard` | public | Issue a fresh wizard token mid-setup |
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
 | `GET`    | `/auth/captcha` | public | `{provider, site_key?}` for the login widget; 503 while setup is required |
@@ -97,13 +100,14 @@ does not set these headers itself.
 | `PUT`    | `/auth/oauth/providers/{kind}` | admin | Upsert provider config; `client_secret` is write-only; WeCom uses `extra.agent_id` |
 | `POST`   | `/auth/oauth/providers/{kind}/test` | admin | Test provider credentials |
 | `GET`    | `/auth/ldap/status` | public | `{enabled, display_name}` for the login page hint |
+| `GET`    | `/auth/passkey/status` | public | `{passwordless_login}` — whether the login page offers “Sign in with a passkey”. Default `false` until an admin enables it |
 | `GET`    | `/auth/ldap/config` | admin | Directory settings; `bind_password` is never returned (`has_bind_password` instead) |
 | `PUT`    | `/auth/ldap/config` | admin | Upsert directory settings; `bind_password` is write-only (omit to keep the stored one) |
 | `POST`   | `/auth/ldap/config/test` | admin | Service bind + probe of `user_base_dn` → `{ok, detail}` |
 | `POST`   | `/auth/logout` | user | `204` |
 | `GET`    | `/auth/me` | user | `{id, username, role, display_name, locale, ...}` |
 | `PATCH`  | `/auth/me` | user | body `{display_name?, locale?, ...}` |
-| `POST`   | `/auth/change-password` | user | body `{old_password, new_password}` → `204`. Accounts without a local password (directory/SSO-provisioned) get `PASSWORD_NOT_SET` |
+| `POST`   | `/auth/change-password` | user | body `{old_password, new_password}` → `204`, with a replacement access token in `X-Octop-Access-Token`. Outstanding tokens stop working. Accounts without a local password (directory/SSO-provisioned) get `PASSWORD_NOT_SET` |
 | `GET`    | `/health` | public | `{status: "ok", version}` |
 
 ## Users (admin)
@@ -142,8 +146,14 @@ does not set these headers itself.
 Skill copy operations create snapshots; they do not keep the source and
 destination synchronized after the request completes.
 
+Packages default to private (`shared=false`): only the creator (and admins) can
+list or open them. When `shared=true`, other users with the `skill_packages`
+permission can view and mount them; only the creator/admin can edit. `copy_policy`
+and `allow_download` still apply to users who can already view the package.
+
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
+| `GET` | `/skill-packages` | user (`skill_packages`) | Own packages + shared packages; admins see all |
 | `GET` | `/skill-packages?writable_only=true` | user (`skill_packages`) | List only packages the current user may modify; admins may modify all packages |
 | `POST` | `/agents/{id}/skill-packages/{package_id}/copy` | owner (`skill_packages`) | body `{skill_slugs: string[], overwrite?: boolean}`; copy selected package skills into the workspace |
 | `POST` | `/agents/{id}/skills/{slug}/push-to-package` | owner (`skill_packages`) | body `{package_id, overwrite?: boolean}`; copy a workspace skill into a package created by the user (or any package for admins) |
@@ -154,8 +164,17 @@ destination synchronized after the request completes.
 |------|------|-------|
 | `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` plus a `steer.queue_snapshot` baseline (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn and discards its queued steers (explicit stop; disconnect alone does **not** cancel). See [Mid-turn steering](#mid-turn-steering) for steer frames. |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
-| `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
+| `POST /text/assist` | JWT | Unified polish/generate: body `{kind, text?, context?, locale?, default_model?, agent_id?}` → `{text}`. Form kinds require `context.name`; `chat.prompt` requires `text`. Model defaults to automatic routing. |
+| `POST /agents/{id}/chat/polish` | owner | **Deprecated** compat alias for `POST /text/assist` with `kind=chat.prompt` |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
+
+Model calls retain LangChain's default retry eligibility and the configured
+retry budget/backoff. Exhausted calls raise and remain failed
+checkpoint tasks, without a synthetic assistant reply. WebUI, IM and team tasks
+display the failure separately. Team rooms publish an `error` frame followed by
+`done`; stored error bubbles carry `additional_kwargs.octop_stream_error` for
+history display. These diagnostics and automatic team failure notifications do
+not become long-term memory.
 
 ### Legacy SSE
 
@@ -248,6 +267,8 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 | `GET`    | `/settings/hitl` | user | `{enabled, tool_guard_require_approval, show_approval_ui}` — `show_approval_ui` is true when tool HITL is on or command guard is `require_approval` |
 | `GET`    | `/settings/captcha` | `captcha` | `{active, available, providers, source, v3_min_score}`; secrets omitted |
 | `PUT`    | `/settings/captcha` | `captcha` | merge `{active?, providers?}`; empty secret keeps ciphertext; `null` removes a pair |
+| `GET`    | `/settings/webauthn` | `captcha` | `{rp_id, origins, passwordless_login}`; `passwordless_login` defaults to `false` |
+| `PUT`    | `/settings/webauthn` | `captcha` | merge `{rp_id?, origins?, passwordless_login?}`; omitted fields keep the stored value |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
 | `GET`    | `/agents/{aid}/cron/examples` | agent access | `{task_examples}` from workspace `.octop/manifest.json` (`{zh,en}` string arrays, display-normalized to 3 or 6); `null` if the field is absent (dashboard keeps default cards). Prefer `GET /agents/{aid}/chat/welcome` which includes the same field. |
 | `GET`    | `/agents/{aid}/cron` | owner only | list cron rows; non-owners (including admin) get `[]` |
@@ -261,9 +282,13 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 `"agent"` (run the prompt through the LLM and push the reply).
 Default: `"agent"`. `trigger` accepts cron expressions
 (`"0 9 * * *"`) plus the `interval:N` / `date:ISO8601` aliases
-documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
-≤ 2000 characters. `name` is an optional display label; when omitted,
-the server derives one from `prompt`.
+documented in `infra/cron/trigger.py`. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails; the row stays
+in the list. If the process is down for more than 24 hours past that
+time and the job never ran, `last_status` is `missed` and the job is
+disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
+an optional display label; when omitted, the server derives one from
+`prompt`.
 
 ## Providers
 
@@ -348,10 +373,14 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
 | `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
+| `GET`    | `/agents/{aid}/workspace/mention-index` | owner | bounded `@` file names via the workspace backend (`truncated` when capped; short cache) |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
 | `GET`    | `/agents/{aid}/workspace/...` | owner | see `api/routers/workspace.py` |
 | `GET`    | `/agents/{aid}/skills` | owner | list installed skills |
+| `GET`    | `/agents/{aid}/skills/{slug}/export` | owner | download one workspace skill as a ZIP (`{slug}/SKILL.md` plus siblings) |
+| `POST`   | `/agents/{aid}/skills/export` | owner | body `{slugs: string[]}`; one ZIP, each slug a top-level folder |
+| `GET`    | `/skill-packages/{id}/export` | user (`skill_packages`) | download every skill in the package as one ZIP. `allow_download=false` returns 403 for users other than the creator and admins |
 | `PUT`    | `/agents/{aid}/skills/{slug}` | owner | enable / disable a skill |
 | `GET`    | `/agents/{aid}/skills/hub/search` | user | Skill Hub search |
 | `GET`    | `/agents/{aid}/skills/hub/rankings` | user | Skill Hub rankings |
@@ -364,9 +393,24 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
+| `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
+| `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
+| `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |
+| `POST` | `/agents/{aid}/memory/manual-review` | owner | reconcile saved USER.md + MEMORY.md against up to 100 unchecked atoms; duplicates remain stored, proven conflicts retire the old atom and create a replacement review candidate with evidence |
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+### Manual document reconciliation
+
+The manual editors save files first, then request reconciliation. The response reports
+`complete`, `partial` (continue checking), `uncertain`, `unavailable`, `failed`, `stale`,
+`disabled`, `too_large`, or `not_checked`, plus conflict/duplicate counts and candidate IDs.
+Semantic checks use the configured memory auxiliary model and require literal document
+evidence; unavailable or uncertain checks never silently retire facts. Combined document
+input above 100,000 characters is explicitly refused. Current documents are checked again
+when accepting a document-derived candidate; stale candidates require review of the new
+version. The file save remains successful if the subsequent semantic check fails.
 
 ### Current-expert memory storage maintenance
 
@@ -501,6 +545,53 @@ discovery.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by octop-harness agents (not the dashboard) |
+
+## Octop Agent MCP Gateway
+
+External agents call installed Octop experts through the authenticated
+Streamable HTTP endpoint:
+
+`POST/GET/DELETE /mcp/agents`
+
+Use the same JWT bearer token as the REST API. Use HTTPS when the endpoint is
+available outside the local host. The default token lifetime is 24 hours.
+
+The server exposes three tools:
+
+| Tool | Purpose |
+|------|---------|
+| `list_octop_experts` | List experts visible to the authenticated user |
+| `call_octop_expert` | Start a new isolated expert conversation, or continue one with `thread_id` |
+| `resume_octop_expert` | Resume a call that stopped for tool approval or user input |
+
+`call_octop_expert` returns `thread_id`. Store this value in the external
+agent's working state. Pass it only when the next task must use the same Octop
+conversation. Omit it for a new task. MCP threads cannot attach to dashboard,
+CLI, or IM threads.
+
+When a tool needs approval, the call returns `status: "approval_required"` and
+an `approval` object. Read `approval.request.action_requests` and
+`approval.request.review_configs`. Send one allowed decision for each action to
+`resume_octop_expert`. A resumed call can return another approval request.
+
+Example client configuration:
+
+```json
+{
+  "mcpServers": {
+    "octop-agents": {
+      "type": "streamable_http",
+      "url": "http://127.0.0.1:8090/api/mcp/agents",
+      "headers": {
+        "Authorization": "Bearer <octop-access-token>"
+      }
+    }
+  }
+}
+```
+
+The exact transport key differs by MCP client. Some clients use `http`
+instead of `streamable_http`.
 
 ## Observability & security
 

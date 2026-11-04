@@ -21,6 +21,8 @@ export interface TokenUsage {
   total_tokens?: number;
   model_calls?: number;
   last_input_tokens?: number;
+  /** Tokens the decision filter kept out of the calls in this usage sample. */
+  decision_saved?: number;
   input_token_details?: Record<string, unknown>;
   output_token_details?: Record<string, unknown>;
   [key: string]: unknown;

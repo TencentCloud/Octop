@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { FileText, Plug } from "lucide-react";
+import cx from "classnames";
 import type { ChatConnectorOption } from "./ConnectorPickerPopover";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
@@ -90,6 +91,7 @@ const HINT_KEYS: Record<WorkspaceMentionHint, string> = {
   typeToSearch: "mention.typeToSearch",
   typeMore: "mention.typeMore",
   filesEmpty: "mention.filesEmpty",
+  filesTruncated: "mention.filesTruncated",
 };
 
 const HINT_FALLBACK: Record<WorkspaceMentionHint, string> = {
@@ -99,6 +101,8 @@ const HINT_FALLBACK: Record<WorkspaceMentionHint, string> = {
   typeToSearch: "Type a file name to search",
   typeMore: "Type at least two characters to search files",
   filesEmpty: "No matching files",
+  filesTruncated:
+    "This workspace is large, so the file index is partial and matches may be missing",
 };
 
 interface MentionPickerMenuProps {
@@ -108,6 +112,7 @@ interface MentionPickerMenuProps {
   subagents?: AgentSubagentSummary[];
   filesLoading?: boolean;
   filesError?: "need_agent" | "failed" | null;
+  filesTruncated?: boolean;
   activeIndex: number;
   onSelect: (pick: MentionPick) => void;
   onHover: (index: number) => void;
@@ -120,6 +125,7 @@ export default function MentionPickerMenu({
   subagents = [],
   filesLoading = false,
   filesError = null,
+  filesTruncated = false,
   activeIndex,
   onSelect,
   onHover,
@@ -144,6 +150,7 @@ export default function MentionPickerMenu({
     loading: filesLoading,
     error: filesError,
     fileCount,
+    truncated: filesTruncated,
   });
   const fileHint = hint ? t(HINT_KEYS[hint], HINT_FALLBACK[hint]) : "";
   const hasFilePick = fileCount > 0;
@@ -206,9 +213,10 @@ export default function MentionPickerMenu({
               <button
                 key={mentionPickKey(item)}
                 type="button"
-                className={`${styles.mentionItem} ${
-                  active ? styles.mentionItemActive : ""
-                }`}
+                className={cx(
+                  styles.mentionItem,
+                  active && styles.mentionItemActive,
+                )}
                 onMouseEnter={() => onHover(idx)}
                 onClick={() => onSelect(item)}
               >

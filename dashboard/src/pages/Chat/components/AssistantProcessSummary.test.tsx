@@ -187,6 +187,83 @@ describe("thinking display preference", () => {
     );
   });
 
+  it("holds a lone decision row until the reply settles", () => {
+    const split: AssistantTurnSplit = {
+      tools: [],
+      thinkings: [],
+      processSteps: [
+        {
+          kind: "decision",
+          notice: {
+            model: "laya",
+            empty: true,
+            parts: [],
+          },
+        },
+      ],
+      answerMessage: null,
+    };
+    const { rerender } = render(
+      <AssistantProcessSummary split={split} isStreaming />,
+    );
+    expect(
+      screen.queryByText(/决策模型|Decision model/),
+    ).not.toBeInTheDocument();
+    rerender(<AssistantProcessSummary split={split} isStreaming={false} />);
+    expect(screen.getByText(/决策模型|Decision model/)).toBeInTheDocument();
+  });
+
+  it("keeps a streaming decision inside the tool summary", () => {
+    const tool = runningToolSplit();
+    const split: AssistantTurnSplit = {
+      ...tool,
+      processSteps: [
+        {
+          kind: "decision",
+          notice: {
+            model: "laya",
+            empty: true,
+            parts: [],
+          },
+        },
+        ...tool.processSteps,
+      ],
+    };
+    render(<AssistantProcessSummary split={split} isStreaming />);
+    expect(screen.getByText(/正在调用工具|Calling tools/)).toBeInTheDocument();
+    expect(screen.getByText(/决策模型|Decision model/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+  });
+
+  it("keeps a decision row collapsed like other tools", () => {
+    const split: AssistantTurnSplit = {
+      tools: [],
+      thinkings: [],
+      processSteps: [
+        {
+          kind: "decision",
+          notice: {
+            model: "laya",
+            empty: false,
+            parts: [
+              { kind: "result", kept: [{ name: "可以收工", score: 0.9 }] },
+            ],
+          },
+        },
+      ],
+      answerMessage: null,
+    };
+    render(<AssistantProcessSummary split={split} />);
+    expect(screen.getByRole("button")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByText(/可以收工/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/可以收工/)).toBeInTheDocument();
+  });
+
   it("can restore automatic expansion from the menu", async () => {
     localStorage.setItem(COLLAPSE_THINKING_SOLO_KEY, "true");
     render(
