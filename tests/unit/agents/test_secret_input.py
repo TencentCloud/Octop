@@ -271,9 +271,10 @@ def test_build_harness_config_skips_secret_env_for_shared_agent(
     assert "OCTOP_AGENT_ID" in (backend.get("env") or {})
 
 
-def test_team_manager_detects_secret_input_pause() -> None:
-    """Member pauses carrying request_secret_input are refused inline instead
-    of opening a room card the dashboard cannot satisfy."""
+def test_team_manager_detects_sensitive_input_pause() -> None:
+    """Member pauses carrying request_secret_input / request_secure_form are
+    refused inline instead of opening a room card the dashboard cannot
+    satisfy."""
     from octop.infra.agents.teams.team_manager import TeamManager
 
     secret_chunk = {
@@ -288,10 +289,10 @@ def test_team_manager_detects_secret_input_pause() -> None:
         "type": "hitl_required",
         "request": {"action_requests": [{"name": "run_command", "args": {"command": "ls"}}]},
     }
-    actions = TeamManager._secret_input_pause_actions(secret_chunk)
+    actions = TeamManager._sensitive_pause_actions(secret_chunk)
     assert actions is not None and len(actions) == 1
-    assert TeamManager._secret_input_pause_actions(approval_chunk) is None
-    assert TeamManager._secret_input_pause_actions({"type": "hitl_required"}) is None
+    assert TeamManager._sensitive_pause_actions(approval_chunk) is None
+    assert TeamManager._sensitive_pause_actions({"type": "hitl_required"}) is None
 
 
 def test_secret_filled_message_reflects_injection_outcome() -> None:

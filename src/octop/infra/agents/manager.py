@@ -34,6 +34,11 @@ from octop.infra.agents.secret_input import (
     build_request_secret_input_tool,
 )
 from octop.infra.agents.secret_input.middleware import SecretInputMiddleware
+from octop.infra.agents.secure_form import (
+    REQUEST_SECURE_FORM_TOOL_NAME,
+    build_request_secure_form_tool,
+)
+from octop.infra.agents.secure_form.middleware import SecureFormMiddleware
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -4356,6 +4361,11 @@ class AgentManager:
             # on the first turn. Distinct class name so the merge does not
             # replace the harness HITL instance (ask_user / security gates).
             agent_middleware.append(SecretInputMiddleware())
+        # Multi-field secure form: same dedicated-middleware pattern and the
+        # same per-agent disable gate as the single-field tool.
+        if not team_host and REQUEST_SECURE_FORM_TOOL_NAME not in tools_disabled_set(cfg):
+            merged_tools.append(build_request_secure_form_tool())
+            agent_middleware.append(SecureFormMiddleware())
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)

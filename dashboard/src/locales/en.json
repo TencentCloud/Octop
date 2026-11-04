@@ -266,7 +266,8 @@
     "SECURE_FORM_FIELD_INVALID": "One or more form fields are invalid or cannot be saved.",
     "VAULT_ITEM_NOT_FOUND": "This vault item no longer exists.",
     "VAULT_CAP_EXCEEDED": "The vault is full. Delete an item before saving another.",
-    "VAULT_REPLACE_REQUIRED": "An item with this title already exists. Confirm replacing it to continue."
+    "VAULT_REPLACE_REQUIRED": "An item with this title already exists. Confirm replacing it to continue.",
+    "SECURE_FORM_REQUEST_INVALID": "This secure form request is invalid or cannot be handled here."
   },
   "nav": {
     "chat": "Conversation",
@@ -1973,7 +1974,9 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "request_secret_input": "Request secret input",
+    "request_secure_form": "Request secure form"
   },
   "toolSettings": {
     "title": "Tool settings",

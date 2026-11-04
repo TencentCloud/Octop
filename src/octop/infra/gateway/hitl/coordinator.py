@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Collection
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -11,15 +11,21 @@ from octop_gateway.models import MessageEvent
 from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
+from octop.infra.agents.secure_form.validation import (
+    secure_form_refusal_decisions,
+    validate_secure_form_action_requests,
+)
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicy,
     HitlSessionPolicyStore,
 )
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
     is_ask_action_requests,
-    is_secret_input_action_requests,
+    is_secure_form_action_requests,
+    is_sensitive_action_requests,
     parse_action_requests,
     parse_ask_reply,
     parse_review_configs,
@@ -199,6 +205,57 @@ async def iter_with_session_auto_approve(
         yield carried
 
 
+async def iter_secure_form_registration_guard(
+    source: AsyncIterator[dict[str, Any]],
+    *,
+    agent_id: str,
+    resume: Callable[[list[dict[str, Any]]], AsyncIterator[dict[str, Any]]],
+    existing_slot_names: Callable[[str], Collection[str]] | None = None,
+    max_refusals: int = 3,
+) -> AsyncIterator[dict[str, Any]]:
+    """Auto-refuse invalid ``request_secure_form`` pauses instead of pausing.
+
+    The turn is already interrupted by the time the pause chunk appears, so an
+    invalid form is answered inline with one refusal ``respond`` decision per
+    action (the team-manager member-refusal shape): no pending record, no
+    card docked, no eviction of the user's other in-flight pause. Valid forms
+    pass through untouched and register on the caller's normal path. The
+    refusal message tells the model not to retry; ``max_refusals`` bounds an
+    insistent model, after which the pause surfaces and the registration
+    backstop in :meth:`HitlChannelCoordinator.register_from_request` turns it
+    into a stream error. Errors from the source or the resumed stream
+    propagate to the caller's normal stream-error handling.
+    """
+    refusals = 0
+    while True:
+        held: dict[str, Any] | None = None
+        reason: str | None = None
+        actions: list[dict[str, Any]] = []
+        async for chunk in source:
+            if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                request = chunk.get("request")
+                actions = parse_action_requests(request if isinstance(request, dict) else {})
+                reason = validate_secure_form_action_requests(
+                    actions,
+                    agent_id=agent_id,
+                    existing_slot_names=existing_slot_names,
+                )
+                if reason is not None:
+                    held = chunk
+                    break
+            yield chunk
+        if held is None:
+            return
+        refusals += 1
+        if refusals > max_refusals:
+            _log.warning(
+                "secure form refused %d times agent=%s; surfacing pause", refusals - 1, agent_id
+            )
+            yield held
+            return
+        source = resume(secure_form_refusal_decisions(actions, reason=reason or "invalid form"))
+
+
 def pending_hitl_payload(
     store: HitlPendingStore,
     *,
@@ -260,9 +317,13 @@ class HitlChannelCoordinator:
         self,
         store: HitlPendingStore | None = None,
         session_policies: HitlSessionPolicyStore | None = None,
+        existing_secret_slots: Callable[[str], Collection[str]] | None = None,
     ) -> None:
         self._store = store or HitlPendingStore()
         self.session_policies = session_policies or HitlSessionPolicyStore()
+        # Reads an agent's existing secret-slot names for the secure-form
+        # registration capacity check; None skips that check.
+        self.existing_secret_slots = existing_secret_slots
 
     @property
     def store(self) -> HitlPendingStore:
@@ -281,7 +342,7 @@ class HitlChannelCoordinator:
             return None
         if is_ask_action_requests(record.action_requests):
             return None
-        if is_secret_input_action_requests(record.action_requests):
+        if is_sensitive_action_requests(record.action_requests):
             return None
         return record
 
@@ -292,13 +353,32 @@ class HitlChannelCoordinator:
         ctx: HitlStreamContext,
         resume_agent_id: str | None = None,
     ) -> HitlPendingRecord:
+        """Register a pause, refusing invalid ``request_secure_form`` args.
+
+        This is the single registration choke point every entry path funnels
+        through (chat routes, processor turn/resume streams, IM projection,
+        agent MCP, team member pauses), so the schema is validated here —
+        before ``register()`` — and an invalid form can never enter the store
+        and evict the user's other in-flight pause. Interactive callers are
+        expected to auto-resume the refusal earlier via
+        :func:`iter_secure_form_registration_guard`; this raise is the
+        backstop for any path that reaches registration directly.
+        """
+        actions = parse_action_requests(raw_request)
+        reason = validate_secure_form_action_requests(
+            actions,
+            agent_id=ctx.agent_id,
+            existing_slot_names=self.existing_secret_slots,
+        )
+        if reason is not None:
+            raise OctopError(ErrorCode.SECURE_FORM_REQUEST_INVALID, reason)
         return self._store.register(
             thread_id=ctx.thread_id,
             agent_id=ctx.agent_id,
             user_id=ctx.user_id,
             session_key=ctx.session_key,
             channel_type=ctx.channel_type,
-            action_requests=parse_action_requests(raw_request),
+            action_requests=actions,
             review_configs=parse_review_configs(raw_request),
             resume_agent_id=resume_agent_id,
         )
@@ -822,8 +902,9 @@ class HitlChannelCoordinator:
             )
             if record is None:
                 return MessageEvent.text(tr("hitl.invalid_pending_id", lang, pending_id=arg))
-            if record is not None and is_secret_input_action_requests(record.action_requests):
-                return MessageEvent.text(tr("secret_input.im_dashboard_only", lang))
+            refusal = self._sensitive_pause_refusal(record, lang)
+            if refusal is not None:
+                return refusal
             return record
 
         record = self._store.resolve_for_session(
@@ -831,13 +912,29 @@ class HitlChannelCoordinator:
             None,
             agent_id=ctx.agent_id,
         )
-        if record is not None and is_secret_input_action_requests(record.action_requests):
-            return MessageEvent.text(tr("secret_input.im_dashboard_only", lang))
+        refusal = self._sensitive_pause_refusal(record, lang)
+        if refusal is not None:
+            return refusal
         if record is not None and record.user_id != ctx.user_id:
             return MessageEvent.text(tr("hitl.not_owner", lang))
         if record is not None and record.status == "expired":
             return MessageEvent.text(tr("hitl.expired", lang))
         return record
+
+    @staticmethod
+    def _sensitive_pause_refusal(
+        record: HitlPendingRecord | None,
+        lang: Locale,
+    ) -> MessageEvent | None:
+        """IM refusal for pauses whose content only the dashboard may collect."""
+        if record is None or not is_sensitive_action_requests(record.action_requests):
+            return None
+        key = (
+            "secure_form.im_dashboard_only"
+            if is_secure_form_action_requests(record.action_requests)
+            else "secret_input.im_dashboard_only"
+        )
+        return MessageEvent.text(tr(key, lang))
 
     async def _iter_pending_list(self, ctx: SlashCtx, lang: Locale) -> AsyncIterator[MessageEvent]:
         rows = self._store.list_pending_for_session(ctx.session_key, agent_id=ctx.agent_id)

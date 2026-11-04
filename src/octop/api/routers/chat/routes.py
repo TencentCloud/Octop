@@ -34,6 +34,7 @@ from octop.infra.gateway.hitl.coordinator import (
 )
 from octop.infra.gateway.hitl.format import (
     is_secret_input_action_requests,
+    is_secure_form_action_requests,
     normalize_hitl_request,
 )
 from octop.infra.gateway.hitl.store import HitlPendingRecord
@@ -274,6 +275,13 @@ async def resume_hitl(
         raise OctopError(
             ErrorCode.SECRET_REQUEST_INVALID,
             "secret input requests are submitted via /chat/secret-input/submit",
+        )
+    if pending is not None and is_secure_form_action_requests(pending.action_requests):
+        # Same class of pause: a client-authored respond would "complete" the
+        # form with model-context content while no env/vault write happens.
+        raise OctopError(
+            ErrorCode.SECURE_FORM_REQUEST_INVALID,
+            "secure form pauses are completed via the dedicated secure-form submit flow",
         )
     if pending is not None:
         reason = decision_rejection_reason(pending, body.decisions)

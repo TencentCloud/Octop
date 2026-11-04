@@ -58,6 +58,18 @@ def test_hitl_tool_catalog_excludes_must_use_tools():
     assert "memory_search" not in names
     assert "search_knowledge" not in names
     assert "cronjob_create" not in names
+
+
+def test_hitl_tool_catalog_excludes_secret_collection_tools():
+    """These tools have their own respond-only interrupt channels; a catalog
+    entry would derive an approve/reject interrupt_on config that breaks the
+    turn and bypasses the masked-card flow."""
+    names = {entry.name for entry in hitl_tool_catalog()}
+    assert "request_secret_input" not in names
+    assert "request_secure_form" not in names
+    # Both still render a localized chip via tool_display_name.
+    assert tool_display_name("request_secure_form", "zh") == "请求安全表单"
+    assert tool_display_name("request_secret_input", "en") == "Request secret input"
     assert "task" not in names
     assert "ask_agent" not in names
     assert "call_deferred_tool" not in names

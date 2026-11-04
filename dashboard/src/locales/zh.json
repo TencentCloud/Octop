@@ -266,7 +266,8 @@
     "SECURE_FORM_FIELD_INVALID": "部分表单字段无效或无法保存。",
     "VAULT_ITEM_NOT_FOUND": "该保险库条目已不存在。",
     "VAULT_CAP_EXCEEDED": "保险库已满，请先删除条目再保存新的。",
-    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。"
+    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。",
+    "SECURE_FORM_REQUEST_INVALID": "该安全表单请求无效或无法在此处理。"
   },
   "nav": {
     "chat": "对话",
@@ -1973,7 +1974,9 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "request_secret_input": "请求密钥输入",
+    "request_secure_form": "请求安全表单"
   },
   "toolSettings": {
     "title": "工具设置",

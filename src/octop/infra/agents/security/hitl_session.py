@@ -1,8 +1,9 @@
 """Per-thread HITL bypass chosen during chat (Codex-style allow-all / allow-tool).
 
 Does not change the global SecurityPolicy. Collaboration pauses
-(``ask_user_question``, ``request_secret_input``) are never skipped: a sticky
-bypass must not auto-answer a question or auto-run a secret collection.
+(``ask_user_question``, ``request_secret_input``, ``request_secure_form``) are
+never skipped: a sticky bypass must not auto-answer a question or auto-run a
+secret/form collection.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ _NEVER_BYPASSED_TOOLS = frozenset(
     {
         "ask_user_question",
         "request_secret_input",
+        "request_secure_form",
     }
 )
 _MAX_TOOLS = 64

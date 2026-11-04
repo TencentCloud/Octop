@@ -74,14 +74,15 @@ _ROOM_HISTORY_LIMIT = 40
 _HOST_IDLE_POLL_SEC = 0.05
 _HOST_IDLE_WAIT_SEC = 45.0
 _MEMBER_HITL_WAIT_SEC = 30 * 60
-# Respond decision fed back to a member whose model called request_secret_input;
-# the tool result the model sees instead of a room card. The no-retry clause
-# bounds the loop: the refusal is auto-answered, so an insistent model would
-# otherwise re-pause on every iteration.
-_MEMBER_SECRET_REFUSAL = (
-    "Secret input is not available inside a team room. Continue the task "
-    "without this secret, or tell the host to collect it in a direct chat. "
-    "Do not call request_secret_input again during this turn."
+# Respond decision fed back to a member whose model called request_secret_input
+# or request_secure_form; the tool result the model sees instead of a room
+# card. The no-retry clause bounds the loop: the refusal is auto-answered, so
+# an insistent model would otherwise re-pause on every iteration.
+_MEMBER_SENSITIVE_REFUSAL = (
+    "Sensitive collection (request_secret_input / request_secure_form) is not "
+    "available inside a team room. Continue the task without it, or tell the "
+    "host to collect it in a direct chat. Do not call request_secret_input or "
+    "request_secure_form again during this turn."
 )
 _RELAY_CHUNK_TYPES = frozenset(
     {"token", "reasoning", "tool_call_chunk", "tool_result", "error", "attachment"}
@@ -505,18 +506,19 @@ class TeamManager:
                 if pause is None:
                     resume_pending = None
                     break
-                secret_actions = self._secret_input_pause_actions(pause)
+                secret_actions = self._sensitive_pause_actions(pause)
                 if secret_actions is not None:
-                    # A member's request_secret_input cannot be satisfied from
-                    # the room: the dashboard submit path stores and resumes the
-                    # HOST agent, stranding this member's pause until the wait
-                    # times out. Refuse inline so the tool returns and the
-                    # member keeps its turn; one respond decision per action,
-                    # mirroring the dashboard submit path.
+                    # A member's request_secret_input / request_secure_form
+                    # cannot be satisfied from the room: the dashboard submit
+                    # path stores and resumes the HOST agent, stranding this
+                    # member's pause until the wait times out. Refuse inline so
+                    # the tool returns and the member keeps its turn; one
+                    # respond decision per action, mirroring the dashboard
+                    # submit path.
                     agen = self._agent_manager.resume_hitl(
                         speaker_id,
                         member_tid,
-                        [{"type": "respond", "message": _MEMBER_SECRET_REFUSAL}]
+                        [{"type": "respond", "message": _MEMBER_SENSITIVE_REFUSAL}]
                         * (len(secret_actions) or 1),
                     )
                     continue
@@ -1210,10 +1212,10 @@ class TeamManager:
         return host_id, user_id, session_key, channel
 
     @staticmethod
-    def _secret_input_pause_actions(chunk: dict[str, Any]) -> list[dict[str, Any]] | None:
-        """Parsed action requests when a member pause collects a secret."""
+    def _sensitive_pause_actions(chunk: dict[str, Any]) -> list[dict[str, Any]] | None:
+        """Parsed action requests when a member pause collects user secrets."""
         from octop.infra.gateway.hitl.format import (  # noqa: PLC0415
-            is_secret_input_action_requests,
+            is_sensitive_action_requests,
             parse_action_requests,
         )
 
@@ -1221,7 +1223,7 @@ class TeamManager:
         if not isinstance(request, dict):
             return None
         actions = parse_action_requests(request)
-        return actions if is_secret_input_action_requests(actions) else None
+        return actions if is_sensitive_action_requests(actions) else None
 
     async def _open_member_hitl(
         self,

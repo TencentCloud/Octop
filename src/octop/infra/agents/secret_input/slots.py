@@ -11,7 +11,10 @@ import re
 _SLOT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 
 # Slots are injected as env vars next to the platform's own identity variables;
-# shadowing these would break command execution or leak across concerns.
+# shadowing these would break command execution or leak across concerns. The
+# exec-hijack class (loader/runtime config an attacker-controlled value could
+# turn into code execution) is denied for every chat-collected slot, including
+# env-routed secure-form fields.
 _RESERVED_SLOT_NAMES = frozenset(
     {
         "PATH",
@@ -29,6 +32,15 @@ _RESERVED_SLOT_NAMES = frozenset(
         "HOSTNAME",
         "SSL_CERT_FILE",
         "REQUESTS_CA_BUNDLE",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "BASH_ENV",
+        "ENV",
+        "NODE_OPTIONS",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "GIT_SSH_COMMAND",
+        "GIT_ASKPASS",
     }
 )
 _RESERVED_SLOT_PREFIXES = ("OCTOP_",)

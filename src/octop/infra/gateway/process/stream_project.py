@@ -228,16 +228,44 @@ def _with_session_auto_approve(
     thread_id: str,
     hitl_coordinator: HitlChannelCoordinator | None,
 ) -> AsyncIterator[dict[str, Any]]:
-    """Skip a follow-up card when this chat already allows the tool."""
+    """Skip a follow-up card when this chat already allows the tool.
+
+    Also refuses invalid ``request_secure_form`` pauses inline (no pending
+    record) so IM turns auto-resume the refusal instead of docking a card the
+    dedicated submit flow would reject.
+    """
     if hitl_coordinator is None or not thread_id:
         return source
-    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+    from octop.infra.gateway.hitl.coordinator import (
+        iter_secure_form_registration_guard,
+        iter_with_session_auto_approve,
+    )
 
-    return iter_with_session_auto_approve(
-        source,
-        thread_id=thread_id,
-        policies=hitl_coordinator.session_policies,
-        resume=lambda decisions: agent_manager.resume_hitl(agent_id, thread_id, decisions),
+    def _auto_approve_resume(
+        decisions: list[dict[str, Any]],
+    ) -> AsyncIterator[dict[str, Any]]:
+        # The guard's inline refusals resume outside the auto-approve chain;
+        # re-wrap so session policies still apply to the continued turn.
+        return iter_with_session_auto_approve(
+            agent_manager.resume_hitl(agent_id, thread_id, decisions),
+            thread_id=thread_id,
+            policies=hitl_coordinator.session_policies,
+            resume=_auto_approve_resume,
+        )
+
+    def _existing_slots(aid: str) -> set[str]:
+        return {row.slot_name for row in agent_manager.agent_secrets.list_slots(aid)}
+
+    return iter_secure_form_registration_guard(
+        iter_with_session_auto_approve(
+            source,
+            thread_id=thread_id,
+            policies=hitl_coordinator.session_policies,
+            resume=_auto_approve_resume,
+        ),
+        agent_id=agent_id,
+        resume=_auto_approve_resume,
+        existing_slot_names=_existing_slots,
     )
 
 

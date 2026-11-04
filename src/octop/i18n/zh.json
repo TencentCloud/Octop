@@ -347,6 +347,15 @@
       "compact_busy": "这个 Agent 正在对话。等它空闲后再发送 /memory compact --confirm。",
       "compact_not_running": "这个 Agent 没有在运行，无法从对话里压缩它的记忆库。",
       "compact_no_memory": "这个 Agent 没有可压缩的记忆库。"
+    },
+    "secure_form": {
+      "card_title": "🔐 请求填写安全表单",
+      "fields_line": "字段数：{count}",
+      "routing_env": "用途：该智能体的环境变量密钥",
+      "routing_vault": "用途：你的加密保险库",
+      "card_footer": "出于安全考虑，表单仅可在仪表盘会话中通过遮罩对话框填写。请打开仪表盘完成填写。",
+      "card_pending_id": "请求编号：`{pending_id}`（30 分钟内有效）",
+      "im_dashboard_only": "该请求需要填写安全表单。请打开仪表盘会话完成填写——表单内容无法在当前聊天中收集。"
     }
   },
   "connector": {
@@ -562,7 +571,8 @@
     "SECURE_FORM_FIELD_INVALID": "部分表单字段无效或无法保存。",
     "VAULT_ITEM_NOT_FOUND": "该保险库条目已不存在。",
     "VAULT_CAP_EXCEEDED": "保险库已满，请先删除条目再保存新的。",
-    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。"
+    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。",
+    "SECURE_FORM_REQUEST_INVALID": "该安全表单请求无效或无法在此处理。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -684,7 +694,9 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "request_secret_input": "请求密钥输入",
+    "request_secure_form": "请求安全表单"
   },
   "plugins": {
     "arxiv_search": {
