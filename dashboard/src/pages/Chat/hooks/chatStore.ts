@@ -1065,6 +1065,33 @@ function sendCancelFrame(ws: WebSocket, threadId: string): void {
   }
 }
 
+/**
+ * Stop over HTTP as well as over the socket.
+ *
+ * The WS `cancel` frame only reaches the turn while *this* page still holds a
+ * subscribed socket. After a reload, an approval park, or when the turn was
+ * started from another surface, sending it is a no-op and the server keeps
+ * running — the UI then looks like Stop did nothing. This POST always lands.
+ */
+function postCancelTurn(agentId: string, threadId: string): void {
+  if (!agentId || !threadId || threadId === "__empty__") return;
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  void fetch(
+    getApiUrl(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/cancel`,
+    ),
+    { method: "POST", headers, keepalive: true },
+  ).catch(() => {
+    // Stop is best-effort: the local turn is already sealed.
+  });
+}
+
 function closeLiveSocket(
   sessionId: string,
   opts: { intentional: boolean; userCancelled?: boolean },
@@ -1084,15 +1111,24 @@ function closeLiveSocket(
 }
 
 /** Cancel any in-flight stream for a session (user stop). */
-export function cancelStream(sessionId: string) {
+export function cancelStream(
+  sessionId: string,
+  target?: { agentId?: string | null; threadId?: string | null },
+) {
   const state = sessionStates.get(sessionId);
-  if (!state) return;
   const live = liveSockets.get(sessionId);
   if (live) {
     live.intentionalClose = true;
     live.userCancelled = true;
     sendCancelFrame(live.ws, live.threadId || sessionId);
   }
+  // Always mirror Stop over HTTP: a parked/closed socket would otherwise leave
+  // the server turn running (and a stale HITL park behind it).
+  postCancelTurn(
+    live?.agentId || target?.agentId || "",
+    live?.threadId || target?.threadId || sessionId,
+  );
+  if (!state) return;
   const hadAbort = Boolean(state.abortController);
   const hadStreaming = state.isStreaming;
   const hadStreamingMsgs = state.messages.some((m) => m.status === "streaming");
@@ -1505,7 +1541,7 @@ function handleHarnessChunk(
             : "";
         state.pendingPlanPath = pending || null;
       }
-      if (Boolean(chunk.team_wrapup)) {
+      if (chunk.team_wrapup) {
         finalizeWrapupMessages(state, speaker);
         clearSpeakerLive(state, speaker);
         // Wrap-up means members already finished — drop stale live bits

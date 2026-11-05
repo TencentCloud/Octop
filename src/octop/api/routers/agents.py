@@ -145,6 +145,32 @@ def _agent_icon_url(row: Any, cfg: dict[str, Any]) -> str | None:
     return team_icon_url(stored)
 
 
+def _viewer_mcp_servers(
+    row: Any,
+    *,
+    viewer_user_id: int | None,
+    server: Any | None,
+) -> list[str]:
+    """MCP names for this viewer. Shared custom servers use the catalog name."""
+    if (getattr(row, "kind", None) or "expert") == "team":
+        return []
+    names = id_list_from_row(row, "mcp_servers")
+    owner_id = getattr(row, "user_id", None)
+    if (
+        not names
+        or viewer_user_id is None
+        or not isinstance(owner_id, int)
+        or owner_id == viewer_user_id
+        or server is None
+    ):
+        return names
+    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+    present = getattr(registry, "present_mcp_names_for_viewer", None)
+    if not callable(present):
+        return names
+    return list(present(owner_id, viewer_user_id, names))
+
+
 def _row_dict(
     row: Any,
     *,
@@ -190,11 +216,7 @@ def _row_dict(
         "color": row.color or cfg.get("color"),
         "skill_package_ids": packages,
         "knowledge_base_ids": id_list_from_row(row, "knowledge_base_ids"),
-        "mcp_servers": (
-            []
-            if (getattr(row, "kind", None) or "expert") == "team"
-            else id_list_from_row(row, "mcp_servers")
-        ),
+        "mcp_servers": _viewer_mcp_servers(row, viewer_user_id=viewer_user_id, server=server),
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),

@@ -57,14 +57,14 @@ def fnos_assets(version: str) -> tuple[tuple[str, str], ...]:
     )
 
 
-def docker_image_section(version: str, *, lite: bool) -> str:
-    lines = [
-        "### Docker image",
-        "",
-        f"- Full: `ghcr.io/tencentcloud/octop:{version}` (`:latest`)",
-    ]
+def docker_image_section(version: str, *, lite: bool, full: bool) -> str:
+    lines = ["### Docker image", ""]
     if lite:
-        lines.append(f"- Lite: `ghcr.io/tencentcloud/octop:{version}-lite` (`:lite`)")
+        lines.append(f"- Lite: `ghcr.io/tencentcloud/octop:{version}` (`:latest`)")
+    if full:
+        lines.append(f"- Full: `ghcr.io/tencentcloud/octop:{version}-full` (`:full`)")
+    if len(lines) == 2:
+        return ""
     return "\n".join(lines)
 
 
@@ -124,7 +124,7 @@ def render_download_section(raw_version: str) -> str:
             "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",
             "",
-            docker_image_section(version, lite=True),
+            docker_image_section(version, lite=True, full=True),
             "",
             fnos_section(version, None),
             "",
@@ -156,14 +156,17 @@ def _replace_section(body: str, heading: str, replacement: str) -> str:
 def patch_release_body(body: str, raw_version: str, present: Iterable[str]) -> str:
     """Keep desktop links, and keep only the FnOS packages that were uploaded.
 
-    The lite image line follows the lite FnOS package: that tag is published
-    only when both CPU architectures exist, which is also when the package is built.
+    The default tag is the lite image. The full tag is published only when
+    both CPU architectures exist, which is also when the full package is built.
     """
     _tag, version = split_tag(raw_version)
     names = {Path(name).name for name in present}
     lite_name = f"Octop-fnos-docker-lite-{version}.fpk"
+    full_name = f"Octop-fnos-docker-{version}.fpk"
     updated = _replace_section(
-        body, "Docker image", docker_image_section(version, lite=lite_name in names)
+        body,
+        "Docker image",
+        docker_image_section(version, lite=lite_name in names, full=full_name in names),
     )
     return _replace_section(updated, "fnOS NAS", fnos_section(version, names))
 

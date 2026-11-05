@@ -1,0 +1,334 @@
+.summary {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--fn-bg-elevated, #fff);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(25, 34, 56, 0.02);
+}
+
+.summaryHead {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.summaryCards {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.summaryCard {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.summaryLabel {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  overflow: hidden;
+  font-family: var(--sc-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.5;
+}
+
+.summaryDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fn-text-quaternary);
+}
+
+.summaryCard[data-health="online"] .summaryDot {
+  background: #10b981;
+}
+
+.summaryCard[data-health="warn"] .summaryDot {
+  background: #e6862a;
+}
+
+.summaryCard[data-health="alert"] .summaryDot {
+  background: #df5665;
+}
+
+.summaryValue {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.summaryHint {
+  font-family: var(--sc-mono);
+  font-size: 11px;
+  opacity: 0.45;
+}
+
+.summaryActions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.ratioBar {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.ratioSeg {
+  flex: 1 1 0;
+  min-width: 3px;
+  border-radius: 999px;
+  background: var(--fn-text-quaternary);
+}
+
+.ratioSeg[data-health="online"] {
+  background: #10b981;
+}
+
+.ratioSeg[data-health="warn"] {
+  background: #e6862a;
+}
+
+.ratioSeg[data-health="alert"] {
+  background: #df5665;
+}
+
+.ratioSeg[data-health="offline"] {
+  background: color-mix(in srgb, var(--fn-text-quaternary) 55%, transparent);
+}
+
+.ratioSeg[data-health="unknown"] {
+  background: color-mix(in srgb, var(--fn-text-quaternary) 30%, transparent);
+}
+
+.grid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+  padding: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.grid:hover {
+  scrollbar-color: var(--fn-text-quaternary) transparent;
+}
+
+.grid::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.grid::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 999px;
+}
+
+.grid:hover::-webkit-scrollbar-thumb {
+  background: var(--fn-text-quaternary);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: var(--fn-bg-elevated, #fff);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 10px;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.card:hover {
+  background: var(--fn-bg-tertiary);
+  border-color: var(--fn-border-primary);
+}
+
+.card[data-health="warn"] {
+  background: color-mix(in srgb, #e6862a 7%, var(--fn-bg-secondary));
+  border-color: color-mix(in srgb, #e6862a 34%, transparent);
+}
+
+.card[data-health="alert"] {
+  background: color-mix(in srgb, #df5665 6%, var(--fn-bg-secondary));
+  border-color: color-mix(in srgb, #df5665 32%, transparent);
+}
+
+.cardHead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fn-text-quaternary);
+}
+
+.dot[data-health="online"] {
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+.dot[data-health="warn"] {
+  background: #e6862a;
+  box-shadow: 0 0 0 3px rgba(230, 134, 42, 0.18);
+}
+
+.dot[data-health="alert"] {
+  background: #df5665;
+  box-shadow: 0 0 0 3px rgba(223, 86, 101, 0.16);
+}
+
+.name {
+  flex: 1;
+  overflow: hidden;
+  font-size: 12.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  font-size: 10px;
+  color: #10b981;
+  background: color-mix(in srgb, #10b981 12%, transparent);
+  border-radius: 999px;
+}
+
+.badge[data-health="warn"] {
+  color: #c56a12;
+  background: color-mix(in srgb, #e6862a 16%, transparent);
+}
+
+.badge[data-health="alert"] {
+  color: #c64756;
+  background: color-mix(in srgb, #df5665 15%, transparent);
+}
+
+.badge[data-health="offline"],
+.badge[data-health="unknown"] {
+  color: var(--fn-text-quaternary);
+  background: color-mix(in srgb, var(--fn-text-quaternary) 16%, transparent);
+}
+
+.metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric {
+  display: grid;
+  grid-template-columns: 32px 1fr 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+.metricLabel {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  opacity: 0.45;
+}
+
+.track {
+  height: 4px;
+  overflow: hidden;
+  background: var(--fn-border-secondary);
+  border-radius: 2px;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.metricValue {
+  font-family: var(--sc-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  opacity: 0.7;
+}
+
+.cardFoot {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 8px;
+  font-family: var(--sc-mono);
+  font-size: 10.5px;
+  border-top: 1px solid var(--fn-border-secondary);
+  opacity: 0.6;
+}
+
+.net {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.netIn {
+  font-weight: 600;
+  color: #4a9fc4;
+}
+
+.netOut {
+  font-weight: 600;
+  color: #3fa98a;
+}
+
+.load {
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 40px;
+  font-size: 12px;
+  text-align: center;
+  opacity: 0.45;
+}
