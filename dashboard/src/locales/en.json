@@ -7448,6 +7448,7 @@
     "refresh": "Refresh",
     "renew": "Renew",
     "manageAuth": "Manage",
+    "tencentOnlyHint": "Only Tencent Cloud CVM is supported right now",
     "authorize": "Authorize",
     "logout": "Sign out",
     "emptyDescription": "Tencent Cloud is not authorized yet. Authorize to list CVM instances and metrics.",
