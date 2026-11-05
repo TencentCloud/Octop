@@ -46,7 +46,10 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu {
   top: 0;
   left: 0;
   right: 0;
-  z-index: 30;
+  /* Portaled to document.body, above drawers and other overlays (antd
+     starts near 1000; prompts in this app reach about 10000). The submenu
+     popup stays one step higher. */
+  z-index: 11000;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -84,9 +87,7 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu-slot {
 }
 
 html[data-octop-desktop-chrome="windows"] .octop-win-menu-popup {
-  /* Portaled to document.body. #root is its own stacking context, so a
-     z-index on the caption row cannot rise above chat panels or antd
-     overlays. Sit above those (panels ~2100, toasts 4200, prompts 10000). */
+  /* Portaled to document.body, above the caption row and every overlay under it. */
   position: fixed;
   z-index: 12000;
   min-width: 232px;
@@ -192,16 +193,33 @@ html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
   ) !important;
 }
 
-html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-header,
-html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-header {
+/* Drawers are body-level overlays. Keep them under the caption so a
+   right-edge panel cannot cover File / Edit / View / Help. antd sets
+   `inset: 0` from CSS-in-JS, so the offset has to win explicitly. */
+html[data-octop-caption-row] .ant-drawer,
+html[data-octop-caption-row] .octop-drawer {
+  top: var(--octop-caption-row, 32px) !important;
+  height: calc(100% - var(--octop-caption-row, 32px)) !important;
+}
+
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .octop-drawer-right
+  .octop-drawer-header,
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .ant-drawer-right
+  .ant-drawer-header {
   padding-inline-end: max(
     24px,
     var(--window-controls-inset-end, 0px)
   ) !important;
 }
 
-html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-close,
-html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .octop-drawer-right
+  .octop-drawer-close,
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .ant-drawer-right
+  .ant-drawer-close {
   inset-inline-end: var(--window-controls-inset-end, 0px) !important;
 }
 
