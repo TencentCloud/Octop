@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 变更
+- 默认 Docker 标签 `:<version>` 和 `:latest` 改为精简版。完整版使用 `:<version>-full` 和 `:full`
+
 ## [1.0.3b3] - 2026-11-04
 
 ### 新增
