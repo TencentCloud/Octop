@@ -4,7 +4,7 @@ package main
 // Frameless moving uses CSS `--wails-draggable: drag` plus this injected starter:
 // the remote dashboard origin never loads Wails `/wails/runtime.js`.
 // Frameless edge/corner resizing rides on the same starter, mirroring the Wails
-// runtime's own strategy: pure edge detection, `wails:resize:<cursor>` messages,
+// runtime's own strategy: pure edge detection, `wails:resize:<edge>` messages,
 // no overlay elements, scrollbar width excluded from the right/bottom strips.
 // clientY <= 32 must match dashboard DESKTOP_TITLEBAR_DRAG_HEIGHT.
 const desktopDragRegionClass = "octop-desktop-drag"
@@ -49,6 +49,12 @@ func dragOverlayJS() string {
 			if (!shouldArm(event)) return;
 			window._wails.invoke('wails:drag:doubleclick');
 		}, true);
+		// Message keys and cursor styles must be kept apart: the Go-side maps
+		// (Windows edgeMap / Linux gdkEdgeForBorder) only accept the Wails
+		// runtime's single-corner keys ('n-resize'...'nw-resize'); CSS two-corner
+		// cursor values ('ns-resize' etc.) never hit the map, killing resize in
+		// every direction (broken ever since #1657).
+		var edgeKeys = { n: 'n-resize', s: 's-resize', e: 'e-resize', w: 'w-resize', ne: 'ne-resize', nw: 'nw-resize', se: 'se-resize', sw: 'sw-resize' };
 		var edgeCursors = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', sw: 'nesw-resize' };
 		function edgeAt(event) {
 			var edge = 5, corner = 12;
@@ -74,7 +80,7 @@ func dragOverlayJS() string {
 		window.addEventListener('mousemove', function(event) {
 			if (resizeArmed) {
 				resizeArmed = false;
-				window._wails.invoke('wails:resize:' + edgeCursors[resizeEdge]);
+				window._wails.invoke('wails:resize:' + edgeKeys[resizeEdge]);
 				return;
 			}
 			var edge = edgeAt(event);

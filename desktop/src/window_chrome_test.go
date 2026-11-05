@@ -21,12 +21,22 @@ func TestDragOverlayJSStartsWailsDragWithoutCapturingOverlay(t *testing.T) {
 		"--wails-draggable",
 		"data-octop-no-drag",
 		"clientY <= 32",
+		// The invoke payload must use the Wails runtime's single-corner border
+		// keys (Windows edgeMap / Linux gdkEdgeForBorder lookup tables);
+		// ns-resize / nwse-resize are CSS cursor styles for display only.
+		"wails:resize:' + edgeKeys[resizeEdge]",
+		"n: 'n-resize'",
+		"se: 'se-resize'",
+		"nw: 'nw-resize'",
 		"ns-resize",
 		"nwse-resize",
 	} {
 		if !strings.Contains(js, needle) {
 			t.Fatalf("drag JS missing %q", needle)
 		}
+	}
+	if strings.Contains(js, "edgeCursors[resizeEdge]") {
+		t.Fatal("resize invoke must use edgeKeys (wails border keys), not edgeCursors (CSS cursor values)")
 	}
 	if strings.Contains(js, "octop-window-drag-overlay") {
 		t.Fatal("full-width capturing overlay would steal title-bar clicks")
