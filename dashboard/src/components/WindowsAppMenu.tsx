@@ -6,7 +6,10 @@ import {
   DESKTOP_DRAG_REGION_CLASS,
   WINDOWS_CAPTION_HEIGHT,
 } from "../utils/desktopChrome";
-import { getDesktopBridge, type WindowsMenuModel } from "../utils/desktopBridge";
+import {
+  getDesktopBridge,
+  type WindowsMenuModel,
+} from "../utils/desktopBridge";
 
 /**
  * One full-width caption row. The transparent overlay hides the native menu
@@ -21,7 +24,10 @@ export default function WindowsAppMenu() {
   const titleRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [model, setModel] = useState<WindowsMenuModel | null>(null);
   const [open, setOpen] = useState<number | null>(null);
-  const [popupBox, setPopupBox] = useState<{ top: number; left: number } | null>(null);
+  const [popupBox, setPopupBox] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const showRow = desktopChrome === "windows";
 
   useEffect(() => {
@@ -32,7 +38,10 @@ export default function WindowsAppMenu() {
       return;
     }
     root.dataset.octopCaptionRow = "";
-    root.style.setProperty("--octop-caption-row", `${WINDOWS_CAPTION_HEIGHT}px`);
+    root.style.setProperty(
+      "--octop-caption-row",
+      `${WINDOWS_CAPTION_HEIGHT}px`,
+    );
     return () => {
       delete root.dataset.octopCaptionRow;
       root.style.removeProperty("--octop-caption-row");
@@ -72,7 +81,11 @@ export default function WindowsAppMenu() {
     if (open === null) return;
     const closeOnOutside = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (barRef.current?.contains(target) || popupRef.current?.contains(target)) return;
+      if (
+        barRef.current?.contains(target) ||
+        popupRef.current?.contains(target)
+      )
+        return;
       setOpen(null);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -89,7 +102,7 @@ export default function WindowsAppMenu() {
   if (!showRow) return null;
 
   const titles = model?.titles ?? [];
-  const entries = open === null ? [] : (model?.menus[open] ?? []);
+  const entries = open === null ? [] : model?.menus[open] ?? [];
   const popup =
     open !== null && popupBox
       ? createPortal(
@@ -120,7 +133,9 @@ export default function WindowsAppMenu() {
                 >
                   <span>{entry.label}</span>
                   {entry.accelerator ? (
-                    <span className="octop-win-menu-accel">{entry.accelerator}</span>
+                    <span className="octop-win-menu-accel">
+                      {entry.accelerator}
+                    </span>
                   ) : null}
                 </button>
               ),
@@ -148,7 +163,9 @@ export default function WindowsAppMenu() {
               role="menuitem"
               aria-haspopup="menu"
               aria-expanded={expanded}
-              className={expanded ? "octop-win-menu-item is-open" : "octop-win-menu-item"}
+              className={
+                expanded ? "octop-win-menu-item is-open" : "octop-win-menu-item"
+              }
               onMouseDown={(event) => event.preventDefault()}
               onMouseEnter={() => {
                 if (open !== null) setOpen(index);

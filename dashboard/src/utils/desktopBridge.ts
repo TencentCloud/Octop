@@ -98,7 +98,9 @@ export interface OctopDesktopBridge {
    * macOS hides the traffic lights in full screen; the page then stops
    * reserving room for them. Fires only on change.
    */
-  onWindowFullscreenChange?(callback: (fullscreen: boolean) => void): () => void;
+  onWindowFullscreenChange?(
+    callback: (fullscreen: boolean) => void,
+  ): () => void;
   clientSettings: {
     get(): Promise<DesktopClientSettings>;
     set(patch: Partial<DesktopClientSettings>): Promise<DesktopClientSettings>;

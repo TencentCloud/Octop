@@ -31,7 +31,10 @@ describe("resolveWsUrl", () => {
 
   test("dials the shell's relay when the bridge has one", async () => {
     const { resolveWsUrl } = await loadModule({
-      wsEndpoint: () => ({ baseUrl: "ws://127.0.0.1:51234/relay-token", token: "relay-token" }),
+      wsEndpoint: () => ({
+        baseUrl: "ws://127.0.0.1:51234/relay-token",
+        token: "relay-token",
+      }),
     });
     // The token is a path segment so callers can still append their own query.
     expect(`${resolveWsUrl("/api/terminal/ws")}?session_id=s1`).toBe(
@@ -55,7 +58,10 @@ describe("resolveWsUrl", () => {
   });
 
   test("reads the endpoint once per launch", async () => {
-    const wsEndpoint = vi.fn(() => ({ baseUrl: "ws://127.0.0.1:1/t", token: "t" }));
+    const wsEndpoint = vi.fn(() => ({
+      baseUrl: "ws://127.0.0.1:1/t",
+      token: "t",
+    }));
     const { resolveWsUrl } = await loadModule({ wsEndpoint });
     resolveWsUrl("/api/a");
     resolveWsUrl("/api/b");

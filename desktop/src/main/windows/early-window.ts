@@ -41,6 +41,7 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   const mode = options.theme.mode;
 
   const win = new BrowserWindow({
+    title: "Octop",
     width: DEFAULT_WINDOW_SIZE.width,
     height: DEFAULT_WINDOW_SIZE.height,
     // Same floor as the Dashboard: this window becomes the Dashboard, so a

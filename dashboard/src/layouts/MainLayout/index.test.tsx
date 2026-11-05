@@ -242,7 +242,9 @@ describe("MainLayout 共享顶栏", () => {
         if (chrome === "windows") {
           expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
         } else {
-          expect(container.querySelector(".octop-shell-drag-band")).not.toBeNull();
+          expect(
+            container.querySelector(".octop-shell-drag-band"),
+          ).not.toBeNull();
         }
 
         state.windowFullscreen = true;
@@ -264,7 +266,9 @@ describe("MainLayout 共享顶栏", () => {
         if (chrome === "windows") {
           expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
         } else {
-          expect(container.querySelector(".octop-shell-drag-band")).not.toBeNull();
+          expect(
+            container.querySelector(".octop-shell-drag-band"),
+          ).not.toBeNull();
         }
         expect(shell).toHaveAttribute("style", shellStyle);
       },

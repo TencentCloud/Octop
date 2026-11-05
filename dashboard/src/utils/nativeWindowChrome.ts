@@ -1,4 +1,7 @@
-import { loadAppearanceOnBoot, type ThemePreference } from "../styles/appearanceStorage";
+import {
+  loadAppearanceOnBoot,
+  type ThemePreference,
+} from "../styles/appearanceStorage";
 import { getDesktopBridge, isDesktopShell } from "./desktopBridge";
 
 /**

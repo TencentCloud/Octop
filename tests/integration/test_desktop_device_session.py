@@ -16,7 +16,7 @@ import pytest
 
 from octop.api.routers import auth_device
 from tests.support.app import octop_client
-from tests.support.auth import bootstrap_admin, bearer
+from tests.support.auth import bearer, bootstrap_admin
 
 DEVICE_TOKEN = "device-token-" + "x" * 40
 
@@ -38,7 +38,9 @@ def _hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-async def test_register_requires_the_desktop_shell(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_register_requires_the_desktop_shell(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     c, _srv, jwt = env
     monkeypatch.delenv("OCTOP_DESKTOP_SHELL", raising=False)
     r = await c.post(
@@ -94,7 +96,9 @@ async def test_device_token_needs_registration(env: Any, monkeypatch: pytest.Mon
     assert r.json()["error"]["code"] == "AUTH_FAILED"
 
 
-async def test_device_token_rejects_a_wrong_secret(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_device_token_rejects_a_wrong_secret(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     c, _srv, jwt = env
     monkeypatch.setenv("OCTOP_DESKTOP_SHELL", "1")
     await c.post(
@@ -140,7 +144,9 @@ async def test_device_token_rejects_a_non_loopback_peer(
     assert r.status_code == 403
 
 
-async def test_device_token_needs_the_desktop_shell(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_device_token_needs_the_desktop_shell(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     c, _srv, jwt = env
     monkeypatch.setenv("OCTOP_DESKTOP_SHELL", "1")
     await c.post(
@@ -161,7 +167,9 @@ async def test_revoke_stops_renewal(env: Any, monkeypatch: pytest.MonkeyPatch) -
         json={"device_token": DEVICE_TOKEN},
         headers=bearer(jwt),
     )
-    assert (await c.post("/api/auth/device/token", json={"device_token": DEVICE_TOKEN})).status_code == 200
+    assert (
+        await c.post("/api/auth/device/token", json={"device_token": DEVICE_TOKEN})
+    ).status_code == 200
 
     r = await c.post("/api/auth/device/revoke", headers=bearer(jwt))
     assert r.status_code == 200
@@ -184,7 +192,9 @@ async def test_register_replaces_the_previous_device(
 
     await c.post("/api/auth/device/register", json={"device_token": second}, headers=bearer(jwt))
     assert (await c.post("/api/auth/device/token", json={"device_token": first})).status_code == 401
-    assert (await c.post("/api/auth/device/token", json={"device_token": second})).status_code == 200
+    assert (
+        await c.post("/api/auth/device/token", json={"device_token": second})
+    ).status_code == 200
 
 
 async def test_device_token_is_jwt_exempt_but_register_is_not(

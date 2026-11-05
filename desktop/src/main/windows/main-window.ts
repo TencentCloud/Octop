@@ -60,6 +60,7 @@ export function createMainWindow(options: {
   onNavigate: (url: string) => void;
 }): BrowserWindow {
   const win = new BrowserWindow({
+    title: "Octop",
     width: DEFAULT_WINDOW_SIZE.width,
     height: DEFAULT_WINDOW_SIZE.height,
     // The Dashboard stops being usable below its desktop breakpoint, so the

@@ -21,7 +21,8 @@ let inFlight: Promise<UpdateStatus | null> | null = null;
  * ``latestVersion`` is the channel head, including when it is not an upgrade.
  */
 function statusFromShell(res: DesktopUpdateCheckResult): UpdateStatus {
-  const available = res.status === "update-available" && Boolean(res.latestVersion);
+  const available =
+    res.status === "update-available" && Boolean(res.latestVersion);
   return {
     current_version: res.currentVersion,
     latest_version: res.latestVersion,
