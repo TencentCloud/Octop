@@ -129,8 +129,12 @@ export function PresetProviderModal({
         return;
       }
       setFetchingModels(true);
+      const kind =
+        preset.protocol === "anthropic" || preset.id.includes("anthropic")
+          ? "anthropic"
+          : "openai";
       const result = await fetchProviderModels({
-        kind: "openai",
+        kind,
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
         name: preset.id,

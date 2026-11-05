@@ -934,8 +934,10 @@ export function ProviderConfigModal({
       }
 
       const values = form.getFieldsValue();
-      const kind = (values.kind as string | undefined) ?? provider.kind;
-      if (kind !== "openai") {
+      const currentKind = String(
+        (values.kind as string | undefined) ?? provider.kind ?? "",
+      ).toLowerCase();
+      if (currentKind !== "openai" && currentKind !== "anthropic") {
         message.warning(t("models.fetchModelsUnsupportedKind"));
         return;
       }
@@ -949,7 +951,7 @@ export function ProviderConfigModal({
 
       setFetchingModels(true);
       const result = await fetchProviderModels({
-        kind: "openai",
+        kind: currentKind,
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,

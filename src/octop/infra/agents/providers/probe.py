@@ -17,6 +17,7 @@ from octop.infra.agents.providers.opencode_session import ensure_opencode_sessio
 logger = logging.getLogger(__name__)
 
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+_DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
 _FETCH_MODELS_TIMEOUT_S = 30.0
 _EMBEDDING_PROBE_TEXT = "ping"
 
@@ -361,3 +362,77 @@ async def fetch_openai_compatible_models(
         models.append({"id": mid, "name": mid})
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}
+
+
+async def fetch_anthropic_models(
+    *,
+    base_url: str | None,
+    api_key: str,
+    extra_headers: dict[str, str] | None = None,
+    locale: str = "en",
+    provider_name: str | None = None,
+) -> dict[str, Any]:
+    """List models via Anthropic's ``GET {base}/models`` endpoint."""
+    root = (base_url or "").strip().rstrip("/") or _DEFAULT_ANTHROPIC_BASE_URL
+    url = f"{root}/models"
+    headers: dict[str, str] = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+    }
+    extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
+    if extra_headers:
+        headers.update(extra_headers)
+    try:
+        async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
+            response = await client.get(url, headers=headers)
+    except Exception as exc:
+        logger.info(
+            "provider fetch-models (anthropic) failed for %s: %r (%s)",
+            url,
+            exc,
+            type(exc).__name__,
+        )
+        return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
+
+    if response.status_code >= 400:
+        detail = response.text.strip()
+        if len(detail) > 300:
+            detail = detail[:300] + "…"
+        error = f"HTTP {response.status_code}"
+        if detail:
+            error = f"{error}: {detail}"
+        return {"ok": False, "error": _friendly_probe_error(error, locale=locale)}
+
+    try:
+        payload = response.json()
+    except Exception:
+        return {
+            "ok": False,
+            "error": "response is not valid JSON (expected Anthropic /models)",
+        }
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return {
+            "ok": False,
+            "error": "response is not valid Anthropic models payload (expected {data: [{id, display_name, …}]})",
+        }
+
+    models: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        mid = item.get("id")
+        if not isinstance(mid, str) or not mid.strip():
+            continue
+        mid = mid.strip()
+        if mid in seen:
+            continue
+        seen.add(mid)
+        display_name = item.get("display_name")
+        name = display_name.strip() if isinstance(display_name, str) and display_name.strip() else mid
+        models.append({"id": mid, "name": name})
+    models.sort(key=lambda m: m["id"])
+    return {"ok": True, "models": models}
+

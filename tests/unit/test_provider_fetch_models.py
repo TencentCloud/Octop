@@ -174,3 +174,67 @@ async def test_fetch_models_server_error_friendly() -> None:
     assert result["ok"] is False
     assert "temporarily unavailable" in result["error"].lower()
     assert "503" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_anthropic_models_success() -> None:
+    from octop.infra.agents.providers.probe import fetch_anthropic_models
+
+    response = _mock_response(
+        200,
+        {
+            "data": [
+                {
+                    "type": "model",
+                    "id": "claude-3-7-sonnet-20250219",
+                    "display_name": "Claude 3.7 Sonnet",
+                    "created_at": "2025-02-19T00:00:00Z",
+                },
+                {
+                    "type": "model",
+                    "id": "claude-3-5-haiku-20241022",
+                    "display_name": "Claude 3.5 Haiku",
+                    "created_at": "2024-10-22T00:00:00Z",
+                },
+            ]
+        },
+    )
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_anthropic_models(
+            base_url="https://api.anthropic.com/v1",
+            api_key="sk-ant-test",
+        )
+
+    assert result["ok"] is True
+    assert result["models"] == [
+        {"id": "claude-3-5-haiku-20241022", "name": "Claude 3.5 Haiku"},
+        {"id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet"},
+    ]
+    mock_client.get.assert_awaited_once()
+    args, kwargs = mock_client.get.await_args
+    assert args[0] == "https://api.anthropic.com/v1/models"
+    assert kwargs["headers"]["x-api-key"] == "sk-ant-test"
+    assert kwargs["headers"]["anthropic-version"] == "2023-06-01"
+
+
+@pytest.mark.asyncio
+async def test_fetch_anthropic_models_defaults_base_url() -> None:
+    from octop.infra.agents.providers.probe import fetch_anthropic_models
+
+    response = _mock_response(200, {"data": []})
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_anthropic_models(base_url=None, api_key="sk-ant-test")
+
+    assert result["ok"] is True
+    assert mock_client.get.await_args.args[0] == "https://api.anthropic.com/v1/models"
+

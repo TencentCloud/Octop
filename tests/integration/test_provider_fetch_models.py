@@ -23,21 +23,49 @@ async def test_admin_fetch_models_requires_api_key(env: Any) -> None:
     assert "api_key" in body["error"]
 
 
-async def test_admin_fetch_models_rejects_non_openai_kind(env: Any) -> None:
+async def test_admin_fetch_models_rejects_unsupported_kind(env: Any) -> None:
     client, _srv, auth = env
     r = await client.post(
         "/api/admin/providers/fetch-models",
         headers=auth,
         json={
-            "kind": "anthropic",
+            "kind": "unsupported-kind",
             "api_key": "sk-test",
-            "base_url": "https://api.anthropic.com",
+            "base_url": "https://api.example.com",
         },
     )
     assert r.status_code == 200
     body = r.json()
     assert body["ok"] is False
-    assert "openai" in body["error"].lower()
+    assert "openai" in body["error"].lower() and "anthropic" in body["error"].lower()
+
+
+async def test_admin_fetch_models_anthropic_dispatched(env: Any) -> None:
+    client, _srv, auth = env
+    fake = {
+        "ok": True,
+        "models": [{"id": "claude-3-7-sonnet", "name": "Claude 3.7 Sonnet"}],
+    }
+    with patch(
+        "octop.api.routers.providers.fetch_anthropic_models",
+        new=AsyncMock(return_value=fake),
+    ) as mocked:
+        r = await client.post(
+            "/api/admin/providers/fetch-models",
+            headers=auth,
+            json={
+                "kind": "anthropic",
+                "api_key": "sk-ant-test",
+                "base_url": "https://api.anthropic.com/v1",
+            },
+        )
+    assert r.status_code == 200, r.text
+    assert r.json() == fake
+    mocked.assert_awaited_once()
+    kwargs = mocked.await_args.kwargs
+    assert kwargs["api_key"] == "sk-ant-test"
+    assert kwargs["base_url"] == "https://api.anthropic.com/v1"
+
 
 
 async def test_admin_fetch_models_success(env: Any) -> None:

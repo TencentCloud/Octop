@@ -124,7 +124,8 @@ export function CustomProviderModal({
   const handleFetchModels = async () => {
     try {
       const values = await form.validateFields(["kind", "api_key", "base_url"]);
-      if ((values.kind as string) !== "openai") {
+      const currentKind = String(values.kind || "").toLowerCase();
+      if (currentKind !== "openai" && currentKind !== "anthropic") {
         message.warning(t("models.fetchModelsUnsupportedKind"));
         return;
       }
@@ -135,7 +136,7 @@ export function CustomProviderModal({
       }
       setFetchingModels(true);
       const result = await fetchProviderModels({
-        kind: "openai",
+        kind: currentKind,
         api_key: apiKey,
         base_url: (values.base_url as string | undefined)?.trim() || null,
       });
@@ -333,7 +334,7 @@ export function CustomProviderModal({
           <Input.Password placeholder="sk-..." visibilityToggle />
         </Form.Item>
 
-        {kind === "openai" && (
+        {(kind === "openai" || kind === "anthropic") && (
           <Form.Item style={{ marginBottom: 12 }}>
             <Button
               icon={<Download size={14} />}
@@ -404,7 +405,7 @@ export function CustomProviderModal({
         >
           {t("models.testConnection")}
         </Button>
-        {kind === "openai" && (
+        {(kind === "openai" || kind === "anthropic") && (
           <Button
             size="small"
             icon={<Download size={12} />}
