@@ -460,6 +460,7 @@
     "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "CRON_ALREADY_RUNNING": "This task is already running on another instance.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
     "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",
@@ -490,6 +491,7 @@
     "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
     "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
+    "LDAP_NOT_CONFIGURED": "Save LDAP settings before creating a directory account.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "NETWORK_ERROR": "Network error. Check your connection and try again.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
@@ -705,7 +707,8 @@
     "runtime": {
       "disabled": "Channel disabled",
       "unregistered": "Not registered",
-      "error": "Connection failed"
+      "error": "Connection failed",
+      "other_instance": "Managed by another instance"
     },
     "probe": {
       "incomplete": "Incomplete credentials: missing {fields}",

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import PillScroller from "../../../components/PillScroller";
 import {
   expertMarketApi,
@@ -266,17 +267,16 @@ export default function ExpertMarketTab({
   return (
     <div className={styles.marketContainer}>
       {!initialLoading && (
-        <div className={`${styles.gridToolbar} ${styles.marketSourceRow}`}>
+        <div className={cx(styles.gridToolbar, styles.marketSourceRow)}>
           <div className={styles.marketSourceTabs} role="tablist">
             <button
               type="button"
               role="tab"
               aria-selected={source === SOURCE_REMOTE}
-              className={
-                source === SOURCE_REMOTE
-                  ? `${styles.marketSourceTab} ${styles.marketSourceTabActive}`
-                  : styles.marketSourceTab
-              }
+              className={cx(
+                styles.marketSourceTab,
+                source === SOURCE_REMOTE && styles.marketSourceTabActive,
+              )}
               onClick={() => setSource(SOURCE_REMOTE)}
             >
               {t("experts.marketSourceRemote")}
@@ -285,18 +285,17 @@ export default function ExpertMarketTab({
               type="button"
               role="tab"
               aria-selected={source === SOURCE_PUBLISHED}
-              className={
-                source === SOURCE_PUBLISHED
-                  ? `${styles.marketSourceTab} ${styles.marketSourceTabActive}`
-                  : styles.marketSourceTab
-              }
+              className={cx(
+                styles.marketSourceTab,
+                source === SOURCE_PUBLISHED && styles.marketSourceTabActive,
+              )}
               onClick={() => setSource(SOURCE_PUBLISHED)}
             >
               {t("experts.published.scene")}
             </button>
           </div>
           <div
-            className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
+            className={cx(styles.gridToolbarRight, styles.marketToolbarRight)}
           >
             <Input
               className={styles.marketSearch}

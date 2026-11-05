@@ -12,8 +12,10 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import shutil
+import tempfile
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
@@ -26,7 +28,6 @@ from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.avatar import (
     display_published_expert_icon_url,
     public_portrait_icon_url,
-    read_snapshot_avatar,
 )
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
@@ -36,7 +37,6 @@ from octop.infra.agents.experts.catalog import (
     preview_file_paths,
     preview_paths_from_expert_dir,
     read_text_file_contents,
-    skill_count_in_expert_dir,
 )
 from octop.infra.agents.experts.composer_files import (
     ComposerApplyReport,
@@ -71,6 +71,12 @@ from octop.infra.agents.experts.published_creation import (
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
     SkillHubMarketErrorKind,
+)
+from octop.infra.agents.experts.snapshot_store import (
+    materialize_snapshot,
+    published_skill_count,
+    read_published_avatar,
+    read_snapshot_manifest,
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.history.trajectory.settings import apply_enable_trajectory
@@ -508,10 +514,6 @@ def _map_skillhub_error(exc: SkillHubMarketError) -> OctopError:
     )
 
 
-def _published_snapshot_dir(server: Any, expert_id: str) -> Any:
-    return server.services.paths.published_experts_dir / expert_id
-
-
 def _published_creator_username(server: Any, created_by: str) -> str | None:
     try:
         user_id = int(created_by)
@@ -521,23 +523,14 @@ def _published_creator_username(server: Any, created_by: str) -> str | None:
     return user.username if user is not None else None
 
 
-def _published_manifest_icon_url(snapshot_dir: Any) -> str | None:
-    manifest_path = snapshot_dir / MANIFEST_FILENAME
-    if not manifest_path.is_file():
-        return None
-    try:
-        data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    return public_portrait_icon_url(
-        data.get("icon_url") if isinstance(data.get("icon_url"), str) else None
-    )
+def _manifest_icon_url(manifest: dict[str, Any]) -> str | None:
+    stored = manifest.get("icon_url")
+    return public_portrait_icon_url(stored if isinstance(stored, str) else None)
 
 
 def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
-    snapshot_dir = _published_snapshot_dir(server, row.id)
+    manifest = read_snapshot_manifest(server.services.control_file_repo, row.id)
+    has_avatar = read_published_avatar(server.services.control_file_repo, row.id) is not None
     return {
         "id": row.id,
         "slug": row.slug,
@@ -549,12 +542,13 @@ def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
         "icon_name": row.icon_name or None,
         "icon_url": display_published_expert_icon_url(
             expert_id=row.id,
-            snapshot_dir=snapshot_dir,
+            snapshot_dir=Path("."),
             updated_at=row.updated_at,
-            fallback_icon_url=_published_manifest_icon_url(snapshot_dir),
+            fallback_icon_url=_manifest_icon_url(manifest),
+            has_avatar=has_avatar,
         ),
         "color": row.color or None,
-        "skill_count": skill_count_in_expert_dir(snapshot_dir),
+        "skill_count": published_skill_count(server.services.control_file_repo, row.id),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
@@ -588,7 +582,7 @@ async def get_published_expert_avatar(
 ) -> Response:
     """Return the avatar bytes baked into the published snapshot, if any."""
     row = _require_published_expert(server, expert_id)
-    found = read_snapshot_avatar(_published_snapshot_dir(server, row.id))
+    found = read_published_avatar(server.services.control_file_repo, row.id)
     if found is None:
         raise OctopError(ErrorCode.NOT_FOUND, "avatar not uploaded")
     data, media_type = found
@@ -603,23 +597,38 @@ async def get_published_expert(
 ) -> dict[str, Any]:
     """Return published-expert metadata and a previewable snapshot file inventory."""
     row = _require_published_expert(server, expert_id)
-    snapshot_dir = _published_snapshot_dir(server, row.id)
-    preview_paths = await asyncio.to_thread(preview_paths_from_expert_dir, snapshot_dir)
-    files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
-    if (snapshot_dir / MANIFEST_FILENAME).is_file():
-        files.insert(0, MANIFEST_FILENAME)
-    welcome_payload = await asyncio.to_thread(snapshot_welcome_payload, snapshot_dir)
-    return {
-        **_published_summary_dict(row, server),
-        "welcome_message": welcome_payload["welcome_message"],
-        "quick_prompts": welcome_payload["quick_prompts"],
-        "files": files,
-        "file_contents": await asyncio.to_thread(
-            read_text_file_contents,
+    staging = Path(tempfile.mkdtemp(prefix="octop-published-"))
+    snapshot_dir = staging / "snapshot"
+    try:
+        found = await asyncio.to_thread(
+            materialize_snapshot,
+            server.services.control_file_repo,
+            row.id,
             snapshot_dir,
-            preview_paths,
-        ),
-    }
+        )
+        if not found:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"published expert {expert_id!r} snapshot not found",
+            )
+        preview_paths = await asyncio.to_thread(preview_paths_from_expert_dir, snapshot_dir)
+        files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
+        if (snapshot_dir / MANIFEST_FILENAME).is_file():
+            files.insert(0, MANIFEST_FILENAME)
+        welcome_payload = await asyncio.to_thread(snapshot_welcome_payload, snapshot_dir)
+        return {
+            **_published_summary_dict(row, server),
+            "welcome_message": welcome_payload["welcome_message"],
+            "quick_prompts": welcome_payload["quick_prompts"],
+            "files": files,
+            "file_contents": await asyncio.to_thread(
+                read_text_file_contents,
+                snapshot_dir,
+                preview_paths,
+            ),
+        }
+    finally:
+        await asyncio.to_thread(shutil.rmtree, staging, ignore_errors=True)
 
 
 @router.post(
