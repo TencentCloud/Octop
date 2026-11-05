@@ -280,9 +280,8 @@ export default function MainLayout() {
             } as React.CSSProperties
           }
         >
-          {/* A single bounded drag region across all columns, including empty
-              chats and docks. It never intercepts DOM pointer events; actual
-              controls opt out via the no-drag rules in layout.css. */}
+          {/* macOS only: one drag strip beside the traffic lights. Windows drags
+              from the caption menu row, not from the page. */}
           {shellTopBand > 0 && <DesktopWindowDragBand position="absolute" />}
 
           <div

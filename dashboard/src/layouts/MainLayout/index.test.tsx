@@ -125,13 +125,8 @@ const platforms = [
 ] as const;
 
 const desktopPlatforms = [
-  {
-    name: "macOS",
-    chrome: "mac",
-    left: `${WINDOW_CONTROLS_INSET.mac}px`,
-    right: "0px",
-  },
-  { name: "Windows", chrome: "windows", left: "0px", right: "138px" },
+  { name: "macOS", chrome: "mac" },
+  { name: "Windows", chrome: "windows" },
 ] as const;
 
 const routeCases = [
@@ -192,27 +187,30 @@ describe("MainLayout 共享顶栏", () => {
     expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
   });
 
-  it.each(desktopPlatforms)(
-    "$name 拖拽区域限制在顶栏且避开原生窗口按钮",
-    ({ chrome, left, right }) => {
-      state.desktopChrome = chrome;
-      const { container } = render(<MainLayout />);
-      const bands = container.querySelectorAll(".octop-shell-drag-band");
+  it("macOS 拖拽区域限制在顶栏且避开交通灯", () => {
+    state.desktopChrome = "mac";
+    const { container } = render(<MainLayout />);
+    const bands = container.querySelectorAll(".octop-shell-drag-band");
 
-      expect(bands).toHaveLength(1);
-      expect(bands[0]).toHaveClass("octop-desktop-drag");
-      expect(bands[0]).toHaveAttribute("aria-hidden", "true");
-      expect(bands[0].parentElement).toBe(getShell(container));
-      expect(bands[0]).toHaveStyle({
-        position: "absolute",
-        top: "0px",
-        height: `${chromeTopBandPx(chrome)}px`,
-        left,
-        right,
-        pointerEvents: "none",
-      });
-    },
-  );
+    expect(bands).toHaveLength(1);
+    expect(bands[0]).toHaveClass("octop-desktop-drag");
+    expect(bands[0]).toHaveAttribute("aria-hidden", "true");
+    expect(bands[0].parentElement).toBe(getShell(container));
+    expect(bands[0]).toHaveStyle({
+      position: "absolute",
+      top: "0px",
+      height: `${chromeTopBandPx("mac")}px`,
+      left: `${WINDOW_CONTROLS_INSET.mac}px`,
+      right: "0px",
+      pointerEvents: "none",
+    });
+  });
+
+  it("Windows 页面里没有拖拽条", () => {
+    state.desktopChrome = "windows";
+    const { container } = render(<MainLayout />);
+    expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
+  });
 
   describe.each(routeCases)("$path 路由", ({ path, page }) => {
     it.each(platforms)("$name 右区不重复添加顶栏上边距", async ({ chrome }) => {
@@ -241,9 +239,11 @@ describe("MainLayout 共享顶栏", () => {
         const shellStyle = shell.getAttribute("style");
         const rightColumnStyle = rightColumn.getAttribute("style");
         const pageElement = screen.getByTestId(page);
-        expect(
-          container.querySelector(".octop-shell-drag-band"),
-        ).not.toBeNull();
+        if (chrome === "windows") {
+          expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
+        } else {
+          expect(container.querySelector(".octop-shell-drag-band")).not.toBeNull();
+        }
 
         state.windowFullscreen = true;
         rerender(<MainLayout />);
@@ -261,9 +261,11 @@ describe("MainLayout 共享顶栏", () => {
 
         state.windowFullscreen = false;
         rerender(<MainLayout />);
-        expect(
-          container.querySelector(".octop-shell-drag-band"),
-        ).not.toBeNull();
+        if (chrome === "windows") {
+          expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
+        } else {
+          expect(container.querySelector(".octop-shell-drag-band")).not.toBeNull();
+        }
         expect(shell).toHaveAttribute("style", shellStyle);
       },
     );

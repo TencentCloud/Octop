@@ -7,10 +7,10 @@ import {
 } from "../utils/desktopChrome";
 
 /**
- * The hidden titlebar's hit target. Native buttons stay outside it: macOS
- * traffic lights on the leading edge, Windows caption buttons on the trailing
- * edge. `pointer-events: none` lets clicks reach controls underneath; those
- * controls opt out of dragging via the `no-drag` rules in `layout.css`.
+ * macOS title-bar hit target, beside the traffic lights. Windows does not use
+ * this strip: the caption menu row is the only place you can hold and drag
+ * the window. `pointer-events: none` lets clicks reach controls underneath;
+ * those controls opt out of dragging via the `no-drag` rules in `layout.css`.
  */
 export default function DesktopWindowDragBand({
   position = "fixed",
@@ -19,7 +19,7 @@ export default function DesktopWindowDragBand({
 }) {
   const desktopChrome = useDesktopChromeStyle();
   const windowFullscreen = useWindowFullscreen();
-  if (!desktopChrome || windowFullscreen) return null;
+  if (desktopChrome !== "mac" || windowFullscreen) return null;
 
   return (
     <div
