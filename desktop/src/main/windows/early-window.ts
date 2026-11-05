@@ -2,7 +2,12 @@ import { app, BrowserWindow, ipcMain } from "electron";
 
 import { EARLY_IPC } from "../../shared/early-ipc";
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
-import { windowBackground, windowChrome, type WindowChromeTheme } from "./chrome";
+import {
+  concealWindowsMenuBar,
+  windowBackground,
+  windowChrome,
+  type WindowChromeTheme,
+} from "./chrome";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 
 /**
@@ -61,7 +66,12 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
       ...(options.preload ? { preload: options.preload } : {}),
     },
   });
-  win.once("ready-to-show", () => win.show());
+  // Before the first paint: the splash is a loading page and draws no menu.
+  concealWindowsMenuBar(win);
+  win.once("ready-to-show", () => {
+    concealWindowsMenuBar(win);
+    win.show();
+  });
   // The splash names the build it is starting; the failure page gets the same
   // value in its payload so the two can never disagree. `theme` is the resolved
   // mode — the page is static and does not track a later OS change.

@@ -3,7 +3,7 @@ import { join, resolve, sep } from "node:path";
 import { test } from "node:test";
 
 import { resolveOctopHome, expandHome } from "./shell-env";
-import { resolveStaticPath, isExternalLink } from "../protocol/static-handler";
+import { resolveDashboardFile, resolveStaticPath, isExternalLink } from "../protocol/static-handler";
 import { isApiPath, toBackendUrl, sanitizeForwardHeaders } from "../protocol/stream-proxy";
 
 /**
@@ -48,6 +48,22 @@ test("resolveStaticPath confines to root", () => {
   assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/sub/"), join(DASHBOARD_ROOT, "sub", "index.html"));
   assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/../../etc/passwd"), null);
   assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/sub/../../etc/passwd"), null);
+});
+
+test("reload of a client route serves the dashboard shell", () => {
+  const index = join(DASHBOARD_ROOT, "index.html");
+  const asset = join(DASHBOARD_ROOT, "assets", "app.js");
+  const present = new Set([index, asset]);
+  const exists = (abs: string) => present.has(abs);
+  assert.equal(resolveDashboardFile(DASHBOARD_ROOT, "/chat", exists), index);
+  assert.equal(
+    resolveDashboardFile(DASHBOARD_ROOT, "/personalization/skills", exists),
+    index,
+  );
+  assert.equal(resolveDashboardFile(DASHBOARD_ROOT, "/", exists), index);
+  assert.equal(resolveDashboardFile(DASHBOARD_ROOT, "/assets/app.js", exists), asset);
+  assert.equal(resolveDashboardFile(DASHBOARD_ROOT, "/assets/missing.js", exists), null);
+  assert.equal(resolveDashboardFile(DASHBOARD_ROOT, "/../../etc/passwd", exists), null);
 });
 
 test("isExternalLink only allows real http(s) links", () => {

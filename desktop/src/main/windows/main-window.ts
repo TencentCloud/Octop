@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 
 import { IPC_CHANNELS } from "../../shared/ipc-contract";
 import {
+  concealWindowsMenuBar,
   isAppNavigation,
   setWindowsCaptionVisible,
   windowChrome,
@@ -83,7 +84,13 @@ export function createMainWindow(options: {
 
   installDashboardGuards(win, options);
 
-  win.once("ready-to-show", () => win.show());
+  // The boot splash (#octop-boot) is still the loading page. The page menu
+  // appears only after React replaces that splash.
+  concealWindowsMenuBar(win);
+  win.once("ready-to-show", () => {
+    concealWindowsMenuBar(win);
+    win.show();
+  });
   // The boot script reads this once, writes it into localStorage, then strips
   // the query. Passing the preference (not the resolved mode) keeps "system"
   // tracking the OS after the page is up.

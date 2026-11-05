@@ -8,7 +8,10 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
  *           over the Dashboard's chrome row; the titlebar itself is gone.
  * - Windows hides the opaque caption and overlays the native buttons on a
  *           transparent strip, so the page shows through (the Cursor-style
- *           bar). The File / Edit / View / Help menu stays visible.
+ *           bar). The native menu bar stays hidden: the splash and the
+ *           dashboard boot screen draw no menu, and the dashboard draws
+ *           File / Edit / View / Help once it mounts. The menu stays
+ *           installed so its accelerators still fire.
  * - Linux   keeps the system frame, so no option is passed at all: a frameless
  *           window there would have no controls whatsoever.
  */
@@ -120,7 +123,10 @@ export function windowChrome(
     return {
       titleBarStyle: "hidden",
       titleBarOverlay: windowsTitleBarOverlay(mode),
-      autoHideMenuBar: false,
+      // Hidden from the first frame. The splash and the dashboard boot screen
+      // have no page menu; showing the native bar there is a menu on a loading
+      // page. The dashboard draws the bar after it mounts.
+      autoHideMenuBar: true,
     };
   }
   return {};
@@ -142,6 +148,17 @@ export function windowsCaptionOverlay(visible: boolean): {
     };
   }
   return windowsTitleBarOverlay(windowsCaptionMode);
+}
+
+/**
+ * Keep the native menu bar off this window. `autoHideMenuBar` alone still
+ * paints the bar on the first show when an application menu was installed
+ * before the window existed — which is exactly the splash.
+ */
+export function concealWindowsMenuBar(win: BrowserWindow): void {
+  if (process.platform !== "win32" || win.isDestroyed()) return;
+  win.setAutoHideMenuBar(true);
+  win.setMenuBarVisibility(false);
 }
 
 export function setWindowsCaptionVisible(win: BrowserWindow, visible: boolean): void {

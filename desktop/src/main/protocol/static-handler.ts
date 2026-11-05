@@ -17,6 +17,31 @@ export function resolveStaticPath(root: string, pathname: string): string | null
   return abs;
 }
 
+/** A navigation such as ``/chat``, not a file like ``/assets/app.js``. */
+function isClientRoute(pathname: string): boolean {
+  const last = pathname.split("/").filter(Boolean).pop() ?? "";
+  return !last.includes(".");
+}
+
+/**
+ * File to serve for a dashboard URL. A reload of a client route (``/chat``)
+ * has no file on disk; serve the SPA shell so the app boots again instead of
+ * an empty document. A missing asset stays missing.
+ */
+export function resolveDashboardFile(
+  root: string,
+  pathname: string,
+  exists: (abs: string) => boolean,
+): string | null {
+  const resolved = resolveStaticPath(root, pathname);
+  if (!resolved) return null;
+  if (exists(resolved)) return resolved;
+  if (!isClientRoute(pathname)) return null;
+  const index = resolveStaticPath(root, "/");
+  if (!index || !exists(index)) return null;
+  return index;
+}
+
 export function isExternalLink(url: string): boolean {
   return /^https?:\/\//i.test(url) && !/^http:\/\/127\.0\.0\.1/i.test(url);
 }
