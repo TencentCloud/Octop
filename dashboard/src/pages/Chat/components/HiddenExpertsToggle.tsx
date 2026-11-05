@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
+import cx from "classnames";
 import styles from "../index.module.less";
 
 /** Centered disclosure for the hidden-expert group in the chat nav. */
@@ -31,9 +32,10 @@ export default function HiddenExpertsToggle({
           size={14}
           strokeWidth={2}
           aria-hidden
-          className={`${styles.hiddenExpertsToggleChevron} ${
-            expanded ? styles.hiddenExpertsToggleChevronOpen : ""
-          }`}
+          className={cx(
+            styles.hiddenExpertsToggleChevron,
+            expanded && styles.hiddenExpertsToggleChevronOpen,
+          )}
         />
       </span>
     </button>

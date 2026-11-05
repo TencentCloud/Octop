@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
+import cx from "classnames";
 import styles from "./index.module.less";
 
 export interface PillOption {
@@ -25,9 +26,10 @@ function ScrollArrow({
         <motion.button
           key={side}
           type="button"
-          className={`${styles.arrow} ${
-            side === "prev" ? styles.arrowPrev : styles.arrowNext
-          }`}
+          className={cx(
+            styles.arrow,
+            side === "prev" ? styles.arrowPrev : styles.arrowNext,
+          )}
           aria-label={label}
           initial={false}
           animate={{ opacity: 1 }}
@@ -108,11 +110,7 @@ export default function PillScroller({
   };
 
   return (
-    <div
-      className={
-        className ? `${styles.scroller} ${className}` : styles.scroller
-      }
-    >
+    <div className={cx(styles.scroller, className)}>
       <ScrollArrow
         show={edges.left}
         side="prev"
@@ -170,9 +168,7 @@ export default function PillScroller({
               key={opt.value || "__all"}
               type="button"
               aria-pressed={selected}
-              className={
-                selected ? `${styles.pill} ${styles.pillActive}` : styles.pill
-              }
+              className={cx(styles.pill, selected && styles.pillActive)}
               onClick={() => onSelect(opt.value)}
             >
               {opt.label}

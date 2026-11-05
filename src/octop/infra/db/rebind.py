@@ -143,6 +143,21 @@ def rebind_control_plane(server: OctopServer, *, adopt_existing: bool = False) -
         logger.exception("failed closing previous database pool during rebind")
 
     server.services = new_services
+    from octop.infra.agents.experts.snapshot_store import adopt_local_snapshots
+    from octop.infra.users.profile_avatar import adopt_local_avatars
+
+    adopt_local_avatars(new_services.profile_avatar_repo, new_services.settings_repo, server.paths)
+    adopt_local_snapshots(
+        new_services.control_file_repo,
+        new_services.settings_repo,
+        server.paths.published_experts_dir,
+    )
+    if server.plugin_manager is not None:
+        server.plugin_manager.attach_control_plane(
+            new_services.control_file_repo,
+            new_services.settings_repo,
+        )
+        server.plugin_manager.load_installed(install_deps=False)
     if server.app_runtime is not None:
         server.app_runtime.replace_services(new_services, config)
     server._ensure_jwt_secret()  # noqa: SLF001 — re-seed secrets on empty DB

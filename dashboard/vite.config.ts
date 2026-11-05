@@ -37,6 +37,9 @@ export default defineConfig(({ mode }) => {
 
   const isProd = mode === "production";
   const analyze = env.ANALYZE === "true";
+  // BUILD_FAST=1：本地看效果专用。跳过压缩与 PWA 预缓存，并放开 Rollup 并发，
+  // 产物功能一致、体积更大，只用于 dev/8088 预览，发布前请跑标准 build。
+  const fast = process.env.BUILD_FAST === "1";
   // Dev server defaults to Vite's :5173. Override with VITE_DEV_PORT (e.g. 80
   // for LAN / same-origin setups). Must stay in sync with server.hmr.clientPort.
   const devServerPort = Number(process.env.VITE_DEV_PORT || 5173);
@@ -150,6 +153,8 @@ export default defineConfig(({ mode }) => {
       suppressViteDisconnectReload(),
       react(),
       VitePWA({
+        // fast 模式不生成 Service Worker，省掉 workbox 扫描与打包。
+        disable: fast,
         // prompt: new SW stays in waiting until the user accepts via
         // PwaUpdatePrompt → applyUpdate() → SKIP_WAITING. Avoid autoUpdate
         // skipWaiting + page reload loops (especially Safari/WebKit).

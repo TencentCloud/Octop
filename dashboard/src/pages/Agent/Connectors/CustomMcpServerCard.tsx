@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import type { CustomMcpTransport } from "../../../api/modules/connectors";
 import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
@@ -98,13 +99,11 @@ export function CustomMcpServerCard({
 
   return (
     <div
-      className={`${styles.customMcpServerCard}${
-        card.collapsed ? "" : ` ${styles.customMcpServerCardOpen}`
-      }${
-        card.enabled && !authPending
-          ? ""
-          : ` ${styles.customMcpServerCardDisabled}`
-      }`}
+      className={cx(
+        styles.customMcpServerCard,
+        !card.collapsed && styles.customMcpServerCardOpen,
+        !(card.enabled && !authPending) && styles.customMcpServerCardDisabled,
+      )}
       style={
         {
           "--mcp-accent": accent,
@@ -124,11 +123,12 @@ export function CustomMcpServerCard({
               <SharedResourceBadge shared={card.shared} owned />
             </span>
             <span
-              className={`${styles.customMcpTransportBadge} ${
+              className={cx(
+                styles.customMcpTransportBadge,
                 isHttp
                   ? styles.customMcpTransportHttp
-                  : styles.customMcpTransportStdio
-              }`}
+                  : styles.customMcpTransportStdio,
+              )}
             >
               {isHttp
                 ? t("connectors.customMcp.transportHttp", "HTTP")

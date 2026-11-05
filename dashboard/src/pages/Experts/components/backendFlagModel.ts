@@ -48,7 +48,7 @@ export type BackendFlagIcon =
   | "generic";
 
 const DATABASE_KINDS = new Set(["postgres"]);
-const STORAGE_KINDS = new Set(["cos", "s3", "oss", "obs", "custom"]);
+const STORAGE_KINDS = new Set(["cos", "s3", "oss", "obs", "tos", "custom"]);
 const SANDBOX_KINDS = new Set(["docker", "opensandbox"]);
 
 /** Collapse a concrete backend into one of the shared flag icons. */

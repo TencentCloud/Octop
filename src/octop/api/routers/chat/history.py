@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -123,6 +124,19 @@ async def list_threads(
     awaiting_ids = server.app_runtime.gateway.processor.hitl_coordinator.store.pending_thread_ids(
         agent_id=agent_id, user_id=effective_uid
     )
+    # title / last_active 只能说明「建过会话」，不能说明「有内容」：
+    # 有些 thread 有标题但从未落过消息，点开就是空白。这里补一次真实计数。
+    message_repo = server.services.thread_message_repo
+    ids_with_messages = message_repo.threads_with_messages([r.thread_id for r in rows])
+
+    def _has_messages(row: Any) -> bool:
+        if not thread_row_has_messages(row):
+            return False
+        if row.thread_id in ids_with_messages:
+            return True
+        # 投影还没 ready 时消息可能仍在 checkpoint，不能断言为空
+        return bool(message_repo.projection_status(row.thread_id) != "ready")
+
     return [
         {
             "thread_id": r.thread_id,
@@ -132,7 +146,7 @@ async def list_threads(
             "last_active": r.last_active,
             "created_at": r.created_at,
             "is_active": r.thread_id == bound,
-            "has_messages": thread_row_has_messages(r),
+            "has_messages": _has_messages(r),
             "pinned": r.pinned,
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
@@ -226,19 +240,33 @@ async def start_history_migration(
 async def create_thread(
     agent_id: str,
     as_user: int | None = None,
+    rebind: bool = True,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Start a new conversation (/new equivalent for dashboard)."""
+    """Start a new conversation (/new equivalent for dashboard).
+
+    ``rebind=false`` inserts a thread without moving the agent's current
+    dashboard session, so an embedded panel can keep its own conversation.
+    """
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     effective_uid = as_user if as_user is not None else user.id
     sk = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
-    tid = await server.app_runtime.gateway.thread_registry.reset(
-        agent_id=agent_id,
-        user_id=effective_uid,
-        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
-        channel_subject_id=str(effective_uid),
-    )
+    registry = server.app_runtime.gateway.thread_registry
+    if rebind:
+        tid = await registry.reset(
+            agent_id=agent_id,
+            user_id=effective_uid,
+            channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+            channel_subject_id=str(effective_uid),
+        )
+    else:
+        tid = registry.create_thread(
+            agent_id=agent_id,
+            user_id=effective_uid,
+            channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+            session_key=sk,
+        )
     return {"thread_id": tid, "session_key": sk}
 
 
@@ -426,6 +454,38 @@ async def mark_thread_read(
     """Clear unread message count for a thread (e.g. when the user opens it in the dashboard)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     server.app_runtime.gateway.thread_registry.mark_thread_read(thread_id)
+
+
+@router.post(
+    "/agents/{agent_id}/threads/{thread_id}/cancel",
+    summary="Cancel the running turn",
+)
+async def cancel_thread_turn(
+    agent_id: str,
+    thread_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Stop whatever turn is in flight for this thread.
+
+    The WS ``cancel`` frame only lands while the browser that started the turn
+    still owns a subscribed socket. After a reload, an approval park, or from a
+    second surface, that frame is a no-op and the UI looks frozen — so Stop is
+    also routed over HTTP, which always reaches the server.
+    """
+    _require_thread(server, agent_id, thread_id, user, as_user)
+    gateway = server.app_runtime.gateway
+    steer = getattr(gateway, "steer", None)
+    if steer is not None:
+        # Clearing the parked queue also drops a stale ``hitl_paused`` phase, so
+        # the next message starts a fresh turn instead of queueing forever.
+        with contextlib.suppress(Exception):
+            steer.mark_cancelling(thread_id)
+        with contextlib.suppress(Exception):
+            steer.discard(thread_id, reason="turn_cancelled")
+    server.app_runtime.agent_registry.cancel_stream(agent_id, thread_id)
+    return {"thread_id": thread_id, "cancelled": True}
 
 
 @router.post(

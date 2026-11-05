@@ -132,7 +132,7 @@ conversation_id = 主持人 thread_id
 | GET | `/api/teams` | 当前用户的团队（含成员摘要） |
 | POST | `/api/teams` | 创建主持人 + 至少 2 名成员 |
 | GET | `/api/teams/{team_id}` | 详情 |
-| PATCH | `/api/teams/{team_id}` | 改名称/模型/欢迎语/成员（在途则拒改该成员） |
+| PATCH | `/api/teams/{team_id}` | 改名称/模型/欢迎语/头像 `icon_url`/成员（在途则拒改该成员） |
 | DELETE | `/api/teams/{team_id}` | 删除团队主持人 |
 
 `GET /api/agents` 增加 `kind`；团队行带 `member_ids`。`kind=team` 不可 `is_shared`。
@@ -144,7 +144,7 @@ conversation_id = 主持人 thread_id
 专家页 tab：`我的专家 | 我的团队 | 专家市场`。专家市场包含门户目录，以及本实例用户发布的模板。
 
 - 我的专家：过滤 `kind !== team`
-- 我的团队：卡片/空态指引；创建/编辑只要名称、模型、颜色、欢迎语、成员；通道走现有通道配置（绑在主持人）
+- 我的团队：卡片/空态指引；创建/编辑只要名称、模型、头像、颜色、欢迎语、成员；通道走现有通道配置（绑在主持人）
 - 侧栏：团队带团队徽章
 - 团队聊天右侧：成员条（不含主持人）
 - 气泡：`speaker_agent_id` 对应专家头像/名称；主持人用自己的头像

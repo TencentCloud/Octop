@@ -769,6 +769,7 @@
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
     "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
+    "model_not_authorized": "This API key is not authorized to use model {model}. Grant access for this model on the Tencent Cloud API Key page, or switch to a model this key can use under Admin → Model Management.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
