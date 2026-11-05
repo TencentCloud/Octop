@@ -20,11 +20,24 @@ import {
   Select,
 } from "antd";
 
-import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
+import {
+  Download,
+  Key,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
-import type { ProviderRow, ProviderModel } from "../../useProviders";
+import type {
+  ProviderRow,
+  ProviderModel,
+  ProviderPreset,
+} from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
+import { mergePresetModels } from "../../presetModels";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
@@ -68,6 +81,7 @@ interface ProviderConfigForm {
 
 interface ProviderConfigModalProps {
   provider: ProviderRow;
+  presetId?: string;
   open: boolean;
   onClose: () => void;
   onSaved: () => void | Promise<void>;
@@ -84,6 +98,7 @@ function formatFileSize(bytes: number): string {
 
 export function ProviderConfigModal({
   provider,
+  presetId,
   open,
   onClose,
   onSaved,
@@ -95,6 +110,7 @@ export function ProviderConfigModal({
   const [formDirty, setFormDirty] = useState(false);
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
+  const [syncingPreset, setSyncingPreset] = useState(false);
   const [form] = Form.useForm<ProviderConfigForm>();
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
 
@@ -657,9 +673,8 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    const currentDefaultModel =
+      provider.default_model ?? provider.models?.[0]?.id ?? "";
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
@@ -680,6 +695,40 @@ export function ProviderConfigModal({
   const handleModelsChange = (models: ProviderModel[]) => {
     setDraftModels(models);
     setFormDirty(true);
+  };
+
+  const handleSyncPreset = async () => {
+    setSyncingPreset(true);
+    try {
+      // Fetch on demand so changes to the bundled JSON are visible immediately.
+      const presets = await request<ProviderPreset[]>("/providers/presets");
+      const preset = presets.find((item) => item.id === presetId);
+      if (!preset) {
+        message.error(t("models.syncPresetUnavailable"));
+        return;
+      }
+      const merged = mergePresetModels(draftModels, preset, t);
+      const added = merged.filter(
+        (model) => !draftModels.some((old) => old.id === model.id),
+      ).length;
+      if (JSON.stringify(merged) === JSON.stringify(draftModels)) {
+        message.info(t("models.syncPresetUpToDate"));
+        return;
+      }
+      setDraftModels((current) => mergePresetModels(current, preset, t));
+      setFormDirty(true);
+      message.success(
+        preset.model_catalog_locked
+          ? t("models.syncPackageDone", { count: merged.length })
+          : t("models.syncPresetAdded", { count: added }),
+      );
+    } catch (err) {
+      message.error(
+        err instanceof Error ? err.message : t("models.syncPresetFailed"),
+      );
+    } finally {
+      setSyncingPreset(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -705,9 +754,8 @@ export function ProviderConfigModal({
         payload.stream_usage = Boolean(values.stream_usage);
       }
       // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
+      const existingDefault =
+        provider.default_model ?? provider.models?.[0]?.id ?? "";
       if ((values.model ?? "") !== existingDefault)
         payload.model = values.model?.trim() || null;
 
@@ -953,6 +1001,7 @@ export function ProviderConfigModal({
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,
+        preset_id: presetId,
       });
       if (!result.ok) {
         message.error(
@@ -1023,7 +1072,7 @@ export function ProviderConfigModal({
             <Button
               type="primary"
               loading={saving}
-              disabled={!formDirty}
+              disabled={!formDirty || syncingPreset}
               onClick={handleSubmit}
             >
               {t("common.save")}
@@ -1121,15 +1170,28 @@ export function ProviderConfigModal({
         >
           {t("models.testConnection")}
         </Button>
-        <Button
-          size="small"
-          icon={<Download size={12} />}
-          loading={fetchingModels}
-          onClick={() => void handleFetchModels()}
-          style={{ marginLeft: 8 }}
-        >
-          {t("models.fetchModels")}
-        </Button>
+        {!provider.model_catalog_locked && (
+          <Button
+            size="small"
+            icon={<Download size={12} />}
+            loading={fetchingModels}
+            onClick={() => void handleFetchModels()}
+            style={{ marginLeft: 8 }}
+          >
+            {t("models.fetchModels")}
+          </Button>
+        )}
+        {presetId && (
+          <Button
+            size="small"
+            icon={<RefreshCw size={12} />}
+            loading={syncingPreset}
+            onClick={() => void handleSyncPreset()}
+            style={{ marginLeft: 8 }}
+          >
+            {t("models.syncPreset")}
+          </Button>
+        )}
         {!isOnnx && provider.kind === "openai" ? <TestStreamHint /> : null}
       </div>
 
@@ -1140,6 +1202,7 @@ export function ProviderConfigModal({
 
       <ModelListEditor
         provider={provider}
+        allowAdd={!provider.model_catalog_locked}
         models={draftModels}
         onModelsChange={handleModelsChange}
         apiPrefix={apiPrefix}

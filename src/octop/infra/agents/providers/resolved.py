@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from octop.infra.agents.providers.catalog import provider_models
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
     is_embedding_provider,
@@ -36,7 +37,7 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
             continue
         provider_name = str(getattr(provider, "name", "") or "")
         provider_api_key = str(getattr(provider, "api_key", "") or "") or None
-        models = provider.get_models()
+        models = provider_models(provider, display_order=True)
         if is_embedding_provider(
             provider_name=provider_name,
             provider_api_key=provider_api_key,

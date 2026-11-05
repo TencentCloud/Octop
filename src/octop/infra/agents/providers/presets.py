@@ -350,6 +350,8 @@ def load_provider_presets() -> list[dict[str, Any]]:
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
     for preset in out:
+        if preset.get("provider_group") == "tencent":
+            preset["model_catalog_locked"] = True
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:
             profile = _reasoning_profile(provider_id, str(model.get("id") or ""))

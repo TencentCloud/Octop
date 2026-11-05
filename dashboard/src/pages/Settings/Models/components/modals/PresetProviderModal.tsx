@@ -9,7 +9,7 @@ import { message } from "@/utils/antdMessage";
 import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
-import { enrichWizardModel } from "../../wizardModelMeta";
+import { modelsFromPreset } from "../../presetModels";
 import type {
   ProviderModel,
   ProviderPreset,
@@ -88,27 +88,7 @@ export function PresetProviderModal({
 
   useEffect(() => {
     if (open) {
-      const baseModels: ProviderModel[] = preset.models.map((m) => {
-        const meta = enrichWizardModel(m, t);
-        const ctx =
-          m.context_window ?? m.max_input_tokens ?? meta.context_window;
-        const entry: ProviderModel = {
-          id: m.id,
-          name: m.name,
-          enabled: true,
-          input: meta.input,
-          thinking: null,
-        };
-        if (meta.reasoning) entry.reasoning = true;
-        if (ctx) entry.context_window = ctx;
-        if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
-        if (embeddingLane || m.embedding || m.task === "embedding") {
-          entry.embedding = true;
-          entry.task = "embedding";
-        }
-        return entry;
-      });
-      setDraftModels(baseModels);
+      setDraftModels(modelsFromPreset(preset, t));
       form.resetFields();
       form.setFieldsValue({
         name: preset.name,
@@ -134,6 +114,7 @@ export function PresetProviderModal({
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
         name: preset.id,
+        preset_id: preset.id,
       });
       if (!result.ok) {
         message.error(
@@ -281,6 +262,7 @@ export function PresetProviderModal({
           kind: preset.protocol,
           base_url: values.base_url?.trim() || null,
           api_key: values.api_key?.trim() || null,
+          extra_json: JSON.stringify({ preset_id: preset.id }),
           models,
           purpose: embeddingLane ? "embedding" : "chat",
           ...(preset.protocol === "openai" && !embeddingLane
@@ -401,14 +383,16 @@ export function PresetProviderModal({
             >
               {t("models.testConnection")}
             </Button>
-            <Button
-              icon={<Download size={14} />}
-              loading={fetchingModels}
-              onClick={() => void handleFetchModels()}
-              style={{ marginLeft: 8 }}
-            >
-              {t("models.fetchModels")}
-            </Button>
+            {!preset.model_catalog_locked && (
+              <Button
+                icon={<Download size={14} />}
+                loading={fetchingModels}
+                onClick={() => void handleFetchModels()}
+                style={{ marginLeft: 8 }}
+              >
+                {t("models.fetchModels")}
+              </Button>
+            )}
             {preset.protocol === "openai" && !embeddingLane ? (
               <TestStreamHint />
             ) : null}
@@ -419,6 +403,7 @@ export function PresetProviderModal({
           </Divider>
           <ModelListEditor
             provider={draftProvider}
+            allowAdd={!preset.model_catalog_locked}
             models={draftModels}
             onModelsChange={setDraftModels}
             apiPrefix="/admin/providers"

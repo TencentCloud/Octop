@@ -23,6 +23,7 @@ import styles from "../../index.module.less";
 
 interface ProviderCardProps {
   provider: ProviderRow;
+  presetId?: string;
   onSaved: () => void | Promise<void>;
   isHover: boolean;
   onMouseEnter: () => void;
@@ -33,6 +34,7 @@ interface ProviderCardProps {
 
 export function ProviderCard({
   provider,
+  presetId,
   onSaved,
   isHover,
   onMouseEnter,
@@ -395,6 +397,7 @@ export function ProviderCard({
 
       <ProviderConfigModal
         provider={provider}
+        presetId={presetId}
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         onSaved={onSaved}

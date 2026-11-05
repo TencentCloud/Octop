@@ -9,9 +9,15 @@ from types import SimpleNamespace
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.agents.providers.catalog import (
+    package_models,
+    package_preset,
+    provider_models,
+    with_default_first,
+)
 from octop.infra.agents.providers.codex_apply import (
     CODEX_PROVIDER_NAME,
     apply_codex_credentials,
@@ -67,6 +73,9 @@ class ProviderCreateBody(BaseModel):
 
 
 class ProviderPatchBody(BaseModel):
+    model: str | None = Field(
+        default=None, description="Default model id, independent of dashboard display order."
+    )
     kind: str | None = None
     base_url: str | None = None
     api_key: str | None = None
@@ -237,6 +246,9 @@ class ProviderFetchModelsBody(BaseModel):
     base_url: str | None = None
     extra_json: str | None = None
     name: str | None = None
+    preset_id: str | None = Field(
+        default=None, description="Selected preset identity; plans may share the same base URL."
+    )
 
 
 def _is_codex_base_url(base_url: str | None) -> bool:
@@ -258,9 +270,11 @@ async def _maybe_refresh_codex_row(server: Any, row: Any) -> Any:
 
 
 def _row_to_dict(r: Any) -> dict[str, Any]:
+    stored = provider_models(r)
+    preset = package_preset(r.name, extra_json=r.extra_json)
     models: list[dict[str, Any]] = []
-    for stored in r.get_models():
-        model = dict(stored)
+    for entry in package_models(stored, preset, display_order=True):
+        model = dict(entry)
         capability = reasoning_capability(model, base_url=r.base_url)
         if capability is not None:
             model["reasoning"] = True
@@ -274,6 +288,9 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "base_url": r.base_url,
         "api_key": r.api_key,
         "models": models,
+        "default_model": stored[0]["id"] if stored else None,
+        "preset_id": preset["id"] if preset else None,
+        "model_catalog_locked": preset is not None,
         "note": r.note,
         "enabled": bool(r.enabled),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
@@ -373,7 +390,13 @@ async def admin_create_provider(
     import json as _json
 
     models = (
-        _sync_model_visibility(server, body.name, body.models) if body.models is not None else None
+        _sync_model_visibility(
+            server,
+            body.name,
+            package_models(body.models, package_preset(body.name, extra_json=body.extra_json)),
+        )
+        if body.models is not None
+        else None
     )
     if body.purpose == "embedding":
         models = stamp_embedding_models(models)
@@ -404,7 +427,21 @@ async def admin_patch_provider(
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
+    if "model" in body.model_fields_set and body.models is None:
+        body.models = provider_models(row)
     if body.models is not None:
+        current = provider_models(row)
+        default_model = (
+            body.model
+            if "model" in body.model_fields_set
+            else str(current[0]["id"])
+            if current
+            else None
+        )
+        body.models = with_default_first(
+            package_models(body.models, package_preset(row.name, extra_json=row.extra_json)),
+            default_model,
+        )
         body.models = _sync_model_visibility(server, row.name, body.models)
     server.services.provider_repo.update(
         provider_id,
@@ -490,18 +527,21 @@ async def admin_test_provider_draft(
     )
 
 
-@admin_router.post("/fetch-models", summary="List models from an OpenAI-compatible draft")
+@admin_router.post("/fetch-models", summary="List models for the selected provider or package")
 async def admin_fetch_provider_models(
     body: ProviderFetchModelsBody,
     request: Request,
     _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
-    """Fetch remote model ids via OpenAI-compatible ``GET /models`` (openai kind only)."""
+    """Use the selected package catalog; other providers query OpenAI-compatible /models."""
     if body.kind != "openai":
         return {
             "ok": False,
             "error": "fetch models is only supported for openai-compatible providers",
         }
+    preset = package_preset(body.name or "", preset_id=body.preset_id, extra_json=body.extra_json)
+    if preset is not None:
+        return {"ok": True, "models": preset["models"]}
     api_key = (body.api_key or "").strip()
     if not api_key:
         return {"ok": False, "error": "api_key is required"}
