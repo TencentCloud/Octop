@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.3b1"
+version = "1.0.3b3"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on octop-harness"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,8 +21,8 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "octop-harness[all]>=1.0.5",
-    "octop-memory>=1.0.2",
+    "octop-harness[all]>=1.0.7",
+    "octop-memory>=1.0.3",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.3",
     "cryptography>=41",
@@ -38,7 +38,7 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "langgraph-checkpoint-postgres>=2.0",
     "mcp>=1.9,<2",
-    "pillow>=10.0",
+    "pillow>=13.0.0",
     "pypdf>=5.0",
     "python-docx>=1.2.0",
     "python-pptx>=1.0",
@@ -47,6 +47,8 @@ dependencies = [
     "xlrd>=2.0.1",
     "ldap3>=2.9.1",
     "firecrawl-anydoc>=0.2.4",
+    "pyotp>=2.10.0",
+    "webauthn>=3.0.1",
 ]
 
 [project.optional-dependencies]
@@ -68,6 +70,8 @@ dev = [
 browser = [
     "playwright>=1.40",
 ]
+# Volcengine TOS object storage (Admin storage kind ``tos``).
+tos = ["tos>=2.9,<3"]
 # Kept for backward compatibility; pillow is now a core dependency.
 desktop = ["mss>=9.0", "pynput>=1.7"]
 # Local ONNX / fastembed embedding models (Models admin local tab).

@@ -8,6 +8,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Collapse, Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
+import cx from "classnames";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
@@ -85,9 +86,7 @@ function ProfileEntityCard({
       <div className={styles.entityCard}>
         <div className={styles.entityCardHeader}>
           {icon}
-          <div
-            className={`${expertStyles.fileLabel} ${styles.entityCardTitle}`}
-          >
+          <div className={cx(expertStyles.fileLabel, styles.entityCardTitle)}>
             {title}
           </div>
           {trailing}

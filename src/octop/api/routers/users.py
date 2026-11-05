@@ -6,10 +6,12 @@ import logging
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.auth.ldap.config import LDAP_KIND
+from octop.infra.auth.mfa import MfaService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import (
@@ -33,7 +35,14 @@ UserBatchAction = Literal["enable", "disable", "delete", "set_token_quota", "set
 
 class UserCreateBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=200)
+    password: str | None = Field(default=None, max_length=200)
+    directory: bool = Field(
+        default=False,
+        description=(
+            "Create a passwordless account reserved for the configured LDAP directory. "
+            "The username must match the directory login name. A local password is ignored."
+        ),
+    )
     role: str = Field(
         default="user",
         description="Role-template public id (admin | user | custom ULID).",
@@ -105,11 +114,27 @@ class UserBatchResponse(BaseModel):
     failed: int
 
 
-def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[str, Any]:
+def _directory_provider_id(server: Any) -> int | None:
+    if server is None or getattr(server, "services", None) is None:
+        return None
+    row = server.services.sso_repo.get_by_kind(LDAP_KIND)
+    return int(row.id) if row is not None else None
+
+
+def _row_to_dict(
+    r: Any,
+    policy: Any | None = None,
+    server: Any = None,
+    *,
+    directory_provider_id: int | None = None,
+) -> dict[str, Any]:
     now = int(time.time())
     locked_until = int(getattr(r, "login_locked_until", 0) or 0)
     locked = locked_until > now and not bool(r.disabled)
     retry_after = max(0, locked_until - now) if locked else 0
+    mfa_active = False
+    if server is not None and getattr(server, "services", None) is not None:
+        mfa_active = MfaService(server.services).has_verified_factor(int(r.id))
     return {
         "id": r.id,
         "username": r.username,
@@ -118,6 +143,12 @@ def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[
         "email": r.email,
         "has_password": r.password_hash is not None,
         "sso_linked": r.sso_provider_id is not None and r.sso_subject is not None,
+        "directory": bool(
+            directory_provider_id is not None
+            and r.password_hash is None
+            and r.sso_provider_id == directory_provider_id
+        ),
+        "mfa_active": mfa_active,
         "disabled": bool(r.disabled),
         "login_failed_count": int(getattr(r, "login_failed_count", 0) or 0),
         "login_locked": locked,
@@ -136,7 +167,7 @@ def _user_avatar_url(server: Any, user_id: int) -> str | None:
     from octop.infra.users.profile_avatar import profile_avatar_url
 
     return profile_avatar_url(
-        server.services.paths.user_avatars_dir,
+        server.services.avatars("user"),
         str(user_id),
         f"/api/users/{user_id}/avatar",
     )
@@ -291,28 +322,23 @@ async def list_users(
 ) -> list[dict[str, Any]]:
     rows = server.user_manager.list_all(include_disabled=True)
     policy_map = server.services.user_policy_repo.list_by_user_ids([r.id for r in rows])
-    return [_row_to_dict(r, policy_map.get(r.id), server) for r in rows]
+    ldap_id = _directory_provider_id(server)
+    return [
+        _row_to_dict(r, policy_map.get(r.id), server, directory_provider_id=ldap_id) for r in rows
+    ]
 
 
-def _expert_template_id(body: UserCreateBody, server: Any) -> str | None:
-    """Catalog id to bootstrap, or ``None`` when the caller opted out."""
+def _expert_template_id(body: UserCreateBody) -> str | None:
+    """Market template id to bootstrap, or ``None`` when the caller opted out.
+
+    The id is not checked against the local catalog. Creation pulls it from
+    the expert market and still succeeds when that pull fails.
+    """
     if not body.create_default_expert:
         return None
     from octop.infra.agents.experts.default_agent import DEFAULT_EXPERT_ID
 
-    template_id = (body.expert_template_id or "").strip() or DEFAULT_EXPERT_ID
-    catalog = getattr(server, "expert_catalog", None)
-    if catalog is None or catalog.get(template_id) is None:
-        raise OctopError(ErrorCode.EXPERT_TEMPLATE_NOT_FOUND, "expert template not found")
-    return template_id
-
-
-async def _discard_new_user(server: Any, username: str) -> None:
-    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
-    try:
-        await server.user_manager.remove(username, agent_manager=registry)
-    except Exception:
-        logger.exception("failed to roll back user %s after expert bootstrap error", username)
+    return (body.expert_template_id or "").strip() or DEFAULT_EXPERT_ID
 
 
 @router.post("", status_code=201)
@@ -322,7 +348,7 @@ async def create_user(
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    template_id = _expert_template_id(body, server)
+    template_id = _expert_template_id(body)
     role_id, template_name, template_perms, template_policies = _resolve_role_template(
         server, body.role
     )
@@ -346,44 +372,44 @@ async def create_user(
     role_name = (
         _clean_role_name(body.role_name) if "role_name" in body.model_fields_set else template_name
     )
+    directory_provider_id = None
+    password = body.password
+    if body.directory:
+        provider = server.services.sso_repo.get_by_kind(LDAP_KIND)
+        if provider is None:
+            raise OctopError(ErrorCode.LDAP_NOT_CONFIGURED, "LDAP is not configured")
+        directory_provider_id = int(provider.id)
+        password = None
     user = await server.user_manager.create(
         username=body.username,
-        password=body.password,
+        password=password,
         role=role_id,
         display_name=body.display_name,
         email=body.email,
         permissions=permissions,
         role_name=role_name,
+        directory_provider_id=directory_provider_id,
     )
     await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     if template_id is not None:
-        from octop.infra.agents.experts.default_agent import (
-            bootstrap_default_agent,
-            user_policy_workspace_root,
+        from octop.infra.agents.experts.default_agent import (  # noqa: PLC0415
+            try_bootstrap_default_agent,
         )
 
-        registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
-        if registry is None:
-            await _discard_new_user(server, user.username)
-            raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
-        try:
-            created_agent = await bootstrap_default_agent(
-                registry,
-                server.expert_catalog,
-                user_id=user.id,
-                locale=resolve_request_locale(request),
-                root_dir=user_policy_workspace_root(server, user.id),
-                expert_id=template_id,
-            )
-        except Exception:
-            await _discard_new_user(server, user.username)
-            raise
-        if created_agent is None:
-            await _discard_new_user(server, user.username)
-            raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
+        await try_bootstrap_default_agent(
+            server,
+            user_id=user.id,
+            locale=resolve_request_locale(request),
+            expert_id=template_id,
+        )
     row = server.user_manager.get_row(user.id)
     assert row is not None
-    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)
+    return _row_to_dict(
+        row,
+        server.services.user_policy_repo.list_for_user(row.id),
+        server,
+        directory_provider_id=_directory_provider_id(server),
+    )
 
 
 def _batch_fail(user_id: int, *, code: str, error: str) -> UserBatchItemResult:
@@ -504,7 +530,12 @@ async def get_user(
     row = server.user_manager.get_row(user_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)
+    return _row_to_dict(
+        row,
+        server.services.user_policy_repo.list_for_user(row.id),
+        server,
+        directory_provider_id=_directory_provider_id(server),
+    )
 
 
 @router.patch("/{user_id}")
@@ -566,7 +597,7 @@ async def patch_user(
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 
         server.services.user_repo.set_avatar_icon(user_id, clean_avatar_icon(body.avatar_icon))
-        delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
+        delete_profile_avatar(server.services.avatars("user"), str(user_id))
     policy_kwargs = _policy_kwargs_from_body(body)
     if policy_kwargs:
         await server.user_manager.set_resource_policy(row.username, **policy_kwargs)
@@ -576,6 +607,7 @@ async def patch_user(
         updated,
         server.services.user_policy_repo.list_for_user(updated.id),
         server,
+        directory_provider_id=_directory_provider_id(server),
     )
 
 
@@ -590,6 +622,20 @@ async def unlock_user_login(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     await server.user_manager.unlock_login(row.username)
+
+
+@router.delete("/{user_id}/mfa", status_code=204, summary="Admin reset MFA factors")
+async def admin_reset_mfa(
+    user_id: int,
+    actor: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Clear TOTP, passkeys, and recovery codes for ``user_id``; bump their mfa_version."""
+    row = server.user_manager.get_row(user_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    MfaService(server.services).admin_reset(target_user_id=user_id, actor=actor.username)
+    return Response(status_code=204)
 
 
 @router.post("/{user_id}/reset-password", status_code=204)
@@ -632,7 +678,7 @@ async def upload_user_avatar(
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
-        server.services.paths.user_avatars_dir,
+        server.services.avatars("user"),
         str(user_id),
         await file.read(),
     )
@@ -651,7 +697,7 @@ async def get_user_avatar(
 
     if server.user_manager.get_row(user_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    return avatar_response(server.services.paths.user_avatars_dir, str(user_id))
+    return avatar_response(server.services.avatars("user"), str(user_id))
 
 
 @router.delete("/{user_id}/avatar", status_code=204)
@@ -664,4 +710,4 @@ async def delete_user_avatar(
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
+    delete_profile_avatar(server.services.avatars("user"), str(user_id))
