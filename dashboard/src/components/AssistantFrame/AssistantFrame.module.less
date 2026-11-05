@@ -1,0 +1,256 @@
+.float,
+.overlayRight,
+.overlayBottom {
+  position: fixed;
+  z-index: 1450;
+  box-sizing: border-box;
+  display: flex;
+}
+
+.overlayRight {
+  top: 72px;
+  right: 12px;
+  bottom: 12px;
+}
+
+.overlayBottom {
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+}
+
+.inlineRight,
+.inlineBottom {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.inlineRight {
+  display: flex;
+  flex-direction: row;
+  align-self: stretch;
+  height: 100%;
+}
+
+.inlineBottom {
+  display: flex;
+  flex-direction: column;
+}
+
+.glass,
+.dockShell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.glass {
+  width: 100%;
+  height: 100%;
+}
+
+.glass {
+  border: 1px solid
+    color-mix(in srgb, var(--fn-border-primary) 60%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--fn-bg-elevated, #fff) 93%, transparent);
+  box-shadow:
+    0 32px 80px -20px rgba(0, 0, 0, 0.4),
+    0 12px 32px -12px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(20px) saturate(140%);
+}
+
+.inlineRight .dockShell {
+  border-left: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
+  background: var(--fn-bg-primary);
+}
+
+.inlineBottom .dockShell {
+  border-top: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
+  background: var(--fn-bg-primary);
+}
+
+.header {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.06));
+}
+
+.header[data-float="1"] {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.header[data-float="1"]:active {
+  cursor: grabbing;
+}
+
+.title {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.titleText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grip {
+  flex: 0 0 auto;
+  color: var(--fn-text-quaternary);
+}
+
+.actions {
+  display: flex;
+  flex: 1 0 auto;
+  flex-wrap: wrap;
+  gap: 2px;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 100%;
+}
+
+.activeAction {
+  color: var(--fn-color-brand, #6366f1);
+  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.floatHandle,
+.dockHandle {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+
+.floatHandle[data-dir="n"],
+.dockHandle[data-dir="n"] {
+  top: 0;
+  right: 16px;
+  left: 16px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.floatHandle[data-dir="s"] {
+  right: 16px;
+  bottom: 0;
+  left: 16px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.floatHandle[data-dir="w"],
+.dockHandle[data-dir="w"] {
+  top: 16px;
+  bottom: 16px;
+  left: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.floatHandle[data-dir="e"] {
+  top: 16px;
+  right: 0;
+  bottom: 16px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.floatHandle[data-dir="nw"],
+.floatHandle[data-dir="ne"],
+.floatHandle[data-dir="sw"],
+.floatHandle[data-dir="se"] {
+  width: 16px;
+  height: 16px;
+}
+
+.floatHandle[data-dir="nw"] {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.floatHandle[data-dir="ne"] {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.floatHandle[data-dir="sw"] {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.floatHandle[data-dir="se"] {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.inlineRight .dockHandle[data-dir="w"] {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.inlineBottom .dockHandle[data-dir="n"] {
+  position: relative;
+  right: auto;
+  left: auto;
+  flex: 0 0 auto;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.dockHandle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 2px;
+  background: var(--fn-border-primary, rgba(0, 0, 0, 0.18));
+  transform: translate(-50%, -50%);
+}
+
+.dockHandle[data-dir="w"]::after {
+  width: 3px;
+  height: 28px;
+}
+
+.dockHandle[data-dir="n"]::after {
+  width: 28px;
+  height: 3px;
+}
+
+.dockHandle:hover::after {
+  background: var(--fn-color-brand, #6366f1);
+}
