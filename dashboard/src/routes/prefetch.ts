@@ -12,6 +12,7 @@ const ROUTE_PREFETCHERS: Record<string, () => Promise<unknown>> = {
   "/workbench": () => import("../pages/Control/Workbench"),
   "/workbench/browser": () => import("../pages/Control/Workbench"),
   "/workbench/terminal": () => import("../pages/Control/Workbench"),
+  "/workbench/cloud": () => import("../pages/Control/Workbench"),
   "/remote-desktop": () => import("../pages/Control/RemoteDesktop"),
   "/remote-desktop/desktop": () => import("../pages/Control/RemoteDesktop"),
   "/remote-desktop/phone": () => import("../pages/Control/RemoteDesktop"),
