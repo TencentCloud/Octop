@@ -105,6 +105,29 @@ def passwd(username: str, password: str) -> None:
     click.echo("ok")
 
 
+@user.command("reset-mfa")
+@click.argument("username")
+@click.option("--yes", is_flag=True, default=False, help="skip confirmation")
+def reset_mfa(username: str, yes: bool) -> None:
+    """Clear a user's MFA (TOTP, passkeys, recovery codes).
+
+    Local failsafe when the account is locked out of two-factor auth.
+    Does not change the password — use ``octop user passwd`` for that.
+    """
+    from octop.cli.support.offline_ops import reset_user_mfa_offline
+
+    if not yes:
+        click.confirm(
+            f"Clear MFA factors for {username}? They will need to re-enroll.",
+            abort=True,
+        )
+    try:
+        reset_user_mfa_offline(username)
+    except OctopError as exc:
+        fail_octop(exc)
+    click.echo("ok")
+
+
 @user.command("role")
 @click.argument("username")
 @click.argument("role")

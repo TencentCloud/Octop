@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { KeyRound } from "lucide-react";
+import cx from "classnames";
 import styles from "../index.module.less";
 
 interface EmptyStateProps {
@@ -10,7 +11,7 @@ export function EmptyState({ className }: EmptyStateProps) {
   const { t } = useTranslation();
 
   return (
-    <div className={`${styles.emptyState} ${className || ""}`}>
+    <div className={cx(styles.emptyState, className)}>
       <span className={styles.emptyIcon}>
         <KeyRound size={36} strokeWidth={1.2} />
       </span>

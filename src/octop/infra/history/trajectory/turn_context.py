@@ -53,19 +53,21 @@ def build_turn_start_chunks(
     *,
     include_system: bool,
     system_prompt: str | None,
-    workspace_files: Sequence[str],
+    workspace_files: Sequence[tuple[str, str]],
     skills: list[str] | None,
     mcp_servers: list[str] | None,
     skills_filter_present: bool = False,
 ) -> list[dict[str, Any]]:
     """Return projector-ready chunks aligned with harness injection.
 
-    ``workspace_files`` must already be filtered to files harness may load
-    (``DEFAULT_MEMORY_FILES`` ∩ exists). ``skills`` is the final
-    enabled allow-list for this turn (or ``None`` to omit the skills row when
-    the catalog could not be resolved). When ``skills_filter_present`` and
-    ``skills == []``, emit an explicit ``(none)`` row so the ledger is not
-    silently missing a real empty allow-list.
+    ``workspace_files`` is optional ``(filename, body)`` context rows. When the
+    harness records the system message it sent, the live turn passes an empty
+    list and that message is stored later as one ``model_system`` row. Older
+    harness builds pass existing memory filenames with an empty body. ``skills``
+    is the final enabled allow-list for this turn (or ``None`` to omit the
+    skills row when the catalog could not be resolved). When
+    ``skills_filter_present`` and ``skills == []``, emit an explicit ``(none)``
+    row so the ledger is not silently missing a real empty allow-list.
     """
     chunks: list[dict[str, Any]] = []
     prompt = (system_prompt or "").strip()
@@ -78,15 +80,16 @@ def build_turn_start_chunks(
             }
         )
 
-    for label in workspace_files:
+    for label, body in workspace_files:
         name = (label or "").strip() or "workspace"
-        chunks.append(
-            {
-                "type": "context",
-                "source": _MEMORY_SOURCE,
-                "label": name,
-            }
-        )
+        chunk: dict[str, Any] = {
+            "type": "context",
+            "source": _MEMORY_SOURCE,
+            "label": name,
+        }
+        if body:
+            chunk["content"] = body
+        chunks.append(chunk)
 
     if skills is not None:
         if skills:
@@ -118,6 +121,11 @@ def build_turn_start_chunks(
         )
 
     return chunks
+
+
+# One trajectory row per turn: the system message the model actually received.
+MODEL_SYSTEM_SOURCE = "model_system"
+MODEL_SYSTEM_LABEL = "System prompt"
 
 
 def _content_reference(content: str) -> dict[str, str | int]:

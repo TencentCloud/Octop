@@ -33,6 +33,12 @@ __all__ = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _disable_remote_market(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep expert/plugin bootstrap off the public market during integration tests."""
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
+
+
 @pytest.fixture
 async def app_client(
     tmp_octop_home: Path,
