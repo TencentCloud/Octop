@@ -14,7 +14,8 @@ name: Docker Publish
 # 触发路径：
 #   1. 人工推送 v* tag → on.push.tags
 #   2. Auto Tag 用 GITHUB_TOKEN 推 tag 后显式 workflow_dispatch（token push 不会触发 push 工作流）
-#   3. 在任意分支 Run workflow，填 tag=vX.Y.Z（用该分支的 workflow 文件，checkout 指定 tag）
+#   3. 在修复分支 Run workflow，填 tag=vX.Y.Z。workflow_dispatch 检出所选 ref，
+#      补构建能带上 Dockerfile 修复；tag 只决定镜像版本。tag push 仍检出该 tag。
 #
 # 注意：workflow_dispatch 下 metadata-action 的 type=semver 不可靠，
 # 必须从 tag / 输入显式解析版本号。
@@ -112,7 +113,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.prepare.outputs.tag }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -181,9 +182,10 @@ jobs:
           set -euo pipefail
           uv venv /tmp/octop-docker-test
           uv pip install --python /tmp/octop-docker-test/bin/python pytest pytest-asyncio
+          # 启动测试只调 docker。--noconftest 避免加载 integration conftest（需要 httpx / octop）。
           /tmp/octop-docker-test/bin/pytest \
             tests/integration/test_docker_image_boot.py::test_docker_image_runs_on_this_cpu_and_stays_disabled \
-            -q --tb=short
+            -q --tb=short --noconftest
 
       - name: Push image
         env:
