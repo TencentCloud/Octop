@@ -26,6 +26,19 @@ export function dashboardDevOrigin(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
+/**
+ * Node on Windows rejects ``spawn`` of a ``.cmd`` shim with ``EINVAL``.
+ * ``cmd.exe /d /s /c`` is the launcher that actually runs ``vite.cmd``.
+ */
+export function viteCommand(launch: { command: string; args: string[] }): {
+  command: string;
+  args: string[];
+} {
+  if (process.platform !== "win32") return { command: launch.command, args: launch.args };
+  const comspec = process.env.ComSpec?.trim() || "cmd.exe";
+  return { command: comspec, args: ["/d", "/s", "/c", launch.command, ...launch.args] };
+}
+
 /** ``null`` when this launch should keep serving the static Dashboard. */
 export function readDashboardDev(env: NodeJS.ProcessEnv): DashboardDev | null {
   if (env.OCTOP_DASHBOARD_DEV !== "1") return null;
@@ -101,10 +114,12 @@ export async function startDashboardDevServer(options: {
     throw new Error(`${launch.command} is missing — run npm install in dashboard/`);
   }
 
-  const proc = spawn(launch.command, launch.args, {
+  const command = viteCommand(launch);
+  const proc = spawn(command.command, command.args, {
     cwd: launch.cwd,
     env: launch.env,
     stdio: "inherit",
+    windowsHide: true,
   });
   child = proc;
   let exit: ViteExit | null = null;
