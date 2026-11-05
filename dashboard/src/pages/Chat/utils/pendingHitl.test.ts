@@ -8,6 +8,7 @@ import {
   findPendingSecureForm,
   hasPendingHitl,
   promoteAskUserToolMessage,
+  promoteSecureFormToolMessage,
 } from "./pendingHitl";
 
 function msg(
@@ -312,5 +313,56 @@ describe("pendingHitl", () => {
     ];
     expect(findPendingSecureForm(messages)).toBeNull();
     expect(hasPendingHitl(messages)).toBe(false);
+  });
+
+  it("promotes an unanswered request_secure_form tool bubble into a pending card", () => {
+    const promoted = promoteSecureFormToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "request_secure_form",
+          arguments: JSON.stringify({
+            title: "Steam login",
+            prompt: "Fill your credentials",
+            fields: [
+              { id: "username", type: "text" },
+              { id: "password", type: "password" },
+            ],
+          }),
+        },
+      }),
+    );
+    expect(promoted.hitlData?.status).toBe("pending");
+    expect(promoted.hitlData?.pending_id).toBeUndefined();
+    expect(promoted.hitlData?.action_requests[0]?.name).toBe(
+      "request_secure_form",
+    );
+    // Not resumable → never docked, never blocks the composer.
+    expect(findPendingSecureForm([promoted])).toBeNull();
+    expect(hasPendingHitl([promoted])).toBe(false);
+  });
+
+  it("does not promote answered or foreign tool bubbles", () => {
+    const answered = promoteSecureFormToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "request_secure_form",
+          arguments: "{}",
+          output: '{"ok": true}',
+        },
+      }),
+    );
+    expect(answered.hitlData).toBeUndefined();
+    const foreign = promoteSecureFormToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: { name: "web_fetch", arguments: "{}" },
+      }),
+    );
+    expect(foreign.hitlData).toBeUndefined();
   });
 });

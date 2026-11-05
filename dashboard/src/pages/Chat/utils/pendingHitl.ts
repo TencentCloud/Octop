@@ -1,11 +1,13 @@
 import {
   ASK_USER_TOOL_NAME,
+  REQUEST_SECURE_FORM_TOOL_NAME,
   extractAskQuestions,
   extractSecretInputRequest,
   extractSecureFormRequest,
   isAskHitl,
   isSecretInputHitl,
   isSecureFormHitl,
+  parseActionArgs,
   questionsFromUnknown,
   type AskQuestion,
   type SecretInputRequest,
@@ -118,6 +120,33 @@ export function promoteAskUserToolMessage(message: ChatMessage): ChatMessage {
     ...message,
     hitlData: {
       action_requests: actions,
+      status: "pending",
+    },
+    status: "done",
+  };
+}
+
+/**
+ * Turn an unanswered ``request_secure_form`` tool bubble into a pending HITL
+ * card so an evicted pause still renders (as an expired summary) after the
+ * thread is reloaded from history.
+ */
+export function promoteSecureFormToolMessage(
+  message: ChatMessage,
+): ChatMessage {
+  if (message.hitlData) return message;
+  const tool = message.toolData;
+  if (tool?.name !== REQUEST_SECURE_FORM_TOOL_NAME) return message;
+  if (tool.output !== undefined) return message;
+  return {
+    ...message,
+    hitlData: {
+      action_requests: [
+        {
+          name: REQUEST_SECURE_FORM_TOOL_NAME,
+          args: parseActionArgs(tool.arguments),
+        },
+      ],
       status: "pending",
     },
     status: "done",

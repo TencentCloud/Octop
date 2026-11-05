@@ -1,5 +1,9 @@
 import {
+  isAskHitl,
+  isSecretInputHitl,
+  isSecureFormHitl,
   normalizeHitlRequest,
+  type HitlActionRequest,
   type HitlPendingPayload,
 } from "../api/types/hitl";
 import type { ChatMessage } from "../pages/Chat/hooks/useChat";
@@ -22,6 +26,14 @@ function asPendingPayload(raw: unknown): HitlPendingPayload | null {
   };
 }
 
+/** Coarse pause category so a live pending only merges into its own kind. */
+function hitlPauseKind(actions: HitlActionRequest[] | undefined): string {
+  if (isAskHitl(actions)) return "ask";
+  if (isSecretInputHitl(actions)) return "secret";
+  if (isSecureFormHitl(actions)) return "secure_form";
+  return "other";
+}
+
 export function injectPendingHitlMessage(
   messages: ChatMessage[],
   pending: HitlPendingPayload | null | undefined,
@@ -39,7 +51,11 @@ export function injectPendingHitlMessage(
     return messages;
   }
   const reconstructedIdx = messages.findIndex(
-    (m) => m.hitlData?.status === "pending" && !m.hitlData.pending_id,
+    (m) =>
+      m.hitlData?.status === "pending" &&
+      !m.hitlData.pending_id &&
+      hitlPauseKind(m.hitlData.action_requests) ===
+        hitlPauseKind(normalized.action_requests),
   );
   if (reconstructedIdx >= 0) {
     const current = messages[reconstructedIdx];

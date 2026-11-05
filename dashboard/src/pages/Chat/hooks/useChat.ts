@@ -40,7 +40,10 @@ import {
   clearInflightTail,
   readInflightTail,
 } from "../utils/inflightTranscriptCache";
-import { promoteAskUserToolMessage } from "../utils/pendingHitl";
+import {
+  promoteAskUserToolMessage,
+  promoteSecureFormToolMessage,
+} from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import {
   parseDecisionNotice,
@@ -664,7 +667,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   }
   flushTurn();
 
-  return merged.map(promoteAskUserToolMessage);
+  return merged.map((message) =>
+    promoteSecureFormToolMessage(promoteAskUserToolMessage(message)),
+  );
 }
 
 function toHistoryContentBlocks(content: unknown): unknown[] {

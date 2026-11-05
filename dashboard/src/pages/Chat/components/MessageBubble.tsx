@@ -706,6 +706,12 @@ function MessageBubble({
       if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
       const formRequest = extractSecureFormRequest(actions);
       if (!formRequest) return null;
+      // A pending pause without a resumable pending_id (evicted by a newer
+      // form / server restart) renders the explicit expired summary.
+      const formStatus =
+        hitlStatus === "pending" && !message.hitlData.pending_id
+          ? ("expired" as const)
+          : hitlStatus;
       return (
         <div
           className={cx(
@@ -719,7 +725,7 @@ function MessageBubble({
               agentId={agentId ?? ""}
               pendingId={message.hitlData.pending_id ?? ""}
               request={formRequest}
-              status={hitlStatus}
+              status={formStatus}
             />
           </div>
         </div>

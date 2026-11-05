@@ -20,7 +20,12 @@ export interface SecureFormCardProps {
   pendingId: string;
   /** Launcher display data from the pause args — never a destination fact. */
   request: SecureFormLauncherRequest;
-  status: "pending" | "approved" | "rejected";
+  /**
+   * ``expired`` marks a pause the server can no longer resume (evicted by a
+   * newer form / TTL) — it renders the same terminal summary a 410 on open
+   * produces, instead of a fresh-looking launcher.
+   */
+  status: "pending" | "approved" | "rejected" | "expired";
   /**
    * Submit or cancel through the dedicated SSE endpoint. `kind: "success"`
    * clears the drafts; error outcomes carry the Octop error code so the
@@ -265,12 +270,14 @@ function SecureFormCard({
 
   const title = request.title?.trim() || t("chat.secureForm.title");
 
-  if (terminal === "expired" || terminal === "handled") {
+  const terminalState: TerminalState | null =
+    terminal ?? (status === "expired" ? "expired" : null);
+  if (terminalState) {
     return (
       <details className={styles.completedCard}>
         <summary className={styles.completedSummary}>
           <span className={styles.completedStatus}>
-            {terminal === "expired"
+            {terminalState === "expired"
               ? t("chat.secureForm.expiredSummary")
               : t("chat.secureForm.handledSummary")}
           </span>

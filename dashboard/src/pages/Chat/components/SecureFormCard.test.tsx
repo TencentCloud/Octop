@@ -636,4 +636,22 @@ describe("SecureFormCard", () => {
       screen.getByText("chat.secureForm.dismissedSummary:3"),
     ).toBeInTheDocument();
   });
+
+  it("renders the terminal expired summary for an evicted pause", () => {
+    render(
+      <SecureFormCard
+        agentId="agent-1"
+        pendingId="sf1"
+        request={launcher}
+        status="expired"
+      />,
+    );
+    expect(
+      screen.getByText("chat.secureForm.expiredSummary"),
+    ).toBeInTheDocument();
+    // Terminal: no launcher, no modal entry point.
+    expect(
+      screen.queryByRole("button", { name: "chat.secureForm.open" }),
+    ).not.toBeInTheDocument();
+  });
 });
