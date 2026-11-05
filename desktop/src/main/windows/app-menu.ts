@@ -1,8 +1,8 @@
 import type { MenuItemConstructorOptions } from "electron";
 
 /**
- * Windows application menu. The system title bar owns the caption buttons;
- * this menu sits under that row, at the leading edge.
+ * Windows application menu. Caption buttons sit on the transparent title bar;
+ * this menu stays at the leading edge.
  *
  * Submenu entries use Electron roles so the labels, accelerators, and the
  * edit commands follow the OS locale. Only the four top-level names and

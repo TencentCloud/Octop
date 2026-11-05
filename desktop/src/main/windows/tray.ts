@@ -21,13 +21,31 @@ export interface TrayIconCandidates {
 }
 
 /**
- * Dev keeps `resources/icon.ico`. A packaged NSIS build embeds that icon in
- * the exe and does not copy the file out, so the exe is the fallback.
+ * Dev and packaged builds both keep `resources/icon.ico` (the package copies
+ * it next to the app). The executable is not an image file; it is only a
+ * Shell-icon fallback when that ico is missing.
  */
 export function trayIconCandidates(input: TrayIconCandidates): string[] {
   if (input.platform !== "win32") return [];
   const bundled = join(input.resourcesDir, "icon.ico");
   return input.isPackaged ? [bundled, input.execPath] : [bundled];
+}
+
+/** First real image file among the candidates. Skips the executable fallback. */
+export function trayIconImagePath(
+  candidates: readonly string[],
+  exists: (path: string) => boolean,
+): string | null {
+  for (const candidate of candidates) {
+    if (candidate.toLowerCase().endsWith(".exe")) continue;
+    if (exists(candidate)) return candidate;
+  }
+  return null;
+}
+
+/** Packaged executable, for `app.getFileIcon` when the ico file is absent. */
+export function trayExecutableFallback(candidates: readonly string[]): string | null {
+  return candidates.find((candidate) => candidate.toLowerCase().endsWith(".exe")) ?? null;
 }
 
 export interface TrayMenuLabels {

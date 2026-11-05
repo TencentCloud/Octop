@@ -62,12 +62,12 @@ describe("desktopChrome", () => {
     ).toBe("mac");
   });
 
-  it("reserves nothing on Windows, which keeps the system title bar", () => {
+  it("reserves the caption overlay on Windows", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
       ),
-    ).toBeNull();
+    ).toBe("windows");
   });
 
   it("reserves nothing on Linux, which keeps its native window frame", () => {

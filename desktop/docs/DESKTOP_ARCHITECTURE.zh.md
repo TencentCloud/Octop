@@ -431,7 +431,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 | 平台 | 优化点 |
 |---|---|
 | **macOS** | 使用沉浸式标题栏；同步系统深浅色；正确处理 Dock 重开、应用签名、公证与运行时 quarantine。 |
-| **Windows** | 使用隐藏标题栏与 `titleBarOverlay` 保留 Snap Layouts；NSIS 向导安装，可选安装目录和盘符；确保更新和卸载时不遗留 Python 进程。 |
+| **Windows** | 隐藏实心标题栏，用透明 `titleBarOverlay` 把系统按钮叠在页面上并保留 Snap Layouts；NSIS 向导安装，可选安装目录和盘符；确保更新和卸载时不遗留 Python 进程。 |
 | **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 AppImage、deb 和 rpm，默认安装包是 deb。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
 
 ### 7.1 Windows 安装位置与盘符
@@ -541,13 +541,14 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 > desktop 的做法）。`main/windows/chrome.ts` 按平台给出一份 `windowChrome()`：
 > macOS 用 `titleBarStyle: "hidden"` 保留原生交通灯。灯是系统的 12×12，间距 8，
 > 整组宽 52，放在 28px 的常规标题栏里垂直居中，不拉高到 58px 的页面顶栏。
-> Windows 和 Linux 都用系统边框：标题栏单独成行，最小化、
-> 最大化、关闭不压在页面右上角。Windows 另外设置应用菜单，左上角是文件、编辑、
-> 视图、帮助，子项用 Electron 的常规 role（关闭、退出、撤销、剪切、复制、粘贴、
-> 重新加载、缩放、全屏、开发者工具，以及关于）。
+> Linux 用系统边框。Windows 去掉实心标题栏，标题栏覆盖层颜色为全透明，页面背景
+> 直接透出；最小化、最大化、关闭叠在右上角，并保留 Snap Layouts。应用菜单仍在，
+> 左上角是文件、编辑、视图、帮助，子项用 Electron 的常规 role（关闭、退出、撤销、
+> 剪切、复制、粘贴、重新加载、缩放、全屏、开发者工具，以及关于）。
 >
-> 因此 Dashboard 只在 macOS 上「让位」：`--window-controls-inset-start` 给交通灯
-> 留白，拖动仍然是纯 CSS `app-region`。Windows 页面不再为标题栏按钮留右侧空白。
+> 因此 Dashboard 在 macOS 和 Windows 上都要「让位」：macOS 用
+> `--window-controls-inset-start` 给交通灯留白，Windows 用
+> `--window-controls-inset-end` 给右侧标题按钮留白。拖动仍然是纯 CSS `app-region`。
 > 窗口顶部由 `MainLayout` 统一渲染一条壳标题行（`DESKTOP_CHROME_HEIGHT`），横跨
 > 侧边栏与页面。macOS 的交通灯落在这条带子里，页面内容因此从该高度之下开始。
 > 全屏时系统按钮隐藏，这条带子随之消失、像素还给页面。IPC 里没有任何

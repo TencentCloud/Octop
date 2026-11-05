@@ -10,10 +10,12 @@ import {
   screen,
   shell,
   Tray,
+  type NativeImage,
 } from "electron";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { constants as fsConstants, existsSync, promises as fs } from "node:fs";
-import { join } from "node:path";
+import { type as osType, release as osRelease } from "node:os";
+import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
@@ -61,13 +63,21 @@ import {
   startDashboardDevServer,
   stopDashboardDevServer,
 } from "./dev/dashboard-dev-server";
+import {
+  formatAboutDetail,
+  formatAboutOs,
+  resolveGitStamp,
+  windowsInstallScope,
+} from "./windows/about-info";
 import { windowsApplicationMenu } from "./windows/app-menu";
 import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import {
   shouldInstallSystemTray,
+  trayExecutableFallback,
   trayIconCandidates,
+  trayIconImagePath,
   trayMenuLabels,
   WINDOWS_APP_USER_MODEL_ID,
 } from "./windows/tray";
@@ -111,6 +121,9 @@ let quitting = false;
 let closeBehavior: "quit" | "tray" = "tray";
 // Windows notification area. Null until the icon is actually on screen.
 let tray: Tray | null = null;
+// Kept for the life of the tray. A resized bitmap is dropped from the
+// notification area once the window hides, and a collected image goes blank.
+let trayIcon: NativeImage | null = null;
 // Set once the Dashboard has opened, so a later Dock click can open it again.
 let dashboardOrigin: string | null = null;
 // Current loopback port of the sidecar. Read per request (not captured), so a
@@ -558,6 +571,9 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
     // window rather than a fresh load.
     event.preventDefault();
     win.hide();
+    // Hiding the last window makes Windows drop a bitmap tray icon. Put the
+    // same image back so the notification area still has a way to reopen.
+    if (tray && trayIcon && !tray.isDestroyed()) tray.setImage(trayIcon);
   });
   win.webContents.on("did-finish-load", () => {
     if (win.isDestroyed()) return;
@@ -601,26 +617,67 @@ function revealAppWindow(): void {
   if (dashboardOrigin) openDashboardWindow(dashboardOrigin);
 }
 
-/** Windows menu bar under the system title row. Other platforms keep their own. */
+/** Windows menu bar. Other platforms keep their own. */
 function installWindowsAppMenu(version: string): void {
   if (process.platform !== "win32") return;
   const locale = app.getLocale();
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(
       windowsApplicationMenu(locale, () => {
+        const stamp = resolveGitStamp(readGitStamp, {
+          commit: process.env.OCTOP_GIT_COMMIT,
+          date: process.env.OCTOP_GIT_DATE,
+        });
         void dialog.showMessageBox({
           type: "info",
           title: locale.toLowerCase().startsWith("zh") ? "关于 Octop" : "About Octop",
           message: "Octop",
-          detail: version,
+          detail: formatAboutDetail({
+            version,
+            setup: windowsInstallScope(process.execPath),
+            commit: stamp.commit,
+            date: stamp.date,
+            electron: process.versions.electron ?? "",
+            chromium: process.versions.chrome ?? "",
+            node: process.versions.node ?? "",
+            v8: process.versions.v8 ?? "",
+            os: formatAboutOs(osType(), process.arch, osRelease()),
+          }),
         });
       }),
     ),
   );
 }
 
+function readGitStamp(args: readonly string[]): string | null {
+  const root = repoRootWithGit(app.getAppPath());
+  if (!root) return null;
+  try {
+    const out = execFileSync("git", [...args], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 2000,
+      windowsHide: true,
+    }).trim();
+    return out || null;
+  } catch {
+    return null;
+  }
+}
+
+function repoRootWithGit(start: string): string | null {
+  let dir = start;
+  for (let i = 0; i < 8; i += 1) {
+    if (existsSync(join(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+  return null;
+}
+
 /** Notification-area icon. Left click and "show" open the window; "quit" exits. */
-function installSystemTray(): void {
+async function installSystemTray(): Promise<void> {
   if (tray || !shouldInstallSystemTray(process.platform)) return;
   const candidates = trayIconCandidates({
     platform: process.platform,
@@ -628,19 +685,15 @@ function installSystemTray(): void {
     resourcesDir: resourcesRoot(),
     execPath: process.execPath,
   });
-  let image = nativeImage.createEmpty();
-  for (const candidate of candidates) {
-    const loaded = nativeImage.createFromPath(candidate);
-    if (!loaded.isEmpty()) {
-      image = loaded;
-      break;
-    }
-  }
-  if (image.isEmpty()) {
+  const icon = await loadTrayIcon(candidates);
+  if (!icon) {
     desktopLog().warn(`tray icon missing: ${candidates.join(", ")}`);
     return;
   }
-  const created = new Tray(image.resize({ width: 32, height: 32 }));
+  // Pass the ico through unchanged. Resizing it to one 32px bitmap is what
+  // Windows removes from the notification area when the window is hidden.
+  trayIcon = icon;
+  const created = new Tray(icon);
   created.setToolTip("Octop");
   const labels = trayMenuLabels(app.getLocale());
   const menu = Menu.buildFromTemplate([
@@ -657,9 +710,34 @@ function installSystemTray(): void {
   desktopLog().info("tray icon ready");
 }
 
+/**
+ * The bundled ico first. `createFromPath` cannot read an icon out of an exe,
+ * so a packaged build with no loose ico uses the Shell icon instead.
+ */
+async function loadTrayIcon(candidates: readonly string[]): Promise<NativeImage | null> {
+  const imagePath = trayIconImagePath(candidates, existsSync);
+  if (imagePath) {
+    const loaded = nativeImage.createFromPath(imagePath);
+    if (!loaded.isEmpty()) return loaded;
+    desktopLog().warn(`tray icon unreadable: ${imagePath}`);
+  }
+  const executable = trayExecutableFallback(candidates);
+  if (!executable) return null;
+  try {
+    const icon = await app.getFileIcon(executable, { size: "small" });
+    return icon.isEmpty() ? null : icon;
+  } catch (err) {
+    desktopLog().warn(
+      `tray icon from executable failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
 function destroySystemTray(): void {
   tray?.destroy();
   tray = null;
+  trayIcon = null;
 }
 
 async function boot(): Promise<void> {
@@ -702,7 +780,7 @@ async function boot(): Promise<void> {
   const octopHome = resolveOctopHome(process.env, loginShellEnv);
   installDesktopLog(octopHome);
   desktopLog().info(`desktop ${appVersion} home=${octopHome}`);
-  installSystemTray();
+  await installSystemTray();
 
   // Local dev escape hatch: point at an already-extracted runtime (e.g. the one
   // `pnpm dev:runtime` writes to .dev-runtime) and skip bundling/extraction.
