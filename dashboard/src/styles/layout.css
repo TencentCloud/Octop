@@ -205,6 +205,17 @@ html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
   inset-inline-end: var(--window-controls-inset-end, 0px) !important;
 }
 
+/* macOS only: a drawer covers the title-bar drag strip, and the dialog is
+   no-drag. The header is the replacement hit target. Controls inside stay
+   clickable via the no-drag rules above. Windows drags from the caption
+   menu; Linux keeps the system frame. */
+html[data-octop-desktop-chrome="mac"] .octop-drawer-header,
+html[data-octop-desktop-chrome="mac"] .ant-drawer-header {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
 #root {
   /* Pin to the layout viewport. With viewport-fit=cover this includes
      the iOS home-indicator band; 100dvh does not. */

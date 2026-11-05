@@ -156,6 +156,22 @@ describe("desktopChrome", () => {
     expect(css).toMatch(/padding-inline-end:\s*max\(/);
   });
 
+  it("drags macOS windows from the drawer header only", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../styles/layout.css"),
+      "utf8",
+    );
+    expect(css).toMatch(
+      /html\[data-octop-desktop-chrome="mac"\] \.octop-drawer-header,[\s\S]*?-webkit-app-region:\s*drag/,
+    );
+    expect(css).toMatch(
+      /html\[data-octop-desktop-chrome="mac"\] \.ant-drawer-header[\s\S]*?-webkit-app-region:\s*drag/,
+    );
+    expect(css).not.toMatch(
+      /html\[data-octop-desktop-chrome="windows"\][^{]*drawer-header/,
+    );
+  });
+
   it("drags shell windows through the app-region CSS property", () => {
     const css = readFileSync(
       resolve(__dirname, "../styles/layout.css"),
