@@ -2,25 +2,46 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
+from octop.infra.agents.experts.catalog import ExpertCatalog
 from octop.infra.agents.experts.default_agent import (
     DEFAULT_EXPERT_ID,
     SETUP_DEFAULT_AGENT_ID,
     bootstrap_default_agent,
     default_home_local_backend,
+    materialize_market_expert,
 )
 from octop.infra.errors import OctopError
 from octop.infra.utils.host_dirs import host_fs_tree_root
 
 
-@pytest.fixture(scope="module")
-def catalog() -> ExpertCatalog:
-    cat = ExpertCatalog(default_library_root())
+def _write_expert(root: Path, expert_id: str) -> None:
+    directory = root / expert_id
+    directory.mkdir()
+    (directory / "SOUL.md").write_text("# soul\n", encoding="utf-8")
+    (directory / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": expert_id,
+                "label": {"zh": expert_id, "en": expert_id},
+                "description": {"zh": "", "en": ""},
+                "prompt_files": ["SOUL.md"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture
+def catalog(tmp_path: Path) -> ExpertCatalog:
+    _write_expert(tmp_path, "general-assistant")
+    _write_expert(tmp_path, "ops-engineer")
+    cat = ExpertCatalog(tmp_path)
     cat.refresh()
     return cat
 
@@ -131,6 +152,24 @@ async def test_bootstrap_rejects_unknown_template(catalog: ExpertCatalog) -> Non
     with pytest.raises(OctopError) as exc:
         await bootstrap_default_agent(registry, catalog, user_id=4, expert_id="missing-template")
     assert exc.value.code.value == "EXPERT_TEMPLATE_NOT_FOUND"
+
+
+async def test_materialize_returns_false_when_market_disabled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
+    catalog = ExpertCatalog(tmp_path)
+    catalog.refresh()
+    server = MagicMock()
+    server.expert_catalog = catalog
+    server.paths.expert_market_dir = tmp_path / "cache"
+    assert await materialize_market_expert(server, "missing-template") is False
+
+
+async def test_materialize_uses_catalog_without_network(catalog: ExpertCatalog) -> None:
+    server = MagicMock()
+    server.expert_catalog = catalog
+    assert await materialize_market_expert(server, DEFAULT_EXPERT_ID) is True
 
 
 async def test_bootstrap_requires_catalog() -> None:

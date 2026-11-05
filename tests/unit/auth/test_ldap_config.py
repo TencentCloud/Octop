@@ -101,6 +101,37 @@ def test_enabling_plain_ldap_without_starttls_is_refused():
     _config(server_url=PLAIN_URL, start_tls=True).validate()
 
 
+@pytest.mark.parametrize(
+    "server_url",
+    [
+        "ldap://10.1.2.3",
+        "ldap://172.16.0.1",
+        "ldap://192.168.1.1:389",
+        "ldap://127.0.0.1",
+        "ldap://[::1]",
+        "ldap://[fd00::1]",
+    ],
+)
+def test_literal_private_or_loopback_address_may_skip_starttls(server_url: str):
+    config = _config(server_url=server_url, start_tls=False)
+    config.validate()
+    assert "cleartext_ldap" in config.warnings()
+
+
+@pytest.mark.parametrize(
+    "server_url",
+    [
+        "ldap://8.8.8.8",
+        "ldap://172.32.0.1",
+        "ldap://ldap.internal",
+        "ldap://[2001:db8::1]",
+    ],
+)
+def test_public_or_named_hosts_still_require_starttls(server_url: str):
+    with pytest.raises(ValueError, match="requires StartTLS"):
+        _config(server_url=server_url, start_tls=False).validate()
+
+
 def test_partial_configuration_saves_while_disabled():
     draft = _config(enabled=False, server_url="", user_base_dn="")
     with pytest.raises(ValueError):

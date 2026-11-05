@@ -40,6 +40,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import { authApi, type OctopUser } from "../../api/modules/auth";
 import { skillPackagesApi } from "../../api/modules/skillPackages";
@@ -84,7 +85,10 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
-import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../components/ResourceVisibilityFields";
 import {
   SharedAvatarMark,
   SharedResourceBadge,
@@ -671,9 +675,11 @@ export default function SkillPackagesPage() {
         </div>
       ) : (
         <div
-          className={`${styles.layout}${
-            isResizing ? ` ${styles.layoutResizing}` : ""
-          }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
+          className={cx(
+            styles.layout,
+            isResizing && styles.layoutResizing,
+            isMobile && styles.layoutMobile,
+          )}
           style={
             {
               "--skill-packages-sidebar-width": `${sidebarWidth}px`,
@@ -726,9 +732,10 @@ export default function SkillPackagesPage() {
                       onClick={() => selectPackage(item)}
                     >
                       <div
-                        className={`${styles.listItem} ${
-                          item.id === selectedId ? styles.active : ""
-                        }`}
+                        className={cx(
+                          styles.listItem,
+                          item.id === selectedId && styles.active,
+                        )}
                       >
                         <div className={styles.listName}>
                           <SharedAvatarMark
@@ -821,9 +828,10 @@ export default function SkillPackagesPage() {
           {!isMobile ? (
             <div
               data-split-divider=""
-              className={`${styles.splitDivider}${
-                listPanelCollapsed ? ` ${styles.splitDividerCollapsed}` : ""
-              }`}
+              className={cx(
+                styles.splitDivider,
+                listPanelCollapsed && styles.splitDividerCollapsed,
+              )}
             >
               {!listPanelCollapsed ? (
                 <div
@@ -882,7 +890,10 @@ export default function SkillPackagesPage() {
               ) : !selected ? null : (
                 <div className={styles.detailBody}>
                   <div
-                    className={`${skillStyles.gridToolbar} ${styles.skillsToolbar}`}
+                    className={cx(
+                      skillStyles.gridToolbar,
+                      styles.skillsToolbar,
+                    )}
                   >
                     <div className={styles.toolbarStart}>
                       {isMobile ? (
@@ -912,7 +923,7 @@ export default function SkillPackagesPage() {
                         </span>
                       </span>
                       <span
-                        className={`${skillStyles.gridCount} ${styles.skillCount}`}
+                        className={cx(skillStyles.gridCount, styles.skillCount)}
                       >
                         {t("skills.totalCount", { count: skills.length })}
                       </span>
@@ -1219,29 +1230,31 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("skillPackages.visibilityHint")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={packageVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("skillPackages.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={packageVisibility}
+                  groupIds={packageGroupIds}
+                  onChange={(next) => {
+                    setPackageVisibility(next.visibility);
+                    setPackageGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={packageVisibility}
-                groupIds={packageGroupIds}
-                onChange={(next) => {
-                  setPackageVisibility(next.visibility);
-                  setPackageGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
       </Drawer>
 

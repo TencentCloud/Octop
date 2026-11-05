@@ -28,26 +28,10 @@ def test_every_bundled_expert_declares_task_examples() -> None:
         assert all(item.strip() for item in parsed["zh"] + parsed["en"])
 
 
-def test_domain_experts_offer_six_task_examples() -> None:
-    """Recurring-work templates keep a full two-column empty state."""
-    richer = (
-        "news-trend",
-        "stock-assistant",
-        "ops-engineer",
-        "parenting-companion",
-    )
-    for expert_id in richer:
-        data = json.loads((_LIBRARY / expert_id / "manifest.json").read_text(encoding="utf-8"))
-        parsed = parse_task_examples(data)
-        assert parsed is not None
-        assert len(parsed["zh"]) == 6, expert_id
-
-
-def test_general_templates_do_not_copy_dashboard_default_cards() -> None:
-    """i18n defaults stay the no-field fallback; bundled templates keep their own copy."""
+def test_blank_template_does_not_copy_dashboard_default_cards() -> None:
+    """i18n defaults stay the no-field fallback; the blank template keeps its own copy."""
     dashboard_zh = "根据我的星座"
-    for expert_id in ("general-assistant", "default"):
-        data = json.loads((_LIBRARY / expert_id / "manifest.json").read_text(encoding="utf-8"))
-        parsed = parse_task_examples(data)
-        assert parsed is not None
-        assert all(dashboard_zh not in item for item in parsed["zh"])
+    data = json.loads((_LIBRARY / "default" / "manifest.json").read_text(encoding="utf-8"))
+    parsed = parse_task_examples(data)
+    assert parsed is not None
+    assert all(dashboard_zh not in item for item in parsed["zh"])

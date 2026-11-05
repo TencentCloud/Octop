@@ -332,11 +332,17 @@ class HitlChannelCoordinator:
         *,
         agent_id: str,
         user_id: int,
+        thread_id: str | None = None,
     ) -> HitlPendingRecord | None:
         """Return the open ``ask_user_question`` pause this user may answer.
 
         Returns ``None`` for approval pauses (those keep using ``/approve``) and
         for questions addressed to a different user in the same group chat.
+
+        When *thread_id* is set (dashboard turns always stamp it), the pause must
+        belong to that thread. Dashboard sessions share one ``session_key`` per
+        agent+user across many threads; without this guard a new chat's message
+        would answer an ask still open on another thread.
         """
         record = self._store.resolve_for_session(session_key, agent_id=agent_id)
         if record is None or record.status != "pending":
@@ -345,6 +351,12 @@ class HitlChannelCoordinator:
             return None
         if not is_ask_action_requests(record.action_requests):
             return None
+        inbound = (thread_id or "").strip()
+        if inbound:
+            room_match = record.thread_id == inbound
+            member_match = bool(record.resume_thread_id) and record.resume_thread_id == inbound
+            if not room_match and not member_match:
+                return None
         return record
 
     @staticmethod

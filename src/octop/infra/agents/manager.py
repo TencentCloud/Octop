@@ -545,7 +545,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
-        self._tool_guard_rules = ToolGuardRulesStore(paths=paths)
+        self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
@@ -584,6 +584,9 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._tool_guard_rules = ToolGuardRulesStore(
+            paths=self._paths, settings=repos.settings_repo
         )
         self._providers = ProviderStore(provider_repo=repos.provider_repo)
         self._connector_svc = ConnectorService(
@@ -782,6 +785,7 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
             )
@@ -794,6 +798,12 @@ class AgentManager:
                         self._repos.agent_repo,
                         spec.user_id,
                     )
+                apply_workspace_root_to_config(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
+                    fill_missing=True,
+                )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     spec.user_id,
@@ -1034,12 +1044,32 @@ class AgentManager:
             )
             owner_row = self._repos.agent_repo.get(agent_id)
             if owner_row is not None and owner_row.user_id is not None:
-                from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+                from octop.infra.users.resource_policy import (
+                    POLICY_WORKSPACE_ROOT_DIR,
+                    apply_workspace_root_to_config,
+                    effective_workspace_root_dir,
+                    persisted_workspace_within_root,
+                    raise_if_backend_outside_user_root,
+                )
 
+                allowed_root = effective_workspace_root_dir(
+                    self._repos.user_policy_repo.get(owner_row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+                )
+                workspace_in_jail = persisted_workspace_within_root(
+                    parsed_profile_cfg, allowed_root
+                )
+                if workspace_in_jail:
+                    apply_workspace_root_to_config(
+                        self._repos.user_policy_repo,
+                        owner_row.user_id,
+                        parsed_profile_cfg,
+                        fill_missing=False,
+                    )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                    reject_host_root=bool(allowed_root) and not workspace_in_jail,
                 )
                 self._assert_named_storage_backends(
                     owner_row.user_id,
@@ -2040,21 +2070,26 @@ class AgentManager:
         provider_name: str | None = None,
         active_model_changed: bool = False,
     ) -> list[str]:
-        """Agent IDs that must be rebuilt after a provider / active-model change."""
+        """Agent IDs that must be rebuilt after a provider / active-model change.
+
+        AUTO agents bake a resolved fallback model ref into their harness config
+        at build time (active model first, else first usable) and that ref is
+        invisible to the DB config scan, so a provider change can strand it
+        (#2388). An AUTO agent is rebuilt when the active model changed or,
+        for a named provider change, when its baked ref points at that provider
+        or no longer matches what a build would resolve now. Explicit refs to
+        other providers are left alone.
+        """
         rows = self._repos.agent_repo.list_all(include_disabled=False)
         if provider_name is None and not active_model_changed:
             return [row.agent_id for row in rows]
 
         enabled_ids = {row.agent_id for row in rows}
+        auto_ids = {row.agent_id for row in rows if self._agent_uses_auto_default(row)}
         impact: set[str] = set()
-        include_auto = active_model_changed
-        if provider_name and not include_auto:
-            active_name, _ = self._repos.settings_repo.get_active_model()
-            include_auto = active_name == provider_name
-
         for row in rows:
             if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD or (
-                include_auto and self._agent_uses_auto_default(row)
+                active_model_changed and row.agent_id in auto_ids
             ):
                 impact.add(row.agent_id)
 
@@ -2063,8 +2098,48 @@ class AgentManager:
                 aid = ref.get("agent_id")
                 if isinstance(aid, str) and aid in enabled_ids:
                     impact.add(aid)
+            impact.update(
+                self._stale_auto_default_ids(
+                    provider_name=provider_name,
+                    enabled_ids=enabled_ids,
+                    auto_ids=auto_ids,
+                )
+            )
 
         return sorted(impact)
+
+    def _stale_auto_default_ids(
+        self,
+        *,
+        provider_name: str,
+        enabled_ids: set[str],
+        auto_ids: set[str],
+    ) -> set[str]:
+        """AUTO agents whose baked fallback ref went stale after a provider change.
+
+        The DB config only shows AUTO, so read the built harness configs:
+        rebuild when the baked ref points at the changed provider or differs
+        from what a build would resolve now. An agent built while no model was
+        usable has no baked ref at all, so it is rebuilt as soon as a fallback
+        exists — otherwise it would keep running without a model until restart.
+        """
+        if self._harness_manager is None or not auto_ids:
+            return set()
+        new_fallback = self._resolve_configured_fallback_model_ref()
+        prefix = f"{provider_name}/"
+        stale: set[str] = set()
+        for entry in self._harness_manager.list_agents():
+            aid = getattr(entry, "agent_id", None)
+            if not isinstance(aid, str) or aid not in auto_ids:
+                continue
+            built = getattr(getattr(entry, "config", None), "default_model", None)
+            if not isinstance(built, str) or not built:
+                if new_fallback is not None:
+                    stale.add(aid)
+                continue
+            if built.startswith(prefix) or (new_fallback is not None and built != new_fallback):
+                stale.add(aid)
+        return stale & enabled_ids
 
     async def _reload_agents(self, agent_ids: list[str]) -> None:
         """Reload agents concurrently with a fixed concurrency cap."""
@@ -2715,12 +2790,16 @@ class AgentManager:
         self.persist_harness_config(agent_id, cfg)
         self.sync_effective_tools_disabled(agent_id)
 
-    def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
-        """Resolve persisted package ids to existing absolute package skill directories."""
-        store = SkillPackageStore(
+    def _skill_package_store(self) -> SkillPackageStore:
+        return SkillPackageStore(
             repo=self._repos.skill_package_repo,
             root=self._paths.skill_packages_dir,
+            database=self._config.database,
         )
+
+    def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
+        """Resolve persisted package ids to existing absolute package skill directories."""
+        store = self._skill_package_store()
         row = self._repos.agent_repo.get(agent_id)
         owner_id = row.user_id if row is not None else None
         roots: list[str] = []
@@ -3180,10 +3259,7 @@ class AgentManager:
             return harness_rows
 
         disabled = skills_disabled_set(cfg)
-        store = SkillPackageStore(
-            repo=self._repos.skill_package_repo,
-            root=self._paths.skill_packages_dir,
-        )
+        store = self._skill_package_store()
         package_by_slug: dict[str, dict[str, Any]] = {}
         for package_id in package_ids:
             if self._repos.skill_package_repo.get(package_id) is None:
@@ -3511,6 +3587,25 @@ class AgentManager:
         backend_spec = cfg.get("backend")
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        if row.user_id is not None:
+            from octop.infra.users.resource_policy import (
+                POLICY_WORKSPACE_ROOT_DIR,
+                clamp_backend_to_workspace_root,
+                effective_workspace_root_dir,
+                persisted_workspace_within_root,
+            )
+
+            allowed = effective_workspace_root_dir(
+                self._repos.user_policy_repo.get(row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+            )
+            # Only rewrite a root the files already live under. Creating an
+            # expert persists the snapped backend before the workspace exists;
+            # startup must not jail a host workspace that was seeded earlier.
+            if allowed and persisted_workspace_within_root(cfg, allowed):
+                try:
+                    backend_spec = clamp_backend_to_workspace_root(backend_spec, allowed)
+                except ValueError as exc:
+                    raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
         if backend_spec is None:
             return default_agent_backend_spec(workspace_dir)
         resolved = resolve_agent_backend_spec(
@@ -3562,11 +3657,11 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
+        from octop.infra.backend.resolve_backend import resolve_octop_backend  # noqa: PLC0415
 
         if cfg is None:
             cfg = self._agent_config_dict(row)
@@ -3588,7 +3683,7 @@ class AgentManager:
         from octop.infra.backend.compat import adapt_backend_protocol  # noqa: PLC0415
 
         return BackendWorkspace(
-            adapt_backend_protocol(resolve_backend(backend, workspace_dir=workspace_dir)),
+            adapt_backend_protocol(resolve_octop_backend(backend, workspace_dir=workspace_dir)),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -3927,19 +4022,14 @@ class AgentManager:
 
             cron_tools = build_cronjob_tools(self._cron_manager)
 
-        from types import SimpleNamespace  # noqa: PLC0415
-
-        from octop.infra.knowledge.tools import build_knowledge_tools  # noqa: PLC0415
+        from octop.infra.knowledge.tools import (  # noqa: PLC0415
+            KnowledgeToolServices,
+            build_knowledge_tools,
+        )
 
         knowledge_tools: list[Any] = []
         if not team_host:
-            knowledge_tools = build_knowledge_tools(
-                SimpleNamespace(
-                    knowledge_repo=self._repos.knowledge_repo,
-                    settings_repo=self._repos.settings_repo,
-                    provider_repo=self._repos.provider_repo,
-                )
-            )
+            knowledge_tools = build_knowledge_tools(KnowledgeToolServices(self))
 
         mobile_tools: list[Any] = []
         if not team_host and self._config.capabilities.mobile.enabled:
@@ -4277,6 +4367,7 @@ class AgentManager:
                     *(applied.middleware or []),
                 ],
             )
+        self._tool_guard_rules.ensure_seeded()
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),

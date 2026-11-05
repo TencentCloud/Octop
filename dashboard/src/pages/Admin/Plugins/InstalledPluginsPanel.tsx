@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
+import cx from "classnames";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
@@ -413,7 +414,9 @@ export function InstalledPluginsPanel() {
 
       {showCardView ? (
         loading ? (
-          <CardSkeleton count={3} />
+          <div className={styles.loadingSkeleton}>
+            <CardSkeleton count={3} />
+          </div>
         ) : plugins.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -440,9 +443,7 @@ export function InstalledPluginsPanel() {
               return (
                 <article
                   key={row.id}
-                  className={`${styles.card} ${
-                    enabled ? "" : styles.cardDisabled
-                  }`}
+                  className={cx(styles.card, !enabled && styles.cardDisabled)}
                 >
                   <div className={styles.cardBody}>
                     <div className={styles.cardTop}>
@@ -663,9 +664,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colPath")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.path || "—"}
                   </span>
                 </div>
@@ -673,9 +672,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colUi")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.ui?.entry || "—"}
                   </span>
                 </div>
