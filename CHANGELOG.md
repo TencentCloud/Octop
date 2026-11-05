@@ -6,29 +6,26 @@
 
 ## [Unreleased]
 
+### 修复
+- 定时 Agent 任务不再把普通工具调用前的过程说明拼入最终推送和合成历史；保留团队 `ask_agent` 分派话术，错误或等待审批时不推送未完成的文本（#2384）。
+
+## [1.0.3b3] - 2026-11-04
+
 ### 新增
-- PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
-- 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
-- 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
-- Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
+- PostgreSQL 可存放技能包和知识库。多实例共用定时任务、频道、头像、插件和已发布专家
+- Docker 与飞牛增加精简版。存储后端增加火山引擎 TOS
+- 可预建 LDAP 账号，聊天列表可隐藏任意专家
 
 ### 修复
-- PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
-- Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
-- 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包
-- Docker 构建在安装依赖的同一层删除编译器，避免编译工具留在最终镜像里
-- 定时 Agent 任务不再把普通工具调用前的过程说明拼入最终推送和合成历史；保留团队 `ask_agent` 分派话术，错误或等待审批时不推送未完成的文本（#2384）。
-- 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_URL` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_URL`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
-- 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_ORIGIN` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_ORIGIN`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
-- 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
-- 插件和专家从远程市场安装。目录默认 `https://octop.cloud`，安装包默认 `https://download.octop.cloud`；内网可分别用 `OCTOP_PORTAL_ORIGIN`、`OCTOP_MARKET_REMOTE_ORIGIN` 换成自己的源站，安装包只要放在对象源站上，路径不再限定 `/octop/market/`。说明见 `docs/private-market.md`
-- 技能市场可以换源站。`SKILL_MARKET_ORIGIN` 负责搜索、榜单和单个技能安装，`SKILLSET_ORIGIN` 负责技能集详情和技能集压缩包，默认都是 `https://api.skillhub.cn`。说明见 `docs/skill-market.md`
+- 专家工作区落到允许的存储根下。共享连接器只有创建者能改
+- 聊天历史不再错序，未答完的提问不会被别的会话接走
+- 超长图片先缩小再发送。失效的默认模型会自动换掉
+- 升级记忆库：长会话分批提炼，重启后不重跑
+- 安装清理不再删掉运行环境。PostgreSQL 上的知识库检索和关怀去重恢复正常
 
 ### 变更
-- 专家页的「内置专家模板」并入「专家市场」，本实例用户发布的模板仍留在市场里。安装包不再附带产品专家模板和内置插件；新建用户时从专家市场拉取模板，拉不到也照常建用户。从市场新建的专家会装上 Octop 助手技能。市场目录不可用时直接失败，不再改显示安装包自带内容，也不再改调本机 `skillhub` 命令行
-
-### 变更
-- 聊天侧栏可以隐藏任意专家，不再限于别人共享来的。正在对话的隐藏专家留在「已隐藏专家」里，不再被提到列表上方
+- 升级 octop-harness 至 1.0.7
+- 内置专家并入专家市场，安装包不再自带市场目录
 
 ## [1.0.3b2] - 2026-11-01
 

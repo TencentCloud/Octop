@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import type { ImgHTMLAttributes } from "react";
+import cx from "classnames";
 import styles from "./FadeInImg.module.less";
 
 type FadeInImgProps = ImgHTMLAttributes<HTMLImageElement>;
@@ -27,11 +28,7 @@ export function FadeInImg({ className, src, onLoad, ...rest }: FadeInImgProps) {
       {...rest}
       ref={ref}
       src={src}
-      className={
-        shown
-          ? `${styles.img} ${styles.ready} ${className ?? ""}`
-          : `${styles.img} ${className ?? ""}`
-      }
+      className={cx(styles.img, shown && styles.ready, className)}
       onLoad={(event) => {
         reveal(event.currentTarget);
         onLoad?.(event);

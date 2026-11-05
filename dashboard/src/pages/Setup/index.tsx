@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Segmented, Steps, Typography } from "antd";
 import { Lock, UserCog, Cpu, CheckCircle, Wand2, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { ensureLocaleBundle } from "../../i18n";
 import { storeUiLocale, type UiLocale } from "../../utils/locale";
 
@@ -255,9 +256,10 @@ export default function SetupPage() {
   return (
     <div className={styles.wizardShell}>
       <div
-        className={`${styles.wizardCard} ${
-          isModelStep ? styles.wizardCardWide : styles.wizardCardNarrow
-        }`}
+        className={cx(
+          styles.wizardCard,
+          isModelStep ? styles.wizardCardWide : styles.wizardCardNarrow,
+        )}
       >
         <div className={styles.wizardHeader}>
           <div className={styles.wizardHeaderTop}>
@@ -298,9 +300,10 @@ export default function SetupPage() {
         </div>
 
         <div
-          className={`${styles.wizardBody} ${
-            isModelStep ? styles.wizardBodyFlush : ""
-          }`}
+          className={cx(
+            styles.wizardBody,
+            isModelStep && styles.wizardBodyFlush,
+          )}
         >
           {current === STEP_PASSWORD && passwordRequired && (
             <PasswordStep onVerified={handlePasswordVerified} />

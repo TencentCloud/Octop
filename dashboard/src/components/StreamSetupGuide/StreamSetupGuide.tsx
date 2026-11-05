@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
+import cx from "classnames";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
 import styles from "./StreamSetupGuide.module.less";
@@ -77,14 +78,12 @@ export default function StreamSetupGuide({
   plain,
 }: StreamSetupGuideProps) {
   const hasActions = primaryAction || secondaryAction || extraAction;
-  const wrapClass = [
+  const wrapClass = cx(
     styles.wrap,
-    wide ? styles.wide : "",
-    plain ? styles.plain : "",
-    className ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    wide && styles.wide,
+    plain && styles.plain,
+    className,
+  );
 
   return (
     <div className={wrapClass}>

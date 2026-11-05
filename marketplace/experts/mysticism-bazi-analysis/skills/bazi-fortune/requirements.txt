@@ -1,3 +1,0 @@
-# 依赖清单（SkillHub 发布用）
-
-lunar-python>=1.4.0
