@@ -42,23 +42,43 @@ test("macOS 交通灯用系统常规尺寸，不拉高到页面顶栏", () => {
   });
 });
 
-test("Windows 使用系统标题栏，菜单栏保持可见", () => {
+test("Windows 标题栏透明，菜单栏保持可见", () => {
   onPlatform("win32", () => {
-    assert.deepEqual(chrome.windowChrome("light"), { autoHideMenuBar: false });
-    assert.deepEqual(chrome.windowChrome("dark"), { autoHideMenuBar: false });
+    assert.equal(chrome.WINDOWS_TITLE_BAR_COLOR, "#00000000");
+    assert.deepEqual(chrome.windowChrome("light"), {
+      titleBarStyle: "hidden",
+      titleBarOverlay: {
+        color: "#00000000",
+        symbolColor: "#1a1a1a",
+        height: 32,
+      },
+      autoHideMenuBar: false,
+    });
+    const dark = chrome.windowChrome("dark").titleBarOverlay;
+    assert.ok(dark && typeof dark === "object");
+    assert.equal(dark.symbolColor, "#ffffff");
   });
 });
 
-test("主题切换不再把标题栏按钮画到页面上", () => {
+test("主题切换只改标题栏按钮颜色，底保持透明", () => {
   onPlatform("win32", () => {
+    const overlays: Array<{ color?: string; symbolColor?: string }> = [];
     const win = {
       isDestroyed: () => false,
-      setTitleBarOverlay: () => {
-        throw new Error("titleBarOverlay should not be used");
+      setTitleBarOverlay: (overlay: { color?: string; symbolColor?: string }) => {
+        overlays.push(overlay);
       },
     } as unknown as BrowserWindow;
     chrome.applyWindowChromeTheme(win, { mode: "dark", scheme: "dark" });
     chrome.applyWindowChromeTheme(win, { mode: "light", scheme: "light" });
+    assert.deepEqual(
+      overlays.map((overlay) => overlay.color),
+      ["#00000000", "#00000000"],
+    );
+    assert.deepEqual(
+      overlays.map((overlay) => overlay.symbolColor),
+      ["#ffffff", "#1a1a1a"],
+    );
   });
 });
 

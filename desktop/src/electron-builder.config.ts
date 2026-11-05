@@ -38,6 +38,7 @@ export default {
   // into OCTOP_HOME before native Python extensions are loaded.
   asar: true,
   extraResources: [
+    { from: "resources/icon.ico", to: "icon.ico" },
     { from: "resources/portable", to: "portable" },
     { from: "resources/dashboard", to: "dashboard" },
   ],

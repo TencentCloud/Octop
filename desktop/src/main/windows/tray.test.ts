@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { shouldInstallSystemTray, trayIconCandidates, trayMenuLabels } from "./tray";
+import {
+  shouldInstallSystemTray,
+  trayExecutableFallback,
+  trayIconCandidates,
+  trayIconImagePath,
+  trayMenuLabels,
+} from "./tray";
 
 test("only Windows gets a notification-area icon", () => {
   assert.equal(shouldInstallSystemTray("win32"), true);
@@ -26,6 +32,28 @@ test("packaged Windows falls back to the icon embedded in the executable", () =>
     trayIconCandidates({ platform: "win32", isPackaged: true, resourcesDir, execPath }),
     [join(resourcesDir, "icon.ico"), execPath],
   );
+});
+
+test("the tray image is the ico, never the executable", () => {
+  const resourcesDir = join("install", "resources");
+  const execPath = join("install", "Octop.exe");
+  const candidates = trayIconCandidates({
+    platform: "win32",
+    isPackaged: true,
+    resourcesDir,
+    execPath,
+  });
+  const ico = join(resourcesDir, "icon.ico");
+  assert.equal(
+    trayIconImagePath(candidates, (path) => path === ico),
+    ico,
+  );
+  assert.equal(
+    trayIconImagePath(candidates, () => false),
+    null,
+  );
+  assert.equal(trayExecutableFallback(candidates), execPath);
+  assert.equal(trayExecutableFallback([ico]), null);
 });
 
 test("tray menu follows the OS locale", () => {

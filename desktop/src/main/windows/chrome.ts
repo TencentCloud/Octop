@@ -6,9 +6,9 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
  *
  * - macOS   `titleBarStyle: "hidden"` keeps the traffic lights and pins them
  *           over the Dashboard's chrome row; the titlebar itself is gone.
- * - Windows keeps the system frame. The caption buttons get that whole title
- *           row instead of sitting on top of the page. The File / Edit / View /
- *           Help menu is the application menu, drawn under the title bar.
+ * - Windows hides the opaque caption and overlays the native buttons on a
+ *           transparent strip, so the page shows through (the Cursor-style
+ *           bar). The File / Edit / View / Help menu stays visible.
  * - Linux   keeps the system frame, so no option is passed at all: a frameless
  *           window there would have no controls whatsoever.
  */
@@ -18,6 +18,12 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
  * 这是页面顶栏，不是交通灯的高度。
  */
 export const CHROME_ROW_HEIGHT = 58;
+
+/** Windows caption overlay. Matches the Dashboard's `WINDOWS_CAPTION_HEIGHT`. */
+export const WINDOWS_TITLE_BAR_HEIGHT = 32;
+
+/** Fully transparent so the page background is the title bar. */
+export const WINDOWS_TITLE_BAR_COLOR = "#00000000";
 
 /**
  * 系统交通灯就是 12×12，间距 8，整组宽 52。标题栏高 28，灯在里面垂直居中。
@@ -87,9 +93,22 @@ export function isAppNavigation(url: string, appOrigin: string): boolean {
   return url === appOrigin || url.startsWith(`${appOrigin}/`) || url.startsWith(`${appOrigin}?`);
 }
 
+/** Caption overlay. `color` stays clear; only the button glyphs follow the theme. */
+export function windowsTitleBarOverlay(mode: WindowChromeTheme["mode"]): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  return {
+    color: WINDOWS_TITLE_BAR_COLOR,
+    symbolColor: mode === "dark" ? "#ffffff" : "#1a1a1a",
+    height: WINDOWS_TITLE_BAR_HEIGHT,
+  };
+}
+
 /** Per-platform frame options, shared by the Early Window and the Dashboard. */
 export function windowChrome(
-  _mode: WindowChromeTheme["mode"] = systemMode(),
+  mode: WindowChromeTheme["mode"] = systemMode(),
 ): BrowserWindowConstructorOptions {
   if (process.platform === "darwin") {
     return {
@@ -98,8 +117,11 @@ export function windowChrome(
     };
   }
   if (process.platform === "win32") {
-    // System title bar is its own row. Keep the menu bar visible under it.
-    return { autoHideMenuBar: false };
+    return {
+      titleBarStyle: "hidden",
+      titleBarOverlay: windowsTitleBarOverlay(mode),
+      autoHideMenuBar: false,
+    };
   }
   return {};
 }
@@ -110,10 +132,12 @@ export function windowChrome(
  * otherwise keep black glyphs on a dark overlay.
  */
 export function applyWindowChromeTheme(
-  _win: BrowserWindow,
+  win: BrowserWindow,
   theme: WindowChromeTheme,
 ): void {
   applyNativeTheme(theme);
+  if (process.platform !== "win32" || win.isDestroyed()) return;
+  win.setTitleBarOverlay(windowsTitleBarOverlay(theme.mode));
 }
 
 /**

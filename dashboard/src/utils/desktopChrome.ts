@@ -126,14 +126,14 @@ export const DESKTOP_NO_DRAG_CLASS = "octop-desktop-no-drag";
 /**
  * Which chrome — if any — the page has to make room for.
  *
- * macOS keeps its traffic lights over the page, so the page reserves space
- * for them. Windows and Linux keep the system frame, which already carries
- * the caption buttons, so the page renders edge to edge.
+ * macOS traffic lights and the Windows caption overlay both sit on the page,
+ * so the page reserves their strip. Linux keeps the system frame.
  */
 export function resolveDesktopChromeStyle(
   userAgent = navigator.userAgent,
 ): DesktopChromeStyle | null {
   if (/Mac|iPhone|iPad/.test(userAgent)) return "mac";
+  if (/Windows/.test(userAgent)) return "windows";
   return null;
 }
 
