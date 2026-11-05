@@ -8,7 +8,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from octop_gateway.models import (
@@ -109,6 +109,14 @@ def _elapsed_ms(started: float) -> int:
     return max(0, int((time.perf_counter() - started) * 1000))
 
 
+def _inbound_thread_id(msg: InboundMessage) -> str | None:
+    """Dashboard turns stamp ``metadata.thread_id``; IM often omits it."""
+    raw = (msg.metadata or {}).get("thread_id")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
@@ -151,6 +159,13 @@ class _MessageEventSink(SlashSink):
 class _ResolvedModelRoute:
     model_ref: str | None
     automatic: bool
+
+
+class _ResolvedTurnMcp(NamedTuple):
+    """Harness names go to the model; shown names go on history chips."""
+
+    harness: list[str]
+    shown: list[str]
 
 
 class GlobalProcessor:
@@ -199,6 +214,7 @@ class GlobalProcessor:
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
         self._title_inflight: set[str] = set()
+        self._pending_system_prompt: set[str] = set()
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -303,6 +319,11 @@ class GlobalProcessor:
         service = self._trajectory_service
         if service is None:
             return
+        # Capture before this chunk is stored. A user chunk advances the turn,
+        # and a context row finalizes any open assistant message — doing this
+        # after the chunk would pin the previous prompt on the new turn and
+        # split the reply that is still streaming.
+        self._sync_memory_prompt_trajectory(agent_id, thread_id)
         try:
             service.observe_chunk(agent_id, thread_id, chunk)
         except Exception:
@@ -358,12 +379,12 @@ class GlobalProcessor:
 
             include_system = phase == "system" and not bool(service.has_kind(thread_id, "system"))
             system_prompt = self._trajectory_system_prompt(agent_id) if phase == "system" else None
-            workspace_files: list[str] = []
             skills: list[str] | None = None
             skills_filter_present = False
             mcp_names: list[str] | None = None
+            workspace_files: list[tuple[str, str]] = []
+            captures_model_system = False
             if phase == "context":
-                workspace_files = await self._trajectory_workspace_files(agent_id)
                 skills_filter_present = "skills" in request or "skills" in meta
                 turn_skills: list[str] | None = None
                 if "skills" in request and isinstance(request.get("skills"), list):
@@ -378,6 +399,11 @@ class GlobalProcessor:
                         skills_filter_present=skills_filter_present,
                     )
                 mcp_names = _mcp_server_names(request.get("mcp_servers"))
+                captures_model_system = self._captures_model_system_prompt(agent_id)
+                if not captures_model_system:
+                    workspace_files = [
+                        (name, "") for name in await self._trajectory_workspace_files(agent_id)
+                    ]
             for chunk in build_turn_start_chunks(
                 include_system=include_system,
                 system_prompt=system_prompt,
@@ -392,6 +418,9 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=True,
                 )
+            if phase == "context" and captures_model_system:
+                self._clear_captured_system_prompt(agent_id, thread_id)
+                self._pending_system_prompt.add(thread_id)
         except Exception:
             logger.exception(
                 "trajectory turn-start context failed agent=%s thread=%s",
@@ -445,8 +474,16 @@ class GlobalProcessor:
             rows.append(item)
         return rows
 
+    def _captures_model_system_prompt(self, agent_id: str) -> bool:
+        """True when this harness build records the system message it sent."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            return False
+        return callable(getattr(agent, "model_system_prompt", None))
+
     async def _trajectory_workspace_files(self, agent_id: str) -> list[str]:
-        """Return existing harness memory paths without duplicating their contents."""
+        """Existing memory paths, for harness builds that do not capture the prompt."""
         from octop.infra.history.trajectory.turn_context import memory_file_order  # noqa: PLC0415
 
         workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
@@ -468,6 +505,56 @@ class GlobalProcessor:
                 continue
             out.append(name)
         return out
+
+    def _clear_captured_system_prompt(self, agent_id: str, thread_id: str) -> None:
+        """Drop the previous turn's captured system message before this turn runs."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "trajectory system prompt clear skipped agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return
+        clear = getattr(agent, "clear_model_system_prompt", None)
+        if callable(clear):
+            clear(thread_id)
+
+    def _sync_memory_prompt_trajectory(self, agent_id: str, thread_id: str) -> None:
+        """Store the system message from this turn's model request."""
+        if thread_id not in self._pending_system_prompt:
+            return
+        service = self._trajectory_service
+        if service is None:
+            return
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "trajectory system prompt agent unavailable agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return
+        reader = getattr(agent, "model_system_prompt", None)
+        if not callable(reader):
+            return
+        text = reader(thread_id)
+        if not isinstance(text, str) or not text.strip():
+            return
+        try:
+            recorded = service.record_model_system_prompt(agent_id, thread_id, text)
+        except Exception:
+            logger.exception(
+                "trajectory system prompt sync failed agent=%s thread=%s",
+                agent_id,
+                thread_id,
+            )
+            return
+        if recorded:
+            self._pending_system_prompt.discard(thread_id)
+            self._clear_captured_system_prompt(agent_id, thread_id)
 
     # -- TeamProcessor (delegates to TeamManager) ------------------------------
 
@@ -877,6 +964,7 @@ class GlobalProcessor:
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=_inbound_thread_id(msg),
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
@@ -983,13 +1071,15 @@ class GlobalProcessor:
             needs_multimodal=content_blocks_need_vision(content),
         )
         model_ref = model_route.model_ref
-        mcp_servers = await self._resolve_turn_mcp_servers(
+        resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=None,
             apply_defaults=True,
             raise_on_failure=False,
         )
+        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
+        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         message_kwargs: dict[str, Any] = {}
         attachments = inbound_attachments_from_parts(msg.content)
         if attachments:
@@ -1003,7 +1093,7 @@ class GlobalProcessor:
             row = self._agent_repo.get(agent_id)
             default_model = (row.default_model if row is not None else None) or None
             composer = build_composer_context(
-                mcp_servers=mcp_servers,
+                mcp_servers=shown_mcp,
                 skills=None,
                 target_agent_ids=None,
                 model_ref=model_ref,
@@ -1217,6 +1307,7 @@ class GlobalProcessor:
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=_inbound_thread_id(msg),
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
@@ -1362,14 +1453,6 @@ class GlobalProcessor:
             meta=meta,
         )
         history_tracker = await self._begin_history(agent_id, thread_id, request)
-        await self._observe_turn_start_context(
-            agent_id=agent_id,
-            thread_id=thread_id,
-            request=request,
-            meta=meta,
-            phase="system",
-            trajectory_enabled=traj_on,
-        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1666,17 +1749,21 @@ class GlobalProcessor:
         else:
             explicit_mcp = None
             apply_defaults = True
-        mcp_servers = await self._resolve_turn_mcp_servers(
+        resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=explicit_mcp,
             apply_defaults=apply_defaults,
         )
+        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
+        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         if mcp_servers:
-            # Keep history chips aligned with the servers actually injected.
+            # History chips use the viewer's catalog names. The harness request
+            # below keeps the names registered on the shared expert.
+            shown = shown_mcp if shown_mcp is not None else mcp_servers
             if isinstance(composer, dict) and composer:
                 stamped = dict(composer)
-                stamped["connectors"] = list(mcp_servers)
+                stamped["connectors"] = list(shown)
                 message_kwargs[COMPOSER_CTX_KEY] = stamped
             else:
                 from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
@@ -1686,7 +1773,7 @@ class GlobalProcessor:
                 row = self._agent_repo.get(agent_id)
                 default_model = (row.default_model if row is not None else None) or None
                 built = build_composer_context(
-                    mcp_servers=mcp_servers,
+                    mcp_servers=shown,
                     skills=meta.get("skills") if isinstance(meta.get("skills"), list) else None,
                     target_agent_ids=None,
                     model_ref=model_ref,
@@ -1875,7 +1962,7 @@ class GlobalProcessor:
         explicit: list[str] | None,
         apply_defaults: bool | None = None,
         raise_on_failure: bool = True,
-    ) -> list[str] | None:
+    ) -> _ResolvedTurnMcp | None:
         """Merge turn picks with default_open and ensure tools are loaded.
 
         Dashboard / HTTP paths should keep ``raise_on_failure=True`` so the
@@ -1886,8 +1973,11 @@ class GlobalProcessor:
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
         # Team hosts only dispatch — never attach MCP tools.
-        if is_team_agent(self._agent_manager.get_row(agent_id)):
+        row = self._agent_manager.get_row(agent_id)
+        if is_team_agent(row):
             return None
+        owner_raw = getattr(row, "user_id", None) if row is not None else None
+        owner_id = owner_raw if isinstance(owner_raw, int) else None
 
         extra_defaults = self._agent_manager.default_mcp_servers(agent_id)
         merged = self._agent_manager.merge_turn_mcp_servers(
@@ -1895,9 +1985,15 @@ class GlobalProcessor:
             explicit,
             apply_defaults=apply_defaults,
             extra_defaults=extra_defaults,
+            agent_owner_id=owner_id,
         )
         if not merged:
             return None
+        harness = list(merged)
+        shown = list(merged)
+        if owner_id is not None and owner_id != user_id:
+            harness = self._agent_manager.align_mcp_names_to_harness(owner_id, user_id, merged)
+            shown = self._agent_manager.mcp_names_for_chips(owner_id, user_id, merged, harness)
         failed = await self._agent_manager.prepare_chat_mcp(
             agent_id,
             merged,
@@ -1914,7 +2010,7 @@ class GlobalProcessor:
                 detail,
             )
             return None
-        return merged
+        return _ResolvedTurnMcp(harness=harness, shown=shown)
 
     async def _record_stream_error(
         self,

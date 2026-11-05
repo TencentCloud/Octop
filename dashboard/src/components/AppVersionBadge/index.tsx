@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Tooltip } from "antd";
 import { ArrowUpCircle } from "lucide-react";
+import cx from "classnames";
 import { useUpdateStatus } from "../../hooks/useUpdateStatus";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -34,9 +35,11 @@ export default function AppVersionBadge({ isMobile }: AppVersionBadgeProps) {
     <Tooltip title={tooltip} mouseEnterDelay={0.35}>
       <button
         type="button"
-        className={`${styles.headerVersion} ${
-          isMobile ? styles.headerVersionMobile : ""
-        } ${styles.headerVersionClickable}`}
+        className={cx(
+          styles.headerVersion,
+          isMobile && styles.headerVersionMobile,
+          styles.headerVersionClickable,
+        )}
         onClick={handleClick}
         aria-label={tooltip}
       >

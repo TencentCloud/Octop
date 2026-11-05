@@ -616,6 +616,174 @@ async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_iter_turn_chunks_answers_ask_on_same_dashboard_thread() -> None:
+    """Plain text on the paused thread still resumes ``ask_user_question``."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    stream_calls: list[str] = []
+    resume_calls: list[str] = []
+
+    async def _stream(*_args: object, **_kwargs: object):
+        stream_calls.append("stream")
+        yield {"type": "token", "content": "should not run"}
+
+    async def _resume(*_args: object, **_kwargs: object):
+        resume_calls.append("resume")
+        yield {"type": "token", "content": "answered"}
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.resume_hitl = _resume
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thr_quiz")
+
+    hitl = HitlChannelCoordinator()
+    ask = hitl.store.register(
+        thread_id="thr_quiz",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="dashboard:agent-1:1",
+        channel_type="dashboard",
+        action_requests=[
+            {
+                "name": "ask_user_question",
+                "args": {
+                    "questions": [
+                        {
+                            "header": "Q1",
+                            "question": "1+1=?",
+                            "options": [{"label": "2"}, {"label": "3"}],
+                        }
+                    ]
+                },
+            }
+        ],
+        review_configs=[{"action_name": "ask_user_question", "allowed_decisions": ["respond"]}],
+    )
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+        hitl=hitl,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="a")],
+        metadata={
+            "session_key": "dashboard:agent-1:1",
+            "thread_id": "thr_quiz",
+        },
+    )
+
+    chunks = [c async for c in processor.iter_turn_chunks(msg)]
+    assert stream_calls == []
+    assert resume_calls == ["resume"]
+    assert any(c.get("type") == "token" and "answered" in str(c.get("content")) for c in chunks)
+    leftover = hitl.store.get(ask.pending_id)
+    assert leftover is not None
+    assert leftover.status != "pending"
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_does_not_answer_ask_on_other_dashboard_thread() -> None:
+    """Shared dashboard session_key must not route a new chat into another thread's ask."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    stream_calls: list[str] = []
+
+    async def _stream(*_args: object, **_kwargs: object):
+        stream_calls.append("stream")
+        yield {"type": "token", "content": "fresh turn on new chat"}
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.resume_hitl = MagicMock()
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thr_new")
+
+    hitl = HitlChannelCoordinator()
+    ask = hitl.store.register(
+        thread_id="thr_quiz",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="dashboard:agent-1:1",
+        channel_type="dashboard",
+        action_requests=[
+            {
+                "name": "ask_user_question",
+                "args": {
+                    "questions": [
+                        {
+                            "header": "Q1",
+                            "question": "1+1=?",
+                            "options": [{"label": "2"}, {"label": "3"}],
+                        }
+                    ]
+                },
+            }
+        ],
+        review_configs=None,
+    )
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+        hitl=hitl,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="hello from a new chat")],
+        metadata={
+            "session_key": "dashboard:agent-1:1",
+            "thread_id": "thr_new",
+        },
+    )
+
+    chunks = [c async for c in processor.iter_turn_chunks(msg)]
+    assert stream_calls == ["stream"]
+    assert agent_manager.resume_hitl.call_count == 0
+    assert any(c.get("type") == "token" and "fresh turn" in str(c.get("content")) for c in chunks)
+    leftover = hitl.store.get(ask.pending_id)
+    assert leftover is not None
+    assert leftover.status == "pending"
+    assert leftover.thread_id == "thr_quiz"
+
+
+@pytest.mark.asyncio
 async def test_global_processor_iter_turn_chunks_expires_stale_hitl() -> None:
     from unittest.mock import AsyncMock, MagicMock
 

@@ -227,6 +227,10 @@ function contentForEvent(event: TrajectoryEvent): string {
   if (event.kind === "tool") {
     return oneLine(event.summary) || titleForEvent(event);
   }
+  if (event.kind === "context" || event.kind === "system") {
+    const label = payloadString(event.payload, "label");
+    if (label) return label;
+  }
   const content = payloadString(event.payload, "content");
   if (content) return oneLine(content);
   return oneLine(event.summary);

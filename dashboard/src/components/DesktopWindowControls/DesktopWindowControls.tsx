@@ -2,6 +2,7 @@ import type { DesktopChromeStyle } from "../../utils/desktopChrome";
 import { emitDesktopWindowAction } from "../../utils/desktopChrome";
 import { Minus, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "./DesktopWindowControls.module.less";
 
 interface DesktopWindowControlsProps {
@@ -25,7 +26,7 @@ export default function DesktopWindowControls({
       >
         <button
           type="button"
-          className={`${styles.light} ${styles.zoom}`}
+          className={cx(styles.light, styles.zoom)}
           aria-label={maximise}
           onClick={() => emitDesktopWindowAction("toggle-maximise")}
         >
@@ -35,7 +36,7 @@ export default function DesktopWindowControls({
         </button>
         <button
           type="button"
-          className={`${styles.light} ${styles.min}`}
+          className={cx(styles.light, styles.min)}
           aria-label={minimise}
           onClick={() => emitDesktopWindowAction("minimise")}
         >
@@ -45,7 +46,7 @@ export default function DesktopWindowControls({
         </button>
         <button
           type="button"
-          className={`${styles.light} ${styles.close}`}
+          className={cx(styles.light, styles.close)}
           aria-label={close}
           onClick={() => emitDesktopWindowAction("close")}
         >
@@ -81,7 +82,7 @@ export default function DesktopWindowControls({
       </button>
       <button
         type="button"
-        className={`${styles.winBtn} ${styles.winClose}`}
+        className={cx(styles.winBtn, styles.winClose)}
         aria-label={close}
         onClick={() => emitDesktopWindowAction("close")}
       >

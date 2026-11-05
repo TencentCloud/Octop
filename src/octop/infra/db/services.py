@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from octop.config import OctopConfig
 from octop.infra.crypto.sealed_repos import (
@@ -13,15 +14,18 @@ from octop.infra.crypto.sealed_repos import (
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
+from octop.infra.db.repos.auth_challenges import AuthChallengeRepo
 from octop.infra.db.repos.backends import BackendRepo
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
+from octop.infra.db.repos.control_files import ControlFileRepo
 from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
+from octop.infra.db.repos.profile_avatars import ProfileAvatarRepo
 from octop.infra.db.repos.providers import ProviderRepo
 from octop.infra.db.repos.published_experts import PublishedExpertRepo
 from octop.infra.db.repos.resource_group_grants import ResourceGroupGrantRepo
@@ -37,6 +41,9 @@ from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.user_group_members import UserGroupMemberRepo
 from octop.infra.db.repos.user_groups import UserGroupRepo
 from octop.infra.db.repos.user_policies import UserPolicyRepo
+from octop.infra.db.repos.user_recovery_codes import UserRecoveryCodeRepo
+from octop.infra.db.repos.user_totp import UserTotpRepo
+from octop.infra.db.repos.user_webauthn import UserWebauthnRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo
 from octop.infra.utils.paths import PathLayout
@@ -74,6 +81,12 @@ class RepoBundle:
     user_group_repo: UserGroupRepo
     user_group_member_repo: UserGroupMemberRepo
     resource_group_grant_repo: ResourceGroupGrantRepo
+    user_totp_repo: UserTotpRepo
+    user_webauthn_repo: UserWebauthnRepo
+    user_recovery_code_repo: UserRecoveryCodeRepo
+    auth_challenge_repo: AuthChallengeRepo
+    profile_avatar_repo: ProfileAvatarRepo
+    control_file_repo: ControlFileRepo
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -108,6 +121,12 @@ class RepoBundle:
             user_group_repo=UserGroupRepo(db),
             user_group_member_repo=UserGroupMemberRepo(db),
             resource_group_grant_repo=ResourceGroupGrantRepo(db),
+            user_totp_repo=UserTotpRepo(db),
+            user_webauthn_repo=UserWebauthnRepo(db),
+            user_recovery_code_repo=UserRecoveryCodeRepo(db),
+            auth_challenge_repo=AuthChallengeRepo(db),
+            profile_avatar_repo=ProfileAvatarRepo(db),
+            control_file_repo=ControlFileRepo(db),
         )
 
 
@@ -220,6 +239,35 @@ class SharedServices:
     @property
     def sso_repo(self) -> SsoRepo:
         return self.repos.sso_repo
+
+    @property
+    def user_totp_repo(self) -> UserTotpRepo:
+        return self.repos.user_totp_repo
+
+    @property
+    def user_webauthn_repo(self) -> UserWebauthnRepo:
+        return self.repos.user_webauthn_repo
+
+    @property
+    def user_recovery_code_repo(self) -> UserRecoveryCodeRepo:
+        return self.repos.user_recovery_code_repo
+
+    @property
+    def auth_challenge_repo(self) -> AuthChallengeRepo:
+        return self.repos.auth_challenge_repo
+
+    @property
+    def profile_avatar_repo(self) -> ProfileAvatarRepo:
+        return self.repos.profile_avatar_repo
+
+    @property
+    def control_file_repo(self) -> ControlFileRepo:
+        return self.repos.control_file_repo
+
+    def avatars(self, kind: str) -> Any:
+        from octop.infra.users.profile_avatar import AvatarNamespace
+
+        return AvatarNamespace(self.profile_avatar_repo, kind)
 
 
 def build_shared_services(

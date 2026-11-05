@@ -18,6 +18,7 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
+import cx from "classnames";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
@@ -25,6 +26,8 @@ import { teamsApi } from "../../../api/modules/teams";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { canReadAgentRuntimeStatus } from "../../../utils/sharedExpert";
 import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
@@ -106,7 +109,9 @@ export const TeamCard = memo(function TeamCard({
 }: TeamCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const user = useCurrentUser();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
+  const statusReadable = canReadAgentRuntimeStatus(agent, user);
 
   const [localState, setLocalState] = useState(agent.state);
   const [localError, setLocalError] = useState(agent.last_error);
@@ -128,9 +133,9 @@ export const TeamCard = memo(function TeamCard({
     setLocalError(agent.last_error);
   }, [agent.state, agent.last_error]);
 
-  // Poll during transient states (local agents only — bridge shadows have no runtime status).
+  // Poll during transient states. Bridge shadows and shared viewers have no readable status.
   useEffect(() => {
-    if (agent.bridge || !TRANSIENT.has(localState)) {
+    if (agent.bridge || !statusReadable || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -155,7 +160,14 @@ export const TeamCard = memo(function TeamCard({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [localState, agent.agent_id, agent.bridge, onStateChange, refreshAgents]);
+  }, [
+    localState,
+    agent.agent_id,
+    agent.bridge,
+    statusReadable,
+    onStateChange,
+    refreshAgents,
+  ]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
@@ -230,14 +242,14 @@ export const TeamCard = memo(function TeamCard({
 
   return (
     <>
-      <div className={`${styles.agentCard2} ${styles.teamCard}`}>
+      <div className={cx(styles.agentCard2, styles.teamCard)}>
         <div className={styles.agentCard2Header}>
           <SharedAvatarMark
             shared={agent.is_shared}
             owned={isOwner}
             ownerName={agent.owner_username}
           >
-            <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
+            <div className={cx(styles.agentCard2Icon, styles.teamCardIcon)}>
               <ExpertIcon
                 iconUrl={teamPortraitUrl(agent.icon_url)}
                 iconName={TEAM_ICON_NAME}
@@ -446,7 +458,7 @@ export const TeamCard = memo(function TeamCard({
           {chatReady ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               onClick={handleOpenChat}
             >
               <MessageSquare size={13} />
@@ -459,7 +471,7 @@ export const TeamCard = memo(function TeamCard({
               localState === "created") ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               disabled={isTransient || actionLoading}
               onClick={() => void handleToggle(true)}
             >
