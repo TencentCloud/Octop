@@ -19,6 +19,7 @@ import {
   GraduationCap,
   Shield,
   PanelsTopLeft,
+  KeyRound,
 } from "lucide-react";
 import type { OctopUser } from "../api/modules/auth";
 import { navAllowed, userCan } from "../utils/permissions";
@@ -75,6 +76,7 @@ export const SIDEBAR_NAV_KEYS = [
   "skill-packages",
   "knowledge-bases",
   "bridge",
+  "vault",
   "workbench",
   "remote-desktop",
   "acp",
@@ -129,6 +131,7 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "skill-packages",
   "knowledge-bases",
   "bridge",
+  "vault",
   "workbench",
   "remote-desktop",
   "acp",
@@ -232,6 +235,16 @@ export function buildNavSections(
       path: "/bridge",
       icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.bridge",
+    });
+  }
+  if (user) {
+    // The vault is user-scoped (no module permission): every signed-in user
+    // has one. Listed after the agent-scoped entries.
+    settingsItems.push({
+      key: "vault",
+      path: "/vault",
+      icon: <KeyRound size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.vault",
     });
   }
   if (settingsItems.length > 0) {

@@ -1406,6 +1406,39 @@ export function useChat(
     [agentId, stableSessionId, refreshHistory],
   );
 
+  const submitSecureForm = useCallback(
+    (
+      pendingId: string,
+      payload: chatStore.SecureFormSubmitPayload,
+    ): Promise<chatStore.SecureFormSubmitOutcome> => {
+      if (!agentId) {
+        return Promise.resolve({
+          kind: "error" as const,
+          message: "agent unavailable",
+        });
+      }
+      const key = stableSessionId;
+      const threadId = stableSessionId !== "__empty__" ? stableSessionId : "";
+      if (!threadId || threadId === "__empty__") {
+        return Promise.resolve({
+          kind: "error" as const,
+          message: "thread unavailable",
+        });
+      }
+      return chatStore.submitSecureForm(
+        key,
+        agentId,
+        threadId,
+        pendingId,
+        payload,
+        () => {
+          void refreshHistory(threadId);
+        },
+      );
+    },
+    [agentId, stableSessionId, refreshHistory],
+  );
+
   return {
     messages,
     isStreaming,
@@ -1431,5 +1464,6 @@ export function useChat(
     clearMessages,
     resumeHitl,
     submitSecretInput,
+    submitSecureForm,
   };
 }

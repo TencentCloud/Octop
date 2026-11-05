@@ -2,11 +2,14 @@ import {
   ASK_USER_TOOL_NAME,
   extractAskQuestions,
   extractSecretInputRequest,
+  extractSecureFormRequest,
   isAskHitl,
   isSecretInputHitl,
+  isSecureFormHitl,
   questionsFromUnknown,
   type AskQuestion,
   type SecretInputRequest,
+  type SecureFormLauncherRequest,
 } from "../../../api/types/hitl";
 import type { ChatMessage, HitlActionRequest } from "../hooks/sseHelpers";
 import type { HitlSessionPolicy } from "./hitlSessionPolicy";
@@ -40,6 +43,8 @@ export function hasPendingHitl(messages: ChatMessage[]): boolean {
     if (isAskHitl(hitl.action_requests) && !isResumableHitl(hitl)) return false;
     if (isSecretInputHitl(hitl.action_requests) && !isResumableHitl(hitl))
       return false;
+    if (isSecureFormHitl(hitl.action_requests) && !isResumableHitl(hitl))
+      return false;
     return true;
   });
 }
@@ -62,6 +67,7 @@ export function findPendingApproval(
       (hitl.status ?? "pending") !== "pending" ||
       isAskHitl(hitl.action_requests) ||
       isSecretInputHitl(hitl.action_requests) ||
+      isSecureFormHitl(hitl.action_requests) ||
       !hitl.action_requests?.length
     ) {
       continue;
@@ -166,6 +172,41 @@ export function findPendingSecretInput(
       continue;
     }
     const request = extractSecretInputRequest(hitl.action_requests);
+    if (request && hitl.pending_id?.trim()) {
+      return {
+        messageId: message.id,
+        actions: hitl.action_requests,
+        pendingId: hitl.pending_id,
+        request,
+      };
+    }
+  }
+  return null;
+}
+
+export type PendingSecureForm = {
+  messageId: string;
+  actions: HitlActionRequest[];
+  pendingId: string;
+  request: SecureFormLauncherRequest;
+};
+
+/** Latest pending ``request_secure_form`` card, if any (dashboard-only). */
+export function findPendingSecureForm(
+  messages: ChatMessage[],
+): PendingSecureForm | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const hitl = message.hitlData;
+    if (
+      !hitl ||
+      (hitl.status ?? "pending") !== "pending" ||
+      !isSecureFormHitl(hitl.action_requests) ||
+      !isResumableHitl(hitl)
+    ) {
+      continue;
+    }
+    const request = extractSecureFormRequest(hitl.action_requests);
     if (request && hitl.pending_id?.trim()) {
       return {
         messageId: message.id,

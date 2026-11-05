@@ -5,6 +5,7 @@ import {
   findPendingApproval,
   findPendingAsk,
   findPendingSecretInput,
+  findPendingSecureForm,
   hasPendingHitl,
   promoteAskUserToolMessage,
 } from "./pendingHitl";
@@ -251,6 +252,65 @@ describe("pendingHitl", () => {
       }),
     ];
     expect(findPendingSecretInput(messages)).toBeNull();
+    expect(hasPendingHitl(messages)).toBe(false);
+  });
+
+  it("finds a resumable pending secure form", () => {
+    const messages = [
+      msg({
+        id: "form",
+        role: "assistant",
+        hitlData: {
+          pending_id: "sf1",
+          action_requests: [
+            {
+              name: "request_secure_form",
+              args: {
+                title: "Steam login",
+                prompt: "Fill your credentials",
+                fields: [
+                  { id: "username", type: "text" },
+                  { id: "password", type: "password" },
+                ],
+              },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    const pending = findPendingSecureForm(messages);
+    expect(pending).not.toBeNull();
+    expect(pending?.pendingId).toBe("sf1");
+    expect(pending?.request.title).toBe("Steam login");
+    expect(pending?.request.fieldCount).toBe(2);
+    // Secure-form pauses are excluded from the approval/auto-resume paths.
+    expect(findPendingApproval(messages)).toBeNull();
+    expect(
+      findAutoResumableApproval({ mode: "allow_all" }, messages),
+    ).toBeNull();
+  });
+
+  it("ignores secure forms the server cannot resume", () => {
+    const messages = [
+      msg({
+        id: "form",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            {
+              name: "request_secure_form",
+              args: {
+                prompt: "Fill your credentials",
+                fields: [{ id: "username", type: "text" }],
+              },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    expect(findPendingSecureForm(messages)).toBeNull();
     expect(hasPendingHitl(messages)).toBe(false);
   });
 });

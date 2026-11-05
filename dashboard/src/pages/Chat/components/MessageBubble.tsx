@@ -44,6 +44,7 @@ import {
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
 import SecretInputCard from "./SecretInputCard";
+import SecureFormCard from "./SecureFormCard";
 import HitlApprovalCard from "./HitlApprovalCard";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -58,8 +59,10 @@ import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
 import {
   extractAskQuestions,
   extractSecretInputRequest,
+  extractSecureFormRequest,
   isAskHitl,
   isSecretInputHitl,
+  isSecureFormHitl,
   type HitlDecisionHandler,
 } from "../../../api/types/hitl";
 import styles from "../index.module.less";
@@ -693,6 +696,31 @@ function MessageBubble({
         >
           <div className={styles.bubbleContent}>
             <SecretInputCard request={secretRequest} status={hitlStatus} />
+          </div>
+        </div>
+      );
+    }
+    if (isSecureFormHitl(actions)) {
+      // Pending secure forms dock at the composer (launcher + modal).
+      // Completed ones render a status-only summary — never the values.
+      if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
+      const formRequest = extractSecureFormRequest(actions);
+      if (!formRequest) return null;
+      return (
+        <div
+          className={cx(
+            styles.messageBubble,
+            styles.assistantBubble,
+            compact && styles.compactBubble,
+          )}
+        >
+          <div className={styles.bubbleContent}>
+            <SecureFormCard
+              agentId={agentId ?? ""}
+              pendingId={message.hitlData.pending_id ?? ""}
+              request={formRequest}
+              status={hitlStatus}
+            />
           </div>
         </div>
       );

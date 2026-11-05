@@ -281,6 +281,7 @@
     "tasks": "自动化",
     "connectors": "连接器",
     "bridge": "云端协同",
+    "vault": "保管库",
     "acp": "ACP 协作",
     "agents": "专家",
     "providers": "Providers",
@@ -1830,6 +1831,54 @@
       "cancel": "取消",
       "filledSummary": "密钥已存入 {{slot}}",
       "dismissedSummary": "已取消密钥输入（{{slot}}）"
+    },
+    "secureForm": {
+      "title": "需要填写安全表单",
+      "subtitle": "打开一个安全表单——填写的内容不会出现在对话中。",
+      "modalTitle": "安全表单",
+      "open": "打开表单",
+      "submit": "提交",
+      "cancel": "取消",
+      "secureHint": "加密存储——不会出现在对话记录中。",
+      "loadFailed": "加载表单失败。",
+      "cardExpPlaceholder": "MM/YY",
+      "maskedFieldAria": "掩码输入：{{label}}",
+      "replaceConfirm": "用本次填写的内容替换保管库中已有的同名条目",
+      "replaceRequired": "已存在同名保管库条目——请确认覆盖后继续",
+      "saveToVault": "同时把可保存的字段存入我的保管库",
+      "filledSummary": "安全表单已完成（{{count}} 个字段）",
+      "dismissedSummary": "已取消安全表单（{{count}} 个字段）",
+      "expiredSummary": "该表单已过期，无法再提交",
+      "handledSummary": "该表单已被处理",
+      "banner": {
+        "title": "填写内容的去向",
+        "envPersist": "填写的内容将作为该智能体的环境变量密钥存储，智能体在后续轮次中可以重复使用。",
+        "replacesSlot": "替换已有变量",
+        "vaultItem": "将作为“{{itemType}}”条目保存到你的保管库。",
+        "originUnverified": "由智能体声明，未经验证",
+        "saveScope": "只有以下类型的字段会保存到保管库：{{types}}。"
+      },
+      "itemType": {
+        "login": "登录凭据",
+        "card": "银行卡",
+        "contact": "联系人"
+      },
+      "fieldType": {
+        "text": "文本",
+        "password": "密码",
+        "otp": "一次性验证码",
+        "card_number": "卡号",
+        "card_exp": "有效期",
+        "card_cvv": "安全码"
+      },
+      "errors": {
+        "required": "该字段为必填项。",
+        "maxLength": "内容过长。",
+        "otp": "须为 4-8 位数字。",
+        "cardCvv": "须为 3-4 位数字。",
+        "cardNumber": "须为 12-19 位数字。",
+        "cardExp": "格式须为 MM/YY，月份 01-12。"
+      }
     },
     "modifiedFiles": "已修改文件（{{count}}）",
     "openBrowser": "查看浏览器",
@@ -6979,6 +7028,24 @@
     "docsHint": "请先在本地安装并配置好 ACP 专家（如 opencode、codebuddy --acp）后再启用 Runner。",
     "chatPermissionTitle": "外部专家需要权限确认"
   },
+  "vault": {
+    "loadFailed": "加载保管库条目失败。",
+    "deleted": "已删除“{{title}}”",
+    "deleteFailed": "删除保管库条目失败。",
+    "empty": "保管库还是空的。通过安全表单保存的条目会显示在这里。",
+    "deleteConfirmTitle": "删除该保管库条目？",
+    "deleteConfirmDesc": "“{{title}}”将被永久删除，且无法恢复。",
+    "deleteConfirmOk": "删除",
+    "deleteCancel": "取消",
+    "deleteLabel": "删除 {{title}}",
+    "originUnverified": "由智能体声明，未经验证",
+    "updatedAt": "更新于 {{time}}",
+    "itemType": {
+      "login": "登录凭据",
+      "card": "银行卡",
+      "contact": "联系人"
+    }
+  },
   "plugins": {
     "loadError": "加载插件失败",
     "saveFailed": "保存失败",
@@ -7122,6 +7189,10 @@
     "menuHint": "↑↓ 选择 · Enter 确认 · Esc 关闭"
   },
   "pageShell": {
+    "vault": {
+      "title": "保管库",
+      "subtitle": "由安全表单保存的加密条目——不会显示具体内容"
+    },
     "experts": {
       "title": "专家",
       "subtitle": "创建与管理你的 AI 专家，也可从模板一键新建"

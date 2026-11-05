@@ -281,6 +281,7 @@
     "tasks": "Automation",
     "connectors": "Connectors",
     "bridge": "Cloud collab",
+    "vault": "Vault",
     "acp": "ACP Collaboration",
     "agents": "Agents",
     "providers": "Providers",
@@ -1830,6 +1831,54 @@
       "cancel": "Cancel",
       "filledSummary": "Secret stored in {{slot}}",
       "dismissedSummary": "Secret input dismissed ({{slot}})"
+    },
+    "secureForm": {
+      "title": "Secure form requested",
+      "subtitle": "Opens a secure form — what you fill in never appears in the chat.",
+      "modalTitle": "Secure form",
+      "open": "Open form",
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "secureHint": "Encrypted storage — never shown in the conversation.",
+      "loadFailed": "Failed to load this form.",
+      "cardExpPlaceholder": "MM/YY",
+      "maskedFieldAria": "Masked field: {{label}}",
+      "replaceConfirm": "Replace the existing vault item with this one",
+      "replaceRequired": "An item with this title already exists — confirm the replacement to continue",
+      "saveToVault": "Also save the vault-storable fields to my vault",
+      "filledSummary": "Secure form completed ({{count}} field(s))",
+      "dismissedSummary": "Secure form dismissed ({{count}} field(s))",
+      "expiredSummary": "This form expired and can no longer be submitted",
+      "handledSummary": "This form was already handled",
+      "banner": {
+        "title": "Where your answers go",
+        "envPersist": "Values are stored as this agent's environment secrets, reusable by the agent in later turns.",
+        "replacesSlot": "replaces an existing slot",
+        "vaultItem": "Saved to your vault as a “{{itemType}}” item.",
+        "originUnverified": "agent-declared, not verified",
+        "saveScope": "Only these field types are saved to the vault: {{types}}."
+      },
+      "itemType": {
+        "login": "login",
+        "card": "card",
+        "contact": "contact"
+      },
+      "fieldType": {
+        "text": "text",
+        "password": "password",
+        "otp": "one-time code",
+        "card_number": "card number",
+        "card_exp": "expiry",
+        "card_cvv": "security code"
+      },
+      "errors": {
+        "required": "This field is required.",
+        "maxLength": "Value is too long.",
+        "otp": "Must be 4 to 8 digits.",
+        "cardCvv": "Must be 3 to 4 digits.",
+        "cardNumber": "Must be 12 to 19 digits.",
+        "cardExp": "Use MM/YY with a month of 01-12."
+      }
     },
     "modifiedFiles": "Modified files ({{count}})",
     "openBrowser": "View browser",
@@ -6979,6 +7028,24 @@
     "docsHint": "Install an ACP-compatible agent locally (opencode, codebuddy --acp, etc.) before enabling a runner.",
     "chatPermissionTitle": "External agent permission required"
   },
+  "vault": {
+    "loadFailed": "Failed to load vault items.",
+    "deleted": "Deleted “{{title}}”",
+    "deleteFailed": "Failed to delete the vault item.",
+    "empty": "No vault items yet. Items saved from secure forms appear here.",
+    "deleteConfirmTitle": "Delete this vault item?",
+    "deleteConfirmDesc": "“{{title}}” will be permanently deleted. This cannot be undone.",
+    "deleteConfirmOk": "Delete",
+    "deleteCancel": "Cancel",
+    "deleteLabel": "Delete {{title}}",
+    "originUnverified": "agent-declared, not verified",
+    "updatedAt": "Updated {{time}}",
+    "itemType": {
+      "login": "login",
+      "card": "card",
+      "contact": "contact"
+    }
+  },
   "plugins": {
     "loadError": "Failed to load plugins",
     "saveFailed": "Save failed",
@@ -7122,6 +7189,10 @@
     "menuHint": "↑↓ navigate · Enter confirm · Esc close"
   },
   "pageShell": {
+    "vault": {
+      "title": "Vault",
+      "subtitle": "Encrypted items saved from secure forms — values are never displayed"
+    },
     "experts": {
       "title": "Experts",
       "subtitle": "Create and manage your AI experts, or spin one up from a template"

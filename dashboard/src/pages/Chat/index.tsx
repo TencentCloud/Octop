@@ -99,10 +99,12 @@ import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
 import SecretInputCard from "./components/SecretInputCard";
+import SecureFormCard from "./components/SecureFormCard";
 import {
   findAutoResumableApproval,
   findPendingAsk,
   findPendingSecretInput,
+  findPendingSecureForm,
   hasPendingHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -379,6 +381,7 @@ function ChatPageInner() {
     clearMessages,
     resumeHitl,
     submitSecretInput,
+    submitSecureForm,
   } = useChat(activeThreadId, resolvedAgentId, isTeamChat);
 
   const hasPendingHitlPause = useMemo(
@@ -388,6 +391,10 @@ function ChatPageInner() {
   const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
   const pendingSecretInput = useMemo(
     () => findPendingSecretInput(messages),
+    [messages],
+  );
+  const pendingSecureForm = useMemo(
+    () => findPendingSecureForm(messages),
     [messages],
   );
   const autoResumedApprovalRef = useRef<string | null>(null);
@@ -1800,6 +1807,22 @@ function ChatPageInner() {
                         "cancel",
                       );
                     }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {pendingSecureForm ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <SecureFormCard
+                    key={pendingSecureForm.pendingId}
+                    agentId={resolvedAgentId ?? ""}
+                    pendingId={pendingSecureForm.pendingId}
+                    request={pendingSecureForm.request}
+                    status="pending"
+                    onSubmit={(payload) =>
+                      submitSecureForm(pendingSecureForm.pendingId, payload)
+                    }
                   />
                 </div>
               </div>
