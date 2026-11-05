@@ -28,8 +28,8 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
 )
-from octop.infra.agents.secret_input.submit import resolve_secret_input_submission
-from octop.infra.agents.secure_form.submit import (
+from octop.infra.agents.secret_input.submit import (
+    resolve_secret_input_submission,
     resolve_secure_form_submission,
     secure_form_pending_facts,
 )

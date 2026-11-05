@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.secure_form.validation import validate_manual_vault_item
+from octop.infra.agents.secret_input.validation import validate_manual_vault_item
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()

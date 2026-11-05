@@ -11,7 +11,7 @@ from octop_gateway.models import MessageEvent
 from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
-from octop.infra.agents.secure_form.validation import (
+from octop.infra.agents.secret_input.validation import (
     secure_form_refusal_decisions,
     validate_secure_form_action_requests,
 )

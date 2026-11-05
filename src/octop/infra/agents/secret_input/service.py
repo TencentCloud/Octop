@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from octop.infra.agents.secret_input.slots import (
+from octop.infra.agents.secret_input.validation import (
     AGENT_SECRET_MAX_SLOTS,
     AGENT_SECRET_MAX_VALUE_CHARS,
     normalize_slot_name,

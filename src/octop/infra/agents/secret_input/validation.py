@@ -1,5 +1,6 @@
-"""Registration-time validation for ``request_secure_form`` plus the
-manual vault-item creation payload.
+"""Slot-name rules for chat-collected agent secrets, plus registration-time
+validation for ``request_secure_form`` and the manual vault-item creation
+payload.
 
 The interrupt fires before the tool body runs, so the model's raw arguments
 reach the pending store unvalidated by the pydantic schema. Every pause
@@ -20,12 +21,72 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
-from octop.infra.agents.secret_input.slots import (
-    AGENT_SECRET_MAX_SLOTS,
-    normalize_slot_name,
-)
-from octop.infra.agents.secure_form.tool import REQUEST_SECURE_FORM_TOOL_NAME
+from octop.infra.agents.secret_input.tool import REQUEST_SECURE_FORM_TOOL_NAME
 from octop.infra.errors import ErrorCode, OctopError
+
+# A slot becomes an environment variable in the agent's command executions, so
+# its name must be a portable env-var identifier. Uppercase is the convention;
+# lowercase is accepted and normalized to upper so one slot cannot appear twice
+# under different casings on case-insensitive filesystems/OSes.
+_SLOT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+
+# Slots are injected as env vars next to the platform's own identity variables;
+# shadowing these would break command execution or leak across concerns. The
+# exec-hijack class (loader/runtime config an attacker-controlled value could
+# turn into code execution) is denied for every chat-collected slot, including
+# env-routed secure-form fields.
+_RESERVED_SLOT_NAMES = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "PWD",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "HOSTNAME",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "LD_PRELOAD",
+        "LD_LIBRARY_PATH",
+        "BASH_ENV",
+        "ENV",
+        "NODE_OPTIONS",
+        "PYTHONPATH",
+        "PYTHONHOME",
+        "GIT_SSH_COMMAND",
+        "GIT_ASKPASS",
+    }
+)
+_RESERVED_SLOT_PREFIXES = ("OCTOP_",)
+
+# One slot per named secret; keep a bounded, auditable set per agent.
+AGENT_SECRET_MAX_SLOTS = 32
+# Submitted values are short credentials, not file payloads.
+AGENT_SECRET_MAX_VALUE_CHARS = 8192
+
+
+def normalize_slot_name(raw: object) -> str | None:
+    """Return the canonical slot name, or ``None`` when the name is invalid.
+
+    Canonical form is upper-case. Reserved platform names and the ``OCTOP_``
+    prefix (platform identity namespace) are rejected.
+    """
+    if not isinstance(raw, str):
+        return None
+    name = raw.strip()
+    if not _SLOT_RE.match(name):
+        return None
+    upper = name.upper()
+    if upper in _RESERVED_SLOT_NAMES or upper.startswith(_RESERVED_SLOT_PREFIXES):
+        return None
+    return upper
+
 
 SECURE_FORM_MAX_FIELDS = 8
 SECURE_FORM_MAX_LABEL = 60
@@ -434,6 +495,8 @@ def secure_form_refusal_decisions(
 
 
 __all__ = [
+    "AGENT_SECRET_MAX_SLOTS",
+    "AGENT_SECRET_MAX_VALUE_CHARS",
     "ExistingSlotNames",
     "FIELD_TYPE_MIN_MAX_LENGTH",
     "SECURE_FORM_FIELD_TYPES",
@@ -442,6 +505,7 @@ __all__ = [
     "check_field_value_shape",
     "extract_secure_form_request",
     "normalize_secure_form_origin",
+    "normalize_slot_name",
     "secure_form_refusal_decisions",
     "secure_form_refusal_message",
     "validate_manual_vault_item",

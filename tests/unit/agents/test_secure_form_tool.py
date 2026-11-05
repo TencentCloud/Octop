@@ -9,18 +9,18 @@ import pytest
 
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
-from octop.infra.agents.secret_input import normalize_slot_name
-from octop.infra.agents.secure_form import (
+from octop.infra.agents.secret_input import (
     REQUEST_SECURE_FORM_TOOL_NAME,
     SECURE_FORM_HEADLESS_FALLBACK,
     SECURE_FORM_INTERRUPT_ON,
     build_request_secure_form_tool,
     extract_secure_form_request,
     normalize_secure_form_origin,
+    normalize_slot_name,
     validate_secure_form_action_requests,
     validate_secure_form_args,
 )
-from octop.infra.agents.secure_form.middleware import SecureFormMiddleware
+from octop.infra.agents.secret_input.middleware import SecureFormMiddleware
 from octop.infra.agents.security.hitl_session import HitlSessionPolicy, apply_session_bypass
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -585,7 +585,7 @@ def test_team_manager_detects_secure_form_pause() -> None:
 
 
 def test_refusal_message_shape() -> None:
-    from octop.infra.agents.secure_form.validation import (
+    from octop.infra.agents.secret_input.validation import (
         secure_form_refusal_decisions,
         secure_form_refusal_message,
     )

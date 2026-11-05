@@ -9,13 +9,13 @@ import pytest
 from cryptography.fernet import InvalidToken
 
 from octop.config import OctopConfig
-from octop.infra.agents.secure_form.envelope import (
+from octop.infra.agents.secret_input.validation import SECURE_FORM_FIELD_TYPES
+from octop.infra.agents.secret_input.vault import (
     VAULT_REVEALABLE_FIELD_TYPES,
+    VaultService,
     open_vault_fields,
     reveal_vault_fields,
 )
-from octop.infra.agents.secure_form.validation import SECURE_FORM_FIELD_TYPES
-from octop.infra.agents.secure_form.vault_service import VaultService
 from octop.infra.crypto.fernet import (
     PURPOSE_AGENT_SECRET,
     PURPOSE_VAULT_ITEM,
@@ -184,7 +184,7 @@ def test_cap_256_then_rotation_is_cap_exempt(env: VaultEnv) -> None:
 def test_check_insert_capacity_pre_claim_guard(
     env: VaultEnv, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import octop.infra.agents.secure_form.vault_service as vault_service_module
+    import octop.infra.agents.secret_input.vault as vault_service_module
 
     env.service.check_insert_capacity(env.user_id)  # empty vault: fine
     env.service.store_item(

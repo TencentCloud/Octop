@@ -205,7 +205,7 @@ class SharedServices:
     @property
     def vault_service(self) -> Any:
         """User-vault storage service (stateless over the shared repos)."""
-        from octop.infra.agents.secure_form.vault_service import VaultService
+        from octop.infra.agents.secret_input.vault import VaultService
 
         return VaultService(repo=self.repos.vault_items_repo, secret_repo=self.repos.secret_repo)
 

@@ -30,15 +30,15 @@ from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_p
 from octop.infra.agents.providers.health import ModelHealthRegistry
 from octop.infra.agents.secret_input import (
     REQUEST_SECRET_INPUT_TOOL_NAME,
+    REQUEST_SECURE_FORM_TOOL_NAME,
     AgentSecretService,
     build_request_secret_input_tool,
-)
-from octop.infra.agents.secret_input.middleware import SecretInputMiddleware
-from octop.infra.agents.secure_form import (
-    REQUEST_SECURE_FORM_TOOL_NAME,
     build_request_secure_form_tool,
 )
-from octop.infra.agents.secure_form.middleware import SecureFormMiddleware
+from octop.infra.agents.secret_input.middleware import (
+    SecretInputMiddleware,
+    SecureFormMiddleware,
+)
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,

@@ -19,9 +19,8 @@ import octop.api.routers.vault as vault_routes
 from octop.api.routers.chat.models import SecureFormSubmitBody
 from octop.config import OctopConfig
 from octop.infra.agents.secret_input.service import AgentSecretService
-from octop.infra.agents.secure_form.envelope import open_vault_fields
-from octop.infra.agents.secure_form.submit import resolve_secure_form_submission
-from octop.infra.agents.secure_form.vault_service import VaultService
+from octop.infra.agents.secret_input.submit import resolve_secure_form_submission
+from octop.infra.agents.secret_input.vault import VaultService, open_vault_fields
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import SharedServices, build_shared_services
@@ -536,7 +535,7 @@ async def test_slot_capacity_drift_is_refused(env: Env) -> None:
 
 @pytest.mark.asyncio
 async def test_vault_cap_is_refused_pre_claim(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
-    import octop.infra.agents.secure_form.vault_service as vault_service_module
+    import octop.infra.agents.secret_input.vault as vault_service_module
 
     env.vault.store_item(
         env.owner.id, "login", "Existing", None, {"text": "a"}, replace_confirmed=False
