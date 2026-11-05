@@ -9,6 +9,7 @@ import { ArrowLeftRight, ChevronDown, X } from "lucide-react";
 import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
+import { useDesktopChromeStyle } from "../hooks/useDesktopChrome";
 import { useUserRole } from "../hooks/useUserRole";
 import { useCurrentUser, useSetCurrentUser } from "../hooks/useCurrentUser";
 import { useUpdateStatus } from "../hooks/useUpdateStatus";
@@ -458,6 +459,10 @@ export default function Sidebar({
     };
   }, [user]);
   const isRailCollapsed = collapsed && !isMobile;
+  const desktopChrome = useDesktopChromeStyle();
+  // macOS traffic lights sit above the brand; Windows already has its own
+  // caption row, so the logo starts at the top of the rail.
+  const reserveTrafficLightBand = desktopChrome === "mac";
   const wordmarkSrc = isDark
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
@@ -814,9 +819,11 @@ export default function Sidebar({
           minHeight: 0,
         }}
       >
-        {/* The window-controls band: reserved height, no control of its own.
-            The rail folds from RailEdgeControl on the seam beside this column. */}
-        <div className={styles.navChrome} aria-hidden />
+        {/* macOS only: room for the traffic lights. Windows caption is a
+            separate full-width row above the shell, so no blank here. */}
+        {reserveTrafficLightBand ? (
+          <div className={styles.navChrome} aria-hidden />
+        ) : null}
         <div
           style={{
             display: "flex",

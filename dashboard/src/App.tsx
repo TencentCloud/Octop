@@ -21,6 +21,7 @@ import InvitePage from "./pages/Invite";
 import AuthGuard from "./components/AuthGuard";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import DesktopWindowDragBand from "./components/DesktopWindowDragBand";
+import WindowsAppMenu from "./components/WindowsAppMenu";
 import OctopSpinner from "./components/OctopSpinner";
 import { AntdAppProvider } from "./components/AntdAppProvider";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
@@ -135,6 +136,7 @@ function ThemedApp() {
           {/* Login, setup and invite sit outside MainLayout, so the drag
               strip has to live above the router, not only inside the shell. */}
           <DesktopWindowDragBand />
+          <WindowsAppMenu />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />

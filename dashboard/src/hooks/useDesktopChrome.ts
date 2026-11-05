@@ -11,7 +11,7 @@ import {
   resolveDesktopChromeStyle,
   type DesktopChromeStyle,
 } from "../utils/desktopChrome";
-import { isDesktopShell } from "../utils/desktopBridge";
+import { getDesktopBridge, isDesktopShell } from "../utils/desktopBridge";
 
 const DesktopChromeContext = createContext<DesktopChromeStyle | null>(null);
 
@@ -27,8 +27,17 @@ export function useDesktopChrome(): DesktopChromeStyle | null {
   useEffect(() => {
     if (!isDesktopShell()) return;
     const next = resolveDesktopChromeStyle();
-    applyDesktopChrome(next);
+    let fullscreen = false;
+    const publish = () => applyDesktopChrome(next, document.documentElement, fullscreen);
+    publish();
     setStyle(next);
+    // Fullscreen removes the native buttons. Drop the inset so the menu row
+    // and the page stop reserving their strip.
+    const unsubscribe = getDesktopBridge()?.onWindowFullscreenChange?.((value) => {
+      fullscreen = value;
+      publish();
+    });
+    return () => unsubscribe?.();
   }, []);
 
   return style;

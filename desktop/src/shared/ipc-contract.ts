@@ -68,6 +68,8 @@ export const IPC_CHANNELS = {
   checkForUpdates: "octop:check-for-updates",
   /** Page already confirmed. No arguments: the shell re-selects the release. */
   installUpdate: "octop:install-update",
+  windowsMenuModel: "octop:windows-menu:model",
+  windowsMenuInvoke: "octop:windows-menu:invoke",
   sessionRegister: "octop:session:register",
   sessionRenew: "octop:session:renew",
   sessionRevoke: "octop:session:revoke",

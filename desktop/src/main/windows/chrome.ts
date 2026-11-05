@@ -126,17 +126,42 @@ export function windowChrome(
   return {};
 }
 
+let windowsCaptionMode: WindowChromeTheme["mode"] = systemMode();
+
+/** Fullscreen hides the caption buttons. Leaving it puts the last theme back. */
+export function windowsCaptionOverlay(visible: boolean): {
+  color: string;
+  symbolColor: string;
+  height: number;
+} {
+  if (!visible) {
+    return {
+      color: WINDOWS_TITLE_BAR_COLOR,
+      symbolColor: WINDOWS_TITLE_BAR_COLOR,
+      height: 0,
+    };
+  }
+  return windowsTitleBarOverlay(windowsCaptionMode);
+}
+
+export function setWindowsCaptionVisible(win: BrowserWindow, visible: boolean): void {
+  if (process.platform !== "win32" || win.isDestroyed()) return;
+  win.setTitleBarOverlay(windowsCaptionOverlay(visible));
+}
+
 /**
  * Apply a renderer-reported theme to the window's *native* controls. They follow
  * `nativeTheme`, not the page's CSS variables, so a dark Dashboard would
- * otherwise keep black glyphs on a dark overlay.
+ * otherwise keep black glyphs on a dark overlay. A fullscreen window keeps its
+ * buttons hidden until it leaves fullscreen.
  */
 export function applyWindowChromeTheme(
   win: BrowserWindow,
   theme: WindowChromeTheme,
 ): void {
   applyNativeTheme(theme);
-  if (process.platform !== "win32" || win.isDestroyed()) return;
+  windowsCaptionMode = theme.mode;
+  if (process.platform !== "win32" || win.isDestroyed() || win.isFullScreen()) return;
   win.setTitleBarOverlay(windowsTitleBarOverlay(theme.mode));
 }
 

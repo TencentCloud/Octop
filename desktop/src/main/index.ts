@@ -69,9 +69,15 @@ import {
   resolveGitStamp,
   windowsInstallScope,
 } from "./windows/about-info";
-import { windowsApplicationMenu } from "./windows/app-menu";
+import {
+  windowsApplicationMenu,
+  windowsMenuCommandId,
+  windowsMenuModel,
+  type WindowsMenuCommandId,
+} from "./windows/app-menu";
 import { createEarlyWindow } from "./windows/early-window";
-import { createMainWindow } from "./windows/main-window";
+import { createMainWindow, installDashboardGuards } from "./windows/main-window";
+import type { EarlyWindow } from "./windows/early-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import {
   shouldInstallSystemTray,
@@ -96,7 +102,6 @@ const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
 // the relay starts, and the relay accepts upgrades only from that origin (§5.2).
 const WINDOW_ORIGIN = "octop://app";
 const PRELOAD_PATH = join(__dirname, "../preload/index.js");
-const EARLY_PRELOAD_PATH = join(__dirname, "../preload/early.js");
 const SPLASH_PATH = join(__dirname, "../renderer/splash.html");
 const ERROR_PATH = join(__dirname, "../renderer/error.html");
 
@@ -393,6 +398,18 @@ function registerIpcHandlers(): void {
     isDesktop: true,
   }));
 
+  ipcMain.handle(IPC_CHANNELS.windowsMenuModel, () => {
+    if (process.platform !== "win32") return null;
+    return windowsMenuModel(app.getLocale());
+  });
+  ipcMain.handle(IPC_CHANNELS.windowsMenuInvoke, (event, id: unknown) => {
+    const command = windowsMenuCommandId(id);
+    if (!command || process.platform !== "win32") return;
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win || win.isDestroyed()) return;
+    runWindowsMenuCommand(win, command);
+  });
+
   ipcMain.handle(IPC_CHANNELS.clientSettingsGet, (): ClientSettings => settingsStore.load());
   ipcMain.handle(IPC_CHANNELS.clientSettingsSet, (_e, patch: Partial<ClientSettings>) => {
     const saved = settingsStore.save(patch);
@@ -542,19 +559,12 @@ async function startBackend(): Promise<boolean> {
   return ready;
 }
 
-function openDashboardWindow(appOrigin: string): BrowserWindow {
-  dashboardOrigin = appOrigin;
-  const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
-  const win = createMainWindow({
-    preload: PRELOAD_PATH,
-    theme: chromeTheme,
-    backgroundColor: windowBackground(chromeTheme.mode),
-    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin),
-    appOrigin,
-    onNavigate: (url) => {
-      if (isExternalLink(url)) void shell.openExternal(url);
-    },
-  });
+function openExternal(url: string): void {
+  if (isExternalLink(url)) void shell.openExternal(url);
+}
+
+/** Close-to-tray and the "backend ready" signal. Shared by the first window and a later one. */
+function watchDashboardLifetime(win: BrowserWindow): void {
   win.on("close", (event) => {
     if (
       !shouldKeepWindowOnClose({
@@ -579,7 +589,35 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
     if (win.isDestroyed()) return;
     win.webContents.send(IPC_CHANNELS.onBackendReady, { ok: true });
   });
+}
+
+function openDashboardWindow(appOrigin: string): BrowserWindow {
+  dashboardOrigin = appOrigin;
+  const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
+  const win = createMainWindow({
+    preload: PRELOAD_PATH,
+    theme: chromeTheme,
+    backgroundColor: windowBackground(chromeTheme.mode),
+    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin),
+    appOrigin,
+    onNavigate: openExternal,
+  });
+  watchDashboardLifetime(win);
   return win;
+}
+
+/** Keep the splash window and load the Dashboard into it. */
+function continueInEarlyWindow(early: EarlyWindow, appOrigin: string): void {
+  dashboardOrigin = appOrigin;
+  const win = early.browserWindow;
+  if (win.isDestroyed()) {
+    openDashboardWindow(appOrigin);
+    return;
+  }
+  installDashboardGuards(win, { appOrigin, onNavigate: openExternal });
+  watchDashboardLifetime(win);
+  const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
+  void win.loadURL(dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin));
 }
 
 /**
@@ -617,35 +655,93 @@ function revealAppWindow(): void {
   if (dashboardOrigin) openDashboardWindow(dashboardOrigin);
 }
 
+function showAboutDialog(version: string): void {
+  const locale = app.getLocale();
+  const stamp = resolveGitStamp(readGitStamp, {
+    commit: process.env.OCTOP_GIT_COMMIT,
+    date: process.env.OCTOP_GIT_DATE,
+  });
+  void dialog.showMessageBox({
+    type: "info",
+    title: locale.toLowerCase().startsWith("zh") ? "关于 Octop" : "About Octop",
+    message: "Octop",
+    detail: formatAboutDetail({
+      version,
+      setup: windowsInstallScope(process.execPath),
+      commit: stamp.commit,
+      date: stamp.date,
+      electron: process.versions.electron ?? "",
+      chromium: process.versions.chrome ?? "",
+      node: process.versions.node ?? "",
+      v8: process.versions.v8 ?? "",
+      os: formatAboutOs(osType(), process.arch, osRelease()),
+    }),
+  });
+}
+
+/** Run one caption-menu command. Roles stay on the native menu for accelerators. */
+function runWindowsMenuCommand(win: BrowserWindow, command: WindowsMenuCommandId): void {
+  const contents = win.webContents;
+  switch (command) {
+    case "close":
+      win.close();
+      return;
+    case "quit":
+      app.quit();
+      return;
+    case "undo":
+      contents.undo();
+      return;
+    case "redo":
+      contents.redo();
+      return;
+    case "cut":
+      contents.cut();
+      return;
+    case "copy":
+      contents.copy();
+      return;
+    case "paste":
+      contents.paste();
+      return;
+    case "delete":
+      contents.delete();
+      return;
+    case "selectAll":
+      contents.selectAll();
+      return;
+    case "reload":
+      contents.reload();
+      return;
+    case "forceReload":
+      contents.reloadIgnoringCache();
+      return;
+    case "toggleDevTools":
+      contents.toggleDevTools();
+      return;
+    case "resetZoom":
+      contents.setZoomLevel(0);
+      return;
+    case "zoomIn":
+      contents.setZoomLevel(contents.getZoomLevel() + 1);
+      return;
+    case "zoomOut":
+      contents.setZoomLevel(contents.getZoomLevel() - 1);
+      return;
+    case "togglefullscreen":
+      win.setFullScreen(!win.isFullScreen());
+      return;
+    case "about":
+      showAboutDialog(appVersion);
+      return;
+  }
+}
+
 /** Windows menu bar. Other platforms keep their own. */
 function installWindowsAppMenu(version: string): void {
   if (process.platform !== "win32") return;
-  const locale = app.getLocale();
   Menu.setApplicationMenu(
-    Menu.buildFromTemplate(
-      windowsApplicationMenu(locale, () => {
-        const stamp = resolveGitStamp(readGitStamp, {
-          commit: process.env.OCTOP_GIT_COMMIT,
-          date: process.env.OCTOP_GIT_DATE,
-        });
-        void dialog.showMessageBox({
-          type: "info",
-          title: locale.toLowerCase().startsWith("zh") ? "关于 Octop" : "About Octop",
-          message: "Octop",
-          detail: formatAboutDetail({
-            version,
-            setup: windowsInstallScope(process.execPath),
-            commit: stamp.commit,
-            date: stamp.date,
-            electron: process.versions.electron ?? "",
-            chromium: process.versions.chrome ?? "",
-            node: process.versions.node ?? "",
-            v8: process.versions.v8 ?? "",
-            os: formatAboutOs(osType(), process.arch, osRelease()),
-          }),
-        });
-      }),
-    ),
+    Menu.buildFromTemplate(windowsApplicationMenu(app.getLocale(), () => showAboutDialog(version))),
   );
 }
 
@@ -769,7 +865,9 @@ async function boot(): Promise<void> {
     splashFile: SPLASH_PATH,
     errorFile: ERROR_PATH,
     version: appVersion,
-    preload: EARLY_PRELOAD_PATH,
+    // Same preload as the Dashboard: this window loads that page next, and a
+    // BrowserWindow cannot swap its preload.
+    preload: PRELOAD_PATH,
     theme: chromeTheme,
   });
 
@@ -917,11 +1015,10 @@ async function boot(): Promise<void> {
     }
   }
 
-  // Swap the Early Window for the real Dashboard. Same background colour, so the
-  // handoff does not flash.
+  // Stay in the splash window. Closing it and opening another one is the
+  // flash the user sees when "正在准备本地服务" finishes.
   const appOrigin = dashboardDev ? windowOrigin : PACKAGED_APP_ORIGIN;
-  openDashboardWindow(appOrigin);
-  early.close();
+  continueInEarlyWindow(early, appOrigin);
 }
 
 app.whenReady().then(boot).catch((err) => {

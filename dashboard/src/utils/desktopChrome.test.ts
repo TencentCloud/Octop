@@ -260,6 +260,14 @@ describe("desktopChrome", () => {
       ),
     ).toBe(`${WINDOW_CONTROLS_INSET.windows}px`);
 
+    applyDesktopChrome("windows", document.documentElement, true);
+    expect(document.documentElement.dataset.octopDesktopChrome).toBe("windows");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-end",
+      ),
+    ).toBe("0px");
+
     applyDesktopChrome(null);
     expect(document.documentElement.dataset.octopDesktopChrome).toBeUndefined();
     expect(

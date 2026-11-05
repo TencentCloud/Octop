@@ -337,9 +337,9 @@
   }
 }
 
-/* Room above the brand row for the macOS traffic lights (shell y = 8).
-   Shorter than the 58px title row, so the rail's logo and icons sit higher.
-   The rail folds from the edge control beside it. */
+/* macOS only: room above the brand for the traffic lights (shell y = 8).
+   Windows keeps its menu in the caption row above the shell, so the logo
+   has no blank spacer. Shorter than the 58px title row. */
 .navChrome {
   position: relative;
   flex: 0 0 36px;

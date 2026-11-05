@@ -4,8 +4,8 @@ import "./base.css";
 import "./splash.css";
 
 /**
- * Splash of the Early Window (§4). It owns no state: the main process swaps the
- * whole window for the Dashboard once ``/api/health`` is green, or replaces this
+ * Splash of the Early Window (§4). It owns no state: the main process loads the
+ * Dashboard into this same window once ``/api/health`` is green, or replaces this
  * page with the failure Result.
  *
  * The sidecar can take ten seconds or more on a cold start, so the page has to

@@ -34,6 +34,24 @@ export interface DesktopWindowChromeTheme {
   scheme?: "system" | "light" | "dark";
 }
 
+export interface WindowsMenuCommand {
+  kind: "command";
+  id: string;
+  label: string;
+  accelerator: string | null;
+}
+
+export interface WindowsMenuSeparator {
+  kind: "separator";
+}
+
+export type WindowsMenuEntry = WindowsMenuCommand | WindowsMenuSeparator;
+
+export interface WindowsMenuModel {
+  titles: string[];
+  menus: WindowsMenuEntry[][];
+}
+
 /**
  * A JWT minted by the shell from its stored device credential. The credential
  * itself never crosses the bridge.
@@ -68,6 +86,14 @@ export interface OctopDesktopBridge {
    * There is deliberately no minimise / maximise / close here: those stay native.
    */
   setWindowChrome(theme: DesktopWindowChromeTheme): void;
+  /**
+   * Windows caption overlay hides the native menu bar. The page draws the
+   * titles and the submenus, then asks the shell to run the chosen command.
+   */
+  windowsMenu?: {
+    model(): Promise<WindowsMenuModel | null>;
+    invoke(id: string): Promise<void>;
+  };
   /**
    * macOS hides the traffic lights in full screen; the page then stops
    * reserving room for them. Fires only on change.

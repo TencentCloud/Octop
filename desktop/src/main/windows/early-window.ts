@@ -3,12 +3,12 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { EARLY_IPC } from "../../shared/early-ipc";
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
 import { windowBackground, windowChrome, type WindowChromeTheme } from "./chrome";
-import { MIN_WINDOW_SIZE } from "./size";
+import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 
 /**
  * Early Window (§4): shown immediately so the cold start never shows a blank
- * screen. It renders a lightweight splash and is swapped for the real Dashboard
- * only after ``/api/health`` reports the sidecar is ready.
+ * screen. The same window loads the Dashboard once ``/api/health`` is green.
+ * It is not closed and replaced.
  */
 
 export interface EarlyWindowOptions {
@@ -31,6 +31,8 @@ export interface EarlyWindowOptions {
 export interface EarlyWindow {
   /** Replace the splash with the failure Result — same window, no blank frame. */
   showError(failure: ShellFailure): void;
+  /** The window the user already has open. Later steps load into it. */
+  readonly browserWindow: BrowserWindow;
   close(): void;
 }
 
@@ -39,10 +41,10 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   const mode = options.theme.mode;
 
   const win = new BrowserWindow({
-    width: 1080,
-    height: 720,
-    // Same floor as the Dashboard window: the splash swaps for it in place, so
-    // a size the Dashboard would refuse has to be refused here too.
+    width: DEFAULT_WINDOW_SIZE.width,
+    height: DEFAULT_WINDOW_SIZE.height,
+    // Same floor as the Dashboard: this window becomes the Dashboard, so a
+    // size the page would refuse has to be refused here too.
     minWidth: MIN_WINDOW_SIZE.width,
     minHeight: MIN_WINDOW_SIZE.height,
     show: false,
@@ -81,6 +83,7 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
         query: { [SHELL_ERROR_PARAM]: payload, theme: mode },
       });
     },
+    browserWindow: win,
     close(): void {
       if (!win.isDestroyed()) win.close();
     },
