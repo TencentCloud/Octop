@@ -43,7 +43,7 @@
 # ---------------------------------------------------------------------------
 # 阶段 1 — 前端构建
 # ---------------------------------------------------------------------------
-FROM node:22-slim AS frontend-builder
+FROM node:20-slim AS frontend-builder
 
 ARG NPM_REGISTRY=
 # Node heap ceiling for the vite build. Lower this (e.g. 1024) on low-memory
