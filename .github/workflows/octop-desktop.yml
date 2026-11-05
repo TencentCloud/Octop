@@ -254,9 +254,8 @@ jobs:
           mkdir -p desktop/src/resources/portable
           cp -a src/octop/dashboard/. desktop/src/resources/dashboard/
           # Windows keeps one zip; NSIS extracts it with tar.exe. Packing the
-          # ~40k files into NSIS is slower. macOS (DMG) and Linux (AppImage)
-          # have no install script, so copy the tree package.sh already
-          # assembled. deb/rpm then install that same tree. No zip in those apps.
+          # ~40k files into NSIS is slower. macOS (DMG) and Linux (deb/rpm)
+          # copy the tree package.sh already assembled. No zip in those apps.
           if [[ "$plat" == windows-* ]]; then
             cp "$zip" desktop/src/resources/portable/
           else
@@ -354,14 +353,6 @@ jobs:
         if: startsWith(matrix.plat, 'windows-')
         with:
           path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.exe
-          archive: false
-          if-no-files-found: error
-          retention-days: 14
-
-      - uses: actions/upload-artifact@v7
-        if: startsWith(matrix.plat, 'linux-')
-        with:
-          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.AppImage
           archive: false
           if-no-files-found: error
           retention-days: 14

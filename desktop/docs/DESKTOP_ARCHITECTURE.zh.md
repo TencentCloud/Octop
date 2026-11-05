@@ -56,7 +56,7 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 ### 2.1 产物打包与放置
 
 - 由 CI / Makefile 打包生成独立的绿色便携包：`Octop-portable-<plat>-<version>.zip`。
-- **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。macOS 在签名和公证之前完成；Linux 的 AppImage、deb、rpm 都带上这棵树。DMG 和 AppImage 没有安装脚本，所以不能留到安装时再解压。
+- **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。macOS 在签名和公证之前完成；Linux 的 deb、rpm 都带上这棵树。DMG 没有安装脚本，deb/rpm 安装的也是同一棵已展开的树，所以不能留到安装时再解压。
 - **Windows**：zip 与 `portable-version.json` 放在 `resources/portable/`。NSIS `customInstall` 用 `tar.exe` 解到 `$INSTDIR\resources\sidecar\`，卸载时删掉这个目录。不把四万多个文件逐个打进 NSIS。
 - 展开后的结构（zip 内层目录名已去掉）：
 
@@ -75,9 +75,9 @@ start.sh/bat   # 独立启动脚本
 2. 安装目录里已经展开的树：先看 `resources/sidecar`（Windows 安装器写入），再看 `resources/portable`（macOS 与 Linux 打包时写入）。两者都要同时有 `launch.py` 和解释器；只有 zip 的目录不算。
 3. 都没有时，才把随包 zip 解压到 `<OCTOP_HOME>/portable/`。正式安装包不会走这里。
 
-运行时跟安装目录走。升级替换安装目录（macOS 换掉 `.app`，Linux 换掉 AppImage / deb / rpm 里的文件，Windows 由 NSIS 重新解压 `resources\sidecar`）。卸载删掉安装目录里的运行时。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。以前解压在 `<OCTOP_HOME>/portable/` 的旧副本不再使用，卸载也不删它。
+运行时跟安装目录走。升级替换安装目录（macOS 换掉 `.app`，Linux 换掉 deb / rpm 里的文件，Windows 由 NSIS 重新解压 `resources\sidecar`）。卸载删掉安装目录里的运行时。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。以前解压在 `<OCTOP_HOME>/portable/` 的旧副本不再使用，卸载也不删它。
 
-子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进签名过的 macOS 包、只读的 AppImage，或 Windows / deb 安装目录。Windows 安装器在展开 `resources\sidecar` 之后，用其中的 `runtime\python.exe` 对 `packages` 执行 `compileall`，写入同一个 `pyc` 目录（`OCTOP_HOME` 未设置时为 `%USERPROFILE%\.octop\pyc`）。编译失败不中止安装，首次启动会再编译。Windows 卸载只删除这个 `pyc` 目录，下次安装再编译一次。
+子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进签名过的 macOS 包，或 Windows / deb / rpm 安装目录。Windows 安装器在展开 `resources\sidecar` 之后，用其中的 `runtime\python.exe` 对 `packages` 执行 `compileall`，写入同一个 `pyc` 目录（`OCTOP_HOME` 未设置时为 `%USERPROFILE%\.octop\pyc`）。编译失败不中止安装，首次启动会再编译。Windows 卸载只删除这个 `pyc` 目录，下次安装再编译一次。
 
 只有第 3 步的回退路径才做校验与版本感知：
 
@@ -418,7 +418,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 1. 锁住 API 准入。新请求返回 `503`，已接纳的请求排空。
 2. 按第 3.4 节要求 Python 进程干净退出：宽限期内退出、退出码为 0。
 3. 把退出交给安装器。安装器在用户上次选定的安装目录里替换壳、前端资源和随包运行时，不改回默认盘符。
-4. 新版本启动后直接使用安装目录里的运行时。Windows 安装器在覆盖文件后重新展开 `resources\sidecar`；macOS 的新 `.app` 和 Linux 的新 AppImage / deb / rpm 里已经是展开的树。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。
+4. 新版本启动后直接使用安装目录里的运行时。Windows 安装器在覆盖文件后重新展开 `resources\sidecar`；macOS 的新 `.app` 和 Linux 的新 deb / rpm 里已经是展开的树。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。
 
 干净退出没有完成时，安装被拒绝。安装失败且 Python 进程已经停过时，壳重新拉起本次进程，并重新加载 `octop://app/`，因为新进程的端口和注入都可能变了。
 
@@ -432,7 +432,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 |---|---|
 | **macOS** | 使用沉浸式标题栏；同步系统深浅色；正确处理 Dock 重开、应用签名、公证与运行时 quarantine。 |
 | **Windows** | 隐藏实心标题栏，用透明 `titleBarOverlay` 把系统按钮叠在页面上并保留 Snap Layouts；NSIS 向导安装，可选安装目录和盘符；确保更新和卸载时不遗留 Python 进程。 |
-| **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 AppImage、deb 和 rpm，默认安装包是 deb。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
+| **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 deb 和 rpm，默认安装包是 deb。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
 
 ### 7.1 Windows 安装位置与盘符
 
@@ -570,7 +570,7 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 3. **Electron 打包**：
    - macOS：DMG 与 Zip，配置 Developer ID 签名和公证。
    - Windows：带目录页的 NSIS 安装包，允许选择安装位置和盘符，并配置 Authenticode 签名。
-   - Linux：electron-builder 的 `linux.target` 固定为 `["AppImage", "deb", "rpm"]`。x64 与 arm64 各发布这三种包；默认安装包是 deb，AppImage 和 rpm 同时发布。 |
+   - Linux：electron-builder 的 `linux.target` 固定为 `["deb", "rpm"]`。x64 与 arm64 各发布这两种包；默认安装包是 deb，rpm 同时发布。
 4. **发布前验证**：
    - 在干净用户目录执行首次启动。
    - 验证三个平台首次启动都不再解压。然后验证 setup wizard、健康检查和正常退出。
