@@ -42,7 +42,7 @@ test("macOS 交通灯用系统常规尺寸，不拉高到页面顶栏", () => {
   });
 });
 
-test("Windows 标题栏透明，菜单栏保持可见", () => {
+test("Windows 标题栏透明，加载页不展示原生菜单栏", () => {
   onPlatform("win32", () => {
     assert.equal(chrome.WINDOWS_TITLE_BAR_COLOR, "#00000000");
     assert.deepEqual(chrome.windowChrome("light"), {
@@ -52,11 +52,42 @@ test("Windows 标题栏透明，菜单栏保持可见", () => {
         symbolColor: "#1a1a1a",
         height: 32,
       },
-      autoHideMenuBar: false,
+      autoHideMenuBar: true,
     });
     const dark = chrome.windowChrome("dark").titleBarOverlay;
     assert.ok(dark && typeof dark === "object");
     assert.equal(dark.symbolColor, "#ffffff");
+  });
+});
+
+test("Windows 再次收起菜单栏，避免启动页第一帧露出", () => {
+  onPlatform("win32", () => {
+    const calls: string[] = [];
+    const win = {
+      isDestroyed: () => false,
+      setAutoHideMenuBar: (hide: boolean) => {
+        calls.push(`autoHide:${hide}`);
+      },
+      setMenuBarVisibility: (visible: boolean) => {
+        calls.push(`visible:${visible}`);
+      },
+    } as unknown as BrowserWindow;
+    chrome.concealWindowsMenuBar(win);
+    assert.deepEqual(calls, ["autoHide:true", "visible:false"]);
+  });
+  onPlatform("linux", () => {
+    let called = false;
+    const win = {
+      isDestroyed: () => false,
+      setAutoHideMenuBar: () => {
+        called = true;
+      },
+      setMenuBarVisibility: () => {
+        called = true;
+      },
+    } as unknown as BrowserWindow;
+    chrome.concealWindowsMenuBar(win);
+    assert.equal(called, false);
   });
 });
 

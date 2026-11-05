@@ -44,7 +44,7 @@ import { compareVersions } from "./supervisor/version";
 import { sha256File } from "./supervisor/sha256";
 import { buildSidecarEnv } from "./supervisor/process-tree";
 import { SidecarSupervisor } from "./supervisor/sidecar";
-import { contentTypeFor, isExternalLink, resolveStaticPath } from "./protocol/static-handler";
+import { contentTypeFor, isExternalLink, resolveDashboardFile, resolveStaticPath } from "./protocol/static-handler";
 import { isApiPath, sanitizeForwardHeaders, toBackendUrl } from "./protocol/stream-proxy";
 import { WsRelay } from "./protocol/ws-relay";
 import {
@@ -260,8 +260,13 @@ function registerProtocol(staticRootDir: string): void {
       });
     }
 
-    const filePath = resolveStaticPath(staticRootDir, pathname);
-    if (!filePath) return new Response("forbidden", { status: 403 });
+    // Escape stays forbidden. A client route with no file falls back to
+    // index.html; otherwise View → Reload of /chat returns an empty page.
+    if (!resolveStaticPath(staticRootDir, pathname)) {
+      return new Response("forbidden", { status: 403 });
+    }
+    const filePath = resolveDashboardFile(staticRootDir, pathname, existsSync);
+    if (!filePath) return new Response("not found", { status: 404 });
     // Serve via file URL so large assets stream instead of buffering in memory.
     return net.fetch(pathToFileURL(filePath).toString()).then((res) => {
       const out = new Response(res.body, { status: res.status, headers: res.headers });
