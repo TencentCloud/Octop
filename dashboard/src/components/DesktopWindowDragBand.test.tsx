@@ -4,7 +4,6 @@ import { DesktopChromeProvider } from "../hooks/useDesktopChrome";
 import {
   MAC_TITLEBAR_HEIGHT,
   WINDOW_CONTROLS_INSET,
-  WINDOWS_CAPTION_HEIGHT,
   type DesktopChromeStyle,
 } from "../utils/desktopChrome";
 import DesktopWindowDragBand from "./DesktopWindowDragBand";
@@ -34,40 +33,27 @@ describe("窗口顶部拖拽条", () => {
     expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
   });
 
-  it.each([
-    {
-      name: "macOS",
-      chrome: "mac" as const,
+  it("macOS 只在常规标题栏高度内可拖动，并避开交通灯", () => {
+    const { container } = renderBand("mac");
+    const band = container.querySelector(".octop-shell-drag-band");
+
+    expect(band).not.toBeNull();
+    expect(band).toHaveClass("octop-desktop-drag");
+    expect(band).toHaveAttribute("aria-hidden", "true");
+    expect(band).toHaveStyle({
+      position: "fixed",
+      top: "0px",
+      height: `${MAC_TITLEBAR_HEIGHT}px`,
       left: `${WINDOW_CONTROLS_INSET.mac}px`,
       right: "0px",
-      height: `${MAC_TITLEBAR_HEIGHT}px`,
-    },
-    {
-      name: "Windows",
-      chrome: "windows" as const,
-      left: "0px",
-      right: "138px",
-      height: `${WINDOWS_CAPTION_HEIGHT}px`,
-    },
-  ])(
-    "$name 只在常规标题栏高度内可拖动，并避开原生按钮",
-    ({ chrome, left, right, height }) => {
-      const { container } = renderBand(chrome);
-      const band = container.querySelector(".octop-shell-drag-band");
+      pointerEvents: "none",
+    });
+  });
 
-      expect(band).not.toBeNull();
-      expect(band).toHaveClass("octop-desktop-drag");
-      expect(band).toHaveAttribute("aria-hidden", "true");
-      expect(band).toHaveStyle({
-        position: "fixed",
-        top: "0px",
-        height,
-        left,
-        right,
-        pointerEvents: "none",
-      });
-    },
-  );
+  it("Windows 不在页面上放拖动条", () => {
+    const { container } = renderBand("windows");
+    expect(container.querySelector(".octop-shell-drag-band")).toBeNull();
+  });
 
   it("全屏时移除拖拽条", () => {
     state.fullscreen = true;
