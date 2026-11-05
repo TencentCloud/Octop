@@ -132,7 +132,7 @@ class HitlPendingStore:
             return None
         if record.status != "pending":
             return record
-        if time.time() - record.created_at > self.ttl_seconds:
+        if time.time() - record.created_at >= self.ttl_seconds:
             record.status = "expired"
             return record
         return record
@@ -172,7 +172,7 @@ class HitlPendingStore:
                 continue
             if agent_id is not None and record.agent_id != agent_id:
                 continue
-            if time.time() - record.created_at > self.ttl_seconds:
+            if time.time() - record.created_at >= self.ttl_seconds:
                 record.status = "expired"
                 continue
             if latest is None or record.created_at > latest.created_at:
@@ -240,7 +240,7 @@ class HitlPendingStore:
             return False
         if user_id is not None and record.user_id != user_id:
             return False
-        if time.time() - record.created_at > self.ttl_seconds:
+        if time.time() - record.created_at >= self.ttl_seconds:
             record.status = "expired"
             return False
         return True
@@ -272,7 +272,7 @@ class HitlPendingStore:
                 continue
             if record.user_id != user_id:
                 continue
-            if now - record.created_at > self.ttl_seconds:
+            if now - record.created_at >= self.ttl_seconds:
                 continue
             if record.agent_id == agent_id:
                 tid = (record.thread_id or "").strip()
@@ -320,7 +320,7 @@ class HitlPendingStore:
         record = self._records.get(pending_id)
         if record is None or record.status != "pending":
             return None
-        if time.time() - record.created_at > self.ttl_seconds:
+        if time.time() - record.created_at >= self.ttl_seconds:
             record.status = "expired"
             return None
         record.status = "filling"
@@ -346,9 +346,9 @@ class HitlPendingStore:
         stale_ids: list[str] = []
         for pending_id, record in self._records.items():
             age = now - record.created_at
-            if record.status == "pending" and age > self.ttl_seconds:
+            if record.status == "pending" and age >= self.ttl_seconds:
                 record.status = "expired"
-            if record.status != "pending" and age > self.ttl_seconds:
+            if record.status != "pending" and age >= self.ttl_seconds:
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]
