@@ -179,11 +179,13 @@
         align-items: center;
         animation: octop-boot-in 420ms ease-out both;
       }
-      /* Cropped red mark, same asset in both themes. No tile, so no radius. */
+      /* Cropped red mark, same asset in both themes. No tile, so no radius.
+         The circle sits left in the SVG; nudge so it lines up with "Octop". */
       .octop-boot-mark {
         display: block;
         height: 64px;
         width: auto;
+        transform: translateX(12px);
       }
       .octop-boot-wordmark {
         margin: 18px 0 0;

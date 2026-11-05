@@ -58,6 +58,12 @@ describe("index.html boot theme", () => {
     expect(INDEX_HTML).not.toContain("logo_vertical_white.svg");
   });
 
+  it("nudges the mark so the red circle lines up with the wordmark", () => {
+    expect(INDEX_HTML).toMatch(
+      /\.octop-boot-mark\s*\{[^}]*transform:\s*translateX\(12px\)/,
+    );
+  });
+
   it("shows an indeterminate bar, not a spinner that hides the wait", () => {
     expect(INDEX_HTML).toContain('class="octop-boot-bar"');
     expect(INDEX_HTML).toContain("@keyframes octop-boot-sweep");

@@ -37,6 +37,9 @@
 .splash__mark {
   height: 64px;
   flex: none;
+  /* The red circle sits left in logo_mark.svg; the speed bars pull the
+     bounding box right. Nudge so the circle lines up with the wordmark. */
+  transform: translateX(12px);
 }
 
 .splash__logo {
