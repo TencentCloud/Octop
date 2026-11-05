@@ -1382,7 +1382,10 @@
     },
     "pushToast": {
       "title": "{{name}} 发来提醒",
-      "titleFallback": "任务提醒"
+      "titleFallback": "任务提醒",
+      "enableBackground": "后台也提醒我",
+      "enabled": "已开启。切到其他窗口时会用系统通知提醒你。",
+      "denied": "浏览器已阻止通知。可在地址栏的网站设置里重新允许。"
     },
     "memoryMaintenance": {
       "queued": "正在排队整理记忆库…",
