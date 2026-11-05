@@ -155,6 +155,7 @@ export function titleRowStartPadding(outerPadPx: number): string {
 export function applyDesktopChrome(
   style: DesktopChromeStyle | null,
   root: HTMLElement = document.documentElement,
+  fullscreen = false,
 ): void {
   if (!style) {
     delete root.dataset.octopDesktopChrome;
@@ -163,14 +164,15 @@ export function applyDesktopChrome(
     return;
   }
   root.dataset.octopDesktopChrome = style;
+  // Fullscreen hides the native buttons, so neither edge keeps a gap.
   // Only one edge carries buttons per platform; the other stays at 0 so every
   // consumer can use both variables unconditionally.
   root.style.setProperty(
     INSET_START_VAR,
-    `${windowControlsInset(style, "start")}px`,
+    `${fullscreen ? 0 : windowControlsInset(style, "start")}px`,
   );
   root.style.setProperty(
     INSET_END_VAR,
-    `${windowControlsInset(style, "end")}px`,
+    `${fullscreen ? 0 : windowControlsInset(style, "end")}px`,
   );
 }

@@ -1,7 +1,12 @@
 import { BrowserWindow } from "electron";
 
 import { IPC_CHANNELS } from "../../shared/ipc-contract";
-import { isAppNavigation, windowChrome, type WindowChromeTheme } from "./chrome";
+import {
+  isAppNavigation,
+  setWindowsCaptionVisible,
+  windowChrome,
+  type WindowChromeTheme,
+} from "./chrome";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 
 /**
@@ -9,6 +14,39 @@ import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
  * files, API proxied in the main process). Local dev loads the Vite server so
  * the page hot-reloads. Sandbox flags stay the same either way (§5.3).
  */
+
+/** In-app navigation and fullscreen signals. Safe to call on the splash window before it loads the Dashboard. */
+export function installDashboardGuards(
+  win: BrowserWindow,
+  options: { appOrigin: string; onNavigate: (url: string) => void },
+): void {
+  // External navigation is intercepted and opened by the OS, never in-app (§5.2).
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    options.onNavigate(url);
+    return { action: "deny" };
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!isAppNavigation(url, options.appOrigin)) {
+      event.preventDefault();
+      options.onNavigate(url);
+    }
+  });
+
+  // Fullscreen hides the native buttons (traffic lights / caption overlay).
+  // The page keeps its menu row and drops the space those buttons occupied.
+  const sendFullscreen = (fullscreen: boolean) => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send(IPC_CHANNELS.windowChromeFullscreen, fullscreen);
+  };
+  win.on("enter-full-screen", () => {
+    setWindowsCaptionVisible(win, false);
+    sendFullscreen(true);
+  });
+  win.on("leave-full-screen", () => {
+    setWindowsCaptionVisible(win, true);
+    sendFullscreen(false);
+  });
+}
 
 export function createMainWindow(options: {
   preload: string;
@@ -42,26 +80,7 @@ export function createMainWindow(options: {
     },
   });
 
-  // External navigation is intercepted and opened by the OS, never in-app (§5.2).
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    options.onNavigate(url);
-    return { action: "deny" };
-  });
-  win.webContents.on("will-navigate", (event, url) => {
-    if (!isAppNavigation(url, options.appOrigin)) {
-      event.preventDefault();
-      options.onNavigate(url);
-    }
-  });
-
-  // macOS hides the traffic lights in full screen, so the page has to stop
-  // reserving room for them. Nothing else changes: the buttons stay native.
-  const sendFullscreen = (fullscreen: boolean) => {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send(IPC_CHANNELS.windowChromeFullscreen, fullscreen);
-  };
-  win.on("enter-full-screen", () => sendFullscreen(true));
-  win.on("leave-full-screen", () => sendFullscreen(false));
+  installDashboardGuards(win, options);
 
   win.once("ready-to-show", () => win.show());
   // The boot script reads this once, writes it into localStorage, then strips

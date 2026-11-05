@@ -62,10 +62,11 @@ test("Windows 标题栏透明，菜单栏保持可见", () => {
 
 test("主题切换只改标题栏按钮颜色，底保持透明", () => {
   onPlatform("win32", () => {
-    const overlays: Array<{ color?: string; symbolColor?: string }> = [];
+    const overlays: Array<{ color?: string; symbolColor?: string; height?: number }> = [];
     const win = {
       isDestroyed: () => false,
-      setTitleBarOverlay: (overlay: { color?: string; symbolColor?: string }) => {
+      isFullScreen: () => false,
+      setTitleBarOverlay: (overlay: { color?: string; symbolColor?: string; height?: number }) => {
         overlays.push(overlay);
       },
     } as unknown as BrowserWindow;
@@ -79,6 +80,11 @@ test("主题切换只改标题栏按钮颜色，底保持透明", () => {
       overlays.map((overlay) => overlay.symbolColor),
       ["#ffffff", "#1a1a1a"],
     );
+    chrome.setWindowsCaptionVisible(win, false);
+    chrome.setWindowsCaptionVisible(win, true);
+    assert.equal(overlays[2]?.height, 0);
+    assert.equal(overlays[3]?.symbolColor, "#1a1a1a");
+    assert.equal(overlays[3]?.height, 32);
   });
 });
 

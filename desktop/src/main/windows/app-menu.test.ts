@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { MenuItemConstructorOptions } from "electron";
 
-import { windowsApplicationMenu, windowsAppMenuLabels } from "./app-menu";
+import {
+  windowsApplicationMenu,
+  windowsAppMenuLabels,
+  windowsMenuCommandId,
+  windowsMenuModel,
+} from "./app-menu";
 
 function roles(item: MenuItemConstructorOptions): string[] {
   const submenu = item.submenu;
@@ -64,4 +69,25 @@ test("四个顶层菜单带上常规命令", () => {
     {} as never,
   );
   assert.equal(abouts, 1);
+});
+
+test("页面上的菜单带中文标签和快捷键", () => {
+  const model = windowsMenuModel("zh-CN");
+  assert.deepEqual(model.titles, ["文件", "编辑", "视图", "帮助"]);
+  assert.deepEqual(model.menus[0], [
+    { kind: "command", id: "close", label: "关闭", accelerator: "Ctrl+W" },
+    { kind: "separator" },
+    { kind: "command", id: "quit", label: "退出", accelerator: null },
+  ]);
+  assert.equal(model.menus[1][0]?.kind === "command" && model.menus[1][0].label, "撤销");
+  assert.equal(model.menus[3][0]?.kind === "command" && model.menus[3][0].accelerator, null);
+});
+
+test("英文菜单用 Exit，不接受菜单以外的命令", () => {
+  const file = windowsMenuModel("en-US").menus[0];
+  assert.equal(file[2]?.kind === "command" && file[2].label, "Exit");
+  assert.equal(windowsMenuCommandId("copy"), "copy");
+  assert.equal(windowsMenuCommandId("about"), "about");
+  assert.equal(windowsMenuCommandId("new-agent"), null);
+  assert.equal(windowsMenuCommandId(0), null);
 });

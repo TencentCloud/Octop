@@ -49,6 +49,21 @@ const bridge = {
     ipcRenderer.send(IPC_CHANNELS.windowChromeTheme, theme);
   },
   /**
+   * Windows draws no native menu bar under the transparent caption, so the
+   * page draws the titles and the submenus, then asks the shell to run a command.
+   */
+  windowsMenu: {
+    model(): Promise<{
+      titles: string[];
+      menus: Array<Array<{ kind: "separator" } | { kind: "command"; id: string; label: string; accelerator: string | null }>>;
+    } | null> {
+      return ipcRenderer.invoke(IPC_CHANNELS.windowsMenuModel);
+    },
+    invoke(id: string): Promise<void> {
+      return ipcRenderer.invoke(IPC_CHANNELS.windowsMenuInvoke, id);
+    },
+  },
+  /**
    * Full screen hides the macOS traffic lights, so the page stops reserving
    * room for them. Fires only on change; the app never starts full screen.
    */
@@ -99,3 +114,12 @@ const bridge = {
 export type OctopDesktopBridge = typeof bridge;
 
 contextBridge.exposeInMainWorld("octopDesktop", bridge);
+
+// The failure page's Retry lives in this same window (the splash is not a
+// second BrowserWindow). Restart stays off `octopDesktop`. The channel string
+// matches `EARLY_IPC.restart`; importing that module would split this preload.
+contextBridge.exposeInMainWorld("octopShell", {
+  restart(): void {
+    ipcRenderer.send("octop:early-restart");
+  },
+});
