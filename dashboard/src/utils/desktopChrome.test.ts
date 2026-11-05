@@ -172,6 +172,17 @@ describe("desktopChrome", () => {
     );
   });
 
+  it("keeps the Windows caption above drawers", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../styles/layout.css"),
+      "utf8",
+    );
+    expect(css).toMatch(/\.octop-win-menu\s*\{[^}]*z-index:\s*11000/);
+    expect(css).toMatch(
+      /html\[data-octop-caption-row\] \.octop-drawer\s*\{[^}]*top:\s*var\(--octop-caption-row/,
+    );
+  });
+
   it("drags shell windows through the app-region CSS property", () => {
     const css = readFileSync(
       resolve(__dirname, "../styles/layout.css"),
