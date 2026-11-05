@@ -6562,6 +6562,8 @@
       "professional": "Professional",
       "self_hosted": "Self-hosted"
     },
+    "categoryAll": "All",
+    "categoryEmpty": "No connectors in this category",
     "listSummary": "{{total}} connectors available, {{configured}} configured",
     "enabledSummary": "{{count}} connector instances enabled",
     "emptyGuideTitle": "No enabled connectors yet",

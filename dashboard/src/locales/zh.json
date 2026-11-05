@@ -6562,6 +6562,8 @@
       "professional": "专业工具",
       "self_hosted": "自托管 / 扩展"
     },
+    "categoryAll": "全部",
+    "categoryEmpty": "这个分类下没有连接器",
     "listSummary": "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
     "enabledSummary": "已启用 {{count}} 个连接器实例",
     "emptyGuideTitle": "还没有已启用的连接器",
