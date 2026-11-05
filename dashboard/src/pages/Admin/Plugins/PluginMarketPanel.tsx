@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { pluginsApi, type MarketPlugin } from "../../../api/modules/plugins";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PillScroller from "../../../components/PillScroller";
@@ -159,9 +160,7 @@ export function PluginMarketPanel() {
               </span>
             )}
           </div>
-          <div
-            className={`${styles.toolbarRight} ${styles.marketToolbarRight}`}
-          >
+          <div className={cx(styles.toolbarRight, styles.marketToolbarRight)}>
             <Input
               className={styles.marketSearch}
               prefix={<Search size={14} />}
@@ -245,9 +244,7 @@ export function PluginMarketPanel() {
             return (
               <article
                 key={row.id}
-                className={`${styles.card} ${
-                  installed ? styles.cardInstalled : ""
-                }`}
+                className={cx(styles.card, installed && styles.cardInstalled)}
               >
                 <div className={styles.cardBody}>
                   <div className={styles.cardTop}>

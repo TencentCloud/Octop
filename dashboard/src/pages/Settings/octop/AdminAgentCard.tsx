@@ -14,6 +14,7 @@ import {
   Trash2,
   User,
 } from "lucide-react";
+import cx from "classnames";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
@@ -176,7 +177,10 @@ export const AdminAgentCard = memo(function AdminAgentCard({
               <Tooltip title={t("adminAgents.action.start")}>
                 <button
                   type="button"
-                  className={`${styles.cardActionBtn} ${styles.cardActionBtnStart}`}
+                  className={cx(
+                    styles.cardActionBtn,
+                    styles.cardActionBtnStart,
+                  )}
                   disabled={loading}
                   onClick={() => void onAct("start")}
                 >
@@ -188,7 +192,7 @@ export const AdminAgentCard = memo(function AdminAgentCard({
               <Tooltip title={t("adminAgents.action.stop")}>
                 <button
                   type="button"
-                  className={`${styles.cardActionBtn} ${styles.cardActionBtnStop}`}
+                  className={cx(styles.cardActionBtn, styles.cardActionBtnStop)}
                   disabled={loading}
                   onClick={() => void onAct("stop")}
                 >
@@ -199,7 +203,7 @@ export const AdminAgentCard = memo(function AdminAgentCard({
             <Tooltip title={t("adminAgents.action.reload")}>
               <button
                 type="button"
-                className={`${styles.cardActionBtn} ${styles.cardActionBtnReload}`}
+                className={cx(styles.cardActionBtn, styles.cardActionBtnReload)}
                 disabled={loading}
                 onClick={() => void onAct("reload")}
               >
@@ -220,7 +224,7 @@ export const AdminAgentCard = memo(function AdminAgentCard({
             <Tooltip title={t("common.delete")}>
               <button
                 type="button"
-                className={`${styles.cardActionBtn} ${styles.cardActionBtnDanger}`}
+                className={cx(styles.cardActionBtn, styles.cardActionBtnDanger)}
                 disabled={loading}
               >
                 <Trash2 size={14} />

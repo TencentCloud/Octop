@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "antd";
 import { Users } from "lucide-react";
+import cx from "classnames";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import styles from "../index.module.less";
 
@@ -22,9 +23,10 @@ export default function TeamChatBadge({
   const label = t("chat.teamBadge");
   const badge = (
     <span
-      className={`${styles.teamChatBadge}${
-        compact ? ` ${styles.teamChatBadgeCompact}` : ""
-      }`}
+      className={cx(
+        styles.teamChatBadge,
+        compact && styles.teamChatBadgeCompact,
+      )}
       aria-label={label}
       onClick={(event) => event.stopPropagation()}
     >

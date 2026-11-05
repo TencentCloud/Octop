@@ -13,6 +13,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import cx from "classnames";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -238,9 +239,12 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
 
   return (
     <div
-      className={`${styles.sessionRow} ${styles.sessionRowCompact} ${
-        isActive ? styles.sessionRowActive : ""
-      } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      className={cx(
+        styles.sessionRow,
+        styles.sessionRowCompact,
+        isActive && styles.sessionRowActive,
+        session.pinned && styles.sessionRowPinned,
+      )}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}
@@ -669,7 +673,7 @@ export default function MinimalAgentSessionNav({
   }
 
   return (
-    <div className={`${styles.sessionList} ${styles.minimalAgentNav}`}>
+    <div className={cx(styles.sessionList, styles.minimalAgentNav)}>
       <div className={styles.sessionSearchWrap}>
         <Search
           size={14}
@@ -768,9 +772,10 @@ export default function MinimalAgentSessionNav({
                   <ChevronRight
                     size={14}
                     strokeWidth={2}
-                    className={`${styles.minimalAgentChevron} ${
-                      expanded ? styles.minimalAgentChevronOpen : ""
-                    }`}
+                    className={cx(
+                      styles.minimalAgentChevron,
+                      expanded && styles.minimalAgentChevronOpen,
+                    )}
                     aria-hidden
                   />
                 </button>

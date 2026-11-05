@@ -1626,6 +1626,56 @@ def _ensure_instance_lease_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_control_blobs_schema(db: DatabasePool) -> None:
+    """Profile avatars and shared file trees (plugins, published experts)."""
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS profile_avatars (
+                  owner_kind TEXT NOT NULL,
+                  owner_id TEXT NOT NULL,
+                  media_type TEXT NOT NULL,
+                  content BYTEA NOT NULL,
+                  updated_at BIGINT NOT NULL,
+                  PRIMARY KEY (owner_kind, owner_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS control_files (
+                  namespace TEXT NOT NULL,
+                  owner_id TEXT NOT NULL,
+                  path TEXT NOT NULL,
+                  content BYTEA NOT NULL,
+                  PRIMARY KEY (namespace, owner_id, path)
+                )
+                """
+            )
+        return
+    with db.connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS profile_avatars (
+              owner_kind TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              media_type TEXT NOT NULL,
+              content BLOB NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (owner_kind, owner_id)
+            );
+            CREATE TABLE IF NOT EXISTS control_files (
+              namespace TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              path TEXT NOT NULL,
+              content BLOB NOT NULL,
+              PRIMARY KEY (namespace, owner_id, path)
+            );
+            """
+        )
+
+
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:
     """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
     if not _table_exists(db, "users"):
@@ -2432,6 +2482,7 @@ def run_migrations(db: DatabasePool) -> None:
     # columns were never created.
     _ensure_user_mfa_schema(db)
     _ensure_instance_lease_schema(db)
+    _ensure_control_blobs_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)

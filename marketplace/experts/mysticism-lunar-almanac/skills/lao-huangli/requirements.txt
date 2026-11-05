@@ -1,2 +1,0 @@
-skyfield==1.54
-jplephem==2.24
