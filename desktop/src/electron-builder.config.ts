@@ -94,7 +94,7 @@ export default {
     include: "build/installer.nsh",
   },
   linux: {
-    target: ["AppImage", "deb", "rpm"],
+    target: ["deb", "rpm"],
     icon: "resources/icon.png",
     category: "Utility",
     maintainer: "Octop",

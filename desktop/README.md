@@ -251,7 +251,7 @@ CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants
 Release, then mirrors it to COS. Each job bootstraps portable CPython, packages
 the zip, smoke-tests every frozen requirement, and bundles that exact zip plus
 the Dashboard into a native Electron installer. For macOS this produces DMG and
-ZIP, for Windows NSIS EXE, and for Linux AppImage, deb and rpm. Installer files
+ZIP, for Windows NSIS EXE, and for Linux deb and rpm. Installer files
 are named `Octop-desktop-<plat>-<version>.<ext>`; the portable manifest records
 the original Python version and the bundled zip's SHA-256. Optional CI signing
 secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`,

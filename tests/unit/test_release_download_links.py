@@ -34,10 +34,11 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert f"{base}/Octop-desktop-darwin-amd64-0.9.31.dmg" in body
     assert f"{base}/Octop-portable-darwin-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-portable-darwin-amd64-0.9.31.zip" in body
-    # Linux ships deb (default), AppImage and rpm — no more tar.gz.
+    # Linux ships deb (default) and rpm.
     for arch in ("amd64", "arm64"):
-        for ext in ("deb", "AppImage", "rpm"):
+        for ext in ("deb", "rpm"):
             assert f"{base}/Octop-desktop-linux-{arch}-0.9.31.{ext}" in body
+    assert "AppImage" not in body
     assert f"{base}/Octop-portable-linux-amd64-0.9.31.zip" in body
     assert f"{base}/Octop-portable-linux-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-fnos-docker-0.9.31.fpk" in body
