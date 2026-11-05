@@ -415,6 +415,26 @@ async def test_create_from_expert_default_name_uses_expert_label(env: Any) -> No
     assert r.json()["name"] == "通用专家"
 
 
+async def test_create_from_expert_without_name_reuses_existing(env: Any) -> None:
+    """Unnamed create is the ensure path used by the cloud console."""
+    c, _srv, auth = env
+    first = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={},
+    )
+    assert first.status_code == 201, first.text
+
+    second = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={},
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["agent_id"] == first.json()["agent_id"]
+    assert second.json()["reused"] is True
+
+
 async def test_create_from_expert_stores_backend(env: Any) -> None:
     c, _srv, auth = env
     backend_spec = {"type": "local_shell", "virtual_mode": True, "root_dir": "/"}

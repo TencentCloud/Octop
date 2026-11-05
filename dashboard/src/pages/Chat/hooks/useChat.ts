@@ -1007,8 +1007,11 @@ export function useChat(
   );
 
   const cancelStream = useCallback(() => {
-    chatStore.cancelStream(stableSessionId);
-  }, [stableSessionId]);
+    chatStore.cancelStream(stableSessionId, {
+      agentId,
+      threadId: stableSessionId,
+    });
+  }, [stableSessionId, agentId]);
 
   const loadHistory = useCallback(
     async (targetThreadId: string) => {
@@ -1053,11 +1056,16 @@ export function useChat(
         let loaded = await loadThreadHistory(agentId, targetThreadId, {
           offset: 0,
         });
+        // Bounded: a stalled projection worker must not keep this loop polling
+        // forever. 20 attempts ≈ 30s worst case, then we surface the state.
+        let projectionAttempts = 0;
         while (
           loaded.projectionLoading &&
           loadGenRef.current === gen &&
-          chatStore.isHistoryReadCurrent(key, epoch)
+          chatStore.isHistoryReadCurrent(key, epoch) &&
+          projectionAttempts < 20
         ) {
+          projectionAttempts += 1;
           await new Promise((resolve) =>
             window.setTimeout(
               resolve,
@@ -1111,6 +1119,17 @@ export function useChat(
         dropInflightCacheIfCaughtUp(key, loaded.messages);
         setHistoryError(false);
         attachAfterHistory(key, targetThreadId);
+        // Projection never became ready within the bounded window: keep whatever
+        // page arrived (it may be empty) but show it as an error so the user gets
+        // a visible "retry" affordance instead of an endless blank panel.
+        if (
+          loaded.projectionLoading &&
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
+        ) {
+          failedHistoryOperation.current = "initial";
+          setHistoryError(true);
+        }
       } catch {
         if (
           loadGenRef.current === gen &&
