@@ -64,7 +64,10 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu-item {
   border-radius: 4px;
   background: transparent;
   color: var(--fn-text-primary, #1a1a1a);
-  font: 13px/24px "Segoe UI", "Microsoft YaHei", sans-serif;
+  font:
+    13px/24px "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
   cursor: default;
 }
 
@@ -96,7 +99,8 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu-popup {
   color: var(--fn-text-primary, #1a1a1a);
 }
 
-html[data-theme="dark"][data-octop-desktop-chrome="windows"] .octop-win-menu-popup {
+html[data-theme="dark"][data-octop-desktop-chrome="windows"]
+  .octop-win-menu-popup {
   border-color: rgba(255, 255, 255, 0.08);
   background: #2c2c2c;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48);
@@ -115,7 +119,10 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu-command {
   border-radius: 6px;
   background: transparent;
   color: inherit;
-  font: 13px/28px "Segoe UI", "Microsoft YaHei", sans-serif;
+  font:
+    13px/28px "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
   text-align: left;
   cursor: default;
 }
@@ -124,7 +131,8 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu-command:hover {
   background: rgba(0, 0, 0, 0.06);
 }
 
-html[data-theme="dark"][data-octop-desktop-chrome="windows"] .octop-win-menu-command:hover {
+html[data-theme="dark"][data-octop-desktop-chrome="windows"]
+  .octop-win-menu-command:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -140,7 +148,8 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu-sep {
   background: rgba(0, 0, 0, 0.08);
 }
 
-html[data-theme="dark"][data-octop-desktop-chrome="windows"] .octop-win-menu-sep {
+html[data-theme="dark"][data-octop-desktop-chrome="windows"]
+  .octop-win-menu-sep {
   background: rgba(255, 255, 255, 0.1);
 }
 

@@ -205,7 +205,9 @@ describe("desktopChrome", () => {
       "utf8",
     );
     expect(native).toContain(`CHROME_ROW_HEIGHT = ${DESKTOP_CHROME_HEIGHT}`);
-    expect(native).toContain(`TRAFFIC_LIGHT_BUTTON = ${MAC_TRAFFIC_LIGHT_BUTTON}`);
+    expect(native).toContain(
+      `TRAFFIC_LIGHT_BUTTON = ${MAC_TRAFFIC_LIGHT_BUTTON}`,
+    );
     expect(native).toContain(
       `TRAFFIC_LIGHT_ROW_HEIGHT = ${MAC_TITLEBAR_HEIGHT}`,
     );

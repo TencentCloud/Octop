@@ -13,13 +13,37 @@ const state = vi.hoisted(() => ({
     titles: ["文件", "编辑", "视图", "帮助"],
     menus: [
       [
-        { kind: "command" as const, id: "close", label: "关闭", accelerator: "Ctrl+W" },
+        {
+          kind: "command" as const,
+          id: "close",
+          label: "关闭",
+          accelerator: "Ctrl+W",
+        },
         { kind: "separator" as const },
-        { kind: "command" as const, id: "quit", label: "退出", accelerator: null },
+        {
+          kind: "command" as const,
+          id: "quit",
+          label: "退出",
+          accelerator: null,
+        },
       ],
-      [{ kind: "command" as const, id: "undo", label: "撤销", accelerator: "Ctrl+Z" }],
+      [
+        {
+          kind: "command" as const,
+          id: "undo",
+          label: "撤销",
+          accelerator: "Ctrl+Z",
+        },
+      ],
       [],
-      [{ kind: "command" as const, id: "about", label: "关于 Octop", accelerator: null }],
+      [
+        {
+          kind: "command" as const,
+          id: "about",
+          label: "关于 Octop",
+          accelerator: null,
+        },
+      ],
     ],
   })),
   hasMenu: true,
@@ -54,7 +78,9 @@ function renderMenu(chrome: DesktopChromeStyle | null) {
 describe("Windows 标题栏菜单", () => {
   it("在标题栏左侧画出四个菜单", async () => {
     renderMenu("windows");
-    expect(await screen.findByRole("menuitem", { name: "文件" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("menuitem", { name: "文件" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "编辑" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "视图" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "帮助" })).toBeInTheDocument();
@@ -69,7 +95,9 @@ describe("Windows 标题栏菜单", () => {
     expect(screen.getByRole("separator")).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "退出" }));
     expect(state.invoke).toHaveBeenCalledWith("quit");
-    expect(screen.queryByRole("menuitem", { name: "退出" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "退出" }),
+    ).not.toBeInTheDocument();
   });
 
   it("macOS 和浏览器不画这排菜单", () => {
@@ -89,18 +117,20 @@ describe("Windows 标题栏菜单", () => {
     const bar = document.querySelector(".octop-win-menu");
     expect(bar).toHaveClass("octop-desktop-drag");
     expect(document.documentElement.dataset.octopCaptionRow).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--octop-caption-row")).toBe(
-      "32px",
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("--octop-caption-row"),
+    ).toBe("32px");
   });
 
   it("全屏仍画出菜单栏", async () => {
     state.fullscreen = true;
     renderMenu("windows");
-    expect(await screen.findByRole("menuitem", { name: "文件" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("menuitem", { name: "文件" }),
+    ).toBeInTheDocument();
     expect(document.documentElement.dataset.octopCaptionRow).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--octop-caption-row")).toBe(
-      "32px",
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("--octop-caption-row"),
+    ).toBe("32px");
   });
 });

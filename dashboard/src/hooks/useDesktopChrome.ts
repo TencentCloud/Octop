@@ -28,15 +28,18 @@ export function useDesktopChrome(): DesktopChromeStyle | null {
     if (!isDesktopShell()) return;
     const next = resolveDesktopChromeStyle();
     let fullscreen = false;
-    const publish = () => applyDesktopChrome(next, document.documentElement, fullscreen);
+    const publish = () =>
+      applyDesktopChrome(next, document.documentElement, fullscreen);
     publish();
     setStyle(next);
     // Fullscreen removes the native buttons. Drop the inset so the menu row
     // and the page stop reserving their strip.
-    const unsubscribe = getDesktopBridge()?.onWindowFullscreenChange?.((value) => {
-      fullscreen = value;
-      publish();
-    });
+    const unsubscribe = getDesktopBridge()?.onWindowFullscreenChange?.(
+      (value) => {
+        fullscreen = value;
+        publish();
+      },
+    );
     return () => unsubscribe?.();
   }, []);
 

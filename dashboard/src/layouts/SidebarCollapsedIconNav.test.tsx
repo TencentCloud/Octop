@@ -81,9 +81,9 @@ describe("collapsed icon nav", () => {
         expect(button.classList.contains(styles.collapsedNavBtn)).toBe(true);
         expect(button.parentElement).toBe(stack);
       }
-      expect(
-        screen.getByRole("button", { name: "对话" }).className,
-      ).toContain(styles.collapsedNavBtnActive);
+      expect(screen.getByRole("button", { name: "对话" }).className).toContain(
+        styles.collapsedNavBtnActive,
+      );
       expect(
         screen.getByRole("button", { name: "专家" }).className,
       ).not.toContain(styles.collapsedNavBtnActive);
