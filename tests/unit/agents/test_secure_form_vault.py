@@ -9,7 +9,12 @@ import pytest
 from cryptography.fernet import InvalidToken
 
 from octop.config import OctopConfig
-from octop.infra.agents.secure_form.envelope import open_vault_fields
+from octop.infra.agents.secure_form.envelope import (
+    VAULT_REVEALABLE_FIELD_TYPES,
+    open_vault_fields,
+    reveal_vault_fields,
+)
+from octop.infra.agents.secure_form.validation import SECURE_FORM_FIELD_TYPES
 from octop.infra.agents.secure_form.vault_service import VaultService
 from octop.infra.crypto.fernet import (
     PURPOSE_AGENT_SECRET,
@@ -249,6 +254,53 @@ def test_item_type_allowlist_filters_envelope_fields(env: VaultEnv) -> None:
         )
     assert exc.value.code is ErrorCode.SECURE_FORM_FIELD_INVALID
     assert env.repo.find_by_title(user_id=env.user_id, item_type="card", title="CVV only") is None
+
+
+def test_revealable_set_is_text_only() -> None:
+    """The reveal allow-list: text reveals; every other stored type never does."""
+    assert frozenset({"text"}) == VAULT_REVEALABLE_FIELD_TYPES
+    # Exhaustive over every field type the secure form can collect — a future
+    # type added without an explicit reveal decision stays hidden by default.
+    for field_type in SECURE_FORM_FIELD_TYPES:
+        revealed = reveal_vault_fields({field_type: "value"})
+        if field_type == "text":
+            assert revealed == {"text": "value"}
+        else:
+            assert revealed == {}
+    # Mixed envelopes keep exactly the text entries.
+    assert reveal_vault_fields({"text": "alice@example.com", "password": "hunter2"}) == {
+        "text": "alice@example.com"
+    }
+    assert reveal_vault_fields({"card_number": "4242424242424242", "card_exp": "12/29"}) == {}
+
+
+def test_service_revealed_fields_decrypts_text_only(env: VaultEnv) -> None:
+    login = env.service.store_item(
+        env.user_id,
+        "login",
+        "GitHub",
+        None,
+        {"text": "alice@example.com", "password": "hunter2"},
+        replace_confirmed=False,
+    )
+    listed = env.service.list_items(env.user_id)[0]
+    assert listed.vault_item_id == login.vault_item_id
+    assert env.service.revealed_fields(listed) == {"text": "alice@example.com"}
+
+    card = env.service.store_item(
+        env.user_id,
+        "card",
+        "My card",
+        None,
+        {"card_number": "4242424242424242", "card_exp": "12/29"},
+        replace_confirmed=False,
+    )
+    card_row = next(
+        row
+        for row in env.service.list_items(env.user_id)
+        if row.vault_item_id == card.vault_item_id
+    )
+    assert env.service.revealed_fields(card_row) == {}
 
 
 def test_user_delete_cascades_vault_items(env: VaultEnv) -> None:

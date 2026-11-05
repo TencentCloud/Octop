@@ -81,10 +81,15 @@ Model calls request_secure_form(fields=[...], routing=env|vault)
 
 ## Managing the vault
 
-- `GET /api/vault/items` lists metadata only (title, type, origin,
-  timestamps); `DELETE /api/vault/items/{vault_item_id}` removes an item
-  (owner or admin). The dashboard's vault page (sidebar → Vault) offers the
-  same. Create/rotate/delete are audit-logged with ids only.
+- `GET /api/vault/items` lists items with metadata (title, type, origin,
+  timestamps) plus a per-item `fields` reveal that decrypts only plain-`text`
+  values (usernames, contact info) back to the owning user — passwords and
+  card data are never returned by any endpoint. `POST /api/vault/items`
+  manually creates an item (same pairing and shape validation as the submit
+  path; a title collision answers 409 `VAULT_REPLACE_REQUIRED`), and
+  `DELETE /api/vault/items/{vault_item_id}` removes an item (owner or admin).
+  The dashboard's vault page (sidebar → Vault) offers the same.
+  Create/rotate/delete are audit-logged with ids only.
 
 ## Disabling
 

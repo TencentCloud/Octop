@@ -11,7 +11,6 @@ the vault item id — never the values.
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +21,7 @@ from octop.infra.agents.secure_form.validation import (
     SECURE_FORM_FIELD_TYPES,
     SECURE_FORM_MAX_FIELD_LENGTH,
     VAULT_ITEM_FIELD_TYPES,
+    check_field_value_shape,
     extract_secure_form_request,
     normalize_secure_form_origin,
 )
@@ -36,11 +36,6 @@ logger = logging.getLogger(__name__)
 # (conn, action, target) — one audit row on the caller-owned unit connection.
 # Implementations must log ids/titles only, never blob bytes or values.
 AuditWriter = Callable[[Any, str, str], None]
-
-_OTP_RE = re.compile(r"\d{4,8}")
-_CARD_NUMBER_RE = re.compile(r"\d{12,19}")
-_CARD_EXP_RE = re.compile(r"(\d{2})/(\d{2})")
-_CARD_CVV_RE = re.compile(r"\d{3,4}")
 
 
 @dataclass(frozen=True)
@@ -139,27 +134,14 @@ def _routing(request: Mapping[str, Any]) -> tuple[str, dict[str, str], dict[str,
 def _check_shape(spec: SecureFormFieldSpec, value: str) -> str:
     """Validate the per-type shape; returns the (possibly normalized) value.
 
-    Values are stored byte-exact; the only explicit normalizations are
-    ``card_number`` space strip and ``card_exp`` which is stored as given.
+    Values are stored byte-exact; the shapes live in
+    :func:`validation.check_field_value_shape`, shared with manual vault-item
+    creation.
     """
-
-    def bad(detail: str) -> OctopError:
-        return _field_invalid(f"field {spec.id!r}: {detail}", field_id=spec.id)
-
-    if spec.type == "otp" and not _OTP_RE.fullmatch(value):
-        raise bad("otp must be 4 to 8 digits")
-    if spec.type == "card_cvv" and not _CARD_CVV_RE.fullmatch(value):
-        raise bad("card security code must be 3 to 4 digits")
-    if spec.type == "card_number":
-        stripped = value.replace(" ", "")
-        if not _CARD_NUMBER_RE.fullmatch(stripped):
-            raise bad("card number must be 12 to 19 digits")
-        return stripped
-    if spec.type == "card_exp":
-        match = _CARD_EXP_RE.fullmatch(value)
-        if match is None or not 1 <= int(match.group(1)) <= 12:
-            raise bad("expiry must be MM/YY with a month of 01-12")
-    return value
+    violation, normalized = check_field_value_shape(spec.type, value)
+    if violation is not None:
+        raise _field_invalid(f"field {spec.id!r}: {violation}", field_id=spec.id)
+    return normalized
 
 
 def _validate_values(specs: list[SecureFormFieldSpec], values: Mapping[str, str]) -> dict[str, str]:

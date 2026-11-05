@@ -7,7 +7,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from octop.infra.agents.secure_form.envelope import filter_vault_fields, seal_vault_fields
+from octop.infra.agents.secure_form.envelope import (
+    filter_vault_fields,
+    open_vault_fields,
+    reveal_vault_fields,
+    seal_vault_fields,
+)
 from octop.infra.crypto.fernet import PURPOSE_VAULT_ITEM, get_fernet
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.vault_items import (
@@ -98,6 +103,38 @@ class VaultService:
     def list_items(self, user_id: int) -> list[VaultItemRow]:
         """Metadata-only listing (no ciphertext, no values)."""
         return self.repo.list_for_user(user_id)
+
+    def revealed_fields(self, row: VaultItemRow) -> dict[str, str]:
+        """Decrypt one listed row and keep only user-revealable field types.
+
+        Listing surfaces that show non-sensitive values back to the owning
+        user (the vault page's username/contact line) decrypt per row here;
+        the envelope module filters to ``VAULT_REVEALABLE_FIELD_TYPES`` so a
+        password or card value can never leave storage through this path. An
+        unreadable envelope degrades to an empty reveal so one corrupted row
+        cannot fail the whole list.
+        """
+        full = self.repo.get(row.vault_item_id, user_id=row.user_id, include_blob=True)
+        if full is None or full.fields_blob is None:
+            return {}
+        try:
+            opened = open_vault_fields(
+                self.secret_repo,
+                row_user_id=row.user_id,
+                vault_item_id=row.vault_item_id,
+                item_type=row.item_type,
+                blob=full.fields_blob,
+            )
+        except Exception:
+            # OctopError covers tamper/missing-key cases; decrypt can also
+            # raise from the crypto layer — either way degrade this row only.
+            logger.warning(
+                "vault reveal skipped (envelope unreadable) user=%s item=%s",
+                row.user_id,
+                row.vault_item_id,
+            )
+            return {}
+        return reveal_vault_fields(opened)
 
     def check_insert_capacity(self, user_id: int) -> None:
         """Raise ``VAULT_CAP_EXCEEDED`` when the user is at the insert cap.

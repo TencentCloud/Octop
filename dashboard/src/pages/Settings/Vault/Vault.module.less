@@ -1,0 +1,286 @@
+// Vault list — rows follow the secure-form card idioms: leading tinted
+// badge, single-baseline title row, one consistent meta line, right-aligned
+// action. antd List was replaced for full control over alignment.
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+// Header action: pill-shaped primary trigger for the item-type dropdown.
+.newItemButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--fn-radius-full);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.filterTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--fn-radius-full);
+  border: 1px solid var(--fn-border-secondary);
+  background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
+}
+
+.filterPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--fn-radius-full);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+
+  &.active {
+    background: var(--fn-bg-container, #fff);
+    color: var(--fn-text-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 10%);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--fn-radius-full);
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+  background: color-mix(in srgb, var(--fn-text-primary) 6%, transparent);
+}
+
+.searchWrap {
+  width: 240px;
+  max-width: 100%;
+}
+
+.revealed {
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footnote {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fn-border-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+}
+
+.footnoteIcon {
+  flex-shrink: 0;
+}
+
+// Creation modal body — same field idioms as the secure-form modal.
+.formBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fieldRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.fieldError {
+  font-size: 12px;
+  color: var(--fn-color-danger, #dc2626);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 4px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.iconBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
+
+  &.card {
+    color: var(--fn-color-warning-text);
+    background: color-mix(in srgb, var(--fn-color-warning) 12%, transparent);
+  }
+
+  &.contact {
+    color: var(--fn-color-success);
+    background: color-mix(in srgb, var(--fn-color-success) 12%, transparent);
+  }
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.typeTag {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--fn-radius-full);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--fn-text-secondary);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--fn-color-brand) 22%, var(--fn-border-secondary));
+
+  &.card {
+    color: var(--fn-color-warning-text);
+    background: color-mix(in srgb, var(--fn-color-warning) 10%, transparent);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-warning) 26%,
+      var(--fn-border-secondary)
+    );
+  }
+
+  &.contact {
+    color: var(--fn-color-success);
+    background: color-mix(in srgb, var(--fn-color-success) 10%, transparent);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-success) 24%,
+      var(--fn-border-secondary)
+    );
+  }
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.origin {
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.unverified {
+  flex-shrink: 0;
+  font-style: italic;
+  font-size: 11px;
+}
+
+.dot {
+  flex-shrink: 0;
+  color: var(--fn-text-quaternary, var(--fn-text-tertiary));
+}
+
+.deleteButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-color-danger, #dc2626);
+    background: color-mix(
+      in srgb,
+      var(--fn-color-danger, #dc2626) 10%,
+      transparent
+    );
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.5;
+  }
+}

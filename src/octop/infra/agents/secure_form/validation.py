@@ -1,4 +1,5 @@
-"""Registration-time validation for ``request_secure_form``.
+"""Registration-time validation for ``request_secure_form`` plus the
+manual vault-item creation payload.
 
 The interrupt fires before the tool body runs, so the model's raw arguments
 reach the pending store unvalidated by the pydantic schema. Every pause
@@ -7,14 +8,15 @@ registration site validates through :func:`validate_secure_form_action_requests`
 would evict the user's other in-flight pause) and the already-paused turn is
 auto-resumed with an inline refusal respond decision instead.
 
-Error strings here are model-facing (they travel back as the respond decision
-the model reads), not end-user copy — English by convention.
+Error strings here are model- or developer-facing (they travel back as the
+respond decision the model reads, or as the ``details`` of a localized API
+error), not end-user copy — English by convention.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -23,6 +25,7 @@ from octop.infra.agents.secret_input.slots import (
     normalize_slot_name,
 )
 from octop.infra.agents.secure_form.tool import REQUEST_SECURE_FORM_TOOL_NAME
+from octop.infra.errors import ErrorCode, OctopError
 
 SECURE_FORM_MAX_FIELDS = 8
 SECURE_FORM_MAX_LABEL = 60
@@ -59,6 +62,13 @@ _FIELD_ID_RE = re.compile(r"[a-z0-9_]{1,32}")
 # Reads the agent's existing secret-slot names for the capacity check.
 # Injectable so unit callers can stub it; ``None`` skips the check.
 ExistingSlotNames = Callable[[str], Collection[str]]
+
+# Per-type submit-time value shapes, shared by the secure-form submit path
+# and manual vault-item creation.
+_OTP_RE = re.compile(r"\d{4,8}")
+_CARD_NUMBER_RE = re.compile(r"\d{12,19}")
+_CARD_EXP_RE = re.compile(r"(\d{2})/(\d{2})")
+_CARD_CVV_RE = re.compile(r"\d{3,4}")
 
 
 def normalize_secure_form_origin(raw: object) -> str | None:
@@ -98,6 +108,136 @@ def normalize_secure_form_origin(raw: object) -> str | None:
     if port is None:
         return f"{scheme}://{host_part}"
     return f"{scheme}://{host_part}:{port}"
+
+
+def check_field_value_shape(field_type: str, value: str) -> tuple[str | None, str]:
+    """Check one value against its field type's submit-time shape.
+
+    Returns ``(violation detail or None, normalized value)`` — callers raise
+    their own error with the detail. Values are stored byte-exact; the only
+    explicit normalizations are the ``card_number`` space strip, while
+    ``card_exp`` is stored as given.
+    """
+    if field_type == "otp" and not _OTP_RE.fullmatch(value):
+        return "otp must be 4 to 8 digits", value
+    if field_type == "card_cvv" and not _CARD_CVV_RE.fullmatch(value):
+        return "card security code must be 3 to 4 digits", value
+    if field_type == "card_number":
+        stripped = value.replace(" ", "")
+        if not _CARD_NUMBER_RE.fullmatch(stripped):
+            return "card number must be 12 to 19 digits", stripped
+        return None, stripped
+    if field_type == "card_exp":
+        match = _CARD_EXP_RE.fullmatch(value)
+        if match is None or not 1 <= int(match.group(1)) <= 12:
+            return "expiry must be MM/YY with a month of 01-12", value
+    return None, value
+
+
+def validate_manual_vault_item(
+    item_type: str,
+    title: str,
+    origin: str | None,
+    fields: Sequence[Mapping[str, Any]],
+) -> tuple[str, str | None, dict[str, str]]:
+    """Validate a manually created vault item (dashboard "New item" flow).
+
+    Mirrors the submit-path shapes — origin grammar, per-item-type field
+    pairing, title/label/field lengths, per-type value shapes — and returns
+    the normalized ``(title, origin, values)`` ready for
+    ``VaultService.store_item``. The envelope stores one value per field
+    TYPE, so a duplicate type is refused instead of silently collapsing.
+    """
+    if item_type not in SECURE_FORM_VAULT_ITEM_TYPES:
+        raise OctopError(
+            ErrorCode.SECURE_FORM_FIELD_INVALID,
+            f"item_type must be one of {', '.join(sorted(SECURE_FORM_VAULT_ITEM_TYPES))}",
+        )
+    stripped_title = title.strip()
+    if not 1 <= len(stripped_title) <= SECURE_FORM_MAX_VAULT_TITLE:
+        raise OctopError(
+            ErrorCode.SECURE_FORM_FIELD_INVALID,
+            f"title is required (1 to {SECURE_FORM_MAX_VAULT_TITLE} characters)",
+        )
+    normalized_origin: str | None = None
+    if origin is not None:
+        normalized_origin = normalize_secure_form_origin(origin)
+        if normalized_origin is None:
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                "origin must be scheme://host[:port] with an http(s) scheme, "
+                "lowercase host, no userinfo, no trailing dot, no wildcards, "
+                "and no path",
+            )
+    if not 1 <= len(fields) <= SECURE_FORM_MAX_FIELDS:
+        raise OctopError(
+            ErrorCode.SECURE_FORM_FIELD_INVALID,
+            f"fields must hold 1 to {SECURE_FORM_MAX_FIELDS} entries",
+        )
+    allowed = VAULT_ITEM_FIELD_TYPES[item_type]
+    values: dict[str, str] = {}
+    seen_ids: set[str] = set()
+    for index, field in enumerate(fields):
+        field_id = str(field.get("id") or "")
+        if not _FIELD_ID_RE.fullmatch(field_id):
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"fields[{index}].id must match [a-z0-9_]{{1,32}} and be unique",
+                details={"field": field_id or None},
+            )
+        if field_id in seen_ids:
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"duplicate field id {field_id!r}",
+                details={"field": field_id},
+            )
+        seen_ids.add(field_id)
+        label = field.get("label")
+        if label is not None and (
+            not isinstance(label, str) or not label.strip() or len(label) > SECURE_FORM_MAX_LABEL
+        ):
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"field {field_id!r}: label must be 1 to {SECURE_FORM_MAX_LABEL} characters",
+                details={"field": field_id},
+            )
+        field_type = str(field.get("type") or "")
+        if field_type not in allowed:
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"field {field_id!r} of type {field_type!r} cannot be stored "
+                f"for vault item_type {item_type!r} "
+                f"(allowed: {', '.join(sorted(allowed))})",
+                details={"field": field_id},
+            )
+        if field_type in values:
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"only one field of each type is allowed; {field_type!r} appears more than once",
+                details={"field": field_id},
+            )
+        value = field.get("value")
+        if not isinstance(value, str) or not value.strip():
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"field {field_id!r} is required",
+                details={"field": field_id},
+            )
+        if len(value) > SECURE_FORM_MAX_FIELD_LENGTH:
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"field {field_id!r} exceeds {SECURE_FORM_MAX_FIELD_LENGTH} characters",
+                details={"field": field_id},
+            )
+        violation, normalized = check_field_value_shape(field_type, value)
+        if violation is not None:
+            raise OctopError(
+                ErrorCode.SECURE_FORM_FIELD_INVALID,
+                f"field {field_id!r}: {violation}",
+                details={"field": field_id},
+            )
+        values[field_type] = normalized
+    return stripped_title, normalized_origin, values
 
 
 def validate_secure_form_args(
@@ -299,10 +439,12 @@ __all__ = [
     "SECURE_FORM_FIELD_TYPES",
     "SECURE_FORM_VAULT_ITEM_TYPES",
     "VAULT_ITEM_FIELD_TYPES",
+    "check_field_value_shape",
     "extract_secure_form_request",
     "normalize_secure_form_origin",
     "secure_form_refusal_decisions",
     "secure_form_refusal_message",
+    "validate_manual_vault_item",
     "validate_secure_form_action_requests",
     "validate_secure_form_args",
 ]

@@ -24,11 +24,22 @@ ITEM_TYPE_FIELD_ALLOWLIST: Mapping[str, frozenset[str]] = {
     "contact": frozenset({"text"}),
 }
 
+# Which stored field types a listing may decrypt and show back to the user:
+# only plain ``text`` (usernames, emails, addresses, phones collected as
+# text). Passwords and card data must never appear in any response, whatever
+# a future caller forgets to filter.
+VAULT_REVEALABLE_FIELD_TYPES: frozenset[str] = frozenset({"text"})
+
 
 def filter_vault_fields(item_type: str, fields: Mapping[str, str]) -> dict[str, str]:
     """Keep only the field types *item_type* is allowed to persist."""
     allowed = ITEM_TYPE_FIELD_ALLOWLIST.get(item_type, frozenset())
     return {name: value for name, value in fields.items() if name in allowed}
+
+
+def reveal_vault_fields(fields: Mapping[str, str]) -> dict[str, str]:
+    """Keep only the field types a listing may show to the owning user."""
+    return {name: value for name, value in fields.items() if name in VAULT_REVEALABLE_FIELD_TYPES}
 
 
 def seal_vault_fields(

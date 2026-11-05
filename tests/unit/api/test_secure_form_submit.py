@@ -851,25 +851,256 @@ async def test_get_404_unknown_and_410_expired(env: Env) -> None:
 
 
 @pytest.mark.asyncio
-async def test_vault_router_list_is_metadata_only(env: Env) -> None:
+async def test_vault_router_list_reveals_only_text_fields(env: Env) -> None:
     env.vault.store_item(
         env.owner.id,
         "login",
         "GitHub",
         "https://github.com",
-        {"text": _MARK_USER},
+        {"text": _MARK_USER, "password": _MARK_PASS},
+        replace_confirmed=False,
+    )
+    env.vault.store_item(
+        env.owner.id,
+        "card",
+        "My card",
+        None,
+        {"card_number": "4242424242424242", "card_exp": "12/29"},
         replace_confirmed=False,
     )
     user = SimpleNamespace(id=env.owner.id, is_admin=False, username="owner")
 
     out = await vault_routes.list_vault_items(user=user, server=env.server)
 
-    assert len(out.items) == 1
-    item = out.items[0]
-    assert item.title == "GitHub" and item.item_type == "login"
-    assert item.origin == "https://github.com"
-    payload = item.model_dump_json()
-    assert _MARK_USER not in payload and "fields_blob" not in payload
+    by_title = {item.title: item for item in out.items}
+    login = by_title["GitHub"]
+    assert login.item_type == "login" and login.origin == "https://github.com"
+    # Text (username/email/contact) values come back to the owning user...
+    assert login.fields == {"text": _MARK_USER}
+    # ...while password and card values never appear in any response.
+    payload = login.model_dump_json() + by_title["My card"].model_dump_json()
+    assert _MARK_PASS not in payload and "4242424242424242" not in payload
+    assert by_title["My card"].fields == {}
+    assert "fields_blob" not in payload
+
+
+@pytest.mark.asyncio
+async def test_vault_router_create_happy_path_per_item_type(env: Env) -> None:
+    user = SimpleNamespace(id=env.owner.id, is_admin=False, username="owner")
+
+    out = await vault_routes.create_vault_item(
+        vault_routes.VaultItemCreateBody(
+            item_type="login",
+            title="  GitLab  ",
+            origin="https://gitlab.com",
+            fields=[
+                vault_routes.VaultItemFieldIn(
+                    id="user", label="Username", type="text", value=_MARK_USER
+                ),
+                vault_routes.VaultItemFieldIn(
+                    id="pass", label="Password", type="password", value=_MARK_PASS
+                ),
+            ],
+        ),
+        user=user,
+        server=env.server,
+    )
+    assert out.item_type == "login" and out.title == "GitLab"
+    assert out.origin == "https://gitlab.com"
+    assert out.fields == {"text": _MARK_USER}  # password never echoed
+    row = env.shared.repos.vault_items_repo.find_by_title(
+        user_id=env.owner.id, item_type="login", title="GitLab"
+    )
+    assert row is not None
+    assert env.open_vault(row.vault_item_id) == {"text": _MARK_USER, "password": _MARK_PASS}
+
+    card = await vault_routes.create_vault_item(
+        vault_routes.VaultItemCreateBody(
+            item_type="card",
+            title="Visa",
+            fields=[
+                vault_routes.VaultItemFieldIn(
+                    id="card_number", type="card_number", value="4242 4242 4242 4242"
+                ),
+                vault_routes.VaultItemFieldIn(id="card_exp", type="card_exp", value="12/29"),
+            ],
+        ),
+        user=user,
+        server=env.server,
+    )
+    assert card.fields == {}  # card values never echoed
+    assert env.open_vault(card.vault_item_id, item_type="card") == {
+        "card_number": "4242424242424242",  # space strip, like the submit path
+        "card_exp": "12/29",
+    }
+
+    contact = await vault_routes.create_vault_item(
+        vault_routes.VaultItemCreateBody(
+            item_type="contact",
+            title="Mom",
+            fields=[
+                vault_routes.VaultItemFieldIn(
+                    id="phone", label="Phone", type="text", value="+86 138"
+                )
+            ],
+        ),
+        user=user,
+        server=env.server,
+    )
+    assert contact.fields == {"text": "+86 138"}
+    assert env.open_vault(contact.vault_item_id, item_type="contact") == {"text": "+86 138"}
+
+    audits = env.shared.repos.audit_repo.query(action="vault.create", limit=5)
+    assert sorted(a.target for a in audits) == sorted(
+        [out.vault_item_id, card.vault_item_id, contact.vault_item_id]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("item_type", "title", "origin", "fields"),
+    [
+        # unknown item type
+        ("note", "T", None, [{"id": "a", "type": "text", "value": "x"}]),
+        # empty / whitespace-only title
+        ("login", "   ", None, [{"id": "a", "type": "text", "value": "x"}]),
+        # title over the vault cap (120)
+        ("login", "x" * 121, None, [{"id": "a", "type": "text", "value": "x"}]),
+        # origin grammar: userinfo, wildcard, path
+        (
+            "login",
+            "T",
+            "https://user@github.com",
+            [{"id": "a", "type": "text", "value": "x"}],
+        ),
+        ("login", "T", "https://*.github.com", [{"id": "a", "type": "text", "value": "x"}]),
+        ("login", "T", "https://github.com/login", [{"id": "a", "type": "text", "value": "x"}]),
+        # item-type pairing: card_number on a login item, text on a card item
+        (
+            "login",
+            "T",
+            None,
+            [{"id": "a", "type": "card_number", "value": "4242424242424242"}],
+        ),
+        ("card", "T", None, [{"id": "a", "type": "text", "value": "x"}]),
+        # non-storable types are refused outright
+        ("login", "T", None, [{"id": "a", "type": "otp", "value": "123456"}]),
+        ("card", "T", None, [{"id": "a", "type": "card_cvv", "value": "123"}]),
+        # duplicate field type would silently collapse in the type-keyed envelope
+        (
+            "contact",
+            "T",
+            None,
+            [
+                {"id": "a", "type": "text", "value": "x"},
+                {"id": "b", "type": "text", "value": "y"},
+            ],
+        ),
+        # duplicate field id
+        (
+            "login",
+            "T",
+            None,
+            [
+                {"id": "a", "type": "text", "value": "x"},
+                {"id": "a", "type": "password", "value": "y"},
+            ],
+        ),
+        # bad field id grammar
+        ("login", "T", None, [{"id": "Not-Ok", "type": "text", "value": "x"}]),
+        # per-type value shapes
+        ("card", "T", None, [{"id": "a", "type": "card_number", "value": "4242"}]),
+        ("card", "T", None, [{"id": "a", "type": "card_exp", "value": "13/29"}]),
+        ("card", "T", None, [{"id": "a", "type": "card_exp", "value": "12-29"}]),
+        # empty value / over-length value / over-length label
+        ("login", "T", None, [{"id": "a", "type": "text", "value": "  "}]),
+        ("login", "T", None, [{"id": "a", "type": "text", "value": "x" * 257}]),
+        (
+            "login",
+            "T",
+            None,
+            [{"id": "a", "label": "x" * 61, "type": "text", "value": "x"}],
+        ),
+    ],
+)
+async def test_vault_router_create_validation_refusals(
+    env: Env,
+    item_type: str,
+    title: str,
+    origin: str | None,
+    fields: list[dict[str, str | None]],
+) -> None:
+    user = SimpleNamespace(id=env.owner.id, is_admin=False, username="owner")
+    with pytest.raises(OctopError) as err:
+        await vault_routes.create_vault_item(
+            vault_routes.VaultItemCreateBody(
+                item_type=item_type,
+                title=title,
+                origin=origin,
+                fields=[vault_routes.VaultItemFieldIn(**f) for f in fields],  # type: ignore[arg-type]
+            ),
+            user=user,
+            server=env.server,
+        )
+    assert err.value.code is ErrorCode.SECURE_FORM_FIELD_INVALID
+    assert err.value.status == 422
+    assert env.vault.list_items(env.owner.id) == []
+
+
+@pytest.mark.asyncio
+async def test_vault_router_create_too_many_fields_is_refused(env: Env) -> None:
+    user = SimpleNamespace(id=env.owner.id, is_admin=False, username="owner")
+    with pytest.raises(OctopError) as err:
+        await vault_routes.create_vault_item(
+            vault_routes.VaultItemCreateBody(
+                item_type="contact",
+                title="T",
+                fields=[
+                    vault_routes.VaultItemFieldIn(id=f"f{i}", type="text", value=str(i))
+                    for i in range(9)  # SECURE_FORM_MAX_FIELDS + 1
+                ],
+            ),
+            user=user,
+            server=env.server,
+        )
+    assert err.value.code is ErrorCode.SECURE_FORM_FIELD_INVALID
+    assert env.vault.list_items(env.owner.id) == []
+
+
+@pytest.mark.asyncio
+async def test_vault_router_create_collision_is_409_and_keeps_original(env: Env) -> None:
+    existing = env.vault.store_item(
+        env.owner.id,
+        "login",
+        "GitHub",
+        None,
+        {"text": "original-user", "password": "original-pass"},
+        replace_confirmed=False,
+    )
+    user = SimpleNamespace(id=env.owner.id, is_admin=False, username="owner")
+
+    with pytest.raises(OctopError) as err:
+        await vault_routes.create_vault_item(
+            vault_routes.VaultItemCreateBody(
+                item_type="login",
+                title="GitHub",
+                fields=[
+                    vault_routes.VaultItemFieldIn(id="user", type="text", value=_MARK_USER),
+                    vault_routes.VaultItemFieldIn(id="pass", type="password", value=_MARK_PASS),
+                ],
+            ),
+            user=user,
+            server=env.server,
+        )
+    assert err.value.code is ErrorCode.VAULT_REPLACE_REQUIRED
+    assert err.value.status == 409
+    assert err.value.details["existing_vault_item_id"] == existing.vault_item_id
+    # The refusal left the stored envelope untouched.
+    assert env.open_vault(existing.vault_item_id) == {
+        "text": "original-user",
+        "password": "original-pass",
+    }
+    assert len(env.vault.list_items(env.owner.id)) == 1
 
 
 @pytest.mark.asyncio
@@ -928,6 +1159,10 @@ def _build_echo_app() -> FastAPI:
     async def secure_form_route(agent_id: str) -> None:
         _raise()
 
+    @app.post("/api/vault/items")
+    async def vault_create_route() -> None:
+        _raise()
+
     @app.post("/api/agents/{agent_id}/chat/other/submit")
     async def lookalike_route(agent_id: str) -> None:
         _raise()
@@ -938,6 +1173,14 @@ def _build_echo_app() -> FastAPI:
 def test_validation_422_does_not_echo_values_on_submit_route() -> None:
     client = TestClient(_build_echo_app())
     r = client.post("/api/agents/a1/chat/secure-form/submit", json={})
+    assert r.status_code == 422
+    assert _MARK_HOST not in r.text
+    assert r.json()["detail"][0]["loc"] == ["body", "values"]
+
+
+def test_validation_422_does_not_echo_values_on_vault_create_route() -> None:
+    client = TestClient(_build_echo_app())
+    r = client.post("/api/vault/items", json={})
     assert r.status_code == 422
     assert _MARK_HOST not in r.text
     assert r.json()["detail"][0]["loc"] == ["body", "values"]

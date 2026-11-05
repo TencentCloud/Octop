@@ -7040,11 +7040,45 @@
     "deleteLabel": "Delete {{title}}",
     "originUnverified": "agent-declared, not verified",
     "updatedAt": "Updated {{time}}",
+    "newItem": "New item",
+    "filter": {
+      "all": "All"
+    },
+    "searchPlaceholder": "Search title, origin, or value",
+    "noMatch": "No items match the current filter or search.",
+    "privacyNote": "Agents never see card numbers or security codes; logins and contact info are visible to agents so they can fill forms for you.",
+    "created": "Saved “{{title}}”",
+    "create": {
+      "failed": "Failed to save the vault item.",
+      "title": "New {{type}} item",
+      "submit": "Save",
+      "cancel": "Cancel",
+      "cardExpPlaceholder": "MM/YY",
+      "fields": {
+        "title": "Title",
+        "origin": "Origin (optional)",
+        "username": "Username / email",
+        "password": "Password",
+        "card_number": "Card number",
+        "card_exp": "Expiry",
+        "text": "Contact info (phone / email / address)"
+      },
+      "errors": {
+        "titleRequired": "Enter a title.",
+        "titleTooLong": "Title must be at most 120 characters.",
+        "required": "This field is required.",
+        "maxLength": "At most 256 characters.",
+        "cardNumber": "Card number must be 12 to 19 digits.",
+        "cardExp": "Expiry must be MM/YY with a month of 01-12.",
+        "origin": "Origin must be http(s)://host[:port] with no path, query, or credentials."
+      }
+    },
     "itemType": {
       "login": "login",
       "card": "card",
       "contact": "contact"
-    }
+    },
+    "loading": "Loading…"
   },
   "plugins": {
     "loadError": "Failed to load plugins",

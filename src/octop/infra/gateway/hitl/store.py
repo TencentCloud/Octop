@@ -306,7 +306,7 @@ class HitlPendingStore:
                 continue
             if record.user_id != user_id:
                 continue
-            if now - record.created_at >== self.ttl_seconds:
+            if now - record.created_at >= self.ttl_seconds:
                 continue
             if record.agent_id == agent_id:
                 tid = (record.thread_id or "").strip()

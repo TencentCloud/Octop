@@ -7040,11 +7040,45 @@
     "deleteLabel": "删除 {{title}}",
     "originUnverified": "由智能体声明，未经验证",
     "updatedAt": "更新于 {{time}}",
+    "newItem": "新建条目",
+    "filter": {
+      "all": "全部"
+    },
+    "searchPlaceholder": "搜索标题、来源或值",
+    "noMatch": "没有符合当前筛选或搜索的条目。",
+    "privacyNote": "智能体永远看不到银行卡号与安全码；登录名和联系信息智能体可见，用于代填。",
+    "created": "已保存“{{title}}”",
+    "create": {
+      "failed": "保存保管库条目失败。",
+      "title": "新建{{type}}条目",
+      "submit": "保存",
+      "cancel": "取消",
+      "cardExpPlaceholder": "MM/YY",
+      "fields": {
+        "title": "标题",
+        "origin": "来源（可选）",
+        "username": "用户名 / 邮箱",
+        "password": "密码",
+        "card_number": "银行卡号",
+        "card_exp": "有效期",
+        "text": "联系信息（电话 / 邮箱 / 地址）"
+      },
+      "errors": {
+        "titleRequired": "请输入标题。",
+        "titleTooLong": "标题最多 120 个字符。",
+        "required": "该项必填。",
+        "maxLength": "最多 256 个字符。",
+        "cardNumber": "银行卡号须为 12-19 位数字。",
+        "cardExp": "有效期须为 MM/YY，月份 01-12。",
+        "origin": "来源须为 http(s)://host[:端口]，不含路径、查询或凭据。"
+      }
+    },
     "itemType": {
       "login": "登录凭据",
       "card": "银行卡",
       "contact": "联系人"
-    }
+    },
+    "loading": "加载中…"
   },
   "plugins": {
     "loadError": "加载插件失败",

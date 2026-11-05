@@ -103,15 +103,18 @@ def _install_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
-        """Default FastAPI 422 body, minus echo fields on secret-submit routes.
+        """Default FastAPI 422 body, minus echo fields on value-carrying routes.
 
         Pydantic includes the rejected ``input`` (and ``ctx``) in each error;
-        for the secret-input submit body that would echo the secret back.
+        for the secret-input/secure-form submit bodies and manual vault-item
+        creation that would echo the secret back.
         """
         errors: Any = exc.errors()
         route = request.scope.get("route")
         path_format = getattr(route, "path_format", "") or request.url.path
-        if path_format.endswith(("/chat/secret-input/submit", "/chat/secure-form/submit")):
+        if path_format.endswith(
+            ("/chat/secret-input/submit", "/chat/secure-form/submit", "/vault/items")
+        ):
             errors = [
                 {k: v for k, v in err.items() if k not in ("input", "ctx")}
                 for err in errors
