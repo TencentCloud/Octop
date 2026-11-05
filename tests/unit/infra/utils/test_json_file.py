@@ -28,6 +28,29 @@ def test_read_valid_object(tmp_path: Path) -> None:
     assert read_json_object(path) == {"bind_host": "0.0.0.0", "port": 8088}
 
 
+def test_read_bom_prefixed_object(tmp_path: Path) -> None:
+    """A leading UTF-8 BOM is not a corrupt config (issue #2213)."""
+    path = tmp_path / "config.json"
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"port": 8088}).encode("utf-8"))
+    assert read_json_object(path) == {"port": 8088}
+
+
+def test_read_bom_prefixed_corrupt_object_still_raises(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    path.write_bytes(b'\xef\xbb\xbf{"port": 8088,}')
+    with pytest.raises(JsonFileCorruptError) as excinfo:
+        read_json_object(path)
+    assert "line" in excinfo.value.detail and "column" in excinfo.value.detail
+
+
+def test_read_invalid_utf8_still_raises(tmp_path: Path) -> None:
+    """The BOM-tolerant codec must not silently accept undecodable bytes."""
+    path = tmp_path / "config.json"
+    path.write_bytes(b"\xff\xfe{}")
+    with pytest.raises(JsonFileCorruptError, match="not valid UTF-8"):
+        read_json_object(path)
+
+
 def test_read_corrupt_raises_with_position_and_never_leaks_contents(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     # Trailing comma — the classic hand-edit slip. The password must not surface.

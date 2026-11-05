@@ -104,6 +104,24 @@ def test_loads_existing(tmp_path: Path):
     assert cfg.max_upload_mb == 100  # missing key uses default
 
 
+def test_loads_utf8_bom_config(tmp_path: Path):
+    """A BOM written by Windows editors must not refuse startup (issue #2213)."""
+    cfg_path = tmp_path / "config.json"
+    payload = json.dumps({"port": 9000, "log_level": "debug"}).encode("utf-8")
+    cfg_path.write_bytes(b"\xef\xbb\xbf" + payload)
+    cfg = load_config(cfg_path)
+    assert cfg.port == 9000
+    assert cfg.log_level == "debug"
+
+
+def test_invalid_json_with_utf8_bom_still_raises(tmp_path: Path):
+    """Stripping the BOM must not mask genuinely corrupt JSON (issue #730)."""
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_bytes(b'\xef\xbb\xbf{"port": 9000,}')
+    with pytest.raises(ValueError, match="is not valid JSON"):
+        load_config(cfg_path)
+
+
 def test_loads_max_upload_mb(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"max_upload_mb": 50}))
