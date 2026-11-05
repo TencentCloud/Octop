@@ -140,7 +140,7 @@ export function windowsApplicationMenu(
   const model = windowsMenuModel(locale);
   return model.titles.map((label, index) => ({
     label,
-    submenu: model.menus[index].map((entry): MenuItemConstructorOptions => {
+    submenu: (model.menus[index] ?? []).map((entry): MenuItemConstructorOptions => {
       if (entry.kind === "separator") return { type: "separator" };
       if (entry.id === "about") return { id: entry.id, label: entry.label, click: onAbout };
       return { id: entry.id, role: entry.id };
