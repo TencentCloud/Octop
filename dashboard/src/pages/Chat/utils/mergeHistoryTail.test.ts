@@ -4,6 +4,7 @@ import {
   mergeHistoryWithLocalTail,
   preferLocalTranscript,
   serverCaughtUp,
+  retainedHistoryPrefix,
 } from "./mergeHistoryTail";
 
 function msg(
@@ -15,10 +16,19 @@ function msg(
   return { id, role, content, timestamp };
 }
 
+function pending(
+  id: string,
+  role: ChatMessage["role"],
+  content: string,
+  timestamp = 1,
+): ChatMessage {
+  return { ...msg(id, role, content, timestamp), localPending: true };
+}
+
 describe("mergeHistoryWithLocalTail", () => {
   it("keeps a user message sent while the server page was in flight", () => {
     const loaded = [msg("old-a", "assistant", "之前的回复", 1_000)];
-    const current = [msg("local-user", "user", "继续做", 5_000)];
+    const current = [pending("local-user", "user", "继续做", 5_000)];
     expect(
       mergeHistoryWithLocalTail(loaded, current).map((m) => m.content),
     ).toEqual(["之前的回复", "继续做"]);
@@ -27,7 +37,7 @@ describe("mergeHistoryWithLocalTail", () => {
   it("keeps the in-flight assistant bubbles that follow that user message", () => {
     const loaded = [msg("old-a", "assistant", "之前的回复", 1_000)];
     const current = [
-      msg("local-user", "user", "继续做", 5_000),
+      pending("local-user", "user", "继续做", 5_000),
       msg("local-a", "assistant", "正在处理", 5_100),
     ];
     expect(mergeHistoryWithLocalTail(loaded, current).map((m) => m.id)).toEqual(
@@ -69,7 +79,7 @@ describe("mergeHistoryWithLocalTail", () => {
     const current = [
       msg("u1", "user", "继续做", 1_000),
       msg("a1", "assistant", "第一次", 1_100),
-      msg("local-user", "user", "继续做", 9_000),
+      pending("local-user", "user", "继续做", 9_000),
     ];
     expect(mergeHistoryWithLocalTail(loaded, current).map((m) => m.id)).toEqual(
       ["u1", "a1", "local-user"],
@@ -99,7 +109,7 @@ describe("mergeHistoryWithLocalTail", () => {
     const current = [
       msg("local-user-1", "user", "继续做", 5_000),
       msg("local-a", "assistant", "第一次", 5_100),
-      msg("local-user-2", "user", "继续做", 20_000),
+      pending("local-user-2", "user", "继续做", 20_000),
     ];
     expect(mergeHistoryWithLocalTail(loaded, current).map((m) => m.id)).toEqual(
       ["srv-user", "srv-a", "local-user-2"],
@@ -165,7 +175,7 @@ describe("mergeHistoryWithLocalTail", () => {
     const current = [
       msg("m1", "user", "更早", 1_000),
       msg("m2", "user", "第二页", 2_000),
-      msg("local-user", "user", "新的", 8_000),
+      pending("local-user", "user", "新的", 8_000),
     ];
     expect(mergeHistoryWithLocalTail(loaded, current).map((m) => m.id)).toEqual(
       ["m1", "m2", "local-user"],
@@ -174,7 +184,7 @@ describe("mergeHistoryWithLocalTail", () => {
 
   it("keeps a new identical send even when its clock matches the stored turn", () => {
     const loaded = [msg("u1", "user", "继续"), msg("a1", "assistant", "完成")];
-    const current = [msg("u2", "user", "继续")];
+    const current = [pending("u2", "user", "继续")];
     expect(mergeHistoryWithLocalTail(loaded, current)).toEqual([
       ...loaded,
       ...current,
@@ -260,5 +270,55 @@ describe("cached transcript reconciliation", () => {
     ];
     expect(serverCaughtUp(loaded, cached)).toBe(true);
     expect(mergeHistoryWithLocalTail(loaded, cached)).toEqual(loaded);
+  });
+});
+
+describe("history cache chronology", () => {
+  const latest = [
+    msg("u15", "user", "15:02"),
+    msg("a15", "assistant", "latest"),
+  ];
+  const stale = [
+    msg("u11", "user", "11:02", 999999),
+    { ...msg("a11", "assistant", "old cache"), status: "streaming" as const },
+  ];
+
+  it("never appends an unmatched old cache, even if its timestamp or streaming flag looks newer", () => {
+    expect(mergeHistoryWithLocalTail(latest, stale, true)).toEqual(latest);
+    expect(mergeHistoryWithLocalTail([], stale)).toEqual([]);
+    expect(serverCaughtUp(latest, stale)).toBe(false);
+    expect(preferLocalTranscript([], stale)).toEqual([]);
+  });
+
+  it("keeps all explicitly created sends without replaying an unmatched earlier turn", () => {
+    const sends = [
+      pending("new1", "user", "same"),
+      msg("reply", "assistant", "partial"),
+      pending("new2", "user", "same"),
+    ];
+    expect(mergeHistoryWithLocalTail(latest, [...stale, ...sends])).toEqual([
+      ...latest,
+      ...sends,
+    ]);
+    expect(mergeHistoryWithLocalTail([], sends)).toEqual(sends);
+    expect(
+      serverCaughtUp([sends[2], msg("final", "assistant", "done")], sends),
+    ).toBe(false);
+  });
+
+  it("does not carry a disconnected visible window into the latest page", () => {
+    expect(
+      mergeHistoryWithLocalTail(latest, [msg("old-page", "assistant", "old")]),
+    ).toEqual(latest);
+    expect(retainedHistoryPrefix(latest, stale)).toEqual([]);
+  });
+
+  it("does not treat an optimistic overlap as a contiguous persisted prefix", () => {
+    expect(
+      retainedHistoryPrefix(latest, [
+        msg("old", "assistant", "old"),
+        pending("u15", "user", "15:02"),
+      ]),
+    ).toEqual([]);
   });
 });
