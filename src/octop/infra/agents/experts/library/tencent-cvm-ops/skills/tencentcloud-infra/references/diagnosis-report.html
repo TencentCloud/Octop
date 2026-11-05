@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>云服务器诊断报告</title>
+<style>
+  :root {
+    --brand: #0052d9;
+    --text: rgba(0, 0, 0, .9);
+    --secondary: rgba(0, 0, 0, .6);
+    --placeholder: rgba(0, 0, 0, .4);
+    --line: #e7e7e7;
+    --bg: #f3f3f3;
+    --success: #2ba471;
+    --success-bg: #e3f9e9;
+    --warning: #e37318;
+    --warning-bg: #fff1e9;
+    --danger: #d54941;
+    --danger-bg: #fff0ed;
+    --muted-bg: #f3f3f3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .mark {
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    background: var(--brand);
+    flex: none;
+  }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+  header p { margin: 2px 0 0; color: var(--secondary); font-size: 12px; }
+  main { max-width: 960px; margin: 0 auto; padding: 16px 16px 32px; }
+  .conclusion {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--brand);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 12px;
+  }
+  .conclusion strong { font-size: 16px; font-weight: 600; }
+  .conclusion span { display: block; margin-top: 4px; color: var(--secondary); }
+  section {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  h2 {
+    margin: 0;
+    padding: 12px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--line);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    padding: 8px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  th { background: #f3f3f3; color: var(--secondary); font-weight: 500; }
+  tr:last-child td { border-bottom: 0; }
+  .tag {
+    display: inline-block;
+    min-width: 40px;
+    padding: 0 8px;
+    border-radius: 3px;
+    line-height: 22px;
+    font-size: 12px;
+    text-align: center;
+  }
+  .ok { color: var(--success); background: var(--success-bg); }
+  .watch { color: var(--warning); background: var(--warning-bg); }
+  .bad { color: var(--danger); background: var(--danger-bg); }
+  .none { color: var(--secondary); background: var(--muted-bg); }
+  ol { margin: 0; padding: 12px 16px 12px 36px; }
+  li + li { margin-top: 6px; }
+  footer {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+    color: var(--placeholder);
+    font-size: 12px;
+  }
+  @media print {
+    body { background: #fff; }
+    main, footer { max-width: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="mark" aria-hidden="true"></div>
+  <div>
+    <h1>云服务器诊断报告</h1>
+    <p>腾讯云运维专家 · {{report_id}}</p>
+  </div>
+</header>
+<main>
+  <div class="conclusion">
+    <strong class="tag {{conclusion_class}}">{{conclusion}}</strong>
+    <span>{{summary}}</span>
+  </div>
+  <section>
+    <h2>诊断对象</h2>
+    <table>
+      <tbody>
+        <tr><th style="width:140px">名称</th><td>{{instance_name}}</td></tr>
+        <tr><th>实例 ID</th><td>{{instance_id}}</td></tr>
+        <tr><th>地域 / 可用区</th><td>{{region}} / {{zone}}</td></tr>
+        <tr><th>规格 / 状态</th><td>{{spec}} · {{state}}</td></tr>
+        <tr><th>数据时间</th><td>{{window}} · {{source}}</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section>
+    <h2>指标</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>指标</th>
+          <th>最新值</th>
+          <th>页面色带</th>
+          <th>诊断分级</th>
+          <th>口径</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CPU</td>
+          <td>{{cpu}}</td>
+          <td><span class="tag {{cpu_band_class}}">{{cpu_band}}</span></td>
+          <td><span class="tag {{cpu_grade_class}}">{{cpu_grade}}</span></td>
+          <td>CpuUsage。60 秒为平均值，300 秒和 3600 秒为区间最大值</td>
+        </tr>
+        <tr>
+          <td>内存</td>
+          <td>{{mem}}</td>
+          <td><span class="tag {{mem_band_class}}">{{mem_band}}</span></td>
+          <td><span class="tag {{mem_grade_class}}">{{mem_grade}}</span></td>
+          <td>MemUsage</td>
+        </tr>
+        <tr>
+          <td>磁盘</td>
+          <td>{{disk}}</td>
+          <td><span class="tag {{disk_band_class}}">{{disk_band}}</span></td>
+          <td><span class="tag {{disk_grade_class}}">{{disk_grade}}</span></td>
+          <td>CvmDiskUsage，所有磁盘中的最大值{{disk_mount}}</td>
+        </tr>
+        <tr>
+          <td>内网入 / 出</td>
+          <td>{{net}}</td>
+          <td><span class="tag none">—</span></td>
+          <td><span class="tag {{net_grade_class}}">{{net_grade}}</span></td>
+          <td>LanIntraffic / LanOuttraffic，Mbps</td>
+        </tr>
+        <tr>
+          <td>负载</td>
+          <td>{{load}}</td>
+          <td><span class="tag none">—</span></td>
+          <td><span class="tag {{load_grade_class}}">{{load_grade}}</span></td>
+          <td>CpuLoadavg，1 分钟平均负载 / 核数</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+  <section>
+    <h2>异常与关注</h2>
+    <table>
+      <thead>
+        <tr><th>时间</th><th>现象</th><th>来源</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>{{finding_time}}</td><td>{{finding}}</td><td>{{finding_source}}</td></tr>
+      </tbody>
+    </table>
+  </section>
+  <section>
+    <h2>建议</h2>
+    <ol>
+      <li>{{action}}</li>
+      <li>影响与回滚：{{rollback}}</li>
+      <li>验证：{{verify}}</li>
+    </ol>
+  </section>
+</main>
+<footer>
+  未采集的项已省略或标明「未采集」。监控窗口结束时间比生成时刻早 120 秒。页面色带不替代诊断分级。
+</footer>
+</body>
+</html>
