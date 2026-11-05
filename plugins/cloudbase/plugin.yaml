@@ -1,0 +1,7 @@
+id: cloudbase
+version: 0.1.0
+name: CloudBase
+description: Tencent CloudBase backend (database, auth, storage, functions, hosting) for AI coding — ships a skill that explains what the platform does and how to connect its MCP server
+icon: "☁️"
+kind: skill
+entry: main.py
