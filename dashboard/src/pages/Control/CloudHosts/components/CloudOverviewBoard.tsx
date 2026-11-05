@@ -389,7 +389,9 @@ export default function CloudOverviewBoard({
         <article className={styles.kpi}>
           <div className={styles.kpiHead}>
             <span>在线节点</span>
-            <Server size={15} />
+            <span className={styles.kpiIcon}>
+              <Server size={13} />
+            </span>
           </div>
           <div className={styles.kpiValue}>
             {summary.online}
@@ -406,7 +408,9 @@ export default function CloudOverviewBoard({
         <article className={styles.kpi}>
           <div className={styles.kpiHead}>
             <span>在线节点健康比例</span>
-            <Shield size={15} />
+            <span className={styles.kpiIcon}>
+              <Shield size={13} />
+            </span>
           </div>
           <div className={styles.kpiValue}>
             {summary.healthyRatio.toFixed(1)}
@@ -422,7 +426,9 @@ export default function CloudOverviewBoard({
         <article className={styles.kpi}>
           <div className={styles.kpiHead}>
             <span>CPU 平均使用率</span>
-            <Cpu size={15} />
+            <span className={styles.kpiIcon}>
+              <Cpu size={13} />
+            </span>
           </div>
           <div className={styles.kpiValue}>
             {summary.cpuAvg === null ? "—" : summary.cpuAvg.toFixed(1)}
@@ -449,7 +455,9 @@ export default function CloudOverviewBoard({
         <article className={styles.kpi}>
           <div className={styles.kpiHead}>
             <span>集群网络吞吐</span>
-            <Network size={15} />
+            <span className={styles.kpiIcon}>
+              <Network size={13} />
+            </span>
           </div>
           <div className={styles.kpiValue}>
             {net.value}

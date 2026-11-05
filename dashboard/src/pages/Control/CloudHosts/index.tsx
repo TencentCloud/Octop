@@ -4,7 +4,6 @@ import {
   App,
   Alert,
   Button,
-  Empty,
   Input,
   Modal,
   Popconfirm,
@@ -18,9 +17,9 @@ import {
   Typography,
 } from "antd";
 import {
-  Cloud,
   ExternalLink,
   KeyRound,
+  LogIn,
   PanelLeftClose,
   PanelLeftOpen,
   PauseCircle,
@@ -31,6 +30,8 @@ import {
   Sparkles,
 } from "lucide-react";
 import { request } from "../../../api/request";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
+import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { useCvmOpsExpert } from "../../../hooks/useCvmOpsExpert";
 import { ALERT_MIN, WARN_MIN, levelTone } from "./theme";
 import CloudAiPanel from "./components/CloudAiPanel";
@@ -939,7 +940,7 @@ export default function CloudHostsPage({
           ) : (
             <Button
               type="primary"
-              icon={<Cloud size={14} />}
+              icon={<LogIn size={14} />}
               onClick={() => setAuthOpen(true)}
             >
               {t("cloud.authorize")}
@@ -949,15 +950,35 @@ export default function CloudHostsPage({
       </div>
 
       {!authorized ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t("cloud.emptyDescription")}
-          style={{ marginTop: 48 }}
-        >
-          <Button type="primary" onClick={() => setAuthOpen(true)}>
-            {t("cloud.authorize")}
-          </Button>
-        </Empty>
+        <div className={styles.emptyLayout}>
+          <StreamSetupGuide
+            className={styles.emptyGuide}
+            wide
+            plain
+            icon={<OctopEmptyMascot />}
+            title={t("cloud.emptyGuideTitle")}
+            description={t("cloud.emptyGuideDesc")}
+            steps={[
+              {
+                label: t("cloud.emptyGuideStepLogin"),
+                detail: t("cloud.emptyGuideStepLoginDetail"),
+              },
+              {
+                label: t("cloud.emptyGuideStepCode"),
+                detail: t("cloud.emptyGuideStepCodeDetail"),
+              },
+              {
+                label: t("cloud.emptyGuideStepImport"),
+                detail: t("cloud.emptyGuideStepImportDetail"),
+              },
+            ]}
+            primaryAction={{
+              label: t("cloud.authorize"),
+              onClick: () => setAuthOpen(true),
+              icon: <LogIn size={14} />,
+            }}
+          />
+        </div>
       ) : (
         <>
           <div className={styles.body}>
@@ -1497,7 +1518,7 @@ export default function CloudHostsPage({
             <Space wrap>
               <Button
                 type="primary"
-                icon={<Cloud size={14} />}
+                icon={<LogIn size={14} />}
                 loading={busy}
                 onClick={() => void startAuth()}
               >

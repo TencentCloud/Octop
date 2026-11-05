@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Cloud, Globe, TerminalSquare } from "lucide-react";
+import { Globe, Server, TerminalSquare } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -21,7 +21,7 @@ const WORKBENCH_TABS = [
 const TAB_ICONS = {
   browser: Globe,
   terminal: TerminalSquare,
-  cloud: Cloud,
+  cloud: Server,
 } as const;
 
 interface WorkbenchPageProps {
@@ -63,7 +63,7 @@ export default function WorkbenchPage({
           return {
             value,
             label: t(`workbench.tabs.${value}`),
-            icon: <Icon size={14} strokeWidth={2} />,
+            icon: <Icon size={14} strokeWidth={1.75} />,
           };
         },
       ),

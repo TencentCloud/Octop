@@ -347,7 +347,7 @@ function ToolStepGroup({
   );
 }
 
-const CLOUD_ASSISTANT_PLACEMENT = "octop:cloud-ai-placement";
+const CLOUD_ASSISTANT_PLACEMENT = "octop:cloud-ai-placement-v2";
 
 export default function CloudAiPanel({
   instance,
@@ -486,10 +486,9 @@ export default function CloudAiPanel({
     send(contextLine ? `${contextLine}\n\n${prompt}` : prompt);
   };
 
-  const [placement, setPlacement] = useState<AssistantPlacement>(() => {
-    const saved = readAssistantPlacement(CLOUD_ASSISTANT_PLACEMENT, "float");
-    return saved === "right" ? "right" : "float";
-  });
+  const [placement, setPlacement] = useState<AssistantPlacement>(() =>
+    readAssistantPlacement(CLOUD_ASSISTANT_PLACEMENT, "right"),
+  );
 
   return (
     <AssistantFrame
@@ -498,6 +497,7 @@ export default function CloudAiPanel({
       placementKey={CLOUD_ASSISTANT_PLACEMENT}
       storageKey="octop:cloud-ai"
       dock="inline"
+      defaultDockWidth={400}
       hidden={hidden}
       title="腾讯云运维专家"
       bodyClassName={styles.panelFill}

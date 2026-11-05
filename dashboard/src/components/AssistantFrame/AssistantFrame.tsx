@@ -64,13 +64,13 @@ export function readAssistantPlacement(
   return fallback;
 }
 
-function defaultGeo(): Geo {
+function defaultGeo(dockW = 400): Geo {
   return {
     x: Math.max(MARGIN, window.innerWidth - 424),
     y: 88,
     w: 400,
     h: Math.min(680, window.innerHeight - 140),
-    dockW: 360,
+    dockW,
     dockH: 300,
   };
 }
@@ -78,8 +78,9 @@ function defaultGeo(): Geo {
 function loadGeo(
   storageKey: string,
   legacy?: { widthKey?: string; heightKey?: string },
+  dockW?: number,
 ): Geo {
-  const fallback = defaultGeo();
+  const fallback = defaultGeo(dockW);
   try {
     const raw = localStorage.getItem(`${storageKey}:geo`);
     if (raw) return { ...fallback, ...(JSON.parse(raw) as Partial<Geo>) };
@@ -124,6 +125,7 @@ export default function AssistantFrame({
   storageKey,
   legacySize,
   dock = "inline",
+  defaultDockWidth = 400,
   placementLocked = false,
   placements,
   hidden = false,
@@ -142,6 +144,8 @@ export default function AssistantFrame({
   legacySize?: { widthKey?: string; heightKey?: string };
   /** inline 参与页面分栏；overlay 固定在视口边缘。 */
   dock?: "inline" | "overlay";
+  /** 第一次打开右侧栏时的宽度。已记住的尺寸优先。 */
+  defaultDockWidth?: number;
   placementLocked?: boolean;
   /**
    * 列出可选摆放。不传时只保留「右侧停靠 / 取消停靠」一个开关。
@@ -158,7 +162,9 @@ export default function AssistantFrame({
 }) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLDivElement>(null);
-  const [geo, setGeo] = useState<Geo>(() => loadGeo(storageKey, legacySize));
+  const [geo, setGeo] = useState<Geo>(() =>
+    loadGeo(storageKey, legacySize, defaultDockWidth),
+  );
   const geoRef = useRef(geo);
   geoRef.current = geo;
   const dragRef = useRef<{

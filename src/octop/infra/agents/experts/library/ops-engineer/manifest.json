@@ -1,0 +1,137 @@
+{
+  "id": "ops-engineer",
+  "label": {
+    "zh": "运维工程师 Ops",
+    "en": "Ops · SRE Engineer"
+  },
+  "description": {
+    "zh": "精通 Linux 运维、Kubernetes、Docker、数据库、网络诊断的 Shell 命令专家，专为 AI 终端设计。",
+    "en": "Shell command expert for Linux ops, Kubernetes, Docker, databases, and network diagnostics — designed for the AI Terminal."
+  },
+  "welcome_message": {
+    "zh": "告诉我你要排查的运维问题或想执行的命令",
+    "en": "Tell me what ops issue to troubleshoot or which command to run"
+  },
+  "icon_name": "terminal",
+  "color": "#16a34a",
+  "prompt_files": [
+    "SOUL.md",
+    "IDENTITY.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "K8s Pod 排障",
+        "en": "Debug a K8s pod"
+      },
+      "description": {
+        "zh": "查看 Pod 状态、事件与容器日志",
+        "en": "Inspect pod status, events, and container logs"
+      },
+      "prompt": {
+        "zh": "请给出排查 Kubernetes Pod 异常的 kubectl 命令，包括查看状态、事件、日志和进入容器调试。",
+        "en": "Please provide kubectl commands to troubleshoot a failing Kubernetes pod, including status, events, logs, and exec debugging."
+      },
+      "color": "#e8f4ff",
+      "icon_name": "server"
+    },
+    {
+      "title": {
+        "zh": "Docker 容器诊断",
+        "en": "Diagnose Docker container"
+      },
+      "description": {
+        "zh": "检查容器状态、日志与资源占用",
+        "en": "Check container status, logs, and resource usage"
+      },
+      "prompt": {
+        "zh": "请给出诊断 Docker 容器异常的命令，包括查看运行状态、日志、端口映射和资源使用。",
+        "en": "Please provide Docker commands to diagnose a container issue, including status, logs, port mappings, and resource usage."
+      },
+      "color": "#dcfce7",
+      "icon_name": "wrench"
+    },
+    {
+      "title": {
+        "zh": "磁盘与内存排查",
+        "en": "Disk & memory triage"
+      },
+      "description": {
+        "zh": "定位空间不足或内存飙高的原因",
+        "en": "Find what's eating disk space or memory"
+      },
+      "prompt": {
+        "zh": "请给出排查 Linux 磁盘空间和内存占用的命令，并说明如何找出占用最高的目录和进程。",
+        "en": "Please provide Linux commands to investigate disk space and memory usage, and how to find the top directories and processes."
+      },
+      "color": "#fef3c7",
+      "icon_name": "hard-drive"
+    },
+    {
+      "title": {
+        "zh": "服务与端口检查",
+        "en": "Service & port check"
+      },
+      "description": {
+        "zh": "确认进程监听、systemd 服务是否正常",
+        "en": "Verify listeners and systemd service health"
+      },
+      "prompt": {
+        "zh": "请给出检查 systemd 服务状态和端口监听的命令，帮我确认服务是否在运行、端口是否可达。",
+        "en": "Please provide commands to check systemd service status and port listeners to verify the service is running and reachable."
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "网络连通诊断",
+        "en": "Network connectivity"
+      },
+      "description": {
+        "zh": "DNS、路由与外网/内网连通测试",
+        "en": "Test DNS, routing, and internal/external connectivity"
+      },
+      "prompt": {
+        "zh": "请给出诊断网络连通问题的命令，包括 DNS 解析、路由追踪和端口连通测试。",
+        "en": "Please provide commands to diagnose network connectivity, including DNS resolution, traceroute, and port checks."
+      },
+      "color": "#eef2ff",
+      "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "写运维脚本",
+        "en": "Write an ops script"
+      },
+      "description": {
+        "zh": "生成可执行的 bash 巡检或批处理脚本",
+        "en": "Generate a runnable bash patrol or batch script"
+      },
+      "prompt": {
+        "zh": "请帮我写一个 bash 脚本，用于：",
+        "en": "Please write a bash script for:"
+      },
+      "color": "#fdf4e7",
+      "icon_name": "terminal"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」巡检 Kubernetes 集群：异常 Pod、节点 NotReady、最近事件，有问题再通知我，任务创建后立即启用",
+      "每「4 小时」检查磁盘使用率和 inode，超过 80% 时立即告警，从今天开始持续生效",
+      "每周一「10:00」汇总上周故障与变更，列出待处理项发给我",
+      "每个工作日「18:00」复盘当天告警与变更窗口，标出未关闭工单",
+      "每周五「16:00」检查证书与密钥到期日，30 天内到期的列出来",
+      "每月 1 日「10:00」输出容量与成本摘要：节点、存储和本月费用"
+    ],
+    "en": [
+      "Every day at 09:00, inspect the Kubernetes cluster (bad pods, NotReady nodes, recent events) and notify me only if something is wrong — enable immediately",
+      "Every 4 hours, check disk usage and inodes; alert immediately if either exceeds 80%, starting today",
+      "Every Monday at 10:00, summarize last week's incidents and changes and send me the open items",
+      "Every weekday at 18:00, recap today's alerts and change windows and flag unclosed tickets",
+      "Every Friday at 16:00, check certificate and key expiry and list anything due within 30 days",
+      "On the 1st of each month at 10:00, send a capacity and cost brief: nodes, storage, and this month's bill"
+    ]
+  }
+}

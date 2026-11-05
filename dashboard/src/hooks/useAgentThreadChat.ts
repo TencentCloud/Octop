@@ -63,6 +63,38 @@ export function useAgentThreadChat(
   /** Thread the user explicitly picked; boot must not override it. */
   const pinnedRef = useRef<string | null>(null);
   const lastAgentRef = useRef<string | null>(null);
+  const lastPinRef = useRef<string | null>(null);
+  /**
+   * Thread id that belongs to the current agent + pin. Until boot adopts one,
+   * the shared chat store must not keep showing the previous expert's thread.
+   */
+  const boundRef = useRef<{
+    agentId: string | null;
+    pinKey: string | null;
+    threadId: string | null;
+  }>({ agentId: null, pinKey: null, threadId: null });
+  const pinIdentity = pinKey ?? null;
+  const visibleThreadId =
+    boundRef.current.agentId === agentId &&
+    boundRef.current.pinKey === pinIdentity
+      ? threadId
+      : null;
+
+  const adoptThread = useCallback(
+    (
+      nextAgentId: string | null,
+      nextPin: string | null,
+      nextThreadId: string | null,
+    ) => {
+      boundRef.current = {
+        agentId: nextAgentId,
+        pinKey: nextPin,
+        threadId: nextThreadId,
+      };
+      setThreadId(nextThreadId);
+    },
+    [],
+  );
 
   const {
     messages,
@@ -73,7 +105,7 @@ export function useAgentThreadChat(
     loadMoreHistory,
     historyHasMore,
     resumeHitl,
-  } = useChat(threadId, agentId);
+  } = useChat(visibleThreadId, agentId);
 
   const refreshThreads = useCallback(async () => {
     if (!agentId) {
@@ -89,16 +121,25 @@ export function useAgentThreadChat(
 
   useEffect(() => {
     if (!agentId) {
-      setThreadId(null);
+      pinnedRef.current = null;
+      lastAgentRef.current = null;
+      lastPinRef.current = null;
+      adoptThread(null, null, null);
       setThreads([]);
       setBootError(null);
       return;
     }
 
-    // Switching experts must drop the previous thread selection.
-    if (lastAgentRef.current !== agentId) {
+    // Switching experts (or the panel's own pin) must drop the previous
+    // transcript before the async boot adopts a thread for this agent.
+    if (
+      lastAgentRef.current !== agentId ||
+      lastPinRef.current !== pinIdentity
+    ) {
       pinnedRef.current = null;
       lastAgentRef.current = agentId;
+      lastPinRef.current = pinIdentity;
+      adoptThread(agentId, pinIdentity, null);
     }
 
     let cancelled = false;
@@ -111,7 +152,7 @@ export function useAgentThreadChat(
         if (!cancelled) setThreads(rows);
 
         if (pinnedRef.current) {
-          if (!cancelled) setThreadId(pinnedRef.current);
+          if (!cancelled) adoptThread(agentId, pinIdentity, pinnedRef.current);
           return;
         }
 
@@ -121,7 +162,7 @@ export function useAgentThreadChat(
           const remembered = readSurfaceThread(pinKey, agentId);
           if (remembered && rows.some((row) => row.thread_id === remembered)) {
             pinnedRef.current = remembered;
-            if (!cancelled) setThreadId(remembered);
+            if (!cancelled) adoptThread(agentId, pinIdentity, remembered);
             return;
           }
           const created = await octopThreadsApi.create(agentId, {
@@ -153,14 +194,14 @@ export function useAgentThreadChat(
         }
 
         if (!cancelled) {
-          setThreadId(tid);
+          adoptThread(agentId, pinIdentity, tid);
         }
       } catch (err) {
         if (!cancelled) {
           setBootError(
             err instanceof Error ? err.message : "Failed to load chat thread",
           );
-          setThreadId(null);
+          adoptThread(agentId, pinIdentity, null);
         }
       } finally {
         if (!cancelled) {
@@ -172,22 +213,27 @@ export function useAgentThreadChat(
     return () => {
       cancelled = true;
     };
-  }, [agentId, hitlMode, bootNonce, pinKey]);
+  }, [agentId, hitlMode, bootNonce, pinKey, pinIdentity, adoptThread]);
 
   useEffect(() => {
-    if (threadId && agentId) {
-      void loadHistory(threadId);
+    if (visibleThreadId && agentId) {
+      void loadHistory(visibleThreadId);
     }
-  }, [threadId, agentId, loadHistory]);
+  }, [visibleThreadId, agentId, loadHistory]);
 
   const send = useCallback(
     (text: string) => {
-      if (!agentId || !threadId) return;
+      const bound = boundRef.current;
+      const tid =
+        bound.agentId === agentId && bound.pinKey === pinIdentity
+          ? bound.threadId
+          : null;
+      if (!agentId || !tid) return;
       const trimmed = text.trim();
       if (!trimmed) return;
-      sendMessage(trimmed, "", agentId, undefined, threadId);
+      sendMessage(trimmed, "", agentId, undefined, tid);
     },
-    [agentId, threadId, sendMessage],
+    [agentId, pinIdentity, sendMessage],
   );
 
   /** Start a fresh conversation and pin it so boot won't switch back. */
@@ -195,7 +241,12 @@ export function useAgentThreadChat(
     if (!agentId) return;
     // 当前会话还没有任何消息时就不必再建一个空壳，
     // 否则每点一次「+」都会在历史列表里留下一条点开是空白的会话。
-    if (threadId && messages.length === 0) return;
+    const bound = boundRef.current;
+    const currentThreadId =
+      bound.agentId === agentId && bound.pinKey === pinIdentity
+        ? bound.threadId
+        : null;
+    if (currentThreadId && messages.length === 0) return;
     const created = await octopThreadsApi.create(
       agentId,
       pinKey ? { rebind: false } : undefined,
@@ -203,9 +254,16 @@ export function useAgentThreadChat(
     if (pinKey) writeSurfaceThread(pinKey, agentId, created.thread_id);
     else await octopThreadsApi.rebind(agentId, created.thread_id);
     pinnedRef.current = created.thread_id;
-    setThreadId(created.thread_id);
+    adoptThread(agentId, pinIdentity, created.thread_id);
     void refreshThreads();
-  }, [agentId, threadId, messages.length, refreshThreads, pinKey]);
+  }, [
+    agentId,
+    messages.length,
+    refreshThreads,
+    pinKey,
+    pinIdentity,
+    adoptThread,
+  ]);
 
   /** Switch to an existing conversation. */
   const selectThread = useCallback(
@@ -214,9 +272,9 @@ export function useAgentThreadChat(
       if (pinKey) writeSurfaceThread(pinKey, agentId, id);
       else await octopThreadsApi.rebind(agentId, id);
       pinnedRef.current = id;
-      setThreadId(id);
+      adoptThread(agentId, pinIdentity, id);
     },
-    [agentId, pinKey],
+    [agentId, pinKey, pinIdentity, adoptThread],
   );
 
   /** 重新跑一次启动流程（会话列表 / 绑定失败后手动重试）。 */
@@ -237,7 +295,7 @@ export function useAgentThreadChat(
   );
 
   return {
-    threadId,
+    threadId: visibleThreadId,
     threads,
     booting,
     bootError,

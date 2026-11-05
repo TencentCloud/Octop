@@ -6,14 +6,22 @@ import React, {
   useRef,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import cx from "classnames";
-import { Button, Spin, Segmented } from "antd";
+import { Button, Input, Spin, Segmented } from "antd";
 import { SquareTerminal, Send, Square } from "lucide-react";
 import AssistantFrame, {
   type AssistantPlacement,
 } from "../../../../components/AssistantFrame/AssistantFrame";
 import type { OctopAgent } from "../../../../context/AgentContext";
 import { terminalAiApi } from "../../../../api/modules/terminalAi";
+import { providerApi } from "../../../../api/modules/provider";
+import {
+  apiErrorMessage,
+  isNotFoundApiError,
+} from "../../../../utils/apiError";
+import { isAgentModelConfigError } from "../../../../utils/agentError";
+import { formatOpsEnsureError } from "../useOpsEngineer";
 import type { TerminalContext } from "../../../../api/modules/terminalAi";
 import { useAgentThreadChat } from "../../../../hooks/useAgentThreadChat";
 import { useTerminalAutopilot } from "../../../../hooks/useTerminalAutopilot";
@@ -26,9 +34,11 @@ import styles from "./AiPanel.module.less";
 export type AiPanelMode = "assist" | "autopilot";
 
 export interface AiPanelProps {
-  activeAgent: OctopAgent | null;
-  agents: OctopAgent[];
-  agentsLoading?: boolean;
+  /** 运维工程师。终端进程和这段对话都用它。 */
+  agent: OctopAgent | null;
+  ensuring?: boolean;
+  ensureError?: string | null;
+  onEnsureRetry?: () => void;
   activeTerminalSessionId: string | null;
   activeTerminalSessionIndex: number;
   placement: AssistantPlacement;
@@ -43,22 +53,6 @@ export interface AiPanelProps {
   onExecuteCommand: (cmd: string) => void;
   getRecentTerminalOutput: () => string;
   snapshotTerminalOutput: () => string;
-  onAgentCreated: () => void;
-}
-
-const GENERAL_EXPERT_ID = "general-assistant";
-
-function expertIdOf(agent: OctopAgent): string {
-  const configured = (agent.config as { expert_id?: string } | undefined)
-    ?.expert_id;
-  return agent.template_name || configured || "";
-}
-
-/** 终端助手只用默认通用专家，不借用腾讯云 API / 运维专家。 */
-function findGeneralAssistant(agents: OctopAgent[]): OctopAgent | null {
-  return (
-    agents.find((agent) => expertIdOf(agent) === GENERAL_EXPERT_ID) ?? null
-  );
 }
 
 function ContextSection({ ctx }: { ctx: TerminalContext | null }) {
@@ -99,45 +93,54 @@ function ContextSection({ ctx }: { ctx: TerminalContext | null }) {
 }
 
 function GateView({
-  onCreated,
+  variant,
+  onRetry,
+  creating,
+  error,
 }: {
-  onCreated: (agent: { agent_id: string; name: string }) => void;
+  variant: "create" | "model";
+  onRetry?: () => void;
+  creating?: boolean;
+  error?: string | null;
 }) {
   const { t } = useTranslation();
-  const [creating, setCreating] = useState(false);
-
-  const handleCreate = useCallback(async () => {
-    setCreating(true);
-    try {
-      const result = await terminalAiApi.createGeneralAssistant();
-      onCreated({ agent_id: result.agent_id, name: result.name });
-    } catch {
-      // ignore — user can retry
-    } finally {
-      setCreating(false);
-    }
-  }, [onCreated]);
+  const navigate = useNavigate();
+  const missingModel = variant === "model";
 
   return (
     <div className={styles.gate}>
       <SquareTerminal size={32} color="var(--fn-text-quaternary, #9ca3af)" />
-      <div className={styles.gateTitle}>{t("terminal.ai.gateTitle")}</div>
-      <div className={styles.gateDesc}>{t("terminal.ai.gateDesc")}</div>
-      <Button
-        type="primary"
-        loading={creating}
-        onClick={() => void handleCreate()}
-      >
-        {creating ? t("terminal.ai.gateCreating") : t("terminal.ai.gateCreate")}
-      </Button>
+      <div className={styles.gateTitle}>
+        {missingModel
+          ? t("terminal.ai.gateNoProvider")
+          : t("terminal.ai.gateTitle")}
+      </div>
+      {missingModel ? null : (
+        <div className={styles.gateDesc}>{t("terminal.ai.gateDesc")}</div>
+      )}
+      {missingModel ? (
+        <Button type="primary" onClick={() => navigate("/admin/models")}>
+          {t("terminal.ai.gateConfigureLink")}
+        </Button>
+      ) : (
+        <Button type="primary" loading={creating} onClick={() => onRetry?.()}>
+          {creating
+            ? t("terminal.ai.gateCreating")
+            : t("terminal.ai.gateCreate")}
+        </Button>
+      )}
+      {!missingModel && error ? (
+        <div className={styles.gateError}>{error}</div>
+      ) : null}
     </div>
   );
 }
 
 export default function AiPanel({
-  activeAgent,
-  agents,
-  agentsLoading = false,
+  agent,
+  ensuring = false,
+  ensureError = null,
+  onEnsureRetry,
   activeTerminalSessionId,
   activeTerminalSessionIndex,
   placement,
@@ -149,18 +152,12 @@ export default function AiPanel({
   onExecuteCommand,
   getRecentTerminalOutput,
   snapshotTerminalOutput,
-  onAgentCreated,
 }: AiPanelProps) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<AiPanelMode>("assist");
   const [inputValue, setInputValue] = useState("");
   const [terminalCtx, setTerminalCtx] = useState<TerminalContext | null>(null);
-  const [opsAgent, setOpsAgent] = useState<OctopAgent | null>(() =>
-    findGeneralAssistant(agents),
-  );
-  const [ensureFailed, setEnsureFailed] = useState(false);
-  const ensureOnce = useRef(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [needsModel, setNeedsModel] = useState(false);
   const imeComposingRef = useRef(false);
   /** Terminal context is injected only on the first outbound message per thread. */
   const contextInjectedRef = useRef(false);
@@ -184,57 +181,21 @@ export default function AiPanel({
     isStreaming,
     send,
     cancelStream,
-  } = useAgentThreadChat(opsAgent?.agent_id ?? null, {
-    pinKey: "octop:terminal-ai-thread:v2",
+  } = useAgentThreadChat(agent?.agent_id ?? null, {
+    // v2 was saved while this panel still followed the sidebar expert, so it
+    // reopened that expert's conversation. This pin belongs only to ops-engineer.
+    pinKey: "octop:terminal-ai-thread:ops-engineer:v1",
   });
+  const modelBlocked = needsModel || isAgentModelConfigError(bootError);
 
   useEffect(() => {
-    if (agentsLoading) return;
-    const existing = findGeneralAssistant(agents);
-    if (existing) {
-      setOpsAgent(existing);
-      setEnsureFailed(false);
-      return;
-    }
-    if (ensureOnce.current) return;
-    ensureOnce.current = true;
-    void terminalAiApi
-      .createGeneralAssistant()
-      .then((result) => {
-        setEnsureFailed(false);
-        setOpsAgent({
-          id: result.id,
-          agent_id: result.agent_id,
-          name: result.name,
-          description: result.description,
-          persona_mbti: null,
-          default_model: null,
-          system_prompt: null,
-          template_name: GENERAL_EXPERT_ID,
-          state: result.state,
-          last_error: null,
-          icon: null,
-          icon_name: "zap",
-          icon_url: null,
-          color: null,
-          config: { expert_id: GENERAL_EXPERT_ID },
-        });
-        onAgentCreated();
-      })
-      .catch(() => {
-        ensureOnce.current = false;
-        setEnsureFailed(true);
-      });
-  }, [agents, agentsLoading, onAgentCreated]);
-
-  useEffect(() => {
-    if (!activeAgent) {
+    if (!agent) {
       setTerminalCtx(null);
       return;
     }
     let cancelled = false;
     terminalAiApi
-      .getContext(activeAgent.agent_id)
+      .getContext(agent.agent_id)
       .then((data) => {
         if (!cancelled) setTerminalCtx(data);
       })
@@ -244,8 +205,38 @@ export default function AiPanel({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when agent id changes
-  }, [activeAgent?.agent_id]);
+  }, [agent?.agent_id]);
+
+  useEffect(() => {
+    if (!agent) {
+      setNeedsModel(false);
+      return;
+    }
+    const hasOwnModel = Boolean(agent.default_model?.trim());
+    if (hasOwnModel && !isAgentModelConfigError(agent.last_error)) {
+      setNeedsModel(false);
+      return;
+    }
+    if (isAgentModelConfigError(agent.last_error)) {
+      setNeedsModel(true);
+      return;
+    }
+    let cancelled = false;
+    void providerApi
+      .getActiveModel()
+      .then((active) => {
+        if (cancelled) return;
+        const provider = (active.provider_name || "").trim();
+        const model = (active.model || "").trim();
+        setNeedsModel(!provider || !model);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setNeedsModel(isNotFoundApiError(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agent]);
 
   useEffect(() => {
     if (!threadId) {
@@ -281,30 +272,6 @@ export default function AiPanel({
     snapshotOutput: snapshotTerminalOutput,
   });
 
-  const handleGateCreated = useCallback(
-    (created: { agent_id: string; name: string }) => {
-      setOpsAgent({
-        id: 0,
-        agent_id: created.agent_id,
-        name: created.name,
-        description: null,
-        persona_mbti: null,
-        default_model: null,
-        system_prompt: null,
-        template_name: GENERAL_EXPERT_ID,
-        state: "stopped",
-        last_error: null,
-        icon: null,
-        icon_name: "terminal",
-        icon_url: null,
-        color: null,
-        config: { expert_id: GENERAL_EXPERT_ID },
-      });
-      onAgentCreated();
-    },
-    [onAgentCreated],
-  );
-
   const shellDisabled = !activeTerminalSessionId;
   const shellDisabledTitle = t("terminal.ai.noTerminal");
 
@@ -318,20 +285,10 @@ export default function AiPanel({
 
   const handleSend = useCallback(() => {
     const text = inputValue.trim();
-    if (!text || isStreaming || !opsAgent || autopilot.isActive) return;
+    if (!text || isStreaming || !agent || autopilot.isActive) return;
     setInputValue("");
     send(formatMessage(text));
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-  }, [
-    inputValue,
-    isStreaming,
-    opsAgent,
-    autopilot.isActive,
-    send,
-    formatMessage,
-  ]);
+  }, [inputValue, isStreaming, agent, autopilot.isActive, send, formatMessage]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -350,16 +307,6 @@ export default function AiPanel({
     [handleSend, mode],
   );
 
-  const handleTextareaInput = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setInputValue(e.target.value);
-      const el = e.target;
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-    },
-    [],
-  );
-
   const inputDisabled =
     isStreaming || booting || !threadId || autopilot.isActive;
   const activeInputValue = mode === "autopilot" ? autopilot.goal : inputValue;
@@ -368,20 +315,21 @@ export default function AiPanel({
     <AssistantFrame
       placement={placement}
       onPlacementChange={onPlacementChange}
-      placementKey="octop:terminal-ai-layout"
+      placementKey="octop:terminal-ai-layout-v2"
       storageKey="octop:terminal-ai"
       legacySize={{
         widthKey: "octop:terminal-ai-width",
         heightKey: "octop:terminal-ai-height",
       }}
       dock="inline"
+      defaultDockWidth={400}
       placementLocked={placementLocked}
       placements={placements}
       hidden={hidden}
       title={t("terminal.ai.togglePanel")}
       onClose={onClose}
       headerExtra={
-        opsAgent ? (
+        agent && !modelBlocked ? (
           <Segmented
             size="small"
             className={styles.modeSegmented}
@@ -397,16 +345,23 @@ export default function AiPanel({
       }
     >
       <div className={styles.panel}>
-        {activeAgent && <ContextSection ctx={terminalCtx} />}
+        {agent && <ContextSection ctx={terminalCtx} />}
 
-        {!opsAgent ? (
-          ensureFailed ? (
-            <GateView onCreated={handleGateCreated} />
+        {!agent ? (
+          ensureError ? (
+            <GateView
+              variant="create"
+              onRetry={onEnsureRetry}
+              creating={ensuring}
+              error={formatOpsEnsureError(ensureError, t)}
+            />
           ) : (
             <div className={styles.messagesLoading}>
               <Spin size="small" />
             </div>
           )
+        ) : modelBlocked ? (
+          <GateView variant="model" />
         ) : (
           <>
             {activeTerminalSessionId && (
@@ -447,7 +402,9 @@ export default function AiPanel({
                   <Spin size="small" />
                 </div>
               ) : bootError ? (
-                <div className={styles.messagesError}>{bootError}</div>
+                <div className={styles.messagesError}>
+                  {apiErrorMessage(new Error(bootError), bootError, t)}
+                </div>
               ) : (
                 <MessageList
                   messages={messages}
@@ -462,58 +419,61 @@ export default function AiPanel({
             </div>
 
             {!activeTerminalSessionId ? (
-              <div className={styles.sendBar}>
-                <span className={styles.sendBarHint}>
+              <div className={styles.composer}>
+                <span className={styles.hint}>
                   {t("terminal.ai.noTerminal")}
                 </span>
               </div>
             ) : (
-              <div className={styles.sendBar}>
-                <div className={styles.sendRow}>
-                  <textarea
-                    ref={textareaRef}
-                    className={styles.sendTextarea}
-                    value={activeInputValue}
-                    onCompositionStart={() => {
-                      imeComposingRef.current = true;
-                    }}
-                    onCompositionEnd={() => {
-                      imeComposingRef.current = false;
-                    }}
-                    onChange={(e) => {
-                      if (mode === "autopilot") {
-                        autopilot.setGoal(e.target.value);
-                      } else {
-                        handleTextareaInput(e);
-                      }
-                    }}
-                    onKeyDown={handleKeyDown}
-                    placeholder={
-                      mode === "autopilot"
-                        ? t("terminal.ai.autopilotGoalPlaceholder")
-                        : t("terminal.ai.inputPlaceholder")
+              <div className={styles.composer}>
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 5 }}
+                  value={activeInputValue}
+                  disabled={booting || !threadId || autopilot.isActive}
+                  placeholder={
+                    mode === "autopilot"
+                      ? t("terminal.ai.autopilotGoalPlaceholder")
+                      : t("terminal.ai.inputPlaceholder")
+                  }
+                  onChange={(event) => {
+                    if (mode === "autopilot") {
+                      autopilot.setGoal(event.target.value);
+                    } else {
+                      setInputValue(event.target.value);
                     }
-                    rows={1}
-                    disabled={inputDisabled}
-                  />
+                  }}
+                  onCompositionStart={() => {
+                    imeComposingRef.current = true;
+                  }}
+                  onCompositionEnd={() => {
+                    imeComposingRef.current = false;
+                  }}
+                  onPressEnter={handleKeyDown}
+                />
+                <div className={styles.composerActions}>
+                  <span className={styles.hint}>{t("chat.composerHint")}</span>
                   {mode === "assist" ? (
-                    <button
-                      type="button"
-                      className={styles.sendBtn}
-                      disabled={
-                        isStreaming
-                          ? inputDisabled
-                          : !inputValue.trim() || inputDisabled
-                      }
-                      onClick={isStreaming ? cancelStream : handleSend}
-                      title={
-                        isStreaming
-                          ? t("chat.stop", "停止")
-                          : t("terminal.ai.send")
-                      }
-                    >
-                      {isStreaming ? <Square size={16} /> : <Send size={16} />}
-                    </button>
+                    isStreaming ? (
+                      <Button
+                        size="small"
+                        danger
+                        icon={<Square size={13} />}
+                        disabled={booting || !threadId}
+                        onClick={cancelStream}
+                      >
+                        {t("chat.stop")}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<Send size={13} />}
+                        disabled={!inputValue.trim() || inputDisabled}
+                        onClick={handleSend}
+                      >
+                        {t("chat.send")}
+                      </Button>
+                    )
                   ) : null}
                 </div>
               </div>

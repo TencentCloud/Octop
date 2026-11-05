@@ -31,7 +31,7 @@ import {
   type TerminalThemeDefinition,
 } from "./terminalThemes";
 import { useTheme } from "../../../context/ThemeContext";
-import { useAgent } from "../../../context/AgentContext";
+import { formatOpsEnsureError, useOpsEngineer } from "./useOpsEngineer";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import {
   readAssistantPlacement,
@@ -39,7 +39,7 @@ import {
 } from "../../../components/AssistantFrame/AssistantFrame";
 import styles from "./index.module.less";
 
-const AI_PANEL_LAYOUT_KEY = "octop:terminal-ai-layout";
+const AI_PANEL_LAYOUT_KEY = "octop:terminal-ai-layout-v2";
 const TERMINAL_PLACEMENTS = ["bottom", "right", "float"] as const;
 
 function ConnBadge({ state }: { state: TerminalConnState }) {
@@ -116,7 +116,7 @@ const TerminalTab = memo(function TerminalTab({
   unbind: (id: string, cbs: TerminalCallbacks) => void;
   onReconnect: (id: string) => void;
   themeDefinition: TerminalThemeDefinition;
-  /** Active agent — terminal is rooted at this agent's workspace_dir. */
+  /** 运维工程师。终端进程挂在这个 agent 的工作区上。 */
   agentId: string;
   /** Capture PTY output for AI autopilot heuristics. */
   onOutputCapture?: (sessionId: string, data: string) => void;
@@ -267,7 +267,12 @@ export default function TerminalPage({
   const { t } = useTranslation();
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
-  const { activeAgentId, agents, loading: agentsLoading, refresh } = useAgent();
+  const {
+    agent: opsAgent,
+    ensuring: opsEnsuring,
+    ensureError: opsEnsureError,
+    retry: retryOpsEngineer,
+  } = useOpsEngineer(isVisible);
   const {
     sessionIds,
     activeId,
@@ -314,7 +319,7 @@ export default function TerminalPage({
 
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [panelLayout, setPanelLayout] = useState<AssistantPlacement>(() =>
-    readAssistantPlacement(AI_PANEL_LAYOUT_KEY, "bottom"),
+    readAssistantPlacement(AI_PANEL_LAYOUT_KEY, "right"),
   );
   const effectivePanelLayout: AssistantPlacement = isMobile
     ? "bottom"
@@ -327,16 +332,12 @@ export default function TerminalPage({
     [],
   );
 
-  // Drop stale agent ids from restored terminal tabs (e.g. after an agent delete).
+  // 终端只连运维工程师。侧栏当前专家不接管这个页面的 shell。
   useEffect(() => {
-    if (agentsLoading || agents.length === 0) return;
-    const fallback = activeAgentId ?? agents[0]?.agent_id ?? "";
-    if (!fallback) return;
-    reconcileAgentIds(
-      agents.map((a) => a.agent_id),
-      fallback,
-    );
-  }, [agents, agentsLoading, activeAgentId, reconcileAgentIds]);
+    const opsId = opsAgent?.agent_id;
+    if (!opsId) return;
+    reconcileAgentIds([opsId], opsId);
+  }, [opsAgent?.agent_id, reconcileAgentIds]);
 
   // Create the first tab on first visit (not on app startup). Uses the live
   // store so a remounted chat-dock TerminalPage cannot race-create extras.
@@ -430,16 +431,13 @@ export default function TerminalPage({
   const tabBarExtra = (
     <div className={styles.tabBarActions}>
       <Tooltip title={t("terminal.ai.togglePanel")}>
-        <div className={styles.aiBtnWrap}>
-          <Button
-            type={isPanelOpen ? "primary" : "default"}
-            icon={<Bot size={16} />}
-            size="small"
-            className={isPanelOpen ? styles.aiBtnActive : styles.aiBtnIdle}
-            onClick={() => setIsPanelOpen((v) => !v)}
-          />
-          {!isPanelOpen && <span className={styles.aiBtnBadge}>NEW</span>}
-        </div>
+        <Button
+          type={isPanelOpen ? "primary" : "default"}
+          icon={<Bot size={14} />}
+          size="small"
+          aria-pressed={isPanelOpen}
+          onClick={() => setIsPanelOpen((v) => !v)}
+        />
       </Tooltip>
       <Dropdown
         menu={{
@@ -497,6 +495,20 @@ export default function TerminalPage({
 
       <div className={contentAreaClass}>
         <div className={tabsCardClass}>
+          {opsEnsureError ? (
+            <div className={styles.opsNotice} role="alert">
+              <span className={styles.opsNoticeText}>
+                {formatOpsEnsureError(opsEnsureError, t)}
+              </span>
+              <Button
+                size="small"
+                loading={opsEnsuring}
+                onClick={retryOpsEngineer}
+              >
+                {t("terminal.ai.gateCreate")}
+              </Button>
+            </div>
+          ) : null}
           {sessionIds.length === 0 ? (
             <div className={styles.emptyState}>
               <Button
@@ -541,7 +553,7 @@ export default function TerminalPage({
                       unbind={unbind}
                       onReconnect={reconnect}
                       themeDefinition={themeDefinition}
-                      agentId={activeAgentId || ""}
+                      agentId={opsAgent?.agent_id || ""}
                       onOutputCapture={handleOutputCapture}
                     />
                   </div>
@@ -553,13 +565,10 @@ export default function TerminalPage({
 
         {isPanelOpen && (
           <AiPanel
-            activeAgent={
-              activeAgentId
-                ? agents.find((a) => a.agent_id === activeAgentId) ?? null
-                : null
-            }
-            agents={agents}
-            agentsLoading={agentsLoading}
+            agent={opsAgent}
+            ensuring={opsEnsuring}
+            ensureError={opsEnsureError}
+            onEnsureRetry={retryOpsEngineer}
             activeTerminalSessionId={activeId}
             activeTerminalSessionIndex={
               activeId ? sessionIds.indexOf(activeId) + 1 : 0
@@ -583,9 +592,6 @@ export default function TerminalPage({
             snapshotTerminalOutput={() =>
               activeId ? outputBufferRef.current.snapshot(activeId) : ""
             }
-            onAgentCreated={() => {
-              void refresh();
-            }}
           />
         )}
       </div>

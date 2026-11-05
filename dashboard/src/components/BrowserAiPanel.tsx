@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Tooltip, Tag, Spin } from "antd";
+import { Button, Input, Tooltip, Tag, Spin } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
 import { Bot, Square, Play, Loader2, Send } from "lucide-react";
@@ -109,7 +109,6 @@ export default function BrowserAiPanel({
   const [pendingSkillName, setPendingSkillName] = useState<string | null>(null);
   const [, setPendingSkillRecordingId] = useState<string | null>(null);
   const workflowBusyRef = useRef(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imeComposingRef = useRef(false);
 
   // Recording workflow phase
@@ -239,7 +238,6 @@ export default function BrowserAiPanel({
       const objective = text.trim();
       if (!objective) return;
       setInputValue("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
       setPendingSkillName(objective);
       if (onSkillNameSet) onSkillNameSet(objective);
       setRecordingPhase("awaitDescription");
@@ -254,7 +252,6 @@ export default function BrowserAiPanel({
     (text: string) => {
       const description = text.trim();
       setInputValue("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
       setRecordingPhase("recording");
       send(description);
     },
@@ -492,7 +489,6 @@ export default function BrowserAiPanel({
     const text = inputValue.trim();
     if (!text || isStreaming || !activeAgent) return;
     setInputValue("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     if (recordingPhase === "awaitObjective") {
       void handleObjectiveInput(text);
@@ -548,16 +544,6 @@ export default function BrowserAiPanel({
       handleSend();
     },
     [handleSend],
-  );
-
-  const handleTextareaInput = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setInputValue(e.target.value);
-      const el = e.target;
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-    },
-    [],
   );
 
   // When recording is active and agent stream just finished, append reminder
@@ -636,6 +622,7 @@ export default function BrowserAiPanel({
         heightKey: "octop:remote-browser:ai-panel-height",
       }}
       dock="inline"
+      defaultDockWidth={400}
       placementLocked={placementLocked}
       hidden={hidden}
       title={t("remoteBrowser.ai.title", "AI 助手")}
@@ -718,68 +705,79 @@ export default function BrowserAiPanel({
         )}
       </div>
 
-      <div className={styles.sendBar}>
-        {/* Recording action buttons before the send row */}
-        {browserRecording && recordingPhase === "recording" && (
-          <Tooltip title={t("browser.recordReplay.stop", "停止浏览器录制")}>
-            <button
-              type="button"
-              className={cx(styles.actionBtn, styles.actionBtnDanger)}
-              onClick={handleEndRecording}
+      <div className={styles.composer}>
+        <Input.TextArea
+          autoSize={{ minRows: 2, maxRows: 5 }}
+          value={inputValue}
+          disabled={booting || !threadId || browserReplayBusy}
+          placeholder={placeholder}
+          onChange={(event) => setInputValue(event.target.value)}
+          onCompositionStart={() => {
+            imeComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            imeComposingRef.current = false;
+          }}
+          onPressEnter={handleKeyDown}
+        />
+        <div className={styles.composerActions}>
+          <span className={styles.composerLead}>
+            {browserRecording && recordingPhase === "recording" && (
+              <Tooltip title={t("browser.recordReplay.stop", "停止浏览器录制")}>
+                <button
+                  type="button"
+                  className={cx(styles.actionBtn, styles.actionBtnDanger)}
+                  onClick={handleEndRecording}
+                >
+                  <Square size={14} />
+                </button>
+              </Tooltip>
+            )}
+            {!browserRecording &&
+              browserLastRecordingId &&
+              !browserReplayBusy && (
+                <Tooltip
+                  title={t(
+                    "browser.recordReplay.replay",
+                    "回放最近一次浏览器录制",
+                  )}
+                >
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    disabled={isStreaming}
+                    onClick={handleReplay}
+                  >
+                    <Play size={14} />
+                  </button>
+                </Tooltip>
+              )}
+            {browserReplayBusy && (
+              <Loader2 size={14} className={styles.spinIcon} />
+            )}
+            <span className={styles.hint}>{t("chat.composerHint")}</span>
+          </span>
+          {isStreaming ? (
+            <Button
+              size="small"
+              danger
+              icon={<Square size={13} />}
+              disabled={booting || !threadId}
+              onClick={cancelStream}
             >
-              <Square size={14} />
-            </button>
-          </Tooltip>
-        )}
-        {!browserRecording && browserLastRecordingId && !browserReplayBusy && (
-          <Tooltip
-            title={t("browser.recordReplay.replay", "回放最近一次浏览器录制")}
-          >
-            <button
-              type="button"
-              className={styles.actionBtn}
-              disabled={isStreaming}
-              onClick={handleReplay}
+              {t("chat.stop")}
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              type="primary"
+              icon={<Send size={13} />}
+              disabled={!inputValue.trim() || inputDisabled}
+              onClick={handleSend}
             >
-              <Play size={14} />
-            </button>
-          </Tooltip>
-        )}
-        {browserReplayBusy && <Loader2 size={14} className={styles.spinIcon} />}
-        <div className={styles.sendRow}>
-          <textarea
-            ref={textareaRef}
-            className={styles.sendTextarea}
-            value={inputValue}
-            onCompositionStart={() => {
-              imeComposingRef.current = true;
-            }}
-            onCompositionEnd={() => {
-              imeComposingRef.current = false;
-            }}
-            onChange={handleTextareaInput}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            rows={1}
-            disabled={inputDisabled}
-          />
-          <button
-            type="button"
-            className={styles.sendBtn}
-            disabled={
-              isStreaming
-                ? booting || !threadId
-                : !inputValue.trim() || inputDisabled
-            }
-            onClick={isStreaming ? cancelStream : handleSend}
-            title={
-              isStreaming
-                ? t("chat.stop", "停止")
-                : t("terminal.ai.send", "发送")
-            }
-          >
-            {isStreaming ? <Square size={16} /> : <Send size={16} />}
-          </button>
+              {t("chat.send")}
+            </Button>
+          )}
         </div>
       </div>
     </>,
