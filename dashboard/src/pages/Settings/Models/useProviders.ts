@@ -21,7 +21,6 @@ export interface ProviderModel {
   reasoning?: boolean;
   reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
-  max_input_tokens?: number;
   max_tokens?: number;
   api_mode?: "chat_completions" | "responses";
   api_fallback?: "none" | "chat_completions";
@@ -44,11 +43,9 @@ export interface ProviderPresetModel {
   name: string;
   max_input_tokens?: number | null;
   context_window?: number | null;
-  max_output_tokens?: number | null;
   max_tokens?: number | null;
   input?: string[];
   reasoning?: boolean | null;
-  reasoning_config?: ResolvedModel["reasoning_config"];
   description?: string | null;
   embedding?: boolean;
   task?: string;
@@ -71,7 +68,6 @@ export interface ProviderPreset {
   auth_method?: string;
   /** Embedding-only presets appear on the embedding Models tab. */
   purpose?: "chat" | "embedding";
-  model_catalog_locked?: boolean;
 }
 
 export interface ProviderRow {
@@ -83,9 +79,6 @@ export interface ProviderRow {
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
-  default_model?: string | null;
-  preset_id?: string | null;
-  model_catalog_locked?: boolean;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
   /** UI lane: embedding providers are managed on the embedding Models tab. */

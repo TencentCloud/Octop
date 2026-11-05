@@ -81,9 +81,7 @@ export function findConfiguredProvider(
     preset.id,
     ...(LEGACY_PRESET_NAMES[preset.id] ?? []),
   ]);
-  return providers.find((p) =>
-    p.preset_id ? p.preset_id === preset.id : aliases.has(p.name),
-  );
+  return providers.find((p) => aliases.has(p.name));
 }
 
 export function groupPresets(presets: ProviderPreset[]): {
@@ -129,10 +127,7 @@ export function isPresetProvider(
   presets: ProviderPreset[],
 ): boolean {
   return presets.some(
-    (preset) =>
-      provider.preset_id === preset.id ||
-      provider.name === preset.name ||
-      provider.name === preset.id,
+    (preset) => provider.name === preset.name || provider.name === preset.id,
   );
 }
 

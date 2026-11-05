@@ -63,7 +63,6 @@ interface ModelListEditorProps {
   /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
   canTest?: boolean;
-  allowAdd?: boolean;
   /** Lock model purpose (embedding lane providers). */
   forcePurpose?: "chat" | "embedding";
   localDownload?: LocalModelDownloadControl;
@@ -93,7 +92,6 @@ export function ModelListEditor({
   onModelsChange,
   apiPrefix = "/providers",
   canTest,
-  allowAdd = true,
   forcePurpose,
   localDownload,
   onTestModel,
@@ -1060,7 +1058,7 @@ export function ModelListEditor({
             </div>
           </Form>
         </div>
-      ) : allowAdd ? (
+      ) : (
         <Button
           type="dashed"
           block
@@ -1070,7 +1068,7 @@ export function ModelListEditor({
         >
           {t("models.addModel")}
         </Button>
-      ) : null}
+      )}
     </div>
   );
 }

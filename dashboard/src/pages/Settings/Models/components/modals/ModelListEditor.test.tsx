@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ModelListEditor } from "./ModelListEditor";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
 
-function renderEditor(models: ProviderModel[], allowAdd = true) {
+function renderEditor(models: ProviderModel[]) {
   const provider: ProviderRow = {
     id: 1,
     name: "mindie",
@@ -23,22 +23,12 @@ function renderEditor(models: ProviderModel[], allowAdd = true) {
         models={models}
         onModelsChange={vi.fn()}
         canTest={false}
-        allowAdd={allowAdd}
       />
     </App>,
   );
 }
 
 describe("ModelListEditor", () => {
-  it("hides manual additions for package catalogs while retaining model editing", () => {
-    renderEditor([{ id: "hy4", name: "Hy4", enabled: true }], false);
-    expect(
-      screen.queryByRole("button", { name: "models.addModel" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "models.editModel" }),
-    ).toBeInTheDocument();
-  });
   it("shows protocol fallback after selecting Responses", async () => {
     const user = userEvent.setup();
     HTMLElement.prototype.scrollIntoView = vi.fn();

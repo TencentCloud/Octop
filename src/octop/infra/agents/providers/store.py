@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
-from octop.infra.agents.providers.catalog import provider_models
 from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
 from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
@@ -249,7 +248,7 @@ class ProviderStore:
                 continue
             if not row.base_url or not row.api_key:
                 continue
-            models = provider_models(row)
+            models = row.get_models()
             if not models:
                 continue
             if any(
@@ -266,7 +265,7 @@ class ProviderStore:
         out: list[ProviderConfig] = []
         for row in self.iter_usable_rows():
             protocol = KIND_TO_PROTOCOL.get(row.kind, "openai")
-            raw_models = provider_models(row)
+            raw_models = json.loads(row.models_json) if getattr(row, "models_json", None) else []
             models = [
                 self._model_config_from_row(m)
                 for m in raw_models
@@ -319,7 +318,7 @@ class ProviderStore:
         row = self._provider_repo.get_by_name(provider_name)
         if row is None:
             return False
-        for model in provider_models(row):
+        for model in row.get_models():
             if model.get("id") == model_id and is_chat_eligible_model(
                 model, provider_name=provider_name, provider_api_key=row.api_key
             ):
@@ -329,7 +328,7 @@ class ProviderStore:
     def resolve_multimodal_model_ref(self) -> str | None:
         """First enabled image-capable model across usable providers."""
         for row in self.iter_usable_rows():
-            for model in provider_models(row):
+            for model in row.get_models():
                 if not is_chat_eligible_model(
                     model, provider_name=row.name, provider_api_key=row.api_key
                 ):
@@ -356,7 +355,7 @@ class ProviderStore:
     def resolve_first_model_ref(self) -> str | None:
         """First chat-eligible enabled model across usable providers."""
         for row in self.iter_usable_rows():
-            for model in provider_models(row):
+            for model in row.get_models():
                 if not is_chat_eligible_model(
                     model, provider_name=row.name, provider_api_key=row.api_key
                 ):
@@ -374,7 +373,7 @@ class ProviderStore:
         """Return stable, usable candidates for one automatic route."""
         candidates: list[AutoRouteCandidate] = []
         for row in self.iter_usable_rows():
-            for model in provider_models(row):
+            for model in row.get_models():
                 if not is_chat_eligible_model(
                     model,
                     provider_name=row.name,
@@ -410,7 +409,7 @@ class ProviderStore:
         row = self._provider_repo.get_by_name(provider_name)
         if row is None or not row.enabled or not row.api_key or not row.base_url:
             return False
-        for model in provider_models(row):
+        for model in row.get_models():
             if model.get("id") != model_id:
                 continue
             return is_chat_eligible_model(
@@ -426,7 +425,7 @@ class ProviderStore:
         row = self._provider_repo.get_by_name(provider_name)
         if row is None:
             return None
-        for model in provider_models(row):
+        for model in row.get_models():
             if model.get("id") == model_id and model.get("enabled", True):
                 return reasoning_capability(model, base_url=row.base_url)
         return None
