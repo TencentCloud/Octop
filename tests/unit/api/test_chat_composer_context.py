@@ -24,6 +24,31 @@ class _ThreadRegistry:
         self.rebound = True
 
 
+class _BoundRegistry:
+    """Registry whose ``session_key`` is already bound to ``bound``'s thread."""
+
+    def __init__(self, row: object, *, bound: str | None) -> None:
+        self.row = row
+        self.bound = bound
+        self.rebound = False
+        self.created = False
+
+    def get_bound_thread_id(self, session_key: str) -> str | None:
+        assert session_key == "shared-agent:dashboard:1:dm"
+        return self.bound
+
+    def get_thread(self, thread_id: str) -> object:
+        assert thread_id == self.bound
+        return self.row
+
+    async def rebind(self, **_kwargs: object) -> None:
+        self.rebound = True
+
+    async def get_or_create_by_key(self, **_kwargs: object) -> str:
+        self.created = True
+        return "new-thread"
+
+
 async def test_resolve_thread_id_rejects_another_users_thread() -> None:
     registry = _ThreadRegistry(SimpleNamespace(agent_id="shared-agent", user_id=1))
 
@@ -38,6 +63,60 @@ async def test_resolve_thread_id_rejects_another_users_thread() -> None:
 
     assert exc_info.value.code == ErrorCode.FORBIDDEN
     assert registry.rebound is False
+
+
+async def test_resolve_thread_id_rejects_another_users_session_key() -> None:
+    registry = _BoundRegistry(
+        SimpleNamespace(agent_id="shared-agent", user_id=1),
+        bound="owner-thread",
+    )
+
+    with pytest.raises(OctopError) as exc_info:
+        await resolve_thread_id(
+            agent_id="shared-agent",
+            user_id=2,
+            thread_registry=registry,
+            thread_id=None,
+            session_key="shared-agent:dashboard:1:dm",
+        )
+
+    assert exc_info.value.code == ErrorCode.FORBIDDEN
+    assert registry.created is False
+
+
+async def test_resolve_thread_id_rejects_session_key_bound_to_another_agent() -> None:
+    registry = _BoundRegistry(
+        SimpleNamespace(agent_id="other-agent", user_id=2),
+        bound="other-thread",
+    )
+
+    with pytest.raises(OctopError) as exc_info:
+        await resolve_thread_id(
+            agent_id="shared-agent",
+            user_id=2,
+            thread_registry=registry,
+            thread_id=None,
+            session_key="shared-agent:dashboard:1:dm",
+        )
+
+    assert exc_info.value.code == ErrorCode.AGENT_NOT_FOUND
+    assert registry.created is False
+
+
+async def test_resolve_thread_id_follows_own_session_key() -> None:
+    registry = _BoundRegistry(
+        SimpleNamespace(agent_id="shared-agent", user_id=1),
+        bound="owner-thread",
+    )
+
+    assert await resolve_thread_id(
+        agent_id="shared-agent",
+        user_id=1,
+        thread_registry=registry,
+        thread_id=None,
+        session_key="shared-agent:dashboard:1:dm",
+    ) == ("owner-thread", "shared-agent:dashboard:1:dm")
+    assert registry.created is False
 
 
 def test_build_composer_context_omits_default_model() -> None:
