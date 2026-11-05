@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,6 +17,7 @@ from octop.infra.agents.providers.store import (
     resolve_provider_purpose,
     resolve_provider_stream_usage,
     stamp_embedding_models,
+    sync_provider_preset_models,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -57,6 +59,161 @@ def _row(
         created_at=0,
         updated_at=0,
     )
+
+
+@pytest.mark.parametrize("provider_name", ["example-preset", "Example API"])
+def test_sync_preset_models_enables_additions_and_preserves_saved_settings(
+    store: ProviderStore, monkeypatch: pytest.MonkeyPatch, provider_name: str
+) -> None:
+    new_model = {
+        "id": "new-model",
+        "name": "New model",
+        "enabled": False,
+        "context_window": 100000,
+        "max_input_tokens": 96000,
+        "max_output_tokens": 4000,
+        "input": ["text", "image"],
+        "reasoning_config": {"supported": True, "adapter": "thinking", "toggle": True},
+    }
+    monkeypatch.setattr(
+        "octop.infra.agents.providers.presets.load_provider_presets",
+        lambda: [
+            {
+                "id": "example-preset",
+                "name": "Example API",
+                "protocol": "openai",
+                "base_url": "https://api.example.com/v1",
+                "models": [new_model],
+            }
+        ],
+    )
+    original = [
+        {"id": "old-model", "name": "My old model", "enabled": False, "context_window": 1234},
+        {"id": "custom-model", "enabled": True},
+    ]
+    repo = store._provider_repo
+    pid = repo.create(
+        name=provider_name,
+        kind="openai",
+        api_key="keep-key",
+        base_url="https://api.example.com/v1/",
+        models_json=json.dumps(original),
+        extra_json='{"headers":{"X-Test":"keep"}}',
+        note="keep-note",
+    )
+    repo.update(pid, enabled=False)
+    before = repo.get(pid)
+
+    assert sync_provider_preset_models(repo) == 1
+    saved = repo.get(pid)
+    assert saved.get_models() == [*original, {**new_model, "enabled": True}]
+    assert (saved.api_key, saved.extra_json, saved.note, saved.enabled) == (
+        before.api_key,
+        before.extra_json,
+        before.note,
+        before.enabled,
+    )
+    assert sync_provider_preset_models(repo) == 0
+    assert repo.get(pid).models_json == saved.models_json
+
+
+@pytest.mark.parametrize(
+    ("name", "url", "kind", "extra"),
+    [
+        ("Custom relay", "https://api.example.com/v1", "openai", None),
+        ("Example API", "https://proxy.example.com/v1", "openai", None),
+        ("Example API", "https://api.example.com/v1", "anthropic", None),
+        ("Example API", "https://api.example.com/v1", "openai", '{"purpose":"embedding"}'),
+        ("Ollama (Local)", "http://localhost:11434/v1", "openai", None),
+    ],
+)
+def test_sync_preset_models_leaves_other_providers_and_local_runtimes_alone(
+    store: ProviderStore,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    url: str,
+    kind: str,
+    extra: str | None,
+) -> None:
+    presets = [
+        {
+            "id": "example-preset",
+            "name": "Example API",
+            "protocol": "openai",
+            "base_url": "https://api.example.com/v1",
+            "models": [{"id": "cloud-model"}],
+        },
+        {
+            "id": "ollama",
+            "name": "Ollama (Local)",
+            "protocol": "openai",
+            "base_url": "http://localhost:11434/v1",
+            "models": [{"id": "not-installed"}],
+        },
+    ]
+    monkeypatch.setattr(
+        "octop.infra.agents.providers.presets.load_provider_presets", lambda: presets
+    )
+    repo = store._provider_repo
+    pid = repo.create(name=name, base_url=url, kind=kind, api_key="test-key", extra_json=extra)
+    assert sync_provider_preset_models(repo) == 0
+    assert repo.get(pid).models_json is None
+
+
+def test_sync_preset_models_separates_packages_sharing_a_url(
+    store: ProviderStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    presets: list[dict[str, Any]] = [
+        {
+            "id": f"plan-{plan}",
+            "name": f"Plan {plan}",
+            "protocol": "openai",
+            "base_url": "https://api.example.com/plan/v1",
+            "models": [{"id": f"model-{plan}"}],
+        }
+        for plan in ("a", "b")
+    ]
+    monkeypatch.setattr(
+        "octop.infra.agents.providers.presets.load_provider_presets", lambda: presets
+    )
+    repo = store._provider_repo
+    ids = [
+        repo.create(name=p["name"], base_url=p["base_url"], kind="openai", api_key="test-key")
+        for p in presets
+    ]
+    assert sync_provider_preset_models(repo) == 2
+    assert repo.get(ids[0]).get_models() == [{"id": "model-a", "enabled": True}]
+    assert repo.get(ids[1]).get_models() == [{"id": "model-b", "enabled": True}]
+
+
+def test_sync_embedding_preset_models_stays_in_embedding_lane(
+    store: ProviderStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = {"id": "new-embedding", "embedding": True, "task": "embedding"}
+    monkeypatch.setattr(
+        "octop.infra.agents.providers.presets.load_provider_presets",
+        lambda: [
+            {
+                "id": "embedding-preset",
+                "name": "Example Embeddings",
+                "protocol": "openai",
+                "purpose": "embedding",
+                "base_url": "https://api.example.com/v1",
+                "models": [model],
+            }
+        ],
+    )
+    repo = store._provider_repo
+    pid = repo.create(
+        name="Example Embeddings",
+        kind="openai",
+        api_key="test-key",
+        base_url="https://api.example.com/v1",
+        extra_json='{"purpose":"embedding"}',
+    )
+    assert sync_provider_preset_models(repo) == 1
+    assert repo.get(pid).get_models() == [{**model, "enabled": True}]
+    assert store.resolve_first_model_ref() is None
 
 
 def test_resolve_provider_stream_usage_defaults_custom_off() -> None:

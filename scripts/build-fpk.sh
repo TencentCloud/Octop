@@ -173,14 +173,14 @@ build_one() {
     echo "[build-fpk] native cmd/fpk-arch=$packed_arch"
   fi
 
-  # Docker 版 compose 钉镜像标签。完整版 :<version>，精简版 :<version>-lite。
+  # Docker 版 compose 钉镜像标签。精简版是默认 :<version>，完整版 :<version>-full。
   # 测试包可用 FPK_IMAGE_TAG 覆盖。
   if [ "$KIND" = "docker" ] || [ "$KIND" = "docker-lite" ]; then
     local compose="$BUILD/app/docker/docker-compose.yaml" image_tag
     if [ "$KIND" = "docker-lite" ]; then
-      image_tag="${FPK_IMAGE_TAG:-${VER}-lite}"
-    else
       image_tag="${FPK_IMAGE_TAG:-$VER}"
+    else
+      image_tag="${FPK_IMAGE_TAG:-${VER}-full}"
     fi
     if [ -f "$compose" ]; then
       sed -i.bak -E "s#ghcr.io/tencentcloud/octop:[^[:space:]]+#ghcr.io/tencentcloud/octop:${image_tag}#" "$compose"

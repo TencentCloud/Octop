@@ -13,7 +13,8 @@ import { useAgent } from "../../../../context/AgentContext";
 import { isAgentChatReady } from "../../../../utils/agentError";
 import { CardSkeleton } from "../../../../components/Skeleton";
 import { useCardTableView } from "../../../../hooks/useCardTableView";
-import { EmptyState } from "../../../../components/EmptyState";
+import { OctopEmptyMascot } from "../../../../components/EmptyState";
+import StreamSetupGuide from "../../../../components/StreamSetupGuide/StreamSetupGuide";
 import { SkillCard } from "./SkillCard";
 import { SkillDrawer, type SkillFormValues } from "./SkillDrawer";
 import { SkillImportModal } from "./SkillImportModal";
@@ -194,23 +195,62 @@ export default function InstalledSkillsTab({
     if (ok) setDrawerOpen(false);
   };
 
-  const emptyTitle =
-    kind === "builtin" ? t("skills.builtinSkills") : t("skills.noSkills");
-  const emptyDesc =
-    kind === "builtin"
-      ? t("skills.builtinSkillsDesc")
-      : t("skills.noSkillsDesc");
-
   const listContent =
     loading && skills.length === 0 ? (
       <CardSkeleton count={6} />
     ) : filteredSkills.length === 0 ? (
-      <EmptyState
-        title={emptyTitle}
-        description={emptyDesc}
-        actionLabel={kind === "custom" ? t("skills.createSkill") : undefined}
-        onAction={kind === "custom" ? handleCreate : undefined}
-      />
+      kind === "builtin" ? (
+        <StreamSetupGuide
+          wide
+          plain
+          icon={<OctopEmptyMascot />}
+          title={t("skills.builtinEmptyTitle")}
+          description={t("skills.builtinEmptyDesc")}
+          steps={[
+            {
+              label: t("skills.builtinEmptyStepReady"),
+              detail: t("skills.builtinEmptyStepReadyDetail"),
+            },
+            {
+              label: t("skills.builtinEmptyStepUse"),
+              detail: t("skills.builtinEmptyStepUseDetail"),
+            },
+          ]}
+        />
+      ) : (
+        <StreamSetupGuide
+          wide
+          plain
+          icon={<OctopEmptyMascot />}
+          title={t("skills.customEmptyTitle")}
+          description={t("skills.customEmptyDesc")}
+          steps={[
+            {
+              label: t("skills.customEmptyStepCreate"),
+              detail: t("skills.customEmptyStepCreateDetail"),
+            },
+            {
+              label: t("skills.customEmptyStepImport"),
+              detail: t("skills.customEmptyStepImportDetail"),
+            },
+            {
+              label: t("skills.customEmptyStepUse"),
+              detail: t("skills.customEmptyStepUseDetail"),
+            },
+          ]}
+          primaryAction={{
+            label: t("skills.createSkill"),
+            onClick: handleCreate,
+            icon: <Plus size={14} />,
+          }}
+          secondaryAction={{
+            label: t("skills.importSkills"),
+            onClick: () => setImportModalOpen(true),
+            icon: <Download size={14} />,
+            type: "default",
+          }}
+        />
+      )
     ) : showCardView ? (
       <div className={styles.skillsGrid}>
         {filteredSkills.map((skill) => (
