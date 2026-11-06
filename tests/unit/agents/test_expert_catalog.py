@@ -263,6 +263,20 @@ def test_bundled_default_expert_only_has_agents_md() -> None:
     assert names == {"AGENTS.md"}
 
 
+def test_bundled_ops_engineer_is_the_terminal_expert() -> None:
+    from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
+
+    catalog = ExpertCatalog(default_library_root())
+    catalog.refresh()
+    expert = catalog.get("ops-engineer")
+    assert expert is not None
+    assert expert.summary.label_zh == "运维工程师 Ops"
+    assert "SOUL.md" in expert.files
+    assert "IDENTITY.md" in expert.files
+    assert "USER.md" not in expert.files
+    assert "SOUL.md" in expert.prompt_files
+
+
 def test_expert_quick_prompts_from_manifest(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 

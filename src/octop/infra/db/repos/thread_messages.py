@@ -67,6 +67,25 @@ class ThreadMessageRepo:
             ).fetchone()
         return int(row[0])
 
+    def threads_with_messages(self, thread_ids: Sequence[str]) -> set[str]:
+        """Which of *thread_ids* actually have projected messages.
+
+        The dashboard used to infer this from ``title`` / ``last_active``,
+        which marks threads that were created and named but never received a
+        turn as "has messages" — clicking them opened an empty conversation.
+        """
+        ids = [tid for tid in thread_ids if tid]
+        if not ids:
+            return set()
+        placeholders = ",".join("?" for _ in ids)
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT DISTINCT thread_id FROM thread_messages "  # noqa: S608 - placeholders only
+                f"WHERE thread_id IN ({placeholders})",
+                tuple(ids),
+            ).fetchall()
+        return {str(row[0]) for row in rows}
+
     def range_rows(self, thread_id: str, start: int, end: int) -> list[ThreadMessageRow]:
         """Read an immutable legacy interval without triggering projection backfill."""
         with self._db.connect() as conn:
