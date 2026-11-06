@@ -1,8 +1,10 @@
 """Tencent Cloud CVM access for the Workbench cloud tab.
 
 Uses the same browser OAuth flow as ``tccli`` (the one the Cluster Doctor
-expert relies on) so operators never paste long-term AK/SK pairs. Credentials
-are encrypted per user under ``~/.octop/secrets/cloud/`` and refreshed
+expert relies on) so operators never paste long-term AK/SK pairs. SQLite
+keeps the login in encrypted files under ``~/.octop/secrets/cloud/``.
+PostgreSQL stores it in the shared ``secrets`` table so any instance can
+serve the user, and imports those files once on first use. Tokens refresh
 automatically while the refresh token is still valid.
 """
 
@@ -22,7 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlencode
 
 from cryptography.fernet import Fernet
@@ -259,12 +261,51 @@ def refresh_credential(credential: CloudCredential) -> CloudCredential:
     )
 
 
-class CloudCredentialStore:
-    """Encrypted per-user Tencent Cloud login for the Workbench."""
+class _SecretBytes(Protocol):
+    def get(self, k: str) -> bytes | None: ...
 
-    def __init__(self, root: Path) -> None:
+    def put(self, k: str, value: bytes) -> None: ...
+
+    def put_if_absent(self, k: str, value: bytes) -> bool: ...
+
+    def delete(self, k: str) -> bool: ...
+
+
+def _cred_key(user_id: int) -> str:
+    return f"cloud.cred.{int(user_id)}"
+
+
+def _state_key(user_id: int) -> str:
+    return f"cloud.state.{int(user_id)}"
+
+
+def _user_id_from_blob(path: Path) -> int | None:
+    name = path.name
+    prefix = "tencent-"
+    suffix = ".enc"
+    if not name.startswith(prefix) or not name.endswith(suffix):
+        return None
+    raw = name[len(prefix) : -len(suffix)]
+    if not raw.isdigit():
+        return None
+    return int(raw)
+
+
+class CloudCredentialStore:
+    """Per-user Tencent Cloud login for the Workbench.
+
+    ``secrets`` is set only for PostgreSQL. The table is then the source of
+    truth, shared by every instance. SQLite keeps the encrypted files.
+    """
+
+    def __init__(self, root: Path, secrets: _SecretBytes | None = None) -> None:
         self._dir = root / "secrets" / "cloud"
         self._key_path = root / "secrets" / "cloud.key"
+        self._secrets = secrets
+
+    @property
+    def shared(self) -> bool:
+        return self._secrets is not None
 
     def _fernet(self) -> Fernet:
         if not self._key_path.exists():
@@ -278,6 +319,8 @@ class CloudCredentialStore:
         return self._dir / f"state-{int(user_id)}.json"
 
     def load(self, user_id: int) -> CloudCredential | None:
+        if self._secrets is not None:
+            return self._load_shared(user_id)
         path = self._path(user_id)
         if not path.is_file():
             return None
@@ -285,17 +328,21 @@ class CloudCredentialStore:
             raw = json.loads(self._fernet().decrypt(path.read_bytes()))
         except Exception:  # noqa: BLE001 - corrupted blob must not crash callers
             return None
-        credential = CloudCredential.from_dict(raw)
-        if not credential.secret_id or not credential.secret_key:
-            return None
-        return credential
+        return self._credential_or_none(raw)
 
     def save(self, user_id: int, credential: CloudCredential) -> None:
+        if self._secrets is not None:
+            self._secrets.put(_cred_key(user_id), _dump_credential(credential))
+            self._path(user_id).unlink(missing_ok=True)
+            return
         path = self._path(user_id)
         _write_private(path, self._fernet().encrypt(json.dumps(credential.to_dict()).encode()))
 
     def clear(self, user_id: int) -> bool:
         removed = False
+        if self._secrets is not None:
+            removed = self._secrets.delete(_cred_key(user_id)) or removed
+            removed = self._secrets.delete(_state_key(user_id)) or removed
         for path in (self._path(user_id), self._state_path(user_id)):
             try:
                 path.unlink()
@@ -306,14 +353,27 @@ class CloudCredentialStore:
 
     def new_state(self, user_id: int) -> str:
         value = secrets.token_urlsafe(16)
-        path = self._state_path(user_id)
-        _write_private(
-            path,
-            json.dumps({"state": value, "created_at": time.time()}).encode(),
-        )
+        payload = json.dumps({"state": value, "created_at": time.time()}).encode()
+        if self._secrets is not None:
+            self._secrets.put(_state_key(user_id), payload)
+            self._state_path(user_id).unlink(missing_ok=True)
+            return value
+        _write_private(self._state_path(user_id), payload)
         return value
 
     def consume_state(self, user_id: int, state: str) -> bool | None:
+        if self._secrets is not None:
+            raw = self._secrets.get(_state_key(user_id))
+            if raw is None:
+                return None
+            try:
+                payload = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                return None
+            result = self._match_state(payload, state)
+            if result is True:
+                self._secrets.delete(_state_key(user_id))
+            return result
         path = self._state_path(user_id)
         if not path.is_file():
             return None
@@ -321,14 +381,98 @@ class CloudCredentialStore:
             payload = json.loads(path.read_text())
         except (OSError, json.JSONDecodeError):
             return None
+        result = self._match_state(payload, state)
+        if result is True:
+            path.unlink(missing_ok=True)
+        return result
+
+    def adopt_local(self) -> int:
+        """Copy local ciphertext into the shared table when that user has no row yet.
+
+        A row already in the database wins. Imported files are removed so a
+        later logout cannot be restored from this machine's disk.
+        """
+        secrets_repo = self._secrets
+        if secrets_repo is None or not self._dir.is_dir() or not self._key_path.is_file():
+            return 0
+        try:
+            fernet = Fernet(self._key_path.read_bytes().strip())
+        except Exception:  # noqa: BLE001 - a bad key must not block startup
+            return 0
+        imported = 0
+        for path in sorted(self._dir.glob("tencent-*.enc")):
+            user_id = _user_id_from_blob(path)
+            if user_id is None:
+                continue
+            try:
+                raw = json.loads(fernet.decrypt(path.read_bytes()))
+            except Exception:  # noqa: BLE001 - skip a blob this key cannot read
+                continue
+            credential = self._credential_or_none(raw)
+            if credential is None:
+                continue
+            if secrets_repo.put_if_absent(_cred_key(user_id), _dump_credential(credential)):
+                imported += 1
+            if secrets_repo.get(_cred_key(user_id)) is not None:
+                path.unlink(missing_ok=True)
+        if imported:
+            logger.info(
+                "imported %d Tencent Cloud login(s) into the control-plane database",
+                imported,
+            )
+        return imported
+
+    def _load_shared(self, user_id: int) -> CloudCredential | None:
+        secrets_repo = self._secrets
+        if secrets_repo is None:
+            return None
+        raw = secrets_repo.get(_cred_key(user_id))
+        if raw is None:
+            return None
+        try:
+            payload = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        return self._credential_or_none(payload)
+
+    @staticmethod
+    def _credential_or_none(raw: Any) -> CloudCredential | None:
+        if not isinstance(raw, dict):
+            return None
+        credential = CloudCredential.from_dict(raw)
+        if not credential.secret_id or not credential.secret_key:
+            return None
+        return credential
+
+    @staticmethod
+    def _match_state(payload: Any, state: str) -> bool | None:
+        if not isinstance(payload, dict):
+            return None
         expected = str(payload.get("state") or "")
         created = float(payload.get("created_at") or 0)
         if not expected or time.time() - created > STATE_TTL_S:
             return None
-        if not secrets.compare_digest(expected, state.strip()):
-            return False
-        path.unlink(missing_ok=True)
-        return True
+        return secrets.compare_digest(expected, state.strip())
+
+
+def _dump_credential(credential: CloudCredential) -> bytes:
+    return json.dumps(credential.to_dict()).encode()
+
+
+def open_cloud_credential_store(
+    root: Path, config: Any, secrets: _SecretBytes
+) -> CloudCredentialStore:
+    """File store on SQLite; shared ``secrets`` rows on PostgreSQL.
+
+    Opening the shared store also imports leftover local files for users
+    the database does not know yet.
+    """
+    database = getattr(config, "database", None)
+    if database is not None and getattr(database, "is_postgresql", False):
+        store = CloudCredentialStore(root, secrets)
+        store.adopt_local()
+        return store
+    return CloudCredentialStore(root)
 
 
 def require_credential(store: CloudCredentialStore, user_id: int) -> CloudCredential:
