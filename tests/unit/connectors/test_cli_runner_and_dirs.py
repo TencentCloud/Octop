@@ -65,6 +65,23 @@ def test_cleanup_keys_from_wecom_creds() -> None:
     assert keys == {"i2", "botx", "ck2"}
 
 
+def test_dingtalk_cleanup_ignores_legacy_caller_selected_key(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    from octop.infra.utils.paths import PathLayout
+
+    layout = PathLayout.from_env()
+    victim = layout.ensure_connector_cli_instance_dir("dingtalk-cli", "victim")
+    own = layout.ensure_connector_cli_instance_dir("dingtalk-cli", "own")
+    legacy = tmp_path / "connector-cli" / "dingtalk-cli" / "own"
+    legacy.mkdir(parents=True)
+    cli_dirs.cleanup_creds_cli_dirs(
+        "dingtalk-cli", {"instance_id": "own", "cli_config_key": "victim"}
+    )
+    assert victim.exists()
+    assert legacy.exists()
+    assert not own.exists()
+
+
 def test_resolve_cli_config_key_prefers_cli_then_instance() -> None:
     assert (
         cli_dirs.resolve_cli_config_key(

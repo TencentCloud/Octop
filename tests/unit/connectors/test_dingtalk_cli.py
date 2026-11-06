@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 from tests.support.fakes import fake_bin_path
 
 from octop.infra.connectors.builder import validate_create_credentials
 from octop.infra.connectors.gateway.adapters import dingtalk_cli
 from octop.infra.connectors.gateway.registry import get_gateway_adapter
+
+
+@pytest.fixture(autouse=True)
+def file_backed_platform(monkeypatch):
+    monkeypatch.setattr(dingtalk_cli, "sys", SimpleNamespace(platform="linux"))
 
 
 def test_credentials_are_an_optional_pair_with_isolation_key() -> None:
@@ -23,6 +31,57 @@ def test_env_uses_official_app_without_pair(monkeypatch, tmp_path) -> None:
     env = dingtalk_cli.prepare_env({"cli_config_key": "inst2"})
     assert "DWS_CLIENT_ID" not in env and "DWS_CLIENT_SECRET" not in env
     assert env["DWS_CONFIG_DIR"].endswith("inst2")
+
+
+def test_env_overrides_shared_keychain_without_changing_host(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("HOME", str(tmp_path / "shared-home"))
+    monkeypatch.setenv("DWS_KEYCHAIN_DIR", str(tmp_path / "shared-keychain"))
+    first = dingtalk_cli.prepare_env({"cli_config_key": "first"})
+    second = dingtalk_cli.prepare_env({"cli_config_key": "second"})
+    for env in (first, second):
+        assert Path(env["DWS_KEYCHAIN_DIR"]) == Path(env["DWS_CONFIG_DIR"]) / "keychain"
+        assert Path(env["DWS_KEYCHAIN_DIR"]).is_dir()
+        assert env["HOME"] == str(tmp_path / "shared-home")
+        assert env["DWS_DISABLE_KEYCHAIN"] == "1"
+    assert first["DWS_KEYCHAIN_DIR"] != second["DWS_KEYCHAIN_DIR"]
+    assert dingtalk_cli.os.environ["DWS_KEYCHAIN_DIR"] == str(tmp_path / "shared-keychain")
+
+
+def test_env_does_not_reuse_legacy_config_or_token_files(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    legacy = tmp_path / "connector-cli" / "dingtalk-cli" / "instance"
+    legacy.mkdir(parents=True)
+    (legacy / ".data").write_text("legacy-auth", encoding="utf-8")
+    env = dingtalk_cli.prepare_env({"cli_config_key": "instance"})
+    assert Path(env["DWS_CONFIG_DIR"]) == (
+        tmp_path / "connector-cli" / "dingtalk-cli-v2" / "instance"
+    )
+    assert not (Path(env["DWS_CONFIG_DIR"]) / ".data").exists()
+    assert (legacy / ".data").read_text(encoding="utf-8") == "legacy-auth"
+
+
+@pytest.mark.skipif(dingtalk_cli.os.name != "posix", reason="POSIX directory permissions")
+def test_auth_directories_are_private(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    env = dingtalk_cli.prepare_env({"cli_config_key": "private"})
+    for key in ("DWS_CONFIG_DIR", "DWS_KEYCHAIN_DIR"):
+        assert Path(env[key]).stat().st_mode & 0o777 == 0o700
+
+
+def test_windows_registry_backend_is_rejected(monkeypatch) -> None:
+    monkeypatch.setattr(dingtalk_cli, "sys", SimpleNamespace(platform="win32"))
+    with pytest.raises(ValueError, match="Linux or macOS"):
+        dingtalk_cli.prepare_env({"cli_config_key": "instance"})
+
+
+def test_credentials_cannot_select_another_instances_directory() -> None:
+    supplied = {"cli_config_key": "victim", "instance_id": "victim"}
+    first = validate_create_credentials("dingtalk-cli", supplied)
+    second = validate_create_credentials("dingtalk-cli", supplied)
+    assert first["cli_config_key"] != second["cli_config_key"]
+    assert first["cli_config_key"] != "victim" and second["cli_config_key"] != "victim"
+    assert "instance_id" not in first and "instance_id" not in second
 
 
 def test_call_tool_passes_argv_and_isolated_env(monkeypatch, tmp_path) -> None:

@@ -6,8 +6,10 @@ import contextlib
 import json
 import os
 import shlex
+import sys
 from typing import Any
 
+from octop.i18n import tr
 from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
 from octop.infra.connectors.gateway.cli_runner import resolve_binary, run_cli
 from octop.infra.utils.paths import PathLayout
@@ -18,6 +20,11 @@ _MAX_OUTPUT = 32_000
 # Interactive / self-modifying subcommands: they hang headless or touch the host.
 _DENIED = frozenset({"auth", "upgrade", "skill", "connect", "completion"})
 _STANDALONE_FLAGS = frozenset({"--help", "-h", "--version"})
+
+
+class UnsupportedPlatformError(ValueError):
+    """The native credential backend cannot isolate connector instances."""
+
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -93,13 +100,24 @@ def probe_credentials(creds: dict[str, Any]) -> None:
 
 
 def prepare_env(creds: dict[str, Any]) -> dict[str, str]:
+    # dws on Windows stores credentials in HKCU, ignoring DWS_KEYCHAIN_DIR.
+    if sys.platform == "win32":
+        raise UnsupportedPlatformError(tr("connector.dingtalk.unsupported_platform"))
     client_id = str(creds.get("client_id") or "").strip()
     client_secret = str(creds.get("client_secret") or "").strip()
     config_dir = PathLayout.from_env().ensure_connector_cli_instance_dir(
         _KIND, resolve_cli_config_key(creds)
     )
+    config_dir.chmod(0o700)
+    keychain_dir = config_dir / "keychain"
+    keychain_dir.mkdir(mode=0o700, exist_ok=True)
+    keychain_dir.chmod(0o700)
     env = os.environ.copy()
-    env.update(DWS_CONFIG_DIR=str(config_dir), DWS_DISABLE_KEYCHAIN="1")
+    env.update(
+        DWS_CONFIG_DIR=str(config_dir),
+        DWS_KEYCHAIN_DIR=str(keychain_dir),
+        DWS_DISABLE_KEYCHAIN="1",
+    )
     # Without a custom app pair, dws logs in through DingTalk's official app;
     # never inherit a host-wide pair into another user's instance.
     env.pop("DWS_CLIENT_ID", None)

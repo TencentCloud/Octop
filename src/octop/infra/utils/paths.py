@@ -173,6 +173,9 @@ class PathLayout:
     def connector_cli_instance_dir(self, kind: str, instance_key: str) -> Path:
         """Isolated config dir for one connector CLI instance."""
         safe_kind = Path(kind).name
+        if safe_kind == "dingtalk-cli":
+            # dws can load legacy .data tokens from its old config directory.
+            safe_kind = "dingtalk-cli-v2"
         safe_key = (
             "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in instance_key)[:80]
             or "default"

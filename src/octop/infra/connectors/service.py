@@ -109,7 +109,11 @@ class ConnectorService:
         row = self._repo.get(instance_id)
         if row is None or not row.credential_blob:
             return {}
-        return decrypt_credentials(self._secret_repo, row.credential_blob)
+        creds = decrypt_credentials(self._secret_repo, row.credential_blob)
+        if row.kind == "dingtalk-cli":
+            # Legacy keys were caller-controlled and may collide across instances.
+            creds.update(instance_id=row.instance_id, cli_config_key=row.instance_id)
+        return creds
 
     def encrypt_and_store(
         self,
@@ -136,6 +140,8 @@ class ConnectorService:
                 # Editing a connector must never switch to another instance's grant.
                 existing = decrypt_credentials(self._secret_repo, row.credential_blob)
                 stored["cli_config_key"] = resolve_cli_config_key(existing)
+            if row.kind == "dingtalk-cli":
+                stored["cli_config_key"] = instance_id
         stored["instance_id"] = instance_id
         expires_at = stored.get("expires_at")
         exp = int(expires_at) if expires_at is not None else None
