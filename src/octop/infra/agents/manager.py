@@ -224,6 +224,8 @@ def _memory_aux_model_settings(
 def memory_extract_supported_options() -> list[str]:
     """Call options supported by the installed harness, for the settings UI."""
     fields = {
+        "memory_capture_enabled": "memory_capture_enabled",
+        "memory_recall_inject_enabled": "memory_recall_inject_enabled",
         "extract_max_tokens": "memory_extract_max_tokens",
         "extract_light_timeout_s": "memory_aux_light_timeout_s",
         "extract_heavy_timeout_s": "memory_aux_heavy_timeout_s",
@@ -252,8 +254,9 @@ def _memory_extract_settings(
     if not isinstance(mem, dict):
         return {}
     out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
-    if "memory_enabled" in supported_fields and isinstance(mem.get("memory_enabled"), bool):
-        out["memory_enabled"] = mem["memory_enabled"]
+    for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
+        if key in supported_fields and isinstance(mem.get(key), bool):
+            out[key] = mem[key]
     if "memory_extract_on_session_end" in supported_fields and isinstance(
         mem.get("extract_on_session_end"), bool
     ):

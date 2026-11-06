@@ -1382,7 +1382,10 @@
     },
     "pushToast": {
       "title": "{{name}} sent a reminder",
-      "titleFallback": "Task reminder"
+      "titleFallback": "Task reminder",
+      "enableBackground": "Also notify me in the background",
+      "enabled": "On. Reminders use system notifications when this tab is in the background.",
+      "denied": "Notifications are blocked. Allow them from the site settings in the address bar."
     },
     "memoryMaintenance": {
       "queued": "Waiting to slim the memory database…",
@@ -7448,6 +7451,7 @@
     "refresh": "Refresh",
     "renew": "Renew",
     "manageAuth": "Manage",
+    "tencentOnlyHint": "Only Tencent Cloud CVM is supported right now",
     "authorize": "Authorize",
     "logout": "Sign out",
     "emptyDescription": "Tencent Cloud is not authorized yet. Authorize to list CVM instances and metrics.",
