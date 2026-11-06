@@ -65,7 +65,7 @@ OctopServer.start()
 The `AppRuntime` dataclass holds the four live singletons that
 `api/routers/*` reach via `server.app_runtime.<thing>`.
 
-### Per-user isolation
+### Application-level multi-user isolation
 
 Every request is authenticated via JWT and resolved to a `User` row.
 Agent ownership is enforced at the **row** level (`agents.user_id`
@@ -77,6 +77,27 @@ admin tooling (`/api/admin/*`) and cross-user diagnostics simple.
 The dashboard always talks to Octop over `/api` HTTP/WebSocket; the
 React SPA never imports a Python module and never opens the SQLite
 file directly.
+
+This is an **application authorization boundary**, not an operating-system
+security boundary. All users' agents run inside the same Octop process and,
+unless a sandbox backend is configured, under the same service account. They
+therefore share the process environment, `HOME`, and `OCTOP_HOME`; Octop does
+not create one OS user, container, or home directory per Octop user.
+
+The default filesystem workspace separates agent content under
+`~/.octop/agents/<agent_id>/`, but path separation alone is not a sandbox.
+Local shell execution is directory-jailed only in the Linux + bubblewrap
+configuration described in
+[agent-backend-file-io.md](./agent-backend-file-io.md#12-局部-root_dir-与-execute-jail补充).
+On macOS, Windows, Linux without bubblewrap, or a backend configured against
+the host root, tools execute with the Octop service account's host permissions.
+
+For mutually untrusted users, run separate Octop instances under separate OS
+accounts or containers and avoid mounting a sensitive host home directory.
+Where shared deployment is appropriate, prefer an agent-scoped Docker sandbox
+for execution and keep host credentials out of the process-global environment.
+Administrators retain intentional cross-user visibility and bypasses for
+management and diagnostics.
 
 ## 3. Conversation surfaces
 
