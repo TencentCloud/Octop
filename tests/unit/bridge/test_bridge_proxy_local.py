@@ -117,3 +117,24 @@ def test_resolve_ignores_local_header_and_unscoped_paths() -> None:
     assert resolve_tunnel_target("/api/mbti/current", "01LOCAL") is None
     assert resolve_tunnel_target("/api/users", "bridge:cid1:aid1") is None
     assert resolve_tunnel_target("/api/plugins/install", "bridge:cid1:aid1") is None
+
+
+def test_resolve_double_encoded_bridge_agent_path() -> None:
+    target = resolve_tunnel_target("/api/agents/bridge%253Acid1%253Aaid1/workspace/download")
+    assert target is not None
+    assert target.remote_path == "/api/agents/aid1/workspace/download"
+    assert target.ref.connection_id == "cid1"
+    assert target.ref.remote_agent_id == "aid1"
+
+
+def test_workspace_io_path_strips_embedded_agent_prefix() -> None:
+    from octop.api.routers.workspace import _workspace_io_path
+
+    assert (
+        _workspace_io_path("C:\\Users\\tee\\.octop\\agents\\A8B6D4\\outbound\\report.docx", from_workspace=True)
+        == "outbound/report.docx"
+    )
+    assert (
+        _workspace_io_path("/Users/tee/.octop/agents/A8B6D4/notes/todo.md", from_workspace=True)
+        == "notes/todo.md"
+    )
