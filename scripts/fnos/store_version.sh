@@ -15,12 +15,14 @@ fnos_store_version() {
       echo "飞牛商店版本无法编码 beta 序号: $ver" >&2
       return 1
     fi
-    store_patch=$((patch * 100 + num))
+    # 前导零段（如 1.2.08）按十进制解释：bash 算术默认把 010 当八进制、
+    # 08 直接报 "value too great for base"，这里用 10# 强制十进制。
+    store_patch=$((10#$patch * 100 + num))
   elif [[ "$ver" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
     major="${BASH_REMATCH[1]}"
     minor="${BASH_REMATCH[2]}"
     patch="${BASH_REMATCH[3]}"
-    store_patch=$((patch * 100 + 100))
+    store_patch=$((10#$patch * 100 + 100))
   else
     echo "飞牛商店版本只接受 X.Y.Z 或 X.Y.ZbN，收到: $ver" >&2
     return 1
