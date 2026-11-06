@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import quote, unquote
@@ -203,6 +203,20 @@ def _forward_headers(request: Request, remote_agent_id: str) -> dict[str, str]:
     return headers
 
 
+def _is_websocket_upgrade(headers: Mapping[str, str]) -> bool:
+    """Return True only for a real RFC 6455 upgrade handshake.
+
+    ``Connection: upgrade`` on its own is not a handshake: reverse proxies commonly
+    inject it as a constant for every request (nginx ``proxy_set_header Connection
+    "upgrade";``), and treating that as a WebSocket diverted ordinary bridge
+    traffic away from the tunnel.
+    """
+    if (headers.get("upgrade") or "").strip().lower() != "websocket":
+        return False
+    connection = headers.get("connection") or ""
+    return any(token.strip().lower() == "upgrade" for token in connection.split(","))
+
+
 def install(app: Any, server: Any) -> None:
     if getattr(app, _INSTALL_ATTR, False):
         return
@@ -221,7 +235,7 @@ def install(app: Any, server: Any) -> None:
         if target is None:
             return await call_next(request)
         # WebSocket upgrades are handled by the chat/bridge routers.
-        if (request.headers.get("connection") or "").lower() == "upgrade":
+        if _is_websocket_upgrade(request.headers):
             return await call_next(request)
 
         user = getattr(request.state, "octop_user", None)
