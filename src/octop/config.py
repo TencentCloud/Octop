@@ -527,18 +527,6 @@ def load_config(path: Path) -> OctopConfig:
             )
         )
 
-    capabilities = _parse_capabilities_section(raw.get("capabilities"))
-    if v := os.environ.get("OCTOP_ENABLE_MOBILE"):
-        forced = _coerce_bool("OCTOP_ENABLE_MOBILE", v, capabilities.mobile.enabled)
-        capabilities = CapabilitiesConfig(
-            mobile=MobileCapabilities(
-                enabled=forced,
-                backend=capabilities.mobile.backend,
-                probed_at=capabilities.mobile.probed_at,
-                reason=capabilities.mobile.reason,
-            )
-        )
-
     backup = _parse_backup_section(raw.get("backup"))
     if v := os.environ.get("OCTOP_BACKUP_AUTO_ENABLED"):
         backup = replace(
