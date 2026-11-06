@@ -22,9 +22,8 @@ async def test_enable_without_weights_is_rejected(
 ) -> None:
     """Enabling a model that was never downloaded must not persist enabled=True."""
     client, _server, auth = env
-    from octop.infra.agents.providers import onnx_service
 
-    monkeypatch.setattr(onnx_service, "ensure_local_embedding_deps_async", _ready)
+    monkeypatch.setattr("octop.api.routers.onnx_models.ensure_local_embedding_deps_async", _ready)
 
     resp = await client.put(
         "/api/onnx-models/config",
@@ -44,7 +43,7 @@ async def test_enable_succeeds_once_weights_are_present(
     client, _server, auth = env
     from octop.infra.agents.providers import onnx_service
 
-    monkeypatch.setattr(onnx_service, "ensure_local_embedding_deps_async", _ready)
+    monkeypatch.setattr("octop.api.routers.onnx_models.ensure_local_embedding_deps_async", _ready)
     monkeypatch.setattr(onnx_service, "local_embedding_deps_available", lambda: True)
     _seed_cache(tmp_octop_home, MODEL)
 
@@ -67,7 +66,7 @@ async def test_activate_reports_downloaded_nested_weights(
     client, _server, auth = env
     from octop.infra.agents.providers import onnx_service
 
-    monkeypatch.setattr(onnx_service, "ensure_local_embedding_deps_async", _ready)
+    monkeypatch.setattr("octop.api.routers.onnx_models.ensure_local_embedding_deps_async", _ready)
     monkeypatch.setattr(onnx_service, "local_embedding_deps_available", lambda: True)
 
     model = "jinaai/jina-clip-v1"
@@ -105,7 +104,7 @@ async def test_knowledge_onnx_test_uses_knowledge_settings_permission(
     client, _server, admin_auth = env
     from octop.infra.agents.providers import onnx_service
 
-    monkeypatch.setattr(onnx_service, "ensure_local_embedding_deps_async", _ready)
+    monkeypatch.setattr("octop.api.routers.onnx_models.ensure_local_embedding_deps_async", _ready)
     monkeypatch.setattr(onnx_service, "local_embedding_deps_available", lambda: True)
     monkeypatch.setattr(onnx_service, "embed_texts", lambda _m, _t: [[0.0] * 512])
     _seed_cache(tmp_octop_home, MODEL)
@@ -134,9 +133,8 @@ async def test_knowledge_onnx_test_reports_missing_weights(
 ) -> None:
     """A model with no weights yields a local message, never a remote error."""
     client, _server, auth = env
-    from octop.infra.agents.providers import onnx_service
 
-    monkeypatch.setattr(onnx_service, "ensure_local_embedding_deps_async", _ready)
+    monkeypatch.setattr("octop.api.routers.onnx_models.ensure_local_embedding_deps_async", _ready)
 
     resp = await client.post("/api/knowledge-bases/onnx-test", headers=auth, json={"model": MODEL})
     assert resp.status_code == 200, resp.text
