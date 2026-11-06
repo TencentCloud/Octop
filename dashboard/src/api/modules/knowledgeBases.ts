@@ -327,7 +327,7 @@ export const knowledgeBasesApi = {
       chunks: { ordinal: number; text: string }[];
     }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
 
-  /** Authenticated original-file bytes (download or preview). */
+  /** Original upload for downloads; recalculated spreadsheet copy for previews. */
   fetchDocumentFile: (
     id: string,
     documentId: string,

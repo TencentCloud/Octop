@@ -23,6 +23,10 @@ def document_path(kb_id: str, doc_id: str, filename: str) -> Path:
     return documents_dir(kb_id) / f"{doc_id}{suffix}"
 
 
+def recalculated_document_path(kb_id: str, doc_id: str) -> Path:
+    return documents_dir(kb_id) / f"{doc_id}.recalculated.xlsx"
+
+
 def write_document(kb_id: str, doc_id: str, filename: str, content: bytes) -> Path:
     path = document_path(kb_id, doc_id, filename)
     path.write_bytes(content)
@@ -31,6 +35,7 @@ def write_document(kb_id: str, doc_id: str, filename: str, content: bytes) -> Pa
 
 def delete_document_file(kb_id: str, doc_id: str, filename: str) -> None:
     document_path(kb_id, doc_id, filename).unlink(missing_ok=True)
+    recalculated_document_path(kb_id, doc_id).unlink(missing_ok=True)
 
 
 def delete_knowledge_base_files(kb_id: str) -> None:
