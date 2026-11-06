@@ -7,6 +7,7 @@
  */
 import { Button } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "../../index.module.less";
 
 interface LoadingStateProps {
@@ -24,7 +25,7 @@ export function LoadingState({
 }: LoadingStateProps) {
   const { t } = useTranslation();
   return (
-    <div className={`${styles.loading} ${className || ""}`}>
+    <div className={cx(styles.loading, className)}>
       <span
         className={styles.loadingText}
         style={{ color: error ? "var(--fn-color-danger)" : undefined }}

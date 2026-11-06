@@ -6,6 +6,7 @@ import {
   joinKnowledgeRelativePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  knowledgeFileNameParts,
   knowledgePathParent,
   normalizeKnowledgePath,
 } from "./knowledgePath";
@@ -31,6 +32,25 @@ describe("knowledgePath", () => {
     expect(() => joinKnowledgeRelativePath("notes/..", "a.txt")).toThrow(
       "invalid knowledge path",
     );
+  });
+
+  it("splits a file name from its suffix", () => {
+    expect(knowledgeFileNameParts("notes/readme.md")).toEqual({
+      stem: "readme",
+      suffix: ".md",
+    });
+    expect(knowledgeFileNameParts("a.b.pdf")).toEqual({
+      stem: "a.b",
+      suffix: ".pdf",
+    });
+    expect(knowledgeFileNameParts("README")).toEqual({
+      stem: "README",
+      suffix: "",
+    });
+    expect(knowledgeFileNameParts(".gitignore")).toEqual({
+      stem: ".gitignore",
+      suffix: "",
+    });
   });
 
   it("returns parent folder", () => {

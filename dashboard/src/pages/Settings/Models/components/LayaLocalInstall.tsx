@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, App, Button } from "antd";
 import { Copy, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   decisionApi,
@@ -174,9 +175,10 @@ export function LayaLocalInstall({
       </p>
       <div className={styles.serviceStatus}>
         <span
-          className={`${styles.serviceStatusItem} ${
-            status.running ? styles.serviceStatusReady : ""
-          }`}
+          className={cx(
+            styles.serviceStatusItem,
+            status.running && styles.serviceStatusReady,
+          )}
         >
           <span className={styles.serviceStatusDot} />
           {status.running
@@ -184,9 +186,10 @@ export function LayaLocalInstall({
             : t("models.decisionServiceNotReady")}
         </span>
         <span
-          className={`${styles.serviceStatusItem} ${
-            active ? styles.serviceStatusActive : ""
-          }`}
+          className={cx(
+            styles.serviceStatusItem,
+            active && styles.serviceStatusActive,
+          )}
         >
           <span className={styles.serviceStatusDot} />
           {active

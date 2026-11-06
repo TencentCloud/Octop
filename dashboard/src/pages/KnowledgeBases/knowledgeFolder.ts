@@ -15,6 +15,7 @@ export {
   joinKnowledgeRelativePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  knowledgeFileNameParts,
   knowledgePathParent,
   normalizeKnowledgePath,
 } from "../../utils/knowledgePath";

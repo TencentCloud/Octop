@@ -35,7 +35,10 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
+import cx from "classnames";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
+import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
 import { ResizableTable } from "../../../components/ResizableTable";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { useCardTableView } from "../../../hooks/useCardTableView";
@@ -411,7 +414,9 @@ export function InstalledPluginsPanel() {
 
       {showCardView ? (
         loading ? (
-          <CardSkeleton count={3} />
+          <div className={styles.loadingSkeleton}>
+            <CardSkeleton count={3} />
+          </div>
         ) : plugins.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -438,9 +443,7 @@ export function InstalledPluginsPanel() {
               return (
                 <article
                   key={row.id}
-                  className={`${styles.card} ${
-                    enabled ? "" : styles.cardDisabled
-                  }`}
+                  className={cx(styles.card, !enabled && styles.cardDisabled)}
                 >
                   <div className={styles.cardBody}>
                     <div className={styles.cardTop}>
@@ -613,6 +616,45 @@ export function InstalledPluginsPanel() {
               />
             </div>
 
+            <ResourceVisibilityCollapse
+              allowOwner={false}
+              visibility={detail.visibility === "groups" ? "groups" : "all"}
+              groupIds={detail.group_ids ?? []}
+              hint={t("resourceVisibility.groupAccessHint")}
+              defaultOpen={detail.visibility === "groups"}
+              onChange={(next) => {
+                const nextVisibility: ResourceVisibilityMode =
+                  next.visibility === "groups" ? "groups" : "all";
+                if (nextVisibility === "groups" && next.groupIds.length === 0) {
+                  setDetail({
+                    ...detail,
+                    visibility: "groups",
+                    group_ids: [],
+                  });
+                  return;
+                }
+                void pluginsApi
+                  .setVisibility(detail.id, {
+                    visibility: nextVisibility,
+                    group_ids: nextVisibility === "groups" ? next.groupIds : [],
+                  })
+                  .then((updated) => {
+                    setDetail(updated);
+                    setPlugins((prev) =>
+                      prev.map((row) =>
+                        row.id === updated.id ? updated : row,
+                      ),
+                    );
+                    message.success(t("plugins.visibilitySaved"));
+                  })
+                  .catch((err: unknown) => {
+                    message.error(
+                      apiErrorMessage(err, t("plugins.visibilityFailed"), t),
+                    );
+                  });
+              }}
+            />
+
             <section className={styles.drawerSection}>
               <h4 className={styles.drawerSectionTitle}>
                 {t("plugins.detailInfo")}
@@ -622,9 +664,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colPath")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.path || "—"}
                   </span>
                 </div>
@@ -632,9 +672,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colUi")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.ui?.entry || "—"}
                   </span>
                 </div>

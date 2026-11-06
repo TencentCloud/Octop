@@ -40,6 +40,7 @@ class TeamPatchBody(BaseModel):
     default_model: str | None = None
     color: str | None = None
     icon_name: str | None = None
+    icon_url: str | None = None
     welcome_message: str | None = None
     member_ids: list[str] | None = None
 
@@ -151,6 +152,8 @@ async def patch_team(
         updates["color"] = body.color
     if body.icon_name is not None:
         updates["icon_name"] = body.icon_name
+    if "icon_url" in body.model_fields_set:
+        updates["icon_url"] = team_icon_url(body.icon_url)
     if body.welcome_message is not None:
         updates["welcome_message"] = body.welcome_message
     if updates:

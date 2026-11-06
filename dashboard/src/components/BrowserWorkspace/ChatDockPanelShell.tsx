@@ -18,6 +18,7 @@ import {
   PictureInPicture2,
   X,
 } from "lucide-react";
+import cx from "classnames";
 import { beginPointerDragSession } from "../../hooks/usePointerDragSession";
 import type { PanelMode } from "./index";
 import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
@@ -135,6 +136,8 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     (isDesktopShell() ? resolveDesktopChromeStyle() : null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevModeRef = useRef<PanelMode>(mode);
+  const styleRef = useRef(style);
+  styleRef.current = style;
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -169,22 +172,27 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     else panel.removeAttribute("data-dock-resizing");
   }, []);
 
-  // Only when leaving popup: drop drag state + rogue inline geometry.
-  // Do not run clear on ordinary right/bottom mounts (wipes React width).
+  // Only when the dock mode actually changes: drop drag state + rogue
+  // inline geometry. Right/bottom ``style`` is a fresh object on every chat
+  // render (width/height literals), so it must not be a dependency — that
+  // was closing the layout menu a couple of seconds after it opened.
+  // Do not clear size on ordinary right/bottom mounts (wipes React width).
   useEffect(() => {
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
+    if (prev === mode) return;
+
+    setLayoutMenuOpen(false);
     if (mode === "popup") return;
 
     setPopupPos(null);
     setIsPopupDragging(false);
     setIsPopupResizing(false);
     setPopupFullscreen(false);
-    setLayoutMenuOpen(false);
     if (prev === "popup") {
-      clearWhenLeavingPopup(panelRef.current, style);
+      clearWhenLeavingPopup(panelRef.current, styleRef.current);
     }
-  }, [mode, style]);
+  }, [mode]);
 
   // Esc exits fullscreen only (keeps popup open).
   useEffect(() => {
@@ -441,11 +449,14 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     <div
       ref={panelRef}
       data-dock-panel=""
-      className={`${styles.chatBrowserPanel} ${styles[mode]} ${
-        popupPos && !popupFullscreen ? styles.popupPlaced : ""
-      } ${isPopupDragging ? styles.popupDragging : ""} ${
-        isPopupResizing ? styles.popupResizing : ""
-      } ${popupFullscreen ? styles.popupFullscreen : ""}`}
+      className={cx(
+        styles.chatBrowserPanel,
+        styles[mode],
+        popupPos && !popupFullscreen && styles.popupPlaced,
+        isPopupDragging && styles.popupDragging,
+        isPopupResizing && styles.popupResizing,
+        popupFullscreen && styles.popupFullscreen,
+      )}
       style={popupStyle}
     >
       <div
@@ -553,9 +564,10 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   return (
     <>
       <div
-        className={`${styles.popupMask} ${
-          popupFullscreen ? styles.popupMaskFullscreen : ""
-        }`}
+        className={cx(
+          styles.popupMask,
+          popupFullscreen && styles.popupMaskFullscreen,
+        )}
         onClick={handleMaskClick}
         aria-hidden
         style={blockMaskClose ? { pointerEvents: "none" } : undefined}

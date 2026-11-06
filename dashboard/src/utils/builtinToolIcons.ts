@@ -61,6 +61,7 @@ export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   deepseek_search: Globe,
   google_search: Globe,
   kimi_search: Globe,
+  yuanbao_search: Globe,
   searchfree_search: Globe,
   generate_image: Image,
   generate_video: Video,

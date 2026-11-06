@@ -4,8 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
-  Eye,
-  EyeOff,
   GitFork,
   MoreHorizontal,
   Pencil,
@@ -14,6 +12,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import cx from "classnames";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
@@ -24,6 +23,7 @@ import {
 import { isImeComposing } from "../../../utils/ime";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
+import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import SessionChannelIcon from "./SessionChannelIcon";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import SharedExpertHint from "./SharedExpertHint";
@@ -46,7 +46,7 @@ import {
 } from "../utils/chatNavScope";
 import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
 import ExpertNameLabel from "./ExpertNameLabel";
-import ExpertNavActions from "./ExpertNavActions";
+import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
 import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
@@ -173,9 +173,11 @@ const SessionItem = memo(function SessionItem({
 
   return (
     <div
-      className={`${styles.sessionRow} ${
-        isActive ? styles.sessionRowActive : ""
-      } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      className={cx(
+        styles.sessionRow,
+        isActive && styles.sessionRowActive,
+        session.pinned && styles.sessionRowPinned,
+      )}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}
@@ -265,6 +267,7 @@ interface AgentCardProps {
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
   onHide?: () => void;
+  onUnhide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
   liveWorkingIds: ReadonlySet<string>;
@@ -288,6 +291,7 @@ function ActiveAgentCard({
   activeForkDisabled,
   activeForkDisabledHint,
   onHide,
+  onUnhide,
   pinned = false,
   onTogglePin,
   liveWorkingIds,
@@ -325,20 +329,22 @@ function ActiveAgentCard({
       }}
     >
       <div className={styles.agentCardProfile}>
-        <div
-          className={styles.agentCardAvatar}
-          style={{
-            color: accent,
-            background: `${accent}14`,
-            boxShadow: `0 0 0 1px ${accent}22`,
-          }}
-        >
-          <ExpertIcon
-            iconUrl={agent.icon_url}
-            iconName={agent.icon_name}
-            size={agent.icon_url?.trim() ? 28 : 16}
-          />
-        </div>
+        <SharedExpertHint agent={agent}>
+          <div
+            className={styles.agentCardAvatar}
+            style={{
+              color: accent,
+              background: `${accent}14`,
+              boxShadow: `0 0 0 1px ${accent}22`,
+            }}
+          >
+            <ExpertIcon
+              iconUrl={agent.icon_url}
+              iconName={agent.icon_name}
+              size={agent.icon_url?.trim() ? 28 : 16}
+            />
+          </div>
+        </SharedExpertHint>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
             <div className={styles.agentNameCluster}>
@@ -346,9 +352,9 @@ function ActiveAgentCard({
                 name={agent.name}
                 className={styles.agentCardName}
               />
-              <TeamChatBadge agent={agent} />
-              <SharedExpertHint agent={agent} />
-              <RemoteExpertHint agent={agent} />
+              <ExpertPinMark pinned={pinned} />
+              <TeamChatBadge agent={agent} compact />
+              <RemoteExpertHint agent={agent} compact />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             {onTogglePin ? (
@@ -357,21 +363,9 @@ function ActiveAgentCard({
                 pinned={pinned}
                 onTogglePin={onTogglePin}
                 onNewChat={() => onNewChat(agent.agent_id)}
+                onHide={onHide}
+                onUnhide={onUnhide}
               />
-            ) : null}
-            {onHide ? (
-              <button
-                type="button"
-                className={styles.agentHideBtn}
-                aria-label={t("chat.expertHide")}
-                title={t("chat.expertHide")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onHide();
-                }}
-              >
-                <EyeOff size={14} aria-hidden />
-              </button>
             ) : null}
           </div>
           {agent.description ? (
@@ -456,23 +450,22 @@ function InactiveAgentRow({
   pinned = false,
   onTogglePin,
 }: AgentRowProps) {
-  const { t } = useTranslation();
   const accent = agent.color || "#6366f1";
 
   return (
-    <div className={styles.agentRowWrap}>
-      <div
-        className={styles.agentRow}
-        onClick={onSelect}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onSelect();
-          }
-        }}
-      >
+    <div
+      className={styles.agentRow}
+      onClick={onSelect}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+    >
+      <SharedExpertHint agent={agent}>
         <div
           className={styles.agentRowAvatar}
           style={{ color: accent, background: `${accent}12` }}
@@ -483,52 +476,32 @@ function InactiveAgentRow({
             size={agent.icon_url?.trim() ? 26 : 14}
           />
         </div>
-        <div className={styles.agentRowInfo}>
-          <div className={styles.agentRowNameRow}>
-            <div className={styles.agentNameCluster}>
-              <ExpertNameLabel
-                name={agent.name}
-                className={styles.agentRowName}
-              />
-              <TeamChatBadge agent={agent} />
-              <SharedExpertHint agent={agent} />
-              <RemoteExpertHint agent={agent} />
-            </div>
-            <AgentUnreadBadge count={agent.unread_count ?? 0} />
-            {onNewChat && onTogglePin ? (
-              <ExpertNavActions
-                variant="classic"
-                pinned={pinned}
-                onTogglePin={onTogglePin}
-                onNewChat={onNewChat}
-              />
-            ) : null}
+      </SharedExpertHint>
+      <div className={styles.agentRowInfo}>
+        <div className={styles.agentRowNameRow}>
+          <div className={styles.agentNameCluster}>
+            <ExpertNameLabel
+              name={agent.name}
+              className={styles.agentRowName}
+            />
+            <ExpertPinMark pinned={pinned} />
+            <TeamChatBadge agent={agent} compact />
+            <RemoteExpertHint agent={agent} compact />
           </div>
-          <div className={styles.agentRowDesc}>{agent.description || "—"}</div>
+          <AgentUnreadBadge count={agent.unread_count ?? 0} />
+          {onNewChat && onTogglePin ? (
+            <ExpertNavActions
+              variant="classic"
+              pinned={pinned}
+              onTogglePin={onTogglePin}
+              onNewChat={onNewChat}
+              onHide={onHide}
+              onUnhide={onUnhide}
+            />
+          ) : null}
         </div>
+        <div className={styles.agentRowDesc}>{agent.description || "—"}</div>
       </div>
-      {onHide ? (
-        <button
-          type="button"
-          className={styles.agentHideBtn}
-          aria-label={t("chat.expertHide")}
-          title={t("chat.expertHide")}
-          onClick={onHide}
-        >
-          <EyeOff size={14} aria-hidden />
-        </button>
-      ) : null}
-      {onUnhide ? (
-        <button
-          type="button"
-          className={styles.agentHideBtn}
-          aria-label={t("chat.expertUnhide")}
-          title={t("chat.expertUnhide")}
-          onClick={onUnhide}
-        >
-          <Eye size={14} aria-hidden />
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -598,20 +571,13 @@ export default function SessionList({
   );
 
   const sortedAgents = useMemo(() => {
-    const visible = filterVisible(agents, {
-      keepAgentIds: activeAgentId ? [activeAgentId] : [],
-    });
+    const visible = filterVisible(agents);
     return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
       matchesChatNavScope(agent, navScope),
     );
-  }, [agents, filterVisible, activeAgentId, pinnedIds, navScope]);
-
-  // Leave the hidden-only view once nothing remains hidden.
-  const viewingHidden = showingHidden && hiddenAgents.length > 0;
-  const agentsToRender = viewingHidden ? hiddenAgents : sortedAgents;
+  }, [agents, filterVisible, pinnedIds, navScope]);
 
   const expandedAgentId = useMemo(() => {
-    if (viewingHidden) return null;
     const activeInScope = sortedAgents.some(
       (agent) => agent.agent_id === activeAgentId,
     );
@@ -619,7 +585,7 @@ export default function SessionList({
     // Browsing another tab keeps the open chat; don't expand a stranger.
     if (activeAgentId) return null;
     return sortedAgents[0]?.agent_id ?? null;
-  }, [activeAgentId, sortedAgents, viewingHidden]);
+  }, [activeAgentId, sortedAgents]);
   const searching = searchQuery.trim().length > 0;
   const fetchAllRequestedRef = useRef(false);
   useEffect(() => {
@@ -631,10 +597,7 @@ export default function SessionList({
     fetchAllRequestedRef.current = true;
     onFetchAllSessions();
   }, [onFetchAllSessions, searching]);
-  const catalog = useExpertSessionCatalog(
-    viewingHidden ? hiddenAgents : sortedAgents,
-    searching && !viewingHidden,
-  );
+  const catalog = useExpertSessionCatalog(sortedAgents, searching);
   const sessionsFor = useCallback(
     (agentId: string): Session[] => {
       const catalogList = catalog.byAgent[agentId] ?? [];
@@ -650,21 +613,24 @@ export default function SessionList({
     [activeAgentId, catalog.byAgent, sessions],
   );
   const listedAgents = useMemo(() => {
-    if (viewingHidden) {
-      if (!searching) return agentsToRender;
-      return agentsToRender.filter((agent) =>
-        matchesNavQuery(agent.name, searchQuery),
-      );
-    }
-    if (!searching) return agentsToRender;
-    return agentsToRender.filter((agent) =>
+    if (!searching) return sortedAgents;
+    return sortedAgents.filter((agent) =>
       expertVisibleInNavSearch(
         agent.name,
         sessionsFor(agent.agent_id).map((session) => session.name),
         searchQuery,
       ),
     );
-  }, [agentsToRender, searchQuery, searching, sessionsFor, viewingHidden]);
+  }, [searchQuery, searching, sessionsFor, sortedAgents]);
+  const listedHiddenAgents = useMemo(() => {
+    if (!showingHidden) return [];
+    const shown = new Set(listedAgents.map((agent) => agent.agent_id));
+    return hiddenAgents.filter((agent) => {
+      if (shown.has(agent.agent_id)) return false;
+      if (!searching) return true;
+      return matchesNavQuery(agent.name, searchQuery);
+    });
+  }, [hiddenAgents, listedAgents, searchQuery, searching, showingHidden]);
 
   const deleteOther = useCallback(
     async (agentId: string, id: string, compact: boolean) => {
@@ -701,6 +667,78 @@ export default function SessionList({
     },
     [catalog],
   );
+
+  const renderAgentRow = (agent: OctopAgent, hiddenRow: boolean) => {
+    const isActive = agent.agent_id === activeAgentId;
+    const hits = searching
+      ? sessionsFor(agent.agent_id).filter((session) =>
+          matchesNavQuery(session.name, searchQuery),
+        )
+      : [];
+    const expanded = hiddenRow
+      ? isActive
+      : searching
+      ? hits.length > 0
+      : agent.agent_id === expandedAgentId;
+    if (expanded) {
+      return (
+        <ActiveAgentCard
+          key={agent.agent_id}
+          agent={agent}
+          sessions={isActive ? sessions : hits}
+          activeId={activeId}
+          searchQuery={isActive ? searchQuery : ""}
+          hasMore={isActive ? hasMore : false}
+          loadingMore={isActive ? loadingMore : false}
+          onLoadMore={isActive ? onLoadMore : () => undefined}
+          onFetchAllSessions={isActive ? onFetchAllSessions : () => undefined}
+          onSelect={onSelect}
+          onNewChat={onNewChat}
+          onDelete={
+            isActive
+              ? onDelete
+              : (id, compact) => deleteOther(agent.agent_id, id, compact)
+          }
+          onRename={
+            isActive
+              ? onRename
+              : (id, name) => renameOther(agent.agent_id, id, name)
+          }
+          onPin={
+            isActive
+              ? onPin
+              : (id, pinned) => pinOther(agent.agent_id, id, pinned)
+          }
+          onFork={onFork}
+          activeForkDisabled={activeForkDisabled}
+          activeForkDisabledHint={activeForkDisabledHint}
+          onHide={
+            !hiddenRow && canHide(agent)
+              ? () => hide(agent.agent_id)
+              : undefined
+          }
+          onUnhide={hiddenRow ? () => unhide(agent.agent_id) : undefined}
+          pinned={isPinned(agent.agent_id)}
+          onTogglePin={() => togglePin(agent.agent_id)}
+          liveWorkingIds={liveWorkingIds}
+        />
+      );
+    }
+    return (
+      <InactiveAgentRow
+        key={agent.agent_id}
+        agent={agent}
+        onSelect={() => onAgentSelect(agent.agent_id)}
+        onNewChat={() => onNewChat(agent.agent_id)}
+        onHide={
+          !hiddenRow && canHide(agent) ? () => hide(agent.agent_id) : undefined
+        }
+        onUnhide={hiddenRow ? () => unhide(agent.agent_id) : undefined}
+        pinned={isPinned(agent.agent_id)}
+        onTogglePin={() => togglePin(agent.agent_id)}
+      />
+    );
+  };
 
   return (
     <div className={styles.sessionList}>
@@ -741,20 +779,8 @@ export default function SessionList({
         </div>
       ) : (
         <div className={styles.sessionItems}>
-          {viewingHidden ? (
-            hiddenAgents.map((agent) => (
-              <InactiveAgentRow
-                key={agent.agent_id}
-                agent={agent}
-                onSelect={() => {
-                  unhide(agent.agent_id);
-                  setShowingHidden(false);
-                  onAgentSelect(agent.agent_id);
-                }}
-                onUnhide={() => unhide(agent.agent_id)}
-              />
-            ))
-          ) : listedAgents.length === 0 ? (
+          {listedAgents.length === 0 &&
+          (searching || catalog.loading || hiddenAgents.length === 0) ? (
             searching || catalog.loading ? (
               <div className={styles.agentCardSessionsEmpty}>
                 {catalog.loading
@@ -765,85 +791,17 @@ export default function SessionList({
               <ChatNavScopeEmpty scope={navScope} />
             )
           ) : (
-            listedAgents.map((agent) => {
-              const isActive = agent.agent_id === activeAgentId;
-              const hits = searching
-                ? sessionsFor(agent.agent_id).filter((session) =>
-                    matchesNavQuery(session.name, searchQuery),
-                  )
-                : [];
-              const expanded = searching
-                ? hits.length > 0
-                : agent.agent_id === expandedAgentId;
-              if (expanded) {
-                return (
-                  <ActiveAgentCard
-                    key={agent.agent_id}
-                    agent={agent}
-                    sessions={isActive ? sessions : hits}
-                    activeId={activeId}
-                    searchQuery={isActive ? searchQuery : ""}
-                    hasMore={isActive ? hasMore : false}
-                    loadingMore={isActive ? loadingMore : false}
-                    onLoadMore={isActive ? onLoadMore : () => undefined}
-                    onFetchAllSessions={
-                      isActive ? onFetchAllSessions : () => undefined
-                    }
-                    onSelect={onSelect}
-                    onNewChat={onNewChat}
-                    onDelete={
-                      isActive
-                        ? onDelete
-                        : (id, compact) =>
-                            deleteOther(agent.agent_id, id, compact)
-                    }
-                    onRename={
-                      isActive
-                        ? onRename
-                        : (id, name) => renameOther(agent.agent_id, id, name)
-                    }
-                    onPin={
-                      isActive
-                        ? onPin
-                        : (id, pinned) => pinOther(agent.agent_id, id, pinned)
-                    }
-                    onFork={onFork}
-                    activeForkDisabled={activeForkDisabled}
-                    activeForkDisabledHint={activeForkDisabledHint}
-                    onHide={
-                      canHide(agent) ? () => hide(agent.agent_id) : undefined
-                    }
-                    pinned={isPinned(agent.agent_id)}
-                    onTogglePin={() => togglePin(agent.agent_id)}
-                    liveWorkingIds={liveWorkingIds}
-                  />
-                );
-              }
-              return (
-                <InactiveAgentRow
-                  key={agent.agent_id}
-                  agent={agent}
-                  onSelect={() => onAgentSelect(agent.agent_id)}
-                  onNewChat={() => onNewChat(agent.agent_id)}
-                  onHide={
-                    canHide(agent) ? () => hide(agent.agent_id) : undefined
-                  }
-                  pinned={isPinned(agent.agent_id)}
-                  onTogglePin={() => togglePin(agent.agent_id)}
-                />
-              );
-            })
+            listedAgents.map((agent) => renderAgentRow(agent, false))
           )}
           {hiddenAgents.length > 0 ? (
-            <button
-              type="button"
-              className={styles.expertHiddenToggle}
-              onClick={() => setShowingHidden((v) => !v)}
-            >
-              {viewingHidden
-                ? t("chat.expertListShowVisible")
-                : t("chat.expertListHidden", { count: hiddenAgents.length })}
-            </button>
+            <>
+              <HiddenExpertsToggle
+                expanded={showingHidden}
+                count={hiddenAgents.length}
+                onToggle={() => setShowingHidden((open) => !open)}
+              />
+              {listedHiddenAgents.map((agent) => renderAgentRow(agent, true))}
+            </>
           ) : null}
         </div>
       )}

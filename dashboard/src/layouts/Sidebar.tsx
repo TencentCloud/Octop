@@ -6,6 +6,7 @@ import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import { ArrowRightLeft, ChevronDown, X } from "lucide-react";
+import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import { useUserRole } from "../hooks/useUserRole";
@@ -25,6 +26,7 @@ import MinimalRecordsHost from "./MinimalRecordsHost";
 import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
 import SidebarMinimalPaneToggle from "./SidebarMinimalPaneToggle";
 import { preferencesApi } from "../api/modules/preferences";
+import { publicUrl } from "../utils/publicUrl";
 import {
   COLLAPSED_WIDTH,
   EXPANDED_WIDTH,
@@ -352,9 +354,10 @@ function NavList({
               <ChevronDown
                 size={12}
                 strokeWidth={2}
-                className={`${styles.navGroupChevron} ${
-                  groupCollapsed ? styles.navGroupChevronFolded : ""
-                }`}
+                className={cx(
+                  styles.navGroupChevron,
+                  groupCollapsed && styles.navGroupChevronFolded,
+                )}
                 aria-hidden
               />
             </button>
@@ -440,8 +443,8 @@ export default function Sidebar({
 
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark
-    ? "/logo_horizontal_white.png"
-    : "/logo_horizontal_dark.png";
+    ? publicUrl("logo_horizontal_white.png")
+    : publicUrl("logo_horizontal_dark.png");
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -803,7 +806,7 @@ export default function Sidebar({
       }}
     >
       <div
-        className={`${styles.sidebarBrand} ${DESKTOP_DRAG_REGION_CLASS}`}
+        className={cx(styles.sidebarBrand, DESKTOP_DRAG_REGION_CLASS)}
         style={{
           display: "flex",
           alignItems: "center",

@@ -1,4 +1,4 @@
-import { request, requestBlob } from "../request";
+import { request, requestBlob, requestUpload } from "../request";
 import type {
   CreateSkillPackageBody,
   CopyPackageSkillsBody,
@@ -84,6 +84,20 @@ export const skillPackagesApi = {
 
   delete: (packageId: string) =>
     request<void>(`/skill-packages/${packageId}`, { method: "DELETE" }),
+
+  uploadAvatar: (packageId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/skill-packages/${encodeURIComponent(packageId)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (packageId: string) =>
+    request<void>(`/skill-packages/${encodeURIComponent(packageId)}/avatar`, {
+      method: "DELETE",
+    }),
 
   getSkill: (packageId: string, slug: string) =>
     request<SkillPackageSkillDetail>(

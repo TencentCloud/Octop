@@ -21,14 +21,25 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
+import PillScroller from "../../../components/PillScroller";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
-import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
+import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { userCan } from "../../../utils/permissions";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  CONNECTOR_TAB_PERMISSIONS,
+  userCan,
+  userCanAny,
+  PERM,
+} from "../../../utils/permissions";
+import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { copyText } from "../../../utils/copyText";
 import {
   clearFormDraft,
@@ -55,6 +66,11 @@ import {
   MAIL_PROVIDERS,
   mailProviderById,
 } from "./connectorDefs";
+import {
+  CONNECTOR_CATEGORY_ALL,
+  connectorCategoryOptions,
+  matchesConnectorCategory,
+} from "./connectorCategories";
 import { notifyConnectorsChanged } from "./customMcpUtils";
 import {
   extractHttpUrl,
@@ -69,6 +85,11 @@ import {
   tryOpenAuthPopup,
 } from "./openAuthWindow";
 import { useConnectorInstances } from "./useConnectors";
+import { ResourceAudienceFilter } from "../../../components/ResourceAudienceFilter";
+import {
+  matchesResourceAudience,
+  type ResourceAudience,
+} from "../../../utils/resourceAudience";
 import styles from "./index.module.less";
 
 function buildCredentials(
@@ -156,94 +177,35 @@ function buildCredentials(
   return credentials;
 }
 
-function sharedFromDetail(detail: { shared?: boolean } | null): {
-  shared: boolean;
+function visibilityFromDetail(
+  detail: {
+    visibility?: ResourceVisibilityMode | null;
+    shared?: boolean;
+    group_ids?: string[] | null;
+  } | null,
+): {
+  visibility: ResourceVisibilityMode;
+  groupIds: string[];
 } {
-  return { shared: Boolean(detail?.shared) };
+  if (!detail) return { visibility: "owner", groupIds: [] };
+  if (detail.visibility === "groups") {
+    return { visibility: "groups", groupIds: detail.group_ids ?? [] };
+  }
+  if (detail.visibility === "all" || detail.shared) {
+    return { visibility: "all", groupIds: [] };
+  }
+  return { visibility: "owner", groupIds: [] };
 }
 
-function shareFields(values: Record<string, unknown>): { shared: boolean } {
-  return { shared: values.shared === true };
-}
-
-function ConnectorFeatureAccess() {
-  const { t } = useTranslation();
-  const [visibility, setVisibility] = useState<ResourceVisibilityMode>("all");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void connectorsApi
-      .getAccess()
-      .then((row) => {
-        if (cancelled) return;
-        setVisibility(row.visibility === "groups" ? "groups" : "all");
-        setGroupIds(row.group_ids ?? []);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          message.error(
-            apiErrorMessage(err, t("connectors.featureAccessFailed")),
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
-  const save = useCallback(
-    async (nextVisibility: "all" | "groups", nextIds: string[]) => {
-      try {
-        const saved = await connectorsApi.setAccess({
-          visibility: nextVisibility,
-          group_ids: nextIds,
-        });
-        setVisibility(saved.visibility === "groups" ? "groups" : "all");
-        setGroupIds(saved.group_ids ?? []);
-        message.success(t("connectors.featureAccessSaved"));
-      } catch (err) {
-        message.error(
-          apiErrorMessage(err, t("connectors.featureAccessFailed")),
-        );
-      }
-    },
-    [t],
-  );
-
-  return (
-    <div className={styles.featureAccess}>
-      <div className={styles.featureAccessTitle}>
-        {t("connectors.featureAccessTitle")}
-      </div>
-      <p className={styles.featureAccessHint}>
-        {t("connectors.featureAccessHint")}
-      </p>
-      {loading ? (
-        <Spin size="small" />
-      ) : (
-        <ResourceVisibilityFields
-          allowOwner={false}
-          visibility={visibility}
-          groupIds={groupIds}
-          onChange={(next) => {
-            const nextVisibility =
-              next.visibility === "groups" ? "groups" : "all";
-            setVisibility(nextVisibility);
-            setGroupIds(next.groupIds);
-            if (nextVisibility === "groups" && next.groupIds.length === 0) {
-              return;
-            }
-            void save(nextVisibility, next.groupIds);
-          }}
-        />
-      )}
-    </div>
-  );
+function visibilityFields(
+  visibility: ResourceVisibilityMode,
+  groupIds: string[],
+) {
+  return {
+    visibility,
+    group_ids: visibility === "groups" ? groupIds : [],
+    shared: visibility !== "owner",
+  };
 }
 
 function previewToFormValues(
@@ -256,7 +218,6 @@ function previewToFormValues(
       description: entry.description,
       mail_provider: "qq",
       default_open: false,
-      ...sharedFromDetail(null),
     };
   }
   const preview = detail.credentials_preview ?? {};
@@ -265,7 +226,6 @@ function previewToFormValues(
     description: detail.description || entry.description,
     default_open:
       detail.default_open === true || detail.config?.default_open === true,
-    ...sharedFromDetail(detail),
   };
   if (preview.email) values.email = preview.email;
   if (preview.mail_provider) values.mail_provider = preview.mail_provider;
@@ -422,8 +382,9 @@ function ConnectorConfigDrawer({
   onSaved: (created?: ConnectorInstance) => void;
 }) {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const user = useCurrentUser();
-  const canInstallCli = userCan(user, "connectors");
+  const canInstallCli = userCanAny(user, PERM.connectors);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -450,6 +411,9 @@ function ConnectorConfigDrawer({
   const [feishuRefreshExpiresAt, setFeishuRefreshExpiresAt] = useState<
     string | null
   >(null);
+  const [connectorVisibility, setConnectorVisibility] =
+    useState<ResourceVisibilityMode>("owner");
+  const [connectorGroupIds, setConnectorGroupIds] = useState<string[]>([]);
 
   const hasStoredCredentials = Boolean(
     instanceDetail?.has_credentials ?? instance?.has_credentials,
@@ -489,8 +453,9 @@ function ConnectorConfigDrawer({
       display_name: entry.name,
       description: entry.description,
       default_open: false,
-      ...sharedFromDetail(null),
     });
+    setConnectorVisibility("owner");
+    setConnectorGroupIds([]);
 
     void connectorsApi
       .authInfo(entry.kind)
@@ -522,6 +487,9 @@ function ConnectorConfigDrawer({
         .then((detail) => {
           setInstanceDetail(detail);
           form.setFieldsValue(previewToFormValues(entry, detail));
+          const next = visibilityFromDetail(detail);
+          setConnectorVisibility(next.visibility);
+          setConnectorGroupIds(next.groupIds);
           if (detail.credentials_preview?.oauth_configured) {
             setShowManual(false);
           }
@@ -542,8 +510,10 @@ function ConnectorConfigDrawer({
             display_name: instance.display_name || entry.name,
             description: instance.description || entry.description,
             default_open: instance.default_open === true,
-            ...sharedFromDetail(instance),
           });
+          const next = visibilityFromDetail(instance);
+          setConnectorVisibility(next.visibility);
+          setConnectorGroupIds(next.groupIds);
           applyConnectorDraft();
         })
         .finally(() => setLoadingDetail(false));
@@ -991,13 +961,21 @@ function ConnectorConfigDrawer({
           return;
         }
 
+        if (
+          connectorVisibility === "groups" &&
+          connectorGroupIds.length === 0
+        ) {
+          message.error(t("resourceVisibility.needGroup"));
+          return;
+        }
+        const share = visibilityFields(connectorVisibility, connectorGroupIds);
         if (instance) {
           await connectorsApi.patchInstance(instance.instance_id, {
             display_name: String(values.display_name || entry.name),
             description: String(values.description || entry.description),
             credentials,
             default_open: values.default_open === true,
-            ...shareFields(values),
+            ...share,
           });
         } else {
           await connectorsApi.createInstance({
@@ -1006,7 +984,7 @@ function ConnectorConfigDrawer({
             description: String(values.description || entry.description),
             credentials,
             default_open: values.default_open === true,
-            ...shareFields(values),
+            ...share,
           });
         }
         clearFormDraft(draftScope);
@@ -1180,7 +1158,9 @@ function ConnectorConfigDrawer({
         }
       } else {
         setProbeResult(null);
-        message.error(r.error ?? t("connectors.probeFailed", "探测失败"));
+        message.error(
+          probeErrorMessage(r, t("connectors.probeFailed", "探测失败"), t),
+        );
       }
     } catch (e) {
       console.error(e);
@@ -1216,16 +1196,21 @@ function ConnectorConfigDrawer({
         return;
       }
     }
+    if (connectorVisibility === "groups" && connectorGroupIds.length === 0) {
+      message.error(t("resourceVisibility.needGroup"));
+      return;
+    }
     setSaving(true);
     try {
       const payload = buildCredentials(entry, values);
+      const share = visibilityFields(connectorVisibility, connectorGroupIds);
       if (instance) {
         await connectorsApi.patchInstance(instance.instance_id, {
           display_name: values.display_name as string,
           description: values.description as string,
           credentials: payload,
           default_open: values.default_open === true,
-          ...shareFields(values as Record<string, unknown>),
+          ...share,
         });
       } else {
         const created = await connectorsApi.createInstance({
@@ -1234,7 +1219,7 @@ function ConnectorConfigDrawer({
           description: values.description as string,
           credentials: payload,
           default_open: values.default_open === true,
-          ...shareFields(values as Record<string, unknown>),
+          ...share,
         });
         if (entry.kind === "agently-cli" || entry.kind === "dingtalk-cli") {
           clearFormDraft(draftScope);
@@ -1308,7 +1293,7 @@ function ConnectorConfigDrawer({
       }
       open={open}
       onClose={onClose}
-      width={440}
+      width={isMobile ? "100%" : 480}
       destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
@@ -1695,14 +1680,23 @@ function ConnectorConfigDrawer({
             name="description"
             label={t("connectors.description", "描述")}
             rules={[{ required: true }]}
+            className={styles.textAssistField}
           >
             <Input.TextArea
-              rows={3}
-              maxLength={500}
-              showCount
+              autoSize={{ minRows: 2, maxRows: 5 }}
               placeholder={entry.description}
             />
           </Form.Item>
+          <TextAssistBar
+            kind="connector.description"
+            getName={() =>
+              String(form.getFieldValue("display_name") ?? entry.name ?? "")
+            }
+            getText={() => String(form.getFieldValue("description") ?? "")}
+            onApply={(text) =>
+              form.setFieldsValue({ description: text.slice(0, 500) })
+            }
+          />
 
           {entry.auth_kind === "custom_fields" &&
             (entry.credential_fields ?? []).map((field) => {
@@ -2257,35 +2251,52 @@ function ConnectorConfigDrawer({
             </>
           )}
 
-          <Form.Item
-            name="shared"
-            label={t("connectors.shared")}
-            valuePropName="checked"
-            extra={t("connectors.sharedHint")}
-          >
-            <Switch />
-          </Form.Item>
-
-          <Form.Item
-            name="default_open"
-            label={t("connectors.defaultEnabled", "是否默认开启")}
-            valuePropName="checked"
-            extra={
-              defaultOpen
-                ? undefined
-                : t(
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRow}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("connectors.defaultEnabled", "是否默认开启")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {t(
                     "connectors.defaultOpenHint",
                     "关闭时需在对话中手动勾选才会注入工具。",
-                  )
-            }
-          >
-            <Switch />
-          </Form.Item>
+                  )}
+                </span>
+              </div>
+              <Form.Item name="default_open" valuePropName="checked" noStyle>
+                <Switch size="small" />
+              </Form.Item>
+            </div>
+            <ResourceVisibilityGate allowOwner visibility={connectorVisibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("connectors.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={connectorVisibility}
+                  groupIds={connectorGroupIds}
+                  onChange={(next) => {
+                    setConnectorVisibility(next.visibility);
+                    setConnectorGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
+              </div>
+            </ResourceVisibilityGate>
+          </div>
           {defaultOpen ? (
             <Alert
               type="warning"
               showIcon
-              style={{ marginBottom: 16 }}
+              style={{ marginTop: 12, marginBottom: 0 }}
               message={t(
                 "connectors.defaultOpenWarning",
                 "开启后默认会在 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
@@ -2355,6 +2366,7 @@ export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ConnectorTab>("enabled");
+  const [activeCategory, setActiveCategory] = useState(CONNECTOR_CATEGORY_ALL);
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
@@ -2364,10 +2376,96 @@ export default function ConnectorsPage() {
     string | null
   >(null);
   const { catalog, instances, loading, refresh } = useConnectorInstances();
+  const user = useCurrentUser();
+  const visibleConnectorTabs = useMemo(
+    () =>
+      CONNECTOR_TABS.filter((tab) =>
+        userCan(user, CONNECTOR_TAB_PERMISSIONS[tab.key]),
+      ),
+    [user],
+  );
+  const resolvedConnectorTab = visibleConnectorTabs.some(
+    (tab) => tab.key === activeTab,
+  )
+    ? activeTab
+    : visibleConnectorTabs[0]?.key ?? "enabled";
+  const [audience, setAudience] = useState<ResourceAudience>("all");
+  const visibleInstances = useMemo(
+    () =>
+      instances.filter((instance) =>
+        matchesResourceAudience(audience, {
+          owned: user != null && instance.owner_user_id === user.id,
+          shared: instance.shared,
+        }),
+      ),
+    [audience, instances, user],
+  );
 
   const configuredCount = useMemo(() => {
     return instances.filter((instance) => instance.has_credentials).length;
   }, [instances]);
+
+  const categoryOptions = useMemo(
+    () =>
+      connectorCategoryOptions(
+        catalog.map((entry) => entry.category),
+        (category) => t(`connectors.category.${category}`, category),
+        t("connectors.categoryAll"),
+      ),
+    [catalog, t],
+  );
+  const showCategoryPills = categoryOptions.length > 1;
+
+  useEffect(() => {
+    if (
+      activeCategory &&
+      !categoryOptions.some((option) => option.value === activeCategory)
+    ) {
+      setActiveCategory(CONNECTOR_CATEGORY_ALL);
+    }
+  }, [activeCategory, categoryOptions]);
+
+  const catalogByKind = useMemo(() => {
+    const byKind = new Map<string, ConnectorCatalogEntry>();
+    for (const entry of catalog) byKind.set(entry.kind, entry);
+    return byKind;
+  }, [catalog]);
+
+  const visibleCatalog = useMemo(
+    () =>
+      catalog.filter((entry) =>
+        matchesConnectorCategory(entry.category, activeCategory),
+      ),
+    [activeCategory, catalog],
+  );
+  const categoryInstances = useMemo(
+    () =>
+      visibleInstances.filter((instance) =>
+        matchesConnectorCategory(
+          catalogByKind.get(instance.kind)?.category,
+          activeCategory,
+        ),
+      ),
+    [activeCategory, catalogByKind, visibleInstances],
+  );
+  const visibleConfiguredCount = useMemo(() => {
+    if (!activeCategory) return configuredCount;
+    const kinds = new Set(visibleCatalog.map((entry) => entry.kind));
+    return instances.filter(
+      (instance) => instance.has_credentials && kinds.has(instance.kind),
+    ).length;
+  }, [activeCategory, configuredCount, instances, visibleCatalog]);
+
+  const categoryPills = showCategoryPills ? (
+    <PillScroller
+      className={styles.categoryScroller}
+      options={categoryOptions}
+      active={activeCategory}
+      onSelect={setActiveCategory}
+      prevLabel={t("experts.marketScenePrev")}
+      nextLabel={t("experts.marketSceneNext")}
+    />
+  ) : null;
 
   useEffect(() => {
     const oauthState = searchParams.get("oauth_state");
@@ -2436,8 +2534,8 @@ export default function ConnectorsPage() {
       subtitle={t("pageShell.connectors.subtitle")}
       tabBar={
         <TabBar
-          tabs={CONNECTOR_TABS}
-          activeKey={activeTab}
+          tabs={visibleConnectorTabs}
+          activeKey={resolvedConnectorTab}
           onChange={(key) => {
             if (key === "custom") setCustomFocusServerName(null);
             setActiveTab(key);
@@ -2445,16 +2543,15 @@ export default function ConnectorsPage() {
         />
       }
     >
-      {activeTab === "custom" ? (
+      {resolvedConnectorTab === "custom" ? (
         <CustomMcpTab focusServerName={customFocusServerName} />
-      ) : activeTab === "enabled" ? (
+      ) : resolvedConnectorTab === "enabled" ? (
         loading ? (
           <div className={styles.loadingState}>
             <Spin />
           </div>
         ) : (
           <>
-            <ConnectorFeatureAccess />
             {instances.length === 0 ? (
               <div className={styles.emptyLayout}>
                 <StreamSetupGuide
@@ -2497,12 +2594,20 @@ export default function ConnectorsPage() {
             ) : (
               <>
                 <div className={styles.listToolbar}>
-                  <span className={styles.listToolbarMeta}>
-                    {t("connectors.enabledSummary", {
-                      count: instances.length,
-                      defaultValue: "已启用 {{count}} 个连接器实例",
-                    })}
-                  </span>
+                  <div className={styles.listToolbarStart}>
+                    <span className={styles.listToolbarMeta}>
+                      {t("connectors.enabledSummary", {
+                        count: categoryInstances.length,
+                        defaultValue: "已启用 {{count}} 个连接器实例",
+                      })}
+                    </span>
+                    <ResourceAudienceFilter
+                      value={audience}
+                      onChange={(value) =>
+                        setAudience(value as ResourceAudience)
+                      }
+                    />
+                  </div>
                   <Button
                     icon={<RefreshCw size={14} />}
                     loading={loading}
@@ -2511,29 +2616,40 @@ export default function ConnectorsPage() {
                     {t("common.refresh")}
                   </Button>
                 </div>
-                <div className={styles.typeGrid}>
-                  {instances.map((instance) => (
-                    <ConnectorInstanceCard
-                      key={instance.instance_id}
-                      instance={instance}
-                      catalogEntry={catalog.find(
-                        (entry) => entry.kind === instance.kind,
-                      )}
-                      onEdit={(item) => {
-                        if (item.kind === "custom-mcp") {
-                          setCustomFocusServerName(item.mcp_server_name);
-                          setActiveTab("custom");
-                          return;
-                        }
-                        const entry = catalog.find(
-                          (row) => row.kind === item.kind,
-                        );
-                        if (entry) handleConfigure(entry, item);
-                      }}
-                      onChanged={handleSaved}
-                    />
-                  ))}
-                </div>
+                {categoryPills}
+                {visibleInstances.length === 0 ? (
+                  <div className={styles.filterEmpty}>
+                    {t("resourceAudience.empty")}
+                  </div>
+                ) : categoryInstances.length === 0 ? (
+                  <div className={styles.filterEmpty}>
+                    {t("connectors.categoryEmpty")}
+                  </div>
+                ) : (
+                  <div className={styles.typeGrid}>
+                    {categoryInstances.map((instance) => (
+                      <ConnectorInstanceCard
+                        key={instance.instance_id}
+                        instance={instance}
+                        catalogEntry={catalog.find(
+                          (entry) => entry.kind === instance.kind,
+                        )}
+                        onEdit={(item) => {
+                          if (item.kind === "custom-mcp") {
+                            setCustomFocusServerName(item.mcp_server_name);
+                            setActiveTab("custom");
+                            return;
+                          }
+                          const entry = catalog.find(
+                            (row) => row.kind === item.kind,
+                          );
+                          if (entry) handleConfigure(entry, item);
+                        }}
+                        onChanged={handleSaved}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </>
@@ -2543,8 +2659,8 @@ export default function ConnectorsPage() {
           <div className={styles.listToolbar}>
             <span className={styles.listToolbarMeta}>
               {t("connectors.listSummary", {
-                total: catalog.length,
-                configured: configuredCount,
+                total: visibleCatalog.length,
+                configured: visibleConfiguredCount,
                 defaultValue:
                   "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
               })}
@@ -2557,13 +2673,18 @@ export default function ConnectorsPage() {
               {t("common.refresh")}
             </Button>
           </div>
+          {categoryPills}
           {loading ? (
             <div className={styles.loadingState}>
               <Spin />
             </div>
+          ) : activeCategory && visibleCatalog.length === 0 ? (
+            <div className={styles.filterEmpty}>
+              {t("connectors.categoryEmpty")}
+            </div>
           ) : (
             <div className={styles.typeGrid}>
-              {catalog.map((entry) => (
+              {visibleCatalog.map((entry) => (
                 <ConnectorCard
                   key={entry.kind}
                   entry={entry}

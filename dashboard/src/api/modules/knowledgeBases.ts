@@ -53,6 +53,7 @@ export interface KnowledgeBase {
   visibility?: "all" | "groups" | "owner";
   group_ids?: string[];
   icon_name: string;
+  icon_url?: string;
   embedding_model: string;
   embedding_dim: number;
   doc_count: number;
@@ -196,6 +197,7 @@ export const knowledgeBasesApi = {
     visibility?: "all" | "groups" | "owner";
     group_ids?: string[];
     icon_name?: string;
+    icon_url?: string;
     max_documents?: number;
   }) =>
     request<KnowledgeBase>("/knowledge-bases", {
@@ -213,6 +215,7 @@ export const knowledgeBasesApi = {
       visibility?: "all" | "groups" | "owner";
       group_ids?: string[];
       icon_name?: string;
+      icon_url?: string;
       max_documents?: number;
     },
   ) =>
@@ -223,6 +226,20 @@ export const knowledgeBasesApi = {
 
   delete: (id: string) =>
     request<void>(`/knowledge-bases/${id}`, { method: "DELETE" }),
+
+  uploadAvatar: (id: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/knowledge-bases/${encodeURIComponent(id)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (id: string) =>
+    request<void>(`/knowledge-bases/${encodeURIComponent(id)}/avatar`, {
+      method: "DELETE",
+    }),
 
   listDocuments: (id: string, prefix?: string) =>
     request<KnowledgeDocument[]>(
@@ -302,6 +319,13 @@ export const knowledgeBasesApi = {
     request<{ id: string; filename: string; text: string }>(
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
     ),
+
+  listDocumentChunks: (id: string, documentId: string) =>
+    request<{
+      id: string;
+      filename: string;
+      chunks: { ordinal: number; text: string }[];
+    }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
 
   /** Authenticated original-file bytes (download or preview). */
   fetchDocumentFile: (

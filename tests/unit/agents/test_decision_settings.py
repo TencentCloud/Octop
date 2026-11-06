@@ -25,6 +25,7 @@ def test_decision_settings_default_off(store: DecisionSettingsStore) -> None:
     view = store.load()
     assert view.enabled is False
     assert view.active is False
+    assert view.tools is False
     assert store.harness_config() is None
 
 
@@ -45,9 +46,15 @@ def test_decision_settings_roundtrip(store: DecisionSettingsStore) -> None:
     assert saved.api_key_set is True
     assert saved.tools is False
 
+    raw = store._secrets.get("decision_api_key:jev")  # noqa: SLF001
+    assert raw is not None
+    assert raw != b"sk-test"
+    assert raw.startswith(b"gAAAA")
+
     config = store.harness_config()
     assert config is not None
     assert config.enabled is True
+    assert config.api_key == "sk-test"
     assert config.model == "typesafe/jev-1.13"
     assert config.api_key == "sk-test"
     assert config.tools is False

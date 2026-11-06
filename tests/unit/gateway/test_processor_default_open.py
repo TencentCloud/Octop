@@ -71,7 +71,7 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
 
     assert events
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        7, None, apply_defaults=True, extra_defaults=[]
+        7, None, apply_defaults=True, extra_defaults=[], agent_owner_id=None
     )
     agent_manager.prepare_chat_mcp.assert_awaited_once()
     assert captured["request"]["mcp_servers"] == ["docs__1"]
@@ -233,7 +233,7 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
     )
     assert "mcp_servers" not in request
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        1, [], apply_defaults=False, extra_defaults=[]
+        1, [], apply_defaults=False, extra_defaults=[], agent_owner_id=None
     )
 
 

@@ -40,7 +40,7 @@ function streamMobileSse(
   // phase, so it has to fire exactly once per stream - including the two ways
   // this endpoint can end without a clean terminal frame: a terminal frame
   // followed by another frame, and the body closing with no terminal frame at
-  // all (``infra/mobile/setup.py`` runs ``bash`` unguarded, so a missing shell
+  // all (``infra/control/mobile/setup.py`` runs ``bash`` unguarded, so a missing shell
   // or a dying subprocess truncates the body). desktop.ts/browser.ts already
   // settle after their read loop; this one returned straight into the caller.
   let settled = false;

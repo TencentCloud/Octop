@@ -47,6 +47,13 @@ class SqlitePool:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA journal_mode = WAL")
+        # WAL + FULL fsyncs every autocommit statement. On Windows that is
+        # FlushFileBuffers and dominates pytest (and the app), so only Windows
+        # drops to NORMAL (SQLite's recommended WAL setting): an OS crash can
+        # drop the last transaction, an application crash cannot corrupt the
+        # file. Other platforms keep the default FULL.
+        if os.name == "nt":
+            self._conn.execute("PRAGMA synchronous = NORMAL")
         self._lock = threading.RLock()
         if first_create and os.name == "posix":
             os.chmod(self.path, 0o600)
@@ -113,13 +120,21 @@ def _compat_row_factory(cursor: Any) -> Any:
 
 
 class _PgConnectionProxy:
-    """Expose sqlite-like ``execute`` / ``executescript`` on a psycopg connection."""
+    """Expose sqlite-like ``execute`` / ``executemany`` / ``executescript`` on a psycopg connection."""
 
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
     def execute(self, sql: str, params: Any = None) -> Any:
         return self._conn.execute(qmark_to_pyformat(sql), params)
+
+    def executemany(self, sql: str, seq_of_params: Any) -> None:
+        # psycopg put executemany on the cursor, not the connection; without
+        # this shim the attribute lookup falls through ``__getattr__`` and
+        # raises AttributeError on SQLite-shaped batch inserts (e.g.
+        # care_push records on a PostgreSQL control plane).
+        with self._conn.cursor() as cur:
+            cur.executemany(qmark_to_pyformat(sql), seq_of_params)
 
     def executescript(self, sql: str) -> None:
         # Used only if something still calls it; prefer migrate splitter.

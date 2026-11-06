@@ -226,14 +226,14 @@ export function buildNavSections(
       labelKey: "nav.knowledgeBases",
     });
   }
-  // User-scoped remote Octop links stay available without a module permission.
-  settingsItems.push({
-    key: "bridge",
-    path: "/bridge",
-    icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
-    labelKey: "nav.bridge",
-    badge: "Beta",
-  });
+  if (navAllowed(user, "bridge")) {
+    settingsItems.push({
+      key: "bridge",
+      path: "/bridge",
+      icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.bridge",
+    });
+  }
   if (settingsItems.length > 0) {
     sections.push({
       id: "settings",

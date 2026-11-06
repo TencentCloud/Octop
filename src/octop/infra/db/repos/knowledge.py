@@ -29,6 +29,7 @@ class KnowledgeBaseRow:
     default_open: bool
     shared: bool
     icon_name: str
+    icon_url: str
     embedding_model: str
     embedding_dim: int
     doc_count: int
@@ -42,6 +43,7 @@ class KnowledgeBaseRow:
         # sqlite3.Row has no __contains__; use keys() (like users.py).
         keys = frozenset(r.keys()) if hasattr(r, "keys") else frozenset()
         max_doc = int(r["max_documents"]) if "max_documents" in keys else 100
+        icon_url = str(r["icon_url"] or "") if "icon_url" in keys else ""
         return cls(
             id=str(r["knowledge_base_id"]),
             pk=int(r["id"]),
@@ -51,6 +53,7 @@ class KnowledgeBaseRow:
             default_open=bool(r["default_open"]),
             shared=bool(r["shared"]),
             icon_name=str(r["icon_name"] or ""),
+            icon_url=icon_url,
             embedding_model=r["embedding_model"],
             embedding_dim=r["embedding_dim"],
             doc_count=r["doc_count"],
@@ -117,6 +120,7 @@ class KnowledgeRepo:
         default_open: bool = False,
         shared: bool = False,
         icon_name: str = "",
+        icon_url: str = "",
         embedding_model: str = "",
         embedding_dim: int = 0,
         max_documents: int | None = None,
@@ -129,8 +133,9 @@ class KnowledgeRepo:
                 conn.execute(
                     "INSERT INTO knowledge_bases("
                     "knowledge_base_id, owner_user_id, name, description, default_open, shared, "
-                    "icon_name, embedding_model, embedding_dim, doc_count, created_at, updated_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
+                    "icon_name, icon_url, embedding_model, embedding_dim, doc_count, "
+                    "created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)",
                     (
                         kb_id,
                         owner_user_id,
@@ -139,6 +144,7 @@ class KnowledgeRepo:
                         bool_int(default_open),
                         bool_int(shared),
                         icon_name,
+                        icon_url,
                         embedding_model,
                         embedding_dim,
                         ts,
@@ -149,9 +155,9 @@ class KnowledgeRepo:
                 conn.execute(
                     "INSERT INTO knowledge_bases("
                     "knowledge_base_id, owner_user_id, name, description, default_open, shared, "
-                    "icon_name, embedding_model, embedding_dim, doc_count, max_documents, "
+                    "icon_name, icon_url, embedding_model, embedding_dim, doc_count, max_documents, "
                     "created_at, updated_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)",
                     (
                         kb_id,
                         owner_user_id,
@@ -160,6 +166,7 @@ class KnowledgeRepo:
                         bool_int(default_open),
                         bool_int(shared),
                         icon_name,
+                        icon_url,
                         embedding_model,
                         embedding_dim,
                         max_documents,
@@ -214,6 +221,7 @@ class KnowledgeRepo:
         default_open: bool | None = None,
         shared: bool | None = None,
         icon_name: str | None = None,
+        icon_url: str | None = None,
         embedding_model: str | None = None,
         embedding_dim: int | None = None,
         doc_count: int | None = None,
@@ -226,6 +234,7 @@ class KnowledgeRepo:
                 ("default_open", bool_int(default_open) if default_open is not None else None),
                 ("shared", bool_int(shared) if shared is not None else None),
                 ("icon_name", icon_name),
+                ("icon_url", icon_url),
                 ("embedding_model", embedding_model),
                 ("embedding_dim", embedding_dim),
                 ("doc_count", doc_count),
