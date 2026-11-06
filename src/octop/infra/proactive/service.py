@@ -213,9 +213,13 @@ class ProactiveCareService:
                 exc,
             )
 
-        # Resolve locale from agent config; default to zh.
+        # Resolve locale from agent config (locale or language); default to zh.
         agent_config = getattr(agent, "config", None)
-        raw_locale = getattr(agent_config, "locale", None) if agent_config is not None else None
+        raw_locale = (
+            getattr(agent_config, "locale", None) or getattr(agent_config, "language", None)
+            if agent_config is not None
+            else None
+        )
         locale = normalize_locale(str(raw_locale) if raw_locale is not None else None)
 
         # Build the system prompt from i18n JSON.
