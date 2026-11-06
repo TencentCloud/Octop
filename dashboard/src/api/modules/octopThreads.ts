@@ -166,9 +166,11 @@ export const octopThreadsApi = {
       `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,
     ),
 
-  create: (agentId: string) =>
+  create: (agentId: string, options?: { rebind?: boolean }) =>
     request<{ thread_id: string; session_key: string }>(
-      `/agents/${encodeURIComponent(agentId)}/threads`,
+      `/agents/${encodeURIComponent(agentId)}/threads${
+        options?.rebind === false ? "?rebind=false" : ""
+      }`,
       { method: "POST" },
     ),
 

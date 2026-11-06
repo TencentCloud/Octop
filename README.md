@@ -451,6 +451,7 @@ After `octop run`, open **http://127.0.0.1:8088**.
 </p>
 
 - **Chat** — real-time conversation with experts and teams
+- **Cloud** — Tencent CVM fleet overview, instance metrics, and a resident ops expert
 - **Experts** — create experts, pick templates / MBTI personas, share or publish experts, configure providers
 - **AgentTeams** *(Beta)* — coordinator + member experts for multi-step work
 - **Connectors** — OAuth apps and MCP gateways

@@ -33,8 +33,8 @@ octop backup --help     # 备份/恢复
 
 | 版本 | 包名 | 体积 | 运行方式 | 依赖 |
 |------|------|------|----------|------|
-| **Docker 精简版** | `Octop-fnos-docker-lite-<ver>.fpk` | ~340 KB | 飞牛拉取 `ghcr.io/tencentcloud/octop:<本包版本>-lite` | 宿主需有 Docker。不含虚拟桌面、本地向量和 OCR |
-| **Docker 完整版** | `Octop-fnos-docker-<ver>.fpk` | ~340 KB | 飞牛拉取 `ghcr.io/tencentcloud/octop:<本包版本>`（`amd64` / `arm64` 多架构），重启不再重拉 | 宿主需有 Docker，且能访问 `ghcr.io`。含桌面、OCR 和本地向量 |
+| **Docker 精简版** | `Octop-fnos-docker-lite-<ver>.fpk` | ~340 KB | 飞牛拉取 `ghcr.io/tencentcloud/octop:<本包版本>`（默认标签，`amd64` / `arm64`） | 宿主需有 Docker。不含虚拟桌面、本地向量和 OCR |
+| **Docker 完整版** | `Octop-fnos-docker-<ver>.fpk` | ~340 KB | 飞牛拉取 `ghcr.io/tencentcloud/octop:<本包版本>-full`，重启不再重拉 | 宿主需有 Docker，且能访问 `ghcr.io`。含桌面、OCR 和本地向量 |
 | **本地版 x86_64** | `Octop-fnos-native-amd64-<ver>.fpk` | ~200 MB | 复用飞牛「Python 3.12」+ 包内核心依赖与前端 | 无需 Docker |
 | **本地版 ARM64** | `Octop-fnos-native-arm64-<ver>.fpk` | ~200 MB | 同上，site-packages 为 aarch64；勿装到 x86 | 无需 Docker；ARM 飞牛无 Docker 时再用 |
 
@@ -109,7 +109,7 @@ Octop 发版号是 PEP 440，beta 写成 `X.Y.ZbN`。`scripts/fnos/store_version
 ## 工作机制
 
 1. **发版链路**：`v*` tag → `release.yml`（PyPI + GitHub Release）与 `docker-publish.yml`（GHCR / Hub）并行；Release 成功后自动 `workflow_dispatch` 本工作流。
-2. **镜像复用**：不再重新 build 镜像。`ensure-image` 等待完整版 `ghcr.io/tencentcloud/octop:{version}`（docker-publish 推送到 GHCR / Docker Hub 的 amd64+arm64 清单）。精简版 `:{version}-lite` 只有 amd64 和 arm64 都推送成功才会出现；缺了它仍会打完整版飞牛包，并在 Release 下载区去掉对应链接。Docker 版 `.fpk` 仅打包 compose，运行时拉取该镜像。
+2. **镜像复用**：不再重新 build 镜像。`ensure-image` 等待默认精简版 `ghcr.io/tencentcloud/octop:{version}`（docker-publish 推送到 GHCR / Docker Hub 的 amd64+arm64 清单）。完整版 `:{version}-full` 只有 amd64 和 arm64 都推送成功才会出现；缺了它仍会打精简版飞牛包，并在 Release 下载区去掉对应链接。Docker 版 `.fpk` 仅打包 compose，运行时拉取该镜像。
 3. **Wheel 复用**：Native 版优先从同版本 GitHub Release（`v*`）下载 `octop-*.whl`；若缺失再回退源码构建前端 + wheel。
 4. **安装包发布**：`fpk` / `native` / `native-arm64` job 用 `scripts/build-fpk.sh` 打包。官方 fnpack 只有 linux-amd64，ARM 本地版先在 `ubuntu-24.04-arm` 上装好 aarch64 `site-packages`，再回到 amd64 runner 打包。`.fpk` 挂到同一个 `v*` GitHub Release（与 wheel、桌面包并列），再上传到 COS `octop/release/<version>/`。
 

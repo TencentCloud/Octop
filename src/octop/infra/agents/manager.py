@@ -445,6 +445,46 @@ def _sanitize_bound_mcp_tools(agent: Any) -> None:
         agent.replace_mcp_tools(tools)
 
 
+def _bind_custom_mcp_tools(
+    agent: Any,
+    name: str,
+    tools: list[Any],
+    *,
+    user_id: int | None,
+) -> None:
+    """Attach custom MCP tools, replacing that server when another user owns the slot.
+
+    A shared expert's harness has one short name. The owner's tools and a
+    viewer's same-named server both land on ``{name}_*``, and ``append`` keeps
+    the first set. Record who was bound so the next turn can swap.
+    """
+    prefix = f"{name}_"
+    current_names: Any = getattr(agent, "_mcp_tool_name_set", frozenset())
+    occupied = isinstance(current_names, frozenset) and any(
+        isinstance(tool_name, str) and tool_name.startswith(prefix) for tool_name in current_names
+    )
+    if occupied:
+        existing = getattr(agent, "_mcp_tools", None)
+        kept = (
+            [
+                tool
+                for tool in existing
+                if not str(getattr(tool, "name", "") or "").startswith(prefix)
+            ]
+            if isinstance(existing, list)
+            else []
+        )
+        agent.replace_mcp_tools([*kept, *tools])
+    else:
+        agent.append_mcp_tools(tools)
+    if user_id is None:
+        return
+    book = getattr(agent, "_mcp_attached_user", None)
+    attached: dict[str, int] = book if isinstance(book, dict) else {}
+    attached[name] = user_id
+    agent._mcp_attached_user = attached
+
+
 # ---------------------------------------------------------------------------
 # AgentManager
 # ---------------------------------------------------------------------------
@@ -2355,6 +2395,7 @@ class AgentManager:
         *,
         apply_defaults: bool | None = None,
         extra_defaults: list[str] | None = None,
+        agent_owner_id: int | None = None,
     ) -> list[str] | None:
         """Resolve turn MCP servers vs default_open plus optional expert defaults."""
         return self._connector_svc.merge_turn_mcp_servers(
@@ -2362,6 +2403,48 @@ class AgentManager:
             explicit,
             apply_defaults=apply_defaults,
             extra_defaults=extra_defaults,
+            agent_owner_id=agent_owner_id,
+        )
+
+    def present_mcp_names_for_viewer(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Catalog names a non-owner selects for this expert's stored MCP picks."""
+        return self._connector_svc.present_mcp_names_for_viewer(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            names=names,
+        )
+
+    def align_mcp_names_to_harness(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Viewer catalog names → names registered on the expert owner's harness."""
+        return self._connector_svc.align_mcp_names_to_harness(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            names=names,
+        )
+
+    def mcp_names_for_chips(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        requested: list[str],
+        harness_names: list[str],
+    ) -> list[str]:
+        """History-chip names for the MCP servers actually attached to the turn."""
+        return self._connector_svc.mcp_names_for_chips(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            requested=requested,
+            harness_names=harness_names,
         )
 
     def default_mcp_servers(self, agent_id: str) -> list[str]:
@@ -2405,9 +2488,51 @@ class AgentManager:
         uid = self._connector_uid_for(row, connector_user_id=connector_user_id) if row else None
         if uid is None and connector_user_id is not None:
             uid = connector_user_id
+        owner_raw = getattr(row, "user_id", None) if row is not None else None
+        owner_id = owner_raw if isinstance(owner_raw, int) else None
+        requested = list(names)
+        aliases: dict[str, str] = {}
+        if owner_id is not None and uid is not None and owner_id != uid:
+            aliases = self._connector_svc.shared_custom_harness_aliases(owner_id)
+            names = []
+            for name in requested:
+                mapped = aliases.get(name, name)
+                if mapped not in names:
+                    names.append(mapped)
+
+        custom_configs: dict[str, Any] = {}
+        load_user: dict[str, int] = {}
+        if uid is not None:
+            custom_configs = self._connector_svc.custom_harness_configs(uid)
+            load_user = dict.fromkeys(custom_configs, uid)
+        if aliases and uid is not None and owner_id is not None:
+            # Load the owner's spec when the turn asked for the shared server.
+            # A viewer's own server with the same short name stays theirs unless
+            # the collision-safe name was selected too.
+            viewer_own = set(self._connector_svc.get_custom_servers(uid))
+            owner_backed = {
+                short
+                for long_name, short in aliases.items()
+                if long_name in requested or (short in requested and short not in viewer_own)
+            }
+            if owner_backed:
+                owner_configs = self._connector_svc.custom_harness_configs(owner_id)
+                for name in owner_backed:
+                    spec = owner_configs.get(name)
+                    if isinstance(spec, dict):
+                        custom_configs[name] = spec
+                        load_user[name] = owner_id
 
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
-        missing_tools = [n for n in names if not any(t.startswith(f"{n}_") for t in tool_set)]
+        attached_raw = getattr(agent, "_mcp_attached_user", None)
+        attached: dict[str, int] = attached_raw if isinstance(attached_raw, dict) else {}
+        missing_tools: list[str] = []
+        for name in names:
+            has_tools = any(tool_name.startswith(f"{name}_") for tool_name in tool_set)
+            expected = load_user.get(name)
+            if has_tools and (expected is None or attached.get(name) == expected):
+                continue
+            missing_tools.append(name)
         logger.info(
             "prepare_chat_mcp agent=%s connector_user_id=%s requested=%s tool_count=%d missing=%s",
             agent_id,
@@ -2425,10 +2550,6 @@ class AgentManager:
             )
             return []
 
-        custom_configs: dict[str, Any] = {}
-        if uid is not None:
-            custom_configs = self._connector_svc.custom_harness_configs(uid)
-
         custom_missing = [n for n in missing_tools if n in custom_configs]
         builtin_missing = [n for n in missing_tools if n not in custom_configs]
 
@@ -2438,7 +2559,7 @@ class AgentManager:
                 if not isinstance(spec, dict) or not spec.get("transport"):
                     continue
                 try:
-                    tools = await self._get_or_load_mcp_tools(uid, name, spec)
+                    tools = await self._get_or_load_mcp_tools(load_user.get(name, uid), name, spec)
                 except Exception:
                     logger.exception(
                         "prepare_chat_mcp agent=%s: failed loading custom MCP %s",
@@ -2448,7 +2569,13 @@ class AgentManager:
                     continue
                 if tools:
                     try:
-                        agent.append_mcp_tools(tools)
+                        bound_user = load_user.get(name, uid)
+                        _bind_custom_mcp_tools(
+                            agent,
+                            name,
+                            tools,
+                            user_id=bound_user if isinstance(bound_user, int) else None,
+                        )
                     except Exception:
                         logger.exception(
                             "prepare_chat_mcp agent=%s: append_mcp_tools failed for %s",
@@ -2538,7 +2665,9 @@ class AgentManager:
                     if not isinstance(spec, dict) or not spec.get("transport"):
                         continue
                     try:
-                        tools = await self._get_or_load_mcp_tools(uid, name, spec)
+                        tools = await self._get_or_load_mcp_tools(
+                            load_user.get(name, uid), name, spec
+                        )
                     except Exception:
                         logger.exception(
                             "prepare_chat_mcp agent=%s: re-inject custom MCP %s failed",
@@ -2547,7 +2676,13 @@ class AgentManager:
                         )
                         continue
                     if tools:
-                        agent.append_mcp_tools(tools)
+                        bound_user = load_user.get(name, uid)
+                        _bind_custom_mcp_tools(
+                            agent,
+                            name,
+                            tools,
+                            user_id=bound_user if isinstance(bound_user, int) else None,
+                        )
                         agent.config.mcp_server_configs[name] = dict(spec)
                     tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
 
@@ -2560,6 +2695,14 @@ class AgentManager:
                 agent_id,
                 still_missing,
             )
+        if aliases:
+            short_to_long = {short: long for long, short in aliases.items()}
+            still_missing = [
+                short_to_long[name]
+                if name in short_to_long and short_to_long[name] in requested
+                else name
+                for name in still_missing
+            ]
         return still_missing
 
     async def _attach_gateway_tools(
