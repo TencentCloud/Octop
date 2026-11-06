@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import ToolMessage
-from octop_gateway.models import ImageContent, MessageEventType
+from octop_gateway.channels.weixin.channel import WeixinAccountConfig, WeixinChannel, WeixinConfig
+from octop_gateway.models import ChannelSubject, ImageContent, MessageEventType
 from tests.support.fakes import FakeHarnessAgent
 
 from octop.i18n import tr
@@ -90,9 +92,14 @@ async def test_generated_media_projection_uses_workspace_and_user_locale(
 
 @pytest.mark.parametrize("same_content", [False, True])
 @pytest.mark.parametrize("resume", [False, True])
+@pytest.mark.parametrize("upload_failed", [False, True])
 @pytest.mark.asyncio
-async def test_generated_media_is_not_resent_by_send_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, same_content: bool, resume: bool
+async def test_explicit_send_is_not_suppressed_without_delivery_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    same_content: bool,
+    resume: bool,
+    upload_failed: bool,
 ) -> None:
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     agent = FakeHarnessAgent()
@@ -157,29 +164,44 @@ async def test_generated_media_is_not_resent_by_send_file(
             "id": "send-2",
         }
         yield sent
+        yield generated  # History replay is still suppressed by tool-call id.
+        yield sent
 
     manager = MagicMock()
     manager.get_agent.return_value = agent
     manager.stream = stream
     manager.resume_hitl = stream
     for _turn in range(2):
-        events = [
-            event
-            async for event in (
-                project_resume_stream(manager, "agent-1", "thread-1", [], locale="zh")
-                if resume
-                else project_stream(manager, "agent-1", {}, locale="zh")
-            )
-        ]
-        media = [
-            part
-            for event in events
-            if event.type == MessageEventType.MESSAGE
-            for part in event.content
-            if isinstance(part, ImageContent)
-        ]
+        account = WeixinAccountConfig(account_id="test-account", token="test-token")
+        channel = WeixinChannel(MagicMock(), config=WeixinConfig(accounts=[account]))
+        channel._mark_content = AsyncMock()
+        channel._send_media_fallback_unlocked = AsyncMock()
+        item = {"type": 2, "image_item": {"media": {}}}
+        channel._upload_media_part = AsyncMock(side_effect=[None if upload_failed else item, item])
+        api = SimpleNamespace(
+            send_items=AsyncMock(return_value=SimpleNamespace(context_token="", data={}))
+        )
+        channel._api = AsyncMock(return_value=api)
+        subject = ChannelSubject(
+            subject_id="test-user", metadata={"account_id": account.account_id}
+        )
+        media = []
+        events = (
+            project_resume_stream(manager, "agent-1", "thread-1", [], locale="zh")
+            if resume
+            else project_stream(manager, "agent-1", {}, locale="zh")
+        )
+        async for event in events:
+            if event.type == MessageEventType.MESSAGE:
+                media.extend(part for part in event.content if isinstance(part, ImageContent))
+                # Keep projection and real channel delivery interleaved, including
+                # the upload-failure fallback that returns without raising.
+                await channel._deliver_event(subject, event)
 
-        assert [part.data for part in media] == (["UE5H"] if same_content else ["UE5H", "TkVX"])
+        assert [part.data for part in media] == ["UE5H", "UE5H" if same_content else "TkVX"]
+        assert channel._upload_media_part.await_count == 2
+        assert channel._send_media_fallback_unlocked.await_count == int(upload_failed)
+        assert api.send_items.await_count == (1 if upload_failed else 2)
 
 
 def test_enrich_tool_stream_chunk_adds_display_name():
