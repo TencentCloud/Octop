@@ -1077,7 +1077,6 @@ class GlobalProcessor:
             model_ref=model_ref,
             meta=None,
         )
-        mcp_servers = await self._resolve_turn_mcp_servers(
         resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
