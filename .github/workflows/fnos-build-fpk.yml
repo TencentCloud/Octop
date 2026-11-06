@@ -209,11 +209,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node.js 20 (frontend build)
+      - name: Set up Node.js 22 (frontend build)
         if: steps.wheel.outputs.source == 'build'
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: dashboard/package-lock.json
 
@@ -330,11 +330,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set up Node.js 20 (frontend build)
+      - name: Set up Node.js 22 (frontend build)
         if: steps.wheel.outputs.source == 'build'
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: dashboard/package-lock.json
 

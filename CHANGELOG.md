@@ -37,6 +37,7 @@
 - 技能市场可以换源站。`SKILL_MARKET_ORIGIN` 负责搜索、榜单和单个技能安装，`SKILLSET_ORIGIN` 负责技能集详情和技能集压缩包，默认都是 `https://api.skillhub.cn`。说明见 `docs/skill-market.md`
 
 ### 变更
+- 开发、发布和 Docker 工具链升级至 Node.js 22，保留 npm 10；宿主机安装需自行提供兼容 Node，Office 预览至少需要 22.19
 - 升级 octop-harness 至 1.0.7，带入 OpenSandbox 路径操作修复，并将 SearchFree 默认搜索深度改为 `basic`
 - 专家页的「内置专家模板」并入「专家市场」，本实例用户发布的模板仍留在市场里。安装包不再附带产品专家模板和内置插件；新建用户时从专家市场拉取模板，拉不到也照常建用户。从市场新建的专家会装上 Octop 助手技能。市场目录不可用时直接失败，不再改显示安装包自带内容，也不再改调本机 `skillhub` 命令行
 

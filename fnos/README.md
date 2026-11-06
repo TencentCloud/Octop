@@ -38,8 +38,8 @@ octop backup --help     # 备份/恢复
 | **本地版 x86_64** | `Octop-fnos-native-amd64-<ver>.fpk` | ~200 MB | 复用飞牛「Python 3.12」+ 包内核心依赖与前端 | 无需 Docker |
 | **本地版 ARM64** | `Octop-fnos-native-arm64-<ver>.fpk` | ~200 MB | 同上，site-packages 为 aarch64；勿装到 x86 | 无需 Docker；ARM 飞牛无 Docker 时再用 |
 
-- **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。x86 / ARM 飞牛各用同一份 FPK，Docker 按本机架构拉对应镜像层。需要虚拟桌面、OCR 或本地向量时选完整版；否则选精简版。两份镜像都带前端和 Node.js 20（`node` / `npm` / `npx`）。完整版内置 `desktop` 桌面控制但不会自动启动；Playwright Chromium 不预装，可在控制台按需安装。精简版不含桌面、OCR 和本地向量。
-- **本地版**实现为 FnOS 原生 `app`：解释器复用飞牛「Python 3.12」开发工具；包内是 Octop 核心依赖与前端。专家 shell / 技能若要跑 `node` / `npx`，会复用飞牛已装的 Node.js（不强制安装）。扩展里的 `.so` 与 CPU 架构绑定，因此 x86 与 ARM 各打一份；装错架构会在安装或启动时报错。
+- **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。x86 / ARM 飞牛各用同一份 FPK，Docker 按本机架构拉对应镜像层。需要虚拟桌面、OCR 或本地向量时选完整版；否则选精简版。两份镜像都带前端和 Node.js 22（`node` / `npm` / `npx`）。完整版内置 `desktop` 桌面控制但不会自动启动；Playwright Chromium 不预装，可在控制台按需安装。精简版不含桌面、OCR 和本地向量。
+- **本地版**实现为 FnOS 原生 `app`：解释器复用飞牛「Python 3.12」开发工具；包内是 Octop 核心依赖与前端。专家 shell / 技能若要跑 `node` / `npx`，会复用飞牛已装的 Node.js（不强制安装或升级）；建议使用 Node 22，Office 预览要求至少 22.19。扩展里的 `.so` 与 CPU 架构绑定，因此 x86 与 ARM 各打一份；装错架构会在安装或启动时报错。
 
 > 上述包随正式版一起挂在 **`v*` GitHub Release** 上（例如 [v0.9.31](https://github.com/TencentCloud/Octop/releases/latest)）：`Octop-fnos-docker-lite-<ver>.fpk` / `Octop-fnos-docker-<ver>.fpk` / `Octop-fnos-native-amd64-<ver>.fpk` / `Octop-fnos-native-arm64-<ver>.fpk`。
 
