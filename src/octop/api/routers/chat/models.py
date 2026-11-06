@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Decision types understood by langchain's HumanInTheLoopMiddleware.
 _DECISION_TYPES: frozenset[str] = frozenset({"approve", "edit", "reject", "respond"})
@@ -164,6 +164,34 @@ class UserTurnWsFrame(BaseModel):
 
     def to_turn_body(self) -> ChatTurnBody:
         return ChatTurnBody.from_ws_payload(self.model_dump(exclude_none=True))
+
+
+class SecretFileSubmitBody(BaseModel):
+    """Browser → server submission for a ``request_secret_file`` pause.
+
+    The server takes the target path from the pending request itself; the
+    client cannot redirect the write by sending a different path, agent or
+    user. ``content`` is the secret and must never be logged.
+    """
+
+    thread_id: str = Field(..., description="Conversation thread holding the pause.")
+    pending_id: str = Field(..., description="HITL pending id from the secret card.")
+    action: Literal["submit", "cancel"] = Field(
+        default="submit",
+        description="submit writes the file; cancel dismisses without writing.",
+    )
+    content: str = Field(
+        default="",
+        max_length=65536,
+        description="Secret file content (submit only; never logged or echoed).",
+    )
+
+    @model_validator(mode="after")
+    def _content_required_for_submit(self) -> SecretFileSubmitBody:
+        if self.action == "submit" and not self.content.strip():
+            msg = "content is required when action='submit'"
+            raise ValueError(msg)
+        return self
 
 
 class PolishBody(BaseModel):

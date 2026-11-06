@@ -33,6 +33,62 @@ export interface HitlPendingPayload {
 /** Tool whose HITL pause is a question for the user, not an approval. */
 export const ASK_USER_TOOL_NAME = "ask_user_question";
 
+/** Tool whose HITL pause is a secure credential fill-in card. */
+export const REQUEST_SECRET_FILE_TOOL = "request_secret_file";
+
+/** Non-secret card metadata annotated by the server at pause time. */
+export interface SecretCardMeta {
+  /** Agent-facing normalized target path, when resolvable. */
+  path?: string;
+  /** True when the file already exists and will be replaced. */
+  exists?: boolean;
+  /** True when the model-provided path is not writable; submit is blocked. */
+  invalid?: boolean;
+  /** True when the workspace backend has no private-write guarantee. */
+  unsupported?: boolean;
+}
+
+export interface SecretRequest {
+  /** Raw path the model asked for (fallback display). */
+  path: string;
+  prompt: string;
+  title?: string;
+  meta: SecretCardMeta;
+}
+
+export function isSecretHitl(
+  actions: HitlActionRequest[] | undefined,
+): boolean {
+  return Boolean(actions?.some((a) => a.name === REQUEST_SECRET_FILE_TOOL));
+}
+
+/** Extract the secret-card request from a `request_secret_file` pause. */
+export function extractSecretRequest(
+  actions: HitlActionRequest[] | undefined,
+): SecretRequest | null {
+  if (!actions?.length) return null;
+  for (const action of actions) {
+    if (action.name !== REQUEST_SECRET_FILE_TOOL) continue;
+    const args = parseActionArgs(action.args);
+    const metaRaw = asRecord(args._secret_card) ?? {};
+    return {
+      path: typeof args.path === "string" ? args.path : "",
+      prompt: typeof args.prompt === "string" ? args.prompt : "",
+      title:
+        typeof args.title === "string" && args.title.trim()
+          ? args.title
+          : undefined,
+      meta: {
+        path: typeof metaRaw.path === "string" ? metaRaw.path : undefined,
+        exists: metaRaw.exists === true,
+        invalid: metaRaw.invalid === true,
+        unsupported: metaRaw.unsupported === true,
+      },
+    };
+  }
+  return null;
+}
+
 export interface AskOption {
   label: string;
   description?: string;

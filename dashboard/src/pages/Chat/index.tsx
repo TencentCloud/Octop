@@ -98,9 +98,11 @@ import TeamChatBadge from "./components/TeamChatBadge";
 import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
+import SecretFileCard from "./components/SecretFileCard";
 import {
   findAutoResumableApproval,
   findPendingAsk,
+  findPendingSecret,
   hasPendingHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -376,6 +378,7 @@ function ChatPageInner() {
     retryHistory,
     clearMessages,
     resumeHitl,
+    submitSecret,
   } = useChat(activeThreadId, resolvedAgentId, isTeamChat);
 
   const hasPendingHitlPause = useMemo(
@@ -383,6 +386,7 @@ function ChatPageInner() {
     [messages],
   );
   const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
+  const pendingSecret = useMemo(() => findPendingSecret(messages), [messages]);
   const autoResumedApprovalRef = useRef<string | null>(null);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
@@ -1753,6 +1757,23 @@ function ChatPageInner() {
               )}
 
             <ChatComposerChrome sessionUsageLabel={sessionUsageLabel} />
+            {pendingSecret ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <SecretFileCard
+                    key={pendingSecret.messageId}
+                    request={pendingSecret.request}
+                    status="pending"
+                    onSubmit={(content) =>
+                      submitSecret(pendingSecret.pendingId, content, "submit")
+                    }
+                    onCancel={() =>
+                      void submitSecret(pendingSecret.pendingId, "", "cancel")
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             {pendingAsk ? (
               <div className={styles.askQuestionDock}>
                 <div className={styles.askQuestionDockInner}>

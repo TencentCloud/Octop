@@ -1,9 +1,12 @@
 import {
   ASK_USER_TOOL_NAME,
   extractAskQuestions,
+  extractSecretRequest,
   isAskHitl,
+  isSecretHitl,
   questionsFromUnknown,
   type AskQuestion,
+  type SecretRequest,
 } from "../../../api/types/hitl";
 import type { ChatMessage, HitlActionRequest } from "../hooks/sseHelpers";
 import type { HitlSessionPolicy } from "./hitlSessionPolicy";
@@ -35,6 +38,8 @@ export function hasPendingHitl(messages: ChatMessage[]): boolean {
     const hitl = message.hitlData;
     if (!hitl || (hitl.status ?? "pending") !== "pending") return false;
     if (isAskHitl(hitl.action_requests) && !isResumableHitl(hitl)) return false;
+    if (isSecretHitl(hitl.action_requests) && !isResumableHitl(hitl))
+      return false;
     return true;
   });
 }
@@ -56,6 +61,7 @@ export function findPendingApproval(
       !hitl ||
       (hitl.status ?? "pending") !== "pending" ||
       isAskHitl(hitl.action_requests) ||
+      isSecretHitl(hitl.action_requests) ||
       !hitl.action_requests?.length
     ) {
       continue;
@@ -110,6 +116,39 @@ export function promoteAskUserToolMessage(message: ChatMessage): ChatMessage {
     },
     status: "done",
   };
+}
+
+export type PendingSecret = {
+  messageId: string;
+  pendingId: string;
+  request: SecretRequest;
+};
+
+/** Latest pending ``request_secret_file`` card, if any. */
+export function findPendingSecret(
+  messages: ChatMessage[],
+): PendingSecret | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const hitl = message.hitlData;
+    if (
+      !hitl ||
+      (hitl.status ?? "pending") !== "pending" ||
+      !isSecretHitl(hitl.action_requests) ||
+      !isResumableHitl(hitl)
+    ) {
+      continue;
+    }
+    const request = extractSecretRequest(hitl.action_requests);
+    if (request && hitl.pending_id) {
+      return {
+        messageId: message.id,
+        pendingId: hitl.pending_id,
+        request,
+      };
+    }
+  }
+  return null;
 }
 
 /** Latest pending ``ask_user_question`` card, if any. */

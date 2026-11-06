@@ -8,7 +8,19 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-HitlPendingStatus = Literal["pending", "approved", "rejected", "expired"]
+HitlPendingStatus = Literal[
+    "pending",
+    "approved",
+    "rejected",
+    "expired",
+    # Secret-file card lifecycle: claimed for write, then terminal.
+    "filling",
+    "filled",
+    "failed",
+    "cancelled",
+]
+
+HitlResolvedStatus = Literal["approved", "rejected", "expired", "filled", "failed", "cancelled"]
 
 _DEFAULT_TTL_SECONDS = 30 * 60
 
@@ -294,11 +306,29 @@ class HitlPendingStore:
     def mark_resolved(
         self,
         pending_id: str,
-        status: Literal["approved", "rejected", "expired"],
+        status: HitlResolvedStatus,
     ) -> None:
         record = self._records.get(pending_id)
         if record is not None:
             record.status = status
+
+    def claim_secret(self, pending_id: str) -> HitlPendingRecord | None:
+        """Atomically move a pending secret request to ``filling``.
+
+        Returns ``None`` when the record is missing or no longer pending —
+        this is the replay/duplicate-submit guard for the secret card.
+        """
+        record = self.get(pending_id)
+        if record is None or record.status != "pending":
+            return None
+        record.status = "filling"
+        return record
+
+    def reopen_secret(self, pending_id: str) -> None:
+        """Return a ``filling`` record to ``pending`` after a failed write."""
+        record = self._records.get(pending_id)
+        if record is not None and record.status == "filling":
+            record.status = "pending"
 
     def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
         """Record one IM answer and advance to the next question."""
