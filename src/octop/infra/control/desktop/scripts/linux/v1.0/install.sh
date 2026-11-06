@@ -5,6 +5,10 @@
 #
 # Usage:
 #   sudo bash install.sh [--geometry 1920x1080]
+#   sudo bash install.sh --no-start
+#
+# --no-start installs packages and writes config, but does not start Xvnc.
+# Image builds use it so the desktop stays off until the user enables it.
 #
 # Output (last line):
 #   {"installed": true}
@@ -166,7 +170,7 @@ install_packages() {
             adwaita-icon-theme hicolor-icon-theme librsvg2-common \
             fcitx5 fcitx5-chinese-addons fcitx5-frontend-gtk3 \
             fonts-wqy-zenhei locales xclip xsel autocutsel xdg-utils libglib2.0-bin wget curl \
-            bubblewrap \
+            bubblewrap procps \
             || fail "apt install failed"
         # Adwaita ships SVG icons; without the gdk-pixbuf SVG loader they render as tiny stubs.
         if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
@@ -178,6 +182,8 @@ install_packages() {
         fi
         DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
             chromium \
+            || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+                chromium-browser \
             || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
                 firefox-esr \
                 || true
@@ -1098,6 +1104,7 @@ start_services() {
 }
 
 BUILD_DEPS_ONLY=0
+NO_START=0
 
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -1106,6 +1113,7 @@ parse_args() {
             --password) VNC_PASSWORD="$2"; shift 2 ;;
             --wallpaper-url) WALLPAPER_URL="$2"; shift 2 ;;
             --build-deps-only) BUILD_DEPS_ONLY=1; shift ;;
+            --no-start) NO_START=1; shift ;;
             --python) TARGET_PYTHON="$2"; shift 2 ;;
             *) shift ;;
         esac
@@ -1142,6 +1150,10 @@ main() {
     xvnc_bin=$(detect_xvnc_bin) || fail "Xvnc not found"
     write_systemd_units "$xvnc_bin"
     write_desktop_env
+    if [ "$NO_START" = 1 ]; then
+        echo "{\"installed\": true, \"started\": false, \"version\": \"${SCRIPT_VERSION}\", \"display\": \"${DISPLAY_NUM}\"}"
+        exit 0
+    fi
     start_services
 
     echo "{\"installed\": true, \"version\": \"${SCRIPT_VERSION}\", \"display\": \"${DISPLAY_NUM}\"}"

@@ -2,6 +2,7 @@ import { request } from "../request";
 
 export type TextAssistKind =
   | "chat.prompt"
+  | "chat.thread_title"
   | "expert.description"
   | "expert.welcome_message"
   | "team.description"

@@ -386,7 +386,7 @@ async def test_create_user_bootstraps_selected_expert(env):
     assert owned[0]["template_name"] == "general-assistant"
 
 
-async def test_create_user_rejects_unknown_expert_template(env):
+async def test_create_user_keeps_user_when_expert_template_missing(env):
     c, _srv, auth = env
     created = await c.post(
         "/api/users",
@@ -399,6 +399,9 @@ async def test_create_user_rejects_unknown_expert_template(env):
             "expert_template_id": "not-a-real-template",
         },
     )
-    assert created.status_code == 404, created.text
+    assert created.status_code == 201, created.text
     listed = await c.get("/api/users", headers=auth)
-    assert all(item["username"] != "no_expert" for item in listed.json())
+    assert any(item["username"] == "no_expert" for item in listed.json())
+    agents = await c.get("/api/agents", headers=auth, params={"scope": "all"})
+    owned = [row for row in agents.json() if row["user_id"] == created.json()["id"]]
+    assert owned == []
