@@ -1379,6 +1379,33 @@ export function useChat(
     [agentId, stableSessionId, refreshHistory],
   );
 
+  const submitSecretInput = useCallback(
+    (
+      pendingId: string,
+      action: "submit" | "cancel",
+      value?: string,
+    ): Promise<string | null> => {
+      if (!agentId) return Promise.resolve("agent unavailable");
+      const key = stableSessionId;
+      const threadId = stableSessionId !== "__empty__" ? stableSessionId : "";
+      if (!threadId || threadId === "__empty__") {
+        return Promise.resolve("thread unavailable");
+      }
+      return chatStore.submitSecretInput(
+        key,
+        agentId,
+        threadId,
+        pendingId,
+        action,
+        () => {
+          void refreshHistory(threadId);
+        },
+        value,
+      );
+    },
+    [agentId, stableSessionId, refreshHistory],
+  );
+
   return {
     messages,
     isStreaming,
@@ -1403,5 +1430,6 @@ export function useChat(
     retryHistory,
     clearMessages,
     resumeHitl,
+    submitSecretInput,
   };
 }

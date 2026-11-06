@@ -13,6 +13,10 @@ from octop.infra.utils.locale import Locale, normalize_locale
 # Tool whose HITL interrupt is a question for the user rather than an approval.
 ASK_USER_TOOL_NAME = "ask_user_question"
 
+# Tool whose HITL interrupt collects a secret through the dashboard's masked
+# card; IM channels only get a read-only notice.
+REQUEST_SECRET_INPUT_TOOL_NAME = "request_secret_input"
+
 # Option keys shown in IM cards: a) b) c) d)
 _OPTION_KEYS = string.ascii_lowercase
 
@@ -84,6 +88,32 @@ def is_ask_action_requests(action_requests: list[dict[str, Any]]) -> bool:
     return any(isinstance(a, dict) and a.get("name") == ASK_USER_TOOL_NAME for a in action_requests)
 
 
+def is_secret_input_action_requests(action_requests: list[dict[str, Any]]) -> bool:
+    """True when this HITL pause collects a secret via the masked card."""
+    return any(
+        isinstance(a, dict) and a.get("name") == REQUEST_SECRET_INPUT_TOOL_NAME
+        for a in action_requests
+    )
+
+
+def extract_secret_input_request(
+    action_requests: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Normalized ``request_secret_input`` args for the matching pause, if any."""
+    for action in action_requests:
+        if not isinstance(action, dict) or action.get("name") != REQUEST_SECRET_INPUT_TOOL_NAME:
+            continue
+        args = action.get("args")
+        if not isinstance(args, dict):
+            args = {}
+        return {
+            "slot": str(args.get("slot") or "").strip(),
+            "prompt": str(args.get("prompt") or "").strip(),
+            "title": str(args.get("title") or "").strip() or None,
+        }
+    return None
+
+
 def extract_questions(action_requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pull the normalized ``questions`` list out of an ask action request."""
     for action in action_requests:
@@ -128,7 +158,13 @@ def format_hitl_card(
     pending_id: str,
     locale: str | Locale,
 ) -> str:
-    """Render the IM card for a paused turn (approval or question)."""
+    """Render the IM card for a paused turn (approval, question, or secret)."""
+    if is_secret_input_action_requests(record_action_requests):
+        return format_secret_input_card(
+            record_action_requests,
+            pending_id=pending_id,
+            locale=locale,
+        )
     if is_ask_action_requests(record_action_requests):
         return format_ask_card(
             extract_questions(record_action_requests),
@@ -255,6 +291,36 @@ def format_ask_card(
     return "\n".join(lines).strip()
 
 
+def format_secret_input_card(
+    action_requests: list[dict[str, Any]],
+    *,
+    pending_id: str,
+    locale: str | Locale,
+) -> str:
+    """Render the read-only IM notice for a secret-input pause.
+
+    IM clients cannot host the masked card, and secrets must never travel
+    through an IM conversation — the user is pointed at the dashboard.
+    """
+    loc = normalize_locale(str(locale))
+    request = extract_secret_input_request(action_requests) or {}
+    slot = request.get("slot") or "—"
+    prompt = request.get("prompt") or ""
+    lines = [tr("slash.secret_input.card_title", loc), ""]
+    if prompt:
+        lines.append(prompt)
+        lines.append("")
+    lines.append(tr("slash.secret_input.slot_line", loc, slot=slot))
+    lines.append("")
+    lines.extend(
+        [
+            tr("slash.secret_input.card_footer", loc),
+            tr("slash.secret_input.card_pending_id", loc, pending_id=pending_id),
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
 def _resolve_selection(token: str, options: list[dict[str, Any]]) -> str | None:
     """Map one reply token (``a`` / ``1``) to an option label, if it matches."""
     if not options:
@@ -304,10 +370,14 @@ def parse_ask_reply(
 
 __all__ = [
     "ASK_USER_TOOL_NAME",
+    "REQUEST_SECRET_INPUT_TOOL_NAME",
     "extract_questions",
+    "extract_secret_input_request",
     "format_ask_card",
     "format_hitl_card",
+    "format_secret_input_card",
     "is_ask_action_requests",
+    "is_secret_input_action_requests",
     "normalize_hitl_request",
     "parse_action_requests",
     "parse_ask_reply",

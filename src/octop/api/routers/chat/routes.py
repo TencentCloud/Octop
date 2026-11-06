@@ -9,9 +9,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from octop.api.common.agent import assert_agent_access
+from octop.api.common.agent import agent_is_shared, assert_agent_access, require_agent_owner_row
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import HitlResumeBody, PolishBody
+from octop.api.routers.chat.models import HitlResumeBody, PolishBody, SecretInputSubmitBody
 from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
@@ -22,15 +22,20 @@ from octop.infra.agents.experts.catalog import (
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
 )
+from octop.infra.agents.secret_input.submit import resolve_secret_input_submission
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
     decision_rejection_reason,
 )
-from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.format import (
+    is_secret_input_action_requests,
+    normalize_hitl_request,
+)
 from octop.infra.gateway.hitl.store import HitlPendingRecord
 from octop.infra.text_assist import require_host_models, run_text_assist
 from octop.infra.utils.locale import resolve_request_locale
@@ -196,7 +201,7 @@ async def iter_dashboard_hitl_resume_sse(
                 user_id=user_id,
             )
         except Exception:
-            logging.getLogger(__name__).exception("steer resume drain failed thread=%s", thread_id)
+            logger.exception("steer resume drain failed thread=%s", thread_id)
     except Exception as exc:
         # Resume failed after we cleared the pause for reinject safety — do not
         # leave the record looking like a successful approve/reject.
@@ -263,6 +268,13 @@ async def resume_hitl(
         user_id=user.id,
         pending=pending,
     )
+    if pending is not None and is_secret_input_action_requests(pending.action_requests):
+        # A secret must never ride the generic respond path (its message
+        # becomes the tool result and enters the model context verbatim).
+        raise OctopError(
+            ErrorCode.SECRET_REQUEST_INVALID,
+            "secret input requests are submitted via /chat/secret-input/submit",
+        )
     if pending is not None:
         reason = decision_rejection_reason(pending, body.decisions)
         if reason is not None:
@@ -281,6 +293,78 @@ async def resume_hitl(
             user_id=user.id,
             decisions=body.decisions,
             pending=pending,
+            session_key=session_key,
+            channel_type=channel_type,
+            locale=resolve_request_locale(request),
+            is_disconnected=request.is_disconnected,
+        ):
+            yield frame
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post(
+    "/agents/{agent_id}/chat/secret-input/submit",
+    summary="Submit a chat secret input (SSE)",
+)
+async def submit_secret_input(
+    agent_id: str,
+    body: SecretInputSubmitBody,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StreamingResponse:
+    """Store a masked-input secret (or cancel the card) and resume the paused turn.
+
+    The value travels exactly once through this endpoint into the encrypted
+    ``agent_secrets`` store. It never appears in chat history, thread records,
+    logs, or the resumed tool result — the model only learns the slot name and
+    status. Owner-only, non-shared agents.
+    """
+    row = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    if agent_is_shared(row):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "secret input is disabled for shared agents",
+        )
+    processor = server.app_runtime.gateway.processor
+    hitl_coordinator = processor.hitl_coordinator
+    record, decisions = await resolve_secret_input_submission(
+        store=hitl_coordinator.store,
+        agent_secrets=server.app_runtime.agent_registry.agent_secrets,
+        agent_id=agent_id,
+        user_id=user.id,
+        thread_id=body.thread_id,
+        pending_id=body.pending_id,
+        action=body.action,
+        value=body.value or "",
+        # The harness env overlay is baked at build time: rebuilding before
+        # the paused turn resumes makes the slot usable in this same turn; a
+        # failed rebuild degrades to next-turn visibility (see submit module).
+        rebuild=server.app_runtime.agent_registry.reload,
+    )
+
+    session_key, channel_type = _dashboard_hitl_stream_context(
+        server,
+        agent_id=agent_id,
+        thread_id=body.thread_id,
+        user_id=user.id,
+        pending=record,
+    )
+
+    async def gen() -> AsyncIterator[str]:
+        async for frame in iter_dashboard_hitl_resume_sse(
+            server=server,
+            processor=processor,
+            hitl_coordinator=hitl_coordinator,
+            agent_id=agent_id,
+            thread_id=body.thread_id,
+            user_id=user.id,
+            decisions=decisions,
+            # The record is already resolved (filled/cancelled); passing it
+            # would mark it approved/rejected. Follow-up interrupts during
+            # the resumed turn still register fresh pendings.
+            pending=None,
             session_key=session_key,
             channel_type=channel_type,
             locale=resolve_request_locale(request),

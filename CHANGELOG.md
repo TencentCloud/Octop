@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- 聊天里 agent 可用 `request_secret_input` 收集密钥：回合暂停并在仪表盘停靠掩码输入卡，值只经专用提交端点传输一次、Fernet 加密落库（`agent_secrets`），提交后立即重建 harness，恢复的同一回合命令即可读到注入的环境变量；共享专家与团队成员场景禁用，`GET/DELETE /api/agents/{id}/secrets` 管理已存密钥，卡片样式对齐全宽表单
+
 ## [1.0.3b4] - 2026-11-06
 
 ### 新增

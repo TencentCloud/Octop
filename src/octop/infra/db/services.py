@@ -12,6 +12,7 @@ from octop.infra.crypto.sealed_repos import (
     SealedVoiceProviderRepo,
 )
 from octop.infra.db.pool import DatabasePool
+from octop.infra.db.repos.agent_secrets import AgentSecretsRepo
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.auth_challenges import AuthChallengeRepo
@@ -65,6 +66,7 @@ class RepoBundle:
     thread_message_repo: ThreadMessageRepo
     trajectory_event_repo: TrajectoryEventRepo
     secret_repo: SecretRepo
+    agent_secret_repo: AgentSecretsRepo
     audit_repo: AuditRepo
     usage_repo: UsageRepo
     settings_repo: SettingsRepo
@@ -105,6 +107,7 @@ class RepoBundle:
             thread_message_repo=ThreadMessageRepo(db),
             trajectory_event_repo=TrajectoryEventRepo(db),
             secret_repo=secret_repo,
+            agent_secret_repo=AgentSecretsRepo(db),
             audit_repo=AuditRepo(db),
             usage_repo=UsageRepo(db),
             settings_repo=SettingsRepo(db),
@@ -187,6 +190,10 @@ class SharedServices:
     @property
     def secret_repo(self) -> SecretRepo:
         return self.repos.secret_repo
+
+    @property
+    def agent_secret_repo(self) -> AgentSecretsRepo:
+        return self.repos.agent_secret_repo
 
     @property
     def audit_repo(self) -> AuditRepo:

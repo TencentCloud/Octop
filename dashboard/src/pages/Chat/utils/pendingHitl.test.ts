@@ -4,6 +4,7 @@ import {
   findAutoResumableApproval,
   findPendingApproval,
   findPendingAsk,
+  findPendingSecretInput,
   hasPendingHitl,
   promoteAskUserToolMessage,
 } from "./pendingHitl";
@@ -203,5 +204,53 @@ describe("pendingHitl", () => {
     expect(reconstructed.hitlData?.status).toBe("pending");
     expect(findPendingAsk([reconstructed])).toBeNull();
     expect(hasPendingHitl([reconstructed])).toBe(false);
+  });
+
+  it("finds a resumable pending secret input", () => {
+    const messages = [
+      msg({
+        id: "secret",
+        role: "assistant",
+        hitlData: {
+          pending_id: "sec1",
+          action_requests: [
+            {
+              name: "request_secret_input",
+              args: { slot: "STEAM_WEB_API_KEY", prompt: "Steam key" },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    const pending = findPendingSecretInput(messages);
+    expect(pending).not.toBeNull();
+    expect(pending?.pendingId).toBe("sec1");
+    expect(pending?.request.slot).toBe("STEAM_WEB_API_KEY");
+    // Secret pauses are excluded from the approval/auto-resume paths.
+    expect(findPendingApproval(messages)).toBeNull();
+    expect(
+      findAutoResumableApproval({ mode: "allow_all" }, messages),
+    ).toBeNull();
+  });
+
+  it("ignores secret inputs the server cannot resume", () => {
+    const messages = [
+      msg({
+        id: "secret",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            {
+              name: "request_secret_input",
+              args: { slot: "STEAM_WEB_API_KEY", prompt: "Steam key" },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    expect(findPendingSecretInput(messages)).toBeNull();
+    expect(hasPendingHitl(messages)).toBe(false);
   });
 });

@@ -28,6 +28,12 @@ from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.secret_input import (
+    REQUEST_SECRET_INPUT_TOOL_NAME,
+    AgentSecretService,
+    build_request_secret_input_tool,
+)
+from octop.infra.agents.secret_input.middleware import SecretInputMiddleware
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -588,6 +594,10 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
+        self._agent_secrets = AgentSecretService(
+            repo=repos.agent_secret_repo,
+            secret_repo=repos.secret_repo,
+        )
         self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
@@ -627,6 +637,10 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._agent_secrets = AgentSecretService(
+            repo=repos.agent_secret_repo,
+            secret_repo=repos.secret_repo,
         )
         self._tool_guard_rules = ToolGuardRulesStore(
             paths=self._paths, settings=repos.settings_repo
@@ -755,6 +769,10 @@ class AgentManager:
     @property
     def security(self) -> SecuritySettingsStore:
         return self._security
+
+    @property
+    def agent_secrets(self) -> AgentSecretService:
+        return self._agent_secrets
 
     @property
     def acp_settings(self) -> ACPSettingsStore:
@@ -2084,9 +2102,16 @@ class AgentManager:
     # Hot-reload — rebuild harness agents after config / provider changes
     # ------------------------------------------------------------------
 
-    async def reload(self, agent_id: str) -> None:
-        """Rebuild harness runtime for one agent (e.g. after plugin install)."""
-        await self._reload_agent(agent_id)
+    async def reload(self, agent_id: str) -> bool:
+        """Rebuild harness runtime for one agent and report success.
+
+        Returns True when the registry holds a rebuilt entry (a registration
+        race that keeps the existing entry also counts); False when the agent
+        is stopped/disabled or the rebuild failed — callers that must observe
+        fresh runtime inputs (e.g. the secret submit path) use the result to
+        tell the model whether the new value is usable right away.
+        """
+        return await self._reload_agent(agent_id)
 
     async def reload_all(self) -> None:
         """Rebuild harness runtime for every enabled agent (bounded parallel)."""
@@ -3904,7 +3929,7 @@ class AgentManager:
     # Internal — background reload worker
     # ------------------------------------------------------------------
 
-    async def _reload_agent(self, agent_id: str) -> None:
+    async def _reload_agent(self, agent_id: str) -> bool:
         assert self._harness_manager is not None
         async with self._lifecycle_lock_for(agent_id):
             self._bootstrap_graph_refresh_pending.discard(agent_id)
@@ -3912,9 +3937,9 @@ class AgentManager:
             if not row or not row.enabled or row.last_state == "stopped":
                 await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
                 await self._harness_manager.aremove_agent(agent_id)
-                return
+                return False
             if self._harness_manager.shared_factory is None:
-                return
+                return False
             try:
                 cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
                 entry = await self._harness_manager.arebuild_agent(
@@ -3925,6 +3950,7 @@ class AgentManager:
                 )
                 await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
                 self._repos.agent_repo.set_state(agent_id, "running", error=None)
+                return True
             except Exception as exc:
                 recovered = self._octop_harness_or_none(agent_id)
                 if recovered is not None and self._is_already_registered_error(exc):
@@ -3933,13 +3959,14 @@ class AgentManager:
                         "Agent %s reload raced; keeping existing registry entry",
                         agent_id,
                     )
-                    return
+                    return True
                 logger.exception("Background reload failed for agent %s", agent_id)
                 self._repos.agent_repo.set_state(
                     agent_id,
                     "failed",
                     error=format_agent_start_error(exc),
                 )
+                return False
 
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""
@@ -3948,6 +3975,14 @@ class AgentManager:
             return
         self._reload_worker_running[agent_id] = True
         asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
+
+    def schedule_reload(self, agent_id: str) -> None:
+        """Public wrapper: queue a background harness rebuild for *agent_id*.
+
+        Used by API paths that changed agent-scoped runtime inputs (e.g. a
+        stored secret slot) so the next harness config build picks them up.
+        """
+        self._schedule_reload(agent_id)
 
     async def _reload_worker(self, agent_id: str) -> None:
         try:
@@ -4110,6 +4145,14 @@ class AgentManager:
             if row is not None and (row.default_model or "").strip():
                 return str(row.default_model).strip()
         return ""
+
+    def _agent_secret_env(self, agent_id: str) -> dict[str, str]:
+        """Chat-collected secret slots as env overrides (never raises)."""
+        try:
+            return self._agent_secrets.decrypt_env(agent_id)
+        except Exception:
+            logger.exception("agent secret env resolution failed agent=%s", agent_id)
+            return {}
 
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
@@ -4297,7 +4340,22 @@ class AgentManager:
             OctopUiOffloadMiddleware(),
         ]
 
+        from octop.infra.agents.settings.tool_catalog import (  # noqa: PLC0415
+            tools_disabled_set,
+        )
+
         merged_tools: list[Any] = []
+        # Masked secret-input card tool: mounted like cron/knowledge host tools
+        # and interrupt-registered below; admins can disable it per agent.
+        secret_input_tool: Any | None = None
+        if not team_host and REQUEST_SECRET_INPUT_TOOL_NAME not in tools_disabled_set(cfg):
+            secret_input_tool = build_request_secret_input_tool()
+            merged_tools.append(secret_input_tool)
+            # Dedicated middleware (not cfg.interrupt_on): the harness gates
+            # config interrupts behind bootstrap, but a secret can be requested
+            # on the first turn. Distinct class name so the merge does not
+            # replace the harness HITL instance (ask_user / security gates).
+            agent_middleware.append(SecretInputMiddleware())
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
@@ -4386,8 +4444,24 @@ class AgentManager:
             inject_agent_execute_env,  # noqa: PLC0415
         )
 
+        backend_spec = self._prepare_docker_backend(backend, row)
+        # Chat-collected secret slots ride the same env overlay the platform
+        # identity uses, so every (re)build injects them into command execution.
+        # Shared agents run turns for many users; injecting the owner's slots
+        # there would leak them across users, so submission is already rejected
+        # for shared rows and rebuilds must not inject either.
+        secret_env = (
+            {}
+            if int(getattr(row, "is_shared", 0) or 0) == 1
+            else self._agent_secret_env(row.agent_id)
+        )
+        if secret_env and isinstance(backend_spec, dict):
+            backend_spec = {
+                **backend_spec,
+                "env": {**dict(backend_spec.get("env") or {}), **secret_env},
+            }
         backend = inject_agent_execute_env(
-            self._prepare_docker_backend(backend, row),
+            backend_spec,
             paths=self._paths,
             row=row,
             workspace_dir=workspace_dir,

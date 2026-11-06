@@ -8,7 +8,18 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-HitlPendingStatus = Literal["pending", "approved", "rejected", "expired"]
+HitlPendingStatus = Literal[
+    "pending",
+    "approved",
+    "rejected",
+    "expired",
+    # Secret-input lifecycle: claimed for storage, terminal states after the
+    # dedicated submit endpoint finishes (a failed write reopens to pending).
+    "filling",
+    "filled",
+    "failed",
+    "cancelled",
+]
 
 _DEFAULT_TTL_SECONDS = 30 * 60
 
@@ -121,7 +132,7 @@ class HitlPendingStore:
             return None
         if record.status != "pending":
             return record
-        if time.time() - record.created_at > self.ttl_seconds:
+        if time.time() - record.created_at >= self.ttl_seconds:
             record.status = "expired"
             return record
         return record
@@ -161,7 +172,7 @@ class HitlPendingStore:
                 continue
             if agent_id is not None and record.agent_id != agent_id:
                 continue
-            if time.time() - record.created_at > self.ttl_seconds:
+            if time.time() - record.created_at >= self.ttl_seconds:
                 record.status = "expired"
                 continue
             if latest is None or record.created_at > latest.created_at:
@@ -229,7 +240,7 @@ class HitlPendingStore:
             return False
         if user_id is not None and record.user_id != user_id:
             return False
-        if time.time() - record.created_at > self.ttl_seconds:
+        if time.time() - record.created_at >= self.ttl_seconds:
             record.status = "expired"
             return False
         return True
@@ -261,7 +272,7 @@ class HitlPendingStore:
                 continue
             if record.user_id != user_id:
                 continue
-            if now - record.created_at > self.ttl_seconds:
+            if now - record.created_at >= self.ttl_seconds:
                 continue
             if record.agent_id == agent_id:
                 tid = (record.thread_id or "").strip()
@@ -294,11 +305,32 @@ class HitlPendingStore:
     def mark_resolved(
         self,
         pending_id: str,
-        status: Literal["approved", "rejected", "expired"],
+        status: Literal["approved", "rejected", "expired", "filled", "failed", "cancelled"],
     ) -> None:
         record = self._records.get(pending_id)
         if record is not None:
             record.status = status
+
+    def claim_secret_input(self, pending_id: str) -> HitlPendingRecord | None:
+        """Atomically move a pending secret-input pause to ``filling``.
+
+        Returns ``None`` when the record is missing, already resolved, or
+        already claimed — a replayed or racing submit must not store twice.
+        """
+        record = self._records.get(pending_id)
+        if record is None or record.status != "pending":
+            return None
+        if time.time() - record.created_at >= self.ttl_seconds:
+            record.status = "expired"
+            return None
+        record.status = "filling"
+        return record
+
+    def reopen_secret_input(self, pending_id: str) -> None:
+        """Return a claimed pause to ``pending`` after a failed store attempt."""
+        record = self._records.get(pending_id)
+        if record is not None and record.status == "filling":
+            record.status = "pending"
 
     def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
         """Record one IM answer and advance to the next question."""
@@ -314,9 +346,9 @@ class HitlPendingStore:
         stale_ids: list[str] = []
         for pending_id, record in self._records.items():
             age = now - record.created_at
-            if record.status == "pending" and age > self.ttl_seconds:
+            if record.status == "pending" and age >= self.ttl_seconds:
                 record.status = "expired"
-            if record.status != "pending" and age > self.ttl_seconds:
+            if record.status != "pending" and age >= self.ttl_seconds:
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]

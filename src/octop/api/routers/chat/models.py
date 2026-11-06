@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Decision types understood by langchain's HumanInTheLoopMiddleware.
 _DECISION_TYPES: frozenset[str] = frozenset({"approve", "edit", "reject", "respond"})
@@ -199,6 +199,41 @@ class RenameThreadBody(BaseModel):
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
     hitl_policy: HitlSessionPolicyBody | None = None
+
+
+class SecretInputSubmitBody(BaseModel):
+    """Submit or cancel a pending ``request_secret_input`` card.
+
+    The value travels through this dedicated endpoint only — never through the
+    generic HITL resume (whose ``respond`` message enters the model context).
+    """
+
+    thread_id: str = Field(..., description="Conversation thread the card paused.")
+    pending_id: str = Field(..., description="Pending secret-input card id.")
+    action: Literal["submit", "cancel"] = Field(
+        ...,
+        description="submit stores the value in the slot; cancel dismisses the card.",
+    )
+    value: str | None = Field(
+        default=None,
+        max_length=8192,
+        description="Secret value (required for submit). Never echoed back in any response.",
+    )
+
+    @field_validator("value")
+    @classmethod
+    def _validate_value(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            msg = "value must be a non-empty string"
+            raise ValueError(msg)
+        return value
+
+    @model_validator(mode="after")
+    def _require_value_for_submit(self) -> SecretInputSubmitBody:
+        if self.action == "submit" and self.value is None:
+            msg = "action 'submit' requires a non-empty 'value'"
+            raise ValueError(msg)
+        return self
 
 
 class HitlResumeBody(BaseModel):
