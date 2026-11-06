@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Button } from "antd";
 import { ImagePlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 
 import styles from "./AvatarPicker.module.less";
@@ -148,14 +149,12 @@ export function ResourceAvatarPicker({
                 <button
                   key={preset.id}
                   type="button"
-                  className={[
+                  className={cx(
                     styles.preset,
-                    plain ? styles.presetPlain : "",
-                    portrait ? styles.presetPortrait : "",
-                    selected ? styles.presetActive : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+                    plain && styles.presetPlain,
+                    portrait && styles.presetPortrait,
+                    selected && styles.presetActive,
+                  )}
                   style={
                     plain || portrait
                       ? undefined

@@ -6,19 +6,14 @@
  *
  * Mirrors the Experts page two-tab pattern.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Spin, Tabs } from "antd";
 import { HardDrive, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { message } from "@/utils/antdMessage";
 import PageShell from "../../../layouts/PageShell";
 import TabLabel from "../../../components/TabLabel";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
-import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
-import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
-import { request } from "../../../api/request";
-import { apiErrorMessage } from "../../../utils/apiError";
 import {
   useStorageBackends,
   STORAGE_TYPE_DEFS,
@@ -30,89 +25,6 @@ import { StorageBackendDrawer } from "./StorageBackendModal";
 import styles from "./storage.module.less";
 
 type TabKey = "my" | "types";
-
-function StorageFeatureAccess() {
-  const { t } = useTranslation();
-  const [visibility, setVisibility] = useState<ResourceVisibilityMode>("all");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    void request<{ visibility: "all" | "groups"; group_ids: string[] }>(
-      "/admin/storage-backends/access",
-    )
-      .then((row) => {
-        if (cancelled) return;
-        setVisibility(row.visibility === "groups" ? "groups" : "all");
-        setGroupIds(row.group_ids ?? []);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          message.error(apiErrorMessage(err, t("storage.featureAccessFailed")));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
-  const save = useCallback(
-    async (nextVisibility: "all" | "groups", nextIds: string[]) => {
-      try {
-        const saved = await request<{
-          visibility: "all" | "groups";
-          group_ids: string[];
-        }>("/admin/storage-backends/access", {
-          method: "PUT",
-          body: JSON.stringify({
-            visibility: nextVisibility,
-            group_ids: nextIds,
-          }),
-        });
-        setVisibility(saved.visibility === "groups" ? "groups" : "all");
-        setGroupIds(saved.group_ids ?? []);
-        message.success(t("storage.featureAccessSaved"));
-      } catch (err) {
-        message.error(apiErrorMessage(err, t("storage.featureAccessFailed")));
-      }
-    },
-    [t],
-  );
-
-  return (
-    <div className={styles.featureAccess}>
-      <div className={styles.featureAccessTitle}>
-        {t("storage.featureAccessTitle")}
-      </div>
-      <p className={styles.featureAccessHint}>
-        {t("storage.featureAccessHint")}
-      </p>
-      {loading ? (
-        <Spin size="small" />
-      ) : (
-        <ResourceVisibilityFields
-          allowOwner={false}
-          visibility={visibility}
-          groupIds={groupIds}
-          onChange={(next) => {
-            const nextVisibility =
-              next.visibility === "groups" ? "groups" : "all";
-            setVisibility(nextVisibility);
-            setGroupIds(next.groupIds);
-            if (nextVisibility === "groups" && next.groupIds.length === 0) {
-              return;
-            }
-            void save(nextVisibility, next.groupIds);
-          }}
-        />
-      )}
-    </div>
-  );
-}
 
 export default function AdminStoragePage() {
   const { t } = useTranslation();
@@ -231,19 +143,16 @@ export default function AdminStoragePage() {
 
   const typesContent = useMemo(
     () => (
-      <>
-        <StorageFeatureAccess />
-        <div className={styles.cardGrid}>
-          {STORAGE_TYPE_DEFS.map((typeDef) => (
-            <StorageTypeCard
-              key={typeDef.kind}
-              typeDef={typeDef}
-              isConfigured={configuredKinds.has(typeDef.kind)}
-              onClick={handleTypeCardClick}
-            />
-          ))}
-        </div>
-      </>
+      <div className={styles.cardGrid}>
+        {STORAGE_TYPE_DEFS.map((typeDef) => (
+          <StorageTypeCard
+            key={typeDef.kind}
+            typeDef={typeDef}
+            isConfigured={configuredKinds.has(typeDef.kind)}
+            onClick={handleTypeCardClick}
+          />
+        ))}
+      </div>
     ),
     [configuredKinds],
   );

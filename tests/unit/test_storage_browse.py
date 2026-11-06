@@ -127,7 +127,7 @@ async def test_list_storage_backend_tree_maps_runtime_errors(
 ) -> None:
     """Docker/image failures become ValueError (API 400), not uncaught 500."""
     monkeypatch.setattr(
-        "octop.infra.backend.browse.resolve_backend",
+        "octop.infra.backend.browse.resolve_octop_backend",
         lambda *_a, **_k: (_ for _ in ()).throw(
             RuntimeError(
                 "Docker image 'python:3.12-slim' is not available; "
@@ -343,7 +343,7 @@ def test_resolve_storage_backend_removes_temp_dir_on_failure(
 
     monkeypatch.setattr("octop.infra.backend.browse.tempfile.mkdtemp", fake_mkdtemp)
     monkeypatch.setattr(
-        "octop.infra.backend.browse.resolve_backend",
+        "octop.infra.backend.browse.resolve_octop_backend",
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("boom")),
     )
     with pytest.raises(ValueError, match="boom"):

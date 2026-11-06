@@ -207,9 +207,16 @@
   color: var(--fn-text-tertiary);
 }
 
-.minimalAgentAvatar {
+.minimalAgentIconSlot .minimalAgentAvatarHost {
   position: absolute;
   inset: 0;
+  display: flex;
+  transition: opacity var(--fn-transition-fast);
+}
+
+.minimalAgentAvatar {
+  width: 100%;
+  height: 100%;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
@@ -223,7 +230,7 @@
 }
 
 .minimalAgentNewChatBtn,
-.minimalAgentPinBtn {
+.minimalAgentMoreBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -246,35 +253,15 @@
   }
 }
 
-.agentPinBtn.agentPinBtnActive,
-.minimalAgentPinBtn.agentPinBtnActive,
-.agentCardProfile:hover .agentPinBtn.agentPinBtnActive,
-.agentCardProfile:focus-within .agentPinBtn.agentPinBtnActive,
-.agentRow:hover .agentPinBtn.agentPinBtnActive,
-.agentRow:focus-within .agentPinBtn.agentPinBtnActive,
-.minimalAgentHeader:hover .minimalAgentPinBtn.agentPinBtnActive,
-.minimalAgentHeader:focus-within .minimalAgentPinBtn.agentPinBtnActive {
-  opacity: 0.7;
-  pointer-events: auto;
-  color: var(--fn-text-tertiary);
-  background: transparent;
-}
-
-.agentPinBtn.agentPinBtnActive:hover,
-.minimalAgentPinBtn.agentPinBtnActive:hover {
-  color: var(--fn-text-tertiary);
-  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
-}
-
 .minimalAgentHeader:hover,
 .minimalAgentHeader:focus-within {
-  .minimalAgentAvatar {
+  .minimalAgentAvatarHost {
     opacity: 0;
   }
 
   .minimalAgentChevronBtn,
   .minimalAgentNewChatBtn,
-  .minimalAgentPinBtn {
+  .minimalAgentMoreBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -282,13 +269,13 @@
 
 /* Touch devices never hover — keep both controls reachable. */
 @media (hover: none) {
-  .minimalAgentAvatar {
+  .minimalAgentAvatarHost {
     opacity: 0;
   }
 
   .minimalAgentChevronBtn,
   .minimalAgentNewChatBtn,
-  .minimalAgentPinBtn {
+  .minimalAgentMoreBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -883,7 +870,8 @@
   }
 
   /* Same gutter as processSummaryRow / left inset — do not use a different
-     gap that would shift only the answer bubble. */
+     gap that would shift only the answer bubble. The answer itself spans
+     from the avatar's left edge in chatMessages.partial.less. */
   .assistantBubble {
     column-gap: var(--chat-msg-gutter);
     row-gap: 0;

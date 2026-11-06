@@ -166,12 +166,15 @@
     }
   }
 
-  /* presetCard variant — unconfigured preset, slightly dimmed */
+  /* presetCard — unconfigured; full contrast, “待配置” pill carries the cue */
   &.presetCard {
-    opacity: 0.75;
+    background: var(--fn-bg-primary);
+    border: 1px dashed var(--fn-border-input);
+    box-shadow: none;
 
     &.hover {
-      opacity: 1;
+      border-color: var(--fn-color-brand-border, rgba(99, 91, 255, 0.4));
+      border-style: solid;
     }
   }
 
@@ -186,12 +189,130 @@
       padding: 16px !important;
     }
   }
+
+  /* dashed "+" card — must follow the shared body rules so centering wins */
+  &.addProviderCard {
+    border-style: dashed;
+    border-color: var(--fn-border-input);
+    min-height: 148px;
+    background: var(--fn-bg-secondary, var(--fn-bg-primary));
+
+    &:hover,
+    &.hover {
+      border-color: var(--fn-color-brand-border, rgba(99, 91, 255, 0.45));
+      background: var(--fn-color-brand-bg, rgba(99, 91, 255, 0.06));
+
+      .addProviderIcon {
+        color: var(--fn-color-brand, #635bff);
+      }
+
+      .addProviderLabel {
+        color: var(--fn-text-primary);
+      }
+    }
+
+    :global(.ant-card-body) {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      height: 100%;
+      min-height: 108px;
+    }
+  }
 }
 
 .cardContent {
   display: flex;
   flex-direction: column;
   flex: 1;
+}
+
+.addProviderCardInner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  flex: 1;
+  min-height: 100%;
+}
+
+.addProviderIcon {
+  color: var(--fn-text-tertiary);
+  flex-shrink: 0;
+}
+
+.addProviderLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fn-text-secondary);
+  text-align: center;
+  line-height: 1.4;
+  max-width: 8.5em;
+
+  @media (max-width: 767px) {
+    max-width: 7.5em;
+    font-size: 12px;
+  }
+}
+
+/* Soften provider cards under the embedding pool (pool stays primary). */
+.serviceCardsArea {
+  .providerCard {
+    &.normal,
+    &.enabled {
+      box-shadow: none;
+    }
+
+    &.enabled {
+      background: var(--fn-bg-primary);
+      border-color: var(--fn-color-brand-border, rgba(99, 91, 255, 0.22));
+    }
+
+    &.hover {
+      box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06);
+    }
+  }
+}
+
+.statusPendingPill {
+  margin: 0 !important;
+  font-size: 11px !important;
+  line-height: 18px !important;
+  border-radius: 4px !important;
+  color: var(--fn-text-secondary) !important;
+  background: var(--fn-bg-secondary) !important;
+  border: 1px solid var(--fn-border-secondary) !important;
+}
+
+.laneTag {
+  margin: 0 0 0 6px !important;
+  font-size: 10px !important;
+  line-height: 16px !important;
+  padding: 0 5px !important;
+  border-radius: 3px !important;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.setupSteps {
+  margin: 4px 0 20px;
+  padding: 12px 14px;
+  background: var(--fn-bg-secondary);
+  border-radius: var(--fn-radius-md);
+  border: 1px solid var(--fn-border-secondary);
+
+  :global(.ant-steps-item-title) {
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+  }
+
+  :global(.ant-steps-item-description) {
+    display: none;
+  }
 }
 
 .statusContainer {
@@ -211,12 +332,20 @@
     flex-shrink: 0;
     transition: all 0.2s ease;
 
+    /* green — ready / running */
     &.active {
       background-color: var(--fn-color-success);
       box-shadow: 0 0 0 2px
         var(--fn-color-success-glow, rgba(82, 196, 26, 0.15));
     }
 
+    /* blue — configured but not fully on */
+    &.configured {
+      background-color: var(--fn-color-info, #1677ff);
+      box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
+    }
+
+    /* gray — unconfigured / off */
     &.inactive {
       background-color: var(--fn-border-input);
     }
@@ -228,6 +357,10 @@
 
     &.enabled {
       color: var(--fn-color-success);
+    }
+
+    &.configured {
+      color: var(--fn-color-info, #1677ff);
     }
 
     &.disabled {
@@ -702,83 +835,26 @@
   padding: 2px 0;
 }
 
-.modelAccess {
-  margin-top: 8px;
+.modelVisibilityBlock {
+  margin: 4px 0 12px;
+  padding: 12px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.02));
 }
 
-.modelAccessToggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 2px;
-  border: none;
-  background: transparent;
-  color: var(--fn-text-secondary);
+.modelVisibilityTitle {
   font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-
-  &:hover {
-    color: var(--fn-text-primary);
-  }
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  margin-bottom: 4px;
 }
 
-.modelAccessCount {
-  color: var(--fn-text-tertiary);
-  font-size: 12px;
-}
-
-.modelAccessToggle svg {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.modelAccessHint {
-  margin: 0 0 8px;
+.modelVisibilityHint {
+  margin: 0 0 10px;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--fn-text-secondary);
-}
-
-.modelAccessList {
-  max-height: 280px;
-  overflow-y: auto;
-  border: 1px solid var(--fn-border-secondary);
-  border-radius: var(--fn-radius-md);
-}
-
-.modelAccessRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 148px;
-  align-items: center;
-  column-gap: 12px;
-  row-gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--fn-border-tertiary);
-
-  &:last-child {
-    border-bottom: none;
-  }
-}
-
-.modelAccessName {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-
-  > span:first-child {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 13px;
-    color: var(--fn-text-primary);
-  }
-}
-
-.modelAccessGroups {
-  grid-column: 1 / -1;
+  color: var(--fn-text-tertiary);
 }
 
 .modelListItemActions {
@@ -889,6 +965,9 @@
   border: 1px solid var(--fn-border-primary);
   box-shadow: var(--fn-shadow-sm);
   margin-bottom: 32px;
+  transition:
+    border-color 0.35s ease,
+    box-shadow 0.35s ease;
 
   @media (max-width: 767px) {
     padding: 16px;
@@ -896,17 +975,64 @@
   }
 }
 
+.poolSectionFlash {
+  border-color: var(--fn-color-brand-border, rgba(99, 91, 255, 0.45));
+  box-shadow:
+    var(--fn-shadow-sm),
+    0 0 0 3px var(--fn-color-brand-bg, rgba(99, 91, 255, 0.12));
+}
+
 .poolHeader {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
+  gap: 12px;
 }
 
 .poolHeaderLeft {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.poolHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.poolHeaderLink {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  text-decoration: none;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--fn-color-brand, #635bff);
+  }
+}
+
+.poolEmptyBody {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.poolEmptyText {
+  margin: 0;
+  color: var(--fn-text-tertiary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.poolEmptyActions {
+  justify-content: center;
 }
 
 .poolInfoIcon {

@@ -430,7 +430,34 @@ class RecordingTracker(TurnHistoryTracker):
             self._write_failure = exc
             raise
 
+    def _stamp_turn_duration(self) -> None:
+        ms = self._turn_duration_ms
+        if not isinstance(ms, int) or ms < 0:
+            return
+        chosen: dict[str, Any] | None = None
+        for part in reversed(self._parts):
+            if part.get("type") != "ai":
+                continue
+            data = part.get("data")
+            if not isinstance(data, dict):
+                continue
+            if chosen is None:
+                chosen = part
+            if not data.get("tool_calls"):
+                chosen = part
+                break
+        if chosen is None:
+            return
+        data = chosen["data"]
+        extra = data.get("additional_kwargs")
+        if not isinstance(extra, dict):
+            extra = {}
+            data["additional_kwargs"] = extra
+        extra["turn_duration_ms"] = ms
+        self._mark_changed(chosen)
+
     async def finish(self, *, completed: bool) -> None:
+        self._stamp_turn_duration()
         if self._write_failure is None:
             await self.flush()
         status = (

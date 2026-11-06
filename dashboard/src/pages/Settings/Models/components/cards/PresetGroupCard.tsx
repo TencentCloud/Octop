@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { Card, Drawer, Tag } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { ProviderPreset, ProviderRow } from "../../useProviders";
 import {
   findConfiguredProvider,
@@ -62,11 +63,10 @@ function VariantPickerDrawer({
           return (
             <div
               key={preset.id}
-              className={
-                configured
-                  ? `${styles.variantItem} ${styles.variantItemDisabled}`
-                  : styles.variantItem
-              }
+              className={cx(
+                styles.variantItem,
+                configured && styles.variantItemDisabled,
+              )}
               onClick={() => {
                 if (configured) return;
                 onClose();
@@ -163,11 +163,10 @@ export function PresetGroupCard({
               <button
                 key={entry.preset.id}
                 type="button"
-                className={
-                  idx === activeIdx
-                    ? `${styles.presetGroupSegBtn} ${styles.presetGroupSegBtnActive}`
-                    : styles.presetGroupSegBtn
-                }
+                className={cx(
+                  styles.presetGroupSegBtn,
+                  idx === activeIdx && styles.presetGroupSegBtnActive,
+                )}
                 onClick={() => setActiveIdx(idx)}
               >
                 {presetVariantLabel(entry.preset)}
@@ -204,11 +203,12 @@ export function PresetGroupCard({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={() => setVariantPickerOpen(true)}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover} ${styles.presetCard}`
-            : `${styles.providerCard} ${styles.normal} ${styles.presetCard}`
-        }
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          !isHover && styles.normal,
+          styles.presetCard,
+        )}
       >
         <div className={styles.cardContent}>
           <div className={styles.cardHeader}>
@@ -223,8 +223,8 @@ export function PresetGroupCard({
               {group.groupName}
             </span>
             <div className={styles.statusContainer}>
-              <span className={`${styles.statusDot} ${styles.inactive}`} />
-              <span className={`${styles.statusText} ${styles.disabled}`}>
+              <span className={cx(styles.statusDot, styles.inactive)} />
+              <span className={cx(styles.statusText, styles.disabled)}>
                 {t("models.presetNotConfigured")}
               </span>
             </div>

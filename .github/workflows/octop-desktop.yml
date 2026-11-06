@@ -101,7 +101,7 @@ jobs:
           all_plats = [
               {"plat": "linux-amd64", "arch": "amd64", "os": "ubuntu-latest"},
               {"plat": "linux-arm64", "arch": "arm64", "os": "ubuntu-24.04-arm"},
-              {"plat": "darwin-arm64", "arch": "arm64", "os": "macos-14"},
+              {"plat": "darwin-arm64", "arch": "arm64", "os": "macos-15"},
               {"plat": "darwin-amd64", "arch": "amd64", "os": "macos-15-intel"},
               {"plat": "windows-amd64", "arch": "amd64", "os": "windows-latest"},
               {"plat": "windows-arm64", "arch": "arm64", "os": "windows-11-arm"},

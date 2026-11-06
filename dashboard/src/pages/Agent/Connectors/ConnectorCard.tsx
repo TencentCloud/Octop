@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Typography } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import type { ConnectorCatalogEntry } from "../../../api/modules/connectors";
 import { ConnectorLogo, connectorAccent } from "./connectorDefs";
@@ -21,9 +22,7 @@ export const ConnectorCard = memo(function ConnectorCard({
 
   return (
     <div
-      className={`${styles.typeCard}${
-        disabled ? ` ${styles.typeCardDisabled}` : ""
-      }`}
+      className={cx(styles.typeCard, disabled && styles.typeCardDisabled)}
       style={{ "--connector-accent": accent } as React.CSSProperties}
       onClick={() => !disabled && onConfigure(entry, null)}
       role="button"

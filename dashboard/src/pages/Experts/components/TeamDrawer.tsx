@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
@@ -10,6 +10,7 @@ import {
 } from "../../../api/modules/teams";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import {
+  avatarPickerStyles,
   expertPresetSrc,
   isUploadedAvatarUrl,
   ResourceAvatarPicker,
@@ -43,6 +44,8 @@ interface TeamDrawerProps {
   experts: OctopAgent[];
   onClose: () => void;
   onSaved: (team: TeamRecord) => void;
+  /** Edit mode: sample icon / upload already persisted; refresh the team card. */
+  onIconUrlChange?: (agentId: string, iconUrl: string) => void;
 }
 
 interface TeamFormValues {
@@ -60,6 +63,7 @@ export default function TeamDrawer({
   experts,
   onClose,
   onSaved,
+  onIconUrlChange,
 }: TeamDrawerProps) {
   const { t } = useTranslation();
   const [form] = Form.useForm<TeamFormValues>();
@@ -71,6 +75,7 @@ export default function TeamDrawer({
   const [iconUrl, setIconUrl] = useState<string | null>(TEAM_AVATAR_URL);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const iconTouchedRef = useRef(false);
   const pickerExperts = useMemo(
     () => mergeTeamPickerExperts(experts, rosterExtras),
     [experts, rosterExtras],
@@ -78,9 +83,11 @@ export default function TeamDrawer({
 
   useEffect(() => {
     if (!open) {
+      iconTouchedRef.current = false;
       setRosterExtras([]);
       return;
     }
+    iconTouchedRef.current = false;
     if (mode === "edit" && team) {
       form.setFieldsValue({
         name: team.name,
@@ -103,7 +110,9 @@ export default function TeamDrawer({
             welcome_message: record.welcome_message ?? "",
             member_ids: record.members.map((member) => member.agent_id),
           });
-          setIconUrl(record.icon_url?.trim() || TEAM_AVATAR_URL);
+          if (!iconTouchedRef.current) {
+            setIconUrl(record.icon_url?.trim() || TEAM_AVATAR_URL);
+          }
           setRosterExtras(
             record.members.map((member) => ({
               agent_id: member.agent_id,
@@ -253,7 +262,10 @@ export default function TeamDrawer({
       )}
 
       <Form form={form} layout="vertical" size="middle">
-        <Form.Item label={t("experts.avatar")}>
+        <Form.Item
+          label={t("experts.avatar")}
+          className={avatarPickerStyles.formItem}
+        >
           <ResourceAvatarPicker
             imageUrl={imageUrl}
             presetId={presetId === "team-host" ? null : presetId}
@@ -262,6 +274,7 @@ export default function TeamDrawer({
             onPick={(file) => {
               if (mode === "edit" && team) {
                 void (async () => {
+                  iconTouchedRef.current = true;
                   setAvatarBusy(true);
                   try {
                     const result = await octopAgentsApi.uploadAvatar(
@@ -270,6 +283,7 @@ export default function TeamDrawer({
                     );
                     setIconUrl(result.icon_url);
                     setAvatarFile(null);
+                    onIconUrlChange?.(team.agent_id, result.icon_url);
                   } catch (err) {
                     message.error(
                       apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
@@ -281,52 +295,74 @@ export default function TeamDrawer({
                 })();
                 return;
               }
+              iconTouchedRef.current = true;
               setAvatarFile(file);
               setIconUrl(URL.createObjectURL(file));
             }}
             onSelectPreset={(id) => {
               void (async () => {
                 const nextUrl = id ? expertPresetSrc(id) : TEAM_AVATAR_URL;
+                const previousUrl = iconUrl;
+                iconTouchedRef.current = true;
                 setAvatarFile(null);
-                if (mode === "edit" && team && isUploadedAvatarUrl(iconUrl)) {
-                  setAvatarBusy(true);
-                  try {
-                    await octopAgentsApi.deleteAvatar(team.agent_id);
-                  } catch {
-                    // Preset path still wins on save / local state.
-                  } finally {
-                    setAvatarBusy(false);
-                  }
-                }
                 setIconUrl(nextUrl);
+                if (!(mode === "edit" && team)) return;
+                setAvatarBusy(true);
+                try {
+                  if (isUploadedAvatarUrl(previousUrl)) {
+                    try {
+                      await octopAgentsApi.deleteAvatar(team.agent_id);
+                    } catch {
+                      // Preset path still wins when the portrait is saved.
+                    }
+                  }
+                  const saved = await teamsApi.update(team.agent_id, {
+                    icon_url: nextUrl,
+                  });
+                  const applied = saved.icon_url?.trim() || nextUrl;
+                  setIconUrl(applied);
+                  onIconUrlChange?.(team.agent_id, applied);
+                } catch (err) {
+                  setIconUrl(previousUrl);
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                  );
+                } finally {
+                  setAvatarBusy(false);
+                }
               })();
             }}
             onRemove={
               imageUrl || avatarFile
                 ? () => {
                     void (async () => {
+                      const previousUrl = iconUrl;
+                      iconTouchedRef.current = true;
                       setAvatarFile(null);
-                      if (
-                        mode === "edit" &&
-                        team &&
-                        isUploadedAvatarUrl(iconUrl)
-                      ) {
-                        setAvatarBusy(true);
-                        try {
-                          await octopAgentsApi.deleteAvatar(team.agent_id);
-                        } catch (err) {
-                          message.error(
-                            apiErrorMessage(
-                              err,
-                              t("experts.avatarRemoveFailed"),
-                              t,
-                            ),
-                          );
-                        } finally {
-                          setAvatarBusy(false);
-                        }
-                      }
                       setIconUrl(TEAM_AVATAR_URL);
+                      if (!(mode === "edit" && team)) return;
+                      setAvatarBusy(true);
+                      try {
+                        if (isUploadedAvatarUrl(previousUrl)) {
+                          await octopAgentsApi.deleteAvatar(team.agent_id);
+                        } else {
+                          await teamsApi.update(team.agent_id, {
+                            icon_url: TEAM_AVATAR_URL,
+                          });
+                        }
+                        onIconUrlChange?.(team.agent_id, TEAM_AVATAR_URL);
+                      } catch (err) {
+                        setIconUrl(previousUrl);
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarRemoveFailed"),
+                            t,
+                          ),
+                        );
+                      } finally {
+                        setAvatarBusy(false);
+                      }
                     })();
                   }
                 : undefined
@@ -353,8 +389,12 @@ export default function TeamDrawer({
         >
           <Input />
         </Form.Item>
-        <Form.Item name="description" label={t("experts.agentDescription")}>
-          <Input.TextArea rows={2} />
+        <Form.Item
+          name="description"
+          label={t("experts.agentDescription")}
+          className={styles.textAssistField}
+        >
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
         </Form.Item>
         <TextAssistBar
           kind="team.description"
@@ -365,14 +405,15 @@ export default function TeamDrawer({
         <Form.Item
           name="welcome_message"
           label={t("experts.welcomeMessageTitle")}
-          extra={
+          tooltip={
             mode === "edit"
               ? t("experts.editWelcomeHint")
               : t("experts.createWelcomeHint")
           }
+          className={styles.textAssistField}
         >
           <Input.TextArea
-            rows={2}
+            autoSize={{ minRows: 2, maxRows: 5 }}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>

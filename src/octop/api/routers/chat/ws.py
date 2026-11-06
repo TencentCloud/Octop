@@ -212,6 +212,22 @@ async def dashboard_chat_ws(
                 await send_frame({"type": "done"})
                 continue
 
+            # Subscribe before any further await: steer admission (and any
+            # concurrently running turn on this thread) pushes frames the
+            # moment control yields, and push_to_thread drops frames for
+            # connections that are not subscribed yet.
+            hub.subscribe(prepared_early.thread_id, connection_id)
+
+            hitl_paused = _thread_hitl_paused(gateway, prepared_early.thread_id, agent_id)
+            if not hitl_paused:
+                # A turn parked at an HITL interrupt leaves ``phase='hitl_paused'``
+                # behind so follow-ups queue behind the approval. If the approval
+                # was resolved elsewhere (another tab / reload) or never reached
+                # this client, every new message would be rejected as a steer and
+                # the chat deadlocks. No pending request → drop the stale park so
+                # this message starts a fresh turn instead.
+                _clear_stale_hitl_park(gateway, prepared_early.thread_id)
+
             steered = await _maybe_admit_steer(
                 text=(turn.text or "").strip() or _plain_text_from_turn(turn),
                 thread_id=prepared_early.thread_id,
@@ -221,7 +237,7 @@ async def dashboard_chat_ws(
                 steer=gateway.steer,
                 hub=hub,
                 send_frame=send_frame,
-                hitl_paused=_thread_hitl_paused(gateway, prepared_early.thread_id, agent_id),
+                hitl_paused=hitl_paused,
                 content_blocks=_steer_blocks_from_turn(turn),
             )
             if steered:
@@ -240,7 +256,6 @@ async def dashboard_chat_ws(
                 ws_connection_id=connection_id,
                 user_is_admin=bool(getattr(user, "is_admin", False)),
             )
-            hub.subscribe(prepared_early.thread_id, connection_id)
             channel_manager.enqueue(WS_CHANNEL_ID, inbound)
 
     except WebSocketDisconnect:
@@ -273,7 +288,7 @@ async def _bridge_chat_ws(
         await websocket.close(code=1011, reason="bridge not ready")
         return
     try:
-        mgr.get_owned(ref.connection_id, user.id)
+        mgr.get_usable(ref.connection_id, user.id)
         mgr.require_session(ref.connection_id)
     except OctopError as exc:
         await websocket.close(code=1011, reason=str(exc.code.value))
@@ -567,6 +582,30 @@ def _plain_text_from_turn(turn: Any) -> str:
     if isinstance(content, str):
         return content.strip()
     return ""
+
+
+def _clear_stale_hitl_park(gateway: Any, thread_id: str) -> None:
+    """Drop a leftover ``hitl_paused`` steer park when no approval is pending.
+
+    Kept separate from ``_thread_hitl_paused`` so the probe stays read-only and
+    the mutation is obvious at the call site.
+    """
+    steer = getattr(gateway, "steer", None)
+    get_state = getattr(steer, "get_state", None)
+    if steer is None or not callable(get_state):
+        return
+    try:
+        state = get_state(thread_id)
+    except Exception:
+        logger.exception("hitl park probe failed thread=%s", thread_id)
+        return
+    if state is None or getattr(state, "phase", None) != "hitl_paused":
+        return
+    try:
+        steer.discard(thread_id, reason="hitl_paused")
+        logger.info("cleared stale hitl park thread=%s", thread_id)
+    except Exception:
+        logger.exception("failed to clear stale hitl park thread=%s", thread_id)
 
 
 def _thread_hitl_paused(gateway: Any, thread_id: str, agent_id: str) -> bool:

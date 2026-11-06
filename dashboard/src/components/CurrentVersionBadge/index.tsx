@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Tooltip } from "antd";
+import cx from "classnames";
 import { useUpdateStatus } from "../../hooks/useUpdateStatus";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -32,9 +33,11 @@ export default function CurrentVersionBadge({
       <Tooltip title={tooltip} mouseEnterDelay={0.35}>
         <button
           type="button"
-          className={`${styles.versionBadge} ${
-            isMobile ? styles.versionBadgeMobile : ""
-          } ${styles.versionBadgeClickable}`}
+          className={cx(
+            styles.versionBadge,
+            isMobile && styles.versionBadgeMobile,
+            styles.versionBadgeClickable,
+          )}
           onClick={() => navigate("/admin/advanced?tab=updates")}
           aria-label={tooltip}
         >
@@ -47,9 +50,10 @@ export default function CurrentVersionBadge({
   return (
     <Tooltip title={tooltip} mouseEnterDelay={0.35}>
       <span
-        className={`${styles.versionBadge} ${
-          isMobile ? styles.versionBadgeMobile : ""
-        }`}
+        className={cx(
+          styles.versionBadge,
+          isMobile && styles.versionBadgeMobile,
+        )}
         aria-label={tooltip}
       >
         {label}

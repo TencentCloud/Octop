@@ -32,6 +32,7 @@ function mockRegistration(opts: {
       register: vi.fn().mockResolvedValue(registration),
       getRegistrations: vi.fn().mockResolvedValue([]),
       controller: opts.controller ?? null,
+      ready: Promise.resolve(registration),
       addEventListener: (
         type: string,
         fn: () => void,
@@ -103,6 +104,26 @@ describe("registerProductionSW", () => {
 
     expect(waiting.postMessage).not.toHaveBeenCalled();
     expect(onReady).toHaveBeenCalledOnce();
+  });
+});
+
+describe("registerSW", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("registers the notification worker in dev", async () => {
+    mockRegistration({ waiting: null, controller: null });
+    const { registerSW } = await import("./sw-register");
+    await registerSW();
+    expect(navigator.serviceWorker.register).toHaveBeenCalledWith(
+      "/notify-sw.js",
+      { scope: "/", updateViaCache: "none" },
+    );
   });
 });
 

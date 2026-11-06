@@ -1,8 +1,7 @@
-"""In-package plugin marketplace catalog (install copies into ``~/.octop/plugins``).
+"""In-package plugin directory.
 
-Today the catalog lives next to this module. Later it will move to a remote
-API / object storage; install will download a ZIP and extract instead of
-``shutil.copytree`` from this tree.
+Product plugins are installed from the remote market. This directory no longer
+ships that catalog; ``seed_bundled`` upgrades nothing when it is empty.
 """
 
 from pathlib import Path
