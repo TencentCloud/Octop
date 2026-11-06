@@ -385,6 +385,42 @@ async def test_extract_config_defaults_then_update(env_with_main_agent) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["memory_capture_enabled", "memory_recall_inject_enabled"])
+async def test_extract_config_memory_switch_roundtrip(env_with_main_agent, key: str) -> None:
+    import json
+
+    client, srv, auth, aid = env_with_main_agent
+    url = f"/api/agents/{aid}/memory/extract-config"
+    registry = srv.app_runtime.agent_registry
+
+    initial = await client.get(url, headers=auth)
+    assert initial.status_code == 200, initial.text
+    assert initial.json()[key] is True
+    assert key in initial.json()["supported_call_options"]
+
+    for enabled in (False, True):
+        updated = await client.put(url, headers=auth, json={key: enabled})
+        assert updated.status_code == 200, updated.text
+        assert updated.json()[key] is enabled
+        row = registry.get_row(aid)
+        assert json.loads(row.config_json)["memory"][key] is enabled
+        assert getattr(registry._build_harness_config(row), key) is enabled
+
+        # Updating extraction timing must preserve the independent runtime switch.
+        timing = await client.put(url, headers=auth, json={"extract_idle_seconds": 600})
+        assert timing.status_code == 200, timing.text
+        reread = await client.get(url, headers=auth)
+        assert reread.json()[key] is enabled
+        assert reread.json()["memory_enabled"] is True
+        other = (
+            "memory_recall_inject_enabled"
+            if key == "memory_capture_enabled"
+            else "memory_capture_enabled"
+        )
+        assert reread.json()[other] is True
+
+
+@pytest.mark.asyncio
 async def test_extract_config_aux_model_roundtrip(env_with_main_agent) -> None:
     from tests.support.auth import create_provider
 

@@ -64,13 +64,14 @@ function resolveModelCategory(
   requestedTab: string | null,
   canChat: boolean,
   canEmbedding: boolean,
-  canProviders: boolean,
+  canGeneration: boolean,
   canVoice: boolean,
   canSearch: boolean,
+  canDecision: boolean,
 ): ModelCategory {
   if (requestedTab === "embedding" && canEmbedding) return "embedding";
-  if (requestedTab === "generation" && canProviders) return "generation";
-  if (requestedTab === "decision" && canProviders) return "decision";
+  if (requestedTab === "generation" && canGeneration) return "generation";
+  if (requestedTab === "decision" && canDecision) return "decision";
   if (requestedTab === "voice" && canVoice) return "voice";
   if (requestedTab === "search" && canSearch) return "search";
   if ((requestedTab === "chat" || requestedTab === null) && canChat) {
@@ -78,9 +79,10 @@ function resolveModelCategory(
   }
   if (canChat) return "chat";
   if (canEmbedding) return "embedding";
+  if (canGeneration) return "generation";
   if (canVoice) return "voice";
+  if (canDecision) return "decision";
   if (canSearch) return "search";
-  if (canProviders) return "generation";
   return "chat";
 }
 
@@ -92,6 +94,8 @@ export default function ModelsPage() {
   const canProviders = userCan(user, "providers");
   const canOllama = userCan(user, "ollama_models");
   const canOnnx = userCan(user, "onnx_models");
+  const canGeneration = userCan(user, "model_generation");
+  const canDecision = userCan(user, "model_decision");
   const canVoice = userCan(user, "voice");
   const canSearch = userCan(user, "search");
   const canChat = canProviders || canOllama;
@@ -114,9 +118,10 @@ export default function ModelsPage() {
     searchParams.get("tab"),
     canChat,
     canEmbedding,
-    canProviders,
+    canGeneration,
     canVoice,
     canSearch,
+    canDecision,
   );
   const setModelCategory = (next: string) => {
     const updated = new URLSearchParams(searchParams);
@@ -313,7 +318,7 @@ export default function ModelsPage() {
                 },
               ]
             : []),
-          ...(canProviders
+          ...(canGeneration
             ? [
                 {
                   key: "generation",
@@ -339,7 +344,7 @@ export default function ModelsPage() {
                 },
               ]
             : []),
-          ...(canProviders
+          ...(canDecision
             ? [
                 {
                   key: "decision",

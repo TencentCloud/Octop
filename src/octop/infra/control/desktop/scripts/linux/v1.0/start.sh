@@ -26,6 +26,9 @@ else
   OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
   INSTALL_ROOT="/opt/octop-desktop"
   DISPLAY_NUM=":99"
+  # Docker hides the image's /data/.octop with a volume, so the log dir from
+  # install time is gone. Create it or the redirect below aborts start.sh.
+  mkdir -p "${OCTOP_HOME}/desktop"
   if ! _xvnc_alive "Xvnc.*${DISPLAY_NUM}"; then
     rm -f "/tmp/.X${DISPLAY_NUM#:}-lock" "/tmp/.X11-unix/X${DISPLAY_NUM#:}"
     nohup "$(command -v Xvnc || command -v Xtigervnc)" :99 -depth 24 -geometry 1920x1080 -dpi 96 \

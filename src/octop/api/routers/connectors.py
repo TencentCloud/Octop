@@ -538,7 +538,12 @@ def _schedule_connector_reload(
 
 
 def _can_manage_connector(inst: Any, user: Any) -> bool:
-    return bool(inst.user_id == user.id or user.role == "admin")
+    """Only the owning user may view credentials or change the instance.
+
+    Sharing lets other users (including admins) select the connector. It does
+    not grant edit, delete, enable, or credential access.
+    """
+    return bool(inst.user_id == user.id)
 
 
 def _assert_can_manage_connector(inst: Any, user: Any) -> None:
@@ -628,7 +633,7 @@ async def list_instances(
         item["owner_display_name"] = (
             owner.display_name or owner.username if owner is not None else None
         )
-        item["can_manage"] = owner_id == user.id or user.role == "admin"
+        item["can_manage"] = owner_id == user.id
         instance_id = str(item.get("instance_id") or "")
         if instance_id and not instance_id.startswith("custom:"):
             item.update(
@@ -1122,7 +1127,7 @@ async def test_instance(
     creds = await svc.ensure_fresh_credentials(instance_id, inst.kind)
     if not creds:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
-    if inst.kind == "agently-cli":
+    if inst.kind in {"agently-cli", "ragflow"}:
         creds["_locale"] = resolve_request_locale(request)
 
     try:
@@ -1163,7 +1168,7 @@ async def test_credentials(
             str(exc),
             details={"reason": str(exc)},
         ) from exc
-    if body.kind == "agently-cli":
+    if body.kind in {"agently-cli", "ragflow"}:
         cred_payload["_locale"] = resolve_request_locale(request)
     try:
         return await probe_connector(

@@ -1,8 +1,7 @@
 {
   "id": "ops-engineer",
-  "scene": "tech",
   "label": {
-    "zh": "Ops · 运维工程师",
+    "zh": "运维工程师 Ops",
     "en": "Ops · SRE Engineer"
   },
   "description": {
@@ -15,6 +14,7 @@
   },
   "icon_name": "terminal",
   "color": "#16a34a",
+  "scene": "tech",
   "prompt_files": [
     "SOUL.md",
     "IDENTITY.md"

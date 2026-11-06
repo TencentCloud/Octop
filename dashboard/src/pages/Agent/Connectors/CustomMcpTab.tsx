@@ -4,6 +4,7 @@ import { message } from "@/utils/antdMessage";
 
 import { Globe, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   connectorsApi,
@@ -11,7 +12,7 @@ import {
   type CustomMcpServers,
   type CustomMcpTransport,
 } from "../../../api/modules/connectors";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { CustomMcpServerCard } from "./CustomMcpServerCard";
 import {
   EXAMPLE_JSON,
@@ -328,7 +329,9 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
     }
     setOauthAvailable((prev) => ({ ...prev, [card.key]: false }));
     if (!fromSave) {
-      message.error(result.error ?? t("connectors.probeFailed", "探测失败"));
+      message.error(
+        probeErrorMessage(result, t("connectors.probeFailed", "探测失败"), t),
+      );
     }
   };
 
@@ -605,9 +608,10 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
   const saveFooter = (
     <div
-      className={`${styles.customMcpFooter}${
-        showProbeSection ? "" : ` ${styles.customMcpFooterSaveOnly}`
-      }`}
+      className={cx(
+        styles.customMcpFooter,
+        !showProbeSection && styles.customMcpFooterSaveOnly,
+      )}
     >
       {showProbeSection ? (
         <div className={styles.customMcpFooterMain}>

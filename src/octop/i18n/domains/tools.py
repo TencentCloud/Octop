@@ -38,6 +38,7 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "agent_list",
         "ask_agent",
         "call_agent",
+        "call_deferred_tool",
         "acp_runner",
     }
 )
