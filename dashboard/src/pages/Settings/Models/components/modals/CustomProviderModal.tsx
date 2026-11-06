@@ -154,16 +154,26 @@ export function CustomProviderModal({
           if (id.includes("rerank")) return false;
           return /embed|bge-|e5-|gte-/.test(id);
         })
-        .map((m) => ({
-          id: m.id,
-          name: m.name || m.id,
-          enabled: false,
-          input: ["text"],
-          thinking: null,
-          ...(embeddingLane
-            ? { embedding: true as const, task: "embedding" as const }
-            : {}),
-        }));
+        .map((m) => {
+          const entry: ProviderModel = {
+            id: m.id,
+            name: m.name || m.id,
+            enabled: false,
+            input: m.input?.length ? m.input : ["text"],
+            thinking: null,
+            ...(embeddingLane
+              ? { embedding: true as const, task: "embedding" as const }
+              : {}),
+          };
+          if (m.context_window != null) entry.context_window = m.context_window;
+          if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
+          if (m.reasoning) entry.reasoning = true;
+          if (m.reasoning_config) entry.reasoning_config = m.reasoning_config;
+          if (m.api_mode) {
+            entry.api_mode = m.api_mode as ProviderModel["api_mode"];
+          }
+          return entry;
+        });
       let addedCount = 0;
       setModels((prev) => {
         const existing = new Set(prev.map((m) => m.id));
@@ -208,6 +218,8 @@ export function CustomProviderModal({
         if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
         if (m.context_window != null) entry.context_window = m.context_window;
         if (m.reasoning) entry.reasoning = true;
+        if (m.reasoning_config) entry.reasoning_config = m.reasoning_config;
+        if (m.api_mode) entry.api_mode = m.api_mode;
         if (embeddingLane || isEmbeddingModel(m)) {
           entry.embedding = true;
           entry.task = "embedding";

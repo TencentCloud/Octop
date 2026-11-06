@@ -980,13 +980,23 @@ export function ProviderConfigModal({
         return;
       }
 
-      const added: ProviderModel[] = missing.map((m) => ({
-        id: m.id,
-        name: m.name || m.id,
-        enabled: false,
-        input: ["text"],
-        thinking: null,
-      }));
+      const added: ProviderModel[] = missing.map((m) => {
+        const entry: ProviderModel = {
+          id: m.id,
+          name: m.name || m.id,
+          enabled: false,
+          input: m.input?.length ? m.input : ["text"],
+          thinking: null,
+        };
+        if (m.context_window != null) entry.context_window = m.context_window;
+        if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
+        if (m.reasoning) entry.reasoning = true;
+        if (m.reasoning_config) entry.reasoning_config = m.reasoning_config;
+        if (m.api_mode) {
+          entry.api_mode = m.api_mode as ProviderModel["api_mode"];
+        }
+        return entry;
+      });
       setDraftModels((prev) => [...prev, ...added]);
       setFormDirty(true);
       message.success(t("models.fetchModelsMerged", { count: missing.length }));

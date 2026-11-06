@@ -362,7 +362,8 @@ export function ModelListEditor({
             | "anthropic_adaptive"
             | "anthropic_budget"
             | "dashscope"
-            | "openrouter") || "thinking",
+            | "openrouter"
+            | "llamacpp") || "thinking",
       };
     }
     return entry;
@@ -987,6 +988,13 @@ export function ModelListEditor({
                                         label: t(
                                           "models.reasoningAdapterOpenRouter",
                                           "OpenRouter",
+                                        ),
+                                      },
+                                      {
+                                        value: "llamacpp",
+                                        label: t(
+                                          "models.reasoningAdapterLlamaCpp",
+                                          "llama.cpp / KVMem",
                                         ),
                                       },
                                     ]}

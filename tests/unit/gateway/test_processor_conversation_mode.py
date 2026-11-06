@@ -148,3 +148,47 @@ async def test_dashboard_turn_applies_hitl_policy() -> None:
         meta={"hitl_policy": {"mode": "allow_all"}},
     )
     assert processor.hitl_coordinator.session_policies.get("thr").mode == "allow_all"
+
+
+def test_stamp_turn_craft_mode_syncs_configurable_mcp_servers() -> None:
+    """Craft mode must write mcp_servers into configurable, not just top-level.
+
+    The harness middleware reads configurable["mcp_servers"] across graph
+    supersteps; a stale empty value from a prior plan-mode turn would filter
+    out every MCP tool.
+    """
+    processor = _processor(
+        thread=SimpleNamespace(
+            conversation_mode="craft",
+            pending_plan_path=None,
+            model_ref=None,
+        )
+    )
+    request: dict[str, object] = {
+        "messages": [{"role": "user", "content": "hi"}],
+        "thread_id": "thr",
+        "configurable": {
+            "conversation_mode": "plan",
+            "conversation_mode_extra_read_tools": [],
+            "mcp_servers": [],
+            "skills": [],
+        },
+    }
+    result = processor._stamp_turn_conversation_mode(
+        request,
+        agent_id="agent-1",
+        thread_id="thr",
+        meta=None,
+        user_text="hi",
+        mcp_servers=["github", "baidu"],
+        locale="zh",
+    )
+    # Top-level restored
+    assert result["conversation_mode"] == "craft"
+    assert result["mcp_servers"] == ["github", "baidu"]
+    # configurable: ask/plan residue cleared + correct MCP list written
+    cfg = result["configurable"]
+    assert isinstance(cfg, dict)
+    assert cfg["conversation_mode"] == "craft"
+    assert cfg["mcp_servers"] == ["github", "baidu"]
+    assert "conversation_mode_extra_read_tools" not in cfg

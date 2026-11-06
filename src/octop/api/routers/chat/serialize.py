@@ -320,9 +320,17 @@ async def _load_checkpoint_messages(
     thread_id: str,
     limit: int,
     offset: int = 0,
+    *,
+    thread_message_repo: Any | None = None,
 ) -> tuple[list[Any], bool]:
-    """Load LangGraph messages for a thread from the agent checkpointer."""
+    """Load LangGraph messages for a thread from the agent checkpointer.
+
+    Falls back to thread_messages business table when checkpoint storage is
+    empty/missing (e.g. PostgreSQL control plane switch or incomplete backup
+    restore).
+    """
     fetch_limit = offset + limit + 1
+    # -- (1) LangGraph history API (aget_history first, more reliable across savers) --
     if hasattr(harness, "aget_history"):
         try:
             msgs = list(await harness.aget_history(thread_id, limit=fetch_limit))
@@ -334,17 +342,52 @@ async def _load_checkpoint_messages(
                 thread_id,
                 exc_info=True,
             )
+
+    # -- (2) checkpoint via graph.aget_state --
     if hasattr(harness, "graph"):
         try:
             state = await harness.graph.aget_state({"configurable": {"thread_id": thread_id}})
             raw = list((state.values or {}).get("messages") or [])
-            return _slice_message_page(raw, limit=limit, offset=offset)
+            if raw:
+                return _slice_message_page(raw, limit=limit, offset=offset)
         except Exception:
             logger.warning(
                 "graph.aget_state failed for thread=%s",
                 thread_id,
                 exc_info=True,
             )
+
+    # -- (3) thread_messages business table (backup recovery fallback) --
+    if thread_message_repo is not None:
+        try:
+            head = thread_message_repo.head(thread_id)
+            if head > 0:
+                rows = thread_message_repo.range_rows(thread_id, 0, head)
+                converted: list[Any] = []
+                for row in rows:
+                    try:
+                        msg_json = json.loads(row.message_json) if row.message_json else {}
+                        restored = messages_from_dict([msg_json])
+                        if restored:
+                            converted.append(restored[0])
+                    except Exception:
+                        pass
+                if converted:
+                    return _slice_message_page(converted, limit=limit, offset=offset)
+                logger.warning(
+                    "history: thread_messages table had %d rows but 0 converted for thread=%s",
+                    len(rows),
+                    thread_id,
+                )
+            else:
+                logger.debug("history: thread_messages table has no rows for thread=%s", thread_id)
+        except Exception:
+            logger.warning(
+                "history: thread_message_repo fallback failed for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
     return [], False
 
 
@@ -367,6 +410,7 @@ async def _load_thread_messages(
             thread_id,
             limit,
             offset,
+            thread_message_repo=getattr(getattr(server, "services", None), "thread_message_repo", None),
         )
         for m in raw_messages:
             entry = _serialize_history_message(m, user=user)
