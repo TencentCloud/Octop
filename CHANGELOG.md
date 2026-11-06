@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- 聊天里 agent 可用 `request_secret_input` 收集密钥：回合暂停并在仪表盘停靠掩码输入卡，值只经专用提交端点传输一次、Fernet 加密落库（`agent_secrets`），提交后立即重建 harness，恢复的同一回合命令即可读到注入的环境变量；共享专家与团队成员场景禁用，`GET/DELETE /api/agents/{id}/secrets` 管理已存密钥，卡片样式对齐全宽表单
+
 ## [1.0.3b4] - 2026-11-06
 
 ### 新增
@@ -28,16 +31,9 @@
 ## [1.0.3b3] - 2026-11-04
 
 ### 新增
-- 聊天里 agent 可用 `request_secret_input` 收集密钥：回合暂停并在仪表盘停靠掩码输入卡，值只经专用提交端点传输一次、Fernet 加密落库（`agent_secrets`），提交后立即重建 harness，恢复的同一回合命令即可读到注入的环境变量；共享专家与团队成员场景禁用，`GET/DELETE /api/agents/{id}/secrets` 管理已存密钥，卡片样式对齐全宽表单
 - PostgreSQL 可存放技能包和知识库。多实例共用定时任务、频道、头像、插件和已发布专家
 - Docker 与飞牛增加精简版。存储后端增加火山引擎 TOS
 - 可预建 LDAP 账号，聊天列表可隐藏任意专家
-||||||| parent of 5d84634a (feat(dashboard): full-width form-style secret input card)
-- PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
-- 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
-- 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
-- Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
-- 存储后端增加火山引擎 TOS（官方 SDK，可选依赖 `tos`）
 
 ### 修复
 - 专家工作区落到允许的存储根下。共享连接器只有创建者能改
