@@ -39,6 +39,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlSlashOutcome,
     HitlStreamContext,
+    iter_secure_form_registration_guard,
     iter_with_session_auto_approve,
 )
 from octop.infra.gateway.hitl.format import normalize_hitl_request
@@ -211,6 +212,10 @@ class GlobalProcessor:
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
+        # Registration-time slot-capacity checks need the live slot list; unit
+        # callers that build their own coordinator keep their own reader.
+        if self._hitl.existing_secret_slots is None:
+            self._hitl.existing_secret_slots = self._existing_secret_slot_names
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
         self._title_inflight: set[str] = set()
@@ -1481,13 +1486,17 @@ class GlobalProcessor:
         emitted_tool_error_ids: set[str] = set()
 
         try:
-            async for chunk in iter_with_session_auto_approve(
-                self._agent_manager.stream(agent_id, request),
-                thread_id=thread_id,
-                policies=self._hitl.session_policies,
-                resume=lambda next_decisions: self._agent_manager.resume_hitl(
-                    agent_id, thread_id, next_decisions
+            async for chunk in self._guarded_chunks(
+                iter_with_session_auto_approve(
+                    self._agent_manager.stream(agent_id, request),
+                    thread_id=thread_id,
+                    policies=self._hitl.session_policies,
+                    resume=lambda next_decisions: self._agent_manager.resume_hitl(
+                        agent_id, thread_id, next_decisions
+                    ),
                 ),
+                agent_id=agent_id,
+                thread_id=thread_id,
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
@@ -1602,6 +1611,28 @@ class GlobalProcessor:
             team_host,
         )
 
+    def _existing_secret_slot_names(self, agent_id: str) -> set[str]:
+        return {row.slot_name for row in self._agent_manager.agent_secrets.list_slots(agent_id)}
+
+    def _guarded_chunks(
+        self,
+        source: AsyncIterator[dict[str, Any]],
+        *,
+        agent_id: str,
+        thread_id: str,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Refuse invalid secure-form pauses inline instead of registering them."""
+
+        def resume(decisions: list[dict[str, Any]]) -> AsyncIterator[dict[str, Any]]:
+            return self._agent_manager.resume_hitl(agent_id, thread_id, decisions)
+
+        return iter_secure_form_registration_guard(
+            source,
+            agent_id=agent_id,
+            resume=resume,
+            existing_slot_names=self._existing_secret_slot_names,
+        )
+
     async def iter_hitl_resume_chunks(
         self,
         *,
@@ -1621,17 +1652,21 @@ class GlobalProcessor:
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
-            async for chunk in iter_with_session_auto_approve(
-                self._agent_manager.resume_hitl(
-                    agent_id,
-                    thread_id,
-                    decisions,
+            async for chunk in self._guarded_chunks(
+                iter_with_session_auto_approve(
+                    self._agent_manager.resume_hitl(
+                        agent_id,
+                        thread_id,
+                        decisions,
+                    ),
+                    thread_id=thread_id,
+                    policies=self._hitl.session_policies,
+                    resume=lambda next_decisions: self._agent_manager.resume_hitl(
+                        agent_id, thread_id, next_decisions
+                    ),
                 ),
+                agent_id=agent_id,
                 thread_id=thread_id,
-                policies=self._hitl.session_policies,
-                resume=lambda next_decisions: self._agent_manager.resume_hitl(
-                    agent_id, thread_id, next_decisions
-                ),
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)

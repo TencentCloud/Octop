@@ -250,6 +250,9 @@
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
+    "SECRET_REQUEST_INVALID": "This secret input request is no longer available or cannot be handled here.",
+    "SECRET_SLOT_INVALID": "The secret slot name or value is invalid.",
+    "SECRET_WRITE_FAILED": "Failed to store the secret. Please try again.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
     "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
@@ -259,7 +262,16 @@
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
-    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "SECURE_FORM_FIELD_INVALID": "One or more form fields are invalid or cannot be saved.",
+    "SECURE_FORM_SLOT_INVALID": "The form's environment slot mapping is no longer valid (name or capacity conflict).",
+    "SECURE_FORM_WRITE_FAILED": "Saving the secure form failed and nothing was stored. Please try again.",
+    "SECURE_FORM_PENDING_EXPIRED": "This secure form has expired or was replaced by a newer one.",
+    "SECURE_FORM_ALREADY_HANDLED": "This secure form was already submitted or dismissed.",
+    "VAULT_ITEM_NOT_FOUND": "This vault item no longer exists.",
+    "VAULT_CAP_EXCEEDED": "The vault is full. Delete an item before saving another.",
+    "VAULT_REPLACE_REQUIRED": "An item with this title already exists. Confirm replacing it to continue.",
+    "SECURE_FORM_REQUEST_INVALID": "This secure form request is invalid or cannot be handled here."
   },
   "nav": {
     "chat": "Conversation",
@@ -269,6 +281,7 @@
     "tasks": "Automation",
     "connectors": "Connectors",
     "bridge": "Cloud collab",
+    "vault": "Vault",
     "acp": "ACP Collaboration",
     "agents": "Agents",
     "providers": "Providers",
@@ -558,7 +571,7 @@
     "editDocumentSuccess": "Saved; reindex started",
     "editDocumentFailed": "Failed to save document",
     "filenameRequired": "Please enter a file name",
-    "filenamePlaceholder": "e.g. notes",
+    "filenamePlaceholder": "File name",
     "fileFormat": "Format",
     "fileContent": "Content",
     "fileContentPlaceholder": "Write document content here…",
@@ -572,7 +585,6 @@
     "renameFile": "Rename file",
     "renameFileSuccess": "File renamed",
     "renameFileFailed": "Failed to rename file",
-    "filenamePlaceholder": "File name",
     "pathBreadcrumb": "Path",
     "deleteFolderConfirm": "Delete this folder and everything inside it?",
     "uploaded": "Documents uploaded",
@@ -1810,6 +1822,64 @@
       "expand": "View",
       "useCardForAttachments": "Attachments can't be sent while answering questions — use the card above, or answer with text."
     },
+    "secretInput": {
+      "title": "Secret input requested",
+      "slotLabel": "Stored as",
+      "placeholder": "Paste the secret value",
+      "secureHint": "Stored encrypted — never shown in the conversation.",
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "filledSummary": "Secret stored in {{slot}}",
+      "dismissedSummary": "Secret input dismissed ({{slot}})"
+    },
+    "secureForm": {
+      "title": "Secure form requested",
+      "subtitle": "Opens a secure form — what you fill in never appears in the chat.",
+      "modalTitle": "Secure form",
+      "open": "Open form",
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "secureHint": "Encrypted storage — never shown in the conversation.",
+      "loadFailed": "Failed to load this form.",
+      "cardExpPlaceholder": "MM/YY",
+      "maskedFieldAria": "Masked field: {{label}}",
+      "replaceConfirm": "Replace the existing vault item with this one",
+      "replaceRequired": "An item with this title already exists — confirm the replacement to continue",
+      "saveToVault": "Also save the vault-storable fields to my vault",
+      "filledSummary": "Secure form completed ({{count}} field(s))",
+      "dismissedSummary": "Secure form dismissed ({{count}} field(s))",
+      "expiredSummary": "This form expired and can no longer be submitted",
+      "handledSummary": "This form was already handled",
+      "banner": {
+        "title": "Where your answers go",
+        "envPersist": "Values are stored as this agent's environment secrets, reusable by the agent in later turns.",
+        "replacesSlot": "replaces an existing slot",
+        "vaultItem": "Saved to your vault as a “{{itemType}}” item.",
+        "originUnverified": "agent-declared, not verified",
+        "saveScope": "Only these field types are saved to the vault: {{types}}."
+      },
+      "itemType": {
+        "login": "login",
+        "card": "card",
+        "contact": "contact"
+      },
+      "fieldType": {
+        "text": "text",
+        "password": "password",
+        "otp": "one-time code",
+        "card_number": "card number",
+        "card_exp": "expiry",
+        "card_cvv": "security code"
+      },
+      "errors": {
+        "required": "This field is required.",
+        "maxLength": "Value is too long.",
+        "otp": "Must be 4 to 8 digits.",
+        "cardCvv": "Must be 3 to 4 digits.",
+        "cardNumber": "Must be 12 to 19 digits.",
+        "cardExp": "Use MM/YY with a month of 01-12."
+      }
+    },
     "modifiedFiles": "Modified files ({{count}})",
     "openBrowser": "View browser",
     "openBrowserHint": "Agent is browsing the web",
@@ -1957,7 +2027,9 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "request_secret_input": "Request secret input",
+    "request_secure_form": "Request secure form"
   },
   "toolSettings": {
     "title": "Tool settings",
@@ -6956,6 +7028,58 @@
     "docsHint": "Install an ACP-compatible agent locally (opencode, codebuddy --acp, etc.) before enabling a runner.",
     "chatPermissionTitle": "External agent permission required"
   },
+  "vault": {
+    "loadFailed": "Failed to load vault items.",
+    "deleted": "Deleted “{{title}}”",
+    "deleteFailed": "Failed to delete the vault item.",
+    "empty": "No vault items yet. Items saved from secure forms appear here.",
+    "deleteConfirmTitle": "Delete this vault item?",
+    "deleteConfirmDesc": "“{{title}}” will be permanently deleted. This cannot be undone.",
+    "deleteConfirmOk": "Delete",
+    "deleteCancel": "Cancel",
+    "deleteLabel": "Delete {{title}}",
+    "originUnverified": "agent-declared, not verified",
+    "updatedAt": "Updated {{time}}",
+    "newItem": "New item",
+    "filter": {
+      "all": "All"
+    },
+    "searchPlaceholder": "Search title, origin, or value",
+    "noMatch": "No items match the current filter or search.",
+    "privacyNote": "Agents never see card numbers or security codes; logins and contact info are visible to agents so they can fill forms for you.",
+    "created": "Saved “{{title}}”",
+    "create": {
+      "failed": "Failed to save the vault item.",
+      "title": "New {{type}} item",
+      "submit": "Save",
+      "cancel": "Cancel",
+      "cardExpPlaceholder": "MM/YY",
+      "fields": {
+        "title": "Title",
+        "origin": "Origin (optional)",
+        "username": "Username / email",
+        "password": "Password",
+        "card_number": "Card number",
+        "card_exp": "Expiry",
+        "text": "Contact info (phone / email / address)"
+      },
+      "errors": {
+        "titleRequired": "Enter a title.",
+        "titleTooLong": "Title must be at most 120 characters.",
+        "required": "This field is required.",
+        "maxLength": "At most 256 characters.",
+        "cardNumber": "Card number must be 12 to 19 digits.",
+        "cardExp": "Expiry must be MM/YY with a month of 01-12.",
+        "origin": "Origin must be http(s)://host[:port] with no path, query, or credentials."
+      }
+    },
+    "itemType": {
+      "login": "login",
+      "card": "card",
+      "contact": "contact"
+    },
+    "loading": "Loading…"
+  },
   "plugins": {
     "loadError": "Failed to load plugins",
     "saveFailed": "Save failed",
@@ -7099,6 +7223,10 @@
     "menuHint": "↑↓ navigate · Enter confirm · Esc close"
   },
   "pageShell": {
+    "vault": {
+      "title": "Vault",
+      "subtitle": "Encrypted items saved from secure forms — values are never displayed"
+    },
     "experts": {
       "title": "Experts",
       "subtitle": "Create and manage your AI experts, or spin one up from a template"

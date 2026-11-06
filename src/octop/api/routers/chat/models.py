@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Decision types understood by langchain's HumanInTheLoopMiddleware.
 _DECISION_TYPES: frozenset[str] = frozenset({"approve", "edit", "reject", "respond"})
@@ -199,6 +199,120 @@ class RenameThreadBody(BaseModel):
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
     hitl_policy: HitlSessionPolicyBody | None = None
+
+
+class SecretInputSubmitBody(BaseModel):
+    """Submit or cancel a pending ``request_secret_input`` card.
+
+    The value travels through this dedicated endpoint only — never through the
+    generic HITL resume (whose ``respond`` message enters the model context).
+    """
+
+    thread_id: str = Field(..., description="Conversation thread the card paused.")
+    pending_id: str = Field(..., description="Pending secret-input card id.")
+    action: Literal["submit", "cancel"] = Field(
+        ...,
+        description="submit stores the value in the slot; cancel dismisses the card.",
+    )
+    value: str | None = Field(
+        default=None,
+        max_length=8192,
+        description="Secret value (required for submit). Never echoed back in any response.",
+    )
+
+    @field_validator("value")
+    @classmethod
+    def _validate_value(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            msg = "value must be a non-empty string"
+            raise ValueError(msg)
+        return value
+
+    @model_validator(mode="after")
+    def _require_value_for_submit(self) -> SecretInputSubmitBody:
+        if self.action == "submit" and self.value is None:
+            msg = "action 'submit' requires a non-empty 'value'"
+            raise ValueError(msg)
+        return self
+
+
+class SecureFormSubmitBody(BaseModel):
+    """Submit or cancel a pending ``request_secure_form`` card.
+
+    Values travel through this dedicated endpoint only — never through the
+    generic HITL resume. Validation runs against the REGISTERED schema, never
+    these declarations; rejected values are stripped from 422 bodies.
+    """
+
+    thread_id: str = Field(..., description="Conversation thread the form paused.")
+    pending_id: str = Field(..., description="Pending secure-form card id.")
+    action: Literal["submit", "cancel"] = Field(
+        ...,
+        description="submit stores the values (env slots / vault); cancel dismisses the form.",
+    )
+    values: dict[str, str] = Field(
+        default_factory=dict,
+        description="Field id -> value (submit only). Never echoed back in any response.",
+    )
+    replace_confirmed: bool = Field(
+        default=False,
+        description="Explicit confirmation to overwrite a colliding vault item title.",
+    )
+    save_to_vault: bool = Field(
+        default=False,
+        description="Additionally save the vault-storable fields when the form registered vault metadata.",
+    )
+
+
+class SecureFormVaultMetaOut(BaseModel):
+    item_type: Literal["login", "card", "contact"]
+    title: str
+    origin: str | None = None
+
+
+class SecureFormRoutingOut(BaseModel):
+    kind: Literal["env", "vault"]
+    slots: dict[str, str] | None = Field(
+        default=None, description="env routing: field id -> normalized slot name."
+    )
+    vault_meta: SecureFormVaultMetaOut | None = None
+
+
+class SecureFormFieldOut(BaseModel):
+    id: str
+    label: str
+    type: Literal["text", "password", "otp", "card_number", "card_exp", "card_cvv"]
+    required: bool
+    max_length: int | None = None
+
+
+class SecureFormPendingOut(BaseModel):
+    """Server-registered secure-form schema with re-derived banner facts.
+
+    The dashboard renders field and destination data ONLY from this record
+    (never from SSE ``tool_start`` args). Values are never included.
+    """
+
+    pending_id: str
+    thread_id: str
+    agent_id: str
+    title: str | None = None
+    prompt: str
+    status: str = Field(description="Pending-store status (pending/filled/cancelled/...).")
+    fields: list[SecureFormFieldOut]
+    routing: SecureFormRoutingOut
+    existing_vault_item_id: str | None = Field(
+        default=None,
+        description="Re-derived per call: a same-title item exists and must be confirmed to replace.",
+    )
+    existing_slot_names: list[str] = Field(
+        default_factory=list,
+        description="Re-derived per call: mapped slots that already exist on this agent.",
+    )
+    vault_storable_field_ids: list[str] = Field(
+        default_factory=list,
+        description="Field ids whose types survive the item-type allow-list (save-to-vault line).",
+    )
 
 
 class HitlResumeBody(BaseModel):

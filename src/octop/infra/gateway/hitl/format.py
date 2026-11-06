@@ -13,6 +13,16 @@ from octop.infra.utils.locale import Locale, normalize_locale
 # Tool whose HITL interrupt is a question for the user rather than an approval.
 ASK_USER_TOOL_NAME = "ask_user_question"
 
+# Tool whose HITL interrupt collects a secret through the dashboard's masked
+# card; IM channels only get a read-only notice.
+REQUEST_SECRET_INPUT_TOOL_NAME = "request_secret_input"
+
+# Tool whose HITL interrupt collects a multi-field secure form through the
+# dashboard's modal; IM channels likewise only get a read-only notice.
+# (Name duplicated from the tool module: importing the agents package here
+# would cycle through its submit module, which imports this one.)
+REQUEST_SECURE_FORM_TOOL_NAME = "request_secure_form"
+
 # Option keys shown in IM cards: a) b) c) d)
 _OPTION_KEYS = string.ascii_lowercase
 
@@ -84,6 +94,79 @@ def is_ask_action_requests(action_requests: list[dict[str, Any]]) -> bool:
     return any(isinstance(a, dict) and a.get("name") == ASK_USER_TOOL_NAME for a in action_requests)
 
 
+def is_secret_input_action_requests(action_requests: list[dict[str, Any]]) -> bool:
+    """True when this HITL pause collects a secret via the masked card."""
+    return any(
+        isinstance(a, dict) and a.get("name") == REQUEST_SECRET_INPUT_TOOL_NAME
+        for a in action_requests
+    )
+
+
+def is_secure_form_action_requests(action_requests: list[dict[str, Any]]) -> bool:
+    """True when this HITL pause collects a multi-field secure form."""
+    return any(
+        isinstance(a, dict) and a.get("name") == REQUEST_SECURE_FORM_TOOL_NAME
+        for a in action_requests
+    )
+
+
+def is_sensitive_action_requests(action_requests: list[dict[str, Any]]) -> bool:
+    """True when this pause collects user secrets (masked card or form).
+
+    Such pauses are decided only through their dedicated submit flows — never
+    the generic approval, slash, respond, or bypass paths.
+    """
+    return is_secret_input_action_requests(action_requests) or is_secure_form_action_requests(
+        action_requests
+    )
+
+
+def extract_secure_form_summary(
+    action_requests: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Read-only facts about a secure-form pause for the IM notice card.
+
+    Field values are never present (the pause only carries the schema), and
+    IM renders nothing interactive — just what the form is about and where it
+    must be filled.
+    """
+    for action in action_requests:
+        if not isinstance(action, dict) or action.get("name") != REQUEST_SECURE_FORM_TOOL_NAME:
+            continue
+        args = action.get("args")
+        if not isinstance(args, dict):
+            args = {}
+        fields = args.get("fields")
+        routing = args.get("routing")
+        return {
+            "title": str(args.get("title") or "").strip() or None,
+            "prompt": str(args.get("prompt") or "").strip(),
+            "field_count": len(fields) if isinstance(fields, list) else 0,
+            "routing_kind": (
+                str(routing.get("kind") or "").strip() if isinstance(routing, dict) else ""
+            ),
+        }
+    return None
+
+
+def extract_secret_input_request(
+    action_requests: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Normalized ``request_secret_input`` args for the matching pause, if any."""
+    for action in action_requests:
+        if not isinstance(action, dict) or action.get("name") != REQUEST_SECRET_INPUT_TOOL_NAME:
+            continue
+        args = action.get("args")
+        if not isinstance(args, dict):
+            args = {}
+        return {
+            "slot": str(args.get("slot") or "").strip(),
+            "prompt": str(args.get("prompt") or "").strip(),
+            "title": str(args.get("title") or "").strip() or None,
+        }
+    return None
+
+
 def extract_questions(action_requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pull the normalized ``questions`` list out of an ask action request."""
     for action in action_requests:
@@ -128,7 +211,19 @@ def format_hitl_card(
     pending_id: str,
     locale: str | Locale,
 ) -> str:
-    """Render the IM card for a paused turn (approval or question)."""
+    """Render the IM card for a paused turn (approval, question, secret, or form)."""
+    if is_secret_input_action_requests(record_action_requests):
+        return format_secret_input_card(
+            record_action_requests,
+            pending_id=pending_id,
+            locale=locale,
+        )
+    if is_secure_form_action_requests(record_action_requests):
+        return format_secure_form_card(
+            record_action_requests,
+            pending_id=pending_id,
+            locale=locale,
+        )
     if is_ask_action_requests(record_action_requests):
         return format_ask_card(
             extract_questions(record_action_requests),
@@ -255,6 +350,72 @@ def format_ask_card(
     return "\n".join(lines).strip()
 
 
+def format_secret_input_card(
+    action_requests: list[dict[str, Any]],
+    *,
+    pending_id: str,
+    locale: str | Locale,
+) -> str:
+    """Render the read-only IM notice for a secret-input pause.
+
+    IM clients cannot host the masked card, and secrets must never travel
+    through an IM conversation — the user is pointed at the dashboard.
+    """
+    loc = normalize_locale(str(locale))
+    request = extract_secret_input_request(action_requests) or {}
+    slot = request.get("slot") or "—"
+    prompt = request.get("prompt") or ""
+    lines = [tr("slash.secret_input.card_title", loc), ""]
+    if prompt:
+        lines.append(prompt)
+        lines.append("")
+    lines.append(tr("slash.secret_input.slot_line", loc, slot=slot))
+    lines.append("")
+    lines.extend(
+        [
+            tr("slash.secret_input.card_footer", loc),
+            tr("slash.secret_input.card_pending_id", loc, pending_id=pending_id),
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
+def format_secure_form_card(
+    action_requests: list[dict[str, Any]],
+    *,
+    pending_id: str,
+    locale: str | Locale,
+) -> str:
+    """Render the read-only IM notice for a secure-form pause.
+
+    Same contract as the secret-input notice: the modal cannot open in IM and
+    the values must never travel through the conversation, so the card only
+    points at the dashboard and waits for its submit (or the pause TTL).
+    """
+    loc = normalize_locale(str(locale))
+    summary = extract_secure_form_summary(action_requests) or {}
+    lines = [tr("slash.secure_form.card_title", loc), ""]
+    prompt = str(summary.get("prompt") or "")
+    if prompt:
+        lines.append(prompt)
+        lines.append("")
+    lines.append(tr("slash.secure_form.fields_line", loc, count=summary.get("field_count") or 0))
+    routing_key = {
+        "env": "slash.secure_form.routing_env",
+        "vault": "slash.secure_form.routing_vault",
+    }.get(str(summary.get("routing_kind") or ""))
+    if routing_key:
+        lines.append(tr(routing_key, loc))
+    lines.append("")
+    lines.extend(
+        [
+            tr("slash.secure_form.card_footer", loc),
+            tr("slash.secure_form.card_pending_id", loc, pending_id=pending_id),
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
 def _resolve_selection(token: str, options: list[dict[str, Any]]) -> str | None:
     """Map one reply token (``a`` / ``1``) to an option label, if it matches."""
     if not options:
@@ -304,10 +465,19 @@ def parse_ask_reply(
 
 __all__ = [
     "ASK_USER_TOOL_NAME",
+    "REQUEST_SECRET_INPUT_TOOL_NAME",
+    "REQUEST_SECURE_FORM_TOOL_NAME",
     "extract_questions",
+    "extract_secret_input_request",
+    "extract_secure_form_summary",
     "format_ask_card",
     "format_hitl_card",
+    "format_secret_input_card",
+    "format_secure_form_card",
     "is_ask_action_requests",
+    "is_secret_input_action_requests",
+    "is_secure_form_action_requests",
+    "is_sensitive_action_requests",
     "normalize_hitl_request",
     "parse_action_requests",
     "parse_ask_reply",

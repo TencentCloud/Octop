@@ -12,7 +12,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlStreamContext,
     decision_rejection_reason,
 )
-from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.format import is_sensitive_action_requests, normalize_hitl_request
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.utils.ulid import new_ulid
 
@@ -111,6 +111,15 @@ class AgentMcpGatewayService:
             user_id=user.id,
         )
         if pending is not None:
+            if is_sensitive_action_requests(pending.action_requests):
+                # A secret-input or secure-form pause must not be "completed"
+                # with client-authored respond content while no env/vault
+                # write happens — only the Octop dashboard submit flows may.
+                raise OctopError(
+                    ErrorCode.FORBIDDEN,
+                    "this pause collects user secrets and can only be completed "
+                    "from the Octop dashboard",
+                )
             reason = decision_rejection_reason(pending, normalized)
             if reason is not None:
                 raise ValueError(reason)

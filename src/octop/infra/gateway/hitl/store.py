@@ -8,9 +8,25 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-HitlPendingStatus = Literal["pending", "approved", "rejected", "expired"]
+HitlPendingStatus = Literal[
+    "pending",
+    "approved",
+    "rejected",
+    "expired",
+    # Secret-input lifecycle: claimed for storage, terminal states after the
+    # dedicated submit endpoint finishes (a failed write reopens to pending).
+    "filling",
+    "filled",
+    "failed",
+    "cancelled",
+]
 
 _DEFAULT_TTL_SECONDS = 30 * 60
+
+# Secure-form claim lease: each hard write failure releases the lease and
+# spends one reopen credit; recoverable drift releases without spending.
+# Terminal once exhausted (the user restarts via a new form if needed).
+SECURE_FORM_REOPEN_LIMIT = 5
 
 
 def _same_pause_slot(
@@ -53,6 +69,44 @@ class HitlPendingRecord:
     # Resume still targets the member agent and ``room~member`` thread.
     resume_agent_id: str | None = None
     resume_thread_id: str | None = None
+    # Secure-form lease bookkeeping (single-field secret input shares the
+    # claim but never spends credits — its reopen is unbounded as before).
+    reopen_budget: int = SECURE_FORM_REOPEN_LIMIT
+    # Terminal metadata of a FILLED secure-form submission (ids/statuses
+    # only, never values), replayed idempotently when the client lost the
+    # submit response.
+    secure_form_result: dict[str, Any] | None = None
+
+
+def thread_pending_match(
+    record: HitlPendingRecord,
+    *,
+    thread_id: str,
+    agent_id: str,
+    user_id: int | None,
+    ttl_seconds: float = _DEFAULT_TTL_SECONDS,
+) -> bool:
+    """Whether *record* is a live pause for this thread/agent/user.
+
+    Shared by the store's own resolution and the secure-form endpoints (which
+    must also inspect terminal records for idempotent replays).
+    """
+    if record.status != "pending":
+        return False
+    room_match = record.thread_id == thread_id and record.agent_id == agent_id
+    member_match = bool(
+        record.resume_thread_id
+        and record.resume_thread_id == thread_id
+        and record.resume_agent_id == agent_id
+    )
+    if not room_match and not member_match:
+        return False
+    if user_id is not None and record.user_id != user_id:
+        return False
+    if time.time() - record.created_at >= ttl_seconds:
+        record.status = "expired"
+        return False
+    return True
 
 
 @dataclass
@@ -121,7 +175,7 @@ class HitlPendingStore:
             return None
         if record.status != "pending":
             return record
-        if time.time() - record.created_at > self.ttl_seconds:
+        if time.time() - record.created_at >= self.ttl_seconds:
             record.status = "expired"
             return record
         return record
@@ -161,7 +215,7 @@ class HitlPendingStore:
                 continue
             if agent_id is not None and record.agent_id != agent_id:
                 continue
-            if time.time() - record.created_at > self.ttl_seconds:
+            if time.time() - record.created_at >= self.ttl_seconds:
                 record.status = "expired"
                 continue
             if latest is None or record.created_at > latest.created_at:
@@ -217,22 +271,13 @@ class HitlPendingStore:
         agent_id: str,
         user_id: int | None,
     ) -> bool:
-        if record.status != "pending":
-            return False
-        room_match = record.thread_id == thread_id and record.agent_id == agent_id
-        member_match = bool(
-            record.resume_thread_id
-            and record.resume_thread_id == thread_id
-            and record.resume_agent_id == agent_id
+        return thread_pending_match(
+            record,
+            thread_id=thread_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            ttl_seconds=self.ttl_seconds,
         )
-        if not room_match and not member_match:
-            return False
-        if user_id is not None and record.user_id != user_id:
-            return False
-        if time.time() - record.created_at > self.ttl_seconds:
-            record.status = "expired"
-            return False
-        return True
 
     def list_pending_for_session(
         self,
@@ -261,7 +306,7 @@ class HitlPendingStore:
                 continue
             if record.user_id != user_id:
                 continue
-            if now - record.created_at > self.ttl_seconds:
+            if now - record.created_at >= self.ttl_seconds:
                 continue
             if record.agent_id == agent_id:
                 tid = (record.thread_id or "").strip()
@@ -294,11 +339,52 @@ class HitlPendingStore:
     def mark_resolved(
         self,
         pending_id: str,
-        status: Literal["approved", "rejected", "expired"],
+        status: Literal["approved", "rejected", "expired", "filled", "failed", "cancelled"],
     ) -> None:
         record = self._records.get(pending_id)
         if record is not None:
             record.status = status
+
+    def claim_secret_input(self, pending_id: str) -> HitlPendingRecord | None:
+        """Atomically move a pending secret-input pause to ``filling``.
+
+        Returns ``None`` when the record is missing, already resolved, or
+        already claimed — a replayed or racing submit must not store twice.
+        """
+        record = self._records.get(pending_id)
+        if record is None or record.status != "pending":
+            return None
+        if time.time() - record.created_at >= self.ttl_seconds:
+            record.status = "expired"
+            return None
+        record.status = "filling"
+        return record
+
+    def reopen_secret_input(self, pending_id: str) -> None:
+        """Return a claimed pause to ``pending`` after a failed store attempt."""
+        record = self._records.get(pending_id)
+        if record is not None and record.status == "filling":
+            record.status = "pending"
+
+    def reopen_secure_form(self, pending_id: str, *, spend_credit: bool = True) -> bool:
+        """Return a claimed secure-form pause to ``pending``.
+
+        ``spend_credit=False`` (recoverable drift — the serialized unit found a
+        refusal, nothing was written) releases the lease without consuming the
+        bounded reopen budget. Hard failures spend one credit; when the budget
+        is exhausted the record goes terminal (``failed``) and further submits
+        are a 409. Returns whether the pause is pending again.
+        """
+        record = self._records.get(pending_id)
+        if record is None or record.status != "filling":
+            return False
+        if spend_credit:
+            if record.reopen_budget <= 0:
+                record.status = "failed"
+                return False
+            record.reopen_budget -= 1
+        record.status = "pending"
+        return True
 
     def append_ask_answer(self, pending_id: str, answer: str) -> HitlPendingRecord | None:
         """Record one IM answer and advance to the next question."""
@@ -314,9 +400,9 @@ class HitlPendingStore:
         stale_ids: list[str] = []
         for pending_id, record in self._records.items():
             age = now - record.created_at
-            if record.status == "pending" and age > self.ttl_seconds:
+            if record.status == "pending" and age >= self.ttl_seconds:
                 record.status = "expired"
-            if record.status != "pending" and age > self.ttl_seconds:
+            if record.status != "pending" and age >= self.ttl_seconds:
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]

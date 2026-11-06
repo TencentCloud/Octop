@@ -4,8 +4,11 @@ import {
   findAutoResumableApproval,
   findPendingApproval,
   findPendingAsk,
+  findPendingSecretInput,
+  findPendingSecureForm,
   hasPendingHitl,
   promoteAskUserToolMessage,
+  promoteSecureFormToolMessage,
 } from "./pendingHitl";
 
 function msg(
@@ -203,5 +206,163 @@ describe("pendingHitl", () => {
     expect(reconstructed.hitlData?.status).toBe("pending");
     expect(findPendingAsk([reconstructed])).toBeNull();
     expect(hasPendingHitl([reconstructed])).toBe(false);
+  });
+
+  it("finds a resumable pending secret input", () => {
+    const messages = [
+      msg({
+        id: "secret",
+        role: "assistant",
+        hitlData: {
+          pending_id: "sec1",
+          action_requests: [
+            {
+              name: "request_secret_input",
+              args: { slot: "STEAM_WEB_API_KEY", prompt: "Steam key" },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    const pending = findPendingSecretInput(messages);
+    expect(pending).not.toBeNull();
+    expect(pending?.pendingId).toBe("sec1");
+    expect(pending?.request.slot).toBe("STEAM_WEB_API_KEY");
+    // Secret pauses are excluded from the approval/auto-resume paths.
+    expect(findPendingApproval(messages)).toBeNull();
+    expect(
+      findAutoResumableApproval({ mode: "allow_all" }, messages),
+    ).toBeNull();
+  });
+
+  it("ignores secret inputs the server cannot resume", () => {
+    const messages = [
+      msg({
+        id: "secret",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            {
+              name: "request_secret_input",
+              args: { slot: "STEAM_WEB_API_KEY", prompt: "Steam key" },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    expect(findPendingSecretInput(messages)).toBeNull();
+    expect(hasPendingHitl(messages)).toBe(false);
+  });
+
+  it("finds a resumable pending secure form", () => {
+    const messages = [
+      msg({
+        id: "form",
+        role: "assistant",
+        hitlData: {
+          pending_id: "sf1",
+          action_requests: [
+            {
+              name: "request_secure_form",
+              args: {
+                title: "Steam login",
+                prompt: "Fill your credentials",
+                fields: [
+                  { id: "username", type: "text" },
+                  { id: "password", type: "password" },
+                ],
+              },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    const pending = findPendingSecureForm(messages);
+    expect(pending).not.toBeNull();
+    expect(pending?.pendingId).toBe("sf1");
+    expect(pending?.request.title).toBe("Steam login");
+    expect(pending?.request.fieldCount).toBe(2);
+    // Secure-form pauses are excluded from the approval/auto-resume paths.
+    expect(findPendingApproval(messages)).toBeNull();
+    expect(
+      findAutoResumableApproval({ mode: "allow_all" }, messages),
+    ).toBeNull();
+  });
+
+  it("ignores secure forms the server cannot resume", () => {
+    const messages = [
+      msg({
+        id: "form",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            {
+              name: "request_secure_form",
+              args: {
+                prompt: "Fill your credentials",
+                fields: [{ id: "username", type: "text" }],
+              },
+            },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    expect(findPendingSecureForm(messages)).toBeNull();
+    expect(hasPendingHitl(messages)).toBe(false);
+  });
+
+  it("promotes an unanswered request_secure_form tool bubble into a pending card", () => {
+    const promoted = promoteSecureFormToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "request_secure_form",
+          arguments: JSON.stringify({
+            title: "Steam login",
+            prompt: "Fill your credentials",
+            fields: [
+              { id: "username", type: "text" },
+              { id: "password", type: "password" },
+            ],
+          }),
+        },
+      }),
+    );
+    expect(promoted.hitlData?.status).toBe("pending");
+    expect(promoted.hitlData?.pending_id).toBeUndefined();
+    expect(promoted.hitlData?.action_requests[0]?.name).toBe(
+      "request_secure_form",
+    );
+    // Not resumable → never docked, never blocks the composer.
+    expect(findPendingSecureForm([promoted])).toBeNull();
+    expect(hasPendingHitl([promoted])).toBe(false);
+  });
+
+  it("does not promote answered or foreign tool bubbles", () => {
+    const answered = promoteSecureFormToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "request_secure_form",
+          arguments: "{}",
+          output: '{"ok": true}',
+        },
+      }),
+    );
+    expect(answered.hitlData).toBeUndefined();
+    const foreign = promoteSecureFormToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: { name: "web_fetch", arguments: "{}" },
+      }),
+    );
+    expect(foreign.hitlData).toBeUndefined();
   });
 });

@@ -40,7 +40,10 @@ import {
   clearInflightTail,
   readInflightTail,
 } from "../utils/inflightTranscriptCache";
-import { promoteAskUserToolMessage } from "../utils/pendingHitl";
+import {
+  promoteAskUserToolMessage,
+  promoteSecureFormToolMessage,
+} from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import {
   parseDecisionNotice,
@@ -664,7 +667,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   }
   flushTurn();
 
-  return merged.map(promoteAskUserToolMessage);
+  return merged.map((message) =>
+    promoteSecureFormToolMessage(promoteAskUserToolMessage(message)),
+  );
 }
 
 function toHistoryContentBlocks(content: unknown): unknown[] {
@@ -1379,6 +1384,66 @@ export function useChat(
     [agentId, stableSessionId, refreshHistory],
   );
 
+  const submitSecretInput = useCallback(
+    (
+      pendingId: string,
+      action: "submit" | "cancel",
+      value?: string,
+    ): Promise<string | null> => {
+      if (!agentId) return Promise.resolve("agent unavailable");
+      const key = stableSessionId;
+      const threadId = stableSessionId !== "__empty__" ? stableSessionId : "";
+      if (!threadId || threadId === "__empty__") {
+        return Promise.resolve("thread unavailable");
+      }
+      return chatStore.submitSecretInput(
+        key,
+        agentId,
+        threadId,
+        pendingId,
+        action,
+        () => {
+          void refreshHistory(threadId);
+        },
+        value,
+      );
+    },
+    [agentId, stableSessionId, refreshHistory],
+  );
+
+  const submitSecureForm = useCallback(
+    (
+      pendingId: string,
+      payload: chatStore.SecureFormSubmitPayload,
+    ): Promise<chatStore.SecureFormSubmitOutcome> => {
+      if (!agentId) {
+        return Promise.resolve({
+          kind: "error" as const,
+          message: "agent unavailable",
+        });
+      }
+      const key = stableSessionId;
+      const threadId = stableSessionId !== "__empty__" ? stableSessionId : "";
+      if (!threadId || threadId === "__empty__") {
+        return Promise.resolve({
+          kind: "error" as const,
+          message: "thread unavailable",
+        });
+      }
+      return chatStore.submitSecureForm(
+        key,
+        agentId,
+        threadId,
+        pendingId,
+        payload,
+        () => {
+          void refreshHistory(threadId);
+        },
+      );
+    },
+    [agentId, stableSessionId, refreshHistory],
+  );
+
   return {
     messages,
     isStreaming,
@@ -1403,5 +1468,7 @@ export function useChat(
     retryHistory,
     clearMessages,
     resumeHitl,
+    submitSecretInput,
+    submitSecureForm,
   };
 }

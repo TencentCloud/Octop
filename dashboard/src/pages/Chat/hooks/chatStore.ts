@@ -9,6 +9,7 @@
 
 import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
+import i18n from "../../../i18n";
 import type { TokenUsage } from "../../../api/types";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
@@ -3634,6 +3635,298 @@ export async function resumeHitl(
 
 function optimisticSteerMessageId(clientPendingId: string): string {
   return `steer:${clientPendingId}`;
+}
+
+/** Locale header for raw chat-store fetches, mirroring api/request.ts. */
+function acceptLanguage(): string {
+  return i18n.language?.startsWith("zh") ? "zh" : "en";
+}
+
+export interface SecureFormSubmitPayload {
+  action: "submit" | "cancel";
+  /** Field id -> value (submit only). Never echoed into the transcript. */
+  values?: Record<string, string>;
+  replaceConfirmed?: boolean;
+  saveToVault?: boolean;
+}
+
+export type SecureFormSubmitOutcome =
+  | { kind: "success" }
+  | {
+      kind: "error";
+      message: string;
+      /** Octop ErrorCode (e.g. VAULT_REPLACE_REQUIRED) for targeted rendering. */
+      code?: string;
+      details?: Record<string, unknown>;
+    };
+
+/**
+ * Submit (or cancel) a pending secure form and consume the resumed turn.
+ *
+ * Mirrors `submitSecretInput`: the card resolves optimistically only after
+ * the server accepted it. On failure the outcome carries the error code so
+ * the modal can re-fetch the GET record (VAULT_REPLACE_REQUIRED), keep the
+ * drafts (write failure), or render a terminal state (expired/handled).
+ */
+export async function submitSecureForm(
+  sessionId: string,
+  agentId: string,
+  threadId: string,
+  pendingId: string,
+  payload: SecureFormSubmitPayload,
+  onStreamEnd?: () => void,
+): Promise<SecureFormSubmitOutcome> {
+  const state = getOrCreate(sessionId);
+  const live = liveSockets.get(sessionId);
+  const parkedListen =
+    live?.listenOnly === true && live.ws.readyState === WebSocket.OPEN;
+  const keepRoomListen = Boolean(state.isTeamRoom) && parkedListen;
+  if (!parkedListen) {
+    state.abortController?.abort();
+  }
+  const continuedSpeaker = keepRoomListen
+    ? pendingCardSpeaker(state, pendingId)
+    : undefined;
+  const controller = new AbortController();
+  state.abortController = controller;
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    "Accept-Language": acceptLanguage(),
+  };
+  const token = getAuthToken();
+  if (token) {
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+
+  let finished = false;
+  const finish = (skipRefresh = false, keepPaused = false) => {
+    if (finished) return;
+    finished = true;
+    pendingResumeBySession.delete(sessionId);
+    if (state.abortController === controller) {
+      state.abortController = null;
+    }
+    if (skipRefresh && keepRoomListen && !keepPaused) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+      return;
+    }
+    if (keepPaused) {
+      clearStreamingFlags(state, { keepSteer: true });
+      clearStreamActivity(sessionId);
+      state.streamMsg = "";
+      state.streamId = "";
+      state.streamBlockType = "";
+      sealInFlightAssistantMessages(state);
+      notify(state);
+      return;
+    }
+    clearStreamingFlags(state);
+    clearStreamActivity(sessionId);
+    state.streamMsg = "";
+    state.streamId = "";
+    state.streamBlockType = "";
+    sealInFlightAssistantMessages(state);
+    notify(state);
+    emitStreamEvent({ kind: "streamEnd", sessionId });
+    if (!skipRefresh) onStreamEnd?.();
+  };
+
+  try {
+    const res = await fetch(
+      getApiUrl(`/agents/${agentId}/chat/secure-form/submit`),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          thread_id: threadId,
+          pending_id: pendingId,
+          action: payload.action,
+          ...(payload.action === "submit" && payload.values
+            ? { values: payload.values }
+            : {}),
+          ...(payload.replaceConfirmed ? { replace_confirmed: true } : {}),
+          ...(payload.saveToVault ? { save_to_vault: true } : {}),
+        }),
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok) {
+      let message = `Secure form submit failed (${res.status})`;
+      let code: string | undefined;
+      let details: Record<string, unknown> | undefined;
+      try {
+        const body = (await res.json()) as {
+          error?: {
+            code?: string;
+            message?: string;
+            details?: Record<string, unknown>;
+          };
+        };
+        if (body?.error?.message) message = body.error.message;
+        code = body?.error?.code;
+        details = body?.error?.details;
+      } catch {
+        // keep the status-line fallback
+      }
+      finish();
+      return { kind: "error", message, code, details };
+    }
+    resolveHitlPending(
+      state,
+      payload.action === "cancel" ? "rejected" : "approved",
+      undefined,
+      pendingId,
+    );
+    if (keepRoomListen) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+    } else {
+      beginStream(state, sessionId);
+      notify(state);
+      emitStreamEvent({ kind: "streamStart", sessionId });
+    }
+    await consumeSseResponse(state, sessionId, res, controller, finish);
+    return { kind: "success" };
+  } catch (err: unknown) {
+    if ((err as Error).name === "AbortError") return { kind: "success" };
+    finish();
+    return {
+      kind: "error",
+      message: (err as Error).message || "Secure form submit error",
+    };
+  }
+}
+
+/**
+ * Submit (or cancel) a pending secret-input card and consume the resumed turn.
+ *
+ * Returns `null` on success — the caller must clear the masked input
+ * immediately so the value never lingers in component state or the DOM. A
+ * non-null string is a displayable error: the card stays pending and the
+ * draft is kept for retry without retyping.
+ */
+export async function submitSecretInput(
+  sessionId: string,
+  agentId: string,
+  threadId: string,
+  pendingId: string,
+  action: "submit" | "cancel",
+  onStreamEnd?: () => void,
+  value?: string,
+): Promise<string | null> {
+  const state = getOrCreate(sessionId);
+  const live = liveSockets.get(sessionId);
+  const parkedListen =
+    live?.listenOnly === true && live.ws.readyState === WebSocket.OPEN;
+  const keepRoomListen = Boolean(state.isTeamRoom) && parkedListen;
+  if (!parkedListen) {
+    state.abortController?.abort();
+  }
+  const continuedSpeaker = keepRoomListen
+    ? pendingCardSpeaker(state, pendingId)
+    : undefined;
+  // The card resolves optimistically only after the server accepted it; the
+  // fetch below returns 409 for a replayed/stale pending id.
+  const controller = new AbortController();
+  state.abortController = controller;
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    "Accept-Language": acceptLanguage(),
+  };
+  const token = getAuthToken();
+  if (token) {
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+
+  let finished = false;
+  const finish = (skipRefresh = false, keepPaused = false) => {
+    if (finished) return;
+    finished = true;
+    pendingResumeBySession.delete(sessionId);
+    if (state.abortController === controller) {
+      state.abortController = null;
+    }
+    if (skipRefresh && keepRoomListen && !keepPaused) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+      return;
+    }
+    if (keepPaused) {
+      clearStreamingFlags(state, { keepSteer: true });
+      clearStreamActivity(sessionId);
+      state.streamMsg = "";
+      state.streamId = "";
+      state.streamBlockType = "";
+      sealInFlightAssistantMessages(state);
+      notify(state);
+      return;
+    }
+    clearStreamingFlags(state);
+    clearStreamActivity(sessionId);
+    state.streamMsg = "";
+    state.streamId = "";
+    state.streamBlockType = "";
+    sealInFlightAssistantMessages(state);
+    notify(state);
+    emitStreamEvent({ kind: "streamEnd", sessionId });
+    if (!skipRefresh) onStreamEnd?.();
+  };
+
+  try {
+    const res = await fetch(
+      getApiUrl(`/agents/${agentId}/chat/secret-input/submit`),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          thread_id: threadId,
+          pending_id: pendingId,
+          action,
+          ...(action === "submit" && value ? { value } : {}),
+        }),
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok) {
+      let message = `Secret submit failed (${res.status})`;
+      try {
+        const payload = (await res.json()) as {
+          error?: { message?: string };
+          detail?: unknown;
+        };
+        if (payload?.error?.message) message = payload.error.message;
+      } catch {
+        // keep the status-line fallback
+      }
+      finish();
+      return message;
+    }
+    resolveHitlPending(
+      state,
+      action === "cancel" ? "rejected" : "approved",
+      undefined,
+      pendingId,
+    );
+    if (keepRoomListen) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+    } else {
+      beginStream(state, sessionId);
+      notify(state);
+      emitStreamEvent({ kind: "streamStart", sessionId });
+    }
+    await consumeSseResponse(state, sessionId, res, controller, finish);
+    return null;
+  } catch (err: unknown) {
+    if ((err as Error).name === "AbortError") return null;
+    finish();
+    return (err as Error).message || "Secret submit error";
+  }
 }
 
 function steerClientIds(

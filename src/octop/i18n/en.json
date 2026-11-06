@@ -91,6 +91,13 @@
       "not_owner": "Only the user who was asked can answer.",
       "answered_prefix": "User answered: "
     },
+    "secret_input": {
+      "card_title": "🔐 Secret input requested",
+      "slot_line": "Slot: `{slot}`",
+      "card_footer": "For security, secrets are collected only in the dashboard chat via a masked input card. Open the dashboard to fill it in.",
+      "card_pending_id": "Request ID: `{pending_id}` (valid for 30 minutes)",
+      "im_dashboard_only": "This request needs a secret. Open the dashboard chat to fill the masked card — secrets cannot be collected over chat here."
+    },
     "title": {
       "usage": "Usage: /title <text>",
       "done": "Title set: {title}"
@@ -340,6 +347,15 @@
       "compact_busy": "This agent is in a conversation. Wait until it is idle, then run /memory compact --confirm.",
       "compact_not_running": "This agent is not running, so its memory database cannot be compacted from chat.",
       "compact_no_memory": "This agent has no memory store to compact."
+    },
+    "secure_form": {
+      "card_title": "🔐 Secure form requested",
+      "fields_line": "Fields: {count}",
+      "routing_env": "Destination: this agent's environment secrets",
+      "routing_vault": "Destination: your encrypted vault",
+      "card_footer": "For security, forms are filled only in the dashboard chat via a masked dialog. Open the dashboard to fill it in.",
+      "card_pending_id": "Request ID: `{pending_id}` (valid for 30 minutes)",
+      "im_dashboard_only": "This request needs a secure form. Open the dashboard chat to fill it in — form values cannot be collected over chat here."
     }
   },
   "connector": {
@@ -539,6 +555,9 @@
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
+    "SECRET_REQUEST_INVALID": "This secret input request is no longer available or cannot be handled here.",
+    "SECRET_SLOT_INVALID": "The secret slot name or value is invalid.",
+    "SECRET_WRITE_FAILED": "Failed to store the secret. Please try again.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
     "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
@@ -548,7 +567,16 @@
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
-    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "SECURE_FORM_FIELD_INVALID": "One or more form fields are invalid or cannot be saved.",
+    "SECURE_FORM_SLOT_INVALID": "The form's environment slot mapping is no longer valid (name or capacity conflict).",
+    "SECURE_FORM_WRITE_FAILED": "Saving the secure form failed and nothing was stored. Please try again.",
+    "SECURE_FORM_PENDING_EXPIRED": "This secure form has expired or was replaced by a newer one.",
+    "SECURE_FORM_ALREADY_HANDLED": "This secure form was already submitted or dismissed.",
+    "VAULT_ITEM_NOT_FOUND": "This vault item no longer exists.",
+    "VAULT_CAP_EXCEEDED": "The vault is full. Delete an item before saving another.",
+    "VAULT_REPLACE_REQUIRED": "An item with this title already exists. Confirm replacing it to continue.",
+    "SECURE_FORM_REQUEST_INVALID": "This secure form request is invalid or cannot be handled here."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -670,7 +698,9 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "request_secret_input": "Request secret input",
+    "request_secure_form": "Request secure form"
   },
   "plugins": {
     "arxiv_search": {

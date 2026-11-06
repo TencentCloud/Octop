@@ -22,6 +22,7 @@ _OWNERSHIP_TABLES = (
     "connectors",
     "connector_oauth_states",
     "usage_log",
+    "vault_items",
 )
 
 

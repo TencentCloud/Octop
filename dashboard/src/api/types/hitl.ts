@@ -33,6 +33,78 @@ export interface HitlPendingPayload {
 /** Tool whose HITL pause is a question for the user, not an approval. */
 export const ASK_USER_TOOL_NAME = "ask_user_question";
 
+/** Tool whose HITL pause collects a secret through the masked input card. */
+export const REQUEST_SECRET_INPUT_TOOL_NAME = "request_secret_input";
+
+/** Tool whose HITL pause collects a multi-field secure form. */
+export const REQUEST_SECURE_FORM_TOOL_NAME = "request_secure_form";
+
+export interface SecretInputRequest {
+  slot: string;
+  prompt: string;
+  title?: string;
+}
+
+export type SecureFormFieldType =
+  | "text"
+  | "password"
+  | "otp"
+  | "card_number"
+  | "card_exp"
+  | "card_cvv";
+
+export type SecureFormVaultItemType = "login" | "card" | "contact";
+
+export interface SecureFormVaultMeta {
+  item_type: SecureFormVaultItemType;
+  title: string;
+  origin?: string | null;
+}
+
+export interface SecureFormRouting {
+  kind: "env" | "vault";
+  /** env routing: field id -> normalized slot name (server fact). */
+  slots?: Record<string, string> | null;
+  vault_meta?: SecureFormVaultMeta | null;
+}
+
+export interface SecureFormField {
+  id: string;
+  label: string;
+  type: SecureFormFieldType;
+  required: boolean;
+  max_length?: number | null;
+}
+
+/**
+ * Server-registered secure-form schema from
+ * ``GET /api/agents/{id}/chat/secure-form/{pending_id}``.
+ *
+ * The ONLY source the modal may render fields and destination facts from —
+ * never SSE ``tool_start`` args. Collision/slot facts are re-derived per
+ * call. Values are never included.
+ */
+export interface SecureFormPendingRecord {
+  pending_id: string;
+  thread_id: string;
+  agent_id: string;
+  title?: string | null;
+  prompt: string;
+  status: string;
+  fields: SecureFormField[];
+  routing: SecureFormRouting;
+  existing_vault_item_id?: string | null;
+  existing_slot_names?: string[];
+  vault_storable_field_ids?: string[];
+}
+
+/** Launcher display data from the pause args (title/prompt only, non-sensitive). */
+export interface SecureFormLauncherRequest {
+  title?: string;
+  prompt: string;
+  fieldCount: number;
+}
+
 export interface AskOption {
   label: string;
   description?: string;
@@ -148,4 +220,68 @@ export function extractAskQuestions(
 
 export function isAskHitl(actions: HitlActionRequest[] | undefined): boolean {
   return Boolean(actions?.some((a) => a.name === ASK_USER_TOOL_NAME));
+}
+
+/** True when this pause collects a secret via the masked card. */
+export function isSecretInputHitl(
+  actions: HitlActionRequest[] | undefined,
+): boolean {
+  return Boolean(
+    actions?.some((a) => a.name === REQUEST_SECRET_INPUT_TOOL_NAME),
+  );
+}
+
+/** Extract the slot/prompt/title from a `request_secret_input` pause. */
+export function extractSecretInputRequest(
+  actions: HitlActionRequest[] | undefined,
+): SecretInputRequest | null {
+  for (const action of actions ?? []) {
+    if (action.name !== REQUEST_SECRET_INPUT_TOOL_NAME) continue;
+    const args = parseActionArgs(action.args);
+    const slot = typeof args.slot === "string" ? args.slot.trim() : "";
+    if (!slot) continue;
+    return {
+      slot,
+      prompt: typeof args.prompt === "string" ? args.prompt : "",
+      title:
+        typeof args.title === "string" && args.title.trim()
+          ? args.title
+          : undefined,
+    };
+  }
+  return null;
+}
+
+/** True when this pause collects values through the secure-form modal. */
+export function isSecureFormHitl(
+  actions: HitlActionRequest[] | undefined,
+): boolean {
+  return Boolean(
+    actions?.some((a) => a.name === REQUEST_SECURE_FORM_TOOL_NAME),
+  );
+}
+
+/**
+ * Extract launcher display data from a `request_secure_form` pause.
+ *
+ * Only the model-authored title/prompt and the field count — the modal's
+ * fields and destination banner always come from the server GET record.
+ */
+export function extractSecureFormRequest(
+  actions: HitlActionRequest[] | undefined,
+): SecureFormLauncherRequest | null {
+  for (const action of actions ?? []) {
+    if (action.name !== REQUEST_SECURE_FORM_TOOL_NAME) continue;
+    const args = parseActionArgs(action.args);
+    const fields = Array.isArray(args.fields) ? args.fields : [];
+    return {
+      title:
+        typeof args.title === "string" && args.title.trim()
+          ? args.title
+          : undefined,
+      prompt: typeof args.prompt === "string" ? args.prompt : "",
+      fieldCount: fields.length,
+    };
+  }
+  return null;
 }

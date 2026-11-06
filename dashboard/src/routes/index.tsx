@@ -19,6 +19,7 @@ const RemoteDesktopPage = lazy(() => import("../pages/Control/RemoteDesktop"));
 
 // Lazy-loaded pages — Settings
 const ModelsPage = lazy(() => import("../pages/Settings/Models"));
+const VaultPage = lazy(() => import("../pages/Settings/Vault"));
 
 // Lazy-loaded pages — Admin
 const OctopAdminUsersPage = lazy(() => import("../pages/Admin/Users"));
@@ -66,6 +67,7 @@ export const pathToKey: Record<string, string> = {
   "/skills": "personalization",
   "/token-usage": "token-usage",
   "/agent-config": "agent-config",
+  "/vault": "vault",
   // Control
   "/acp": "acp",
   "/channels": "channels",
@@ -168,6 +170,7 @@ export const routeConfigs: RouteConfig[] = [
     element: <RedirectPreserveSearch to="/personalization/skills" />,
   },
   { path: "/token-usage", element: <TokenUsagePage /> },
+  { path: "/vault", element: <VaultPage /> },
 
   // Control (RequirePermission via pathPermissionKeys in MainLayout)
   { path: "/acp", element: <ACPPage /> },

@@ -98,9 +98,13 @@ import TeamChatBadge from "./components/TeamChatBadge";
 import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
+import SecretInputCard from "./components/SecretInputCard";
+import SecureFormCard from "./components/SecureFormCard";
 import {
   findAutoResumableApproval,
   findPendingAsk,
+  findPendingSecretInput,
+  findPendingSecureForm,
   hasPendingHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -376,6 +380,8 @@ function ChatPageInner() {
     retryHistory,
     clearMessages,
     resumeHitl,
+    submitSecretInput,
+    submitSecureForm,
   } = useChat(activeThreadId, resolvedAgentId, isTeamChat);
 
   const hasPendingHitlPause = useMemo(
@@ -383,6 +389,14 @@ function ChatPageInner() {
     [messages],
   );
   const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
+  const pendingSecretInput = useMemo(
+    () => findPendingSecretInput(messages),
+    [messages],
+  );
+  const pendingSecureForm = useMemo(
+    () => findPendingSecureForm(messages),
+    [messages],
+  );
   const autoResumedApprovalRef = useRef<string | null>(null);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
@@ -1769,6 +1783,46 @@ function ChatPageInner() {
                       )
                     }
                     onDismiss={() => handleAskDismiss(pendingAsk.actions)}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {pendingSecretInput ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <SecretInputCard
+                    key={pendingSecretInput.pendingId}
+                    request={pendingSecretInput.request}
+                    status="pending"
+                    onSubmit={(value) =>
+                      submitSecretInput(
+                        pendingSecretInput.pendingId,
+                        "submit",
+                        value,
+                      )
+                    }
+                    onCancel={() => {
+                      void submitSecretInput(
+                        pendingSecretInput.pendingId,
+                        "cancel",
+                      );
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {pendingSecureForm ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <SecureFormCard
+                    key={pendingSecureForm.pendingId}
+                    agentId={resolvedAgentId ?? ""}
+                    pendingId={pendingSecureForm.pendingId}
+                    request={pendingSecureForm.request}
+                    status="pending"
+                    onSubmit={(payload) =>
+                      submitSecureForm(pendingSecureForm.pendingId, payload)
+                    }
                   />
                 </div>
               </div>

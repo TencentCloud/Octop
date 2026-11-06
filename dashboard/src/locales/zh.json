@@ -250,6 +250,9 @@
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再调整成员或删除。",
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
+    "SECRET_REQUEST_INVALID": "该密钥输入请求已失效或无法在此处理。",
+    "SECRET_SLOT_INVALID": "密钥槽位名称或取值无效。",
+    "SECRET_WRITE_FAILED": "密钥存储失败，请重试。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
     "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
@@ -259,7 +262,16 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "SECURE_FORM_FIELD_INVALID": "部分表单字段无效或无法保存。",
+    "SECURE_FORM_SLOT_INVALID": "表单的环境变量槽位映射不再有效（名称或容量冲突）。",
+    "SECURE_FORM_WRITE_FAILED": "安全表单保存失败，未写入任何内容，请重试。",
+    "SECURE_FORM_PENDING_EXPIRED": "该安全表单已过期或已被新的表单替换。",
+    "SECURE_FORM_ALREADY_HANDLED": "该安全表单已被提交或取消。",
+    "VAULT_ITEM_NOT_FOUND": "该保险库条目已不存在。",
+    "VAULT_CAP_EXCEEDED": "保险库已满，请先删除条目再保存新的。",
+    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。",
+    "SECURE_FORM_REQUEST_INVALID": "该安全表单请求无效或无法在此处理。"
   },
   "nav": {
     "chat": "对话",
@@ -269,6 +281,7 @@
     "tasks": "自动化",
     "connectors": "连接器",
     "bridge": "云端协同",
+    "vault": "保管库",
     "acp": "ACP 协作",
     "agents": "专家",
     "providers": "Providers",
@@ -558,7 +571,7 @@
     "editDocumentSuccess": "已保存，正在重建索引",
     "editDocumentFailed": "保存文档失败",
     "filenameRequired": "请输入文件名",
-    "filenamePlaceholder": "例如 notes",
+    "filenamePlaceholder": "文件名",
     "fileFormat": "格式",
     "fileContent": "内容",
     "fileContentPlaceholder": "在此编写文档内容…",
@@ -572,7 +585,6 @@
     "renameFile": "重命名文件",
     "renameFileSuccess": "文件已重命名",
     "renameFileFailed": "重命名文件失败",
-    "filenamePlaceholder": "文件名",
     "pathBreadcrumb": "路径导航",
     "deleteFolderConfirm": "删除此文件夹及其内部文档？",
     "uploaded": "文档已上传",
@@ -1810,6 +1822,64 @@
       "expand": "查看",
       "useCardForAttachments": "回答提问时不能发送附件，请使用上方卡片，或用文字作答。"
     },
+    "secretInput": {
+      "title": "需要输入密钥",
+      "slotLabel": "存储为",
+      "placeholder": "粘贴密钥内容",
+      "secureHint": "加密存储——不会出现在对话记录中。",
+      "submit": "提交",
+      "cancel": "取消",
+      "filledSummary": "密钥已存入 {{slot}}",
+      "dismissedSummary": "已取消密钥输入（{{slot}}）"
+    },
+    "secureForm": {
+      "title": "需要填写安全表单",
+      "subtitle": "打开一个安全表单——填写的内容不会出现在对话中。",
+      "modalTitle": "安全表单",
+      "open": "打开表单",
+      "submit": "提交",
+      "cancel": "取消",
+      "secureHint": "加密存储——不会出现在对话记录中。",
+      "loadFailed": "加载表单失败。",
+      "cardExpPlaceholder": "MM/YY",
+      "maskedFieldAria": "掩码输入：{{label}}",
+      "replaceConfirm": "用本次填写的内容替换保管库中已有的同名条目",
+      "replaceRequired": "已存在同名保管库条目——请确认覆盖后继续",
+      "saveToVault": "同时把可保存的字段存入我的保管库",
+      "filledSummary": "安全表单已完成（{{count}} 个字段）",
+      "dismissedSummary": "已取消安全表单（{{count}} 个字段）",
+      "expiredSummary": "该表单已过期，无法再提交",
+      "handledSummary": "该表单已被处理",
+      "banner": {
+        "title": "填写内容的去向",
+        "envPersist": "填写的内容将作为该智能体的环境变量密钥存储，智能体在后续轮次中可以重复使用。",
+        "replacesSlot": "替换已有变量",
+        "vaultItem": "将作为“{{itemType}}”条目保存到你的保管库。",
+        "originUnverified": "由智能体声明，未经验证",
+        "saveScope": "只有以下类型的字段会保存到保管库：{{types}}。"
+      },
+      "itemType": {
+        "login": "登录凭据",
+        "card": "银行卡",
+        "contact": "联系人"
+      },
+      "fieldType": {
+        "text": "文本",
+        "password": "密码",
+        "otp": "一次性验证码",
+        "card_number": "卡号",
+        "card_exp": "有效期",
+        "card_cvv": "安全码"
+      },
+      "errors": {
+        "required": "该字段为必填项。",
+        "maxLength": "内容过长。",
+        "otp": "须为 4-8 位数字。",
+        "cardCvv": "须为 3-4 位数字。",
+        "cardNumber": "须为 12-19 位数字。",
+        "cardExp": "格式须为 MM/YY，月份 01-12。"
+      }
+    },
     "modifiedFiles": "已修改文件（{{count}}）",
     "openBrowser": "查看浏览器",
     "openBrowserHint": "专家正在网页中操作",
@@ -1957,7 +2027,9 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "request_secret_input": "请求密钥输入",
+    "request_secure_form": "请求安全表单"
   },
   "toolSettings": {
     "title": "工具设置",
@@ -6956,6 +7028,58 @@
     "docsHint": "请先在本地安装并配置好 ACP 专家（如 opencode、codebuddy --acp）后再启用 Runner。",
     "chatPermissionTitle": "外部专家需要权限确认"
   },
+  "vault": {
+    "loadFailed": "加载保管库条目失败。",
+    "deleted": "已删除“{{title}}”",
+    "deleteFailed": "删除保管库条目失败。",
+    "empty": "保管库还是空的。通过安全表单保存的条目会显示在这里。",
+    "deleteConfirmTitle": "删除该保管库条目？",
+    "deleteConfirmDesc": "“{{title}}”将被永久删除，且无法恢复。",
+    "deleteConfirmOk": "删除",
+    "deleteCancel": "取消",
+    "deleteLabel": "删除 {{title}}",
+    "originUnverified": "由智能体声明，未经验证",
+    "updatedAt": "更新于 {{time}}",
+    "newItem": "新建条目",
+    "filter": {
+      "all": "全部"
+    },
+    "searchPlaceholder": "搜索标题、来源或值",
+    "noMatch": "没有符合当前筛选或搜索的条目。",
+    "privacyNote": "智能体永远看不到银行卡号与安全码；登录名和联系信息智能体可见，用于代填。",
+    "created": "已保存“{{title}}”",
+    "create": {
+      "failed": "保存保管库条目失败。",
+      "title": "新建{{type}}条目",
+      "submit": "保存",
+      "cancel": "取消",
+      "cardExpPlaceholder": "MM/YY",
+      "fields": {
+        "title": "标题",
+        "origin": "来源（可选）",
+        "username": "用户名 / 邮箱",
+        "password": "密码",
+        "card_number": "银行卡号",
+        "card_exp": "有效期",
+        "text": "联系信息（电话 / 邮箱 / 地址）"
+      },
+      "errors": {
+        "titleRequired": "请输入标题。",
+        "titleTooLong": "标题最多 120 个字符。",
+        "required": "该项必填。",
+        "maxLength": "最多 256 个字符。",
+        "cardNumber": "银行卡号须为 12-19 位数字。",
+        "cardExp": "有效期须为 MM/YY，月份 01-12。",
+        "origin": "来源须为 http(s)://host[:端口]，不含路径、查询或凭据。"
+      }
+    },
+    "itemType": {
+      "login": "登录凭据",
+      "card": "银行卡",
+      "contact": "联系人"
+    },
+    "loading": "加载中…"
+  },
   "plugins": {
     "loadError": "加载插件失败",
     "saveFailed": "保存失败",
@@ -7099,6 +7223,10 @@
     "menuHint": "↑↓ 选择 · Enter 确认 · Esc 关闭"
   },
   "pageShell": {
+    "vault": {
+      "title": "保管库",
+      "subtitle": "由安全表单保存的加密条目——不会显示具体内容"
+    },
     "experts": {
       "title": "专家",
       "subtitle": "创建与管理你的 AI 专家，也可从模板一键新建"

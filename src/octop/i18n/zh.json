@@ -91,6 +91,13 @@
       "not_owner": "仅被提问的用户可以回答。",
       "answered_prefix": "用户回答："
     },
+    "secret_input": {
+      "card_title": "🔐 需要你输入密钥",
+      "slot_line": "槽位：`{slot}`",
+      "card_footer": "出于安全考虑，密钥只能通过仪表盘聊天中的掩码输入卡填写，请打开仪表盘完成输入。",
+      "card_pending_id": "请求编号：`{pending_id}`（30 分钟内有效）",
+      "im_dashboard_only": "该请求需要输入密钥。请打开仪表盘聊天填写掩码输入卡——密钥无法在当前渠道中收集。"
+    },
     "title": {
       "usage": "用法：/title <标题>",
       "done": "标题已设置：{title}"
@@ -340,6 +347,15 @@
       "compact_busy": "这个 Agent 正在对话。等它空闲后再发送 /memory compact --confirm。",
       "compact_not_running": "这个 Agent 没有在运行，无法从对话里压缩它的记忆库。",
       "compact_no_memory": "这个 Agent 没有可压缩的记忆库。"
+    },
+    "secure_form": {
+      "card_title": "🔐 请求填写安全表单",
+      "fields_line": "字段数：{count}",
+      "routing_env": "用途：该智能体的环境变量密钥",
+      "routing_vault": "用途：你的加密保险库",
+      "card_footer": "出于安全考虑，表单仅可在仪表盘会话中通过遮罩对话框填写。请打开仪表盘完成填写。",
+      "card_pending_id": "请求编号：`{pending_id}`（30 分钟内有效）",
+      "im_dashboard_only": "该请求需要填写安全表单。请打开仪表盘会话完成填写——表单内容无法在当前聊天中收集。"
     }
   },
   "connector": {
@@ -539,6 +555,9 @@
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再调整成员或删除。",
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
+    "SECRET_REQUEST_INVALID": "该密钥输入请求已失效或无法在此处理。",
+    "SECRET_SLOT_INVALID": "密钥槽位名称或取值无效。",
+    "SECRET_WRITE_FAILED": "密钥存储失败，请重试。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
     "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
@@ -548,7 +567,16 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "SECURE_FORM_FIELD_INVALID": "部分表单字段无效或无法保存。",
+    "SECURE_FORM_SLOT_INVALID": "表单的环境变量槽位映射不再有效（名称或容量冲突）。",
+    "SECURE_FORM_WRITE_FAILED": "安全表单保存失败，未写入任何内容，请重试。",
+    "SECURE_FORM_PENDING_EXPIRED": "该安全表单已过期或已被新的表单替换。",
+    "SECURE_FORM_ALREADY_HANDLED": "该安全表单已被提交或取消。",
+    "VAULT_ITEM_NOT_FOUND": "该保险库条目已不存在。",
+    "VAULT_CAP_EXCEEDED": "保险库已满，请先删除条目再保存新的。",
+    "VAULT_REPLACE_REQUIRED": "已存在同名条目，请确认替换后继续。",
+    "SECURE_FORM_REQUEST_INVALID": "该安全表单请求无效或无法在此处理。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -670,7 +698,9 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "request_secret_input": "请求密钥输入",
+    "request_secure_form": "请求安全表单"
   },
   "plugins": {
     "arxiv_search": {

@@ -1816,6 +1816,37 @@ def _ensure_user_mfa_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_vault_items_schema(db: DatabasePool) -> None:
+    """Create the user-scoped vault items table (v26 fold). Idempotent.
+
+    026 was already the current unreleased version on develop when
+    ``vault_items`` folded into it, so databases whose watermark says 26 skip
+    the numbered file; this always-run helper keeps them equivalent.
+    """
+    if _table_exists(db, "vault_items"):
+        return
+    pk = _integer_pk_sql(db)
+    int_type = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    blob_type = "BYTEA" if db.dialect == "postgresql" else "BLOB"
+    with db.connect() as conn:
+        conn.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS vault_items (
+              id             {pk},
+              vault_item_id  TEXT NOT NULL UNIQUE,
+              user_id        {int_type} NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              item_type      TEXT NOT NULL CHECK (item_type IN ('login','card','contact')),
+              title          TEXT NOT NULL,
+              origin         TEXT,
+              fields_blob    {blob_type} NOT NULL,
+              created_at     {int_type} NOT NULL,
+              updated_at     {int_type} NOT NULL,
+              UNIQUE(user_id, item_type, title)
+            )
+            """
+        )
+
+
 def _ensure_knowledge_base_icon_url_schema(db: DatabasePool) -> None:
     """Optional portrait URL on knowledge bases. Idempotent."""
     if not _table_exists(db, "knowledge_bases"):
@@ -2483,6 +2514,9 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_user_mfa_schema(db)
     _ensure_instance_lease_schema(db)
     _ensure_control_blobs_schema(db)
+    # Always repair: version may already be 26 while vault_items (the v26
+    # fold) was never created.
+    _ensure_vault_items_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)

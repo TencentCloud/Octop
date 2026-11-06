@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, map_rows, now_ts
@@ -43,12 +44,26 @@ class AuditRepo:
         action: str,
         target: str | None = None,
         payload: str | None = None,
+        conn: Any | None = None,
     ) -> None:
-        with self._db.transaction() as conn:
-            conn.execute(
+        """Append one audit row.
+
+        ``conn`` joins an externally-owned transaction (e.g. the secure-form
+        submit unit, where the audit row commits or rolls back with the vault
+        write). Payload must carry ids/titles only — never secrets.
+        """
+
+        def run(c: Any) -> None:
+            c.execute(
                 "INSERT INTO audit_log(ts, actor, action, target, payload) VALUES (?, ?, ?, ?, ?)",
                 (now_ts(), actor, action, target, payload or None),
             )
+
+        if conn is not None:
+            run(conn)
+            return
+        with self._db.transaction() as own:
+            run(own)
 
     def system_event(
         self,

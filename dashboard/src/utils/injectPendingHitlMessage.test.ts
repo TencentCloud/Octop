@@ -76,4 +76,56 @@ describe("injectPendingHitlMessage", () => {
     expect(out[0].id).toBe("hitl-ab12");
     expect(out[0].hitlData?.pending_id).toBe("ab12");
   });
+
+  it("does not merge an ask pending into a reconstructed secure-form card", () => {
+    const existing = [
+      msg({
+        id: "form",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            { name: "request_secure_form", args: { prompt: "p", fields: [] } },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    // The ask pending cannot adopt the secure-form card — the form card keeps
+    // rendering its expired summary instead of docking an ask launcher.
+    const out = injectPendingHitlMessage(existing, pending);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("form");
+    expect(out[0].hitlData?.pending_id).toBeUndefined();
+    expect(out[0].hitlData?.action_requests[0]?.name).toBe(
+      "request_secure_form",
+    );
+  });
+
+  it("merges a secure-form pending into its reconstructed card", () => {
+    const formPending = {
+      pending_id: "sf9",
+      action_requests: [
+        {
+          name: "request_secure_form",
+          args: { prompt: "Fill your credentials", fields: [] },
+        },
+      ],
+    };
+    const existing = [
+      msg({
+        id: "form",
+        role: "assistant",
+        hitlData: {
+          action_requests: [
+            { name: "request_secure_form", args: { prompt: "p", fields: [] } },
+          ],
+          status: "pending",
+        },
+      }),
+    ];
+    const out = injectPendingHitlMessage(existing, formPending);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("hitl-sf9");
+    expect(out[0].hitlData?.pending_id).toBe("sf9");
+  });
 });

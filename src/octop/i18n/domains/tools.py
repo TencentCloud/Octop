@@ -18,6 +18,13 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "write_todos",
         # Its own HITL channel — approving an approval prompt makes no sense.
         "ask_user_question",
+        # Secret collection channels: ``respond``-only interrupts served by
+        # their dedicated submit flows. A config-derived ``interrupt_on`` entry
+        # here would carry approve/reject decisions, which both bypasses the
+        # masked-card flow and breaks the turn (respond against a policy entry
+        # raises).
+        "request_secret_input",
+        "request_secure_form",
         # Memory
         "memory_search",
         "memory_get",
