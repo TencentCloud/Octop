@@ -5,6 +5,8 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+### 修复
+- Windows 上将其他盘符的盘根目录作为专家存储根目录时，工作区随存储根创建，不再错误落到 `OCTOP_HOME` 所在盘（#2005）。
 
 ## [1.0.3b4] - 2026-11-06
 
