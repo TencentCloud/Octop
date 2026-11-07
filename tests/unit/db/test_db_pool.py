@@ -21,6 +21,28 @@ def db(tmp_path: Path) -> SqlitePool:
     return pool
 
 
+def test_close_waits_for_in_flight_query(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    entered = threading.Event()
+    result: dict[str, int] = {}
+
+    def query() -> None:
+        with pool.connect() as conn:
+            entered.set()
+            time.sleep(0.2)
+            result["row"] = int(conn.execute("SELECT 1").fetchone()[0])
+
+    worker = threading.Thread(target=query)
+    worker.start()
+    assert entered.wait(2)
+    pool.close()
+    worker.join(2)
+    assert not worker.is_alive()
+    assert result["row"] == 1
+    with pytest.raises(sqlite3.ProgrammingError), pool.connect():
+        pass
+
+
 def test_db_pool_creates_file(tmp_path: Path):
     db_path = tmp_path / "octop.db"
     SqlitePool(db_path)
