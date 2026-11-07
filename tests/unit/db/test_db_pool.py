@@ -35,6 +35,31 @@ def test_db_pool_file_is_0600(tmp_path: Path):
     assert mode == 0o600
 
 
+def test_close_waits_for_in_flight_connection(db: SqlitePool) -> None:
+    """Closing must not free the connection while another thread is inside it."""
+    started = threading.Event()
+    release = threading.Event()
+
+    def hold() -> None:
+        with db.connect() as conn:
+            started.set()
+            assert release.wait(timeout=5)
+            conn.execute("SELECT 1").fetchone()
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    assert started.wait(timeout=5)
+    closer = threading.Thread(target=db.close)
+    closer.start()
+    closer.join(timeout=0.2)
+    assert closer.is_alive()
+    release.set()
+    closer.join(timeout=5)
+    holder.join(timeout=5)
+    assert not closer.is_alive()
+    assert not holder.is_alive()
+
+
 def test_run_migrations_creates_tables(db: SqlitePool):
     with db.connect() as conn:
         rows = conn.execute(

@@ -82,7 +82,11 @@ class SqlitePool:
                 raise
 
     def close(self) -> None:
-        self._conn.close()
+        # connect() and transaction() hold this lock across sqlite calls.
+        # Closing without it frees the connection under another thread and
+        # segfaults the interpreter.
+        with self._lock:
+            self._conn.close()
 
 
 class _CompatRow(Mapping[str, Any]):

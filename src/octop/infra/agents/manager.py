@@ -562,6 +562,7 @@ class AgentManager:
         self._reclaim_pending: set[str] = set()
         self._reclaim_holds: dict[str, asyncio.Event] = {}
         self._reclaim_task: asyncio.Task[None] | None = None
+        self._reclaim_sweep_task: asyncio.Task[None] | None = None
         self._reclaim_wake: asyncio.Event | None = None
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
@@ -722,6 +723,13 @@ class AgentManager:
 
     async def shutdown(self) -> None:
         self._reclaim_pending.clear()
+        # The idle sweep runs list_all on a worker thread. Cancelling that
+        # task does not stop the thread, so wait until the scan returns before
+        # the caller closes the control-plane connection.
+        sweep_task = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep_task is not None and not sweep_task.done():
+            await sweep_task
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
         if reclaim_task is not None and not reclaim_task.done():
@@ -1769,11 +1777,15 @@ class AgentManager:
     def schedule_idle_reclaim_sweep(self) -> None:
         """Queue loaded stores whose freelist is already large enough to compact."""
         try:
-            asyncio.get_running_loop().create_task(
-                self._sweep_bloated_stores(), name="store-reclaim-sweep"
-            )
+            loop = asyncio.get_running_loop()
         except RuntimeError:
             return
+        existing = self._reclaim_sweep_task
+        if existing is not None and not existing.done():
+            return
+        self._reclaim_sweep_task = loop.create_task(
+            self._sweep_bloated_stores(), name="store-reclaim-sweep"
+        )
 
     async def compact_agent_database(self, agent_id: str, *, wait_s: float = 60) -> bool:
         """Rebuild the database now. False means it was deferred until idle."""
@@ -1827,9 +1839,14 @@ class AgentManager:
         self._reclaim_task = loop.create_task(self._reclaim_pending_loop(), name="store-reclaim")
 
     async def _sweep_bloated_stores(self) -> None:
-        queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
-        if queued:
-            self._ensure_reclaim_task()
+        try:
+            queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
+            if queued:
+                self._ensure_reclaim_task()
+        finally:
+            current = asyncio.current_task()
+            if self._reclaim_sweep_task is current:
+                self._reclaim_sweep_task = None
 
     def _queue_bloated_sqlite_stores(self) -> int:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
@@ -2992,7 +3009,11 @@ class AgentManager:
         root_dir = str(spec.get("root_dir") or "").strip()
         if not root_dir:
             return False
-        if root_dir == "/":
+        from octop.infra.agents.workspace.dir import is_explicit_host_root  # noqa: PLC0415
+
+        # ``/`` on POSIX, or a drive root (``C:/``) on Windows. Both can see the
+        # host path of a global skill package.
+        if is_explicit_host_root(root_dir):
             return True
         if workspace_dir is None:
             return False
