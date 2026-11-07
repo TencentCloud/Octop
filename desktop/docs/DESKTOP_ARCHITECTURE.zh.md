@@ -58,6 +58,8 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 - 由 CI / Makefile 打包生成独立的绿色便携包：`Octop-portable-<plat>-<version>.zip`。
 - **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。macOS 在签名和公证之前完成；Linux 的 deb、rpm 都带上这棵树。DMG 没有安装脚本，deb/rpm 安装的也是同一棵已展开的树，所以不能留到安装时再解压。
 - **Windows**：zip 与 `portable-version.json` 放在 `resources/portable/`。NSIS `customInstall` 用 `tar.exe` 解到 `$INSTDIR\resources\sidecar\`，卸载时删掉这个目录。不把四万多个文件逐个打进 NSIS。
+- 打 zip 之前删掉 `googleapiclient/discovery_cache/documents`、`PyObjCTest`、`*.dSYM`，以及第三方包里的 `tests` / `test` / `testing`。`octop` 自己的目录和 `numpy/testing` 保留。缺静态 discovery 文档时改为联网拉取。绿色 zip 和安装包是同一棵树，所以两处一起生效。
+- Dashboard 只留 wheel 里的 `packages/octop/dashboard`。壳从这份目录提供 `octop://app/`，不再另拷一份到 `resources/dashboard`。开发时 `OCTOP_DASHBOARD_DIR` 仍可指向另一份构建。
 - 展开后的结构（zip 内层目录名已去掉）：
 
 ```text
@@ -294,7 +296,7 @@ Electron main 入口：执行轻量初始化并获取单实例锁
 
 | 请求路径 | 处理机制 | 安全保障 |
 |---|---|---|
-| `octop://app/`、`/assets/*`、`*.js`、`*.css` | 从客户端打包的 Dashboard 静态目录读取 | 只允许受支持的方法，路径必须位于静态资源根目录内 |
+| `octop://app/`、`/assets/*`、`*.js`、`*.css` | 从便携运行时的 `packages/octop/dashboard` 读取 | 只允许受支持的方法，路径必须位于静态资源根目录内 |
 | `octop://app/api/*` | 主进程透明反向代理至 `http://127.0.0.1:<assigned-port>/api/*` | 校验来源和窗口身份，过滤伪造的 Host、Origin、Cookie 与连接级标头 |
 | 外部 `http://` / `https://` 链接 | 拦截导航并调用 `shell.openExternal` | 防止外部页面进入应用受信上下文 |
 

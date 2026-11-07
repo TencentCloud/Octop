@@ -18,6 +18,11 @@ export function runtimeInterpreterRelative(platform: string): string {
   return join("runtime", platform === "win32" ? "python.exe" : "bin/python3");
 }
 
+/** Dashboard files inside the portable tree. The shell serves this copy. */
+export function bundledDashboardDir(portableDir: string): string {
+  return join(portableDir, "packages", "octop", "dashboard");
+}
+
 export function installedRuntimeDir(
   resourcesRoot: string,
   platform: string,

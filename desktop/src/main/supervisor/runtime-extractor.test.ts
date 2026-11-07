@@ -5,7 +5,13 @@ import { join } from "node:path";
 import { test } from "node:test";
 import AdmZip from "adm-zip";
 
-import { classifyRuntime, extractPortableZip, installedRuntimeDir, isSafeSymlinkTarget } from "./runtime-extractor";
+import {
+  bundledDashboardDir,
+  classifyRuntime,
+  extractPortableZip,
+  installedRuntimeDir,
+  isSafeSymlinkTarget,
+} from "./runtime-extractor";
 import { compareVersions } from "./version";
 
 const posixOnly = process.platform === "win32" ? { skip: "Unix symlink and mode bits" } : {};
@@ -119,6 +125,13 @@ function statExists(path: string): boolean {
     return false;
   }
 }
+
+test("bundledDashboardDir is the copy inside the portable tree", () => {
+  assert.equal(
+    bundledDashboardDir(join("resources", "portable")),
+    join("resources", "portable", "packages", "octop", "dashboard"),
+  );
+});
 
 test("installedRuntimeDir prefers the Windows install expansion", () => {
   const root = join("resources");

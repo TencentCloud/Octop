@@ -34,13 +34,15 @@ export default {
   artifactName,
   appId: "com.tencent.octop",
   productName,
-  // extraResources places the portable zip outside asar; the runtime is extracted
-  // into OCTOP_HOME before native Python extensions are loaded.
+  // extraResources places the portable tree outside asar. The shell reads
+  // Dashboard from portable/packages/octop/dashboard, so it is not copied again.
   asar: true,
+  // Bare "en" also keeps en-* region packs. zh_CN does not keep zh_TW.
+  // zh-Hans InfoPlist.strings are written in afterPack, after this filter.
+  electronLanguages: ["en", "zh_CN"],
   extraResources: [
     { from: "resources/icon.ico", to: "icon.ico" },
     { from: "resources/portable", to: "portable" },
-    { from: "resources/dashboard", to: "dashboard" },
   ],
   files: ["out/**/*", "package.json"],
   directories: { output: "release", buildResources: "resources" },

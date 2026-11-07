@@ -247,6 +247,13 @@ assemble_one() {
     }
   fi
 
+  # Drop discovery documents, debug symbols, and third-party tests before the
+  # zip. The desktop installer copies this same tree (Windows copies the zip).
+  local prune_py
+  prune_py="$(runtime_python "${staging}/runtime")"
+  echo "[package] ${plat}: pruning site-packages"
+  "$prune_py" "${REPO_ROOT}/desktop/portable/prune_packages.py" "${staging}/packages"
+
   # macOS: reject Homebrew-linked native extensions before zipping.
   verify_no_homebrew_dylibs "${staging}/packages" "$plat"
 

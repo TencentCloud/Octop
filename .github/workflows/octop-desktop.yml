@@ -244,15 +244,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Stage Electron runtime and Dashboard
+      - name: Stage Electron runtime
         run: |
           set -euo pipefail
           plat="${{ matrix.plat }}"
           zip="desktop/portable/release/Octop-portable-${plat}-${OCTOP_VERSION}.zip"
-          mkdir -p desktop/src/resources/dashboard
           rm -rf desktop/src/resources/portable
           mkdir -p desktop/src/resources/portable
-          cp -a src/octop/dashboard/. desktop/src/resources/dashboard/
+          # The shell serves packages/octop/dashboard from this tree. There is
+          # no second copy under resources/dashboard.
+          test -f "desktop/portable/release/Octop-${plat}/packages/octop/dashboard/index.html"
           # Windows keeps one zip; NSIS extracts it with tar.exe. Packing the
           # ~40k files into NSIS is slower. macOS (DMG) and Linux (deb/rpm)
           # copy the tree package.sh already assembled. No zip in those apps.
@@ -286,7 +287,9 @@ jobs:
           dest.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
           print(f"Bundled {path.name} with SHA-256 {manifest['sha256']}")
           PY
-          test -f desktop/src/resources/dashboard/index.html
+          if [[ "$plat" != windows-* ]]; then
+            test -f desktop/src/resources/portable/packages/octop/dashboard/index.html
+          fi
 
       - uses: actions/setup-node@v5
         with:

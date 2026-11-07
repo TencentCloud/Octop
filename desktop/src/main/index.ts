@@ -34,6 +34,7 @@ import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
 import {
+  bundledDashboardDir,
   classifyRuntime,
   extractPortableZip,
   installedRuntimeDir,
@@ -165,8 +166,10 @@ function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, "../../resources");
 }
 
-function dashboardRoot(): string {
-  return process.env.OCTOP_DASHBOARD_DIR ?? join(resourcesRoot(), "dashboard");
+function dashboardRoot(portableDir: string): string {
+  const override = (process.env.OCTOP_DASHBOARD_DIR ?? "").trim();
+  if (override) return override;
+  return bundledDashboardDir(portableDir);
 }
 
 /** Map to the green-pack naming used by desktop/portable (`darwin-arm64`, …). */
@@ -971,7 +974,7 @@ async function boot(): Promise<void> {
     label: `${process.platform}-${process.arch}`,
   });
 
-  registerProtocol(dashboardRoot());
+  registerProtocol(dashboardRoot(portableDir));
   registerIpcHandlers();
 
   // §5.2: the page learns only this relay's ephemeral port, never the sidecar's.
