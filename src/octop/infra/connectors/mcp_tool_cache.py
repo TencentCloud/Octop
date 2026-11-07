@@ -33,6 +33,8 @@ def fingerprint_mcp_spec(spec: dict[str, Any]) -> str:
             payload[key] = [str(x) for x in value]
         else:
             payload[key] = value
+    if spec.get("auth") is not None:
+        payload["auth"] = type(spec["auth"]).__qualname__
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
