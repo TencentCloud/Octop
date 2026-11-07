@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import ssl
 from typing import Any
 
 import pytest
@@ -128,3 +129,39 @@ def test_parse_version() -> None:
     assert creator._parse_version("1.5.5") >= creator.MIN_LARK_OAPI
     assert creator._parse_version("1.5.4") < creator.MIN_LARK_OAPI
     assert creator._parse_version("1.7.0") >= creator.MIN_LARK_OAPI
+
+
+def test_greeting_verifies_tls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The greeting POSTs the app secret, so TLS verification must stay on."""
+    contexts: list[Any] = []
+
+    class _Response:
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+
+        def read(self) -> bytes:
+            return self._payload
+
+        def __enter__(self) -> _Response:
+            return self
+
+        def __exit__(self, *_exc: object) -> bool:
+            return False
+
+    payloads = [b'{"tenant_access_token": "t"}', b"{}"]
+
+    def fake_urlopen(
+        _req: object, *, context: ssl.SSLContext | None = None, **_kwargs: object
+    ) -> _Response:
+        contexts.append(context)
+        return _Response(payloads[len(contexts) - 1])
+
+    monkeypatch.setattr(creator.urllib.request, "urlopen", fake_urlopen)
+    creator._send_greeting(
+        "cli_a", "secret", "ou_1", open_base="https://open.feishu.cn", greeting="hi"
+    )
+
+    assert len(contexts) == 2
+    for ctx in contexts:
+        assert ctx.check_hostname is True
+        assert ctx.verify_mode == ssl.CERT_REQUIRED
