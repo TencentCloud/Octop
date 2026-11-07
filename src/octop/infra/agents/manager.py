@@ -3696,6 +3696,24 @@ class AgentManager:
                     row.agent_id,
                     exc_info=True,
                 )
+            try:
+                from octop.infra.agents.builtin_tools import (  # noqa: PLC0415
+                    sync_builtin_tool_sources,
+                )
+
+                synced_tool_sources = await sync_builtin_tool_sources(ws)
+                if synced_tool_sources:
+                    logger.info(
+                        "Agent %s: materialized built-in tool sources=%d",
+                        row.agent_id,
+                        len(synced_tool_sources),
+                    )
+            except Exception:
+                logger.warning(
+                    "Agent %s: failed to materialize built-in tool sources",
+                    row.agent_id,
+                    exc_info=True,
+                )
             if self._plugin_manager is not None:
                 agent_plugins = self.get_config(row.agent_id).get("plugins")
                 await asyncio.to_thread(
