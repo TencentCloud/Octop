@@ -102,7 +102,8 @@ def _attach_message_authors(
     for item in messages:
         if item.get("role") != "user":
             continue
-        profile = profiles.get(item.get("author_user_id"))
+        raw_author = item.get("author_user_id")
+        profile = profiles.get(raw_author) if isinstance(raw_author, int) else None
         if profile is not None:
             item["author"] = profile
 
