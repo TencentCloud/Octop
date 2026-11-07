@@ -24,6 +24,7 @@ from octop.infra.cloud.tencent import (
     list_instances,
     list_regions,
     mirror_to_tccli,
+    open_cloud_credential_store,
     query_cluster_trend,
     query_latest_metrics,
     query_metrics,
@@ -57,7 +58,11 @@ class ClusterTrendBody(BaseModel):
 
 
 def _store(server: Any) -> CloudCredentialStore:
-    return CloudCredentialStore(server.paths.root)
+    return open_cloud_credential_store(
+        server.paths.root,
+        server.config,
+        server.services.secret_repo,
+    )
 
 
 def _uid(user: Any) -> int:
@@ -108,6 +113,10 @@ async def status(
         else:
             store.save(uid, credential)
             mirror_state = await asyncio.to_thread(mirror_to_tccli, credential, uid=uid)
+    elif credential is not None and store.shared:
+        # Another instance may have stored the login. Seed this machine's tccli
+        # so the ops expert on the node that served the page can use it.
+        mirror_state = await asyncio.to_thread(mirror_to_tccli, credential, uid=uid)
     payload = _status_payload(credential)
     if mirror_state is not None:
         payload["tccli_mirror"] = mirror_state

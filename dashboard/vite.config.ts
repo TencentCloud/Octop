@@ -175,6 +175,9 @@ export default defineConfig(({ mode }) => {
           "apple-touch-icon.png",
         ],
         workbox: {
+          // Notification clicks are handled here. The production worker must
+          // not skipWaiting; notify-sw.js only does that when it is the worker.
+          importScripts: ["notify-sw.js"],
           // Precache hashed entry + vendor chunks. Do NOT precache index.html:
           // Cache-First on the shell pins a stale HTML that points at deleted
           // hashes after deploy (white screen until a hard refresh).

@@ -128,6 +128,7 @@ async def list_threads(
     # 有些 thread 有标题但从未落过消息，点开就是空白。这里补一次真实计数。
     message_repo = server.services.thread_message_repo
     ids_with_messages = message_repo.threads_with_messages([r.thread_id for r in rows])
+    unread = thread_registry.unread_counts_for_threads([r.thread_id for r in rows])
 
     def _has_messages(row: Any) -> bool:
         if not thread_row_has_messages(row):
@@ -148,6 +149,7 @@ async def list_threads(
             "is_active": r.thread_id == bound,
             "has_messages": _has_messages(r),
             "pinned": r.pinned,
+            "unread_count": int(unread.get(r.thread_id, 0)),
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,

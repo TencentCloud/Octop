@@ -85,17 +85,20 @@ export function ActiveModelPool({
     const isAlready =
       m.provider_name === activeModel.provider_name &&
       m.model === activeModel.model;
-    if (isAlready) return;
-
     const key = `${m.provider_name}/${m.model}`;
     setSetting(key);
     try {
-      await preferencesApi.patch({ preferred_model: key });
-      message.success(
-        t("models.preferredModelSet", {
-          model: modelOptionLabel(m),
-        }),
-      );
+      if (isAlready) {
+        await preferencesApi.patch({ preferred_model: null });
+        message.success(t("models.preferredModelCleared"));
+      } else {
+        await preferencesApi.patch({ preferred_model: key });
+        message.success(
+          t("models.preferredModelSet", {
+            model: modelOptionLabel(m),
+          }),
+        );
+      }
       await onSaved();
     } catch (err) {
       message.error(
@@ -328,7 +331,7 @@ export function ActiveModelPool({
                     <Tooltip
                       title={
                         isPreferred
-                          ? t("models.currentPreferred")
+                          ? t("models.clearPreferred")
                           : t("models.setAsPreferred")
                       }
                     >
@@ -351,11 +354,18 @@ export function ActiveModelPool({
                     </Tooltip>
 
                     <div className={styles.poolModelInfo}>
-                      <span
-                        className={styles.poolModelName}
-                        title={modelOptionLabel(m)}
-                      >
-                        {modelOptionLabel(m)}
+                      <span className={styles.poolModelNameRow}>
+                        <span
+                          className={styles.poolModelName}
+                          title={modelOptionLabel(m)}
+                        >
+                          {modelOptionLabel(m)}
+                        </span>
+                        {isPreferred ? (
+                          <Tag className={styles.preferredBadge}>
+                            {t("models.preferredBadge")}
+                          </Tag>
+                        ) : null}
                       </span>
                     </div>
 

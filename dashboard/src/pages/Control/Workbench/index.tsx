@@ -13,9 +13,9 @@ import styles from "./index.module.less";
 export type WorkbenchTab = "terminal" | "browser" | "cloud";
 
 const WORKBENCH_TABS = [
-  "cloud",
   "browser",
   "terminal",
+  "cloud",
 ] as const satisfies readonly WorkbenchTab[];
 
 const TAB_ICONS = {
@@ -85,15 +85,6 @@ export default function WorkbenchPage({
       pathTabs={pathTabs}
     >
       <div className={styles.panels}>
-        {isMounted("cloud") && (
-          <div
-            className={styles.panel}
-            style={{ display: activeTab === "cloud" ? "flex" : "none" }}
-            aria-hidden={activeTab !== "cloud"}
-          >
-            <CloudHostsPage isVisible={isVisible && activeTab === "cloud"} />
-          </div>
-        )}
         {isMounted("browser") && (
           <div
             className={styles.panel}
@@ -110,6 +101,15 @@ export default function WorkbenchPage({
             aria-hidden={activeTab !== "terminal"}
           >
             <TerminalPage embedded isVisible={terminalVisible} />
+          </div>
+        )}
+        {isMounted("cloud") && (
+          <div
+            className={styles.panel}
+            style={{ display: activeTab === "cloud" ? "flex" : "none" }}
+            aria-hidden={activeTab !== "cloud"}
+          >
+            <CloudHostsPage isVisible={isVisible && activeTab === "cloud"} />
           </div>
         )}
       </div>

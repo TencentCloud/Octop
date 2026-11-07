@@ -30,6 +30,7 @@ export interface Session {
   artifacts?: ThreadArtifact[];
   turnActive?: boolean;
   awaitingUser?: boolean;
+  unreadCount?: number;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -55,6 +56,7 @@ export function toSession(row: {
   agent_id?: string | null;
   turn_active?: boolean;
   awaiting_user?: boolean;
+  unread_count?: number;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -89,6 +91,7 @@ export function toSession(row: {
     ),
     turnActive: Boolean(row.turn_active),
     awaitingUser: Boolean(row.awaiting_user),
+    unreadCount: row.unread_count ?? 0,
   };
 }
 
