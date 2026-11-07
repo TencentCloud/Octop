@@ -2,7 +2,7 @@
 
 The optional ``--overrides`` argv is built into ``extra=()`` (line 30), which stays
 empty for every platform where ``write_green_overrides`` prints no override file —
-that is all of them except ``windows-arm64`` and ``darwin-amd64``. Under the
+that is all of them except ``windows-arm64``, ``darwin-arm64``, and ``darwin-amd64``. Under the
 script's ``set -euo pipefail`` (line 7), bash 3.2 — the default ``/bin/bash`` on
 macOS, and the shell ``desktop/portable/README.md:78`` tells you to run this with —
 expands an empty array as an unbound variable and aborts before ``uv`` is called.
@@ -24,9 +24,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "desktop" / "portable" / "vendor-wheels.sh"
 BASH = shutil.which("bash")
 
-# ``extra`` is empty for these; only the two override platforms add an argument.
-NO_OVERRIDE_PLATS = ["darwin-arm64", "linux-amd64", "windows-amd64"]
-OVERRIDE_PLATS = ["darwin-amd64"]
+# ``extra`` is empty for these; override platforms add ``--overrides``.
+NO_OVERRIDE_PLATS = ["linux-amd64", "windows-amd64"]
+OVERRIDE_PLATS = ["darwin-arm64", "darwin-amd64"]
 
 # The installers and packaging scripts are POSIX shell entry points.
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only shell scripts")

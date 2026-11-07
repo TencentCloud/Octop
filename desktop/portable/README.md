@@ -25,7 +25,8 @@ make -f desktop/portable/Makefile green
 `uv export --frozen`，出包后跑 `desktop/portable/verify_imports.py`
 校验关键包 pin 与 import（含 `langchain-openai` / `langchain-core` 配对），
 避免「同安装、不同环境」因版本错配或原生扩展加载失败而偶发报错。
-平台 overrides（`darwin-amd64` / `windows-arm64` 的 `cryptography==46.x`）
+平台 overrides（`darwin-amd64` / `windows-arm64` 的 `cryptography==46.x`，
+macOS full 的 `onnxruntime==1.23.2`，Intel full 的 `opencv-python==4.11.0.86`）
 会一并传入校验，避免与 lock 中的 49.x 误报不一致。
 
 ## 产物布局
@@ -89,9 +90,10 @@ OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 绿包脚本已做：
 
 1. `darwin-amd64` 覆盖钉死 `cryptography==46.0.3`（仍有 `macosx_*_universal2` wheel）
-2. 全平台 `--only-binary cryptography`，禁止源码编译
-3. 打包后 `otool` 检查，拒绝 Homebrew/MacPorts 绝对路径
-4. smoke import 覆盖 `cryptography.fernet`
+2. `uv --python-platform *-apple-darwin` 按 macOS 13.0 选 wheel。`onnxruntime` 1.28 只有 `macosx_14_0_arm64`，两个 macOS 都钉 `onnxruntime==1.23.2`（最后一版 `macosx_13_0` wheel，fastembed 0.9.1 允许）。Intel 的 `opencv-python` 5.x 是 `macosx_14_0_x86_64`，钉 `opencv-python==4.11.0.86`（`macosx_13_0_x86_64`，且接受锁定的 numpy 2.5）
+3. 全平台 `--only-binary cryptography`，禁止源码编译
+4. 打包后 `otool` 检查，拒绝 Homebrew/MacPorts 绝对路径
+5. smoke import 覆盖 `cryptography.fernet`
 
 ### Windows / pywin32
 
