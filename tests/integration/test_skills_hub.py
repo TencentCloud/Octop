@@ -3,7 +3,6 @@ and POST /api/agents/{id}/skills/hub/install."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -156,7 +155,6 @@ async def test_hub_install_persists_market_name_and_icon(
     env: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from octop.api.routers import skills as skills_router
     from octop.infra.skills import skillhub_market
     from tests.support.auth import create_agent, seed_openai_provider
 
@@ -183,11 +181,7 @@ async def test_hub_install_persists_market_name_and_icon(
             )
         ]
 
-    async def unexpected_cli() -> str:
-        raise AssertionError("HTTP success must not initialize the SkillHub CLI")
-
     monkeypatch.setattr(skillhub_market, "download_skillhub_package", fake_download)
-    monkeypatch.setattr(skills_router, "_ensure_skillhub_cli", unexpected_cli)
 
     c, _srv, auth, _main_aid = env
     await seed_openai_provider(c, auth)
@@ -227,11 +221,10 @@ async def test_hub_install_persists_market_name_and_icon(
     }
 
 
-async def test_hub_install_falls_back_to_cli_on_http_failure(
+async def test_hub_install_reports_http_failure(
     env: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from octop.api.routers import skills as skills_router
     from octop.infra.skills import skillhub_market
     from tests.support.auth import create_agent, seed_openai_provider
 
@@ -243,32 +236,7 @@ async def test_hub_install_falls_back_to_cli_on_http_failure(
     ) -> list[tuple[str, bytes]]:
         raise skillhub_market.SkillHubMarketError("upstream unavailable")
 
-    async def fake_ensure_cli() -> str:
-        return "/fake/skillhub"
-
-    async def fake_upgrade(_skillhub_bin: str) -> bool:
-        return False
-
-    async def fake_run(
-        _skillhub_bin: str,
-        args: list[str],
-        *,
-        timeout: float,
-    ) -> tuple[int, str, str]:
-        assert timeout == 120
-        assert args[-1] == "fallback-skill"
-        install_dir = Path(args[1]) / "cli-output"
-        install_dir.mkdir(parents=True)
-        (install_dir / "SKILL.md").write_text(
-            "---\nname: fallback-skill\n---\n\n# Body\n",
-            encoding="utf-8",
-        )
-        return 0, "", ""
-
     monkeypatch.setattr(skillhub_market, "download_skillhub_package", failed_download)
-    monkeypatch.setattr(skills_router, "_ensure_skillhub_cli", fake_ensure_cli)
-    monkeypatch.setattr(skills_router, "_upgrade_skillhub_cli", fake_upgrade)
-    monkeypatch.setattr(skills_router, "_run_skillhub_cmd", fake_run)
 
     c, _srv, auth, _main_aid = env
     await seed_openai_provider(c, auth)
@@ -279,15 +247,14 @@ async def test_hub_install_falls_back_to_cli_on_http_failure(
         json={"skill_name": "fallback-skill", "enable": True},
     )
 
-    assert r.status_code == 201, r.text
-    assert r.json()["transport"] == "cli"
+    assert r.status_code == 502, r.text
+    assert r.json()["detail"] == "upstream unavailable"
 
 
-async def test_hub_install_does_not_fallback_after_package_validation_failure(
+async def test_hub_install_reports_package_validation_failure(
     env: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from octop.api.routers import skills as skills_router
     from octop.infra.skills import skillhub_market
     from tests.support.auth import create_agent, seed_openai_provider
 
@@ -299,11 +266,7 @@ async def test_hub_install_does_not_fallback_after_package_validation_failure(
     ) -> list[tuple[str, bytes]]:
         raise skillhub_market.SkillHubPackageError("unsafe zip path entry")
 
-    async def unexpected_cli() -> str:
-        raise AssertionError("Invalid packages must not bypass validation through the CLI")
-
     monkeypatch.setattr(skillhub_market, "download_skillhub_package", invalid_download)
-    monkeypatch.setattr(skills_router, "_ensure_skillhub_cli", unexpected_cli)
 
     c, _srv, auth, _main_aid = env
     await seed_openai_provider(c, auth)

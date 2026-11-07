@@ -33,6 +33,9 @@ class _ConnectorService(ConnectorService):
         self.allowed = {1: ["bound", "caller-default"], 2: ["owner-private"]}
         self.loaded_for: list[int] = []
 
+    def shared_custom_harness_aliases(self, owner_user_id: int) -> dict[str, str]:
+        return {}
+
     def list_active_mcp_server_names(self, user_id: int) -> list[str]:
         return self.allowed.get(user_id, [])
 

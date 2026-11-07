@@ -27,7 +27,7 @@ from octop.i18n.domains.agents import (
 )
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
-from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
@@ -82,7 +82,7 @@ from octop.infra.skills.workspace_catalog import (
     list_workspace_skill_summaries,
     repair_workspace_skill_manifests,
 )
-from octop.infra.utils.locale import Locale
+from octop.infra.utils.locale import Locale, resolve_user_locale
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
@@ -223,6 +223,8 @@ def _memory_aux_model_settings(
 def memory_extract_supported_options() -> list[str]:
     """Call options supported by the installed harness, for the settings UI."""
     fields = {
+        "memory_capture_enabled": "memory_capture_enabled",
+        "memory_recall_inject_enabled": "memory_recall_inject_enabled",
         "extract_max_tokens": "memory_extract_max_tokens",
         "extract_light_timeout_s": "memory_aux_light_timeout_s",
         "extract_heavy_timeout_s": "memory_aux_heavy_timeout_s",
@@ -251,8 +253,9 @@ def _memory_extract_settings(
     if not isinstance(mem, dict):
         return {}
     out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
-    if "memory_enabled" in supported_fields and isinstance(mem.get("memory_enabled"), bool):
-        out["memory_enabled"] = mem["memory_enabled"]
+    for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
+        if key in supported_fields and isinstance(mem.get(key), bool):
+            out[key] = mem[key]
     if "memory_extract_on_session_end" in supported_fields and isinstance(
         mem.get("extract_on_session_end"), bool
     ):
@@ -532,10 +535,11 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
-        self._tool_guard_rules = ToolGuardRulesStore(paths=paths)
+        self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
+        self._host_models = HostModelFactory()
         self._model_health = ModelHealthRegistry()
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
@@ -570,6 +574,9 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._tool_guard_rules = ToolGuardRulesStore(
+            paths=self._paths, settings=repos.settings_repo
         )
         self._providers = ProviderStore(provider_repo=repos.provider_repo)
         self._connector_svc = ConnectorService(
@@ -610,6 +617,7 @@ class AgentManager:
             team_processor=self._team_processor,
             file_logging=False,
         )
+        self._host_models.sync(providers)
         if self._harness_manager is not None:
             self._harness_manager.team.bind_peer_enrich(self._refresh_peer_entry)
             proc = self._team_processor
@@ -676,6 +684,7 @@ class AgentManager:
                 except Exception:
                     logger.exception("harness_manager.aclose() failed")
                 self._harness_manager = None
+            self._host_models.close()
 
     # ------------------------------------------------------------------
     # Exposed stores & paths (read-only accessors)
@@ -684,6 +693,11 @@ class AgentManager:
     @property
     def providers(self) -> ProviderStore:
         return self._providers
+
+    @property
+    def host_models(self) -> HostModelFactory:
+        """One-shot model access outside an agent turn."""
+        return self._host_models
 
     @property
     def security(self) -> SecuritySettingsStore:
@@ -761,6 +775,7 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
             )
@@ -773,6 +788,12 @@ class AgentManager:
                         self._repos.agent_repo,
                         spec.user_id,
                     )
+                apply_workspace_root_to_config(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
+                    fill_missing=True,
+                )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     spec.user_id,
@@ -1013,12 +1034,32 @@ class AgentManager:
             )
             owner_row = self._repos.agent_repo.get(agent_id)
             if owner_row is not None and owner_row.user_id is not None:
-                from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+                from octop.infra.users.resource_policy import (
+                    POLICY_WORKSPACE_ROOT_DIR,
+                    apply_workspace_root_to_config,
+                    effective_workspace_root_dir,
+                    persisted_workspace_within_root,
+                    raise_if_backend_outside_user_root,
+                )
 
+                allowed_root = effective_workspace_root_dir(
+                    self._repos.user_policy_repo.get(owner_row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+                )
+                workspace_in_jail = persisted_workspace_within_root(
+                    parsed_profile_cfg, allowed_root
+                )
+                if workspace_in_jail:
+                    apply_workspace_root_to_config(
+                        self._repos.user_policy_repo,
+                        owner_row.user_id,
+                        parsed_profile_cfg,
+                        fill_missing=False,
+                    )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                    reject_host_root=bool(allowed_root) and not workspace_in_jail,
                 )
                 self._assert_named_storage_backends(
                     owner_row.user_id,
@@ -1125,6 +1166,9 @@ class AgentManager:
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)
+        from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+
+        GroupAccess(self._repos).clear(RESOURCE_EXPERT, agent_id)
         if self._proactive_scheduler is not None:
             self._proactive_scheduler.cancel(agent_id)
         self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
@@ -1571,7 +1615,9 @@ class AgentManager:
         for agent_id in agent_ids:
             self._teams.assert_can_delete_agent(agent_id)
 
-    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> None:
+    async def delete_thread_checkpoint(
+        self, agent_id: str, thread_id: str, *, reclaim: bool = True
+    ) -> None:
         """Delete a thread's conversation data from the checkpoint store.
 
         Uses the live harness checkpointer when the agent is loaded.
@@ -1581,6 +1627,9 @@ class AgentManager:
         removed. Returns normally when the store has nothing for this
         thread. Callers should invoke this *before* removing their own
         thread row, so a failure leaves the thread visible and retryable.
+
+        ``reclaim=False`` skips the incremental SQLite vacuum. Delete-only
+        uses that so the request itself does not vacuum.
         """
         row = self.get_row(agent_id)
         harness = None
@@ -1608,7 +1657,9 @@ class AgentManager:
                 ) from live_error
             return
         try:
-            await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+            await asyncio.to_thread(
+                self._delete_thread_from_store, agent_id, thread_id, row, reclaim
+            )
         except OctopError:
             if live_error is not None:
                 raise OctopError(
@@ -1617,7 +1668,9 @@ class AgentManager:
                 ) from live_error
             raise
 
-    def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+    def _delete_thread_from_store(
+        self, agent_id: str, thread_id: str, row: Any, reclaim: bool = True
+    ) -> None:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
             delete_thread_from_agent_stores,
             workspace_for_agent_row,
@@ -1632,6 +1685,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace,
             paths=self._paths,
+            reclaim=reclaim,
         )
 
     def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
@@ -1653,9 +1707,8 @@ class AgentManager:
     def schedule_store_reclaim(self, agent_id: str) -> None:
         """Shrink this agent's database after it is idle.
 
-        Used when a conversation is deleted without compacting now. The
-        rebuild runs once no turn is in progress, and again after restart
-        if the file still holds a large freelist.
+        Used when compact-now could not run, and when the idle sweep finds
+        a large freelist. Delete-only does not call this.
         """
         self._reclaim_pending.add(agent_id)
         self._ensure_reclaim_task()
@@ -2020,21 +2073,26 @@ class AgentManager:
         provider_name: str | None = None,
         active_model_changed: bool = False,
     ) -> list[str]:
-        """Agent IDs that must be rebuilt after a provider / active-model change."""
+        """Agent IDs that must be rebuilt after a provider / active-model change.
+
+        AUTO agents bake a resolved fallback model ref into their harness config
+        at build time (active model first, else first usable) and that ref is
+        invisible to the DB config scan, so a provider change can strand it
+        (#2388). An AUTO agent is rebuilt when the active model changed or,
+        for a named provider change, when its baked ref points at that provider
+        or no longer matches what a build would resolve now. Explicit refs to
+        other providers are left alone.
+        """
         rows = self._repos.agent_repo.list_all(include_disabled=False)
         if provider_name is None and not active_model_changed:
             return [row.agent_id for row in rows]
 
         enabled_ids = {row.agent_id for row in rows}
+        auto_ids = {row.agent_id for row in rows if self._agent_uses_auto_default(row)}
         impact: set[str] = set()
-        include_auto = active_model_changed
-        if provider_name and not include_auto:
-            active_name, _ = self._repos.settings_repo.get_active_model()
-            include_auto = active_name == provider_name
-
         for row in rows:
             if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD or (
-                include_auto and self._agent_uses_auto_default(row)
+                active_model_changed and row.agent_id in auto_ids
             ):
                 impact.add(row.agent_id)
 
@@ -2043,8 +2101,48 @@ class AgentManager:
                 aid = ref.get("agent_id")
                 if isinstance(aid, str) and aid in enabled_ids:
                     impact.add(aid)
+            impact.update(
+                self._stale_auto_default_ids(
+                    provider_name=provider_name,
+                    enabled_ids=enabled_ids,
+                    auto_ids=auto_ids,
+                )
+            )
 
         return sorted(impact)
+
+    def _stale_auto_default_ids(
+        self,
+        *,
+        provider_name: str,
+        enabled_ids: set[str],
+        auto_ids: set[str],
+    ) -> set[str]:
+        """AUTO agents whose baked fallback ref went stale after a provider change.
+
+        The DB config only shows AUTO, so read the built harness configs:
+        rebuild when the baked ref points at the changed provider or differs
+        from what a build would resolve now. An agent built while no model was
+        usable has no baked ref at all, so it is rebuilt as soon as a fallback
+        exists — otherwise it would keep running without a model until restart.
+        """
+        if self._harness_manager is None or not auto_ids:
+            return set()
+        new_fallback = self._resolve_configured_fallback_model_ref()
+        prefix = f"{provider_name}/"
+        stale: set[str] = set()
+        for entry in self._harness_manager.list_agents():
+            aid = getattr(entry, "agent_id", None)
+            if not isinstance(aid, str) or aid not in auto_ids:
+                continue
+            built = getattr(getattr(entry, "config", None), "default_model", None)
+            if not isinstance(built, str) or not built:
+                if new_fallback is not None:
+                    stale.add(aid)
+                continue
+            if built.startswith(prefix) or (new_fallback is not None and built != new_fallback):
+                stale.add(aid)
+        return stale & enabled_ids
 
     async def _reload_agents(self, agent_ids: list[str]) -> None:
         """Reload agents concurrently with a fixed concurrency cap."""
@@ -2076,6 +2174,7 @@ class AgentManager:
         if self._harness_manager is None:
             return
         providers = self._providers.build_harness_configs()
+        self._host_models.sync(providers)
         sync_providers_to_harness(
             self._harness_manager,
             providers,
@@ -2265,6 +2364,7 @@ class AgentManager:
         *,
         apply_defaults: bool | None = None,
         extra_defaults: list[str] | None = None,
+        agent_owner_id: int | None = None,
     ) -> list[str] | None:
         """Resolve turn MCP servers vs default_open plus optional expert defaults."""
         return self._connector_svc.merge_turn_mcp_servers(
@@ -2272,6 +2372,48 @@ class AgentManager:
             explicit,
             apply_defaults=apply_defaults,
             extra_defaults=extra_defaults,
+            agent_owner_id=agent_owner_id,
+        )
+
+    def present_mcp_names_for_viewer(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Catalog names a non-owner selects for this expert's stored MCP picks."""
+        return self._connector_svc.present_mcp_names_for_viewer(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            names=names,
+        )
+
+    def align_mcp_names_to_harness(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Viewer catalog names → names registered on the expert owner's harness."""
+        return self._connector_svc.align_mcp_names_to_harness(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            names=names,
+        )
+
+    def mcp_names_for_chips(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        requested: list[str],
+        harness_names: list[str],
+    ) -> list[str]:
+        """History-chip names for the MCP servers actually attached to the turn."""
+        return self._connector_svc.mcp_names_for_chips(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            requested=requested,
+            harness_names=harness_names,
         )
 
     def default_mcp_servers(self, agent_id: str) -> list[str]:
@@ -2341,6 +2483,14 @@ class AgentManager:
         self.validate_mcp_servers(uid, names)
         scope = self._mcp_scope_for(agent_id)
         custom_configs = self._connector_svc.custom_harness_configs(uid)
+        owner_id = row.user_id if row is not None else None
+        aliases = (
+            self._connector_svc.shared_custom_harness_aliases(owner_id)
+            if isinstance(owner_id, int) and owner_id != uid
+            else {}
+        )
+        shared_short_names = {aliases[name] for name in names if name in aliases}
+        names = [name for name in names if name not in shared_short_names]
         custom_missing = [name for name in names if name in custom_configs]
         builtin_missing = [name for name in names if name not in custom_configs]
         if builtin_missing:
@@ -2357,8 +2507,13 @@ class AgentManager:
             if not isinstance(spec, dict) or not spec.get("transport"):
                 continue
             try:
-                tools = await self._get_or_load_mcp_tools(uid, name, spec)
-                proxies = scope.register(uid, name, tools, fingerprint_mcp_spec(spec))
+                # Keep the catalog name in the scope and the owner's short name in the model.
+                harness_name = aliases.get(name, name)
+                source_uid = owner_id if name in aliases and owner_id is not None else uid
+                tools = await self._get_or_load_mcp_tools(source_uid, harness_name, spec)
+                proxies = scope.register(
+                    uid, name, tools, fingerprint_mcp_spec(spec), harness_name=harness_name
+                )
             except Exception:
                 logger.exception("prepare_chat_mcp agent=%s: failed loading MCP %s", agent_id, name)
                 continue
@@ -2611,12 +2766,16 @@ class AgentManager:
         self.persist_harness_config(agent_id, cfg)
         self.sync_effective_tools_disabled(agent_id)
 
-    def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
-        """Resolve persisted package ids to existing absolute package skill directories."""
-        store = SkillPackageStore(
+    def _skill_package_store(self) -> SkillPackageStore:
+        return SkillPackageStore(
             repo=self._repos.skill_package_repo,
             root=self._paths.skill_packages_dir,
+            database=self._config.database,
         )
+
+    def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
+        """Resolve persisted package ids to existing absolute package skill directories."""
+        store = self._skill_package_store()
         row = self._repos.agent_repo.get(agent_id)
         owner_id = row.user_id if row is not None else None
         roots: list[str] = []
@@ -2808,21 +2967,21 @@ class AgentManager:
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs
-        from octop.infra.users.groups import (
-            RESOURCE_STORAGE_BACKEND,
-            STORAGE_FEATURE_KEY,
-            GroupAccess,
-        )
+        from octop.infra.users.groups import RESOURCE_STORAGE_BACKEND, GroupAccess
 
-        if not collect_named_storage_backend_refs(backend):
+        refs = collect_named_storage_backend_refs(backend)
+        if not refs:
             return
-        GroupAccess(self._repos).assert_allowed(
-            user_id=user_id,
-            is_admin=self._user_is_admin(user_id),
-            resource_type=RESOURCE_STORAGE_BACKEND,
-            resource_key=STORAGE_FEATURE_KEY,
-            is_owner=False,
-        )
+        access = GroupAccess(self._repos)
+        is_admin = self._user_is_admin(user_id)
+        for name in refs:
+            access.assert_allowed(
+                user_id=user_id,
+                is_admin=is_admin,
+                resource_type=RESOURCE_STORAGE_BACKEND,
+                resource_key=str(name),
+                is_owner=False,
+            )
 
     def _skill_package_shared_with(self, user_id: int, package: Any) -> bool:
         """Private packages stay with the owner. Groups cannot open them."""
@@ -3076,10 +3235,7 @@ class AgentManager:
             return harness_rows
 
         disabled = skills_disabled_set(cfg)
-        store = SkillPackageStore(
-            repo=self._repos.skill_package_repo,
-            root=self._paths.skill_packages_dir,
-        )
+        store = self._skill_package_store()
         package_by_slug: dict[str, dict[str, Any]] = {}
         for package_id in package_ids:
             if self._repos.skill_package_repo.get(package_id) is None:
@@ -3397,6 +3553,25 @@ class AgentManager:
         backend_spec = cfg.get("backend")
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        if row.user_id is not None:
+            from octop.infra.users.resource_policy import (
+                POLICY_WORKSPACE_ROOT_DIR,
+                clamp_backend_to_workspace_root,
+                effective_workspace_root_dir,
+                persisted_workspace_within_root,
+            )
+
+            allowed = effective_workspace_root_dir(
+                self._repos.user_policy_repo.get(row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+            )
+            # Only rewrite a root the files already live under. Creating an
+            # expert persists the snapped backend before the workspace exists;
+            # startup must not jail a host workspace that was seeded earlier.
+            if allowed and persisted_workspace_within_root(cfg, allowed):
+                try:
+                    backend_spec = clamp_backend_to_workspace_root(backend_spec, allowed)
+                except ValueError as exc:
+                    raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
         if backend_spec is None:
             return default_agent_backend_spec(workspace_dir)
         resolved = resolve_agent_backend_spec(
@@ -3448,11 +3623,11 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
+        from octop.infra.backend.resolve_backend import resolve_octop_backend  # noqa: PLC0415
 
         if cfg is None:
             cfg = self._agent_config_dict(row)
@@ -3474,7 +3649,7 @@ class AgentManager:
         from octop.infra.backend.compat import adapt_backend_protocol  # noqa: PLC0415
 
         return BackendWorkspace(
-            adapt_backend_protocol(resolve_backend(backend, workspace_dir=workspace_dir)),
+            adapt_backend_protocol(resolve_octop_backend(backend, workspace_dir=workspace_dir)),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -3813,28 +3988,32 @@ class AgentManager:
 
             cron_tools = build_cronjob_tools(self._cron_manager)
 
-        from types import SimpleNamespace  # noqa: PLC0415
-
-        from octop.infra.knowledge.tools import build_knowledge_tools  # noqa: PLC0415
+        from octop.infra.knowledge.tools import (  # noqa: PLC0415
+            KnowledgeToolServices,
+            build_knowledge_tools,
+        )
 
         knowledge_tools: list[Any] = []
         if not team_host:
-            knowledge_tools = build_knowledge_tools(
-                SimpleNamespace(
-                    knowledge_repo=self._repos.knowledge_repo,
-                    settings_repo=self._repos.settings_repo,
-                    provider_repo=self._repos.provider_repo,
-                )
-            )
+            knowledge_tools = build_knowledge_tools(KnowledgeToolServices(self))
 
         mobile_tools: list[Any] = []
         if not team_host and self._config.capabilities.mobile.enabled:
-            from octop.infra.mobile.tools import build_mobile_tools  # noqa: PLC0415
+            from octop.infra.control.mobile.tools import build_mobile_tools  # noqa: PLC0415
+
+            def _mobile_workspace_for(agent_id: str) -> Any:
+                # Prefer the running agent's workspace — authoritative for
+                # docker / ephemeral remote sandboxes; ws is the start-time
+                # fallback for the agent being configured here.
+                if self._harness_manager is not None:
+                    with suppress(Exception):
+                        return self._harness_manager.get_agent(agent_id).agent.workspace
+                return ws if agent_id == row.agent_id else None
 
             mobile_tools = build_mobile_tools(
                 self._config,
                 user_repo=self._repos.user_repo,
-                paths=self.paths,
+                workspace_for=_mobile_workspace_for,
             )
 
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
@@ -3898,6 +4077,10 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.mcp_output_schema import (
+            McpOutputSchemaMiddleware,
+            harness_handles_mcp_tool_errors,
+        )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -3924,6 +4107,7 @@ class AgentManager:
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
+            *(() if harness_handles_mcp_tool_errors() else (McpOutputSchemaMiddleware(),)),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
@@ -4057,6 +4241,12 @@ class AgentManager:
             name=_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
+            # Owner's stored locale only. Per-message language would change
+            # the cached system prefix on every switch.
+            language=resolve_user_locale(
+                user_repo=self._repos.user_repo,
+                user_id=row.user_id or 0,
+            ),
             # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
             # back to the same resolution AUTO chat routing uses (active model
             # first, else first usable) — so promotion works whenever chat does.
@@ -4144,6 +4334,7 @@ class AgentManager:
                     *(applied.middleware or []),
                 ],
             )
+        self._tool_guard_rules.ensure_seeded()
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),

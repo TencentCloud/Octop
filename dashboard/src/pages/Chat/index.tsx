@@ -13,6 +13,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
+import cx from "classnames";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
@@ -78,6 +79,7 @@ import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import {
+  canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
@@ -252,7 +254,12 @@ function ChatPageInner() {
     visible: memoryMaintVisible,
     blocking: memoryMaintBlocking,
     connectionLost: memoryMaintConnectionLost,
-  } = useMemoryMaintenance(resolvedAgentId, agentChatReady && !noAgents);
+  } = useMemoryMaintenance(
+    resolvedAgentId,
+    agentChatReady &&
+      !noAgents &&
+      canReadAgentRuntimeStatus(activeAgent ?? {}, user),
+  );
   const historyMigration = useHistoryMigration(
     resolvedAgentId,
     agentChatReady && !noAgents && !sharedExpertViewer,
@@ -710,8 +717,6 @@ function ChatPageInner() {
   const { handleSend } = useChatSend({
     resolvedAgentId,
     activeThreadId,
-    sessions,
-    messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
@@ -722,7 +727,6 @@ function ChatPageInner() {
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
-    renameSession,
     onAutoRecordingStarted: useCallback((recordingId: string) => {
       setBrowserRecording(true);
       setBrowserRecordingId(recordingId);
@@ -1370,22 +1374,18 @@ function ChatPageInner() {
           ? createPortal(chatSidebarPanel, chatHistoryRail)
           : null}
         <div
-          className={`${styles.chatPage} ${
-            dockIsResizing ? styles.panelResizeActive : ""
-          } ${
-            dockOpen && dockMode === "bottom"
-              ? styles.chatPageWithBottomDock
-              : ""
-          }`}
+          className={cx(
+            styles.chatPage,
+            dockIsResizing && styles.panelResizeActive,
+            dockOpen && dockMode === "bottom" && styles.chatPageWithBottomDock,
+          )}
         >
           {/* Main chat area */}
           <div
-            className={[
+            className={cx(
               styles.chatMain,
-              turnRailVisible ? styles.chatMainWithTurnRail : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              turnRailVisible && styles.chatMainWithTurnRail,
+            )}
           >
             {/* Mobile toolbar — session list + optional title + agent profile */}
             {isMobile && (
@@ -1723,29 +1723,27 @@ function ChatPageInner() {
                     <span className={styles.chatFloatBtnWrap}>
                       <button
                         type="button"
-                        className={[
+                        className={cx(
                           styles.browserStatusBtn,
-                          browserSessionId ? styles.browserStatusActive : "",
+                          browserSessionId && styles.browserStatusActive,
                           browserSessionId &&
-                          (browserSessionState === "awaiting_user_auth" ||
-                            browserSessionState === "authenticating")
-                            ? styles.browserStatusAuth
-                            : "",
-                          browserSessionId && browserControlOwner === "user"
-                            ? styles.browserStatusTakeover
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                            (browserSessionState === "awaiting_user_auth" ||
+                              browserSessionState === "authenticating") &&
+                            styles.browserStatusAuth,
+                          browserSessionId &&
+                            browserControlOwner === "user" &&
+                            styles.browserStatusTakeover,
+                        )}
                         onClick={() => void handleToggleBrowserPanel()}
                         aria-label={t("chat.openBrowser")}
                       >
                         <Globe size={20} strokeWidth={2.1} />
                         {browserSessionId && (
                           <span
-                            className={`${styles.browserStatusDot} ${
-                              styles[`browserStatus_${browserControlOwner}`]
-                            }`}
+                            className={cx(
+                              styles.browserStatusDot,
+                              styles[`browserStatus_${browserControlOwner}`],
+                            )}
                           />
                         )}
                       </button>
@@ -1837,7 +1835,13 @@ function ChatPageInner() {
               isStreaming={isStreaming}
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
-              disabled={!agentChatReady || noAgents || memoryMaintBlocking}
+              disabled={
+                !agentChatReady ||
+                noAgents ||
+                memoryMaintBlocking ||
+                !modelsReady ||
+                availableModels.length === 0
+              }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
                 prefillInputRef.current = "";

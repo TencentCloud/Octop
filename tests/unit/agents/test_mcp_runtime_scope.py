@@ -120,6 +120,12 @@ class _Catalog(ConnectorService):
     def custom_harness_configs(self, user_id: int) -> dict[str, Any]:
         return deepcopy(self.specs.get(user_id, {}))
 
+    def get_custom_servers(self, user_id: int) -> dict[str, Any]:
+        return self.specs.get(user_id, {})
+
+    def shared_custom_harness_aliases(self, owner_user_id: int) -> dict[str, str]:
+        return {}
+
 
 @pytest.fixture
 async def runtime_factory(
@@ -508,6 +514,45 @@ async def test_resume_actor_cannot_use_another_users_checkpoint(runtime_factory:
         ]
     assert chunks
     assert env.executions == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("approve", [False, True])
+async def test_shared_alias_keeps_its_source_when_viewer_prepares_same_short_name(
+    runtime_factory: Any, monkeypatch: pytest.MonkeyPatch, approve: bool
+) -> None:
+    env = runtime_factory(
+        initial={"probe": {}},
+        checkpointer=MemorySaver(),
+        interrupt_on={"probe_read": True} if approve else None,
+    )
+    alias = "custom__owner__probe"
+    monkeypatch.setattr(
+        env.catalog, "shared_custom_harness_aliases", lambda _owner_id: {alias: "probe"}
+    )
+    env.catalog.specs[1][alias] = deepcopy(env.catalog.specs[2]["probe"])
+    assert await _prepare(env, 1, [alias]) == []
+    shared_request = _request(1, [alias], label="owner-connector")
+    if approve:
+        paused = await _execute(env, shared_request)
+        assert paused.result.get("__interrupt__")
+    assert await _prepare(env, 1, ["probe"]) == []
+    if approve:
+        assert [
+            chunk async for chunk in env.agent.resume_hitl("owner-connector", [{"type": "approve"}])
+        ]
+        assert env.executions == [("probe", "test-user-2-v1")]
+    else:
+        own_request = _request(1, ["probe"], label="viewer-connector")
+        shared, own = await asyncio.gather(
+            env.agent.call(shared_request), env.agent.call(own_request)
+        )
+        for result, identity in [(shared, "test-user-2-v1"), (own, "test-user-1-v1")]:
+            assert [
+                message.content
+                for message in result["messages"]
+                if isinstance(message, ToolMessage)
+            ] == [identity]
 
 
 @pytest.mark.asyncio

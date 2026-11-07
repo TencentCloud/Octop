@@ -86,7 +86,9 @@ describe("pathPermissionKeys", () => {
       ...PERM.skillPackages,
     ]);
     expect(pathPermissionKeys("/personalization/skills")).toEqual([
-      ...PERM.skills,
+      "skills",
+      "skill_builtin",
+      "skill_market",
     ]);
     expect(pathPermissionKeys("/personalization/channels")).toEqual([
       ...PERM.channels,

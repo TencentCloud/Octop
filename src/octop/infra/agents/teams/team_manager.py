@@ -179,8 +179,18 @@ class TeamManager:
             if uid is not None:
                 # A failed connector must not discard the resolved peer session.
                 try:
-                    servers = self._agent_manager.validate_mcp_servers(
-                        uid, self._agent_manager.default_mcp_servers(call.to_agent_id)
+                    bound = self._agent_manager.default_mcp_servers(call.to_agent_id)
+                    member = self._agent_manager.get_row(call.to_agent_id)
+                    owner_id = getattr(member, "user_id", None)
+                    servers = bound
+                    if bound and isinstance(owner_id, int) and owner_id != uid:
+                        servers = self._agent_manager.present_mcp_names_for_viewer(
+                            owner_id, uid, bound
+                        )
+                    servers = (
+                        self._agent_manager.validate_mcp_servers(uid, servers)
+                        if len(servers) == len(bound)
+                        else []
                     )
                     if servers and not await self._agent_manager.prepare_chat_mcp(
                         call.to_agent_id, servers, connector_user_id=uid

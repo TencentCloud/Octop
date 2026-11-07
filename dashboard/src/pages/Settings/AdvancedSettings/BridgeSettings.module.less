@@ -20,6 +20,14 @@
   max-width: 100%;
 }
 
+.pageToolbarStart {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+
 .pageToolbarActions {
   display: flex;
   align-items: center;
@@ -37,6 +45,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 0 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filterEmpty {
+  padding: 28px 12px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
 }
 
 .gridCount {
@@ -119,7 +136,7 @@
 
 .backendCardName {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   min-width: 0;
   font-size: 18px;
@@ -148,7 +165,7 @@
 
 .infoRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 4px;
   min-width: 0;
   max-width: 100%;
@@ -161,12 +178,28 @@
   font-size: 11px;
 }
 
-.infoValue {
+.peerSecret {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1;
+}
+
+.peerSecretText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
   min-width: 0;
+}
+
+.peerRevealBtn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--fn-text-tertiary);
 }
 
 .backendCardNote {
@@ -310,6 +343,13 @@
   flex-direction: column;
   min-width: 0;
   gap: 2px;
+}
+
+.tableNameTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 
   strong {
     overflow: hidden;
@@ -532,6 +572,10 @@
   }
 }
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
 .createSection {
   margin-bottom: 8px;
 
@@ -591,4 +635,39 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.formOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md, 8px);
+  overflow: hidden;
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.switchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
 }

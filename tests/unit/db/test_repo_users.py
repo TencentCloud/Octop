@@ -59,8 +59,12 @@ def test_set_role(repo: UserRepo):
 
 def test_set_password_hash(repo: UserRepo):
     uid = repo.create(username="a", password_hash="h1", role="user")
+    assert repo.get(uid).password_version == 0
     repo.set_password_hash(uid, "h2")
-    assert repo.get(uid).password_hash == "h2"
+    row = repo.get(uid)
+    assert row is not None
+    assert row.password_hash == "h2"
+    assert row.password_version == 1
 
 
 def test_delete(repo: UserRepo):

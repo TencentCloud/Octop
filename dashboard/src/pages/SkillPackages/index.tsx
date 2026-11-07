@@ -40,6 +40,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import { authApi, type OctopUser } from "../../api/modules/auth";
 import { skillPackagesApi } from "../../api/modules/skillPackages";
@@ -51,11 +52,12 @@ import type {
 import {
   isUploadedAvatarUrl,
   ResourceAvatarPicker,
+  avatarPickerStyles,
   SKILL_PACKAGE_AVATAR_PRESETS,
 } from "../../components/AvatarPicker";
 import { CardSkeleton } from "../../components/Skeleton";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
-import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
+import { OctopEmptyMascot } from "../../components/EmptyState";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { TextAssistBar } from "../../components/TextAssistBar";
 import { useCardTableView } from "../../hooks/useCardTableView";
@@ -83,7 +85,14 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
-import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../components/ResourceVisibilityFields";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../components/SharedResourceBadge";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -119,6 +128,13 @@ function canMutatePackage(
   return Boolean(
     user && (user.role === "admin" || item.created_by === String(user.id)),
   );
+}
+
+function isPackageOwner(
+  item: Pick<SkillPackage, "created_by">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && item.created_by === String(user.id));
 }
 
 function formatPackageCreator(
@@ -572,12 +588,46 @@ export default function SkillPackagesPage() {
     detailLoading && !selected ? (
       <CardSkeleton count={6} />
     ) : skills.length === 0 ? (
-      <EmptyState
-        variant="mascot"
-        title={t("skillPackages.emptySkills")}
-        description={t("skillPackages.subtitle")}
-        actionLabel={canMutate ? t("skillPackages.createSkill") : undefined}
-        onAction={canMutate ? openCreateSkill : undefined}
+      <StreamSetupGuide
+        className={styles.emptyGuide}
+        wide
+        plain
+        icon={<OctopEmptyMascot />}
+        title={t("skillPackages.emptySkillsTitle")}
+        description={t("skillPackages.emptySkillsDesc")}
+        steps={[
+          {
+            label: t("skillPackages.emptySkillsStepAdd"),
+            detail: t("skillPackages.emptySkillsStepAddDetail"),
+          },
+          {
+            label: t("skillPackages.emptySkillsStepMarket"),
+            detail: t("skillPackages.emptySkillsStepMarketDetail"),
+          },
+          {
+            label: t("skillPackages.emptySkillsStepMount"),
+            detail: t("skillPackages.emptySkillsStepMountDetail"),
+          },
+        ]}
+        primaryAction={
+          canMutate
+            ? {
+                label: t("skillPackages.createSkill"),
+                onClick: openCreateSkill,
+                icon: <Plus size={14} />,
+              }
+            : undefined
+        }
+        secondaryAction={
+          canMutate
+            ? {
+                label: t("skills.tencentSkillHub"),
+                onClick: () => setHubOpen(true),
+                icon: <Store size={14} />,
+                type: "default",
+              }
+            : undefined
+        }
       />
     ) : showCardView ? (
       <div className={skillStyles.skillsGrid}>
@@ -659,9 +709,11 @@ export default function SkillPackagesPage() {
         </div>
       ) : (
         <div
-          className={`${styles.layout}${
-            isResizing ? ` ${styles.layoutResizing}` : ""
-          }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
+          className={cx(
+            styles.layout,
+            isResizing && styles.layoutResizing,
+            isMobile && styles.layoutMobile,
+          )}
           style={
             {
               "--skill-packages-sidebar-width": `${sidebarWidth}px`,
@@ -714,29 +766,36 @@ export default function SkillPackagesPage() {
                       onClick={() => selectPackage(item)}
                     >
                       <div
-                        className={`${styles.listItem} ${
-                          item.id === selectedId ? styles.active : ""
-                        }`}
+                        className={cx(
+                          styles.listItem,
+                          item.id === selectedId && styles.active,
+                        )}
                       >
                         <div className={styles.listName}>
-                          <span className={styles.listIcon}>
-                            <PackageIcon
-                              iconUrl={item.icon_url}
-                              iconName={item.icon_name}
-                              size={24}
-                              imageClassName={styles.listIconImage}
-                            />
-                          </span>
+                          <SharedAvatarMark
+                            shared={item.shared}
+                            owned={isPackageOwner(item, user)}
+                            ownerName={formatPackageCreator(item)}
+                          >
+                            <span className={styles.listIcon}>
+                              <PackageIcon
+                                iconUrl={item.icon_url}
+                                iconName={item.icon_name}
+                                size={24}
+                                imageClassName={styles.listIconImage}
+                              />
+                            </span>
+                          </SharedAvatarMark>
                           <Tooltip title={item.name} placement="topLeft">
                             <span className={styles.listNameText}>
                               {item.name}
                             </span>
                           </Tooltip>
-                          {item.shared ? (
-                            <span className={styles.sharedBadge}>
-                              {t("skillPackages.sharedBadge")}
-                            </span>
-                          ) : null}
+                          <SharedResourceBadge
+                            shared={item.shared && isPackageOwner(item, user)}
+                            owned
+                            ownerName={formatPackageCreator(item)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -803,9 +862,10 @@ export default function SkillPackagesPage() {
           {!isMobile ? (
             <div
               data-split-divider=""
-              className={`${styles.splitDivider}${
-                listPanelCollapsed ? ` ${styles.splitDividerCollapsed}` : ""
-              }`}
+              className={cx(
+                styles.splitDivider,
+                listPanelCollapsed && styles.splitDividerCollapsed,
+              )}
             >
               {!listPanelCollapsed ? (
                 <div
@@ -856,15 +916,36 @@ export default function SkillPackagesPage() {
               ) : null}
               {!selected && !detailLoading ? (
                 <div className={styles.emptyDetail}>
-                  <OctopEmptyMascot size={180} />
-                  <p className={styles.emptyDetailText}>
-                    {t("skillPackages.selectPackage")}
-                  </p>
+                  <StreamSetupGuide
+                    className={styles.emptyGuide}
+                    wide
+                    plain
+                    icon={<OctopEmptyMascot />}
+                    title={t("skillPackages.selectPackageTitle")}
+                    description={t("skillPackages.selectPackageDesc")}
+                    steps={[
+                      {
+                        label: t("skillPackages.selectPackageStepPick"),
+                        detail: t("skillPackages.selectPackageStepPickDetail"),
+                      },
+                      {
+                        label: t("skillPackages.selectPackageStepAdd"),
+                        detail: t("skillPackages.selectPackageStepAddDetail"),
+                      },
+                      {
+                        label: t("skillPackages.emptySkillsStepMount"),
+                        detail: t("skillPackages.emptySkillsStepMountDetail"),
+                      },
+                    ]}
+                  />
                 </div>
               ) : !selected ? null : (
                 <div className={styles.detailBody}>
                   <div
-                    className={`${skillStyles.gridToolbar} ${styles.skillsToolbar}`}
+                    className={cx(
+                      skillStyles.gridToolbar,
+                      styles.skillsToolbar,
+                    )}
                   >
                     <div className={styles.toolbarStart}>
                       {isMobile ? (
@@ -894,7 +975,7 @@ export default function SkillPackagesPage() {
                         </span>
                       </span>
                       <span
-                        className={`${skillStyles.gridCount} ${styles.skillCount}`}
+                        className={cx(skillStyles.gridCount, styles.skillCount)}
                       >
                         {t("skills.totalCount", { count: skills.length })}
                       </span>
@@ -985,7 +1066,12 @@ export default function SkillPackagesPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div className={skillStyles.skillsListArea}>
+                  <div
+                    className={cx(
+                      skillStyles.skillsListArea,
+                      skills.length === 0 && styles.skillsEmpty,
+                    )}
+                  >
                     {skillsContent}
                   </div>
                 </div>
@@ -1041,7 +1127,10 @@ export default function SkillPackagesPage() {
           <Form.Item name="icon_url" hidden>
             <Input />
           </Form.Item>
-          <Form.Item label={t("skillPackages.iconName")}>
+          <Form.Item
+            label={t("skillPackages.iconName")}
+            className={avatarPickerStyles.formItem}
+          >
             <ResourceAvatarPicker
               imageUrl={
                 iconUrl?.trim() &&
@@ -1157,6 +1246,7 @@ export default function SkillPackagesPage() {
           <Form.Item
             name="description"
             label={t("skillPackages.packageDescription")}
+            className={styles.textAssistField}
           >
             <Input.TextArea
               autoSize={{ minRows: 2, maxRows: 5 }}
@@ -1197,22 +1287,31 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <Form.Item
-            label={t("resourceVisibility.label")}
-            extra={t("skillPackages.visibilityHint")}
-          >
-            <ResourceVisibilityFields
-              allowOwner
-              visibility={packageVisibility}
-              groupIds={packageGroupIds}
-              onChange={(next) => {
-                setPackageVisibility(next.visibility);
-                setPackageGroupIds(
-                  next.visibility === "groups" ? next.groupIds : [],
-                );
-              }}
-            />
-          </Form.Item>
+          <ResourceVisibilityGate allowOwner visibility={packageVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("skillPackages.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={packageVisibility}
+                  groupIds={packageGroupIds}
+                  onChange={(next) => {
+                    setPackageVisibility(next.visibility);
+                    setPackageGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
+              </div>
+            </div>
+          </ResourceVisibilityGate>
         </Form>
       </Drawer>
 

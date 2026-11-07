@@ -55,7 +55,7 @@ class MCPToolScopeMiddleware(AgentMiddleware[MCPState, Any]):
         self.prepare = prepare
         self.prepared: dict[tuple[int, str], dict[str, BaseTool]] = {}
         self.versions: dict[tuple[int, str], str] = {}
-        self.proxies: dict[tuple[str, str], BaseTool] = {}
+        self.proxies: dict[str, tuple[str, BaseTool]] = {}
 
     def before_agent(self, state: MCPState, runtime: Any) -> dict[str, Any]:
         config = get_config().get("configurable") or {}
@@ -76,38 +76,41 @@ class MCPToolScopeMiddleware(AgentMiddleware[MCPState, Any]):
         )
         return {_SCOPE: {"user": uid, "servers": servers or [], "versions": versions}}
 
-    def register(self, uid: int, server: str, tools: list[Any], version: str) -> list[BaseTool]:
+    def register(
+        self,
+        uid: int,
+        server: str,
+        tools: list[Any],
+        version: str,
+        *,
+        harness_name: str | None = None,
+    ) -> list[BaseTool]:
+        source = harness_name or server
         for tool in tools:
             if "octop_mcp_runtime" in tool.args:
                 raise ValueError("MCP tool uses the reserved execution-context argument")
-            if any(source != server and name == tool.name for source, name in self.proxies):
+            existing = self.proxies.get(tool.name)
+            if existing is not None and existing[0] != source:
                 raise ValueError("MCP tool name collides with another server")
         self.versions[uid, server] = version
         self.prepared[uid, server] = {tool.name: tool for tool in tools}
         proxies = []
         for tool in tools:
-            key = (server, tool.name)
-            if key not in self.proxies:
-                self.proxies[key] = self._make_proxy(server, tool.name)
-            proxies.append(self.proxies[key])
+            if tool.name not in self.proxies:
+                self.proxies[tool.name] = (source, self._make_proxy(tool.name))
+            proxies.append(self.proxies[tool.name][1])
         return proxies
 
     def _denied(self) -> str:
         return tr("mcp_scope.unauthorized", self.agent.config.language)
 
-    def _make_proxy(self, server: str, name: str) -> BaseTool:
+    def _make_proxy(self, name: str) -> BaseTool:
         async def execute(octop_mcp_runtime: ToolRuntime, **arguments: Any) -> Any:
             runtime = octop_mcp_runtime
             tools = await self._selected(runtime.state)
             tool = tools.get(name)
-            scope = runtime.state.get(_SCOPE) or {}
-            uid = parse_octop_user_id(scope.get("user"))
             # HITL edits happen after wrap_tool_call. Authorize at execution too.
-            if (
-                uid is None
-                or tool is None
-                or self.prepared.get((uid, server), {}).get(name) is not tool
-            ):
+            if tool is None:
                 raise ToolException(self._denied())
             return await tool.ainvoke(arguments, config=runtime.config)
 
@@ -159,32 +162,23 @@ class MCPToolScopeMiddleware(AgentMiddleware[MCPState, Any]):
         selected = await self._selected(request.state)
         mcp_names = self.agent._mcp_tool_name_set
         tools = [tool for tool in request.tools or [] if getattr(tool, "name", "") not in mcp_names]
-        raw_scope = request.state.get(_SCOPE)
-        scope = raw_scope if isinstance(raw_scope, dict) else {}
-        uid = parse_octop_user_id(scope.get("user"))
         non_mcp_names = {getattr(tool, "name", "") for tool in tools}
-        if uid is None:
-            return await handler(request.override(tools=tools))
-        for server in scope.get("servers") or []:
-            for name, tool in self.prepared.get((uid, server), {}).items():
-                if name not in selected or name in non_mcp_names:
-                    continue
-                proxy = self.proxies[server, name]
-                extras = dict(getattr(tool, "extras", None) or {})
-                if (
-                    self.agent.config.defer_mcp_tools
-                    and self.agent.config.tool_search_mode != "eager"
-                ):
-                    extras["defer_loading"] = True
-                tools.append(
-                    proxy.model_copy(
-                        update={
-                            "description": tool.description,
-                            "args_schema": tool.args_schema,
-                            "extras": extras,
-                        }
-                    )
+        for name, tool in selected.items():
+            if name in non_mcp_names:
+                continue
+            _, proxy = self.proxies[name]
+            extras = dict(getattr(tool, "extras", None) or {})
+            if self.agent.config.defer_mcp_tools and self.agent.config.tool_search_mode != "eager":
+                extras["defer_loading"] = True
+            tools.append(
+                proxy.model_copy(
+                    update={
+                        "description": tool.description,
+                        "args_schema": tool.args_schema,
+                        "extras": extras,
+                    }
                 )
+            )
         return await handler(request.override(tools=tools))
 
     async def awrap_tool_call(
