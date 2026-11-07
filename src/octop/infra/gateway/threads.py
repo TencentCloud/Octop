@@ -533,8 +533,12 @@ def _new_thread_id() -> str:
 
 
 def thread_visible_to(row: ThreadRow, user_id: int) -> bool:
-    """Owner, or anyone who can open an expert that this thread was contributed to."""
-    return row.user_id == user_id or bool(row.contributed)
+    """Owner, or anyone who can open an expert that this thread was contributed to.
+
+    Rows that predate the column, and test fakes, have no ``contributed`` flag.
+    Those stay private to the owner.
+    """
+    return row.user_id == user_id or bool(getattr(row, "contributed", False))
 
 
 def thread_row_has_messages(row: ThreadRow) -> bool:
