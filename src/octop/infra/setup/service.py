@@ -433,6 +433,14 @@ def render_launchd_plist(runtime: ServiceRuntime) -> str:
         if runtime.scope == "system"
         else ""
     )
+    # A LaunchAgent does not inherit the interactive shell's Homebrew PATH.
+    # Keep system binaries first and don't extend the PATH of LaunchDaemons.
+    path_block = (
+        "    <key>PATH</key>\n"
+        "    <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin</string>\n"
+        if runtime.scope == "user"
+        else ""
+    )
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
@@ -455,6 +463,7 @@ def render_launchd_plist(runtime: ServiceRuntime) -> str:
         f"    <string>{runtime.home}</string>\n"
         "    <key>OCTOP_SERVICE_MODE</key>\n"
         "    <string>launchd</string>\n"
+        f"{path_block}"
         "  </dict>\n"
         f"  <key>WorkingDirectory</key>\n"
         f"  <string>{runtime.home}</string>\n"

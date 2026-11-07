@@ -5,6 +5,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import plistlib
 import shutil
 import sys
 from dataclasses import replace
@@ -662,11 +663,29 @@ def test_render_launchd_plist_user_scope_omits_username(tmp_path: Path) -> None:
     assert f"<string>{getpass.getuser()}</string>" not in plist  # run_as_user should not leak
 
 
+def test_render_launchd_plist_user_scope_adds_homebrew_to_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PATH", str(tmp_path / "installer-only-bin"))
+    runtime = replace(_runtime(tmp_path), mode="launchd", scope="user")
+    env = plistlib.loads(render_launchd_plist(runtime).encode())["EnvironmentVariables"]
+
+    assert env["PATH"].split(os.pathsep) == [
+        "/usr/bin",
+        "/bin",
+        "/usr/sbin",
+        "/sbin",
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+    ]
+
+
 def test_render_launchd_plist_system_scope_includes_username(tmp_path: Path) -> None:
     runtime = replace(_runtime(tmp_path), mode="launchd", scope="system")
     plist = render_launchd_plist(runtime)
     assert "<key>UserName</key>" in plist
     assert f"<string>{getpass.getuser()}</string>" in plist
+    assert "PATH" not in plistlib.loads(plist.encode())["EnvironmentVariables"]
 
 
 def test_install_service_launchd_user_no_sudo(
