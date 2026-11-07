@@ -235,6 +235,7 @@
     "USER_ROLE_IN_USE": "仍有用户使用此角色，请先改派后再删除。",
     "USER_ROLE_ID_INVALID": "角色 ID 须为 1-64 位字母或下划线，且不能以下划线开头或结尾。",
     "USER_ROLE_ID_TAKEN": "该角色 ID 已被使用。",
+    "USER_ROLE_NOT_FOUND": "所选角色不存在。请使用内置角色（admin、user）或已存在的自定义角色。",
     "USER_GROUP_ID_INVALID": "分组 ID 须为 3-64 位字母/数字/下划线/连字符，且以字母或数字开头结尾。",
     "USER_GROUP_ID_TAKEN": "该分组 ID 已被使用。",
     "INVITE_USED": "该邀请码已被使用。",

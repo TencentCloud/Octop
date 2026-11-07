@@ -318,6 +318,17 @@ class UserRepo:
         with self._db.transaction() as conn:
             conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
 
+    def set_role_assignment(
+        self, user_id: int, role: str, role_name: str | None, permissions: builtins.list[str]
+    ) -> None:
+        """Apply a role template's id, display name, and permissions in one write."""
+        payload = json.dumps(permissions, ensure_ascii=False)
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET role = ?, role_name = ?, permissions = ? WHERE id = ?",
+                (role, role_name, payload, user_id),
+            )
+
     def set_password_hash(self, user_id: int, password_hash: str) -> None:
         """Store a new password hash and invalidate outstanding access tokens."""
         with self._db.transaction() as conn:

@@ -235,6 +235,7 @@
     "USER_ROLE_IN_USE": "This role is still assigned to users. Reassign them before deleting it.",
     "USER_ROLE_ID_INVALID": "Role ID must be 1-64 letters or underscores, and cannot start or end with an underscore.",
     "USER_ROLE_ID_TAKEN": "This role ID is already in use.",
+    "USER_ROLE_NOT_FOUND": "The selected role does not exist. Use a built-in role (admin, user) or an existing custom role.",
     "USER_GROUP_ID_INVALID": "Group ID must be 3-64 chars of letters/digits/underscore/hyphen, starting and ending with a letter or digit.",
     "USER_GROUP_ID_TAKEN": "This group ID is already in use.",
     "INVITE_USED": "This invite code has already been used.",

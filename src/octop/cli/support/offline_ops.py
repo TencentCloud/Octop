@@ -16,6 +16,7 @@ from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_ro
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
 from octop.infra.cron.trigger import build_trigger
+from octop.infra.db.services import SharedServices
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.users.password import hash_password
@@ -78,6 +79,22 @@ def list_users_offline(*, home: Path | None = None) -> list[dict[str, Any]]:
         return [_user_row_to_dict(r) for r in svc.user_repo.list(include_disabled=True)]
 
 
+def _require_role_assignment(
+    svc: SharedServices, role: str
+) -> tuple[str, str | None, list[str], list[tuple[str, str]]]:
+    """Resolve a role id to its template; fail fast when the role does not exist."""
+    from octop.infra.db.repos.user_roles import UserRoleRepo, role_assignment_for
+
+    assignment = role_assignment_for(svc.db, role)
+    if assignment is not None:
+        return assignment
+    valid = ", ".join(r.user_role_id for r in UserRoleRepo(svc.db).list_all())
+    raise OctopError(
+        ErrorCode.USER_ROLE_NOT_FOUND,
+        f"role {role!r} does not exist; valid roles: {valid or '(none)'}",
+    )
+
+
 def create_user_offline(
     *,
     username: str,
@@ -98,15 +115,7 @@ def create_user_offline(
             and svc.user_repo.get_by_email(normalized_email) is not None
         ):
             raise OctopError(ErrorCode.EMAIL_TAKEN, f"email {normalized_email!r} already exists")
-        permissions = None
-        role_name = None
-        policies: list[tuple[str, str]] = []
-        if role == "user":
-            from octop.infra.db.repos.user_roles import seeded_user_role_assignment
-
-            assignment = seeded_user_role_assignment(svc.db)
-            if assignment is not None:
-                role, role_name, permissions, policies = assignment
+        role, role_name, permissions, policies = _require_role_assignment(svc, role)
         uid = svc.user_repo.create(
             username=username,
             password_hash=hash_password(password),
@@ -165,7 +174,8 @@ def reset_user_mfa_offline(username: str, *, home: Path | None = None) -> None:
 def set_user_role_offline(username: str, role: str, *, home: Path | None = None) -> None:
     with open_cli_services(home) as svc:
         uid = _require_username(svc, username)
-        svc.user_repo.set_role(uid, role)
+        role, role_name, permissions, _policies = _require_role_assignment(svc, role)
+        svc.user_repo.set_role_assignment(uid, role, role_name, permissions)
 
 
 def disable_user_offline(username: str, *, home: Path | None = None) -> None:
