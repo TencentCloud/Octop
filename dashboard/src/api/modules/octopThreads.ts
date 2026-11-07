@@ -67,6 +67,10 @@ export interface OctopThread {
   turn_active?: boolean;
   /** True when this thread is paused on a HITL approval or question. */
   awaiting_user?: boolean;
+  /** Shared with other users who can open this expert. */
+  contributed?: boolean;
+  /** False when the thread was contributed by someone else. */
+  owned?: boolean;
 }
 
 export interface OctopThreadHistory {
@@ -117,6 +121,7 @@ export interface ThreadDeleteResult {
 export interface OctopThreadPatch {
   title?: string;
   pinned?: boolean;
+  contributed?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
@@ -240,6 +245,8 @@ export const octopThreadsApi = {
       thread_id: string;
       title: string | null;
       pinned?: boolean;
+      contributed?: boolean;
+      owned?: boolean;
       model_ref?: string | null;
       reasoning_mode?: "auto" | "enabled" | "disabled" | null;
       reasoning_effort?: string | null;

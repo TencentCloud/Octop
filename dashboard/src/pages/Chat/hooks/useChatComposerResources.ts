@@ -69,6 +69,7 @@ export function useChatComposerResources(
   stickyReasoningEffort?: string | null,
   stickyConversationMode?: ConversationMode | null,
   stickyHitlPolicy?: HitlSessionPolicy | null,
+  persistThreadSettings = true,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
@@ -548,6 +549,7 @@ export function useChatComposerResources(
         }));
       }
       if (
+        persistThreadSettings &&
         resolvedAgentId &&
         activeThreadId &&
         !isPendingThread(activeThreadId)
@@ -559,7 +561,13 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, availableModels, modelReasoning, resolvedAgentId],
+    [
+      activeThreadId,
+      availableModels,
+      modelReasoning,
+      persistThreadSettings,
+      resolvedAgentId,
+    ],
   );
 
   // Clear a stale choice only after this expert's catalog loaded successfully.
@@ -608,6 +616,7 @@ export function useChatComposerResources(
         }));
       }
       if (
+        persistThreadSettings &&
         resolvedAgentId &&
         activeThreadId &&
         !isPendingThread(activeThreadId)
@@ -618,7 +627,7 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, resolvedAgentId, selectedModel],
+    [activeThreadId, persistThreadSettings, resolvedAgentId, selectedModel],
   );
 
   const handleConversationModeChange = useCallback(
@@ -632,6 +641,7 @@ export function useChatComposerResources(
         );
       }
       if (
+        persistThreadSettings &&
         (options?.persist ?? true) &&
         resolvedAgentId &&
         activeThreadId &&
@@ -642,7 +652,7 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, resolvedAgentId],
+    [activeThreadId, persistThreadSettings, resolvedAgentId],
   );
 
   const handleHitlPolicyChange = useCallback(
@@ -653,6 +663,7 @@ export function useChatComposerResources(
         syncSessionHitlPolicy(activeThreadId, next);
       }
       if (
+        persistThreadSettings &&
         (options?.persist ?? true) &&
         resolvedAgentId &&
         activeThreadId &&
@@ -663,7 +674,7 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, resolvedAgentId],
+    [activeThreadId, persistThreadSettings, resolvedAgentId],
   );
 
   return {

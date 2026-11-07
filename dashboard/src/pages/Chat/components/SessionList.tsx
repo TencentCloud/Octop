@@ -10,10 +10,12 @@ import {
   Pin,
   PinOff,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import cx from "classnames";
-import type { Session } from "../hooks/useSessions";
+import { type Session } from "../hooks/useSessions";
+import { saveSessionShared } from "../utils/shareSession";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
 import {
@@ -47,6 +49,9 @@ import {
 import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
+import ChatEditExpertDrawer, {
+  canEditExpertFromChat,
+} from "./ChatEditExpertDrawer";
 import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
@@ -78,6 +83,8 @@ interface SessionItemProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onContribute: (id: string, contributed: boolean) => void;
+  shareable: boolean;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
 }
@@ -91,6 +98,8 @@ const SessionItem = memo(function SessionItem({
   onRename,
   onPin,
   onFork,
+  onContribute,
+  shareable,
   forkDisabled,
   forkDisabledHint,
 }: SessionItemProps) {
@@ -124,52 +133,70 @@ const SessionItem = memo(function SessionItem({
   const itemForkHint = !session.hasActivity
     ? t("chat.forkNoAssistant")
     : forkDisabledHint;
+  const owned = session.owned !== false;
 
-  const menuItems: MenuProps["items"] = [
-    {
-      key: "pin",
-      label: session.pinned
-        ? t("chat.unpin", "取消置顶")
-        : t("chat.pin", "置顶"),
-      icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onPin(session.id, !session.pinned);
-      },
-    },
-    {
-      key: "fork",
-      label: t("chat.fork", "分叉"),
-      icon: <GitFork size={14} />,
-      disabled: itemForkDisabled,
-      title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onFork(session.id);
-      },
-    },
-    {
-      key: "rename",
-      label: t("common.rename"),
-      icon: <Pencil size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        setIsEditing(true);
-      },
-    },
-    {
-      key: "delete",
-      label: t("common.delete", "Delete"),
-      icon: <Trash2 size={14} />,
-      danger: true,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) =>
-          onDelete(session.id, compact),
-        );
-      },
-    },
-  ];
+  const menuItems: MenuProps["items"] = owned
+    ? [
+        ...(shareable
+          ? [
+              {
+                key: "contribute",
+                label: session.contributed
+                  ? t("chat.uncontribute", "取消共享")
+                  : t("chat.contribute", "共享会话"),
+                icon: <Share2 size={14} />,
+                onClick: (event: { domEvent: { stopPropagation(): void } }) => {
+                  event.domEvent.stopPropagation();
+                  onContribute(session.id, !session.contributed);
+                },
+              },
+            ]
+          : []),
+        {
+          key: "pin",
+          label: session.pinned
+            ? t("chat.unpin", "取消置顶")
+            : t("chat.pin", "置顶"),
+          icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onPin(session.id, !session.pinned);
+          },
+        },
+        {
+          key: "fork",
+          label: t("chat.fork", "分叉"),
+          icon: <GitFork size={14} />,
+          disabled: itemForkDisabled,
+          title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onFork(session.id);
+          },
+        },
+        {
+          key: "rename",
+          label: t("common.rename"),
+          icon: <Pencil size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            setIsEditing(true);
+          },
+        },
+        {
+          key: "delete",
+          label: t("common.delete", "Delete"),
+          icon: <Trash2 size={14} />,
+          danger: true,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            confirmDeleteConversation(t, (compact) =>
+              onDelete(session.id, compact),
+            );
+          },
+        },
+      ]
+    : [];
 
   return (
     <div
@@ -218,6 +245,14 @@ const SessionItem = memo(function SessionItem({
       ) : (
         <>
           <span className={styles.sessionRowTitle}>{session.name}</span>
+          {session.contributed ? (
+            <span
+              className={styles.sessionRowPinIndicator}
+              title={t("chat.sharedSession", "已共享")}
+            >
+              <Share2 size={12} strokeWidth={2} />
+            </span>
+          ) : null}
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -226,20 +261,22 @@ const SessionItem = memo(function SessionItem({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          <Dropdown
-            menu={{ items: menuItems }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <button
-              type="button"
-              className={styles.sessionRowMore}
-              aria-label={t("common.more", "More")}
-              onClick={(e) => e.stopPropagation()}
+          {menuItems && menuItems.length > 0 ? (
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              <MoreHorizontal size={15} />
-            </button>
-          </Dropdown>
+              <button
+                type="button"
+                className={styles.sessionRowMore}
+                aria-label={t("common.more", "More")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            </Dropdown>
+          ) : null}
         </>
       )}
     </div>
@@ -264,12 +301,14 @@ interface AgentCardProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  onContribute: (id: string, contributed: boolean) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
   onHide?: () => void;
   onUnhide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onEdit?: () => void;
   liveWorkingIds: ReadonlySet<string>;
 }
 
@@ -288,12 +327,14 @@ function ActiveAgentCard({
   onRename,
   onPin,
   onFork,
+  onContribute,
   activeForkDisabled,
   activeForkDisabledHint,
   onHide,
   onUnhide,
   pinned = false,
   onTogglePin,
+  onEdit,
   liveWorkingIds,
 }: AgentCardProps) {
   const { t } = useTranslation();
@@ -365,6 +406,7 @@ function ActiveAgentCard({
                 onNewChat={() => onNewChat(agent.agent_id)}
                 onHide={onHide}
                 onUnhide={onUnhide}
+                onEdit={onEdit}
               />
             ) : null}
           </div>
@@ -403,6 +445,8 @@ function ActiveAgentCard({
                 onDelete={onDelete}
                 onRename={onRename}
                 onPin={onPin}
+                onContribute={onContribute}
+                shareable={Boolean(agent.is_shared)}
                 onFork={(id) => onFork(id, agent.agent_id)}
                 forkDisabled={
                   activeId === s.id ? activeForkDisabled : undefined
@@ -439,6 +483,7 @@ interface AgentRowProps {
   onUnhide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onEdit?: () => void;
 }
 
 function InactiveAgentRow({
@@ -449,6 +494,7 @@ function InactiveAgentRow({
   onUnhide,
   pinned = false,
   onTogglePin,
+  onEdit,
 }: AgentRowProps) {
   const accent = agent.color || "#6366f1";
 
@@ -497,6 +543,7 @@ function InactiveAgentRow({
               onNewChat={onNewChat}
               onHide={onHide}
               onUnhide={onUnhide}
+              onEdit={onEdit}
             />
           ) : null}
         </div>
@@ -553,6 +600,7 @@ export default function SessionList({
   const liveWorkingIds = useSessionWorkIds();
   const [searchQuery, setSearchQuery] = useState("");
   const [showingHidden, setShowingHidden] = useState(false);
+  const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [navScope, setNavScope] = useState<ChatNavScope>(() =>
     initialChatNavScope(
       agents.find((agent) => agent.agent_id === activeAgentId),
@@ -667,6 +715,24 @@ export default function SessionList({
     },
     [catalog],
   );
+  const contributeSession = useCallback(
+    (agentId: string, id: string, contributed: boolean) => {
+      void saveSessionShared(
+        agentId,
+        id,
+        contributed,
+        () => {
+          catalog.patch(agentId, (prev) =>
+            prev.map((session) =>
+              session.id === id ? { ...session, contributed } : session,
+            ),
+          );
+        },
+        t("chat.shareFailed", "没能改共享状态，请再试一次"),
+      );
+    },
+    [catalog, t],
+  );
 
   const renderAgentRow = (agent: OctopAgent, hiddenRow: boolean) => {
     const isActive = agent.agent_id === activeAgentId;
@@ -709,6 +775,9 @@ export default function SessionList({
               ? onPin
               : (id, pinned) => pinOther(agent.agent_id, id, pinned)
           }
+          onContribute={(id, contributed) =>
+            contributeSession(agent.agent_id, id, contributed)
+          }
           onFork={onFork}
           activeForkDisabled={activeForkDisabled}
           activeForkDisabledHint={activeForkDisabledHint}
@@ -720,6 +789,9 @@ export default function SessionList({
           onUnhide={hiddenRow ? () => unhide(agent.agent_id) : undefined}
           pinned={isPinned(agent.agent_id)}
           onTogglePin={() => togglePin(agent.agent_id)}
+          onEdit={
+            canEditExpertFromChat(agent) ? () => setEditAgent(agent) : undefined
+          }
           liveWorkingIds={liveWorkingIds}
         />
       );
@@ -736,12 +808,19 @@ export default function SessionList({
         onUnhide={hiddenRow ? () => unhide(agent.agent_id) : undefined}
         pinned={isPinned(agent.agent_id)}
         onTogglePin={() => togglePin(agent.agent_id)}
+        onEdit={
+          canEditExpertFromChat(agent) ? () => setEditAgent(agent) : undefined
+        }
       />
     );
   };
 
   return (
     <div className={styles.sessionList}>
+      <ChatEditExpertDrawer
+        agent={editAgent}
+        onClose={() => setEditAgent(null)}
+      />
       {agents.length > 0 ? (
         <div className={styles.sessionSearchWrap}>
           <Search
