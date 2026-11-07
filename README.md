@@ -231,6 +231,8 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
 | FnOS NAS | `Octop-fnos-docker-lite-<version>.fpk` (smaller image) / `Octop-fnos-docker-<version>.fpk` (full: desktop, OCR, local models) / `Octop-fnos-native-amd64-<version>.fpk` (x86_64, no Docker) / `Octop-fnos-native-arm64-<version>.fpk` (ARM64 fallback if no Docker) — install via App Center |
 
+Those desktop filenames are the lite build, for machines that can reach the public network. The intranet build inserts `-full` before `<version>` and bundles the desktop, OCR, and local-embedding extras, same as the image tag `:<version>-full`.
+
 See [desktop/README.md](desktop/README.md) for the desktop shell and [fnos/README.md](fnos/README.md) for the FnOS packaging guide.
 
 **Alternative — PyPI** (if you already manage Python yourself):

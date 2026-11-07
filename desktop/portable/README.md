@@ -30,7 +30,7 @@ make -f desktop/portable/Makefile green
 
 ## 产物布局
 
-公开文件名：`Octop-portable-<plat>-<version>.zip`。zip 内目录仍是：
+公开文件名：lite 是 `Octop-portable-<plat>-<version>.zip`（能访问公网），full 是 `Octop-portable-<plat>-full-<version>.zip`（内网，多带 desktop / OCR / 本地向量）。用 `OCTOP_PACKAGE_VARIANT=full` 或 `GREEN_VARIANT=full` 打 full。zip 内目录仍是：
 
 ```
 Octop-<plat>/

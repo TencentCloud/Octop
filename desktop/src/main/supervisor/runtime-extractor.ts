@@ -18,6 +18,17 @@ export function runtimeInterpreterRelative(platform: string): string {
   return join("runtime", platform === "win32" ? "python.exe" : "bin/python3");
 }
 
+/**
+ * Zip names the shell accepts. Full is listed first so an intranet package
+ * wins when both files are present. Lite keeps the unsuffixed release name.
+ */
+export function portableZipNames(platformTag: string, version: string): readonly [string, string] {
+  return [
+    `Octop-portable-${platformTag}-full-${version}.zip`,
+    `Octop-portable-${platformTag}-${version}.zip`,
+  ];
+}
+
 /** Dashboard files inside the portable tree. The shell serves this copy. */
 export function bundledDashboardDir(portableDir: string): string {
   return join(portableDir, "packages", "octop", "dashboard");

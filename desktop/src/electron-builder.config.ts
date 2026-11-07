@@ -18,9 +18,12 @@ const electronVersion = productVersion.replace(
 if (!/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(electronVersion)) {
   throw new Error(`Unsupported Octop release version: ${productVersion}`);
 }
+// lite keeps Octop-desktop-<plat>-<version>. full inserts -full, matching
+// ghcr.io/tencentcloud/octop:<version>-full.
+const variantInfix = process.env.OCTOP_PACKAGE_VARIANT === "full" ? "-full" : "";
 const artifactName = process.env.OCTOP_PLATFORM
-  ? `Octop-desktop-${process.env.OCTOP_PLATFORM}-${productVersion}.\${ext}`
-  : "Octop-desktop-${os}-${arch}-${version}.${ext}";
+  ? `Octop-desktop-${process.env.OCTOP_PLATFORM}${variantInfix}-${productVersion}.\${ext}`
+  : `Octop-desktop-\${os}-\${arch}${variantInfix}-\${version}.\${ext}`;
 const productName = "Octop";
 
 // Without a certificate electron-builder does not skip signing cleanly on macOS:

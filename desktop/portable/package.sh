@@ -17,7 +17,9 @@
 #     start.sh / start.bat
 #     README.txt
 #
-# Public filename is Octop-portable-<plat>-<version>.zip (see portable_zip_basename).
+# Public filename is Octop-portable-<plat>[-full]-<version>.zip (see portable_zip_basename).
+# OCTOP_PACKAGE_VARIANT=lite (default) matches the published image's lite extras.
+# OCTOP_PACKAGE_VARIANT=full matches :{version}-full and is the intranet package.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -104,9 +106,19 @@ assemble_one() {
   local octop_whl
   octop_whl="$(build_octop_wheel "$wheel_dir")"
 
-  local req_file="${GREEN_ROOT}/requirements-${plat}.txt"
-  echo "[package] ${plat}: exporting frozen deps → ${req_file}" >&2
-  uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  local variant req_file
+  variant="$(package_variant)"
+  # Same extras as docker/Dockerfile OCTOP_IMAGE_VARIANT.
+  # lite: browser only. full: browser, desktop, local-embedding, knowledge-ocr.
+  local export_extra=(--extra browser)
+  req_file="${GREEN_ROOT}/requirements-${plat}.txt"
+  if [[ "$variant" == "full" ]]; then
+    export_extra+=(--extra desktop --extra local-embedding --extra knowledge-ocr)
+    req_file="${GREEN_ROOT}/requirements-${plat}-full.txt"
+  fi
+  echo "[package] ${plat} ${variant}: exporting frozen deps → ${req_file}" >&2
+  uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes \
+    "${export_extra[@]}" -o "$req_file" >/dev/null
   # Online --target upgrades need uv to reuse the bundled dependencies. pip
   # ignores installed packages with --target and resolves/downloads them again.
   echo "uv==${GREEN_UV_VERSION}" >> "$req_file"

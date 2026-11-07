@@ -33,18 +33,39 @@ octop_version() {
     "${REPO_ROOT}/pyproject.toml" | head -1
 }
 
+# lite: public network, same extras as the default image tag.
+# full: intranet, same extras as :{version}-full (desktop, OCR, local embedding).
+package_variant() {
+  local variant="${OCTOP_PACKAGE_VARIANT:-lite}"
+  case "$variant" in
+    lite|full) printf '%s\n' "$variant" ;;
+    *)
+      echo "OCTOP_PACKAGE_VARIANT must be lite or full (got ${variant})" >&2
+      return 1
+      ;;
+  esac
+}
+
+# Empty for lite so the default asset names stay Octop-*-<plat>-<version>.
+variant_filename_infix() {
+  if [[ "$(package_variant)" == "full" ]]; then
+    printf '%s' "-full"
+  fi
+}
+
 portable_zip_basename() {
-  echo "Octop-portable-${1}-$(octop_version).zip"
+  echo "Octop-portable-${1}$(variant_filename_infix)-$(octop_version).zip"
 }
 
 desktop_pkg_basename() {
   local plat="$1"
-  local ver
+  local ver infix
   ver="$(octop_version)"
+  infix="$(variant_filename_infix)"
   case "$plat" in
-    darwin-*) echo "Octop-desktop-${plat}-${ver}.dmg" ;;
-    windows-*) echo "Octop-desktop-${plat}-${ver}.exe" ;;
-    linux-*) echo "Octop-desktop-${plat}-${ver}.tar.gz" ;;
+    darwin-*) echo "Octop-desktop-${plat}${infix}-${ver}.dmg" ;;
+    windows-*) echo "Octop-desktop-${plat}${infix}-${ver}.exe" ;;
+    linux-*) echo "Octop-desktop-${plat}${infix}-${ver}.tar.gz" ;;
     *)
       echo "unknown platform: ${plat}" >&2
       return 1

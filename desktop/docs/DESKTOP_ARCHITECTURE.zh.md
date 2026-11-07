@@ -55,7 +55,7 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 
 ### 2.1 产物打包与放置
 
-- 由 CI / Makefile 打包生成独立的绿色便携包：`Octop-portable-<plat>-<version>.zip`。
+- 由 CI / Makefile 打包生成两套绿色便携包，extras 与已发布镜像一致。`lite`（默认文件名 `Octop-portable-<plat>-<version>.zip`）只带 `browser`，给能访问公网的机器。`full`（`Octop-portable-<plat>-full-<version>.zip`）再带 `desktop`、`local-embedding`、`knowledge-ocr`，给内网。安装包文件名同样在版本号前插入 `-full`。Pull request 只打 lite；打 tag 和手动 dispatch 两套都打。
 - **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。macOS 在签名和公证之前完成；Linux 的 deb、rpm 都带上这棵树。DMG 没有安装脚本，deb/rpm 安装的也是同一棵已展开的树，所以不能留到安装时再解压。
 - **Windows**：zip 与 `portable-version.json` 放在 `resources/portable/`。NSIS `customInstall` 用 `tar.exe` 解到 `$INSTDIR\resources\sidecar\`，卸载时删掉这个目录。不把四万多个文件逐个打进 NSIS。
 - 打 zip 之前删掉 `googleapiclient/discovery_cache/documents`、`PyObjCTest`、`*.dSYM`，以及第三方包里的 `tests` / `test` / `testing`。`octop` 自己的目录和 `numpy/testing` 保留。缺静态 discovery 文档时改为联网拉取。绿色 zip 和安装包是同一棵树，所以两处一起生效。

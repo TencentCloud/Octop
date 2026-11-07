@@ -247,12 +247,18 @@ make -f desktop/portable/Makefile green
 
 CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants
 (`darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`,
-`windows-amd64`) and attaches `Octop-portable-<plat>-<version>.zip` to the GitHub
+`windows-amd64`). Lite (default filenames) matches the published image and is
+for machines that can reach the public network. Full (`-full` before the
+version) matches `:{version}-full` and bundles the desktop, OCR, and
+local-embedding extras for an intranet. Pull requests build lite only; a tag
+or manual dispatch builds both. The workflow attaches
+`Octop-portable-<plat>-<version>.zip` (and the `-full` zip) to the GitHub
 Release, then mirrors it to COS. Each job bootstraps portable CPython, packages
 the zip, smoke-tests every frozen requirement, and bundles that exact zip plus
 the Dashboard into a native Electron installer. For macOS this produces DMG and
 ZIP, for Windows NSIS EXE, and for Linux deb and rpm. Installer files
-are named `Octop-desktop-<plat>-<version>.<ext>`; the portable manifest records
+are named `Octop-desktop-<plat>-<version>.<ext>` for lite and
+`Octop-desktop-<plat>-full-<version>.<ext>` for full; the portable manifest records
 the original Python version and the bundled zip's SHA-256. Optional CI signing
 secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`,
 `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) are required for a

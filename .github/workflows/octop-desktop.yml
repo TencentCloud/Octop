@@ -119,19 +119,24 @@ jobs:
           ]
           if os.environ["EVENT_NAME"] == "pull_request":
               sel = "darwin-arm64,darwin-amd64,windows-amd64,windows-arm64"
+              # PRs build the public-network package only. Tags and dispatch
+              # also build full (intranet: desktop, OCR, local embedding).
+              variants = ["lite"]
           else:
               sel = os.environ.get("PLATFORMS", "all").lower().replace(" ", "")
+              variants = ["lite", "full"]
           known = {row["plat"] for row in all_plats}
           if sel == "all":
-              include = all_plats
+              selected = all_plats
           else:
               wanted = {part for part in sel.split(",") if part}
               unknown = wanted - known
               if unknown:
                   raise SystemExit(f"unknown platform(s): {', '.join(sorted(unknown))}")
-              include = [row for row in all_plats if row["plat"] in wanted]
-          if not include:
+              selected = [row for row in all_plats if row["plat"] in wanted]
+          if not selected:
               raise SystemExit(f"no platforms selected: {sel}")
+          include = [{**row, "variant": variant} for row in selected for variant in variants]
           matrix = json.dumps({"include": include}, separators=(",", ":"))
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"matrix={matrix}\n")
@@ -139,13 +144,15 @@ jobs:
           PY
 
   package:
-    name: "${{ matrix.plat }}"
+    name: "${{ matrix.plat }} ${{ matrix.variant }}"
     needs: [frontend, select-platforms]
     runs-on: ${{ matrix.os }}
     # Matrix runners are native for each plat; pin host detection so x64 Git Bash
     # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
     env:
       GREEN_HOST_PLAT: ${{ matrix.plat }}
+      # lite: public network. full: intranet, same extras as the -full image.
+      OCTOP_PACKAGE_VARIANT: ${{ matrix.variant }}
       # Unsigned packaging is a deliberate mode, not an accident: without a
       # certificate electron-builder used to abort *mid* mac pipeline (after
       # "empty password will be used for code signing") with a confusing
@@ -202,6 +209,8 @@ jobs:
       - name: Smoke import (native host only)
         run: |
           set -euo pipefail
+          suffix=""
+          if [[ "${{ matrix.variant }}" == "full" ]]; then suffix="-full"; fi
           staging="desktop/portable/release/Octop-${{ matrix.plat }}"
           if [[ -x "${staging}/runtime/bin/python3" ]]; then
             py="${staging}/runtime/bin/python3"
@@ -211,7 +220,7 @@ jobs:
             echo "python missing under ${staging}/runtime" >&2
             exit 1
           fi
-          req_file="desktop/portable/requirements-${{ matrix.plat }}.txt"
+          req_file="desktop/portable/requirements-${{ matrix.plat }}${suffix}.txt"
           if [[ ! -f "$req_file" ]]; then
             echo "frozen requirements missing: ${req_file}" >&2
             exit 1
@@ -239,7 +248,7 @@ jobs:
       # With archive:false, artifact name is the filename (name: is ignored).
       - uses: actions/upload-artifact@v7
         with:
-          path: desktop/portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
+          path: desktop/portable/release/Octop-portable-${{ matrix.plat }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ env.OCTOP_VERSION }}.zip
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -248,7 +257,9 @@ jobs:
         run: |
           set -euo pipefail
           plat="${{ matrix.plat }}"
-          zip="desktop/portable/release/Octop-portable-${plat}-${OCTOP_VERSION}.zip"
+          suffix=""
+          if [[ "${{ matrix.variant }}" == "full" ]]; then suffix="-full"; fi
+          zip="desktop/portable/release/Octop-portable-${plat}${suffix}-${OCTOP_VERSION}.zip"
           rm -rf desktop/src/resources/portable
           mkdir -p desktop/src/resources/portable
           # The shell serves packages/octop/dashboard from this tree. There is
@@ -339,7 +350,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: startsWith(matrix.plat, 'darwin-')
         with:
-          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.dmg
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ env.OCTOP_VERSION }}.dmg
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -347,7 +358,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: startsWith(matrix.plat, 'darwin-')
         with:
-          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ env.OCTOP_VERSION }}.zip
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -355,7 +366,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: startsWith(matrix.plat, 'windows-')
         with:
-          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.exe
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ env.OCTOP_VERSION }}.exe
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -363,7 +374,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: startsWith(matrix.plat, 'linux-')
         with:
-          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.deb
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ env.OCTOP_VERSION }}.deb
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -371,7 +382,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: startsWith(matrix.plat, 'linux-')
         with:
-          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.rpm
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ env.OCTOP_VERSION }}.rpm
           archive: false
           if-no-files-found: error
           retention-days: 14
