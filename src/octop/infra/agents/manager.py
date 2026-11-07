@@ -562,6 +562,7 @@ class AgentManager:
         self._reclaim_pending: set[str] = set()
         self._reclaim_holds: dict[str, asyncio.Event] = {}
         self._reclaim_task: asyncio.Task[None] | None = None
+        self._reclaim_sweep_task: asyncio.Task[None] | None = None
         self._reclaim_wake: asyncio.Event | None = None
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
@@ -721,6 +722,15 @@ class AgentManager:
                 )
 
     async def shutdown(self) -> None:
+        # The idle sweep reads the control-plane DB on a worker thread. Wait for
+        # that read to finish before the caller closes the shared connection.
+        sweep = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep is not None and not sweep.done():
+            try:
+                await sweep
+            except Exception:
+                logger.warning("idle reclaim sweep failed during shutdown", exc_info=True)
         self._reclaim_pending.clear()
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
@@ -1769,11 +1779,15 @@ class AgentManager:
     def schedule_idle_reclaim_sweep(self) -> None:
         """Queue loaded stores whose freelist is already large enough to compact."""
         try:
-            asyncio.get_running_loop().create_task(
-                self._sweep_bloated_stores(), name="store-reclaim-sweep"
-            )
+            loop = asyncio.get_running_loop()
         except RuntimeError:
             return
+        current = self._reclaim_sweep_task
+        if current is not None and not current.done():
+            return
+        self._reclaim_sweep_task = loop.create_task(
+            self._sweep_bloated_stores(), name="store-reclaim-sweep"
+        )
 
     async def compact_agent_database(self, agent_id: str, *, wait_s: float = 60) -> bool:
         """Rebuild the database now. False means it was deferred until idle."""
