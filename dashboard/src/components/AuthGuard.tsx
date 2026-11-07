@@ -6,6 +6,7 @@ import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
 import { isNetworkFetchError } from "../utils/networkError";
 import { CurrentUserProvider } from "../hooks/useCurrentUser";
+import { useTheme } from "../context/ThemeContext";
 import BootOfflinePanel from "./BootOfflinePanel";
 
 interface AuthGuardProps {
@@ -42,6 +43,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [checking, setChecking] = useState(true);
   const [authed, setAuthed] = useState(false);
   const [user, setUser] = useState<OctopUser | null>(null);
+  const { bindUser } = useTheme();
+  useEffect(() => {
+    bindUser(user?.id ?? null);
+    return () => bindUser(null);
+  }, [user?.id, bindUser]);
   const [offline, setOffline] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
