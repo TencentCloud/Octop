@@ -85,6 +85,28 @@ def merge_stream_usage_extra(
     return json.dumps(extra)
 
 
+def merge_default_model_extra(extra_json: str | None, model: str | None) -> str | None:
+    """Write or clear the connection-test model inside *extra_json*.
+
+    A blank value removes ``default_model`` so the settings form can stay empty.
+    Other keys in the blob are left in place.
+    """
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    cleaned = (model or "").strip()
+    if cleaned:
+        extra["default_model"] = cleaned
+    else:
+        extra.pop("default_model", None)
+    return json.dumps(extra) if extra else None
+
+
 def merge_provider_purpose_extra(
     extra_json: str | None,
     purpose: str | None,

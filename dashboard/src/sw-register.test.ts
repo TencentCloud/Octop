@@ -104,6 +104,18 @@ describe("registerProductionSW", () => {
 
     expect(waiting.postMessage).not.toHaveBeenCalled();
     expect(onReady).toHaveBeenCalledOnce();
+
+    const { hasPendingAppUpdate } = await import("./sw-register");
+    expect(hasPendingAppUpdate()).toBe(true);
+  });
+
+  it("reports no pending update when nothing is waiting", async () => {
+    mockRegistration({ waiting: null, controller: null });
+    const { registerProductionSW, hasPendingAppUpdate } = await import(
+      "./sw-register"
+    );
+    await registerProductionSW();
+    expect(hasPendingAppUpdate()).toBe(false);
   });
 });
 

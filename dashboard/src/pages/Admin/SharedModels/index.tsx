@@ -26,7 +26,7 @@ export default function AdminSharedModelsPage() {
       }
       setProviders(rows);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载共享 Provider 失败");
+      setError(err instanceof Error ? err.message : "加载共享供应商失败");
     } finally {
       setLoading(false);
     }
