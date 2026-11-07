@@ -1,5 +1,6 @@
 # Build
 build/
+# NSIS include lives here; the blanket build/ rule would hide it.
 !desktop/src/build/
 !desktop/src/build/**
 dist/

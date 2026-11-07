@@ -473,6 +473,35 @@ def test_get_version_in_dir_does_not_use_other_installs(tmp_path: Path, has_meta
     assert self_update.get_version_in_dir(sys.executable, str(tmp_path)) is None
 
 
+def test_get_local_version_falls_back_to_editable_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Desktop dev runtime: green target exists but is empty, venv provides octop."""
+    from importlib.metadata import version as dist_version
+
+    from octop.infra.setup import self_update
+
+    monkeypatch.delenv("OCTOP_FPK_SITE_PACKAGES", raising=False)
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setattr(self_update, "get_editable_path", lambda: "/repo/octop")
+
+    assert self_update.get_version_in_dir(sys.executable, str(tmp_path)) is None
+    assert self_update.get_local_version() == dist_version("octop")
+
+
+def test_get_local_version_stays_zero_for_broken_green_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A green install with an empty target and no editable metadata is unknown."""
+    from octop.infra.setup import self_update
+
+    monkeypatch.delenv("OCTOP_FPK_SITE_PACKAGES", raising=False)
+    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setattr(self_update, "get_editable_path", lambda: None)
+
+    assert self_update.get_local_version() == "0.0.0"
+
+
 @pytest.mark.parametrize("target_env", ["OCTOP_GREEN_PACKAGES", "OCTOP_FPK_SITE_PACKAGES"])
 @pytest.mark.parametrize(
     "versions",
@@ -1171,11 +1200,11 @@ def test_cold_target_install_budget_preserves_regular_timeout(
     assert budgets == ([90, 900] if portable and installer == "pip" else [90])
 
 
-# The desktop launcher compares versions with its own Go implementation
-# (desktop/src/download_test.go, TestCompareVersions) and decides whether to
-# replace the portable runtime; the server decides below whether an upgrade is
-# newer. The two ends must agree on the same strings, so this table mirrors the
-# desktop one, including ignoring PEP 440 local segments on both ends.
+# The desktop launcher compares versions with its own implementation
+# (desktop/src/main/supervisor/version.ts + version.test.ts) and decides
+# whether to replace the portable runtime; the server decides below whether an
+# upgrade is newer. The two ends must agree on the same strings, so this table
+# mirrors the desktop one, including ignoring PEP 440 local segments on both ends.
 _DESKTOP_ORDERING_PARITY = [
     ("0.9.32", "0.9.31", 1),
     ("0.9.32", "0.9.32", 0),

@@ -1,7 +1,8 @@
 # Octop 绿色便携包（多平台）
 
 解压即用：内置便携 CPython + Octop 及依赖，通过 `start.sh` / `start.bat` 启动。  
-**不依赖**系统 Python，也**不包含** Wails / 桌面壳——用浏览器打开 Dashboard。  
+**不依赖**系统 Python，也**不包含**桌面壳——用浏览器打开 Dashboard。
+（Electron 外壳在 `desktop/src/`，打包时把这个 zip 作为 `extraResources` 随包携带。）
 首启走上游正常 setup wizard（本目录**不含** OOB / UI 裁剪）。
 
 ## 与上游解耦
@@ -115,4 +116,4 @@ Actions 使用 GitHub 上游 PBS（`PBS_BASE_URL`），本机构建默认 npmmir
 ## Electron 壳
 
 壳只消费 `Octop-portable-<plat>-<version>.zip`（zip 内仍是 `Octop-<plat>/`），不要把绿包编进 asar。步骤见
-[`AGENT_ELECTRON_INTEGRATION.md`](AGENT_ELECTRON_INTEGRATION.md)。
+[`AGENT_ELECTRON_INTEGRATION.md`](../docs/AGENT_ELECTRON_INTEGRATION.md)。

@@ -1,0 +1,149 @@
+/*
+ * Splash: the first frame of the app, on screen until the sidecar reports
+ * healthy. Mirrors the Dashboard's own boot screen (mark + wordmark + bar) so
+ * the swap from shell to Dashboard reads as one continuous startup.
+ *
+ * A cold start can hold this page for ten seconds or more, so the composition
+ * is deliberately more than a spinner in the middle of white: a soft brand wash
+ * gives the empty window a shape, the copy says what is being waited on, and the
+ * bar keeps moving so the wait never looks like a hang.
+ */
+.splash {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Not quite centred: a stack balanced on the exact midline reads as sitting
+     low once the eye includes the version stamp at the bottom. */
+  justify-content: center;
+  padding: 32px 24px 56px;
+  background:
+    radial-gradient(
+      720px 380px at 50% -8%,
+      rgba(232, 93, 117, 0.11),
+      transparent 68%
+    ),
+    var(--page);
+  user-select: none;
+}
+
+.splash__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: splash-in 420ms ease-out both;
+}
+
+.splash__mark {
+  height: 64px;
+  flex: none;
+  /* The red circle sits left in logo_mark.svg; the speed bars pull the
+     bounding box right. Nudge so the circle lines up with the wordmark. */
+  transform: translateX(12px);
+}
+
+.splash__logo {
+  display: block;
+  height: 64px;
+  width: auto;
+}
+
+.splash__wordmark {
+  margin: 18px 0 0;
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.splash__text {
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+/* Indeterminate: no progress number exists to show, and a fake percentage
+   would have to lie about the wait. */
+.splash__bar {
+  position: relative;
+  width: 200px;
+  height: 3px;
+  margin-top: 22px;
+  border-radius: 999px;
+  background: rgba(232, 93, 117, 0.14);
+  overflow: hidden;
+}
+
+.splash__bar-thumb {
+  position: absolute;
+  inset-block: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(232, 93, 117, 0.35), var(--brand));
+  animation: splash-sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.splash__version {
+  position: absolute;
+  inset-block-end: 18px;
+  margin: 0;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes splash-sweep {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+@keyframes splash-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+html[data-theme="dark"] .splash {
+  background:
+    radial-gradient(
+      720px 380px at 50% -8%,
+      rgba(240, 139, 154, 0.1),
+      transparent 68%
+    ),
+    var(--page);
+}
+
+html[data-theme="dark"] .splash__bar {
+  background: rgba(240, 139, 154, 0.16);
+}
+
+html[data-theme="dark"] .splash__bar-thumb {
+  background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash__stack,
+  .splash__bar-thumb {
+    animation: none;
+  }
+
+  /* Keep the bar readable without motion: a static partial fill still says
+     "in progress" where an empty track would say "nothing happening". */
+  .splash__bar-thumb {
+    width: 60%;
+    transform: translateX(34%);
+  }
+}

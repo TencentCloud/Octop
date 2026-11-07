@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Everything is bundled locally; no remote origins are needed. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'sha256-szVNN498TTn4zbYtA+JAqnw6Ytl/gi1a7lcOVBVhlH0='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
+    />
+    <!--
+      Runs before styles. `theme` is the resolved mode from the main process.
+      Vite prepends the extracted stylesheet to <head>; the build hoists this
+      script back in front of it (renderer/vite.config.ts).
+    -->
+    <script id="octop-shell-theme">
+      (function () {
+        var theme = new URLSearchParams(location.search).get("theme");
+        if (theme === "dark" || theme === "light") {
+          document.documentElement.setAttribute("data-theme", theme);
+        }
+      })();
+    </script>
+    <title>Octop</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/splash.tsx"></script>
+  </body>
+</html>

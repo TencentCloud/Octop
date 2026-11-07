@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
@@ -23,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+# Username the desktop wizard pre-fills. A session for this user skips login.
+LOCAL_DESKTOP_USERNAME = "local"
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1"})
+
 
 class VerifyBody(BaseModel):
     password: str = Field(min_length=1, max_length=200)
@@ -30,7 +36,16 @@ class VerifyBody(BaseModel):
 
 class SetupBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=200)
+    password: str | None = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Required while the wizard password gate is on. Optional when "
+            "``require_setup_password`` is off: the server then mints an "
+            "unguessable one, so the admin row keeps a hashed credential "
+            "without a password the client has to hold."
+        ),
+    )
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     locale: str | None = Field(
@@ -106,17 +121,53 @@ def _setup_password_required(server: Any) -> bool:
     return bool(cfg and cfg.require_setup_password)
 
 
+def _resolve_admin_password(server: Any, provided: str | None) -> str:
+    """Return the password to hash for the initial admin.
+
+    With the wizard password gate on, the client must supply one. With the gate
+    off (desktop builds), a missing password becomes a random one: the row still
+    carries a real hash, but the JWT issued below is the only way in.
+    """
+    if provided:
+        return provided
+    if _setup_password_required(server):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "password is required")
+    return secrets.token_urlsafe(32)
+
+
+def _client_host(request: Request) -> str:
+    return request.client.host if request.client else ""
+
+
+def _desktop_local_account(request: Request, server: Any) -> bool:
+    """Desktop shell adding the ``local`` account beside users that already exist.
+
+    The password gate stays off, and the caller is the shell on loopback. A
+    browser deployment of the same database does not enter this path.
+    """
+    if not desktop_shell_enabled() or _setup_password_required(server):
+        return False
+    return _client_host(request) in _LOOPBACK_HOSTS
+
+
 def _enforce_wizard_open(server: Any) -> None:
     um = server.user_manager
     if um is not None and um.count() != 0:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
-def _enforce_wizard_token_phase(server: Any) -> None:
-    """Allow wizard token operations while initial setup is still in progress."""
+def _enforce_wizard_token_phase(request: Request, server: Any) -> None:
+    """Allow wizard token operations while initial setup is still in progress.
+
+    Creating the desktop ``local`` account keeps the token valid after that
+    user is added next to accounts that were already there.
+    """
     um = server.user_manager
-    if um is not None and um.count() > 1:
-        raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
+    if um is None or um.count() <= 1:
+        return
+    if _desktop_local_account(request, server):
+        return
+    raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
 def _extract_bearer(authorization: str | None) -> str:
@@ -156,11 +207,18 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
     raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "invalid or expired wizard token")
 
 
-async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
-    """Create the first default agent for a fresh install (pinned id ``main``).
+async def _bootstrap_default_agent(
+    server: Any,
+    *,
+    user_id: int,
+    locale: str = "zh",
+    pin_main: bool = True,
+) -> None:
+    """Create the first default agent for a user.
 
-    The template is ``general-assistant`` from the expert market. A market miss
-    leaves setup finished without that agent.
+    Fresh setup pins ``main``. A desktop ``local`` account added later leaves
+    the id unset so an existing ``main`` stays with its owner. Workspace root
+    comes from that user's policy inside ``bootstrap_first_expert``.
     """
     from octop.infra.agents.experts.default_agent import (  # noqa: PLC0415
         SETUP_DEFAULT_AGENT_ID,
@@ -173,7 +231,7 @@ async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "
         server,
         user_id=user_id,
         locale=locale,
-        agent_id=SETUP_DEFAULT_AGENT_ID,
+        agent_id=SETUP_DEFAULT_AGENT_ID if pin_main else None,
     )
 
 
@@ -225,11 +283,12 @@ async def setup_presets() -> list[dict[str, Any]]:
 
 @router.get("/setup/validate-token", summary="Check wizard session token")
 async def validate_wizard_token(
+    request: Request,
     server: Any = Depends(get_server),
     authorization: str | None = Header(default=None),
 ) -> dict[str, bool]:
     """Return whether the Bearer wizard token is still valid (setup not yet completed)."""
-    _enforce_wizard_token_phase(server)
+    _enforce_wizard_token_phase(request, server)
     if not authorization or not authorization.startswith("Bearer "):
         return {"valid": False}
     token = authorization.removeprefix("Bearer ").strip()
@@ -238,7 +297,7 @@ async def validate_wizard_token(
 
 @router.get("/setup/status", summary="Setup wizard status")
 async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Whether initial admin creation is still required and wizard password file state."""
+    """Whether initial setup is still required, and whether the desktop local account exists."""
     wizard_path = str(_wizard.resolve_password_path(server.paths.root, legacy_home=Path.home()))
     password_required = _setup_password_required(server)
     um = server.user_manager
@@ -246,8 +305,12 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     database_driver = None
     if server.database_bound and server.services is not None:
         database_driver = server.services.config.database.driver
+    local_account = (
+        desktop_shell_enabled() and um is not None and um.get(LOCAL_DESKTOP_USERNAME) is not None
+    )
     return {
         "setup_required": setup_required,
+        "local_account": local_account,
         "wizard_password_required": password_required,
         "wizard_password_exists": (
             password_required
@@ -321,10 +384,17 @@ async def apply_database(
 
 
 @router.post("/setup/begin", summary="Begin setup without wizard password")
-async def begin_setup(server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Issue a wizard token when ``require_setup_password`` is disabled."""
-    _enforce_wizard_open(server)
-    if _setup_password_required(server):
+async def begin_setup(request: Request, server: Any = Depends(get_server)) -> dict[str, Any]:
+    """Issue a wizard token when ``require_setup_password`` is disabled.
+
+    The desktop shell may also begin the guide to add the ``local`` account
+    after other users already exist.
+    """
+    um = server.user_manager
+    if um is not None and um.count() != 0:
+        if not _desktop_local_account(request, server):
+            raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
+    elif _setup_password_required(server):
         raise OctopError(ErrorCode.FORBIDDEN, "setup password required")
     token, ttl = server.wizard_tokens.issue()
     return {"wizard_token": token, "expires_in": ttl}
@@ -359,8 +429,17 @@ async def initial_admin(
     server: Any = Depends(get_server),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    """Create the first admin user. Default ``main`` agent is created at ``/setup/finish``."""
-    _enforce_wizard_open(server)
+    """Create the first admin user. Default ``main`` agent is created at ``/setup/finish``.
+
+    On the desktop shell, the same call may add the ``local`` account when
+    other users already exist. Any other username stays refused.
+    """
+    um = server.user_manager
+    existing = um is not None and um.count() != 0
+    if existing and (
+        not _desktop_local_account(request, server) or body.username != LOCAL_DESKTOP_USERNAME
+    ):
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
     require_database(server)
     _require_wizard_token(authorization, server)
     locale = normalize_locale(body.locale or resolve_request_locale(request))
@@ -371,7 +450,7 @@ async def initial_admin(
     admin_role = UserRoleRepo(server.services.db).get(ADMIN_USER_ROLE_ID)
     user = await server.user_manager.create(
         username=body.username,
-        password=body.password,
+        password=_resolve_admin_password(server, body.password),
         role=Role.ADMIN,
         display_name=body.display_name,
         email=body.email,
@@ -413,7 +492,7 @@ async def test_provider_draft(
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Probe LLM connectivity for an unsaved wizard provider draft."""
-    _enforce_wizard_token_phase(server)
+    _enforce_wizard_token_phase(request, server)
     _authorize_setup_provider_test(authorization, server)
     if not body.api_key.strip():
         return {"ok": False, "error": "api_key is required"}
@@ -430,11 +509,12 @@ async def test_provider_draft(
 @router.post("/setup/finish", summary="Finish setup wizard")
 async def finish(
     body: FinishBody,
+    request: Request,
     server: Any = Depends(get_server),
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Apply optional provider draft, bootstrap default ``main`` agent, clear wizard token."""
-    _enforce_wizard_token_phase(server)
+    _enforce_wizard_token_phase(request, server)
     require_database(server)
     assert server.user_manager is not None
     wizard_token = _authorize_setup_mid_wizard(authorization, server)
@@ -450,12 +530,26 @@ async def finish(
                 f"failed to save provider: {exc}",
             ) from exc
     users = server.user_manager.list()
-    admin = next((u for u in users if u.is_admin), users[0] if users else None)
-    if admin is not None:
+    local_user = server.user_manager.get(LOCAL_DESKTOP_USERNAME)
+    adding_local = (
+        server.user_manager.count() > 1
+        and local_user is not None
+        and _desktop_local_account(request, server)
+    )
+    if adding_local and local_user is not None:
         try:
-            await _bootstrap_default_agent(server, user_id=admin.id, locale=admin.locale)
+            await _bootstrap_default_agent(
+                server, user_id=local_user.id, locale=local_user.locale, pin_main=False
+            )
         except Exception as exc:  # pragma: no cover
             logger.warning("could not auto-create default agent: %s", exc)
+    else:
+        admin = next((u for u in users if u.is_admin), users[0] if users else None)
+        if admin is not None:
+            try:
+                await _bootstrap_default_agent(server, user_id=admin.id, locale=admin.locale)
+            except Exception as exc:  # pragma: no cover
+                logger.warning("could not auto-create default agent: %s", exc)
     if wizard_token is not None:
         server.wizard_tokens.consume(wizard_token)
     return {"ok": True}

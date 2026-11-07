@@ -8,6 +8,7 @@ import sys
 from contextlib import suppress
 from typing import Any
 
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.server import OctopServer
 from octop.infra.utils.accept_errors import coalesce_accept_errors
 
@@ -81,7 +82,12 @@ async def run_foreground(
     assert cfg is not None
     bind_host = host or cfg.bind_host
     bind_port = port or cfg.port
-    if ssl_certfile is None and ssl_keyfile is None:
+    if desktop_shell_enabled():
+        # Desktop-hosted sidecar always serves one loopback HTTP listener; it
+        # must ignore any persisted TLS / dual-port configuration.
+        ssl_certfile = None
+        ssl_keyfile = None
+    elif ssl_certfile is None and ssl_keyfile is None:
         ssl_certfile, ssl_keyfile = resolve_tls_paths(srv.paths.root, cfg.tls)
 
     plan = build_listen_plan(

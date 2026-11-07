@@ -1,0 +1,2 @@
+# CSP hashes the theme script bytes. autocrlf on Windows must not rewrite these.
+*.html text eol=lf

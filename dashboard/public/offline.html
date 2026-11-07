@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta
@@ -7,6 +7,12 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>Octop — 离线中</title>
+    <!--
+      Offline shell for the installed web app. It has to stand alone: no bundles,
+      no network. It follows the same composition as the boot splash (mark, one
+      title, one sentence, one action, soft brand wash) so being offline reads as
+      the product waiting, not as a browser error.
+    -->
     <style>
       * {
         margin: 0;
@@ -15,63 +21,127 @@
       html,
       body {
         height: 100%;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0f1117;
-        color: #e7e7ed;
+      }
+      body {
         display: flex;
         align-items: center;
         justify-content: center;
-      }
-      .container {
-        text-align: center;
-        padding: max(40px, env(safe-area-inset-top, 0px))
+        padding: max(24px, env(safe-area-inset-top, 0px))
           max(24px, env(safe-area-inset-right, 0px))
-          max(40px, env(safe-area-inset-bottom, 0px))
+          max(24px, env(safe-area-inset-bottom, 0px))
           max(24px, env(safe-area-inset-left, 0px));
+        background: radial-gradient(
+            720px 380px at 50% -8%,
+            rgba(232, 93, 117, 0.11),
+            transparent 68%
+          ),
+          #f7f8fa;
+        color: #1a1c28;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "Noto Sans SC", sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      html[data-theme="dark"] body {
+        background: radial-gradient(
+            720px 380px at 50% -8%,
+            rgba(240, 139, 154, 0.1),
+            transparent 68%
+          ),
+          #12141c;
+        color: rgba(255, 255, 255, 0.92);
+      }
+      .stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
         max-width: 360px;
       }
-      .logo {
-        width: 72px;
-        height: 72px;
-        border-radius: 16px;
-        margin: 0 auto 24px;
+      /* One mark for both themes — the tile carries its own background. */
+      .mark {
         display: block;
-        opacity: 0.9;
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        box-shadow:
+          0 1px 2px rgba(24, 8, 12, 0.06),
+          0 12px 28px -12px rgba(232, 93, 117, 0.45);
       }
       h1 {
-        font-size: 22px;
+        margin: 18px 0 0;
+        font-size: 21px;
         font-weight: 600;
-        margin-bottom: 10px;
-        color: #f08b9a;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
       }
       p {
-        font-size: 14px;
+        margin: 10px 0 0;
+        font-size: 13.5px;
+        font-weight: 400;
+        line-height: 1.6;
+        color: #8b8fa3;
+      }
+      html[data-theme="dark"] p {
         color: rgba(255, 255, 255, 0.55);
-        line-height: 1.7;
-        margin-bottom: 28px;
       }
       button {
-        padding: 10px 28px;
-        border-radius: 999px;
+        margin-top: 24px;
+        height: 36px;
+        padding: 0 20px;
         border: none;
+        border-radius: 10px;
         background: #e85d75;
         color: #fff;
+        font-family: inherit;
         font-size: 14px;
         font-weight: 500;
         cursor: pointer;
-        transition: background 0.2s;
+        transition: opacity 0.15s ease;
+      }
+      html[data-theme="dark"] button {
+        background: #f08b9a;
       }
       button:hover {
-        background: #d14a62;
+        opacity: 0.88;
+      }
+      button:focus-visible {
+        outline: 2px solid #e85d75;
+        outline-offset: 2px;
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <img src="logo_vertical_white.svg" alt="Octop" class="logo" />
+    <div class="stack">
+      <img src="favico.svg" alt="" class="mark" width="64" height="64" />
       <h1>当前处于离线状态</h1>
-      <p>无法连接到 Octop 服务端。<br />请检查网络连接后重试。</p>
-      <button onclick="location.reload()">重新连接</button>
+      <p>无法连接到 Octop 服务端，请检查网络连接后重试。</p>
+      <button type="button" onclick="location.reload()">重新连接</button>
     </div>
+    <script>
+      // Same stored preference the app honours, so an offline tab does not
+      // flash the other theme. Falls back to the OS when nothing is stored.
+      (function () {
+        var mode = "light";
+        try {
+          var raw = localStorage.getItem("theme");
+          var pref = "system";
+          if (raw === "light" || raw === "dark" || raw === "system") {
+            pref = raw;
+          } else if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.preference === "string") {
+              pref = parsed.preference;
+            }
+          }
+          var systemDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          if (pref === "dark" || (pref === "system" && systemDark)) {
+            mode = "dark";
+          }
+        } catch (e) {}
+        document.documentElement.setAttribute("data-theme", mode);
+      })();
+    </script>
   </body>
 </html>
