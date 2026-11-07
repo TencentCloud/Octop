@@ -579,6 +579,7 @@ function ChatPageInner() {
     availableModels,
     modelsReady,
     activeModelRef,
+    preferredModel,
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
@@ -605,7 +606,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
-    activeModelRef,
+    preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -1127,6 +1128,7 @@ function ChatPageInner() {
       lastUserModel,
       selectedModel,
       activeAgent?.default_model,
+      preferredModel,
       activeModelRef,
     ]);
     if (providerId == null) {
@@ -1145,6 +1147,7 @@ function ChatPageInner() {
     availableModels,
     selectedModel,
     activeAgent?.default_model,
+    preferredModel,
     activeModelRef,
     messages,
     t,

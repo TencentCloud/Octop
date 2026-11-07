@@ -25,6 +25,7 @@ import {
 import { isAgentChatReady } from "../../../utils/agentError";
 import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
+import { openAgentUnread } from "../utils/openUnreadSession";
 import { saveSessionShared } from "../utils/shareSession";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
@@ -39,6 +40,7 @@ import {
   matchesChatNavScope,
   type ChatNavScope,
 } from "../utils/chatNavScope";
+import AgentUnreadBadge from "./AgentUnreadBadge";
 import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
 import {
   expertVisibleInNavSearch,
@@ -124,19 +126,6 @@ interface MinimalAgentSessionNavProps {
   onFork: (id: string, agentId?: string | null) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
-}
-
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
 }
 
 const PreviewSessionRow = memo(function PreviewSessionRow({
@@ -855,8 +844,13 @@ export default function MinimalAgentSessionNav({
                   <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
                 </span>
-                <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
+              <AgentUnreadBadge
+                count={agent.unread_count ?? 0}
+                onOpen={() => {
+                  void openAgentUnread(agent.agent_id, list, onSelect);
+                }}
+              />
               <ExpertNavActions
                 variant="minimal"
                 pinned={isPinned(agent.agent_id)}

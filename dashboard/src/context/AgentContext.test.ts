@@ -253,6 +253,27 @@ describe("mapBridgeAgent", () => {
     expect(mapped.owner_username).toBe("Alice");
   });
 
+  it("keeps a shared peer expert's default model for the chat picker", () => {
+    const mapped = mapBridgeAgent(
+      {
+        agent_id: "bridge:cid:01AGENT",
+        name: "Peer",
+        is_owner: false,
+        is_shared: true,
+        default_model: "prov/shared-default",
+      },
+      {
+        ...conn,
+        is_owner: false,
+        owner_username: "alice",
+        owner_display_name: "Alice",
+      },
+    );
+    expect(mapped.is_shared).toBe(true);
+    expect(mapped.is_owner).toBe(false);
+    expect(mapped.default_model).toBe("prov/shared-default");
+  });
+
   it("keeps management when this user owns the link and the peer owns the expert", () => {
     const mapped = mapBridgeAgent(
       {

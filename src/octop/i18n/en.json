@@ -460,6 +460,8 @@
     "BRIDGE_CONNECTION_LIMIT": "At most {limit} cloud collab connections per user. Delete one to add another.",
     "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
+    "BRIDGE_PEER_FORBIDDEN": "The account you signed in with on the peer does not have Cloud collab permission. This is not limited to admins — grant that account Cloud collab on the peer, or sign in with an account that already has it.",
+    "BRIDGE_PEER_CONNECTION_OWNED": "The peer already registered this cloud collab link to another user, so this account cannot take it over. Ask that user to delete it, or sign in with the same peer account. If the address actually points at this Octop, use the peer's real address instead.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "CRON_ALREADY_RUNNING": "This task is already running on another instance.",
     "SLASH_UNKNOWN": "Unknown slash command.",

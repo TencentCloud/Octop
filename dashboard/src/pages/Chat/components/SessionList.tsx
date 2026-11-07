@@ -47,6 +47,7 @@ import {
   type ChatNavScope,
 } from "../utils/chatNavScope";
 import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import AgentUnreadBadge from "./AgentUnreadBadge";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
 import ChatEditExpertDrawer, {
@@ -57,19 +58,7 @@ import {
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
 import styles from "../index.module.less";
-
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
+import { openAgentUnread } from "../utils/openUnreadSession";
 
 interface SessionItemProps {
   session: Session;
@@ -397,7 +386,12 @@ function ActiveAgentCard({
               <TeamChatBadge agent={agent} compact />
               <RemoteExpertHint agent={agent} compact />
             </div>
-            <AgentUnreadBadge count={agent.unread_count ?? 0} />
+            <AgentUnreadBadge
+              count={agent.unread_count ?? 0}
+              onOpen={() => {
+                void openAgentUnread(agent.agent_id, sessions, onSelect);
+              }}
+            />
             {onTogglePin ? (
               <ExpertNavActions
                 variant="classic"
@@ -484,6 +478,7 @@ interface AgentRowProps {
   pinned?: boolean;
   onTogglePin?: () => void;
   onEdit?: () => void;
+  onOpenUnread: () => void;
 }
 
 function InactiveAgentRow({
@@ -495,6 +490,7 @@ function InactiveAgentRow({
   pinned = false,
   onTogglePin,
   onEdit,
+  onOpenUnread,
 }: AgentRowProps) {
   const accent = agent.color || "#6366f1";
 
@@ -534,7 +530,10 @@ function InactiveAgentRow({
             <TeamChatBadge agent={agent} compact />
             <RemoteExpertHint agent={agent} compact />
           </div>
-          <AgentUnreadBadge count={agent.unread_count ?? 0} />
+          <AgentUnreadBadge
+            count={agent.unread_count ?? 0}
+            onOpen={onOpenUnread}
+          />
           {onNewChat && onTogglePin ? (
             <ExpertNavActions
               variant="classic"
@@ -811,6 +810,13 @@ export default function SessionList({
         onEdit={
           canEditExpertFromChat(agent) ? () => setEditAgent(agent) : undefined
         }
+        onOpenUnread={() => {
+          void openAgentUnread(
+            agent.agent_id,
+            sessionsFor(agent.agent_id),
+            onSelect,
+          );
+        }}
       />
     );
   };
