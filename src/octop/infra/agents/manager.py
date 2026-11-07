@@ -722,6 +722,15 @@ class AgentManager:
                 )
 
     async def shutdown(self) -> None:
+        # The idle sweep reads the control-plane DB on a worker thread. Wait for
+        # that read to finish before the caller closes the shared connection.
+        sweep = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep is not None and not sweep.done():
+            try:
+                await sweep
+            except Exception:
+                logger.warning("idle reclaim sweep failed during shutdown", exc_info=True)
         self._reclaim_pending.clear()
         # The idle sweep runs list_all on a worker thread. Cancelling that
         # task does not stop the thread, so wait until the scan returns before
@@ -1780,8 +1789,8 @@ class AgentManager:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             return
-        existing = self._reclaim_sweep_task
-        if existing is not None and not existing.done():
+        current = self._reclaim_sweep_task
+        if current is not None and not current.done():
             return
         self._reclaim_sweep_task = loop.create_task(
             self._sweep_bloated_stores(), name="store-reclaim-sweep"
