@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import sys
 from pathlib import Path
 
 WIZARD_FILE_NAME = "octop-login.txt"
@@ -13,6 +15,124 @@ _PASSWORD_LABEL_PREFIX = "Password:"
 
 def _password_path(home: Path) -> Path:
     return home / WIZARD_FILE_NAME
+
+
+logger = logging.getLogger(__name__)
+
+
+def _harden_password_file(target: Path) -> None:
+    """Apply the ``0o600`` intent to the written password file.
+
+    POSIX: mode bits only. Windows: also swap the inherited DACL for a
+    protected one granting full control to SYSTEM, Administrators and the
+    file's owner — ``os.chmod`` cannot express that on NTFS, so a plain
+    chmod'ed file stays readable by any local user that can reach the
+    directory (#2370).
+    """
+    os.chmod(target, 0o600)
+    if os.name == "nt" and not _restrict_windows_dacl(target):
+        logger.warning(
+            "Could not restrict the DACL on %s; the wizard password "
+            "file may be readable by other local users.",
+            target,
+        )
+
+
+def _restrict_windows_dacl(target: Path) -> bool:
+    """Replace the inherited NTFS DACL on target with a protected one
+    (SYSTEM, Administrators, owner). True when the DACL was set."""
+    # sys.platform (not os.name) is what both the runtime and mypy use to
+    # prune platform-specific branches; typeshed only exposes ctypes.WinDLL
+    # under win32, so a POSIX typecheck must never see the body below.
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    SE_FILE_OBJECT = 1
+    DACL_SECURITY_INFORMATION = 0x4
+    PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
+    SDDL_REVISION_1 = 1
+
+    advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.ULONG),
+    ]
+    advapi32.GetSecurityDescriptorDacl.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.BOOL),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.BOOL),
+    ]
+    advapi32.SetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        ctypes.c_ulong,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    kernel32.LocalFree.restype = wintypes.HLOCAL
+    kernel32.LocalFree.argtypes = [wintypes.HLOCAL]
+
+    def _free(handle: ctypes.c_void_p) -> None:
+        if handle:
+            kernel32.LocalFree(ctypes.cast(handle, wintypes.HLOCAL))
+
+    # Protected DACL: no inherited ACEs, full control for SYSTEM,
+    # Administrators and the file's owner only. OW (S-1-3-4, Owner
+    # Rights) is resolved by the kernel to whoever owns the file, so the
+    # grant survives ownership changes and no owner-SID lookup is needed.
+    sddl = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)"
+    dacl_sd = ctypes.c_void_p()
+    dacl_len = wintypes.ULONG()
+    if (
+        advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl,
+            SDDL_REVISION_1,
+            ctypes.byref(dacl_sd),
+            ctypes.byref(dacl_len),
+        )
+        == 0
+        or not dacl_sd.value
+    ):
+        return False
+
+    dacl = ctypes.c_void_p()
+    dacl_present = wintypes.BOOL()
+    defaulted = wintypes.BOOL()
+    if (
+        advapi32.GetSecurityDescriptorDacl(
+            dacl_sd,
+            ctypes.byref(dacl_present),
+            ctypes.byref(dacl),
+            ctypes.byref(defaulted),
+        )
+        == 0
+        or not dacl_present.value
+    ):
+        _free(dacl_sd)
+        return False
+
+    ok: bool = (
+        advapi32.SetNamedSecurityInfoW(
+            str(target),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            dacl,
+            None,
+        )
+        == 0
+    )
+    _free(dacl_sd)
+    return ok
 
 
 def resolve_password_path(home: Path, legacy_home: Path | None = None) -> Path:
@@ -52,7 +172,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
                     os.write(fd, (legacy_pw + "\n").encode("utf-8"))
                 finally:
                     os.close(fd)
-                os.chmod(target, 0o600)
+                _harden_password_file(target)
                 return legacy_pw
             except FileExistsError:
                 return None
@@ -69,7 +189,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
         os.write(fd, (pw + "\n").encode("utf-8"))
     finally:
         os.close(fd)
-    os.chmod(target, 0o600)
+    _harden_password_file(target)
     return pw
 
 
