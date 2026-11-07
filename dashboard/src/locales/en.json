@@ -2,6 +2,11 @@
   "app": {
     "pageTitle": "Octop - An intelligent partner that understands you, helps you, and grows with you"
   },
+  "weather": {
+    "sunny": "Sunny",
+    "rainy": "Rainy",
+    "cloudy": "Cloudy"
+  },
   "layout": {
     "collapsePanel": "Collapse panel",
     "expandPanel": "Expand panel"

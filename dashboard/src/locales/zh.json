@@ -2,6 +2,11 @@
   "app": {
     "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
   },
+  "weather": {
+    "sunny": "晴朗",
+    "rainy": "雨天",
+    "cloudy": "多云"
+  },
   "layout": {
     "collapsePanel": "收起面板",
     "expandPanel": "展开面板"
