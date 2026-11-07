@@ -47,6 +47,7 @@ class ThreadRow:
     conversation_mode: str | None = None
     pending_plan_path: str | None = None
     hitl_policy: str | None = None
+    contributed: bool = False
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -66,6 +67,10 @@ class ThreadRow:
             hitl_policy = r["hitl_policy"]
         except (KeyError, IndexError):
             hitl_policy = None
+        try:
+            contributed = bool(r["contributed"])
+        except (KeyError, IndexError):
+            contributed = False
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -84,6 +89,7 @@ class ThreadRow:
             conversation_mode=str(conversation_mode) if conversation_mode else None,
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
             hitl_policy=str(hitl_policy) if hitl_policy else None,
+            contributed=contributed,
         )
 
 
@@ -250,6 +256,26 @@ class ThreadRepo:
                 (agent_id, user_id, limit),
             ).fetchall()
         return map_rows(rows, ThreadRow)
+
+    def list_visible(self, *, agent_id: str, user_id: int, limit: int = 50) -> list[ThreadRow]:
+        """Own threads plus conversations contributed to this shared expert."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE agent_id = ? "
+                "AND (user_id = ? OR contributed = 1) "
+                "ORDER BY pinned DESC, "
+                "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
+                "thread_id DESC LIMIT ?",
+                (agent_id, user_id, limit),
+            ).fetchall()
+        return map_rows(rows, ThreadRow)
+
+    def set_contributed(self, thread_id: str, contributed: bool) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET contributed = ? WHERE thread_id = ?",
+                (bool_int(contributed), thread_id),
+            )
 
     def list_by_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         with self._db.connect() as conn:

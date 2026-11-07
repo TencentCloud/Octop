@@ -27,11 +27,16 @@ from octop.infra.bridge.ids import parse_bridge_agent_id
 from octop.infra.errors import OctopError
 from octop.infra.gateway.steer import SteerAdmitOk, SteerAdmitReject, SteerCoordinator
 from octop.infra.gateway.steer.types import preview_text
+from octop.infra.gateway.threads import thread_visible_to
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _ws_thread_visible(row: Any, agent_id: str, user_id: int) -> bool:
+    return row is not None and row.agent_id == agent_id and thread_visible_to(row, user_id)
 
 
 @router.websocket("/agents/{agent_id}/chat/ws")
@@ -108,7 +113,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "subscribe requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
+                if not _ws_thread_visible(row, agent_id, user.id):
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
@@ -153,7 +158,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "cancel requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
+                if not _ws_thread_visible(row, agent_id, user.id):
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
@@ -754,7 +759,7 @@ async def _handle_steer_remove(
         )
         return
     row = gateway.thread_registry.get_thread(thread_id)
-    if row is None or row.agent_id != agent_id or row.user_id != user_id:
+    if not _ws_thread_visible(row, agent_id, user_id):
         await send_frame(
             {
                 "type": "steer.ack",

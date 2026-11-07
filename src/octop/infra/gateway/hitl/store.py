@@ -263,15 +263,25 @@ class HitlPendingStore:
         rows.sort(key=lambda r: r.created_at, reverse=True)
         return rows
 
-    def pending_thread_ids(self, *, agent_id: str, user_id: int) -> frozenset[str]:
-        """Thread ids with a still-pending HITL pause for this agent/user."""
+    def pending_thread_ids(
+        self,
+        *,
+        agent_id: str,
+        user_id: int,
+        any_user: bool = False,
+    ) -> frozenset[str]:
+        """Thread ids with a still-pending HITL pause for this agent.
+
+        ``any_user`` includes pauses opened by someone else. Callers use that
+        only for conversations that were shared with the current user.
+        """
         self._gc()
         now = time.time()
         out: set[str] = set()
         for record in self._records.values():
             if record.status != "pending":
                 continue
-            if record.user_id != user_id:
+            if not any_user and record.user_id != user_id:
                 continue
             if now - record.created_at > self.ttl_seconds:
                 continue

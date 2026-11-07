@@ -270,7 +270,14 @@ class ThreadRegistry:
         """IM sessions bound to *thread_id* (excludes dashboard / CLI)."""
         return [row for row in self.sessions_for_thread(thread_id) if self.is_im_session(row)]
 
-    async def rebind(self, *, session_key: str, thread_id: str, agent_id: str) -> None:
+    async def rebind(
+        self,
+        *,
+        session_key: str,
+        thread_id: str,
+        agent_id: str,
+        acting_user_id: int | None = None,
+    ) -> None:
         row = self._threads.get(thread_id)
         if row is None:
             msg = f"thread {thread_id!r} not found"
@@ -296,10 +303,14 @@ class ThreadRegistry:
                 metadata = {"channel_type": row.channel_type, "user_id": row.user_id}
                 channel_id = None
             if session is None:
+                session_user_id = acting_user_id if acting_user_id is not None else row.user_id
+                if acting_user_id is not None:
+                    subject_id = str(acting_user_id)
+                    metadata = {"channel_type": channel_type, "user_id": acting_user_id}
                 self._sessions.upsert(
                     session_key=session_key,
                     agent_id=agent_id,
-                    user_id=row.user_id,
+                    user_id=session_user_id,
                     channel_type=channel_type,
                     chat_type=chat_type,
                     thread_id=thread_id,
@@ -436,6 +447,15 @@ class ThreadRegistry:
     def list_threads(self, *, agent_id: str, user_id: int, limit: int = 50) -> list[ThreadRow]:
         return self._threads.list_by_agent_user(agent_id=agent_id, user_id=user_id, limit=limit)
 
+    def list_visible_threads(
+        self, *, agent_id: str, user_id: int, limit: int = 50
+    ) -> list[ThreadRow]:
+        """Threads this user owns, plus ones contributed on the same expert."""
+        return self._threads.list_visible(agent_id=agent_id, user_id=user_id, limit=limit)
+
+    def set_contributed(self, thread_id: str, contributed: bool) -> None:
+        self._threads.set_contributed(thread_id, contributed)
+
     def list_threads_for_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         return self._threads.list_by_session(session_key=session_key, limit=limit)
 
@@ -495,6 +515,9 @@ class ThreadRegistry:
     def mark_thread_read(self, thread_id: str) -> None:
         self._sessions.clear_unread_for_thread(thread_id)
 
+    def mark_thread_read_for_user(self, thread_id: str, user_id: int) -> None:
+        self._sessions.clear_unread_for_user_thread(thread_id, user_id)
+
     def mark_agent_read(self, agent_id: str, user_id: int) -> None:
         self._sessions.clear_unread_for_agent(agent_id, user_id)
 
@@ -507,6 +530,15 @@ class ThreadRegistry:
 
 def _new_thread_id() -> str:
     return f"thr_{new_ulid()}"
+
+
+def thread_visible_to(row: ThreadRow, user_id: int) -> bool:
+    """Owner, or anyone who can open an expert that this thread was contributed to.
+
+    Rows that predate the column, and test fakes, have no ``contributed`` flag.
+    Those stay private to the owner.
+    """
+    return row.user_id == user_id or bool(getattr(row, "contributed", False))
 
 
 def thread_row_has_messages(row: ThreadRow) -> bool:

@@ -1410,6 +1410,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 command=msg.text,
                 response_lines=slash_lines,
+                user_id=user_id,
             )
             self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
             self.teams.cancel_member_hitl(thread_id)
@@ -2227,12 +2228,20 @@ class GlobalProcessor:
         thread_id: str,
         command: str,
         response_lines: list[str],
+        user_id: int = 0,
     ) -> None:
         """Save slash history, honoring the command's checkpoint persistence policy."""
+        from octop.infra.gateway.process.message_keys import AUTHOR_USER_ID_KEY  # noqa: PLC0415
+
         turn_id = new_ulid()
         response = "\n".join(response_lines).strip()
+        kwargs = {AUTHOR_USER_ID_KEY: user_id} if user_id > 0 else {}
         canonical: list[HumanMessage | AIMessage] = [
-            HumanMessage(content=command, id=f"slash:{turn_id}:human"),
+            HumanMessage(
+                content=command,
+                id=f"slash:{turn_id}:human",
+                additional_kwargs=kwargs,
+            ),
         ]
         if response:
             canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))

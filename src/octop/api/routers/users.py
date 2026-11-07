@@ -16,7 +16,6 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import (
     PERMISSIONS,
-    effective_permissions,
     expand_permission_grants,
 )
 from octop.infra.users.resource_policy import (
@@ -688,11 +687,10 @@ async def upload_user_avatar(
 @router.get("/{user_id}/avatar")
 async def get_user_avatar(
     user_id: int,
-    actor: Any = Depends(current_user),
+    _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> Any:
-    if actor.id != user_id and "users" not in effective_permissions(actor):
-        raise OctopError(ErrorCode.FORBIDDEN, "not allowed to read this avatar")
+    """Portrait for any signed-in user. Shared conversations show each sender."""
     from octop.infra.users.profile_avatar import avatar_response
 
     if server.user_manager.get_row(user_id) is None:

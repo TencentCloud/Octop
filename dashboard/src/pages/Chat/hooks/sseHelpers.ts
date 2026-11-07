@@ -134,10 +134,20 @@ export function parseDecisionNotice(data: unknown): DecisionNotice | null {
   };
 }
 
+export interface MessageAuthor {
+  userId: number;
+  displayName: string;
+  username: string;
+  avatarUrl?: string | null;
+  avatarIcon?: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  /** Who asked this question. Shared conversations use it for the portrait. */
+  author?: MessageAuthor;
   type?: string;
   /** Structured content blocks for multi-part messages (thinking + text). */
   contentBlocks?: ContentBlockItem[];

@@ -291,7 +291,7 @@ async def test_dashboard_request_attaches_knowledge_base_ids_without_prepending(
         meta=msg.metadata or {},
     )
 
-    content = request["messages"][0]["content"]
+    content = request["messages"][0].content
     assert content == "question"
     configurable = request.get("configurable") or {}
     assert configurable["knowledge_base_ids"] == ["kb-1"]

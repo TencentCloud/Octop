@@ -331,7 +331,11 @@ def build_harness_request(
 
     payload = content if content is not None else build_content(text=text, images=images)
     stored_id = (message_id or "").strip() or None
+    from octop.infra.gateway.process.message_keys import AUTHOR_USER_ID_KEY  # noqa: PLC0415
+
     kwargs = dict(message_kwargs or {})
+    if user_id > 0:
+        kwargs[AUTHOR_USER_ID_KEY] = user_id
     if isinstance(payload, list) or kwargs or stored_id:
         from langchain_core.messages import HumanMessage  # noqa: PLC0415
 
