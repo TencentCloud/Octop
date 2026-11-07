@@ -3,7 +3,12 @@ import { CheckCircle, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import type { ACPRunnerConfig } from "../../../../api/types/acp";
-import { runnerIcon, runnerIntroKey, runnerLabelKey } from "../constants";
+import {
+  isBuiltinRunner,
+  runnerIcon,
+  runnerIntroKey,
+  runnerLabelKey,
+} from "../constants";
 import styles from "../../Channels/index.module.less";
 import acpStyles from "../index.module.less";
 
@@ -36,11 +41,11 @@ export function ACPCard({
   onToggleEnabled,
 }: ACPCardProps) {
   const { t } = useTranslation();
-  const labelKey = runnerLabelKey(runnerKey);
-  const label = labelKey ? t(labelKey) : runnerKey;
-  const introKey = runnerIntroKey(runnerKey);
-  const intro = introKey
-    ? t(introKey)
+  const label = isBuiltinRunner(runnerKey)
+    ? t(runnerLabelKey(runnerKey))
+    : runnerKey;
+  const intro = isBuiltinRunner(runnerKey)
+    ? t(runnerIntroKey(runnerKey))
     : t("acp.intro_custom", {
         command: config.command || t("acp.notSet"),
       });

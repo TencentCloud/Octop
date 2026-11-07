@@ -732,6 +732,13 @@ class AgentManager:
             except Exception:
                 logger.warning("idle reclaim sweep failed during shutdown", exc_info=True)
         self._reclaim_pending.clear()
+        # The idle sweep runs list_all on a worker thread. Cancelling that
+        # task does not stop the thread, so wait until the scan returns before
+        # the caller closes the control-plane connection.
+        sweep_task = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep_task is not None and not sweep_task.done():
+            await sweep_task
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
         if reclaim_task is not None and not reclaim_task.done():
@@ -1841,9 +1848,14 @@ class AgentManager:
         self._reclaim_task = loop.create_task(self._reclaim_pending_loop(), name="store-reclaim")
 
     async def _sweep_bloated_stores(self) -> None:
-        queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
-        if queued:
-            self._ensure_reclaim_task()
+        try:
+            queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
+            if queued:
+                self._ensure_reclaim_task()
+        finally:
+            current = asyncio.current_task()
+            if self._reclaim_sweep_task is current:
+                self._reclaim_sweep_task = None
 
     def _queue_bloated_sqlite_stores(self) -> int:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
@@ -3006,7 +3018,11 @@ class AgentManager:
         root_dir = str(spec.get("root_dir") or "").strip()
         if not root_dir:
             return False
-        if root_dir == "/":
+        from octop.infra.agents.workspace.dir import is_explicit_host_root  # noqa: PLC0415
+
+        # ``/`` on POSIX, or a drive root (``C:/``) on Windows. Both can see the
+        # host path of a global skill package.
+        if is_explicit_host_root(root_dir):
             return True
         if workspace_dir is None:
             return False

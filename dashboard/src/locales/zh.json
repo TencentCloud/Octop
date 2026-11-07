@@ -1000,6 +1000,8 @@
     "marketScenePrev": "向左滚动",
     "marketSceneNext": "向右滚动",
     "sceneAll": "全部",
+    "sceneFeatured": "精选",
+    "featuredHint": "接入专家市场之前，随 Octop 一起提供的专家模板",
     "scenes": {
       "academic": "学术",
       "content-creation": "内容创作",

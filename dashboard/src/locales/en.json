@@ -1000,6 +1000,8 @@
     "marketScenePrev": "Scroll left",
     "marketSceneNext": "Scroll right",
     "sceneAll": "All",
+    "sceneFeatured": "Featured",
+    "featuredHint": "Expert templates that shipped with Octop before the expert market",
     "scenes": {
       "academic": "Academic",
       "content-creation": "Content Creation",

@@ -1013,6 +1013,34 @@ async def test_shutdown_drains_sqlite_worker_before_returning(manager: AgentMana
         await asyncio.to_thread(conn._thread.join, 5)
 
 
+@pytest.mark.asyncio
+async def test_shutdown_waits_for_idle_reclaim_sweep(manager: AgentManager) -> None:
+    """The freelist scan uses the control-plane connection from a worker thread."""
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_scan() -> int:
+        entered.set()
+        assert release.wait(5)
+        return 0
+
+    manager._queue_bloated_sqlite_stores = slow_scan  # type: ignore[method-assign]
+    manager.schedule_idle_reclaim_sweep()
+    closing = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        closing = asyncio.create_task(manager.shutdown())
+        await asyncio.sleep(0.05)
+        assert not closing.done()
+        release.set()
+        await asyncio.wait_for(closing, timeout=5)
+    finally:
+        release.set()
+        if closing is not None:
+            await closing
+        else:
+            await manager.shutdown()
+
+
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:
     from dataclasses import replace
 
