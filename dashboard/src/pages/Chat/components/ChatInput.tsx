@@ -887,6 +887,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             uploading={uploading}
             selectedConnectors={selectedConnectors}
             selectedModel={selectedModel}
+            availableModels={availableModels}
             availableConnectors={availableConnectors}
             availableKnowledgeBases={availableKnowledgeBases}
             onRemoveAttachment={removeAttachment}

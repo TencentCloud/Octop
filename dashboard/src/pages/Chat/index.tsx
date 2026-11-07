@@ -712,8 +712,15 @@ function ChatPageInner() {
       connectors: chatConnectors,
       knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
+      models: availableModels,
     }),
-    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
+    [
+      chatSkills,
+      chatConnectors,
+      chatKnowledgeBases,
+      chatAgentOptions,
+      availableModels,
+    ],
   );
 
   const { handleSend } = useChatSend({

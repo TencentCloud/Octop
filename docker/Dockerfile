@@ -104,6 +104,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libglib2.0-0 \
         curl \
         git \
+        postgresql-client \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
 

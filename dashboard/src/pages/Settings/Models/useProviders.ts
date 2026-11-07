@@ -79,6 +79,8 @@ export interface ProviderRow {
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
+  /** Saved connection-test model. Empty means the form stays blank. */
+  model?: string | null;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
   /** UI lane: embedding providers are managed on the embedding Models tab. */
