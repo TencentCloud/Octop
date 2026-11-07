@@ -283,6 +283,12 @@ write_green_overrides() {
       {
         echo "psycopg-binary ; sys_platform == 'octop-unsupported'"
         echo "sqlite-vec ; sys_platform == 'octop-unsupported'"
+        # rapidocr pulls these. No release has ever published a win_arm64 wheel.
+        # opencv-python's sdist compiles all of OpenCV; pyclipper's sdist is Cython.
+        # Drop both so the full zip can install. Local RapidOCR stays unavailable
+        # on Windows ARM64 until those wheels exist.
+        echo "opencv-python ; sys_platform == 'octop-unsupported'"
+        echo "pyclipper ; sys_platform == 'octop-unsupported'"
         # 46.0.0 is the only release shipping a win_arm64 wheel; newer ones would
         # fall back to a Rust + OpenSSL source build that fails on the runner.
         echo "cryptography==46.0.0"

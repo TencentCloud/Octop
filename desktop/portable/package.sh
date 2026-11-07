@@ -140,9 +140,11 @@ assemble_one() {
     --target "${staging}/packages"
     --python-platform "$pyplat"
     --python-version 3.12
-    # Never compile cryptography from sdist: on Intel macOS that links
-    # Homebrew OpenSSL and breaks portable zips on machines without brew.
+    # Never compile these from sdist. cryptography on Intel macOS links Homebrew
+    # OpenSSL. shapely's sdist needs GEOS; 2.2.0 publishes wheels for every
+    # portable target, including win_arm64.
     --only-binary cryptography
+    --only-binary shapely
   )
   if [[ -n "$override_file" ]]; then
     common_args+=( --overrides "$override_file" )

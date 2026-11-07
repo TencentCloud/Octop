@@ -27,7 +27,7 @@ make -f desktop/portable/Makefile green
 避免「同安装、不同环境」因版本错配或原生扩展加载失败而偶发报错。
 平台 overrides（`darwin-amd64` / `windows-arm64` 的 `cryptography==46.x`，
 macOS full 的 `onnxruntime==1.23.2`，Intel full 的 `opencv-python==4.11.0.86`）
-会一并传入校验，避免与 lock 中的 49.x 误报不一致。
+会一并传入校验，避免与 lock 中的版本误报不一致。
 
 ## 产物布局
 
@@ -105,7 +105,7 @@ OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 
 **不要**设置 `PYTHONPATH=packages`（会跳过 `.pth`，导致 `No module named pywintypes`）。
 
-`windows-arm64` 另排除无 wheel 的 `psycopg-binary` / `sqlite-vec`，并把 `cryptography` 钉到 `46.0.0`（仅该版本提供 `win_arm64` wheel）。
+`windows-arm64` 另排除无 wheel 的 `psycopg-binary` / `sqlite-vec`，并把 `cryptography` 钉到 `46.0.0`（仅该版本提供 `win_arm64` wheel）。`knowledge-ocr` 里的 `shapely` 由 lock 钉在 `>=2.2.0`（第一个带 `win_arm64` wheel 的版本）。`opencv-python` 和 `pyclipper` 从未发布 `win_arm64` wheel，源码包分别要编完整 OpenCV 和 Cython 扩展，因此排除。Windows ARM64 的 full 包可以装上，但本机 RapidOCR 不可用。
 
 ## CI
 
