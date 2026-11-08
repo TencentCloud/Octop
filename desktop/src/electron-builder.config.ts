@@ -47,6 +47,9 @@ export default {
     { from: "resources/icon.ico", to: "icon.ico" },
     { from: "resources/icon.png", to: "icon.png" },
     { from: "resources/portable", to: "portable" },
+    // deb postinst sources this after files are unpacked. postrm inlines a copy
+    // because dpkg deletes the install tree first.
+    { from: "build/linux-desktop-shortcut.sh", to: "linux-desktop-shortcut.sh" },
   ],
   files: ["out/**/*", "package.json"],
   directories: { output: "release", buildResources: "resources" },
@@ -104,6 +107,13 @@ export default {
     icon: "resources/icon.png",
     category: "Utility",
     maintainer: "Octop",
+  },
+  deb: {
+    // apt has no finish page. configure places a desktop icon for the account
+    // that ran sudo (or each normal account when the installer is only root).
+    // A later upgrade refreshes an icon that is still there.
+    afterInstall: "build/linux-after-install.sh",
+    afterRemove: "build/linux-after-remove.sh",
   },
   publish: null,
 } as const;

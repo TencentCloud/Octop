@@ -256,7 +256,9 @@ or manual dispatch builds both. The workflow attaches
 Release, then mirrors it to COS. Each job bootstraps portable CPython, packages
 the zip, smoke-tests every frozen requirement, and bundles that exact zip plus
 the Dashboard into a native Electron installer. For macOS this produces DMG and
-ZIP, for Windows NSIS EXE, and for Linux deb and rpm. Installer files
+ZIP, for Windows NSIS EXE, and for Linux deb and rpm. A deb install also
+places a desktop launcher for the account that ran `apt` (see
+`desktop/docs/DESKTOP_ARCHITECTURE.zh.md` §7.2). Installer files
 are named `Octop-desktop-<plat>-<version>.<ext>` for lite and
 `Octop-desktop-<plat>-full-<version>.<ext>` for full; the portable manifest records
 the original Python version and the bundled zip's SHA-256. Optional CI signing

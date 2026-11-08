@@ -434,7 +434,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 |---|---|
 | **macOS** | 使用沉浸式标题栏；同步系统深浅色；正确处理 Dock 重开、应用签名、公证与运行时 quarantine。 |
 | **Windows** | 隐藏实心标题栏，用透明 `titleBarOverlay` 把系统按钮叠在页面上并保留 Snap Layouts；NSIS 向导安装，可选安装目录和盘符；确保更新和卸载时不遗留 Python 进程。 |
-| **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 deb 和 rpm，默认安装包是 deb。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
+| **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 deb 和 rpm，默认安装包是 deb。`apt install` 后在桌面放快捷方式。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
 
 ### 7.1 Windows 安装位置与盘符
 
@@ -449,6 +449,16 @@ Windows 安装包使用带目录页的 NSIS 向导，对应 electron-builder 的
 - 展开 `resources\sidecar` 之后，安装器把 `packages` 预编译进 `OCTOP_HOME\pyc`（未设置时为 `%USERPROFILE%\.octop\pyc`），与外壳启动时的 `PYTHONPYCACHEPREFIX` 相同。编译失败不中止安装。
 - 卸载删除选定目录中的程序文件、开始菜单快捷方式、桌面快捷方式和安装时展开的 `resources\sidecar`，并删除 `OCTOP_HOME\pyc`（未设置时为 `%USERPROFILE%\.octop\pyc`）。同目录下的数据库、工作区、密钥和 `config.json` 保留。更早版本解压在该目录下的 `portable/` 也不删除。下次安装会再编译字节码。
 - 更换安装盘会把程序和 Python 运行时一起装到新目录，不搬家用户数据。监听端口与安装位置无关。
+
+### 7.2 Linux deb 桌面快捷方式
+
+`sudo apt install` 没有完成页。deb 的 `postinst` 在 `configure` 时，把 `/usr/share/applications` 里的启动器复制到桌面。菜单项仍然由这个系统启动器提供。
+
+- 优先给执行安装的账户：`SUDO_USER`，其次 `PKEXEC_UID`，再其次 `logname`。三者都不是普通用户时（例如图形安装器直接以 root 运行），给每个 uid 在 1000 到 65533 之间、且家目录里能找到桌面文件夹的账户各放一个。
+- 桌面目录用该用户的 `xdg-user-dir DESKTOP`，否则读 `~/.config/user-dirs.dirs`，再退回 `~/Desktop` 或 `~/桌面`。
+- 每个账户只自动放一次。标记写在 `~/.local/share/octop/desktop-shortcut-created`。之后升级只更新还在桌面上的图标；用户删掉的图标不会被放回去。卸载（`remove` / `purge`）删掉图标和标记，升级时的旧 `postrm` 不动它们。
+- 复制后的启动器设为可执行，并在该用户已登录时用 `gio` 标成 trusted，这样 GNOME、UKUI、深度桌面会直接显示图标。标记失败不让 `apt` 失败。
+- rpm 不走这套脚本。
 
 ---
 
@@ -572,7 +582,7 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 3. **Electron 打包**：
    - macOS：DMG 与 Zip，配置 Developer ID 签名和公证。
    - Windows：带目录页的 NSIS 安装包，允许选择安装位置和盘符，并配置 Authenticode 签名。
-   - Linux：electron-builder 的 `linux.target` 固定为 `["deb", "rpm"]`。x64 与 arm64 各发布这两种包；默认安装包是 deb，rpm 同时发布。
+   - Linux：electron-builder 的 `linux.target` 固定为 `["deb", "rpm"]`。x64 与 arm64 各发布这两种包；默认安装包是 deb，rpm 同时发布。deb 的 `postinst` 按第 7.2 节在桌面放快捷方式。
 4. **发布前验证**：
    - 在干净用户目录执行首次启动。
    - 验证三个平台首次启动都不再解压。然后验证 setup wizard、健康检查和正常退出。
