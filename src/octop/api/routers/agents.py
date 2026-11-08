@@ -592,6 +592,7 @@ async def start_agent(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     await server.app_runtime.agent_registry.start(agent_id)
+    await server.app_runtime.gateway.refresh_media_backends()
 
 
 @router.post("/{agent_id}/stop", status_code=204, summary="Stop agent")
@@ -622,6 +623,7 @@ async def reload_agent(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     await server.app_runtime.agent_registry.reload(agent_id)
+    await server.app_runtime.gateway.refresh_media_backends()
 
 
 @router.get("/{agent_id}/status", summary="Agent runtime status")
