@@ -1,8 +1,10 @@
 import { join } from "node:path";
 
 /**
- * Windows notification-area icon. The dashboard close button hides the window;
- * this icon opens it again. macOS uses the Dock for the same job.
+ * Notification-area icon. The dashboard close button hides the window; this
+ * icon opens it again. macOS uses the Dock for the same job. Windows uses the
+ * notification area. Linux (UOS included) uses the panel tray at the bottom
+ * right.
  *
  * Matches `appId` in `electron-builder.config.ts`. Windows groups the tray
  * icon and the taskbar button under this id.
@@ -10,7 +12,7 @@ import { join } from "node:path";
 export const WINDOWS_APP_USER_MODEL_ID = "com.tencent.octop";
 
 export function shouldInstallSystemTray(platform: string): boolean {
-  return platform === "win32";
+  return platform === "win32" || platform === "linux";
 }
 
 export interface TrayIconCandidates {
@@ -21,11 +23,13 @@ export interface TrayIconCandidates {
 }
 
 /**
- * Dev and packaged builds both keep `resources/icon.ico` (the package copies
- * it next to the app). The executable is not an image file; it is only a
- * Shell-icon fallback when that ico is missing.
+ * Dev and packaged builds both keep a loose icon next to the app (the package
+ * copies it into resources). Windows uses `icon.ico`; the executable is only
+ * a Shell-icon fallback when that ico is missing. Linux uses `icon.png` —
+ * the panel tray does not read an ico.
  */
 export function trayIconCandidates(input: TrayIconCandidates): string[] {
+  if (input.platform === "linux") return [join(input.resourcesDir, "icon.png")];
   if (input.platform !== "win32") return [];
   const bundled = join(input.resourcesDir, "icon.ico");
   return input.isPackaged ? [bundled, input.execPath] : [bundled];

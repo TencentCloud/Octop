@@ -62,18 +62,20 @@ describe("desktopChrome", () => {
     ).toBe("mac");
   });
 
-  it("reserves the caption overlay on Windows", () => {
+  it("reserves the caption overlay on Windows and desktop Linux", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
       ),
     ).toBe("windows");
-  });
-
-  it("reserves nothing on Linux, which keeps its native window frame", () => {
     expect(
       resolveDesktopChromeStyle(
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/138.0.0.0",
+      ),
+    ).toBe("windows");
+    expect(
+      resolveDesktopChromeStyle(
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
       ),
     ).toBeNull();
   });

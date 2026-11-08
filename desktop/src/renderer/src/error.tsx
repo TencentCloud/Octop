@@ -74,9 +74,8 @@ function ErrorPage() {
     return () => window.clearTimeout(timer);
   }, [copyState]);
 
-  // The window may have no visible controls (Linux keeps the system frame, the
-  // other platforms only the native buttons); Esc is the expected way out of a
-  // page whose only content is a fatal error.
+  // Native caption buttons are on the window. Esc still closes a page whose
+  // only content is a fatal error.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") window.close();

@@ -53,16 +53,27 @@ test("macOS tray close hides the window until the next Dock click", () => {
   );
 });
 
-test("Windows tray close hides the window when the tray icon can open it", () => {
-  assert.equal(
-    shouldKeepWindowOnClose({
-      platform: "win32",
-      closeBehavior: "tray",
-      quitting: false,
-      trayReady: true,
-    }),
-    true,
-  );
+test("Windows and Linux tray close hides the window when the tray icon can open it", () => {
+  for (const platform of ["win32", "linux"]) {
+    assert.equal(
+      shouldKeepWindowOnClose({
+        platform,
+        closeBehavior: "tray",
+        quitting: false,
+        trayReady: true,
+      }),
+      true,
+    );
+    assert.equal(
+      shouldKeepWindowOnClose({
+        platform,
+        closeBehavior: "tray",
+        quitting: false,
+        trayReady: false,
+      }),
+      false,
+    );
+  }
 });
 
 test("quit, and closing while the app is exiting, lets the window close", () => {
@@ -81,15 +92,6 @@ test("quit, and closing while the app is exiting, lets the window close", () => 
   assert.equal(
     shouldKeepWindowOnClose({
       platform: "win32",
-      closeBehavior: "tray",
-      quitting: false,
-      trayReady: false,
-    }),
-    false,
-  );
-  assert.equal(
-    shouldKeepWindowOnClose({
-      platform: "win32",
       closeBehavior: "quit",
       quitting: false,
       trayReady: true,
@@ -99,7 +101,7 @@ test("quit, and closing while the app is exiting, lets the window close", () => 
   assert.equal(
     shouldKeepWindowOnClose({
       platform: "linux",
-      closeBehavior: "tray",
+      closeBehavior: "quit",
       quitting: false,
       trayReady: true,
     }),

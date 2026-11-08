@@ -33,9 +33,9 @@ html {
 
 /* Window dragging: the shell hides its titlebar but keeps the native buttons,
    so the element under the cursor has to opt in to be a drag handle. */
-/* Windows has no native menu bar under the transparent caption. The page
-   draws one full-width row for File / Edit / View / Help, and the rest of
-   the window starts below it. */
+/* Windows and Linux have no native menu bar under the transparent caption.
+   The page draws one full-width row for File / Edit / View / Help, sharing
+   that row with the window buttons. The rest of the window starts below it. */
 html[data-octop-caption-row] #root {
   box-sizing: border-box;
   padding-top: var(--octop-caption-row, 32px);
@@ -225,8 +225,8 @@ html[data-octop-desktop-chrome]:not([data-octop-caption-row])
 
 /* macOS only: a drawer covers the title-bar drag strip, and the dialog is
    no-drag. The header is the replacement hit target. Controls inside stay
-   clickable via the no-drag rules above. Windows drags from the caption
-   menu; Linux keeps the system frame. */
+   clickable via the no-drag rules above. Windows and Linux drag from the
+   caption menu. */
 html[data-octop-desktop-chrome="mac"] .octop-drawer-header,
 html[data-octop-desktop-chrome="mac"] .ant-drawer-header {
   -webkit-app-region: drag;

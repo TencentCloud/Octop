@@ -45,6 +45,7 @@ export default {
   electronLanguages: ["en", "zh_CN"],
   extraResources: [
     { from: "resources/icon.ico", to: "icon.ico" },
+    { from: "resources/icon.png", to: "icon.png" },
     { from: "resources/portable", to: "portable" },
   ],
   files: ["out/**/*", "package.json"],

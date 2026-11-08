@@ -6,15 +6,22 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
  *
  * - macOS   `titleBarStyle: "hidden"` keeps the traffic lights and pins them
  *           over the Dashboard's chrome row; the titlebar itself is gone.
- * - Windows hides the opaque caption and overlays the native buttons on a
- *           transparent strip, so the page shows through (the Cursor-style
- *           bar). The native menu bar stays hidden: the splash and the
- *           dashboard boot screen draw no menu, and the dashboard draws
+ * - Windows and Linux hide the opaque caption and overlay the native buttons
+ *           on a transparent strip, so the page shows through. The menu and
+ *           the window buttons share that one row (the WorkBuddy / UOS bar):
+ *           the native menu bar stays hidden, and the dashboard draws
  *           File / Edit / View / Help once it mounts. The menu stays
- *           installed so its accelerators still fire.
- * - Linux   keeps the system frame, so no option is passed at all: a frameless
- *           window there would have no controls whatsoever.
+ *           installed so its accelerators still fire. A plain frameless
+ *           window on Linux would have no controls; the overlay is what
+ *           keeps them.
  */
+
+/** Caption buttons sit on the page. macOS uses traffic lights instead. */
+export function usesCaptionOverlay(
+  platform: NodeJS.Platform = process.platform,
+): boolean {
+  return platform === "win32" || platform === "linux";
+}
 
 /**
  * 与 Dashboard 的 DESKTOP_CHROME_HEIGHT 及早期页顶部拖动区域保持一致。
@@ -119,13 +126,14 @@ export function windowChrome(
       trafficLightPosition: { ...TRAFFIC_LIGHT_POSITION },
     };
   }
-  if (process.platform === "win32") {
+  if (usesCaptionOverlay()) {
     return {
       titleBarStyle: "hidden",
       titleBarOverlay: windowsTitleBarOverlay(mode),
       // Hidden from the first frame. The splash and the dashboard boot screen
-      // have no page menu; showing the native bar there is a menu on a loading
-      // page. The dashboard draws the bar after it mounts.
+      // have no page menu; showing the native bar there is a second row above
+      // the caption buttons. The dashboard draws the menu into that same row
+      // after it mounts.
       autoHideMenuBar: true,
     };
   }
@@ -156,13 +164,13 @@ export function windowsCaptionOverlay(visible: boolean): {
  * before the window existed — which is exactly the splash.
  */
 export function concealWindowsMenuBar(win: BrowserWindow): void {
-  if (process.platform !== "win32" || win.isDestroyed()) return;
+  if (!usesCaptionOverlay() || win.isDestroyed()) return;
   win.setAutoHideMenuBar(true);
   win.setMenuBarVisibility(false);
 }
 
 export function setWindowsCaptionVisible(win: BrowserWindow, visible: boolean): void {
-  if (process.platform !== "win32" || win.isDestroyed()) return;
+  if (!usesCaptionOverlay() || win.isDestroyed()) return;
   win.setTitleBarOverlay(windowsCaptionOverlay(visible));
 }
 
@@ -178,7 +186,7 @@ export function applyWindowChromeTheme(
 ): void {
   applyNativeTheme(theme);
   windowsCaptionMode = theme.mode;
-  if (process.platform !== "win32" || win.isDestroyed() || win.isFullScreen()) return;
+  if (!usesCaptionOverlay() || win.isDestroyed() || win.isFullScreen()) return;
   win.setTitleBarOverlay(windowsTitleBarOverlay(theme.mode));
 }
 

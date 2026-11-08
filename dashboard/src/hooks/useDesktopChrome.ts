@@ -17,8 +17,8 @@ const DesktopChromeContext = createContext<DesktopChromeStyle | null>(null);
 
 /**
  * Activate desktop window chrome when the Electron preload bridge is present.
- * macOS traffic lights and the Windows caption overlay sit on the page, so
- * this publishes how much space they need. Dragging stays pure CSS
+ * macOS traffic lights and the Windows/Linux caption overlay sit on the page,
+ * so this publishes how much space they need. Dragging stays pure CSS
  * (`app-region`), no JS listeners needed.
  */
 export function useDesktopChrome(): DesktopChromeStyle | null {

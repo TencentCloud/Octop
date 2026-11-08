@@ -29,7 +29,8 @@ export const WINDOWS_CAPTION_HEIGHT = 32;
  * Horizontal space the *native* buttons occupy, by platform convention:
  * - macOS: three 12×12 traffic lights on the LEFT, with the standard 12px
  *   margin on both sides of the group. The page header below stays taller.
- * - Windows: three 46px caption buttons on the RIGHT (titleBarOverlay).
+ * - Windows and Linux: three caption buttons on the RIGHT (titleBarOverlay).
+ *   Linux shares this contract so the menu and the buttons occupy one row.
  *
  * The buttons are drawn by the OS above the page, so the page must keep this
  * strip empty — it cannot draw under them.
@@ -126,14 +127,17 @@ export const DESKTOP_NO_DRAG_CLASS = "octop-desktop-no-drag";
 /**
  * Which chrome — if any — the page has to make room for.
  *
- * macOS traffic lights and the Windows caption overlay both sit on the page,
- * so the page reserves their strip. Linux keeps the system frame.
+ * macOS traffic lights and the Windows/Linux caption overlay both sit on the
+ * page, so the page reserves their strip. `"windows"` is that shared overlay
+ * (buttons on the trailing edge, menu in the same row), including UOS and
+ * other desktop Linux. Android keeps the browser frame.
  */
 export function resolveDesktopChromeStyle(
   userAgent = navigator.userAgent,
 ): DesktopChromeStyle | null {
   if (/Mac|iPhone|iPad/.test(userAgent)) return "mac";
   if (/Windows/.test(userAgent)) return "windows";
+  if (/Linux/.test(userAgent) && !/Android/.test(userAgent)) return "windows";
   return null;
 }
 
@@ -149,8 +153,7 @@ export function titleRowStartPadding(outerPadPx: number): string {
 /**
  * Publish the platform's chrome contract on `<html>`: one attribute for the CSS
  * hooks (drag regions) and the two inset tokens every consumer reads.
- * `null` means "no chrome to reserve" — the browser, or Linux with its native
- * window frame.
+ * `null` means "no chrome to reserve" — the browser, or Android.
  */
 export function applyDesktopChrome(
   style: DesktopChromeStyle | null,

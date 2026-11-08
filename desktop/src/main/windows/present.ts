@@ -24,21 +24,20 @@ const MIN_VISIBLE_PX = 80;
 
 /**
  * With the tray close setting, the close button hides the window instead of
- * ending the process. macOS comes back from the Dock. Windows comes back from
- * the notification-area icon, and only when that icon exists — hiding with no
- * icon would leave the window unreachable. Quit, and every other platform,
- * lets the close finish.
+ * ending the process. macOS comes back from the Dock. Windows and Linux come
+ * back from the tray icon, and only when that icon exists — hiding with no
+ * icon would leave the window unreachable. Quit lets the close finish.
  */
 export function shouldKeepWindowOnClose(input: {
   platform: string;
   closeBehavior: "quit" | "tray";
   quitting: boolean;
-  /** Windows only. `true` once the notification-area icon is on screen. */
+  /** Windows and Linux. `true` once the tray icon is on screen. */
   trayReady?: boolean;
 }): boolean {
   if (input.quitting || input.closeBehavior !== "tray") return false;
   if (input.platform === "darwin") return true;
-  if (input.platform === "win32") return input.trayReady === true;
+  if (input.platform === "win32" || input.platform === "linux") return input.trayReady === true;
   return false;
 }
 

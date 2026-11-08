@@ -12,9 +12,10 @@ import {
 } from "../utils/desktopBridge";
 
 /**
- * One full-width caption row. The transparent overlay hides the native menu
- * bar, so this row carries File / Edit / View / Help and draws each submenu
- * in the page. Choosing an item asks the shell to run that command.
+ * One full-width caption row on Windows and Linux. The transparent overlay
+ * hides the native menu bar, so this row carries File / Edit / View / Help
+ * beside the window buttons and draws each submenu in the page. Choosing an
+ * item asks the shell to run that command.
  * Fullscreen keeps this row; the native caption buttons are hidden separately.
  * The row is portaled to `document.body`: `#root` is its own stacking context,
  * so a drawer mounted on the body would otherwise paint over the menu.

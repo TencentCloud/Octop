@@ -42,57 +42,48 @@ test("macOS 交通灯用系统常规尺寸，不拉高到页面顶栏", () => {
   });
 });
 
-test("Windows 标题栏透明，加载页不展示原生菜单栏", () => {
-  onPlatform("win32", () => {
-    assert.equal(chrome.WINDOWS_TITLE_BAR_COLOR, "#00000000");
-    assert.deepEqual(chrome.windowChrome("light"), {
-      titleBarStyle: "hidden",
-      titleBarOverlay: {
-        color: "#00000000",
-        symbolColor: "#1a1a1a",
-        height: 32,
-      },
-      autoHideMenuBar: true,
+test("Windows 与 Linux 标题栏透明，菜单和窗口按钮同一行", () => {
+  assert.equal(chrome.WINDOWS_TITLE_BAR_COLOR, "#00000000");
+  for (const platform of ["win32", "linux"] as const) {
+    onPlatform(platform, () => {
+      assert.equal(chrome.usesCaptionOverlay(), true);
+      assert.deepEqual(chrome.windowChrome("light"), {
+        titleBarStyle: "hidden",
+        titleBarOverlay: {
+          color: "#00000000",
+          symbolColor: "#1a1a1a",
+          height: 32,
+        },
+        autoHideMenuBar: true,
+      });
+      const dark = chrome.windowChrome("dark").titleBarOverlay;
+      assert.ok(dark && typeof dark === "object");
+      assert.equal(dark.symbolColor, "#ffffff");
     });
-    const dark = chrome.windowChrome("dark").titleBarOverlay;
-    assert.ok(dark && typeof dark === "object");
-    assert.equal(dark.symbolColor, "#ffffff");
-  });
+  }
 });
 
-test("Windows 再次收起菜单栏，避免启动页第一帧露出", () => {
-  onPlatform("win32", () => {
-    const calls: string[] = [];
-    const win = {
-      isDestroyed: () => false,
-      setAutoHideMenuBar: (hide: boolean) => {
-        calls.push(`autoHide:${hide}`);
-      },
-      setMenuBarVisibility: (visible: boolean) => {
-        calls.push(`visible:${visible}`);
-      },
-    } as unknown as BrowserWindow;
-    chrome.concealWindowsMenuBar(win);
-    assert.deepEqual(calls, ["autoHide:true", "visible:false"]);
-  });
-  onPlatform("linux", () => {
-    let called = false;
-    const win = {
-      isDestroyed: () => false,
-      setAutoHideMenuBar: () => {
-        called = true;
-      },
-      setMenuBarVisibility: () => {
-        called = true;
-      },
-    } as unknown as BrowserWindow;
-    chrome.concealWindowsMenuBar(win);
-    assert.equal(called, false);
-  });
+test("Windows 与 Linux 再次收起菜单栏，避免启动页多出一行", () => {
+  for (const platform of ["win32", "linux"] as const) {
+    onPlatform(platform, () => {
+      const calls: string[] = [];
+      const win = {
+        isDestroyed: () => false,
+        setAutoHideMenuBar: (hide: boolean) => {
+          calls.push(`autoHide:${hide}`);
+        },
+        setMenuBarVisibility: (visible: boolean) => {
+          calls.push(`visible:${visible}`);
+        },
+      } as unknown as BrowserWindow;
+      chrome.concealWindowsMenuBar(win);
+      assert.deepEqual(calls, ["autoHide:true", "visible:false"]);
+    });
+  }
 });
 
 test("主题切换只改标题栏按钮颜色，底保持透明", () => {
-  onPlatform("win32", () => {
+  for (const platform of ["win32", "linux"] as const) onPlatform(platform, () => {
     const overlays: Array<{ color?: string; symbolColor?: string; height?: number }> = [];
     const win = {
       isDestroyed: () => false,
@@ -119,8 +110,8 @@ test("主题切换只改标题栏按钮颜色，底保持透明", () => {
   });
 });
 
-test("Linux 仍使用系统窗口边框", () => {
-  onPlatform("linux", () => assert.deepEqual(chrome.windowChrome("light"), {}));
+test("macOS 不用标题栏覆盖层", () => {
+  onPlatform("darwin", () => assert.equal(chrome.usesCaptionOverlay(), false));
 });
 
 test("窗口底色与仪表盘启动地址跟设备主题走", () => {

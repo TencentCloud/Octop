@@ -10,10 +10,10 @@ import {
   trayMenuLabels,
 } from "./tray";
 
-test("only Windows gets a notification-area icon", () => {
+test("Windows and Linux get a tray icon; macOS uses the Dock", () => {
   assert.equal(shouldInstallSystemTray("win32"), true);
+  assert.equal(shouldInstallSystemTray("linux"), true);
   assert.equal(shouldInstallSystemTray("darwin"), false);
-  assert.equal(shouldInstallSystemTray("linux"), false);
 });
 
 test("dev Windows loads the bundled ico and not the Electron executable", () => {
@@ -23,6 +23,19 @@ test("dev Windows loads the bundled ico and not the Electron executable", () => 
     trayIconCandidates({ platform: "win32", isPackaged: false, resourcesDir, execPath }),
     [join(resourcesDir, "icon.ico")],
   );
+});
+
+test("Linux tray uses the png, in dev and in the package", () => {
+  const resourcesDir = join("desktop", "resources");
+  const execPath = join("node_modules", "electron", "dist", "electron");
+  const png = join(resourcesDir, "icon.png");
+  for (const isPackaged of [false, true]) {
+    assert.deepEqual(
+      trayIconCandidates({ platform: "linux", isPackaged, resourcesDir, execPath }),
+      [png],
+    );
+  }
+  assert.equal(trayIconImagePath([png], (path) => path === png), png);
 });
 
 test("packaged Windows falls back to the icon embedded in the executable", () => {

@@ -96,6 +96,7 @@ import {
   PACKAGED_APP_ORIGIN,
   parseWindowChromeTheme,
   resolveWindowChromeTheme,
+  usesCaptionOverlay,
   windowBackground,
 } from "./windows/chrome";
 
@@ -413,12 +414,12 @@ function registerIpcHandlers(): void {
   }));
 
   ipcMain.handle(IPC_CHANNELS.windowsMenuModel, () => {
-    if (process.platform !== "win32") return null;
+    if (!usesCaptionOverlay()) return null;
     return windowsMenuModel(app.getLocale());
   });
   ipcMain.handle(IPC_CHANNELS.windowsMenuInvoke, (event, id: unknown) => {
     const command = windowsMenuCommandId(id);
-    if (!command || process.platform !== "win32") return;
+    if (!command || !usesCaptionOverlay()) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win || win.isDestroyed()) return;
     runWindowsMenuCommand(win, command);
@@ -590,8 +591,8 @@ function watchDashboardLifetime(win: BrowserWindow): void {
     ) {
       return;
     }
-    // Hide instead of destroy. macOS comes back from the Dock; Windows comes
-    // back from the notification-area icon. The next click shows this same
+    // Hide instead of destroy. macOS comes back from the Dock; Windows and
+    // Linux come back from the tray icon. The next click shows this same
     // window rather than a fresh load.
     event.preventDefault();
     win.hide();
@@ -751,9 +752,9 @@ function runWindowsMenuCommand(win: BrowserWindow, command: WindowsMenuCommandId
   }
 }
 
-/** Windows menu bar. Other platforms keep their own. */
+/** Caption menu on Windows and Linux. macOS keeps the system menu bar. */
 function installWindowsAppMenu(version: string): void {
-  if (process.platform !== "win32") return;
+  if (!usesCaptionOverlay()) return;
   Menu.setApplicationMenu(
     Menu.buildFromTemplate(windowsApplicationMenu(app.getLocale(), () => showAboutDialog(version))),
   );
@@ -800,10 +801,11 @@ async function installSystemTray(): Promise<void> {
     desktopLog().warn(`tray icon missing: ${candidates.join(", ")}`);
     return;
   }
-  // Pass the ico through unchanged. Resizing it to one 32px bitmap is what
-  // Windows removes from the notification area when the window is hidden.
-  trayIcon = icon;
-  const created = new Tray(icon);
+  // Pass the Windows ico through unchanged. Resizing it to one 32px bitmap is
+  // what Windows removes from the notification area when the window is hidden.
+  // The Linux panel wants a small PNG; a full app icon is dropped or drawn huge.
+  trayIcon = process.platform === "linux" ? icon.resize({ width: 24, height: 24 }) : icon;
+  const created = new Tray(trayIcon);
   created.setToolTip("Octop");
   const labels = trayMenuLabels(app.getLocale());
   const menu = Menu.buildFromTemplate([
@@ -812,10 +814,12 @@ async function installSystemTray(): Promise<void> {
     { label: labels.quit, click: () => app.quit() },
   ]);
   // Left click opens the window. The menu stays on right click so a left
-  // click is not swallowed by the context menu on Windows.
+  // click is not swallowed by the context menu on Windows. Linux panels open
+  // the menu from the icon, so the same menu has to be the context menu.
   created.on("click", () => revealAppWindow());
   created.on("double-click", () => revealAppWindow());
-  created.on("right-click", () => created.popUpContextMenu(menu));
+  if (process.platform === "linux") created.setContextMenu(menu);
+  else created.on("right-click", () => created.popUpContextMenu(menu));
   tray = created;
   desktopLog().info("tray icon ready");
 }
@@ -1077,8 +1081,9 @@ app.on("before-quit", (event) => {
 
 app.on("window-all-closed", () => {
   // darwin + tray keeps the process so the Dock icon can open the window again.
-  // Windows hides the dashboard window instead of closing it, so this does not
-  // fire for that button. A real close (the splash, or closeBehavior quit) still exits.
+  // Windows and Linux hide the dashboard window instead of closing it, so this
+  // does not fire for that button. A real close (the splash, or closeBehavior
+  // quit) still exits.
   if (process.platform !== "darwin" || closeBehavior === "quit") app.quit();
 });
 
