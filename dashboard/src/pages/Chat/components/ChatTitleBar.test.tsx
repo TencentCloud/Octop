@@ -56,7 +56,7 @@ describe("ChatTitleBar", () => {
     expect(more).toBeVisible();
   });
 
-  it("通过样式约束保持右侧按钮常驻、标题省略及窗口控件避让", () => {
+  it("通过样式约束保持右侧按钮贴边、常驻，以及标题省略", () => {
     const css = readFileSync(
       resolve(__dirname, "../index.module.less"),
       "utf8",
@@ -69,8 +69,10 @@ describe("ChatTitleBar", () => {
     const input = css.match(/^\.chatTitleInput \{[\s\S]*?^\}/m)?.[0];
 
     expect(titleBar).toContain("display: flex");
-    expect(titleBar).toContain(
-      "max(var(--chat-title-pad-x), var(--window-controls-inset-end, 0px))",
+    expect(titleBar).toContain("padding: 0 var(--chat-title-pad-x)");
+    expect(titleBar).not.toContain("window-controls-inset-end");
+    expect(css).not.toMatch(
+      /\.chatTitleBar \{[^}]*window-controls-inset-end/,
     );
     expect(titleBar).not.toMatch(/^\s*max-width:|chatTitleEditBtn/m);
     expect(left).toContain("flex: 1");

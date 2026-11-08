@@ -62,8 +62,7 @@
   --chat-turn-rail-gutter: 48px;
 
   .chatTitleBar {
-    padding-inline: var(--chat-turn-rail-gutter)
-      max(var(--chat-column-pad-x, 24px), var(--window-controls-inset-end, 0px));
+    padding-inline: var(--chat-turn-rail-gutter) var(--chat-column-pad-x, 24px);
     padding-block: 0;
   }
 
@@ -104,11 +103,10 @@
   height: var(--fn-chat-chrome-height, 58px);
   min-height: var(--fn-chat-chrome-height, 58px);
   max-height: var(--fn-chat-chrome-height, 58px);
-  /* Match .chatInput gutters on the left; on desktop grow the right pad so
-     long titles do not sit under the native window controls. */
+  /* Match .chatInput gutters. Caption buttons sit on the menu row above,
+     so the pencil and more actions stay at this row's trailing edge. */
   --chat-title-pad-x: var(--chat-column-pad-x);
-  padding: 0 max(var(--chat-title-pad-x), var(--window-controls-inset-end, 0px))
-    0 var(--chat-title-pad-x);
+  padding: 0 var(--chat-title-pad-x);
   border-bottom: none;
   background: var(--fn-bg-primary);
   color: var(--fn-text-primary);
