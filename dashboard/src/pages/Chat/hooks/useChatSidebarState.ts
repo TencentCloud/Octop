@@ -11,7 +11,8 @@ export const CHAT_SIDEBAR_WIDE_BREAKPOINT = 1200;
 
 /**
  * Resolve initial open state: explicit localStorage preference wins;
- * otherwise default open on wide viewports only. Does not react to resize.
+ * otherwise default open on wide viewports only. Later resizes are handled by
+ * {@link resolveChatSidebarOpenOnResize}.
  */
 export function resolveChatSidebarDefaultOpen(
   stored: string | null,
@@ -20,6 +21,20 @@ export function resolveChatSidebarDefaultOpen(
   if (stored === "true") return true;
   if (stored === "false") return false;
   return viewportWidth >= CHAT_SIDEBAR_WIDE_BREAKPOINT;
+}
+
+/**
+ * Open state after a viewport resize: crossing the wide breakpoint opens the
+ * rail (wide) or closes it (narrow); a resize within one side keeps `open`.
+ */
+export function resolveChatSidebarOpenOnResize(
+  prevWidth: number,
+  nextWidth: number,
+  open: boolean,
+): boolean {
+  const wasWide = prevWidth >= CHAT_SIDEBAR_WIDE_BREAKPOINT;
+  const isWide = nextWidth >= CHAT_SIDEBAR_WIDE_BREAKPOINT;
+  return wasWide === isWide ? open : isWide;
 }
 
 function loadSidebarWidth(): number {
@@ -56,6 +71,16 @@ let sidebarOpen = (() => {
 
 const sidebarListeners = new Set<() => void>();
 
+function notifySidebarListeners() {
+  for (const fn of sidebarListeners) {
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 function setSidebarOpenGlobal(value: boolean | ((prev: boolean) => boolean)) {
   const next = typeof value === "function" ? value(sidebarOpen) : value;
   if (next === sidebarOpen) return;
@@ -65,13 +90,29 @@ function setSidebarOpenGlobal(value: boolean | ((prev: boolean) => boolean)) {
   } catch {
     /* ignore */
   }
-  for (const fn of sidebarListeners) {
-    try {
-      fn();
-    } catch {
-      /* ignore */
-    }
-  }
+  notifySidebarListeners();
+}
+
+// Follow the wide breakpoint on resize. Not persisted: the stored manual
+// preference keeps deciding the state on the next page load.
+if (typeof window !== "undefined") {
+  let lastWidth = window.innerWidth;
+  window.addEventListener(
+    "resize",
+    () => {
+      const width = window.innerWidth;
+      const next = resolveChatSidebarOpenOnResize(
+        lastWidth,
+        width,
+        sidebarOpen,
+      );
+      lastWidth = width;
+      if (next === sidebarOpen) return;
+      sidebarOpen = next;
+      notifySidebarListeners();
+    },
+    { passive: true },
+  );
 }
 
 function subscribeSidebar(listener: () => void) {
