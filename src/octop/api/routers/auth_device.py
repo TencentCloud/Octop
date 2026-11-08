@@ -31,6 +31,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, sign_token
+from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -191,7 +192,19 @@ async def device_token(
 
     secret = server.services.secret_repo.get("jwt")
     ttl = int(server.services.config.access_token_ttl_seconds)
-    token = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
+    row = server.services.user_repo.get(user.id)
+    mfa_version = int(row.mfa_version) if row is not None else 0
+    password_version = int(row.password_version) if row is not None else 0
+    token = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl,
+        mfa_version=mfa_version,
+        password_version=password_version,
+    )
     _failures.pop(host, None)
     logger.info("desktop device session renewed for %s", user.username)
     return {"access_token": token, "token_type": "Bearer", "expires_in": ttl}
