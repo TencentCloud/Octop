@@ -14,8 +14,9 @@ def _require_tool(name: str) -> str:
     path = shutil.which(name)
     if not path:
         raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
+            ErrorCode.BACKUP_CLIENT_MISSING,
             f"{name} not found on PATH; required for PostgreSQL backup/restore",
+            details={"tool": name},
         )
     return path
 

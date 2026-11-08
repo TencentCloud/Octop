@@ -6,15 +6,16 @@ name: Docker Publish
 #
 # 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64。
 # 每个架构先在本机启动镜像并跑 live 启动测试，通过后才推送该架构 tag，
-# 再合并为 :{version} / :latest 多架构清单。精简版同样打 :{version}-lite / :lite，
-# 不含桌面、本地向量和 OCR。飞牛 Docker 版 FPK 各用一个标签，
+# 再合并为 :{version} / :latest（精简版，不含桌面、本地向量和 OCR）。
+# 完整版打 :{version}-full / :full。飞牛 Docker 版 FPK 各用一个标签，
 # NAS 按本机架构拉取对应镜像层。某一架构启动失败（例如 ARM 上 Illegal
 # instruction / 退出码 132）只丢掉该架构，不挡住另一架构和后续 FPK。
 #
 # 触发路径：
 #   1. 人工推送 v* tag → on.push.tags
 #   2. Auto Tag 用 GITHUB_TOKEN 推 tag 后显式 workflow_dispatch（token push 不会触发 push 工作流）
-#   3. 在任意分支 Run workflow，填 tag=vX.Y.Z（用该分支的 workflow 文件，checkout 指定 tag）
+#   3. 在修复分支 Run workflow，填 tag=vX.Y.Z。workflow_dispatch 检出所选 ref，
+#      补构建能带上 Dockerfile 修复；tag 只决定镜像版本。tag push 仍检出该 tag。
 #
 # 注意：workflow_dispatch 下 metadata-action 的 type=semver 不可靠，
 # 必须从 tag / 输入显式解析版本号。
@@ -26,7 +27,7 @@ name: Docker Publish
 # 拉取示例：
 #   docker pull ghcr.io/tencentcloud/octop:latest
 #   docker pull ghcr.io/tencentcloud/octop:0.9.28
-#   docker pull ghcr.io/tencentcloud/octop:0.9.28-lite
+#   docker pull ghcr.io/tencentcloud/octop:0.9.28-full
 on:
   push:
     tags:
@@ -112,7 +113,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.prepare.outputs.tag }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -139,9 +140,9 @@ jobs:
           images: |
             ${{ env.DOCKERHUB_USER != '' && format('{0}/octop', env.DOCKERHUB_USER) || '' }}
             ${{ needs.prepare.outputs.ghcr }}
-          # 单架构中间 tag。full → :{version}-{arch}；lite → :{version}-lite-{arch}。
+          # 单架构中间 tag。lite → :{version}-{arch}；full → :{version}-full-{arch}。
           tags: |
-            type=raw,value=${{ needs.prepare.outputs.version }}${{ matrix.variant == 'lite' && '-lite' || '' }}-${{ matrix.arch }}
+            type=raw,value=${{ needs.prepare.outputs.version }}${{ matrix.variant == 'full' && '-full' || '' }}-${{ matrix.arch }}
 
       # load 与 registry 导出不能同时开。先载入本机做启动测试，通过后再 docker push。
       # docker 导出不支持 provenance，这里关掉，避免 --load 失败。
@@ -181,9 +182,10 @@ jobs:
           set -euo pipefail
           uv venv /tmp/octop-docker-test
           uv pip install --python /tmp/octop-docker-test/bin/python pytest pytest-asyncio
+          # 启动测试只调 docker。--noconftest 避免加载 integration conftest（需要 httpx / octop）。
           /tmp/octop-docker-test/bin/pytest \
             tests/integration/test_docker_image_boot.py::test_docker_image_runs_on_this_cpu_and_stays_disabled \
-            -q --tb=short
+            -q --tb=short --noconftest
 
       - name: Push image
         env:
@@ -254,7 +256,7 @@ jobs:
               fi
               if [ "${#sources[@]}" -lt 2 ]; then
                 echo "::warning:::${tag_a} is not multi-arch. A package on the missing CPU will not run."
-                # 精简版对外是一份 x86/ARM 通用标签。缺任一架构就不要发，避免装上后拉取失败。
+                # 完整版对外是一份 x86/ARM 通用标签。缺任一架构就不要发，避免装上后拉取失败。
                 if [ "$required" != "yes" ]; then
                   echo "::warning::skip ${reg}:${tag_a} until both amd64 and arm64 exist"
                   continue
@@ -268,5 +270,6 @@ jobs:
               docker buildx imagetools inspect "${reg}:${tag_a}"
             done
           }
+          # 默认标签是精简版。完整版必须显式带 -full，且两个架构都在才发布。
           publish_variant "" "$VER" latest yes
-          publish_variant "-lite" "${VER}-lite" lite no
+          publish_variant "-full" "${VER}-full" full no

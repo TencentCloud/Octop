@@ -172,6 +172,52 @@ async def test_same_loopback_advertise_accepts_remote_peer(tmp_path: Path) -> No
 
 
 @pytest.mark.asyncio
+async def test_hello_for_local_outbound_row_is_self_connect(tmp_path: Path) -> None:
+    """A dial that lands on this instance is self-connect, even as another user.
+
+    The typed URL often does not match the advertised address, so the outbound
+    row already exists when the hello arrives. That used to close with
+    "connection owned by another user".
+    """
+    mgr, owner, uid = _manager(tmp_path, advertise_base_url="http://127.0.0.1:8088")
+    member_id = mgr._users.create(username="member", password_hash="x", role="user")
+    mgr._repo.create(
+        connection_id="CIDOUT",
+        owner_user_id=uid,
+        peer_base_url="https://peer.example",
+        peer_username="member",
+        display_name="peer",
+        credential_blob=b"secret",
+    )
+    member = SimpleNamespace(id=member_id, username="member")
+    sock = _HoldSocket(_hello("CIDOUT", display_name="对端"), client_host="203.0.113.8")
+    await mgr.accept_inbound(websocket=sock, user=member)
+    assert sock.close_code == 4004
+    assert mgr._sessions.get("CIDOUT") is None
+
+    own = _HoldSocket(_hello("CIDOUT", display_name="自己"), client_host="203.0.113.9")
+    await mgr.accept_inbound(websocket=own, user=owner)
+    assert own.close_code == 4004
+
+
+@pytest.mark.asyncio
+async def test_inbound_id_owned_by_another_user_stays_rejected(tmp_path: Path) -> None:
+    mgr, _owner, uid = _manager(tmp_path, advertise_base_url="http://127.0.0.1:8088")
+    member_id = mgr._users.create(username="member", password_hash="x", role="user")
+    mgr._repo.create(
+        connection_id="CIDIN",
+        owner_user_id=uid,
+        peer_base_url="http://203.0.113.8:8088",
+        peer_username="someone",
+        display_name="inbound",
+    )
+    sock = _HoldSocket(_hello("CIDIN", display_name="对端"), client_host="203.0.113.8")
+    member = SimpleNamespace(id=member_id, username="member")
+    await mgr.accept_inbound(websocket=sock, user=member)
+    assert sock.close_code == 4003
+
+
+@pytest.mark.asyncio
 async def test_matching_public_advertise_is_self_connect(tmp_path: Path) -> None:
     mgr, owner, _uid = _manager(tmp_path, advertise_base_url="http://203.0.113.10:8088")
     sock = _HoldSocket(

@@ -9,7 +9,10 @@ import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import ContextChip from "./ContextChip";
-import { modelShortLabel } from "../../../utils/modelOptions";
+import {
+  modelRefLabel,
+  type ModelPickerOption,
+} from "../../../utils/modelOptions";
 import styles from "../index.module.less";
 
 interface ChatInputPreviewBarProps {
@@ -18,6 +21,7 @@ interface ChatInputPreviewBarProps {
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
   selectedModel?: string | null;
+  availableModels?: readonly ModelPickerOption[];
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -98,6 +102,7 @@ export default function ChatInputPreviewBar({
   onConnectorsChange,
   onKnowledgeBaseIdsChange,
   selectedModel,
+  availableModels,
   onModelChange,
 }: ChatInputPreviewBarProps) {
   // Show the chip whenever a model is explicitly selected, mirroring how
@@ -260,7 +265,7 @@ export default function ChatInputPreviewBar({
         <ContextChip
           variant="model"
           icon={<Cpu size={12} strokeWidth={2.2} aria-hidden />}
-          label={modelShortLabel(selectedModelValue)}
+          label={modelRefLabel(selectedModelValue, availableModels)}
           onRemove={() => onModelChange?.(null)}
         />
       )}

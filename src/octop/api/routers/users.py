@@ -16,7 +16,6 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import (
     PERMISSIONS,
-    effective_permissions,
     expand_permission_grants,
 )
 from octop.infra.users.resource_policy import (
@@ -167,7 +166,7 @@ def _user_avatar_url(server: Any, user_id: int) -> str | None:
     from octop.infra.users.profile_avatar import profile_avatar_url
 
     return profile_avatar_url(
-        server.services.paths.user_avatars_dir,
+        server.services.avatars("user"),
         str(user_id),
         f"/api/users/{user_id}/avatar",
     )
@@ -597,7 +596,7 @@ async def patch_user(
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 
         server.services.user_repo.set_avatar_icon(user_id, clean_avatar_icon(body.avatar_icon))
-        delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
+        delete_profile_avatar(server.services.avatars("user"), str(user_id))
     policy_kwargs = _policy_kwargs_from_body(body)
     if policy_kwargs:
         await server.user_manager.set_resource_policy(row.username, **policy_kwargs)
@@ -678,7 +677,7 @@ async def upload_user_avatar(
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
-        server.services.paths.user_avatars_dir,
+        server.services.avatars("user"),
         str(user_id),
         await file.read(),
     )
@@ -688,16 +687,15 @@ async def upload_user_avatar(
 @router.get("/{user_id}/avatar")
 async def get_user_avatar(
     user_id: int,
-    actor: Any = Depends(current_user),
+    _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> Any:
-    if actor.id != user_id and "users" not in effective_permissions(actor):
-        raise OctopError(ErrorCode.FORBIDDEN, "not allowed to read this avatar")
+    """Portrait for any signed-in user. Shared conversations show each sender."""
     from octop.infra.users.profile_avatar import avatar_response
 
     if server.user_manager.get_row(user_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-    return avatar_response(server.services.paths.user_avatars_dir, str(user_id))
+    return avatar_response(server.services.avatars("user"), str(user_id))
 
 
 @router.delete("/{user_id}/avatar", status_code=204)
@@ -710,4 +708,4 @@ async def delete_user_avatar(
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user_id))
+    delete_profile_avatar(server.services.avatars("user"), str(user_id))

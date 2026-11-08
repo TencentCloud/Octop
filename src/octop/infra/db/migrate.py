@@ -1626,6 +1626,63 @@ def _ensure_instance_lease_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_control_blobs_schema(db: DatabasePool) -> None:
+    """Profile avatars and shared file trees (plugins, published experts)."""
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS profile_avatars (
+                  owner_kind TEXT NOT NULL,
+                  owner_id TEXT NOT NULL,
+                  media_type TEXT NOT NULL,
+                  content BYTEA NOT NULL,
+                  updated_at BIGINT NOT NULL,
+                  PRIMARY KEY (owner_kind, owner_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS control_files (
+                  namespace TEXT NOT NULL,
+                  owner_id TEXT NOT NULL,
+                  path TEXT NOT NULL,
+                  content BYTEA NOT NULL,
+                  PRIMARY KEY (namespace, owner_id, path)
+                )
+                """
+            )
+        return
+    with db.connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS profile_avatars (
+              owner_kind TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              media_type TEXT NOT NULL,
+              content BLOB NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (owner_kind, owner_id)
+            );
+            CREATE TABLE IF NOT EXISTS control_files (
+              namespace TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              path TEXT NOT NULL,
+              content BLOB NOT NULL,
+              PRIMARY KEY (namespace, owner_id, path)
+            );
+            """
+        )
+
+
+def _ensure_thread_contributed_schema(db: DatabasePool) -> None:
+    """``threads.contributed`` (v25). Idempotent for SQLite, which skips the SQL file."""
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
+
+
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:
     """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
     if not _table_exists(db, "users"):
@@ -1872,6 +1929,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_column(db, "threads", "reasoning_mode", "TEXT")
         _ensure_column(db, "threads", "reasoning_effort", "TEXT")
         _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
         _ensure_thread_conversation_mode_schema(db)
     if _table_exists(db, "agents"):
         _ensure_column(db, "agents", "is_shared", "INTEGER NOT NULL DEFAULT 0")
@@ -2175,6 +2233,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     if version == 25:
         _ensure_user_mfa_schema(db)
         _ensure_instance_lease_schema(db)
+        _ensure_thread_contributed_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -2432,6 +2491,8 @@ def run_migrations(db: DatabasePool) -> None:
     # columns were never created.
     _ensure_user_mfa_schema(db)
     _ensure_instance_lease_schema(db)
+    _ensure_control_blobs_schema(db)
+    _ensure_thread_contributed_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)

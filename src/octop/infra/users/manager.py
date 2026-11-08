@@ -896,4 +896,4 @@ class UserManager:
         from octop.infra.users.profile_avatar import delete_profile_avatar
 
         self._remove_paths([self._services.paths.user_dir(username)])
-        delete_profile_avatar(self._services.paths.user_avatars_dir, str(user_id))
+        delete_profile_avatar(self._services.avatars("user"), str(user_id))

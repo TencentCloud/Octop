@@ -209,8 +209,9 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
         ),
     ]
     thread_registry = MagicMock()
-    thread_registry.list_threads.return_value = rows
+    thread_registry.list_visible_threads.return_value = rows
     thread_registry.get_bound_thread_id.return_value = None
+    thread_registry.unread_counts_for_threads.return_value = {"thr_used": 3}
 
     server = MagicMock()
     agent_row = MagicMock(user_id=1)
@@ -235,6 +236,8 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
     assert out[1]["has_messages"] is True
     assert out[1]["turn_active"] is True
     assert out[1]["awaiting_user"] is False
+    assert out[0]["unread_count"] == 0
+    assert out[1]["unread_count"] == 3
 
 
 @pytest.mark.asyncio
@@ -534,3 +537,97 @@ async def test_turn_exception_clears_flag_so_delete_is_not_stuck() -> None:
     server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
         "agt_1", "thr_1"
     )
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_change_shared_thread_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers.chat.models import RenameThreadBody
+
+    monkeypatch.setattr(history_mod, "require_agent_row", lambda *_a, **_k: MagicMock())
+    server = MagicMock()
+    server.app_runtime.gateway.thread_registry.get_thread.return_value = MagicMock(
+        agent_id="agt_1",
+        user_id=1,
+        contributed=True,
+    )
+    body = RenameThreadBody(model_ref="prov/model")
+
+    with pytest.raises(OctopError) as exc:
+        await history_mod.patch_thread(
+            "agt_1",
+            "thr",
+            body,
+            user=MagicMock(id=2, is_admin=False),
+            server=server,
+        )
+
+    assert exc.value.code == ErrorCode.FORBIDDEN
+
+
+def test_history_authors_keep_the_sender() -> None:
+    class _User:
+        def __init__(self, username: str, display_name: str, avatar_icon: str | None) -> None:
+            self.username = username
+            self.display_name = display_name
+            self.avatar_icon = avatar_icon
+
+    users = {
+        1: _User("ada", "Ada", None),
+        2: _User("bob", "Bob", "doctor"),
+    }
+    server = MagicMock()
+    server.services.user_repo.get.side_effect = users.get
+    server.services.avatars.return_value.url.return_value = "/api/users/x/avatar?v=1"
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "old"},
+        {"role": "user", "content": "new", "author_user_id": 2},
+        {"role": "assistant", "content": "ok"},
+    ]
+
+    history_mod._attach_message_authors(server, messages, owner_user_id=1)
+
+    assert messages[0]["author"]["username"] == "ada"
+    assert messages[1]["author"]["username"] == "bob"
+    assert messages[1]["author"]["avatar_icon"] == "doctor"
+    assert "author" not in messages[2]
+
+
+@pytest.mark.asyncio
+async def test_shared_thread_hitl_resume_skips_user_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers.chat import routes as routes_mod
+    from octop.api.routers.chat.models import HitlResumeBody
+
+    row = MagicMock(contributed=True, user_id=1)
+    monkeypatch.setattr(history_mod, "_require_thread", lambda *_a, **_k: row)
+    server = MagicMock()
+    store = server.app_runtime.gateway.processor.hitl_coordinator.store
+    store.resolve_pending_for_thread.return_value = None
+    body = HitlResumeBody(
+        thread_id="thr",
+        decisions=[{"type": "approve"}],
+        pending_id="pend",
+    )
+
+    await routes_mod.resume_hitl(
+        "agt_1",
+        body,
+        MagicMock(),
+        user=MagicMock(id=2),
+        server=server,
+    )
+
+    assert store.resolve_pending_for_thread.call_args.kwargs["user_id"] is None
+
+    row.contributed = False
+    await routes_mod.resume_hitl(
+        "agt_1",
+        body,
+        MagicMock(),
+        user=MagicMock(id=2),
+        server=server,
+    )
+    assert store.resolve_pending_for_thread.call_args.kwargs["user_id"] == 2
