@@ -45,6 +45,18 @@ def _running_on_windows() -> bool:
     return os.name == "nt"
 
 
+def is_explicit_host_root(root: str) -> bool:
+    """True for POSIX ``/`` and a Windows drive root such as ``C:/``.
+
+    Empty strings are not a host root. A path below the drive (``C:/data``)
+    is a scoped jail.
+    """
+    text = root.strip()
+    if text in {"/", "\\"}:
+        return True
+    return bool(_WINDOWS_DRIVE_ROOT_RE.match(text))
+
+
 def _is_host_root_sentinel(root: str | Path | None) -> bool:
     """True when *root* means the whole host filesystem (not a jail).
 

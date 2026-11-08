@@ -19,6 +19,21 @@ def _token(content: str, thread_id: str) -> dict[str, Any]:
     return {"type": "token", "content": content, "thread_id": thread_id}
 
 
+def _user(content: str, thread_id: str, user_id: int = 7) -> dict[str, Any]:
+    return {
+        "type": "user",
+        "content": content,
+        "thread_id": thread_id,
+        "author": {
+            "user_id": user_id,
+            "display_name": "",
+            "username": "",
+            "avatar_icon": None,
+            "avatar_url": f"/api/users/{user_id}/avatar",
+        },
+    }
+
+
 _STEER_PROTOCOL_TYPES = frozenset(
     {
         "turn.started",
@@ -240,6 +255,7 @@ async def test_ws_channel_streams_chunks() -> None:
     )
     await channel.handle_inbound(msg)
 
+    assert _user("hi", "thread-1") in frames
     assert {"type": "token", "content": "hello", "thread_id": "thread-1"} in frames
     assert {"type": "done", "thread_id": "thread-1"} in frames
     assert frames[-1]["type"] == "turn.ended"
@@ -291,7 +307,10 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
+        _token("first", "thread-1"),
+    ]
     assert hub.is_turn_active("thread-1") is True
 
     hub.unsubscribe_connection("a")
@@ -350,13 +369,17 @@ async def test_ws_channel_fans_out_mid_turn_to_all_subscribers() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
+        _token("first", "thread-1"),
+    ]
 
     hub.subscribe("thread-1", "b")
     gate.set()
     await task
 
     assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
         _token("first", "thread-1"),
         _token("second", "thread-1"),
         {"type": "done", "thread_id": "thread-1"},

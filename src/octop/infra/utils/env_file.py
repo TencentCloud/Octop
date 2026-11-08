@@ -38,6 +38,19 @@ def env_file_path(root: Path) -> Path:
     return root / "env"
 
 
+def _looks_like_assignment(line: str) -> bool:
+    """True when *line* is a new ``KEY=`` entry, not a quoted continuation."""
+    raw = line.strip()
+    if not raw or raw.startswith("#"):
+        return False
+    if raw.startswith("export "):
+        raw = raw[7:].strip()
+    if "=" not in raw:
+        return False
+    key, _, _ = raw.partition("=")
+    return bool(_KEY_RE.match(key.strip()))
+
+
 def parse_env_text(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     lines = text.splitlines()
@@ -59,11 +72,13 @@ def parse_env_text(text: str) -> dict[str, str]:
         # ``format_env_file`` quotes any value containing whitespace and leaves embedded line
         # breaks raw, so a multi-line value has to be read back across lines. Only a value with
         # an *unterminated* quote continues onto the next line; a value that already contains a
-        # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
-        # the rest of the file.
+        # closing quote (or no quote at all) is left alone. A later ``KEY=`` line ends the
+        # continuation, so a missing closing quote cannot swallow the rest of the file.
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
             while index < len(lines) and quote not in value[1:]:
+                if _looks_like_assignment(lines[index]):
+                    break
                 value = f"{value}\n{lines[index]}"
                 index += 1
             value = value.strip()

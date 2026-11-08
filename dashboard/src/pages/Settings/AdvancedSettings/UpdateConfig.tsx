@@ -28,8 +28,8 @@ import styles from "./UpdateConfig.module.less";
 
 /** Shell snippets shown in the manual upgrade guide (commands are locale-agnostic). */
 const UPGRADE_GUIDE_CODE = {
-  installerUnix: `curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash`,
-  installerWin: `irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex`,
+  installerUnix: `curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash`,
+  installerWin: `irm https://download.octop.cloud/octop/scripts/install.ps1 | iex`,
   cli: `octop update
 # or non-interactive:
 octop update --yes

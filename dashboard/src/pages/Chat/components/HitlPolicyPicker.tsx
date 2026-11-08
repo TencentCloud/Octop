@@ -14,11 +14,15 @@ import styles from "../index.module.less";
 interface HitlPolicyPickerProps {
   policy: HitlSessionPolicy;
   onChange: (policy: HitlSessionPolicy) => void;
+  disabled?: boolean;
+  disabledHint?: string;
 }
 
 export default function HitlPolicyPicker({
   policy,
   onChange,
+  disabled = false,
+  disabledHint,
 }: HitlPolicyPickerProps) {
   const { t } = useTranslation();
   const toolLabelOf = useToolDisplayNames();
@@ -36,8 +40,8 @@ export default function HitlPolicyPicker({
     <Popover
       trigger="click"
       placement="topLeft"
-      open={open}
-      onOpenChange={setOpen}
+      open={disabled ? false : open}
+      onOpenChange={disabled ? undefined : setOpen}
       overlayClassName={styles.modelPopover}
       content={
         <div className={styles.modeMenu}>
@@ -107,7 +111,10 @@ export default function HitlPolicyPicker({
         </div>
       }
     >
-      <Tooltip title={triggerLabel} mouseEnterDelay={0.4}>
+      <Tooltip
+        title={disabled ? disabledHint || triggerLabel : triggerLabel}
+        mouseEnterDelay={0.4}
+      >
         <button
           className={cx(
             styles.secondaryBtn,

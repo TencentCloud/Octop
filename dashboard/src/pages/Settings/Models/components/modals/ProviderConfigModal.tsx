@@ -657,17 +657,18 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    const savedModel = (provider.model ?? "").trim();
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
       api_key: undefined,
-      model: currentDefaultModel,
       note: provider.note ?? "",
       stream_usage: provider.stream_usage !== false,
     });
+    // undefined is skipped by setFieldsValue, so an empty default has to be
+    // reset or the previous provider's model stays selected.
+    if (savedModel) form.setFieldValue("model", savedModel);
+    else form.resetFields(["model"]);
     setDraftModels(
       (provider.models ?? []).map((m) => ({
         ...m,
@@ -705,10 +706,8 @@ export function ProviderConfigModal({
         payload.stream_usage = Boolean(values.stream_usage);
       }
       // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
-      if ((values.model ?? "") !== existingDefault)
+      const existingDefault = (provider.model ?? "").trim();
+      if ((values.model ?? "").trim() !== existingDefault)
         payload.model = values.model?.trim() || null;
 
       const modelsForSave =
@@ -1001,6 +1000,25 @@ export function ProviderConfigModal({
     }
   };
 
+  const savedDefaultModel = (provider.model ?? "").trim();
+  const defaultModelOptions = useMemo(() => {
+    const source =
+      isOllama || isOnnx
+        ? draftModels.filter((m) => downloadedIds.includes(m.id))
+        : draftModels;
+    const options = source.map((m) => ({
+      value: m.id,
+      label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
+    }));
+    if (
+      savedDefaultModel &&
+      !options.some((option) => option.value === savedDefaultModel)
+    ) {
+      options.unshift({ value: savedDefaultModel, label: savedDefaultModel });
+    }
+    return options;
+  }, [draftModels, downloadedIds, isOllama, isOnnx, savedDefaultModel]);
+
   return (
     <Drawer
       title={t("models.configureProviderTitle", { name: provider.name })}
@@ -1087,13 +1105,7 @@ export function ProviderConfigModal({
                   ? t("models.defaultModelDownloadedOnly")
                   : t("models.defaultModelPlaceholder")
               }
-              options={(isOllama || isOnnx
-                ? draftModels.filter((m) => downloadedIds.includes(m.id))
-                : draftModels
-              ).map((m) => ({
-                value: m.id,
-                label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
-              }))}
+              options={defaultModelOptions}
               notFoundContent={
                 isOllama || isOnnx
                   ? t("models.defaultModelNeedDownload")
