@@ -32,6 +32,15 @@
 # 或使用 Compose:
 #   docker compose -f docker/docker-compose.yml up -d
 #
+# 或使用 Compose 及国内加速:
+#   PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
+#   PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
+#   NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
+#   APT_MIRROR=mirrors.cloud.tencent.com \
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# 镜像内含虚拟桌面和系统 Chromium，但不会启动。用户在控制台确认后才启用。
+# 桌面安装已经带上 Chromium，不再另下 Playwright 浏览器。
 # 默认 OCTOP_IMAGE_VARIANT=full：虚拟桌面、系统浏览器、本地向量和 OCR 都在镜像里，
 # 桌面不会启动，用户在控制台确认后才启用。桌面安装已经带上 Chromium，不再另下
 # Playwright 浏览器。lite 去掉这些重依赖，镜像更小，发布标签是 :<version>-lite。
