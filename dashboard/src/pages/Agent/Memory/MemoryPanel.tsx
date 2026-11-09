@@ -10,6 +10,7 @@ import {
   Bell,
   Heart,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   MessageSquare,
   Network,
@@ -33,6 +34,7 @@ import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
 import StrongMemory from "./StrongMemory";
+import McpAccess from "./McpAccess";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import styles from "./index.module.less";
@@ -48,7 +50,8 @@ type MemoryTab =
   | "journal"
   | "conversations"
   | "proactive"
-  | "settings";
+  | "settings"
+  | "mcp";
 
 type LibraryView = "tree" | "atoms" | "raw";
 
@@ -128,17 +131,26 @@ const TABS: TabDef[] = [
     fallback: "设置",
     icon: Settings,
   },
+  {
+    key: "mcp",
+    labelKey: "memory.tabs.mcp",
+    fallback: "MCP 接入",
+    icon: KeyRound,
+  },
 ];
 
 export interface MemoryPanelProps {
   agentId: string | null;
   /** Stretch tabs to fill parent height (desktop PageShell / drawer). */
   fill?: boolean;
+  /** Show the user-level "MCP access" tab (personal memory page only). */
+  showMcpTab?: boolean;
 }
 
 export default function MemoryPanel({
   agentId,
   fill = true,
+  showMcpTab = false,
 }: MemoryPanelProps) {
   const { t } = useTranslation();
 
@@ -224,7 +236,7 @@ export default function MemoryPanel({
       </div>
     );
 
-    return TABS.map((tab) => {
+    return TABS.filter((tab) => showMcpTab || tab.key !== "mcp").map((tab) => {
       const showBadge = tab.showPendingBadge && pendingCount > 0;
       const label = (
         <TabLabel icon={tab.icon}>
@@ -306,11 +318,22 @@ export default function MemoryPanel({
         case "settings":
           children = <MemorySettings agentId={agentId} />;
           break;
+        case "mcp":
+          children = <McpAccess />;
+          break;
       }
 
       return { key: tab.key, label, children };
     });
-  }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t]);
+  }, [
+    agentId,
+    expandEntityId,
+    expandKey,
+    libraryView,
+    pendingCount,
+    showMcpTab,
+    t,
+  ]);
 
   if (!agentId) {
     return (
