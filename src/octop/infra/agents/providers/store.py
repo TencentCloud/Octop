@@ -308,11 +308,15 @@ class ProviderStore:
         self._provider_repo = provider_repo
 
     def iter_usable_rows(self) -> Iterator[Any]:
-        """Yield enabled DB providers that have credentials and at least one enabled model."""
+        """Yield enabled DB providers with a base URL and at least one enabled model.
+
+        No credential gate: keyless endpoints are valid and BYOK providers
+        authenticate per call via ``api_key_override``.
+        """
         for row in self._provider_repo.list_all():
             if not row.enabled:
                 continue
-            if not row.base_url or not row.api_key:
+            if not row.base_url:
                 continue
             models = row.get_models()
             if not models:
@@ -350,7 +354,9 @@ class ProviderStore:
                 ProviderConfig(
                     id=row.name,
                     base_url=row.base_url,
-                    api_key=row.api_key,
+                    # Keyless rows register with an empty key: the endpoint
+                    # needs no auth, or every call supplies api_key_override.
+                    api_key=row.api_key or "",
                     protocol=protocol,  # type: ignore[arg-type]
                     name=row.name,
                     models=models,
@@ -473,7 +479,7 @@ class ProviderStore:
         if not provider_name or not model_id:
             return False
         row = self._provider_repo.get_by_name(provider_name)
-        if row is None or not row.enabled or not row.api_key or not row.base_url:
+        if row is None or not row.enabled or not row.base_url:
             return False
         for model in row.get_models():
             if model.get("id") != model_id:
