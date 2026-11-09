@@ -1,0 +1,26 @@
+{
+  "name": "octop-memory-native",
+  "version": "0.1.2",
+  "private": true,
+  "description": "DSH 原生「记忆共享」插件：对话开始自动召回 octop 共享记忆，轮末自动上报，无需 Claude Code hook 桥接。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "lib/text.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Octop Shared Memory (native)",
+    "description": "Retrieves relevant octop memories before each turn and ships turn transcripts back at turn end, in-process (no Claude Code hook bridge)."
+  }
+}
