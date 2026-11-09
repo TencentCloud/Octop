@@ -1,0 +1,186 @@
+"""Unit tests for the memory MCP token HTTP adapter."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+from fastapi import FastAPI
+from fastapi.responses import JSONResponse
+from fastapi.testclient import TestClient
+from starlette.requests import Request
+
+from octop.api.deps import current_user, get_server
+from octop.api.routers import memory_mcp
+from octop.infra.agents.memory_tokens import TOKEN_PREFIX, hash_token
+from octop.infra.db.migrate import run_migrations
+from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.users import UserRepo
+from octop.infra.db.services import RepoBundle
+from octop.infra.errors import OctopError
+from octop.infra.users.identity import Role, User
+from octop.infra.utils.ulid import new_ulid
+
+
+@dataclass
+class Seeded:
+    db: SqlitePool
+    repos: RepoBundle
+    owner: User
+    other: User
+    owner_agent: str
+    other_agent: str
+
+
+def _seed(tmp_path: Path) -> Seeded:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    repos = RepoBundle.from_pool(db)
+    users = UserRepo(db)
+    owner_id = users.create(
+        username="owner", password_hash="h", role="user", permissions=["memory"]
+    )
+    other_id = users.create(
+        username="other", password_hash="h", role="user", permissions=["memory"]
+    )
+    owner_agent = new_ulid()
+    other_agent = new_ulid()
+    repos.agent_repo.create(agent_id=owner_agent, user_id=owner_id, name="owner-bot")
+    repos.agent_repo.create(agent_id=other_agent, user_id=other_id, name="other-bot")
+    return Seeded(
+        db=db,
+        repos=repos,
+        owner=User(
+            id=owner_id,
+            username="owner",
+            role=Role.USER,
+            display_name=None,
+            permissions=["memory"],
+        ),
+        other=User(
+            id=other_id,
+            username="other",
+            role=Role.USER,
+            display_name=None,
+            permissions=["memory"],
+        ),
+        owner_agent=owner_agent,
+        other_agent=other_agent,
+    )
+
+
+@pytest.fixture
+def seeded(tmp_path: Path) -> Seeded:
+    return _seed(tmp_path)
+
+
+def _client(seeded: Seeded, user: User) -> TestClient:
+    server = SimpleNamespace(services=SimpleNamespace(repos=seeded.repos))
+    app = FastAPI()
+    app.include_router(memory_mcp.router)
+
+    @app.exception_handler(OctopError)
+    async def _octop_error(request: Request, exc: OctopError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status, content=exc.to_envelope())
+
+    app.dependency_overrides[get_server] = lambda: server
+    app.dependency_overrides[current_user] = lambda: user
+    return TestClient(app)
+
+
+def _create_token(client: TestClient, **body: Any) -> dict[str, Any]:
+    response = client.post("/memory-mcp/tokens", json={"name": "codex@macbook", **body})
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_create_returns_plaintext_once(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    data = _create_token(client, expert_ids=[seeded.owner_agent])
+
+    token = data["token"]
+    assert token.startswith(TOKEN_PREFIX)
+    assert data["token_hint"] == f"{token[:9]}…{token[-4:]}"
+    assert data["name"] == "codex@macbook"
+    assert data["expert_ids"] == [seeded.owner_agent]
+    assert data["revoked_at"] is None
+    assert data["last_used_at"] is None
+
+    row = seeded.repos.memory_mcp_token_repo.get_for_user(data["token_id"], user_id=seeded.owner.id)
+    assert row is not None
+    assert row.token_hash == hash_token(token)
+    assert row.token_hint == data["token_hint"]
+
+
+def test_list_never_returns_plaintext(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token = _create_token(client)["token"]
+
+    response = client.get("/memory-mcp/tokens")
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) == 1
+    assert "token" not in items[0]
+    assert token not in response.text
+
+
+def test_revoke_only_own_token(seeded: Seeded) -> None:
+    owner_client = _client(seeded, seeded.owner)
+    token_id = _create_token(owner_client)["token_id"]
+
+    other_client = _client(seeded, seeded.other)
+    foreign = other_client.delete(f"/memory-mcp/tokens/{token_id}")
+    assert foreign.status_code == 404
+    assert foreign.json()["error"]["code"] == "NOT_FOUND"
+    row = seeded.repos.memory_mcp_token_repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None
+    assert row.revoked_at is None
+
+    first = owner_client.delete(f"/memory-mcp/tokens/{token_id}")
+    assert first.status_code == 200
+    assert first.json() == {"revoked": True}
+    second = owner_client.delete(f"/memory-mcp/tokens/{token_id}")
+    assert second.status_code == 200
+    assert second.json() == {"revoked": False}
+
+
+def test_create_rejects_inaccessible_expert(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+
+    forbidden = client.post(
+        "/memory-mcp/tokens",
+        json={"name": "codex@macbook", "expert_ids": [seeded.other_agent]},
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN"
+
+    missing = client.post(
+        "/memory-mcp/tokens",
+        json={"name": "codex@macbook", "expert_ids": [new_ulid()]},
+    )
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "AGENT_NOT_FOUND"
+
+    assert seeded.repos.memory_mcp_token_repo.list_for_user(seeded.owner.id) == []
+
+
+def test_empty_expert_ids_means_unrestricted(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    data = _create_token(client, expert_ids=[])
+    assert data["expert_ids"] is None
+
+
+def test_create_requires_memory_permission(seeded: Seeded) -> None:
+    denied = User(
+        id=seeded.owner.id,
+        username="owner",
+        role=Role.USER,
+        display_name=None,
+        permissions=[],
+    )
+    response = _client(seeded, denied).post("/memory-mcp/tokens", json={"name": "codex@macbook"})
+    assert response.status_code == 403
+    assert response.json()["error"]["details"]["permission"] == "memory"
