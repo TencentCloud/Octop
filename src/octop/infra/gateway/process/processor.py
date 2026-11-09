@@ -22,7 +22,6 @@ from octop_harness.teams.inbox import InboxMessage
 from octop_harness.teams.processor import ReplyEvent
 from octop_harness.teams.util import PeerCall, PeerSession
 
-from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.agents.settings.profile import parse_config_json
 from octop.infra.agents.teams import is_team_agent
@@ -32,7 +31,7 @@ from octop.infra.agents.teams.team_manager import (
 from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
-from octop.infra.errors import OctopError
+from octop.infra.errors import OctopError, stream_error
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -115,12 +114,6 @@ def _inbound_thread_id(msg: InboundMessage) -> str | None:
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
     return None
-
-
-def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
-    if isinstance(exc, OctopError):
-        return exc.localized_message(locale), exc.code.value
-    return format_stream_error(exc, locale), None
 
 
 def _overwrite_last_user_text(request: dict[str, Any], text: str) -> None:
@@ -1165,7 +1158,7 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
-            message, error_code = _stream_error(exc, locale)
+            message, error_code = stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
             history_tracker.observe(
@@ -1567,7 +1560,7 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
-            message, error_code = _stream_error(exc, locale)
+            message, error_code = stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
@@ -1666,7 +1659,7 @@ class GlobalProcessor:
                 user_id=user_id,
                 channel_type="dashboard",
             )
-            message, error_code = _stream_error(exc, locale)
+            message, error_code = stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
@@ -1971,7 +1964,7 @@ class GlobalProcessor:
         flaky connector does not abort the whole message turn.
         """
         from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
-        from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
+        from octop.infra.errors import ErrorCode  # noqa: PLC0415
 
         # Team hosts only dispatch — never attach MCP tools.
         row = self._agent_manager.get_row(agent_id)
