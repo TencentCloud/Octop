@@ -58,4 +58,17 @@ describe("sidebarNav", () => {
       "admin",
     ]);
   });
+
+  it("shows model keys to every user for self-service", () => {
+    const plainUser = {
+      id: 2,
+      username: "ada",
+      role: "user",
+      permissions: [],
+    } as OctopUser;
+    const keys = buildNavSections(plainUser, { mobileEnabled: false }).flatMap(
+      (section) => section.items.map((item) => item.key),
+    );
+    expect(keys).toContain("model-keys");
+  });
 });
