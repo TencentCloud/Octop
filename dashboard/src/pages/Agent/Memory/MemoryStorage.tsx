@@ -300,6 +300,18 @@ export default function MemoryStorage({ agentId }: { agentId: string }) {
                           : "common.disabled",
                       ),
                     },
+                    {
+                      key: "retention",
+                      label: t("memory.storage.checkpointRetention"),
+                      children: inspection.checkpoint_retention_enabled
+                        ? t("memory.storage.checkpointRetentionValue", {
+                            keep: inspection.checkpoint_keep_last ?? "—",
+                            days:
+                              inspection.checkpoint_keep_days ??
+                              t("memory.storage.checkpointRetentionNoDays"),
+                          })
+                        : t("common.disabled"),
+                    },
                   ]
                 : []),
             ]}
@@ -308,6 +320,13 @@ export default function MemoryStorage({ agentId }: { agentId: string }) {
             <Typography.Text type="secondary">
               {t("memory.storage.estimateHint")}
             </Typography.Text>
+          )}
+          {inspection.checkpoint_vacuum_recommended && (
+            <Alert
+              type="warning"
+              showIcon
+              message={t("memory.storage.vacuumRecommended")}
+            />
           )}
           {inspection.blocked_reason && (
             <Alert
