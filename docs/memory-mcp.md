@@ -79,7 +79,33 @@ http_headers = { Authorization = "Bearer omcp_…", "X-Octop-Agent-Id" = "<专�
 
 在客户端的 MCP 配置里填 §2 的 URL 与两个 header 即可（DSH 的 `mcpServers` 用 `type: "streamable-http"`）。
 
-> 一键安装器与 hooks（提问前自动召回、会话结束自动采集）会在后续 PR 里单独提交，不在本次变更范围内。
+### 2.4 一键安装器（推荐）
+
+```bash
+# macOS / Linux：检测本机装了哪些终端 → 勾选 → 粘贴自己的 MCP token → 写入 hooks 与 MCP 条目
+curl -fLsS "https://<octop-host>/mcp/memory/setup" | sh
+
+# Windows（原生 PowerShell，不需要 Git Bash）
+irm "https://<octop-host>/mcp/memory/setup?os=windows" | iex
+
+# 只装到某个项目（hook 脚本与含 token 的 config.json 仍留在用户目录）
+curl -fLsS "https://<octop-host>/mcp/memory/setup?project=$PWD" | sh
+
+# 卸载（同样支持 ?os=windows / ?project=）
+curl -fLsS "https://<octop-host>/mcp/memory/uninstall" | sh
+```
+
+支持 **Claude Code / Kiro / DSH / Codex / Cursor** 五个终端：
+
+| 终端 | hooks 目录 | 注册位置 | 备注 |
+|------|-----------|---------|------|
+| Claude Code | `~/.claude/hooks-events/` | `~/.claude/settings.json` | UserPromptSubmit 召回 + Stop 上报 |
+| Kiro | `~/.kiro/hooks/` | `~/.kiro/hooks/*.json` | 同上 |
+| DSH | — | `~/.dsh/bundles/octop-memory-native/` + profile | **原生插件**（进程内召回/上报），不再用 hook 桥接 |
+| Codex | `~/.codex/hooks/` | `~/.codex/config.toml` | 同上 |
+| Cursor | `~/.cursor/hooks/` | `~/.cursor/hooks.json` | 同上 |
+
+安装器**不内置任何凭据**：`/setup` 只返回脚本，token 由你在运行时粘贴（`/api/memory-mcp/tokens` 创建）。DSH 的原生插件把召回与上报放在 DSH 进程里，不依赖 hook 桥接；其余终端由 hook 在提问前注入召回、会话结束时上报 transcript。
 
 ## 3. 工具清单
 
@@ -136,9 +162,9 @@ http_headers = { Authorization = "Bearer omcp_…", "X-Octop-Agent-Id" = "<专�
 
 | PR | 内容 | 目标仓库 | 状态 |
 |----|------|----------|------|
-| a | MCP 核心 + 用户级鉴权（本文档） | Octop | 本 PR |
+| a | MCP 核心 + 用户级鉴权 + 终端接入（本文档） | Octop | 本 PR |
 | b | 召回质量优化（实体后缀 / 强 token 排序） | octop-memory | 待提 |
-| c | 对话记录解析（Claude Code / Kiro / DSH → 原始事件） | octop-memory | 待提 |
-| d | 客户端 hooks 与安装器 | Octop | 待提 |
+| c | 对话记录解析（下沉到 octop-memory 适配层） | octop-memory | 待提 |
+| d | （已并入本 PR） | — | — |
 
 DSH 预设（`cordis.patch.yml`）不进入开源仓库。
