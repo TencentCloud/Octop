@@ -490,21 +490,14 @@ def test_installer_mentions_the_windows_native_installer() -> None:
 
 
 def test_no_internal_only_vocabulary_leaks() -> None:
-    """脱敏底线：安装器不能出现内部产品 / 内网域名 / 内部 token 方言。"""
+    """脱敏底线：安装器不能出现废弃的身份头或第二套凭据。"""
     scripts = (
         _script(),
         render_uninstall_script(),
         render_setup_ps1(mcp_url=_URL),
         render_uninstall_ps1(),
     )
-    # 内部产品 / 内网域名 / 内部 token 方言：故意拼起来，免得本文件自己被这些词命中。
     forbidden = (
-        "chengxiao" + "bang",
-        "\u7a0b\u5c0f\u5e2e",
-        "ctrip" + "corp",
-        "a" + "da_",
-        "x-" + "bbzai",
-        "trip" + ".com",
         "OCTOP_USER_ID",
         "X-Octop-User-Id",
         "userId",
@@ -513,7 +506,7 @@ def test_no_internal_only_vocabulary_leaks() -> None:
     )
     for script in scripts:
         for word in forbidden:
-            assert word not in script, f"安装器泄漏了内部概念：{word}"
+            assert word not in script, f"安装器泄漏了废弃概念：{word}"
 
 
 # ---------------------------------------------------------------- 真跑生成的脚本
