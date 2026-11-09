@@ -96,7 +96,7 @@ _DSH_NATIVE_FILES: tuple[str, ...] = (
 ``package.json`` 的版本号，再跑 ``tests/unit/agents/test_client_setup.py``。
 
 为什么不装 git URL：``/mcp/memory/setup`` 是 curl | sh 的无鉴权脚本，装 git 依赖要求目标机器
-能访问 git 仓（内网/代理/凭据各不相同）；vendored 副本跟着 octop 一起发版，安装只需要目录
+能访问 git 仓（私有源/代理/凭据各不相同）；vendored 副本跟着 octop 一起发版，安装只需要目录
 （``link:``），离线也能装完整。代价是插件升级要发一次 octop 版本。"""
 
 _DSH_NATIVE_NAME = "octop-memory-native"
