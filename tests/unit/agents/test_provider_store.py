@@ -293,16 +293,29 @@ def test_build_harness_configs_skips_disabled(store: ProviderStore) -> None:
     assert [p.id for p in providers] == ["enabled"]
 
 
-def test_build_harness_configs_skips_missing_credentials(store: ProviderStore) -> None:
+def test_build_harness_configs_skips_incomplete_rows(store: ProviderStore) -> None:
     store._provider_repo.create(name="no-url", kind="openai", api_key="sk-test")
     store._provider_repo.create(
-        name="no-key",
+        name="no-models",
         kind="openai",
         base_url="https://api.example.com/v1",
     )
 
     assert store.build_harness_configs() == []
     assert store.has_usable_providers() is False
+
+
+def test_keyless_provider_is_usable(store: ProviderStore) -> None:
+    """Keyless endpoints are valid; BYOK providers authenticate per call."""
+    store._provider_repo.create(
+        name="bare",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        models_json=json.dumps([{"id": "m1", "name": "m1"}]),
+    )
+    assert store.has_usable_providers() is True
+    assert [row.name for row in store.iter_usable_rows()] == ["bare"]
+    assert store.is_model_ref_usable("bare/m1") is True
 
 
 def test_has_usable_providers_requires_enabled_model(store: ProviderStore) -> None:
