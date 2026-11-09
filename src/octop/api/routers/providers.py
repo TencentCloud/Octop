@@ -475,6 +475,7 @@ async def admin_delete_provider(
         )
     name = row.name
     server.services.provider_repo.delete(provider_id)
+    server.services.user_provider_key_repo.delete_for_provider(name)
     server.services.repos.resource_group_grant_repo.delete_prefix(RESOURCE_MODEL, name)
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=name)

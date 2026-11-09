@@ -431,6 +431,7 @@
     "PROVIDER_NOT_VISIBLE": "提供商不可见。",
     "PROVIDER_REFERENCED": "提供商正在使用中，无法删除。",
     "PROVIDER_LOCAL_PROTECTED": "本地提供商无法删除。",
+    "PROVIDER_KEY_REQUIRED": "该提供商要求使用个人 API 密钥。请在左侧「设置 → 模型密钥」中填写后重试。",
     "CODEX_OAUTH_START_FAILED": "无法启动 ChatGPT 登录。请检查服务器到 auth.openai.com 的连接后重试。",
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "RESOURCE_NOT_ALLOWED": "你没有使用该资源的权限。",
