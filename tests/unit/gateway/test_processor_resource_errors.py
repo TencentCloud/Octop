@@ -12,7 +12,7 @@ import pytest
 from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.gateway.process.processor import GlobalProcessor, _stream_error
+from octop.infra.gateway.process.processor import GlobalProcessor, stream_error
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 from octop.infra.history.projection import _wire_text
@@ -66,7 +66,7 @@ def test_stream_error_preserves_resource_error_code() -> None:
         details={"used": 12, "quota": 10},
     )
 
-    message, code = _stream_error(error, "zh")
+    message, code = stream_error(error, "zh")
 
     assert code == "TOKEN_QUOTA_EXCEEDED"
     assert "12/10" in message
