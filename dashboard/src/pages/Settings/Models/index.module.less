@@ -1173,6 +1173,20 @@
   white-space: nowrap;
 }
 
+.poolModelNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.preferredBadge {
+  flex: none;
+  margin-inline-end: 0;
+  font-size: 11px;
+  line-height: 18px;
+}
+
 .poolModelName {
   font-size: 14px;
   font-weight: 500;
@@ -1180,6 +1194,7 @@
   line-height: 1.4;
   word-break: break-word;
   overflow-wrap: anywhere;
+  min-width: 0;
 
   @media (max-width: 767px) {
     font-size: 14px;

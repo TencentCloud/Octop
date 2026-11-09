@@ -16,6 +16,70 @@ def _mock_response(status: int, payload: Any) -> httpx.Response:
     return httpx.Response(status, json=payload, request=request)
 
 
+@pytest.mark.parametrize(
+    ("provider_name", "expected_ids"),
+    [
+        ("tencent-hy-token-plan", {"hy4", "hy3", "hy3-preview"}),
+        ("Tencent Cloud Hy Token Plan", {"hy4", "hy3", "hy3-preview"}),
+        ("tencent-token-plan", {"hy4", "glm-5"}),
+        ("Tencent Cloud Token Plan", {"hy4", "glm-5"}),
+    ],
+)
+async def test_shared_plan_url_uses_selected_catalog(
+    provider_name: str, expected_ids: set[str]
+) -> None:
+    base_url = "https://api.lkeap.cloud.tencent.com/plan/v3"
+    presets = [
+        {
+            "id": "tencent-token-plan",
+            "name": "Tencent Cloud Token Plan",
+            "base_url": base_url,
+            "models": [{"id": "hy4"}, {"id": "glm-5"}],
+        },
+        {
+            "id": "tencent-hy-token-plan",
+            "name": "Tencent Cloud Hy Token Plan",
+            "base_url": base_url,
+            "models": [{"id": "hy4"}, {"id": "hy3"}, {"id": "hy3-preview"}],
+        },
+    ]
+    with (
+        patch("octop.infra.agents.providers.probe.load_provider_presets", return_value=presets),
+        patch("octop.infra.agents.providers.probe.httpx.AsyncClient") as remote,
+    ):
+        result = await fetch_openai_compatible_models(
+            base_url=f"{base_url}/",
+            api_key="test-key",
+            provider_name=provider_name,
+        )
+    assert result["ok"] is True
+    assert {model["id"] for model in result["models"]} == expected_ids
+    remote.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "base_url"),
+    [
+        ("Custom provider", "https://api.lkeap.cloud.tencent.com/plan/v3"),
+        ("Tencent Cloud Hy Token Plan", "https://proxy.example.com/v1"),
+        ("tencent-tokenhub", "https://tokenhub.tencentmaas.com/v1"),
+        ("tencent-hai", "https://api.model.haihub.cn/v1"),
+    ],
+)
+async def test_other_provider_or_url_keeps_remote_discovery(
+    provider_name: str, base_url: str
+) -> None:
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.get.return_value = _mock_response(200, {"data": [{"id": "remote-model"}]})
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=client):
+        result = await fetch_openai_compatible_models(
+            base_url=base_url, api_key="test-key", provider_name=provider_name
+        )
+    assert result == {"ok": True, "models": [{"id": "remote-model", "name": "remote-model"}]}
+    assert client.get.await_args.args[0] == f"{base_url}/models"
+
+
 @pytest.mark.asyncio
 async def test_fetch_models_parses_openai_list() -> None:
     response = _mock_response(

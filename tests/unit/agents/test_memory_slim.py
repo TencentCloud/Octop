@@ -37,6 +37,7 @@ def make_manager(tmp_path):
     registry._reclaim_pending = set()
     registry._reclaim_holds = {}
     registry._reclaim_task = None
+    registry._reclaim_sweep_task = None
     registry._reclaim_wake = None
     registry.get_agent = lambda _: agent
     registry.memory_slim = MemorySlimCoordinator(registry)

@@ -63,6 +63,44 @@
   word-break: break-word;
 }
 
+.enable {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 10px;
+  margin-left: 34px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--push-accent, var(--fn-color-brand));
+  background: transparent;
+  color: var(--push-accent, var(--fn-color-brand));
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: color-mix(
+      in srgb,
+      var(--push-accent, var(--fn-color-brand)) 12%,
+      transparent
+    );
+  }
+}
+
+.status {
+  display: block;
+  margin-top: 8px;
+  margin-left: 34px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+}
+
+.statusEnabled {
+  color: var(--push-accent, var(--fn-color-brand));
+}
+
 :global(html[data-theme="dark"]) .notice {
   border-color: var(--fn-border-primary) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;

@@ -16,7 +16,28 @@ type AuthImageCacheEntry = {
   inflight?: Promise<string>;
 };
 
+const AUTH_IMAGE_CACHE_LIMIT = 32;
 const authImageCache = new Map<string, AuthImageCacheEntry>();
+
+function touchAuthImage(key: string, entry: AuthImageCacheEntry): void {
+  authImageCache.delete(key);
+  authImageCache.set(key, entry);
+}
+
+function evictIdleAuthImages(): void {
+  let idle = 0;
+  for (const entry of authImageCache.values()) {
+    if (entry.refs <= 0 && !entry.inflight) idle += 1;
+  }
+  if (idle <= AUTH_IMAGE_CACHE_LIMIT) return;
+  for (const [key, entry] of authImageCache) {
+    if (idle <= AUTH_IMAGE_CACHE_LIMIT) break;
+    if (entry.refs > 0 || entry.inflight) continue;
+    if (entry.objectUrl) URL.revokeObjectURL(entry.objectUrl);
+    authImageCache.delete(key);
+    idle -= 1;
+  }
+}
 
 function apiPathFromUrl(url: string): string {
   if (url.startsWith("http")) {
@@ -54,6 +75,7 @@ export function acquireAuthImageSrc(
   }
   entry.refs += 1;
   if (entry.objectUrl) {
+    touchAuthImage(key, entry);
     return Promise.resolve(entry.objectUrl);
   }
   if (!entry.inflight) {
@@ -63,10 +85,8 @@ export function acquireAuthImageSrc(
         const objectUrl = URL.createObjectURL(blob);
         pending.objectUrl = objectUrl;
         pending.inflight = undefined;
-        if (pending.refs <= 0) {
-          URL.revokeObjectURL(objectUrl);
-          authImageCache.delete(key);
-        }
+        touchAuthImage(key, pending);
+        evictIdleAuthImages();
         return objectUrl;
       })
       .catch((err: unknown) => {
@@ -89,10 +109,8 @@ export function releaseAuthImageSrc(url: string, filename?: string): void {
   if (!entry) return;
   entry.refs -= 1;
   if (entry.refs > 0 || entry.inflight) return;
-  if (entry.objectUrl) {
-    URL.revokeObjectURL(entry.objectUrl);
-  }
-  authImageCache.delete(key);
+  touchAuthImage(key, entry);
+  evictIdleAuthImages();
 }
 
 function releaseHeld(held: HeldAuthImage | undefined): void {

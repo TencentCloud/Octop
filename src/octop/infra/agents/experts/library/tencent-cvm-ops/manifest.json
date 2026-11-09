@@ -1,0 +1,143 @@
+{
+  "id": "tencent-cvm-ops",
+  "label": {
+    "zh": "腾讯云运维专家",
+    "en": "Tencent CVM Ops Expert"
+  },
+  "description": {
+    "zh": "面向腾讯云 CVM 的常驻运维专家：授权后自动接管实例总览、单机诊断、健康巡检与风险门控变更，并可结合知识库检索企业运维规范。",
+    "en": "Always-on Tencent Cloud CVM ops expert: takes over fleet overview, per-instance diagnosis, health patrol, and risk-gated changes after authorization, with knowledge-base grounding."
+  },
+  "welcome_message": {
+    "zh": "已连接腾讯云，告诉我哪台机器有异常",
+    "en": "Tencent Cloud connected — tell me which instance looks off"
+  },
+  "icon_name": "cloud",
+  "color": "#006EFF",
+  "scene": "tech",
+  "requires_skills": [
+    "tencentcloud-infra",
+    "cvm-ai-doctor"
+  ],
+  "prompt_files": [
+    "IDENTITY.md",
+    "SOUL.md",
+    "HEARTBEAT.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "今天该看哪台",
+        "en": "What needs attention"
+      },
+      "description": {
+        "zh": "按风险排序今日待处理实例",
+        "en": "Rank today's instances by risk"
+      },
+      "prompt": {
+        "zh": "请扫描授权范围内的云服务器，按风险从高到低列出今天需要优先处理的实例，并说明每台的判断依据。",
+        "en": "Scan all authorized cloud servers and rank today's instances by risk, explaining the evidence behind each."
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "集群健康巡检",
+        "en": "Fleet health patrol"
+      },
+      "description": {
+        "zh": "一次看完所有实例的健康状态",
+        "en": "Health snapshot across all instances"
+      },
+      "prompt": {
+        "zh": "请对授权范围内的所有云服务器执行一次健康巡检，汇总实例状态、监控指标和异常项，并给出处理建议。",
+        "en": "Run a health patrol across all authorized cloud servers, summarizing instance states, metrics, anomalies, and recommendations."
+      },
+      "color": "#dcfce7",
+      "icon_name": "server"
+    },
+    {
+      "title": {
+        "zh": "单机深度诊断",
+        "en": "Deep instance diagnosis"
+      },
+      "description": {
+        "zh": "按症状追到根因，给出证据链",
+        "en": "Trace symptoms to root cause with evidence"
+      },
+      "prompt": {
+        "zh": "请对当前选中的实例做深度诊断：先看云端监控，再通过 TAT 采集 OS 层数据，定位根因并列出证据。",
+        "en": "Deep-diagnose the selected instance: start from cloud metrics, then collect OS data via TAT, identify the root cause, and list the evidence."
+      },
+      "color": "#fef3c7",
+      "icon_name": "stethoscope"
+    },
+    {
+      "title": {
+        "zh": "磁盘与内存异常",
+        "en": "Disk & memory issues"
+      },
+      "description": {
+        "zh": "定位空间不释放、内存持续增长",
+        "en": "Find unreleased space and growing memory"
+      },
+      "prompt": {
+        "zh": "这台服务器的磁盘使用率和目录统计对不上，或内存持续增长，请帮我定位原因并给出处理方案。",
+        "en": "This server's disk usage doesn't match directory totals, or memory keeps growing — help me find the cause and propose a fix."
+      },
+      "color": "#f1f5f9",
+      "icon_name": "hard-drive"
+    },
+    {
+      "title": {
+        "zh": "变更影响评估",
+        "en": "Change impact review"
+      },
+      "description": {
+        "zh": "重启或停机前先评估影响",
+        "en": "Assess impact before restart or stop"
+      },
+      "prompt": {
+        "zh": "我准备对部分实例做重启或停机操作，请先评估影响范围、依赖关系和回滚方式，再给出操作步骤。",
+        "en": "I plan to restart or stop some instances — assess the blast radius, dependencies, and rollback first, then give the steps."
+      },
+      "color": "#eef2ff",
+      "icon_name": "shield-check"
+    },
+    {
+      "title": {
+        "zh": "出具诊断报告",
+        "en": "Diagnosis report"
+      },
+      "description": {
+        "zh": "按腾讯云诊断报告格式出具",
+        "en": "Issue a Tencent Cloud style diagnosis report"
+      },
+      "prompt": {
+        "zh": "请对当前实例出具云服务器诊断报告。先取云监控，需要定位挂载点或进程时再用 TAT。聊天按诊断报告格式输出，并生成可归档的 HTML。未采集的数字不要编造。",
+        "en": "Issue a cloud server diagnosis report for the current instance. Start with Cloud Monitor, then use TAT when a mount or process must be identified. Reply in the diagnosis-report format and write an archivable HTML file. Do not invent missing numbers."
+      },
+      "color": "#fff1f2",
+      "icon_name": "file-text"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」巡检授权范围内的云服务器，只列出需要人工处理的实例，任务创建后立即启用",
+      "每「4 小时」检查磁盘使用率与负载，超过阈值再通知我",
+      "每周一「10:00」输出云服务器健康周报：容量趋势、异常项与待办",
+      "每天「18:00」汇总当天发生过的重启和停机操作，标出未验证恢复的实例",
+      "每周五「16:00」对照知识库中的运维规范检查配置基线，列出偏离项",
+      "每「30 分钟」检查实例运行状态，发现非运行中的实例立即通知我"
+    ],
+    "en": [
+      "Every day at 09:00, patrol all authorized cloud servers and list only instances needing manual action — enable immediately",
+      "Every 4 hours, check disk usage and load, and notify me only when thresholds are exceeded",
+      "Every Monday at 10:00, send a weekly CVM health report: capacity trend, anomalies, and open items",
+      "Every day at 18:00, summarize restart and stop operations from today and flag instances without verified recovery",
+      "Every Friday at 16:00, check configuration baselines against knowledge-base runbooks and list deviations",
+      "Every 30 minutes, check instance run states and notify me immediately when one is not running"
+    ]
+  }
+}

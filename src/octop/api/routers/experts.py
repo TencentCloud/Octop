@@ -34,6 +34,7 @@ from octop.infra.agents.experts.catalog import (
     apply_workspace_quick_prompts,
     build_create_spec_from_expert,
     discover_seed_paths,
+    featured_expert_template_ids,
     preview_file_paths,
     preview_paths_from_expert_dir,
     read_text_file_contents,
@@ -311,7 +312,12 @@ def _portal_prompts(value: Any) -> list[dict[str, Any]]:
     return prompts
 
 
-def _portal_hub_item(item: dict[str, Any], *, include_content: bool) -> dict[str, Any]:
+def _portal_hub_item(
+    item: dict[str, Any],
+    *,
+    include_content: bool,
+    featured_ids: frozenset[str] | None = None,
+) -> dict[str, Any]:
     raw_slugs = item.get("skill_slugs")
     slugs = (
         [slug for slug in raw_slugs if isinstance(slug, str)] if isinstance(raw_slugs, list) else []
@@ -329,6 +335,7 @@ def _portal_hub_item(item: dict[str, Any], *, include_content: bool) -> dict[str
         "skill_slugs": slugs,
         "skill_count": int(item.get("skill_count") or 0),
         "source": str(item.get("source") or "portal"),
+        "featured": str(item.get("slug") or item.get("id") or "") in (featured_ids or frozenset()),
         "task_examples": _portal_task_examples(item.get("task_examples")),
     }
     if include_content:
@@ -390,6 +397,7 @@ class ExpertHubItemResponse(BaseModel):
     skill_slugs: list[str] = Field(default_factory=list)
     skill_count: int = 0
     source: str = "portal"
+    featured: bool = False
     content: LocalizedTextResponse | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
     task_examples: dict[str, list[str]] | None = None
@@ -820,6 +828,7 @@ async def list_expert_hub(
     """List experts published on the octop.cloud market."""
     try:
         portal_items, portal_scenes = await asyncio.to_thread(list_market_experts, q, scene)
+        featured_ids = featured_expert_template_ids()
     except PortalMarketError as exc:
         logger.warning("remote expert market unavailable: %s", exc)
         network_error = local_network_error(exc)
@@ -831,7 +840,10 @@ async def list_expert_hub(
             details={"reason": "upstream request failed"},
         ) from exc
     return {
-        "items": [_portal_hub_item(item, include_content=False) for item in portal_items],
+        "items": [
+            _portal_hub_item(item, include_content=False, featured_ids=featured_ids)
+            for item in portal_items
+        ],
         "scenes": portal_scenes,
     }
 
@@ -848,6 +860,7 @@ async def get_expert_hub_item(
     """Expert detail from the octop.cloud market."""
     try:
         portal_item = await asyncio.to_thread(get_market_expert, slug)
+        featured_ids = featured_expert_template_ids()
     except PortalMarketError as exc:
         logger.warning("remote expert market unavailable: %s", exc)
         network_error = local_network_error(exc)
@@ -860,7 +873,7 @@ async def get_expert_hub_item(
         ) from exc
     if portal_item is None:
         raise OctopError(ErrorCode.NOT_FOUND, "expert not found")
-    return _portal_hub_item(portal_item, include_content=True)
+    return _portal_hub_item(portal_item, include_content=True, featured_ids=featured_ids)
 
 
 @router.post(
@@ -988,6 +1001,30 @@ async def create_agent_from_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     assert server.app_runtime is not None
+    # 未指定名称时视为「确保该专家已就绪」：云主机面板授权后会静默调用本接口，
+    # 刷新或重试必须复用已有 agent。显式传 name / agent_id 仍是新建，重名保持 409。
+    if not body.agent_id and not (body.name or "").strip():
+        for existing_row in server.app_runtime.agent_registry.list_agents(user.id):
+            if (existing_row.template_name or "") != expert_id:
+                continue
+            return {
+                "id": existing_row.id,
+                "agent_id": existing_row.agent_id,
+                "user_id": existing_row.user_id,
+                "name": existing_row.name,
+                "description": existing_row.description,
+                "default_model": existing_row.default_model,
+                "state": existing_row.last_state or "unknown",
+                "expert_id": expert_id,
+                "icon_name": existing_row.icon_name or expert.summary.icon_name,
+                "icon_url": existing_row.icon_url,
+                "color": existing_row.color or expert.summary.color,
+                "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(
+                    existing_row.agent_id
+                ),
+                "reused": True,
+            }
+
     assert_user_backend_root_dirs(
         user,
         body.backend,

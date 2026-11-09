@@ -38,6 +38,7 @@ from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import (
     clear_stale_pins_for_provider,
+    merge_default_model_extra,
     merge_provider_purpose_extra,
     merge_stream_usage_extra,
     resolve_provider_purpose,
@@ -76,6 +77,8 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    # Model id used by "test connection". Null clears a previously saved choice.
+    model: str | None = None
 
 
 # Fields that affect harness factory / agent runtime when patched.
@@ -169,9 +172,9 @@ def _provider_patch_updates(
     sends ``{"api_key": null}``; treating that the same as "field absent" left
     the key in place and the provider still looked authorized.
 
-    ``stream_usage`` / ``purpose`` are stored inside ``extra_json``. A patch
-    that only sets those flags rewrites the current blob and must not clear
-    the API key.
+    ``stream_usage`` / ``purpose`` / ``model`` are stored inside ``extra_json``.
+    A patch that only sets those flags rewrites the current blob and must not
+    clear the API key. ``model`` is the connection-test default; ``null`` clears it.
     """
     fields = body.model_fields_set
     updates: dict[str, Any] = {}
@@ -181,12 +184,19 @@ def _provider_patch_updates(
         updates["base_url"] = _blank_to_none(body.base_url)
     if "api_key" in fields:
         updates["api_key"] = _blank_to_none(body.api_key)
-    if "extra_json" in fields or "stream_usage" in fields or "purpose" in fields:
+    if (
+        "extra_json" in fields
+        or "stream_usage" in fields
+        or "purpose" in fields
+        or "model" in fields
+    ):
         base = body.extra_json if "extra_json" in fields else current_extra_json
         if "stream_usage" in fields:
             base = merge_stream_usage_extra(base, body.stream_usage)
         if "purpose" in fields:
             base = merge_provider_purpose_extra(base, body.purpose)
+        if "model" in fields:
+            base = merge_default_model_extra(base, body.model)
         updates["extra_json"] = base
     if "models" in fields:
         models = body.models
@@ -257,6 +267,14 @@ async def _maybe_refresh_codex_row(server: Any, row: Any) -> Any:
     return row
 
 
+def _saved_default_model(extra: dict[str, Any]) -> str | None:
+    raw = extra.get("default_model")
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip()
+    return cleaned or None
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     models: list[dict[str, Any]] = []
     for stored in r.get_models():
@@ -276,6 +294,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "model": _saved_default_model(extra),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
         "purpose": resolve_provider_purpose(
             provider_name=r.name,
@@ -380,6 +399,11 @@ async def admin_create_provider(
     models_json = _json.dumps(models) if models is not None else None
     extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
     extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
+    if server.services.provider_repo.get_by_name(body.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {body.name!r} already exists",
+        )
     pid = server.services.provider_repo.create(
         name=body.name,
         kind=body.kind,

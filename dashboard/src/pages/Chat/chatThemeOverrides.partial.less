@@ -31,6 +31,13 @@
   right: -8px;
 }
 
+/* The open rail is click-through so the resize handle stays reachable.
+   Reveal the collapse button from the sidebar hover instead. */
+.sidebarWrapper:hover .chatRailEdgeOpen button {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .chatRailEdgeClosed {
   /* Align with MainLayout nav RailEdgeControl (edgeEnd: right -8px / width 16px). */
   left: -8px !important;

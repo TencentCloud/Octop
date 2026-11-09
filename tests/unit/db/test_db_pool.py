@@ -21,6 +21,28 @@ def db(tmp_path: Path) -> SqlitePool:
     return pool
 
 
+def test_close_waits_for_in_flight_query(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    entered = threading.Event()
+    result: dict[str, int] = {}
+
+    def query() -> None:
+        with pool.connect() as conn:
+            entered.set()
+            time.sleep(0.2)
+            result["row"] = int(conn.execute("SELECT 1").fetchone()[0])
+
+    worker = threading.Thread(target=query)
+    worker.start()
+    assert entered.wait(2)
+    pool.close()
+    worker.join(2)
+    assert not worker.is_alive()
+    assert result["row"] == 1
+    with pytest.raises(sqlite3.ProgrammingError), pool.connect():
+        pass
+
+
 def test_db_pool_creates_file(tmp_path: Path):
     db_path = tmp_path / "octop.db"
     SqlitePool(db_path)
@@ -33,6 +55,31 @@ def test_db_pool_file_is_0600(tmp_path: Path):
     SqlitePool(db_path)
     mode = db_path.stat().st_mode & 0o777
     assert mode == 0o600
+
+
+def test_close_waits_for_in_flight_connection(db: SqlitePool) -> None:
+    """Closing must not free the connection while another thread is inside it."""
+    started = threading.Event()
+    release = threading.Event()
+
+    def hold() -> None:
+        with db.connect() as conn:
+            started.set()
+            assert release.wait(timeout=5)
+            conn.execute("SELECT 1").fetchone()
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    assert started.wait(timeout=5)
+    closer = threading.Thread(target=db.close)
+    closer.start()
+    closer.join(timeout=0.2)
+    assert closer.is_alive()
+    release.set()
+    closer.join(timeout=5)
+    holder.join(timeout=5)
+    assert not closer.is_alive()
+    assert not holder.is_alive()
 
 
 def test_run_migrations_creates_tables(db: SqlitePool):

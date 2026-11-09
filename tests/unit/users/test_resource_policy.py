@@ -17,10 +17,13 @@ from octop.infra.users.resource_policy import (
     POLICY_MAX_AGENTS,
     POLICY_TOKEN_QUOTA,
     POLICY_WORKSPACE_ROOT_DIR,
+    apply_workspace_root_to_config,
     assert_agent_quota_available,
     assert_backend_within_user_root,
     assert_token_quota_available,
+    clamp_backend_to_workspace_root,
     normalize_workspace_root_dir,
+    persisted_workspace_within_root,
     public_policy_fields,
 )
 
@@ -88,6 +91,171 @@ def test_assert_backend_within_user_root(tmp_path: Path) -> None:
         {"type": "docker"},
         allowed,
     )
+    assert_backend_within_user_root(
+        {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+        allowed,
+    )
+    assert_backend_within_user_root(
+        {"type": "filesystem", "virtual_mode": True},
+        allowed,
+    )
+    with pytest.raises(ValueError, match="path outside allowed workspace root"):
+        assert_backend_within_user_root(
+            {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+            allowed,
+            reject_host_root=True,
+        )
+
+
+class _PolicyRepo:
+    def __init__(self, value: str | None) -> None:
+        self.value = value
+
+    def get(self, user_id: int, name: str) -> str | None:
+        assert user_id == 7
+        assert name == POLICY_WORKSPACE_ROOT_DIR
+        return self.value
+
+
+def test_missing_backend_uses_workspace_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    jail = (tmp_path / "jail").resolve().as_posix()
+    (tmp_path / "jail").mkdir()
+    config: dict[str, object] = {}
+    apply_workspace_root_to_config(_PolicyRepo(jail), 7, config, fill_missing=True)
+    assert config["backend"] == {
+        "type": "local_shell",
+        "root_dir": jail,
+        "virtual_mode": True,
+    }
+
+
+def test_host_root_snaps_for_filesystem_and_composite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    jail_path = tmp_path / "jail"
+    nested = jail_path / "proj"
+    jail_path.mkdir()
+    nested.mkdir()
+    jail = jail_path.resolve().as_posix()
+    inside = nested.resolve().as_posix()
+    docker = {"type": "docker", "image": "sandbox"}
+    spec = {
+        "type": "composite",
+        "default": {"type": "filesystem", "virtual_mode": True, "root_dir": "/"},
+        "routes": {
+            "/data": {"type": "local_shell", "virtual_mode": False},
+            "/keep": {"type": "filesystem", "root_dir": inside, "virtual_mode": True},
+            "/remote": docker,
+        },
+    }
+    clamped = clamp_backend_to_workspace_root(spec, jail)
+    assert clamped["default"] == {
+        "type": "filesystem",
+        "virtual_mode": True,
+        "root_dir": jail,
+    }
+    assert clamped["routes"]["/data"] == {
+        "type": "local_shell",
+        "virtual_mode": False,
+        "root_dir": jail,
+    }
+    assert clamped["routes"]["/keep"]["root_dir"] == inside
+    assert clamped["routes"]["/remote"] is docker
+
+
+def test_explicit_root_outside_workspace_root_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    jail = tmp_path / "jail"
+    outside = tmp_path / "other"
+    jail.mkdir()
+    outside.mkdir()
+    config: dict[str, object] = {
+        "backend": {
+            "type": "filesystem",
+            "root_dir": outside.resolve().as_posix(),
+            "virtual_mode": True,
+        }
+    }
+    with pytest.raises(OctopError) as exc:
+        apply_workspace_root_to_config(
+            _PolicyRepo(jail.resolve().as_posix()),
+            7,
+            config,
+            fill_missing=True,
+        )
+    assert exc.value.code is ErrorCode.WORKSPACE_ROOT_RESTRICTED
+
+
+def test_missing_backend_leaves_unrestricted_users_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    config: dict[str, object] = {}
+    apply_workspace_root_to_config(_PolicyRepo(None), 7, config, fill_missing=True)
+    assert config == {}
+
+
+def test_update_does_not_invent_a_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    config: dict[str, object] = {"persona": "INTJ"}
+    apply_workspace_root_to_config(
+        _PolicyRepo(jail.resolve().as_posix()),
+        7,
+        config,
+        fill_missing=False,
+    )
+    assert config == {"persona": "INTJ"}
+
+
+def test_explicit_backend_is_not_replaced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    backend = {"type": "docker"}
+    config: dict[str, object] = {"backend": backend}
+    apply_workspace_root_to_config(
+        _PolicyRepo(jail.as_posix()),
+        7,
+        config,
+        fill_missing=True,
+    )
+    assert config["backend"] is backend
+
+
+def test_persisted_workspace_within_root(tmp_path: Path) -> None:
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    allowed = jail.resolve().as_posix()
+    inside = {
+        "workspace_dir": "/.octop/workspaces/A1",
+        "backend": {"type": "local_shell", "root_dir": allowed, "virtual_mode": True},
+    }
+    outside = {"workspace_dir": (tmp_path / "agents" / "A1").as_posix()}
+    assert persisted_workspace_within_root(inside, allowed) is True
+    assert persisted_workspace_within_root(outside, allowed) is False
+    assert persisted_workspace_within_root(inside, None) is False
+
+
+def test_missing_backend_ignored_in_container(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    config: dict[str, object] = {}
+    apply_workspace_root_to_config(
+        _PolicyRepo(jail.as_posix()),
+        7,
+        config,
+        fill_missing=True,
+    )
+    assert config == {}
 
 
 def test_assert_token_quota_available(db: SqlitePool) -> None:

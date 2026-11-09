@@ -397,9 +397,12 @@ async def test_relay_user_listen_forwards_member_frames_until_unlisten() -> None
 
     sess.send_json = send_json  # type: ignore[method-assign]
     frames: list[dict[str, Any]] = []
+    forwarded = asyncio.Event()
 
     async def on_frame(frame: dict[str, Any]) -> None:
         frames.append(frame)
+        if len(frames) >= 2:
+            forwarded.set()
 
     task = asyncio.create_task(
         mgr.relay_user_listen(
@@ -411,7 +414,7 @@ async def test_relay_user_listen_forwards_member_frames_until_unlisten() -> None
         )
     )
     await asyncio.wait_for(started.wait(), timeout=1.0)
-    await asyncio.sleep(0.05)
+    await asyncio.wait_for(forwarded.wait(), timeout=1.0)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

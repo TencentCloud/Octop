@@ -591,6 +591,23 @@ function MessageBubble({
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
+  const isOwnMessage =
+    message.author == null ||
+    (user != null && message.author.userId === user.id);
+  const authorName = accountDisplayName(
+    isOwnMessage
+      ? user
+      : {
+          display_name: message.author?.displayName,
+          username: message.author?.username,
+        },
+  );
+  const userAvatarUrl = isOwnMessage
+    ? user?.avatar_url
+    : message.author?.avatarUrl;
+  const userAvatarIcon = isOwnMessage
+    ? user?.avatar_icon
+    : message.author?.avatarIcon;
   const { agents, activeAgent } = useAgent();
   const isTeamRoom = isTeamAgent(activeAgent);
   const speakerId =
@@ -615,7 +632,7 @@ function MessageBubble({
     ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
     : expert?.name;
   const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
-  const userName = accountDisplayName(user);
+  const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -802,17 +819,19 @@ function MessageBubble({
     (isUser || groupPosition === "first" || groupPosition === "only") &&
     (isUser || showAvatar);
   const senderAvatar = !showSender ? null : isUser ? (
-    <MessageSender
-      name={userName}
-      avatar={
-        <ProfileAvatar
-          url={user?.avatar_url}
-          icon={user?.avatar_icon}
-          kind="user"
-          className={styles.msgUserAvatar}
-        />
-      }
-    />
+    <Tooltip title={userName || undefined} mouseEnterDelay={0.35}>
+      <MessageSender
+        name={userName}
+        avatar={
+          <ProfileAvatar
+            url={userAvatarUrl}
+            icon={userAvatarIcon}
+            kind="user"
+            className={styles.msgUserAvatar}
+          />
+        }
+      />
+    </Tooltip>
   ) : expert || avatarProfileId ? (
     <ExpertMessageAvatar
       name={expert?.name || avatarProfileId}

@@ -124,6 +124,16 @@ def test_multiline_value_survives_roundtrip() -> None:
     }
 
 
+def test_unclosed_quote_does_not_swallow_following_assignments() -> None:
+    text = 'BROKEN="no-close\nNEXT=1\nOK=2\n'
+
+    parsed = parse_env_text(text)
+
+    assert parsed["NEXT"] == "1"
+    assert parsed["OK"] == "2"
+    assert "NEXT" not in parsed["BROKEN"]
+
+
 def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> None:
     """Only an unterminated quote continues onto the next line."""
     text = 'MALFORMED="abc"def\nNEXT=1\n'

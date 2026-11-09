@@ -287,6 +287,45 @@ async def test_shared_connector_is_visible_but_not_manageable_by_other_user(env)
     assert patched.status_code == 403
 
 
+async def test_admin_cannot_edit_another_users_shared_connector(env):
+    c, _, admin_auth, _ = env
+    owner_auth = await create_user(c, admin_auth, username="connector_owner")
+    created = await c.post(
+        "/api/connector-instances",
+        headers=owner_auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "所有者的文档",
+            "credentials": {"token": "owner-token"},
+            "shared": True,
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+
+    listed = await c.get("/api/connector-instances", headers=admin_auth)
+    assert listed.status_code == 200
+    shared = next(row for row in listed.json() if row["instance_id"] == instance_id)
+    assert shared["can_manage"] is False
+
+    denied = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=admin_auth,
+        json={"display_name": "管理员不能改"},
+    )
+    assert denied.status_code == 403
+    hidden = await c.get(f"/api/connector-instances/{instance_id}", headers=admin_auth)
+    assert hidden.status_code == 403
+
+    renamed = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=owner_auth,
+        json={"display_name": "所有者可以改"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["display_name"] == "所有者可以改"
+
+
 async def test_chat_accepts_user_instance_mcp(env):
     c, _, auth, agent_id = env
     r = await c.post(
@@ -652,6 +691,39 @@ async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
     assert shared["can_manage"] is False
     assert shared["mcp_server_name"].startswith("custom__")
     assert shared["mcp_server_name"].endswith("__linear")
+
+    denied = await c.patch(
+        f"/api/connector-instances/{shared['instance_id']}",
+        headers=user_auth,
+        json={"status": "disabled"},
+    )
+    assert denied.status_code == 403
+
+
+async def test_private_custom_mcp_is_hidden_from_other_users(env):
+    c, _, admin_auth, _ = env
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=admin_auth,
+        json={
+            "servers": {
+                "private": {
+                    "transport": "streamable_http",
+                    "url": "https://private.example.com/mcp",
+                    "display_name": "仅自己的 MCP",
+                }
+            }
+        },
+    )
+    assert put.status_code == 200
+
+    user_auth = await create_user(c, admin_auth, username="custom_private_reader")
+    listed = await c.get("/api/connector-instances", headers=user_auth)
+    assert listed.status_code == 200
+    assert all(row.get("display_name") != "仅自己的 MCP" for row in listed.json())
+    names = await c.get("/api/connectors/custom-mcp", headers=user_auth)
+    assert names.status_code == 200
+    assert names.json()["servers"] == {}
 
 
 async def test_custom_mcp_oauth_callback_applies_tokens(env):

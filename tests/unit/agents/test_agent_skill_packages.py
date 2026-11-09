@@ -105,6 +105,17 @@ def test_assert_backend_supports_skill_packages_accepts_host_root(
     )
 
 
+def test_assert_backend_supports_skill_packages_accepts_windows_drive_root(
+    manager: AgentManager,
+) -> None:
+    manager.assert_backend_supports_skill_packages(
+        {"type": "local_shell", "root_dir": "C:/", "virtual_mode": True}
+    )
+    manager.assert_backend_supports_skill_packages(
+        {"type": "filesystem", "root_dir": "D:\\", "virtual_mode": True}
+    )
+
+
 def test_assert_backend_supports_skill_packages_accepts_workspace_scoped_default(
     manager: AgentManager,
     tmp_path: Path,

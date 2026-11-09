@@ -60,6 +60,18 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
         }
 
     if provider.startswith("tencent-"):
+        if model == "hy4" and provider in {
+            "tencent-tokenhub",
+            "tencent-token-plan",
+            "tencent-token-plan-enterprise-cn",
+            "tencent-hy-token-plan",
+        }:
+            return {
+                "supported": True,
+                "adapter": "thinking",
+                "toggle": True,
+                "default_mode": "enabled",
+            }
         if model.startswith("minimax-"):
             return {
                 "supported": True,

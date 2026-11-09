@@ -72,6 +72,27 @@ class HitlAnswerOutcome:
     awaiting_more: bool = False
 
 
+# Marker carried in the description of tool-guard approvals (see
+# ``octop_harness.security.tool_guard.engine.format_block_message``). Security
+# approvals must never be auto-approved by a per-session "allow all" choice:
+# one click would otherwise disable the command guard for the rest of the chat.
+_TOOL_GUARD_MARKERS = ("command guard", "command-guard", "命令护栏")
+
+
+def _is_tool_guard_request(request: dict[str, Any]) -> bool:
+    """True when this HITL request comes from the command guard, not a tool gate."""
+    actions = request.get("action_requests")
+    if not isinstance(actions, list):
+        return False
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        description = str(action.get("description") or "").lower()
+        if any(marker in description for marker in _TOOL_GUARD_MARKERS):
+            return True
+    return False
+
+
 def _action_allows_approve(request: dict[str, Any], name: str) -> bool:
     """True when this tool's review config accepts an ``approve`` decision."""
     configs = request.get("review_configs")
@@ -105,6 +126,9 @@ def approve_decisions_if_allowed(
         return None
     request = chunk.get("request")
     if not isinstance(request, dict):
+        return None
+    # Security-gated tool calls always go to the human, even in an allow-all chat.
+    if _is_tool_guard_request(request):
         return None
     actions = request.get("action_requests")
     if not isinstance(actions, list) or not actions:
@@ -179,7 +203,7 @@ def pending_hitl_payload(
     *,
     thread_id: str,
     agent_id: str,
-    user_id: int,
+    user_id: int | None,
 ) -> dict[str, Any] | None:
     record = store.resolve_pending_for_thread(
         thread_id,

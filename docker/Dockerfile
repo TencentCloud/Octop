@@ -104,6 +104,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libglib2.0-0 \
         curl \
         git \
+        postgresql-client \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
@@ -169,7 +170,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
          && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, rapidocr, onnxruntime, pymupdf; import importlib.util; assert importlib.util.find_spec('pynput')" \
          && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk; \
        fi \
-    && apt-get purge -y --auto-remove build-essential \
+    && if dpkg -s build-essential >/dev/null 2>&1; then \
+         # 依赖层已卸掉编译器。lite 没有 apt 列表，未安装就跳过。
+         apt-get purge -y --auto-remove build-essential; \
+       fi \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # full 只装桌面包，不启动 Xvnc。lite 写明未捆绑桌面和浏览器。

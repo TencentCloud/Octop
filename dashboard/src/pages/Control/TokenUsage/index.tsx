@@ -47,6 +47,11 @@ import { useTheme } from "../../../context/ThemeContext";
 import { brandPrimary } from "../../../styles/themePalettes";
 import { message } from "../../../utils/antdMessage";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
+import {
+  formatCompactCount,
+  formatExactCount,
+  usageCountDisplay,
+} from "./formatUsageCount";
 import styles from "./index.module.less";
 
 interface UsageUserOption {
@@ -132,10 +137,6 @@ const CHART_HEIGHT = {
   bar: 280,
 } as const;
 
-function formatNumber(n: number): string {
-  return n.toLocaleString();
-}
-
 function formatDayTick(label: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(label)) return label.slice(5);
   return label;
@@ -170,6 +171,8 @@ function UsageBarChart({
   showLegend?: boolean;
   tickFormatter?: (label: string) => string;
 }) {
+  const { i18n } = useTranslation();
+  const locale = i18n.language;
   return (
     <div
       className={cx(styles.chartFrame, fillParent && styles.chartFrameFill)}
@@ -200,10 +203,16 @@ function UsageBarChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={AXIS_LINE}
-            width={44}
+            width={60}
             allowDecimals={false}
+            tickFormatter={(value: number) =>
+              formatCompactCount(Number(value), locale)
+            }
           />
-          <RechartsTooltip contentStyle={CHART_TOOLTIP_STYLE} />
+          <RechartsTooltip
+            formatter={(value) => formatExactCount(Number(value ?? 0), locale)}
+            contentStyle={CHART_TOOLTIP_STYLE}
+          />
           {showLegend ? (
             <Legend
               verticalAlign="top"
@@ -238,38 +247,44 @@ function UsageBarChart({
 function usageStatItems(
   totals: UsageSummary,
   t: (key: string) => string,
+  locale: string,
 ): UsageStatItem[] {
+  const count = (n: number) => usageCountDisplay(n, locale);
   return [
     {
       key: "total",
       label: t("tokenUsage.totalTokens"),
-      value: formatNumber(totals.total_tokens),
+      ...count(totals.total_tokens),
     },
     {
       key: "input",
       label: t("tokenUsage.input"),
-      value: formatNumber(totals.input_tokens),
+      ...count(totals.input_tokens),
     },
     {
       key: "output",
       label: t("tokenUsage.output"),
-      value: formatNumber(totals.output_tokens),
+      ...count(totals.output_tokens),
     },
     {
       key: "cacheRead",
       label: t("tokenUsage.cacheRead"),
-      value: formatNumber(totals.cache_read_tokens),
+      ...count(totals.cache_read_tokens),
     },
     {
       key: "cacheHit",
       label: t("tokenUsage.cacheHit"),
       value: `${totals.cache_hit_percent.toFixed(1)}%`,
     },
-    { key: "turns", label: t("tokenUsage.turns"), value: totals.turns },
+    {
+      key: "turns",
+      label: t("tokenUsage.turns"),
+      ...count(totals.turns),
+    },
     {
       key: "avg",
       label: t("tokenUsage.avgPerTurn"),
-      value: formatNumber(totals.avg_per_turn),
+      ...count(totals.avg_per_turn),
     },
   ];
 }
@@ -492,6 +507,8 @@ function DonutCard({
   emptyText: string;
   colors?: string[] | Record<string, string>;
 }) {
+  const { i18n } = useTranslation();
+  const locale = i18n.language;
   const colorFor = (name: string, index: number) => {
     if (Array.isArray(colors)) return colors[index % colors.length];
     return colors[name] ?? CHART_COLORS[index % CHART_COLORS.length];
@@ -529,7 +546,9 @@ function DonutCard({
                   ))}
                 </Pie>
                 <RechartsTooltip
-                  formatter={(value) => formatNumber(Number(value ?? 0))}
+                  formatter={(value) =>
+                    formatExactCount(Number(value ?? 0), locale)
+                  }
                   contentStyle={CHART_TOOLTIP_STYLE}
                 />
               </PieChart>
@@ -566,7 +585,7 @@ function SummaryView({
   byDay: UsageBucket[];
   isMobile: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const ioData = useMemo(
     () => [
@@ -583,7 +602,7 @@ function SummaryView({
   return (
     <div className={styles.summaryBody}>
       <UsageStats
-        items={usageStatItems(totals, t)}
+        items={usageStatItems(totals, t, i18n.language)}
         overflowEnabled={!isMobile}
       />
 
@@ -663,7 +682,8 @@ function DimensionView({
   totals: UsageSummary;
   isMobile: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language;
 
   const chartBuckets = useMemo(() => {
     if (granularity === "by_day") return [...buckets].reverse();
@@ -679,7 +699,7 @@ function DimensionView({
   return (
     <div className={styles.summaryBody}>
       <UsageStats
-        items={usageStatItems(totals, t)}
+        items={usageStatItems(totals, t, locale)}
         overflowEnabled={!isMobile}
       />
 
@@ -758,15 +778,17 @@ function DimensionView({
                 <div className={styles.mobileRowTop}>
                   <Tag style={{ margin: 0 }}>{b.label}</Tag>
                   <span className={styles.mobileTotal}>
-                    {formatNumber(b.total_tokens)}
+                    {formatExactCount(b.total_tokens, locale)}
                   </span>
                 </div>
                 <div className={styles.mobileMeta}>
                   <span>
-                    {t("tokenUsage.input")} {formatNumber(b.input_tokens)}
+                    {t("tokenUsage.input")}{" "}
+                    {formatExactCount(b.input_tokens, locale)}
                   </span>
                   <span>
-                    {t("tokenUsage.output")} {formatNumber(b.output_tokens)}
+                    {t("tokenUsage.output")}{" "}
+                    {formatExactCount(b.output_tokens, locale)}
                   </span>
                   <span>{t("tokenUsage.turnsCount", { count: b.turns })}</span>
                 </div>
@@ -791,21 +813,21 @@ function DimensionView({
               {
                 title: t("tokenUsage.input"),
                 dataIndex: "input_tokens",
-                render: formatNumber,
+                render: (value: number) => formatExactCount(value, locale),
                 sorter: (a, b) => a.input_tokens - b.input_tokens,
                 align: "right",
               },
               {
                 title: t("tokenUsage.output"),
                 dataIndex: "output_tokens",
-                render: formatNumber,
+                render: (value: number) => formatExactCount(value, locale),
                 sorter: (a, b) => a.output_tokens - b.output_tokens,
                 align: "right",
               },
               {
                 title: t("tokenUsage.total"),
                 dataIndex: "total_tokens",
-                render: formatNumber,
+                render: (value: number) => formatExactCount(value, locale),
                 sorter: (a, b) => a.total_tokens - b.total_tokens,
                 defaultSortOrder: "descend",
                 align: "right",

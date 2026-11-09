@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import cx from "classnames";
 import { ChromeTabBar } from "../../../components/ChromeTabBar";
-import AiPanel, { type AiPanelLayout } from "./components/AiPanel";
+import AiPanel from "./components/AiPanel";
 import TerminalView, {
   type TerminalViewHandle,
 } from "./components/TerminalView";
@@ -31,17 +31,16 @@ import {
   type TerminalThemeDefinition,
 } from "./terminalThemes";
 import { useTheme } from "../../../context/ThemeContext";
-import { useAgent } from "../../../context/AgentContext";
+import { formatOpsEnsureError, useOpsEngineer } from "./useOpsEngineer";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  readAssistantPlacement,
+  type AssistantPlacement,
+} from "../../../components/AssistantFrame/AssistantFrame";
 import styles from "./index.module.less";
 
-const AI_PANEL_LAYOUT_KEY = "octop:terminal-ai-layout";
-const AI_PANEL_WIDTH_KEY = "octop:terminal-ai-width";
-const AI_PANEL_HEIGHT_KEY = "octop:terminal-ai-height";
-const AI_PANEL_MIN_WIDTH = 220;
-const AI_PANEL_MAX_WIDTH = 720;
-const AI_PANEL_MIN_HEIGHT = 160;
-const AI_PANEL_MAX_HEIGHT = 600;
+const AI_PANEL_LAYOUT_KEY = "octop:terminal-ai-layout-v2";
+const TERMINAL_PLACEMENTS = ["bottom", "right", "float"] as const;
 
 function ConnBadge({ state }: { state: TerminalConnState }) {
   const { t } = useTranslation();
@@ -117,7 +116,7 @@ const TerminalTab = memo(function TerminalTab({
   unbind: (id: string, cbs: TerminalCallbacks) => void;
   onReconnect: (id: string) => void;
   themeDefinition: TerminalThemeDefinition;
-  /** Active agent — terminal is rooted at this agent's workspace_dir. */
+  /** 运维工程师。终端进程挂在这个 agent 的工作区上。 */
   agentId: string;
   /** Capture PTY output for AI autopilot heuristics. */
   onOutputCapture?: (sessionId: string, data: string) => void;
@@ -268,7 +267,12 @@ export default function TerminalPage({
   const { t } = useTranslation();
   const { isDark } = useTheme();
   const isMobile = useIsMobile();
-  const { activeAgentId, agents, loading: agentsLoading, refresh } = useAgent();
+  const {
+    agent: opsAgent,
+    ensuring: opsEnsuring,
+    ensureError: opsEnsureError,
+    retry: retryOpsEngineer,
+  } = useOpsEngineer(isVisible);
   const {
     sessionIds,
     activeId,
@@ -313,96 +317,13 @@ export default function TerminalPage({
     localStorage.setItem(TERMINAL_THEME_STORAGE_KEY, key);
   }, []);
 
-  // AI panel state
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [panelLayout, setPanelLayout] = useState<AiPanelLayout>(() => {
-    const stored = localStorage.getItem(AI_PANEL_LAYOUT_KEY);
-    return stored === "bottom" ? "bottom" : "right";
-  });
-  const [panelWidth, setPanelWidth] = useState(() => {
-    const stored = localStorage.getItem(AI_PANEL_WIDTH_KEY);
-    const n = stored ? parseInt(stored, 10) : 340;
-    return Math.min(Math.max(n, AI_PANEL_MIN_WIDTH), AI_PANEL_MAX_WIDTH);
-  });
-  const [panelHeight, setPanelHeight] = useState(() => {
-    const stored = localStorage.getItem(AI_PANEL_HEIGHT_KEY);
-    const n = stored ? parseInt(stored, 10) : 280;
-    return Math.min(Math.max(n, AI_PANEL_MIN_HEIGHT), AI_PANEL_MAX_HEIGHT);
-  });
-
-  const effectivePanelLayout: AiPanelLayout = isMobile ? "bottom" : panelLayout;
-
-  // Drag-resize handle for the AI panel
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    startSize: number;
-  } | null>(null);
-  const handleResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      if (effectivePanelLayout === "right") {
-        dragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          startSize: panelWidth,
-        };
-        const onMove = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startX - mv.clientX;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_WIDTH),
-            AI_PANEL_MAX_WIDTH,
-          );
-          setPanelWidth(next);
-        };
-        const onUp = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startX - mv.clientX;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_WIDTH),
-            AI_PANEL_MAX_WIDTH,
-          );
-          localStorage.setItem(AI_PANEL_WIDTH_KEY, String(next));
-          dragRef.current = null;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      } else {
-        dragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          startSize: panelHeight,
-        };
-        const onMove = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_HEIGHT),
-            AI_PANEL_MAX_HEIGHT,
-          );
-          setPanelHeight(next);
-        };
-        const onUp = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_HEIGHT),
-            AI_PANEL_MAX_HEIGHT,
-          );
-          localStorage.setItem(AI_PANEL_HEIGHT_KEY, String(next));
-          dragRef.current = null;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      }
-    },
-    [effectivePanelLayout, panelWidth, panelHeight],
+  const [panelLayout, setPanelLayout] = useState<AssistantPlacement>(() =>
+    readAssistantPlacement(AI_PANEL_LAYOUT_KEY, "right"),
   );
+  const effectivePanelLayout: AssistantPlacement = isMobile
+    ? "bottom"
+    : panelLayout;
 
   const handleConnStateChange = useCallback(
     (id: string, state: TerminalConnState) => {
@@ -411,16 +332,12 @@ export default function TerminalPage({
     [],
   );
 
-  // Drop stale agent ids from restored terminal tabs (e.g. after an agent delete).
+  // 终端只连运维工程师。侧栏当前专家不接管这个页面的 shell。
   useEffect(() => {
-    if (agentsLoading || agents.length === 0) return;
-    const fallback = activeAgentId ?? agents[0]?.agent_id ?? "";
-    if (!fallback) return;
-    reconcileAgentIds(
-      agents.map((a) => a.agent_id),
-      fallback,
-    );
-  }, [agents, agentsLoading, activeAgentId, reconcileAgentIds]);
+    const opsId = opsAgent?.agent_id;
+    if (!opsId) return;
+    reconcileAgentIds([opsId], opsId);
+  }, [opsAgent?.agent_id, reconcileAgentIds]);
 
   // Create the first tab on first visit (not on app startup). Uses the live
   // store so a remounted chat-dock TerminalPage cannot race-create extras.
@@ -514,16 +431,13 @@ export default function TerminalPage({
   const tabBarExtra = (
     <div className={styles.tabBarActions}>
       <Tooltip title={t("terminal.ai.togglePanel")}>
-        <div className={styles.aiBtnWrap}>
-          <Button
-            type={isPanelOpen ? "primary" : "default"}
-            icon={<Bot size={16} />}
-            size="small"
-            className={isPanelOpen ? styles.aiBtnActive : styles.aiBtnIdle}
-            onClick={() => setIsPanelOpen((v) => !v)}
-          />
-          {!isPanelOpen && <span className={styles.aiBtnBadge}>NEW</span>}
-        </div>
+        <Button
+          type={isPanelOpen ? "primary" : "default"}
+          icon={<Bot size={14} />}
+          size="small"
+          aria-pressed={isPanelOpen}
+          onClick={() => setIsPanelOpen((v) => !v)}
+        />
       </Tooltip>
       <Dropdown
         menu={{
@@ -581,6 +495,20 @@ export default function TerminalPage({
 
       <div className={contentAreaClass}>
         <div className={tabsCardClass}>
+          {opsEnsureError ? (
+            <div className={styles.opsNotice} role="alert">
+              <span className={styles.opsNoticeText}>
+                {formatOpsEnsureError(opsEnsureError, t)}
+              </span>
+              <Button
+                size="small"
+                loading={opsEnsuring}
+                onClick={retryOpsEngineer}
+              >
+                {t("terminal.ai.gateCreate")}
+              </Button>
+            </div>
+          ) : null}
           {sessionIds.length === 0 ? (
             <div className={styles.emptyState}>
               <Button
@@ -625,7 +553,7 @@ export default function TerminalPage({
                       unbind={unbind}
                       onReconnect={reconnect}
                       themeDefinition={themeDefinition}
-                      agentId={activeAgentId || ""}
+                      agentId={opsAgent?.agent_id || ""}
                       onOutputCapture={handleOutputCapture}
                     />
                   </div>
@@ -636,63 +564,35 @@ export default function TerminalPage({
         </div>
 
         {isPanelOpen && (
-          <div
-            className={
-              effectivePanelLayout === "right"
-                ? styles.aiPanelRight
-                : styles.aiPanelBottom
+          <AiPanel
+            agent={opsAgent}
+            ensuring={opsEnsuring}
+            ensureError={opsEnsureError}
+            onEnsureRetry={retryOpsEngineer}
+            activeTerminalSessionId={activeId}
+            activeTerminalSessionIndex={
+              activeId ? sessionIds.indexOf(activeId) + 1 : 0
             }
-            style={
-              effectivePanelLayout === "right"
-                ? { width: panelWidth }
-                : { height: panelHeight }
+            placement={effectivePanelLayout}
+            placementLocked={isMobile}
+            placements={TERMINAL_PLACEMENTS}
+            hidden={!isVisible}
+            onPlacementChange={setPanelLayout}
+            onClose={() => setIsPanelOpen(false)}
+            onExecuteCommand={(cmd) => {
+              if (!activeId) return;
+              for (const line of cmd.split("\n")) {
+                const trimmed = line.trimEnd();
+                if (trimmed) sendInput(activeId, trimmed + "\r");
+              }
+            }}
+            getRecentTerminalOutput={() =>
+              activeId ? outputBufferRef.current.getRecent(activeId) : ""
             }
-          >
-            {/* Drag resize handle */}
-            <div
-              className={
-                effectivePanelLayout === "right"
-                  ? styles.resizeHandleLeft
-                  : styles.resizeHandleTop
-              }
-              onMouseDown={handleResizeMouseDown}
-            />
-            <AiPanel
-              activeAgent={
-                activeAgentId
-                  ? agents.find((a) => a.agent_id === activeAgentId) ?? null
-                  : null
-              }
-              agents={agents}
-              activeTerminalSessionId={activeId}
-              activeTerminalSessionIndex={
-                activeId ? sessionIds.indexOf(activeId) + 1 : 0
-              }
-              layout={effectivePanelLayout}
-              layoutSwitchable={!isMobile}
-              onLayoutChange={(layout) => {
-                setPanelLayout(layout);
-                localStorage.setItem(AI_PANEL_LAYOUT_KEY, layout);
-              }}
-              onClose={() => setIsPanelOpen(false)}
-              onExecuteCommand={(cmd) => {
-                if (!activeId) return;
-                for (const line of cmd.split("\n")) {
-                  const trimmed = line.trimEnd();
-                  if (trimmed) sendInput(activeId, trimmed + "\r");
-                }
-              }}
-              getRecentTerminalOutput={() =>
-                activeId ? outputBufferRef.current.getRecent(activeId) : ""
-              }
-              snapshotTerminalOutput={() =>
-                activeId ? outputBufferRef.current.snapshot(activeId) : ""
-              }
-              onAgentCreated={() => {
-                void refresh();
-              }}
-            />
-          </div>
+            snapshotTerminalOutput={() =>
+              activeId ? outputBufferRef.current.snapshot(activeId) : ""
+            }
+          />
         )}
       </div>
     </div>

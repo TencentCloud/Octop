@@ -7,7 +7,6 @@ import RailEdgeControl from "../../components/RailEdgeControl";
 import PageLoading from "../../components/PageLoading";
 import { ServiceRestartProvider } from "../../context/ServiceRestartContext";
 import { BackupOperationProvider } from "../../context/BackupOperationContext";
-import PwaUpdatePrompt from "../../components/PwaUpdatePrompt";
 import { PwaAutoPrompt } from "../../components/PwaInstallPrompt";
 import {
   routeConfigs,
@@ -303,7 +302,6 @@ export default function MainLayout() {
                   minHeight: 0,
                 }}
               >
-                <PwaUpdatePrompt />
                 <PwaAutoPrompt />
 
                 {workbenchMounted && (

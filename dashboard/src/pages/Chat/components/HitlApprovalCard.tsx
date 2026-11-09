@@ -1,6 +1,5 @@
-import { ChevronDown, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Dropdown } from "antd";
 import cx from "classnames";
 import type { HitlActionRequest } from "../../../api/types/hitl";
 import { useToolDisplayNames } from "../hooks/toolDisplayNames";
@@ -116,67 +115,61 @@ export default function HitlApprovalCard({
         );
       })}
       {interactive ? (
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={cx(styles.actionButton, styles.primaryAction)}
-            onClick={() => emit(actions.map(() => ({ type: "approve" })))}
-          >
-            {t("chat.hitl.approve", "Approve")}
-          </button>
-          <Dropdown
-            trigger={["click"]}
-            menu={{
-              items: [
-                { key: "allow_tools", label: allowToolsLabel },
-                {
-                  key: "allow_all",
-                  label: t("chat.hitl.allowAll", "Allow all for this chat"),
-                },
-              ],
-              onClick: ({ key }) => {
-                if (key === "allow_all") {
-                  emit(
-                    actions.map(() => ({ type: "approve" })),
-                    {
-                      mode: "allow_all",
-                    },
-                  );
-                  return;
-                }
+        <>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={cx(styles.actionButton, styles.primaryAction)}
+              onClick={() => emit(actions.map(() => ({ type: "approve" })))}
+            >
+              {t("chat.hitl.approve", "Approve")}
+            </button>
+            <button
+              type="button"
+              className={cx(styles.actionButton, styles.secondaryAction)}
+              title={allowToolsLabel}
+              onClick={() =>
                 emit(
                   actions.map(() => ({ type: "approve" })),
                   {
                     mode: "allow_tools",
                     tools: toolNames,
                   },
-                );
-              },
-            }}
-          >
+                )
+              }
+            >
+              {t("chat.hitl.allowSession", "Allow for this chat")}
+            </button>
             <button
               type="button"
-              className={cx(styles.actionButton, styles.secondaryAction)}
+              className={cx(styles.actionButton, styles.dangerAction)}
+              onClick={() =>
+                emit(
+                  actions.map(() => ({
+                    type: "reject",
+                    message: t("chat.hitl.rejected", "Rejected by user"),
+                  })),
+                )
+              }
             >
-              {t("chat.hitl.allowMenu", "Allow")}
-              <ChevronDown size={14} />
+              {t("chat.hitl.reject", "Reject")}
             </button>
-          </Dropdown>
+          </div>
           <button
             type="button"
-            className={cx(styles.actionButton, styles.dangerAction)}
+            className={styles.allowAllLink}
             onClick={() =>
               emit(
-                actions.map(() => ({
-                  type: "reject",
-                  message: t("chat.hitl.rejected", "Rejected by user"),
-                })),
+                actions.map(() => ({ type: "approve" })),
+                {
+                  mode: "allow_all",
+                },
               )
             }
           >
-            {t("chat.hitl.reject", "Reject")}
+            {t("chat.hitl.allowAllLink", "Allow all tools in this chat")}
           </button>
-        </div>
+        </>
       ) : status !== "pending" ? (
         <div
           className={cx(

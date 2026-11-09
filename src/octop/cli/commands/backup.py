@@ -9,7 +9,7 @@ import click
 
 from octop.config import load_config
 from octop.infra.backup.auto import create_and_store_auto_backup
-from octop.infra.backup.store import place_backup_file
+from octop.infra.backup.store import move_file_replace, place_backup_file
 from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
 from octop.infra.db.factory import open_database
 from octop.infra.db.migrate import run_migrations
@@ -78,8 +78,7 @@ def create(
                 size = entry.size
             else:
                 dest = output
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                move_file_replace(tmp_path, dest)
                 size = dest.stat().st_size
     finally:
         db.close()

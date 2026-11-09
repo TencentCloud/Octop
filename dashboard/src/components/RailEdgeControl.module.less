@@ -30,6 +30,12 @@
   width: 12px;
 }
 
+.edgePassThrough {
+  /* The rail itself must not cover a resize handle. The collapse button
+     stays pointer-events: none until a hover rule reveals it. */
+  pointer-events: none;
+}
+
 .line {
   position: absolute;
   top: 0;

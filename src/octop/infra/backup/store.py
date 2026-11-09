@@ -184,6 +184,21 @@ def write_backup_file(paths: PathLayout, filename: str, data: bytes) -> BackupFi
     return backup_file_info(dest)
 
 
+def move_file_replace(src: Path, dest: Path) -> None:
+    """Move *src* onto *dest*.
+
+    ``Path.replace`` raises ``EXDEV`` when the paths are on different filesystems.
+    Copy and then delete so a backup written under the system temp dir can land
+    on another disk.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        src.replace(dest)
+    except OSError:
+        shutil.copy2(src, dest)
+        src.unlink(missing_ok=True)
+
+
 def place_backup_file(paths: PathLayout, filename: str, src: Path) -> BackupFileInfo:
     """Move *src* into ``backups_dir`` under *filename* (atomic replace when possible)."""
     paths.ensure_backups_dir()
@@ -192,12 +207,7 @@ def place_backup_file(paths: PathLayout, filename: str, src: Path) -> BackupFile
     src = Path(src)
     if src.resolve() == dest.resolve():
         return backup_file_info(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        src.replace(dest)
-    except OSError:
-        shutil.copy2(src, dest)
-        src.unlink(missing_ok=True)
+    move_file_replace(src, dest)
     return backup_file_info(dest)
 
 

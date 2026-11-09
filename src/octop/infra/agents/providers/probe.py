@@ -13,6 +13,7 @@ import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
+from octop.infra.agents.providers.presets import load_provider_presets
 
 logger = logging.getLogger(__name__)
 
@@ -304,8 +305,22 @@ async def fetch_openai_compatible_models(
     locale: str = "en",
     provider_name: str | None = None,
 ) -> dict[str, Any]:
-    """List models via OpenAI-compatible ``GET {base}/models``."""
+    """Use Tencent plan catalogs; otherwise list models via ``GET {base}/models``."""
     url = _models_list_url(base_url)
+    # Token Plan and HY Token Plan share a URL, so also match the selected preset.
+    for preset in load_provider_presets():
+        if (
+            preset["id"]
+            in {
+                "tencent-coding-plan",
+                "tencent-token-plan",
+                "tencent-token-plan-enterprise-cn",
+                "tencent-hy-token-plan",
+            }
+            and provider_name in {preset["id"], preset["name"]}
+            and url == _models_list_url(preset.get("base_url"))
+        ):
+            return {"ok": True, "models": preset["models"]}
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
     extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
     if extra_headers:

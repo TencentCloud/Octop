@@ -167,6 +167,7 @@ def test_team_icon_url_falls_back_to_cartoon() -> None:
     assert team_icon_url(None) == TEAM_AVATAR_URL
     assert team_icon_url("  ") == TEAM_AVATAR_URL
     assert team_icon_url("/experts/avatars/multi-agent-orchestrator.svg") == TEAM_AVATAR_URL
+    assert team_icon_url("/experts/avatars/team-lead.svg") == "/experts/avatars/team-lead.svg"
     assert team_icon_url("/custom.png") == "/custom.png"
 
 

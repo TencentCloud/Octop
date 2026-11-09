@@ -134,10 +134,20 @@ export function parseDecisionNotice(data: unknown): DecisionNotice | null {
   };
 }
 
+export interface MessageAuthor {
+  userId: number;
+  displayName: string;
+  username: string;
+  avatarUrl?: string | null;
+  avatarIcon?: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string;
+  /** Who asked this question. Shared conversations use it for the portrait. */
+  author?: MessageAuthor;
   type?: string;
   /** Structured content blocks for multi-part messages (thinking + text). */
   contentBlocks?: ContentBlockItem[];
@@ -154,6 +164,8 @@ export interface ChatMessage {
   errorInfo?: ProcessErrorInfo;
   status?: "streaming" | "done" | "error";
   timestamp: number;
+  /** Created in this running store; restored browser caches never set this. */
+  localPending?: boolean;
   /**
    * Team room speaker. When a member is fanned into the host thread, this is
    * that member's agent id so the bubble can render as a separate person.
@@ -177,6 +189,7 @@ export interface SessionStreamState {
   /** Map key this bucket is stored under. Pending ids are rewritten on rename. */
   sessionKey?: string;
   messages: ChatMessage[];
+  historyEpoch?: number;
   isStreaming: boolean;
   /** Wall-clock ms when the current user turn started waiting on the model. */
   thinkingStartedAt: number | null;

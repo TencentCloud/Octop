@@ -103,6 +103,7 @@ def test_build_harness_request_stores_dashboard_message_id() -> None:
     assert isinstance(message, HumanMessage)
     assert message.id == "1710000000000-ab12cd"
     assert message.content == "画一张图"
+    assert message.additional_kwargs["octop_author_user_id"] == 1
 
 
 def test_overwrite_last_user_text_keeps_message_id() -> None:

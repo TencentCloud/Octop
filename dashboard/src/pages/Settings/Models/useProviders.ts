@@ -79,6 +79,8 @@ export interface ProviderRow {
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
+  /** Saved connection-test model. Empty means the form stays blank. */
+  model?: string | null;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
   /** UI lane: embedding providers are managed on the embedding Models tab. */
@@ -133,9 +135,6 @@ export function useProviders(): UseProvidersResult {
         request<ProviderRow[]>("/admin/providers"),
         request<ProviderPreset[]>("/providers/presets"),
         providerApi.listResolvedModels(),
-        request<{ provider_name: string; model: string }>(
-          "/providers/active-model",
-        ),
         preferencesApi.get(),
       ]);
       const rows =
@@ -150,10 +149,8 @@ export function useProviders(): UseProvidersResult {
         settled[2].status === "fulfilled" && Array.isArray(settled[2].value)
           ? settled[2].value
           : [];
-      const active =
-        settled[3].status === "fulfilled" ? settled[3].value : null;
       const preferences =
-        settled[4].status === "fulfilled" ? settled[4].value : null;
+        settled[3].status === "fulfilled" ? settled[3].value : null;
 
       if (
         settled[0].status === "rejected" &&
@@ -171,17 +168,14 @@ export function useProviders(): UseProvidersResult {
       setProviders(normalized);
       setPresets(presetList);
       setResolvedModels(resolved);
+      // Only an explicit per-user preference is starred. The global active
+      // model is a separate fallback and must not look selected here.
       const preferredParts = (preferences?.preferred_model || "").split("/");
       setActiveModel(
         preferredParts.length > 1
           ? {
               provider_name: preferredParts[0],
               model: preferredParts.slice(1).join("/"),
-            }
-          : active && typeof active === "object"
-          ? {
-              provider_name: active.provider_name ?? "",
-              model: active.model ?? "",
             }
           : { provider_name: "", model: "" },
       );

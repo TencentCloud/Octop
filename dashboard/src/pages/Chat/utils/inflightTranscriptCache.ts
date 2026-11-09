@@ -23,7 +23,10 @@ function slimMessage(message: ChatMessage): ChatMessage {
   return {
     id: message.id,
     role: message.role,
-    content: clipText(message.content),
+    content:
+      message.role === "user" ? message.content : clipText(message.content),
+    attachments: message.attachments,
+    composerContext: message.composerContext,
     contentBlocks: message.contentBlocks?.map((block) => ({
       type: block.type,
       content: clipText(block.content),
@@ -35,6 +38,7 @@ function slimMessage(message: ChatMessage): ChatMessage {
         ? Math.round(message.durationMs)
         : undefined,
     speakerAgentId: message.speakerAgentId,
+    author: message.author,
     teamWrapup: message.teamWrapup,
     errorInfo: message.errorInfo,
     toolData: message.toolData
@@ -46,6 +50,19 @@ function slimMessage(message: ChatMessage): ChatMessage {
           output: clipText(message.toolData.output),
         }
       : undefined,
+  };
+}
+
+function parseCachedAuthor(raw: unknown): ChatMessage["author"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Partial<NonNullable<ChatMessage["author"]>>;
+  if (typeof row.userId !== "number" || row.userId <= 0) return undefined;
+  return {
+    userId: row.userId,
+    displayName: typeof row.displayName === "string" ? row.displayName : "",
+    username: typeof row.username === "string" ? row.username : "",
+    avatarUrl: typeof row.avatarUrl === "string" ? row.avatarUrl : null,
+    avatarIcon: typeof row.avatarIcon === "string" ? row.avatarIcon : null,
   };
 }
 
@@ -71,6 +88,10 @@ function parseTail(raw: string): ChatMessage[] | null {
         id: row.id,
         role: row.role,
         content: typeof row.content === "string" ? row.content : "",
+        attachments: Array.isArray(row.attachments)
+          ? row.attachments
+          : undefined,
+        composerContext: row.composerContext,
         contentBlocks: Array.isArray(row.contentBlocks)
           ? row.contentBlocks.flatMap((block) => {
               if (!block || typeof block !== "object") return [];
@@ -100,6 +121,7 @@ function parseTail(raw: string): ChatMessage[] | null {
           typeof row.speakerAgentId === "string"
             ? row.speakerAgentId
             : undefined,
+        author: parseCachedAuthor(row.author),
         teamWrapup: row.teamWrapup === true ? true : undefined,
         toolData:
           row.toolData && typeof row.toolData === "object"
@@ -117,7 +139,7 @@ function parseTail(raw: string): ChatMessage[] | null {
   }
 }
 
-function encodeTail(messages: ChatMessage[]): string | null {
+function encodeTail(messages: ChatMessage[]): string | null | undefined {
   const tail = inFlightTail(messages).map(slimMessage);
   if (tail.length === 0) return null;
   let raw = JSON.stringify({ v: 1, tail });
@@ -136,30 +158,32 @@ function encodeTail(messages: ChatMessage[]): string | null {
   );
   raw = JSON.stringify({ v: 1, tail: lighter });
   if (raw.length <= MAX_CACHE_CHARS) return raw;
-  return null;
+  return undefined;
 }
 
-function writeNow(threadId: string, messages: ChatMessage[]): void {
+function writeNow(threadId: string, messages: ChatMessage[]): boolean {
   const key = storageKey(threadId);
   try {
     const raw = encodeTail(messages);
-    if (!raw) {
+    if (raw === undefined) return false;
+    if (raw === null) {
       sessionStorage.removeItem(key);
-      return;
+      return true;
     }
     sessionStorage.setItem(key, raw);
+    return true;
   } catch {
-    try {
-      sessionStorage.removeItem(key);
-    } catch {
-      // sessionStorage unavailable or quota exceeded
-    }
+    // Keep the last successful write if storage is unavailable or full.
+    return false;
   }
 }
 
 /** Read the in-flight turn cached for this thread, if any. */
 export function readInflightTail(threadId: string): ChatMessage[] | null {
   if (!threadId || threadId.startsWith("__")) return null;
+  const queued = latestByThread.get(threadId);
+  // Cache provenance is separate from a send created in the running store.
+  if (queued) return inFlightTail(queued).map(slimMessage);
   try {
     const raw = sessionStorage.getItem(storageKey(threadId));
     if (!raw) return null;
@@ -167,11 +191,6 @@ export function readInflightTail(threadId: string): ChatMessage[] | null {
   } catch {
     return null;
   }
-}
-
-export function hasInflightTail(threadId: string): boolean {
-  if (writeTimers.has(threadId)) return true;
-  return readInflightTail(threadId) != null;
 }
 
 /**
@@ -235,7 +254,7 @@ export function moveInflightTail(fromId: string, toId: string): void {
   const latest = latestByThread.get(fromId);
   latestByThread.delete(fromId);
   if (latest && !toId.startsWith("__")) {
-    writeNow(toId, latest);
+    if (!writeNow(toId, latest)) return;
     try {
       sessionStorage.removeItem(storageKey(fromId));
     } catch {

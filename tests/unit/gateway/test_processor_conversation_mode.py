@@ -80,7 +80,7 @@ async def test_dashboard_execute_overwrites_user_text() -> None:
         thread_id="thr",
         meta={},
     )
-    assert request["messages"][0]["content"] == "请按 plans/foo.md 执行"
+    assert request["messages"][0].content == "请按 plans/foo.md 执行"
     assert request["conversation_mode"] == "craft"
     processor._thread_registry.update_composer.assert_called_once_with(
         "thr",
@@ -114,7 +114,7 @@ async def test_dashboard_mode_switch_keeps_pending_plan() -> None:
         thread_id="thr",
         meta={"conversation_mode": "ask"},
     )
-    assert request["messages"][0]["content"] == "先问一句"
+    assert request["messages"][0].content == "先问一句"
     assert request["conversation_mode"] == "ask"
     processor._thread_registry.update_composer.assert_called_once_with(
         "thr",

@@ -2423,10 +2423,28 @@ export default function KnowledgeBasesPage() {
               ) : null}
               {!selected && !detailLoading ? (
                 <div className={styles.emptyDetail}>
-                  <OctopEmptyMascot size={180} />
-                  <p className={styles.emptyDetailText}>
-                    {t("knowledgeBases.selectBase")}
-                  </p>
+                  <StreamSetupGuide
+                    className={styles.emptyGuide}
+                    wide
+                    plain
+                    icon={<OctopEmptyMascot />}
+                    title={t("knowledgeBases.selectBaseTitle")}
+                    description={t("knowledgeBases.selectBaseDesc")}
+                    steps={[
+                      {
+                        label: t("knowledgeBases.selectBaseStepPick"),
+                        detail: t("knowledgeBases.selectBaseStepPickDetail"),
+                      },
+                      {
+                        label: t("knowledgeBases.selectBaseStepUpload"),
+                        detail: t("knowledgeBases.selectBaseStepUploadDetail"),
+                      },
+                      {
+                        label: t("knowledgeBases.selectBaseStepUse"),
+                        detail: t("knowledgeBases.selectBaseStepUseDetail"),
+                      },
+                    ]}
+                  />
                 </div>
               ) : !selected ? null : (
                 <div
@@ -2728,14 +2746,73 @@ export default function KnowledgeBasesPage() {
                         />
                       ) : null}
                       {folderEntries.length === 0 ? (
-                        <Empty
-                          image={Empty.PRESENTED_IMAGE_SIMPLE}
-                          description={
-                            canWriteSelected
-                              ? t("knowledgeBases.emptyDocumentsDropHint")
-                              : t("knowledgeBases.emptyDocuments")
-                          }
-                        />
+                        !currentFolder && documents.length === 0 ? (
+                          <StreamSetupGuide
+                            className={styles.emptyGuide}
+                            wide
+                            plain
+                            icon={<OctopEmptyMascot />}
+                            title={t("knowledgeBases.emptyDocumentsTitle")}
+                            description={
+                              canWriteSelected
+                                ? t("knowledgeBases.emptyDocumentsDesc")
+                                : t("knowledgeBases.emptyDocumentsReadonlyDesc")
+                            }
+                            steps={[
+                              {
+                                label: t(
+                                  "knowledgeBases.emptyDocumentsStepUpload",
+                                ),
+                                detail: t(
+                                  "knowledgeBases.emptyDocumentsStepUploadDetail",
+                                ),
+                              },
+                              {
+                                label: t(
+                                  "knowledgeBases.emptyDocumentsStepWrite",
+                                ),
+                                detail: t(
+                                  "knowledgeBases.emptyDocumentsStepWriteDetail",
+                                ),
+                              },
+                              {
+                                label: t(
+                                  "knowledgeBases.emptyDocumentsStepUse",
+                                ),
+                                detail: t(
+                                  "knowledgeBases.emptyDocumentsStepUseDetail",
+                                ),
+                              },
+                            ]}
+                            primaryAction={
+                              canWriteSelected
+                                ? {
+                                    label: t("knowledgeBases.upload"),
+                                    onClick: () => uploadRef.current?.click(),
+                                    icon: <FileUp size={14} />,
+                                    loading: uploadingThisBase,
+                                    disabled: isAtDocumentLimit || uploadBusy,
+                                  }
+                                : undefined
+                            }
+                            secondaryAction={
+                              canWriteSelected
+                                ? {
+                                    label: t("knowledgeBases.createFile"),
+                                    onClick: openCreateTextDocument,
+                                    icon: <FilePlus size={14} />,
+                                    type: "default",
+                                    disabled: isAtDocumentLimit,
+                                  }
+                                : undefined
+                            }
+                          />
+                        ) : (
+                          <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={t("knowledgeBases.emptyDocuments")}
+                          />
+                        )
                       ) : showCardView ? (
                         <div className={styles.docCardGrid}>
                           {folderEntries.map((document) => {

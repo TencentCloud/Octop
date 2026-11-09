@@ -4,10 +4,13 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import {
+  defaultAppearance,
   loadAppearanceOnBoot,
+  readStoredAppearance,
   writeStoredAppearance,
   type ThemePreference,
 } from "../styles/appearanceStorage";
@@ -43,6 +46,8 @@ interface ThemeContextValue {
   toggle: () => void;
   /** Whether the current mode is considered "dark" for Ant Design */
   isDark: boolean;
+  /** Load the signed-in user's palette. ``null`` restores the shared boot theme. */
+  bindUser: (userId: number | null) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
@@ -55,6 +60,7 @@ const ThemeContext = createContext<ThemeContextValue>({
   setCustomColor: () => {},
   toggle: () => {},
   isDark: false,
+  bindUser: () => {},
 });
 
 function resolveMode(pref: ThemePreference): ThemeMode {
@@ -91,6 +97,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 
   const [mode, setMode] = useState<ThemeMode>(() => resolveMode(preference));
+  const userIdRef = useRef<number | null>(null);
+
+  const bindUser = useCallback((userId: number | null) => {
+    if (userIdRef.current === userId) return;
+    const previous = userIdRef.current;
+    userIdRef.current = userId;
+    if (userId == null) {
+      if (previous != null) {
+        const defaults = defaultAppearance();
+        setPreferenceState(defaults.preference);
+        setPaletteState(defaults.palette);
+        setCustomColorState(defaults.customColor ?? "");
+        writeStoredAppearance(defaults, null);
+      }
+      return;
+    }
+    const stored = readStoredAppearance(userId);
+    setPreferenceState(stored.preference);
+    setPaletteState(stored.palette);
+    setCustomColorState(stored.customColor ?? "");
+  }, []);
 
   // Listen for system color scheme changes when preference is "system"
   useEffect(() => {
@@ -111,7 +138,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   // Persist preference + palette together (mode is derived, not stored)
   useEffect(() => {
-    writeStoredAppearance({ preference, palette, customColor });
+    writeStoredAppearance(
+      { preference, palette, customColor },
+      userIdRef.current,
+    );
     document.documentElement.setAttribute("data-palette", palette);
   }, [preference, palette, customColor]);
 
@@ -185,6 +215,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setCustomColor,
         toggle,
         isDark: isDarkMode(mode),
+        bindUser,
       }}
     >
       {children}

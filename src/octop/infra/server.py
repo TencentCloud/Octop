@@ -23,6 +23,7 @@ from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
+from octop.infra.agents.providers.store import sync_provider_preset_models
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
 from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
@@ -490,6 +491,12 @@ class OctopServer:
         assert self.services is not None
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
+
+        added = await asyncio.get_running_loop().run_in_executor(
+            None, sync_provider_preset_models, self.services.provider_repo
+        )
+        if added:
+            logger.info("Added %d newly bundled provider models", added)
 
         from octop.infra.agents.experts.snapshot_store import (  # noqa: PLC0415
             adopt_local_snapshots,

@@ -25,6 +25,11 @@ interface RailEdgeControlProps {
    * ``before`` / ``after`` sit on either side when two rails share one line.
    */
   placement?: "center" | "before" | "after";
+  /**
+   * Let pointer events fall through the rail so a resize handle underneath
+   * stays usable. The collapse button itself still receives clicks.
+   */
+  passThrough?: boolean;
 }
 
 /**
@@ -39,6 +44,7 @@ export default function RailEdgeControl({
   className,
   showLine = true,
   placement = "center",
+  passThrough = false,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -53,6 +59,7 @@ export default function RailEdgeControl({
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
         !expanded && styles.edgeCollapsed,
+        passThrough && styles.edgePassThrough,
         className,
       )}
     >

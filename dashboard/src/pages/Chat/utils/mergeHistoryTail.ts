@@ -9,6 +9,10 @@ function lastUserIndex(messages: ChatMessage[]): number {
 
 /** Local turn still on screen: from the latest user message through the end. */
 export function inFlightTail(current: ChatMessage[]): ChatMessage[] {
+  const pending = current.findIndex(
+    (message) => message.role === "user" && message.localPending,
+  );
+  if (pending >= 0) return current.slice(pending);
   const idx = lastUserIndex(current);
   if (idx < 0) return current;
   return current.slice(idx);
@@ -68,7 +72,7 @@ export function preferLocalTranscript(
   cached: ChatMessage[] | null | undefined,
 ): ChatMessage[] {
   if (!cached || cached.length === 0) return memory;
-  if (memory.length === 0) return cached;
+  if (memory.length === 0) return memory;
   const tail = inFlightTail(cached);
   const match = sameUserTurn(memory, tail);
   if (!match) return memory;
@@ -86,6 +90,13 @@ export function serverCaughtUp(
   cached: ChatMessage[],
 ): boolean {
   if (cached.length === 0) return true;
+  const loadedIds = new Set(loaded.map((message) => message.id));
+  if (
+    cached.some(
+      (message) => message.role === "user" && !loadedIds.has(message.id),
+    )
+  )
+    return false;
   const tail = inFlightTail(cached);
   const userIdx = lastUserIndex(tail);
   if (userIdx < 0) return false;
@@ -108,8 +119,27 @@ export function serverCaughtUp(
 /** Index of a user message in `tail` whose id the server page does not have. */
 function newSendIndex(tail: ChatMessage[], loadedIds: Set<string>): number {
   return tail.findIndex(
-    (message) => message.role === "user" && !loadedIds.has(message.id),
+    (message) =>
+      message.role === "user" &&
+      message.localPending &&
+      !loadedIds.has(message.id),
   );
+}
+
+/** Keep a paging boundary only when a persisted prefix overlaps this page. */
+export function retainedHistoryPrefix(
+  loaded: ChatMessage[],
+  current: ChatMessage[],
+): ChatMessage[] {
+  const ids = new Set(loaded.map((message) => message.id));
+  const overlap = current.findIndex((message) => ids.has(message.id));
+  if (overlap <= 0 || current[overlap].localPending) return [];
+  const prefix = current.slice(0, overlap);
+  return prefix.every(
+    (message) => !message.localPending && message.status !== "streaming",
+  )
+    ? prefix
+    : [];
 }
 
 /**
@@ -132,7 +162,6 @@ export function mergeHistoryWithLocalTail(
   isStreaming = false,
 ): ChatMessage[] {
   if (current.length === 0) return loaded;
-  if (loaded.length === 0) return current;
 
   const loadedIds = new Set(loaded.map((message) => message.id));
   const firstOverlap = current.findIndex((message) =>
@@ -140,9 +169,10 @@ export function mergeHistoryWithLocalTail(
   );
 
   if (firstOverlap < 0) {
-    // This page does not contain the optimistic user id, so the turn is not
-    // stored here yet.
-    return [...loaded, ...inFlightTail(current)];
+    // Missing from the latest page does not mean newer: it may be old cache
+    // outside the page. Only a send created in this running store can append.
+    const pending = newSendIndex(current, loadedIds);
+    return pending < 0 ? loaded : [...loaded, ...current.slice(pending)];
   }
 
   let lastOverlap = firstOverlap;
@@ -153,7 +183,7 @@ export function mergeHistoryWithLocalTail(
     }
   }
 
-  const olderPrefix = current.slice(0, firstOverlap);
+  const olderPrefix = retainedHistoryPrefix(loaded, current);
   const localTail = current.slice(lastOverlap + 1);
   const base = [...olderPrefix, ...loaded];
   if (localTail.length === 0) return base;

@@ -7,8 +7,8 @@ import ipaddress
 import json
 import logging
 from contextlib import suppress
-from typing import Any
-from urllib.parse import urljoin, urlparse, urlsplit
+from typing import Any, NoReturn
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit
 
 import httpx
 import websockets
@@ -62,10 +62,104 @@ def _handshake_http_status(exc: BaseException) -> int | None:
     return status if isinstance(status, int) else None
 
 
+def _close_frame(exc: BaseException) -> Any:
+    return getattr(exc, "rcvd", None) or getattr(exc, "sent", None)
+
+
 def _close_code(exc: BaseException) -> int | None:
-    rcvd = getattr(exc, "rcvd", None)
-    code = getattr(rcvd, "code", None)
+    frame = _close_frame(exc)
+    code = getattr(frame, "code", None)
     return code if isinstance(code, int) else None
+
+
+def _close_reason(exc: BaseException) -> str:
+    frame = _close_frame(exc)
+    reason = getattr(frame, "reason", None)
+    if isinstance(reason, bytes):
+        reason = reason.decode("utf-8", errors="replace")
+    return str(reason or "").strip()
+
+
+_DIAL_ERROR_PREFIX = "octop:apiErrors."
+# The peer will reject these the same way on every retry. Fail the dial at once
+# and keep the readable error; do not spend the auto-reconnect budget on them.
+_PERMANENT_DIAL_CODES = frozenset(
+    {
+        ErrorCode.BRIDGE_SELF_CONNECT,
+        ErrorCode.BRIDGE_PEER_FORBIDDEN,
+        ErrorCode.BRIDGE_PEER_CONNECTION_OWNED,
+        ErrorCode.BRIDGE_CONNECTION_LIMIT,
+        ErrorCode.BRIDGE_AUTH_FAILED,
+    }
+)
+
+
+def bridge_failure_from_dial(exc: BaseException) -> OctopError:
+    """Map a peer WebSocket close into a user-facing bridge error.
+
+    The raw ``websockets`` text (``received 4003 (private use) ...``) is not
+    something to show in the dashboard.
+    """
+    reason = _close_reason(exc).lower()
+    code = _close_code(exc)
+    if code == 4004 or "self connect" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_SELF_CONNECT,
+            "cannot link this Octop instance to itself",
+        )
+    if code == 4003 and "permission" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_PEER_FORBIDDEN,
+            "peer account lacks cloud collab permission",
+        )
+    if code == 4003 and "owned by another" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_PEER_CONNECTION_OWNED,
+            "connection owned by another user on the peer",
+        )
+    if code == 4008 or "connection limit" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_CONNECTION_LIMIT,
+            f"at most {MAX_CONNECTIONS_PER_USER} cloud collab connections",
+            details={"limit": MAX_CONNECTIONS_PER_USER},
+        )
+    if code == 4001:
+        return OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "peer rejected credentials")
+    return OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, _annotate_bridge_dial_error(exc))
+
+
+def dial_error_note(exc: BaseException) -> str:
+    """Persist a bridge dial failure. Known cases use an ``octop:`` i18n key.
+
+    Interpolation values (for example the connection ``limit``) ride in the
+    query so the dashboard and the API toast can format the same sentence.
+    """
+    failure = bridge_failure_from_dial(exc)
+    if failure.code is not ErrorCode.BRIDGE_PEER_UNREACHABLE:
+        note = f"{_DIAL_ERROR_PREFIX}{failure.code.value}"
+        if failure.details:
+            note = f"{note}?{urlencode(failure.details)}"
+        return note
+    reason = _close_reason(exc)
+    if reason:
+        return reason
+    return _annotate_bridge_dial_error(exc)
+
+
+def error_from_dial_note(note: str | None) -> OctopError | None:
+    text = (note or "").strip()
+    if not text.startswith(_DIAL_ERROR_PREFIX):
+        return None
+    body = text[len(_DIAL_ERROR_PREFIX) :]
+    name, _, query = body.partition("?")
+    try:
+        code = ErrorCode(name)
+    except ValueError:
+        return None
+    details: dict[str, Any] = {}
+    for key, value in parse_qsl(query, keep_blank_values=False):
+        details[key] = int(value) if key == "limit" and value.isdigit() else value
+    return OctopError(code, name, details=details)
 
 
 def _should_refresh_peer_token(exc: BaseException) -> bool:
@@ -661,15 +755,26 @@ class BridgeManager:
                 self._reconnect_failures[connection_id] = 0
                 return self._repo.get(connection_id) or row
             if task.done():
-                exc = task.exception() if not task.cancelled() else None
-                msg = str(exc) if exc else "bridge connect failed"
-                latest = self._repo.get(connection_id)
-                if latest is not None and latest.status != "error":
-                    self._repo.update_status(connection_id, status="error", last_error=msg[:500])
-                raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, msg)
+                self._raise_dial_failure(connection_id)
             await asyncio.sleep(0.1)
-        self._repo.update_status(connection_id, status="error", last_error="bridge connect timeout")
-        raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, "bridge connect timeout")
+        self._raise_dial_failure(connection_id, fallback="bridge connect timeout")
+
+    def _raise_dial_failure(
+        self, connection_id: str, *, fallback: str = "bridge connect failed"
+    ) -> NoReturn:
+        latest = self._repo.get(connection_id)
+        note = latest.last_error if latest is not None else None
+        known = error_from_dial_note(note)
+        if known is not None:
+            if latest is not None and latest.status != "error":
+                self._repo.update_status(
+                    connection_id, status="error", last_error=(note or "")[:500]
+                )
+            raise known
+        detail = (note or fallback)[:500]
+        if latest is not None and latest.status != "error":
+            self._repo.update_status(connection_id, status="error", last_error=detail)
+        raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, detail)
 
     async def disconnect(self, connection_id: str) -> None:
         self._user_stopped.add(connection_id)
@@ -888,7 +993,17 @@ class BridgeManager:
                     )
                     continue
                 retried_auth = False
-                detail = _annotate_bridge_dial_error(exc)
+                detail = dial_error_note(exc)
+                if bridge_failure_from_dial(exc).code in _PERMANENT_DIAL_CODES:
+                    if self._repo.get(connection_id) is not None:
+                        self._repo.update_status(
+                            connection_id, status="error", last_error=detail[:500]
+                        )
+                    # Leave auto-reconnect enabled, but stop this supervisor so a
+                    # rejected login does not wait out the backoff or overwrite
+                    # the readable error with the English disable line.
+                    self._user_stopped.add(connection_id)
+                    return
                 failures = self._reconnect_failures.get(connection_id, 0) + 1
                 self._reconnect_failures[connection_id] = failures
                 if self._repo.get(connection_id) is not None:
@@ -1128,6 +1243,13 @@ class BridgeManager:
             return
 
         existing = self._repo.get(connection_id)
+        # An outbound row (we stored the peer password) only exists on the
+        # instance that allocated this connection id. A hello for that id means
+        # the dial reached this same Octop — often because the typed URL does
+        # not match the advertised address, so the earlier self-check missed it.
+        if existing is not None and bool(existing.credential_blob):
+            await websocket.close(code=4004, reason="self connect")
+            return
         if existing is not None and int(existing.owner_user_id) != int(user.id):
             await websocket.close(code=4003, reason="connection owned by another user")
             return
