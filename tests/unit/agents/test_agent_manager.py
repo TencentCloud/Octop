@@ -2674,6 +2674,151 @@ def test_mcp_tool_filter_uses_server_prefix(manager: AgentManager) -> None:
     assert len(filtered) == 2
 
 
+def _seed_user(manager: AgentManager, username: str) -> int:
+    with manager._repos.db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, 0)",
+            (username, "h", "user"),
+        )
+        row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    assert row is not None
+    return int(row["id"])
+
+
+@pytest.mark.asyncio
+async def test_prepare_chat_mcp_loads_shared_server_as_owner(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A viewer's catalog name loads the owner's tools under the harness short name."""
+    owner_id = _seed_user(manager, "mcp-owner")
+    viewer_id = _seed_user(manager, "mcp-viewer")
+    manager._connector_svc.put_custom_servers(
+        owner_id,
+        {
+            "doris": {
+                "transport": "streamable_http",
+                "url": "https://doris.example.com/mcp",
+                "shared": True,
+            }
+        },
+    )
+    manager._connector_svc.put_custom_servers(
+        viewer_id,
+        {
+            "doris": {
+                "transport": "streamable_http",
+                "url": "https://viewer.example.com/mcp",
+            }
+        },
+    )
+    shared_name = next(iter(manager._connector_svc.shared_custom_harness_aliases(owner_id)))
+    agent_id = manager._repos.agent_repo.create(
+        agent_id="SHAREDMCP",
+        user_id=owner_id,
+        name="shared",
+        mcp_servers='["doris"]',
+    )
+    agent = MagicMock()
+    agent._mcp_tools = []
+    agent._mcp_tool_name_set = frozenset()
+    agent.config.mcp_server_configs = {"doris": {}}
+    loaded: list[tuple[int, str]] = []
+
+    def _tool_names() -> frozenset[str]:
+        return frozenset(
+            str(getattr(tool, "name", ""))
+            for tool in agent._mcp_tools
+            if getattr(tool, "name", None)
+        )
+
+    def _append(tools: list[Any]) -> None:
+        agent._mcp_tools = list(tools) + list(agent._mcp_tools)
+        agent._mcp_tool_name_set = _tool_names()
+
+    def _replace(tools: list[Any]) -> None:
+        agent._mcp_tools = list(tools)
+        agent._mcp_tool_name_set = _tool_names()
+
+    agent.append_mcp_tools = MagicMock(side_effect=_append)
+    agent.replace_mcp_tools = MagicMock(side_effect=_replace)
+
+    async def fake_load(user_id: int, server_name: str, _spec: dict[str, Any]) -> list[Any]:
+        loaded.append((user_id, server_name))
+        tool = MagicMock()
+        tool.name = f"{server_name}_ping_{user_id}"
+        return [tool]
+
+    monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
+    monkeypatch.setattr(manager, "_get_or_load_mcp_tools", fake_load)
+
+    missing = await manager.prepare_chat_mcp(
+        agent_id,
+        [shared_name],
+        connector_user_id=viewer_id,
+    )
+    assert missing == []
+    assert loaded == [(owner_id, "doris")]
+    agent.append_mcp_tools.assert_called_once()
+    agent.replace_mcp_tools.assert_not_called()
+
+    # The owner's tools stay on the running expert. The viewer's own server
+    # must replace that slot instead of looking "already loaded".
+    missing_own = await manager.prepare_chat_mcp(
+        agent_id,
+        ["doris"],
+        connector_user_id=viewer_id,
+    )
+    assert missing_own == []
+    assert loaded == [(owner_id, "doris"), (viewer_id, "doris")]
+    assert agent._mcp_tool_name_set == {f"doris_ping_{viewer_id}"}
+    agent.replace_mcp_tools.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_prepare_chat_mcp_reports_failure_in_caller_name(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    owner_id = _seed_user(manager, "mcp-owner-2")
+    viewer_id = _seed_user(manager, "mcp-viewer-2")
+    manager._connector_svc.put_custom_servers(
+        owner_id,
+        {
+            "doris": {
+                "transport": "streamable_http",
+                "url": "https://doris.example.com/mcp",
+                "shared": True,
+            }
+        },
+    )
+    shared_name = next(iter(manager._connector_svc.shared_custom_harness_aliases(owner_id)))
+    agent_id = manager._repos.agent_repo.create(
+        agent_id="SHAREFAIL",
+        user_id=owner_id,
+        name="shared",
+    )
+    agent = MagicMock()
+    agent._mcp_tool_name_set = frozenset()
+    agent.config.mcp_server_configs = {}
+
+    async def fake_load(_user_id: int, _server_name: str, _spec: dict[str, Any]) -> list[Any]:
+        raise RuntimeError("mcp down")
+
+    monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
+    monkeypatch.setattr(manager, "_get_or_load_mcp_tools", fake_load)
+    monkeypatch.setattr(manager, "reload_connectors", AsyncMock())
+
+    missing = await manager.prepare_chat_mcp(
+        agent_id,
+        [shared_name, "notes"],
+        connector_user_id=viewer_id,
+    )
+    assert shared_name in missing
+    assert "doris" not in missing
+    assert "notes" in missing
+
+
 def test_prepare_stream_request_maps_max_iters_to_recursion_limit(
     manager: AgentManager,
     monkeypatch: pytest.MonkeyPatch,

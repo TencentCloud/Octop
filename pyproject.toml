@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.3b3"
+version = "1.0.3b4"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on octop-harness"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,7 +21,7 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "octop-harness[all]>=1.0.7",
+    "octop-harness[all]>=1.0.8",
     "octop-memory>=1.0.3",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.3",
@@ -47,6 +47,7 @@ dependencies = [
     "xlrd>=2.0.1",
     "ldap3>=2.9.1",
     "firecrawl-anydoc>=0.2.4",
+    "tencentcloud-sdk-python>=3.1.166",
     "pyotp>=2.10.0",
     "webauthn>=3.0.1",
 ]

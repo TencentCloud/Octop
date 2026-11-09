@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
-from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
+from octop.infra.agents.providers.model_flags import (
+    is_chat_eligible_model,
+    is_local_runtime_provider,
+    is_vision_model,
+)
 from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
@@ -148,6 +152,46 @@ def _provider_extra_dict(row: Any) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return extra if isinstance(extra, dict) else {}
+
+
+def sync_provider_preset_models(provider_repo: ProviderRepo | SealedProviderRepo) -> int:
+    """Append newly bundled cloud models, enabled, without replacing user settings."""
+    from octop.infra.agents.providers.presets import load_provider_presets
+
+    presets = load_provider_presets()
+    added = 0
+    for row in provider_repo.list_all():
+        if is_local_runtime_provider(row.name, provider_api_key=row.api_key):
+            continue
+        models = row.get_models()
+        purpose = resolve_provider_purpose(
+            provider_name=row.name,
+            provider_api_key=row.api_key,
+            extra=_provider_extra_dict(row),
+            models=models,
+        )
+        preset = next(
+            (
+                p
+                for p in presets
+                if row.name in {p["id"], p["name"]}
+                and KIND_TO_PROTOCOL.get(row.kind, row.kind) == p["protocol"]
+                and (row.base_url or "").strip().rstrip("/")
+                == (p.get("base_url") or "").strip().rstrip("/")
+                and purpose == (p.get("purpose") or "chat")
+            ),
+            None,
+        )
+        if preset is None:
+            continue
+        existing = {model["id"] for model in models}
+        missing = [
+            dict(model, enabled=True) for model in preset["models"] if model["id"] not in existing
+        ]
+        if missing:
+            provider_repo.update(row.id, models_json=json.dumps([*models, *missing]))
+            added += len(missing)
+    return added
 
 
 @dataclass(frozen=True)

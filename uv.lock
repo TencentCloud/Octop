@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -2588,7 +2588,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "1.0.3b3"
+version = "1.0.3b4"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2625,6 +2625,7 @@ dependencies = [
     { name = "rich" },
     { name = "scalar-fastapi" },
     { name = "segno" },
+    { name = "tencentcloud-sdk-python" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "webauthn" },
     { name = "websockets" },
@@ -2703,7 +2704,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.3" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.7" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.8" },
     { name = "octop-memory", specifier = ">=1.0.3" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2731,6 +2732,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4" },
     { name = "scalar-fastapi", specifier = ">=1.0" },
     { name = "segno", specifier = ">=1.6" },
+    { name = "tencentcloud-sdk-python", specifier = ">=3.1.166" },
     { name = "tos", marker = "extra == 'tos'", specifier = ">=2.9,<3" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27" },
     { name = "webauthn", specifier = ">=3.0.1" },
@@ -2796,7 +2798,7 @@ wheels = [
 
 [[package]]
 name = "octop-harness"
-version = "1.0.7"
+version = "1.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2814,9 +2816,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6f/f5/ae9e96393557285832f75166d2c387f0c7b94e98cb8992dd043448c91444/octop_harness-1.0.7.tar.gz", hash = "sha256:c74f0e979ed6b1a3272a911c0da2abe4825b632073573bdd211c375d2c4fad1b", size = 1003695, upload-time = "2026-11-04T11:15:29.379Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b1/30/5ec8fa8250c9c3f7c973dc35f70625b8a35037808c8b9f2aa2aac0f19fa9/octop_harness-1.0.8.tar.gz", hash = "sha256:fa586d69952eda010452a431093e46ad7685b55189e651c2a5810d2af340b83b", size = 1011918, upload-time = "2026-11-05T09:30:23.468Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/47/ae/34effffa522fead286ae91d93bfd68f07431222773e173ac51ed9cd57637/octop_harness-1.0.7-py3-none-any.whl", hash = "sha256:b10eb908b789b08fabc3e9e2e295cfcd5fbcff5d7c2fb020feeefe2e5f4b3559", size = 1202445, upload-time = "2026-11-04T11:15:27.832Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/88/186c8fdca2ba2d37a28e3800e401c660bdd945dbe2d0ca5a585cba2420f1/octop_harness-1.0.8-py3-none-any.whl", hash = "sha256:3b7b40063d5cebbe4d47ee3a94f2c392d2cff8b4554c2208fbb5c51cdb77b94c", size = 1210813, upload-time = "2026-11-05T09:30:21.849Z" },
 ]
 
 [package.optional-dependencies]
@@ -4723,6 +4725,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
+]
+
+[[package]]
+name = "tencentcloud-sdk-python"
+version = "3.1.201"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5f/c9/eb456c00fcbfce27bd12c81f430289f2d9164401a64c1757ddd245689ddd/tencentcloud_sdk_python-3.1.201.tar.gz", hash = "sha256:5fa8aae16fbcd18b27d5144e5418ac260615e538fc8ae7f0f36053e1569a9ff9", size = 17995572, upload-time = "2026-11-03T20:12:14.299Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2c/82/8ef69e1174a2c3d88b63aacdf47fed1e30386c3e39cafa242969389aafdc/tencentcloud_sdk_python-3.1.201-py2.py3-none-any.whl", hash = "sha256:3c78f740d7d64c596cb82e17558c034225c22f2f6d6037bfedf9b1e389120b55", size = 18934304, upload-time = "2026-11-03T20:12:08.197Z" },
 ]
 
 [[package]]
