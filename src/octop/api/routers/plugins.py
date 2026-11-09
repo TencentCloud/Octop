@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
@@ -218,11 +218,13 @@ async def upload_plugin(
 
 @router.get("/market", summary="List marketplace catalog plugins")
 async def list_market_plugins(
+    accept_language: str | None = Header(default=None),
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(require_permission("plugin_market")),
 ) -> list[dict[str, Any]]:
-    """Return the in-tree marketplace catalog (future: remote index API)."""
-    return _plugin_manager(server).list_market()
+    """Return the portal marketplace catalog in the caller's language."""
+    language = accept_language or "zh"
+    return await asyncio.to_thread(_plugin_manager(server).list_market, language)
 
 
 @router.post(
@@ -231,17 +233,29 @@ async def list_market_plugins(
 )
 async def install_market_plugin(
     plugin_id: str,
-    force: bool = False,
+    version: str | None = Query(
+        default=None,
+        description=(
+            "Catalog release to install. Use latest for the current catalog release. "
+            "A different release already on disk is replaced."
+        ),
+        max_length=41,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,40}$",
+    ),
+    force: bool = Query(
+        default=False,
+        description="Replace an install of the same release.",
+    ),
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(require_permission("plugin_market")),
 ) -> dict[str, Any]:
-    """Copy a catalog plugin into ``~/.octop/plugins`` (future: download ZIP)."""
+    """Download one catalog release into ``~/.octop/plugins``."""
     mgr = _plugin_manager(server)
     loop = asyncio.get_running_loop()
     try:
         loaded = await loop.run_in_executor(
             None,
-            lambda: mgr.install_from_market(plugin_id, force=force),
+            lambda: mgr.install_from_market(plugin_id, version=version, force=force),
         )
     except OctopError:
         raise
@@ -274,7 +288,6 @@ async def get_market_plugin_ui_asset(
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(require_permission("plugin_market")),
 ) -> Response:
-    """Static files from the in-tree catalog (icons before install)."""
     target = _plugin_manager(server).resolve_market_ui_file(plugin_id, file_path)
     suffix = target.suffix.lower()
     media_type = _UI_CONTENT_TYPES.get(suffix) or mimetypes.guess_type(target.name)[0]

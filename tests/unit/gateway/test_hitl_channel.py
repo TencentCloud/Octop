@@ -403,6 +403,37 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
     assert store.pending_thread_ids(agent_id="agent1", user_id=1) == frozenset({"thr-a", "thr-b"})
     assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
+    assert store.pending_thread_ids(agent_id="agent1", user_id=2, any_user=True) == frozenset(
+        {"thr-a", "thr-b"}
+    )
+    assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=None) is pending
+
+
+def test_hitl_store_other_thread_does_not_expire_pending() -> None:
+    """Same dashboard session_key, different threads, stay pending together."""
+    store = HitlPendingStore()
+    ask_a = [{"name": "ask_user_question", "args": {"questions": [{"question": "A?"}]}}]
+    ask_b = [{"name": "ask_user_question", "args": {"questions": [{"question": "B?"}]}}]
+    first = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="dash:1:agent1",
+        channel_type="dashboard",
+        action_requests=ask_a,
+        review_configs=None,
+    )
+    second = store.register(
+        thread_id="thr-b",
+        agent_id="agent1",
+        user_id=1,
+        session_key="dash:1:agent1",
+        channel_type="dashboard",
+        action_requests=ask_b,
+        review_configs=None,
+    )
+    assert store.get(first.pending_id).status == "pending"  # type: ignore[union-attr]
+    assert store.get(second.pending_id).status == "pending"  # type: ignore[union-attr]
 
 
 def test_hitl_store_reuses_equivalent_pending() -> None:
@@ -1333,3 +1364,52 @@ async def test_reset_phrase_without_pending_clears_bypass() -> None:
     assert agent_manager.stream.called is False
     assert coordinator.session_policies.get("thr1").mode == "ask"
     assert "已恢复为每次审批" in _event_text(events)
+
+
+@pytest.mark.asyncio
+async def test_guard_approval_is_never_auto_approved() -> None:
+    """A security (command-guard) approval must reach the human in an allow-all chat."""
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+    resumed: list[list[dict[str, object]]] = []
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [
+                    {
+                        "name": "execute",
+                        "args": {"command": "systemctl restart svc"},
+                        "description": (
+                            "Tool call requires approval (command guard detected risky parameters)."
+                        ),
+                    }
+                ],
+                "review_configs": [
+                    {"action_name": "execute", "allowed_decisions": ["approve", "reject"]}
+                ],
+            },
+        }
+
+    async def resume(decisions: list[dict[str, object]]):
+        resumed.append(decisions)
+        yield {"type": "token", "content": "should-not-happen"}
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["hitl_required"]
+    assert resumed == []

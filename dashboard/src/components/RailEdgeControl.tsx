@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "./RailEdgeControl.module.less";
 
 interface RailEdgeControlProps {
@@ -24,6 +25,11 @@ interface RailEdgeControlProps {
    * ``before`` / ``after`` sit on either side when two rails share one line.
    */
   placement?: "center" | "before" | "after";
+  /**
+   * Let pointer events fall through the rail so a resize handle underneath
+   * stays usable. The collapse button itself still receives clicks.
+   */
+  passThrough?: boolean;
 }
 
 /**
@@ -38,6 +44,7 @@ export default function RailEdgeControl({
   className,
   showLine = true,
   placement = "center",
+  passThrough = false,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -48,25 +55,25 @@ export default function RailEdgeControl({
 
   return (
     <div
-      className={[
+      className={cx(
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
-        expanded ? null : styles.edgeCollapsed,
+        !expanded && styles.edgeCollapsed,
+        passThrough && styles.edgePassThrough,
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
     >
       {showLine ? <div className={styles.line} aria-hidden /> : null}
       <button
         type="button"
-        className={`${styles.btn} ${
+        className={cx(
+          styles.btn,
           placement === "before"
             ? styles.btnBefore
             : placement === "after"
             ? styles.btnAfter
-            : ""
-        }`}
+            : "",
+        )}
         onClick={onToggle}
         aria-label={ariaLabel}
         title={ariaLabel}

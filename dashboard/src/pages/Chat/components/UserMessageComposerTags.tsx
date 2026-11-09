@@ -11,7 +11,10 @@ import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import ContextChip, { type ContextChipVariant } from "./ContextChip";
 import { skillChipIcon } from "../utils/skillChipIcon";
-import { modelShortLabel } from "../../../utils/modelOptions";
+import {
+  modelRefLabel,
+  type ModelPickerOption,
+} from "../../../utils/modelOptions";
 import styles from "../index.module.less";
 
 export interface ComposerTagLookups {
@@ -19,6 +22,7 @@ export interface ComposerTagLookups {
   connectors?: { mcp_server_name: string; label: string; kind: string }[];
   knowledgeBases?: KnowledgeBase[];
   agents?: ChatAgentOption[];
+  models?: readonly ModelPickerOption[];
 }
 
 interface UserMessageComposerTagsProps {
@@ -120,7 +124,7 @@ export default function UserMessageComposerTags({
         key: `model-${context.model}`,
         variant: "model",
         icon: <Cpu size={11} strokeWidth={2.2} aria-hidden />,
-        label: modelShortLabel(context.model),
+        label: modelRefLabel(context.model, lookups?.models),
       });
     }
 

@@ -251,6 +251,13 @@ class SessionRepo:
                 (thread_id,),
             )
 
+    def clear_unread_for_user_thread(self, thread_id: str, user_id: int) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE sessions SET unread_count = 0 WHERE thread_id = ? AND user_id = ?",
+                (thread_id, user_id),
+            )
+
     def clear_unread_for_agent(self, agent_id: str, user_id: int) -> None:
         with self._db.transaction() as conn:
             conn.execute(

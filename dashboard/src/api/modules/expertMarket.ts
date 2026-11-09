@@ -26,6 +26,8 @@ export interface MarketExpert {
   skill_slugs?: string[];
   skill_count?: number;
   source?: string;
+  /** True when this card is a template that ships with Octop. */
+  featured?: boolean;
   content?: LocalizedText;
   quick_prompts?: ExpertMarketQuickPrompt[];
   task_examples?: { zh?: string[]; en?: string[] } | null;

@@ -18,6 +18,7 @@ from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
 from octop.infra.agents.threads.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
+    AUTHOR_USER_ID_KEY,
     CHECKPOINT_TS_KEY,
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
@@ -918,6 +919,17 @@ def _split_string_thinking(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
+def _author_user_id(raw: Any) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int) and raw > 0:
+        return raw
+    if isinstance(raw, str) and raw.isdigit():
+        value = int(raw)
+        return value if value > 0 else None
+    return None
+
+
 def _serialize_history_message(
     msg: Any,
     *,
@@ -1012,6 +1024,9 @@ def _serialize_history_message(
             entry["composer_context"] = raw_ctx
         if has_user_attachments:
             entry["inbound_attachments"] = raw_att
+        author_id = _author_user_id(additional_kwargs.get(AUTHOR_USER_ID_KEY))
+        if author_id is not None:
+            entry["author_user_id"] = author_id
     if additional_kwargs.get(STREAM_ERROR_FLAG):
         entry["status"] = "error"
         code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)

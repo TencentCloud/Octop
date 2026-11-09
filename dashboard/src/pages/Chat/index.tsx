@@ -13,6 +13,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
+import cx from "classnames";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
@@ -578,6 +579,7 @@ function ChatPageInner() {
     availableModels,
     modelsReady,
     activeModelRef,
+    preferredModel,
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
@@ -595,6 +597,7 @@ function ChatPageInner() {
     composerSession?.reasoningEffort,
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
+    composerSession?.owned !== false,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -603,7 +606,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
-    activeModelRef,
+    preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -709,8 +712,15 @@ function ChatPageInner() {
       connectors: chatConnectors,
       knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
+      models: availableModels,
     }),
-    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
+    [
+      chatSkills,
+      chatConnectors,
+      chatKnowledgeBases,
+      chatAgentOptions,
+      availableModels,
+    ],
   );
 
   const { handleSend } = useChatSend({
@@ -1125,6 +1135,7 @@ function ChatPageInner() {
       lastUserModel,
       selectedModel,
       activeAgent?.default_model,
+      preferredModel,
       activeModelRef,
     ]);
     if (providerId == null) {
@@ -1143,6 +1154,7 @@ function ChatPageInner() {
     availableModels,
     selectedModel,
     activeAgent?.default_model,
+    preferredModel,
     activeModelRef,
     messages,
     t,
@@ -1373,22 +1385,18 @@ function ChatPageInner() {
           ? createPortal(chatSidebarPanel, chatHistoryRail)
           : null}
         <div
-          className={`${styles.chatPage} ${
-            dockIsResizing ? styles.panelResizeActive : ""
-          } ${
-            dockOpen && dockMode === "bottom"
-              ? styles.chatPageWithBottomDock
-              : ""
-          }`}
+          className={cx(
+            styles.chatPage,
+            dockIsResizing && styles.panelResizeActive,
+            dockOpen && dockMode === "bottom" && styles.chatPageWithBottomDock,
+          )}
         >
           {/* Main chat area */}
           <div
-            className={[
+            className={cx(
               styles.chatMain,
-              turnRailVisible ? styles.chatMainWithTurnRail : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              turnRailVisible && styles.chatMainWithTurnRail,
+            )}
           >
             {/* Mobile toolbar — session list + optional title + agent profile */}
             {isMobile && (
@@ -1539,48 +1547,60 @@ function ChatPageInner() {
                   isTeam={isTeamChat}
                 />
               ) : (
-                <ChatAgentProfileProvider
-                  canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
-                  onOpen={(agentId) => {
-                    setProfileAgentId(
-                      agentId && agentId !== resolvedAgentId ? agentId : null,
-                    );
-                    setAgentProfileOpen(true);
-                  }}
-                  isTeam={isTeamChat}
-                >
-                  <MessageList
-                    messages={messages}
-                    agentId={resolvedAgentId}
-                    composerLookups={composerLookups}
-                    loading={awaitingThreadHistory}
-                    historyHasMore={historyHasMore}
-                    historyLoadingMore={historyLoadingMore}
-                    historyRefreshing={historyRefreshing}
-                    onLoadMoreHistory={loadMoreHistory}
-                    onRefreshHistory={refreshHistory}
-                    isStreaming={isStreaming}
-                    liveSpeakers={liveSpeakers}
-                    thinkingStartedAt={thinkingStartedAt}
-                    sessionKey={activeThreadId ?? undefined}
-                    onRegenerate={handleRegenerate}
-                    onDisableStreamUsage={handleDisableStreamUsage}
-                    onEditUserMessage={handleEditUserMessage}
-                    onWithdrawSteer={handleWithdrawSteer}
-                    onForkAssistantMessage={handleForkAssistantMessage}
-                    forkDisabled={forkDisabled}
-                    forkDisabledHint={forkDisabledHint}
-                    onAcpPermissionSelect={handleAcpPermissionSelect}
-                    onHitlDecision={handleHitlDecision}
-                    onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
-                    onEditFile={
-                      !sharedExpertViewer && panelFilePaths.length > 0
-                        ? openFileList
-                        : undefined
-                    }
-                  />
-                </ChatAgentProfileProvider>
+                <>
+                  {composerSession?.contributed ? (
+                    <div className={styles.sharedSessionBanner}>
+                      {t(
+                        "chat.sharedSessionBanner",
+                        "这条会话已共享。能打开这个专家的人都能看到，并可以继续问。",
+                      )}
+                    </div>
+                  ) : null}
+                  <ChatAgentProfileProvider
+                    canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                    onOpen={(agentId) => {
+                      setProfileAgentId(
+                        agentId && agentId !== resolvedAgentId ? agentId : null,
+                      );
+                      setAgentProfileOpen(true);
+                    }}
+                    isTeam={isTeamChat}
+                  >
+                    <MessageList
+                      messages={messages}
+                      agentId={resolvedAgentId}
+                      composerLookups={composerLookups}
+                      loading={awaitingThreadHistory}
+                      historyHasMore={historyHasMore}
+                      historyLoadingMore={historyLoadingMore}
+                      historyRefreshing={historyRefreshing}
+                      onLoadMoreHistory={loadMoreHistory}
+                      onRefreshHistory={refreshHistory}
+                      isStreaming={isStreaming}
+                      liveSpeakers={liveSpeakers}
+                      thinkingStartedAt={thinkingStartedAt}
+                      sessionKey={activeThreadId ?? undefined}
+                      onRegenerate={handleRegenerate}
+                      onDisableStreamUsage={handleDisableStreamUsage}
+                      onEditUserMessage={handleEditUserMessage}
+                      onWithdrawSteer={handleWithdrawSteer}
+                      onForkAssistantMessage={handleForkAssistantMessage}
+                      forkDisabled={forkDisabled}
+                      forkDisabledHint={forkDisabledHint}
+                      onAcpPermissionSelect={handleAcpPermissionSelect}
+                      onHitlDecision={handleHitlDecision}
+                      onTurnRailVisibilityChange={setTurnRailVisible}
+                      onOpenBrowser={
+                        hasBrowserTool ? openBrowserTab : undefined
+                      }
+                      onEditFile={
+                        !sharedExpertViewer && panelFilePaths.length > 0
+                          ? openFileList
+                          : undefined
+                      }
+                    />
+                  </ChatAgentProfileProvider>
+                </>
               )}
             </div>
 
@@ -1726,29 +1746,27 @@ function ChatPageInner() {
                     <span className={styles.chatFloatBtnWrap}>
                       <button
                         type="button"
-                        className={[
+                        className={cx(
                           styles.browserStatusBtn,
-                          browserSessionId ? styles.browserStatusActive : "",
+                          browserSessionId && styles.browserStatusActive,
                           browserSessionId &&
-                          (browserSessionState === "awaiting_user_auth" ||
-                            browserSessionState === "authenticating")
-                            ? styles.browserStatusAuth
-                            : "",
-                          browserSessionId && browserControlOwner === "user"
-                            ? styles.browserStatusTakeover
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                            (browserSessionState === "awaiting_user_auth" ||
+                              browserSessionState === "authenticating") &&
+                            styles.browserStatusAuth,
+                          browserSessionId &&
+                            browserControlOwner === "user" &&
+                            styles.browserStatusTakeover,
+                        )}
                         onClick={() => void handleToggleBrowserPanel()}
                         aria-label={t("chat.openBrowser")}
                       >
                         <Globe size={20} strokeWidth={2.1} />
                         {browserSessionId && (
                           <span
-                            className={`${styles.browserStatusDot} ${
-                              styles[`browserStatus_${browserControlOwner}`]
-                            }`}
+                            className={cx(
+                              styles.browserStatusDot,
+                              styles[`browserStatus_${browserControlOwner}`],
+                            )}
                           />
                         )}
                       </button>
@@ -1863,6 +1881,7 @@ function ChatPageInner() {
               onHitlPolicyChange={
                 hitlEnabled ? handleComposerHitlPolicyChange : undefined
               }
+              lockThreadSettings={composerSession?.owned === false}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={

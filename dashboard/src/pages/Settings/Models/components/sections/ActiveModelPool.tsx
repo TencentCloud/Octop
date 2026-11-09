@@ -10,6 +10,7 @@ import { Button, Empty, Popover, Segmented, Select, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { preferencesApi } from "../../../../../api/modules/preferences";
 import type { ProviderRow, ResolvedModel } from "../../useProviders";
@@ -84,17 +85,20 @@ export function ActiveModelPool({
     const isAlready =
       m.provider_name === activeModel.provider_name &&
       m.model === activeModel.model;
-    if (isAlready) return;
-
     const key = `${m.provider_name}/${m.model}`;
     setSetting(key);
     try {
-      await preferencesApi.patch({ preferred_model: key });
-      message.success(
-        t("models.preferredModelSet", {
-          model: modelOptionLabel(m),
-        }),
-      );
+      if (isAlready) {
+        await preferencesApi.patch({ preferred_model: null });
+        message.success(t("models.preferredModelCleared"));
+      } else {
+        await preferencesApi.patch({ preferred_model: key });
+        message.success(
+          t("models.preferredModelSet", {
+            model: modelOptionLabel(m),
+          }),
+        );
+      }
       await onSaved();
     } catch (err) {
       message.error(
@@ -319,14 +323,15 @@ export function ActiveModelPool({
                 return (
                   <div
                     key={key}
-                    className={`${styles.poolModelRow} ${
-                      isPreferred ? styles.poolModelPreferred : ""
-                    }`}
+                    className={cx(
+                      styles.poolModelRow,
+                      isPreferred && styles.poolModelPreferred,
+                    )}
                   >
                     <Tooltip
                       title={
                         isPreferred
-                          ? t("models.currentPreferred")
+                          ? t("models.clearPreferred")
                           : t("models.setAsPreferred")
                       }
                     >
@@ -334,9 +339,10 @@ export function ActiveModelPool({
                         type="text"
                         size="small"
                         loading={isLoading}
-                        className={`${styles.preferredBtn} ${
-                          isPreferred ? styles.preferredActive : ""
-                        }`}
+                        className={cx(
+                          styles.preferredBtn,
+                          isPreferred && styles.preferredActive,
+                        )}
                         onClick={() => void handleSetPreferred(m)}
                         icon={
                           <Star
@@ -348,11 +354,18 @@ export function ActiveModelPool({
                     </Tooltip>
 
                     <div className={styles.poolModelInfo}>
-                      <span
-                        className={styles.poolModelName}
-                        title={modelOptionLabel(m)}
-                      >
-                        {modelOptionLabel(m)}
+                      <span className={styles.poolModelNameRow}>
+                        <span
+                          className={styles.poolModelName}
+                          title={modelOptionLabel(m)}
+                        >
+                          {modelOptionLabel(m)}
+                        </span>
+                        {isPreferred ? (
+                          <Tag className={styles.preferredBadge}>
+                            {t("models.preferredBadge")}
+                          </Tag>
+                        ) : null}
                       </span>
                     </div>
 
