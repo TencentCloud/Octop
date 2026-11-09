@@ -174,14 +174,21 @@ describe("desktopChrome", () => {
     );
   });
 
-  it("keeps the Windows caption above drawers", () => {
+  it("lays the Windows caption above the popup stage", () => {
     const css = readFileSync(
       resolve(__dirname, "../styles/layout.css"),
       "utf8",
     );
-    expect(css).toMatch(/\.octop-win-menu\s*\{[^}]*z-index:\s*11000/);
     expect(css).toMatch(
-      /html\[data-octop-caption-row\] \.octop-drawer\s*\{[^}]*top:\s*var\(--octop-caption-row/,
+      /html\[data-octop-caption-row\] body\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column/,
+    );
+    expect(css).toMatch(
+      /html\[data-octop-caption-row\] #octop-stage\s*\{[^}]*flex:\s*1 1 auto;[^}]*transform:\s*translateY\(0\)/,
+    );
+    expect(css).not.toMatch(/\.octop-win-menu\s*\{[^}]*z-index/);
+    expect(css).not.toMatch(/\.octop-win-menu\s*\{[^}]*position:\s*fixed/);
+    expect(css).not.toMatch(
+      /html\[data-octop-caption-row\] \.octop-drawer\s*\{[^}]*--octop-caption-row/,
     );
   });
 
@@ -193,7 +200,6 @@ describe("desktopChrome", () => {
     expect(css).toContain(".octop-desktop-drag");
     expect(css).toContain("-webkit-app-region: drag");
     expect(css).toContain("-webkit-app-region: no-drag");
-    expect(css).not.toContain("wails");
     expect(DESKTOP_DRAG_REGION_CLASS).toBe("octop-desktop-drag");
   });
 

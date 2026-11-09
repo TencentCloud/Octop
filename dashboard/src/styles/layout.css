@@ -35,24 +35,38 @@ html {
    so the element under the cursor has to opt in to be a drag handle. */
 /* Windows and Linux have no native menu bar under the transparent caption.
    The page draws one full-width row for File / Edit / View / Help, sharing
-   that row with the window buttons. The rest of the window starts below it. */
+   that row with the window buttons. The row and the page are a column:
+   `#octop-chrome` on top, `#octop-stage` (popup container) below. */
+html[data-octop-caption-row] body {
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-octop-caption-row] #octop-chrome {
+  flex: 0 0 auto;
+}
+
+html[data-octop-caption-row] #octop-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  /* Containing block for position:fixed popups mounted in this stage, so a
+     drawer or toast with top:0 starts under the menu instead of the window. */
+  transform: translateY(0);
+}
+
 html[data-octop-caption-row] #root {
-  box-sizing: border-box;
-  padding-top: var(--octop-caption-row, 32px);
+  position: absolute;
+  inset: 0;
 }
 
 html[data-octop-desktop-chrome="windows"] .octop-win-menu {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  /* Portaled to document.body, above drawers and other overlays (antd
-     starts near 1000; prompts in this app reach about 10000). The submenu
-     popup stays one step higher. */
-  z-index: 11000;
+  position: relative;
   display: flex;
   align-items: center;
   box-sizing: border-box;
+  width: 100%;
   height: var(--octop-caption-row, 32px);
   padding-left: 4px;
   padding-right: var(--window-controls-inset-end, 138px);
@@ -191,15 +205,6 @@ html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
     12px,
     var(--window-controls-inset-end, 0px)
   ) !important;
-}
-
-/* Drawers are body-level overlays. Keep them under the caption so a
-   right-edge panel cannot cover File / Edit / View / Help. antd sets
-   `inset: 0` from CSS-in-JS, so the offset has to win explicitly. */
-html[data-octop-caption-row] .ant-drawer,
-html[data-octop-caption-row] .octop-drawer {
-  top: var(--octop-caption-row, 32px) !important;
-  height: calc(100% - var(--octop-caption-row, 32px)) !important;
 }
 
 html[data-octop-desktop-chrome]:not([data-octop-caption-row])

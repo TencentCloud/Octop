@@ -24,6 +24,7 @@ import DesktopWindowDragBand from "./components/DesktopWindowDragBand";
 import WindowsAppMenu from "./components/WindowsAppMenu";
 import OctopSpinner from "./components/OctopSpinner";
 import { AntdAppProvider } from "./components/AntdAppProvider";
+import { popupLayer } from "./utils/overlayLayers";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AgentProvider } from "./context/AgentContext";
@@ -128,6 +129,7 @@ function ThemedApp() {
       theme={themeConfig}
       prefixCls="octop"
       locale={antdLocale}
+      getPopupContainer={popupLayer}
       spin={{ indicator: <OctopSpinner /> }}
     >
       <AntdAppProvider>
