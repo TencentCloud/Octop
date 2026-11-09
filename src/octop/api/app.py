@@ -196,6 +196,7 @@ def build_app(server: OctopServer) -> FastAPI:
         mbti,
         media_generation,
         memory,
+        memory_mcp,
         memory_portable,
         memory_storage,
         mobile,
@@ -294,6 +295,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(workspace.router, "/api", ["workspace"]),
             _RouterMount(agent_files.router, "/api", ["agent_files"]),
             _RouterMount(memory.router, "/api", ["memory"]),
+            _RouterMount(memory_mcp.router, "/api", ["memory"]),
             _RouterMount(memory_portable.router, "/api", ["memory"]),
             _RouterMount(memory_storage.router, "/api", ["memory"]),
             _RouterMount(proactive_care.router, "/api", ["proactive-care"]),
@@ -320,6 +322,12 @@ def build_app(server: OctopServer) -> FastAPI:
                 _RouterMount(mobile.router, "/api", ["mobile"]),
             ],
         )
+
+    # 专家记忆 MCP server：用户级 token 鉴权；未开启或没有 token 时不挂载。
+    # lifespan 由 install_memory_mcp 串进现有的 FastAPI lifespan，不覆盖它。
+    from octop.infra.agents.memory_mcp import install_memory_mcp
+
+    install_memory_mcp(app, server)
 
     if enable_api_docs:
 
