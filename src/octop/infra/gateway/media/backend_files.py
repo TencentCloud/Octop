@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
+from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
@@ -327,9 +328,20 @@ _DENIED_WIN_DOWNLOAD_PREFIXES = (
 )
 
 
+def _is_under(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
 def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
-    """Allow host-absolute download when under workspace / agents / temp, or
-    non-system user paths (e.g. Desktop tool outputs). Deny OS system roots.
+    """Allow host-absolute download under this workspace, OS temp, or a
+    non-system path outside the control-plane home (Desktop tool outputs).
+
+    Deny the filesystem root, OS system roots, and the rest of the Octop home
+    (database, secrets, other agents).
     """
     raw = path.strip()
     if not raw:
@@ -357,15 +369,17 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     norm = str(resolved).replace("\\", "/").lower()
     if _contains_denied_browser_home(norm):
         return False
+    if resolved == Path(resolved.anchor):
+        return False
 
+    ws = workspace.resolve()
+    if _is_under(resolved, ws):
+        return True
     try:
-        resolved.relative_to(workspace.resolve())
-        return True
-    except ValueError:
-        pass
-
-    if "/.octop/agents/" in norm:
-        return True
+        if _is_under(resolved, PathLayout.from_env().root.resolve()):
+            return False
+    except OSError:
+        return False
     if is_allowed_host_temp_path(resolved):
         return True
 
