@@ -1,7 +1,7 @@
 #!/bin/bash
-# Desktop launcher for the deb postinst / postrm.
+# Desktop launcher for the deb and rpm maintainer scripts.
 #
-# apt runs as root, so $HOME is /root. The invoking account is SUDO_USER,
+# The package install runs as root, so $HOME is /root. The invoking account is SUDO_USER,
 # PKEXEC_UID, or logname. A graphical installer that is just root falls back
 # to ordinary user accounts. The first successful placement for an account
 # writes a stamp; later upgrades refresh an icon that is still on the desktop

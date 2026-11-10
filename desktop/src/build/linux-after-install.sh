@@ -58,14 +58,18 @@ fi
 
 # The menu entry is /usr/share/applications. This also places a desktop icon.
 # Files are already unpacked, so the helper can live under the install prefix.
-# postrm cannot use that path: dpkg deletes the files before it runs.
-if [ "${1-}" = "configure" ]; then
-  _octop_desktop_lib='/opt/${sanitizedProductName}/resources/linux-desktop-shortcut.sh'
-  if [ -f "$_octop_desktop_lib" ]; then
-    # shellcheck disable=SC1090
-    . "$_octop_desktop_lib"
-    octop_sync_desktop_shortcut "/usr/share/applications/${executable}.desktop" "${executable}.desktop" || true
-  else
-    echo "octop: desktop shortcut helper missing: $_octop_desktop_lib" >&2
-  fi
-fi
+# The remove script cannot use that path: dpkg and rpm delete the files first.
+# dpkg postinst passes "configure" for install and upgrade.
+# rpm %post passes 1 on install and 2 on upgrade.
+case "${1-}" in
+  configure|[12])
+    _octop_desktop_lib='/opt/${sanitizedProductName}/resources/linux-desktop-shortcut.sh'
+    if [ -f "$_octop_desktop_lib" ]; then
+      # shellcheck disable=SC1090
+      . "$_octop_desktop_lib"
+      octop_sync_desktop_shortcut "/usr/share/applications/${executable}.desktop" "${executable}.desktop" || true
+    else
+      echo "octop: desktop shortcut helper missing: $_octop_desktop_lib" >&2
+    fi
+    ;;
+esac

@@ -27,12 +27,14 @@ if [ -f "$APPARMOR_PROFILE_DEST" ]; then
 fi
 
 # Upgrade calls this script too. Only a real removal takes the desktop icon.
+# dpkg postrm passes remove or purge. rpm %postun passes 0 on erase and 1 on
+# upgrade, so 1 must leave the icon in place.
 # The helper file is already gone, so its text is inlined below.
 # BEGIN linux-desktop-shortcut.sh
 #!/bin/bash
-# Desktop launcher for the deb postinst / postrm.
+# Desktop launcher for the deb and rpm maintainer scripts.
 #
-# apt runs as root, so $HOME is /root. The invoking account is SUDO_USER,
+# The package install runs as root, so $HOME is /root. The invoking account is SUDO_USER,
 # PKEXEC_UID, or logname. A graphical installer that is just root falls back
 # to ordinary user accounts. The first successful placement for an account
 # writes a stamp; later upgrades refresh an icon that is still on the desktop
@@ -270,7 +272,7 @@ EOF
 # END linux-desktop-shortcut.sh
 
 case "${1-}" in
-  remove|purge)
+  remove|purge|0)
     octop_remove_desktop_shortcut '${executable}.desktop' || true
     ;;
 esac

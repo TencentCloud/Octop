@@ -41,13 +41,13 @@ test("deb maintainer scripts keep the stock fpm hooks and place a desktop icon",
 
   assert.match(install, /update-alternatives --install/);
   assert.match(install, /apparmor_parser --replace/);
-  assert.match(install, /\[ "\$\{1-\}" = "configure" \]/);
+  assert.match(install, /configure\|\[12\]\)/);
   assert.match(install, /resources\/linux-desktop-shortcut\.sh/);
   assert.match(install, /octop_sync_desktop_shortcut "\/usr\/share\/applications\/\$\{executable\}\.desktop"/);
 
   assert.match(remove, /update-alternatives --remove/);
   assert.match(remove, /apparmor_parser --remove/);
-  assert.match(remove, /remove\|purge\)/);
+  assert.match(remove, /remove\|purge\|0\)/);
   assert.doesNotMatch(remove, /upgrade\)/);
   const start = remove.indexOf("# BEGIN linux-desktop-shortcut.sh\n");
   const end = remove.indexOf("# END linux-desktop-shortcut.sh\n");
@@ -58,8 +58,8 @@ test("deb maintainer scripts keep the stock fpm hooks and place a desktop icon",
     /octop_remove_desktop_shortcut '\$\{executable\}\.desktop'/,
   );
 
-  assert.match(config, /afterInstall:\s*"build\/linux-after-install\.sh"/);
-  assert.match(config, /afterRemove:\s*"build\/linux-after-remove\.sh"/);
+  assert.equal((config.match(/afterInstall:\s*"build\/linux-after-install\.sh"/g) ?? []).length, 2);
+  assert.equal((config.match(/afterRemove:\s*"build\/linux-after-remove\.sh"/g) ?? []).length, 2);
   assert.match(config, /from:\s*"build\/linux-desktop-shortcut\.sh"/);
 });
 

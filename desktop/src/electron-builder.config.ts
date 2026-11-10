@@ -96,15 +96,23 @@ export default {
   linux: {
     target: ["deb", "rpm"],
     executableName: "octop",
-    packageName: "octop",
     icon: "resources/icon.png",
     category: "Utility",
     maintainer: "Octop",
   },
   deb: {
-    // apt has no finish page. configure places a desktop icon for the account
-    // that ran sudo (or each normal account when the installer is only root).
-    // A later upgrade refreshes an icon that is still there.
+    // package.json name is octop-desktop. fpm package names live on the target,
+    // not on linux (LinuxConfiguration rejects packageName).
+    packageName: "octop",
+    // Neither apt nor rpm has a finish page. The install script places a
+    // desktop icon for the account that ran the install (or each normal
+    // account when the installer is only root). A later upgrade refreshes an
+    // icon that is still there. The scripts also accept rpm's numeric $1.
+    afterInstall: "build/linux-after-install.sh",
+    afterRemove: "build/linux-after-remove.sh",
+  },
+  rpm: {
+    packageName: "octop",
     afterInstall: "build/linux-after-install.sh",
     afterRemove: "build/linux-after-remove.sh",
   },
