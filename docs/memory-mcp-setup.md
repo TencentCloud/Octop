@@ -165,6 +165,7 @@ Authorization = "Bearer omcp_…"
 | `404 missing or unknown agent_id` | 专家不存在或已停用；确认专家 ID 正确且处于启用状态 |
 | `/mcp/memory` 404 | 服务未开启记忆 MCP：设 `OCTOP_MEMORY_MCP_ENABLED=1` 或先创建 token 后重启 |
 | Codex hook 不执行 | Codex 首次需要 **trust** hook（或在启动时加 `--dangerously-bypass-hook-trust`） |
+| Claude Code 的 hook 不执行、`claude doctor` 报 `Hook matcher "hooks" must be an array of hook entries` | 旧安装器写的是「事件直接挂 handler」的简写形态，Claude Code 2.1.x 会校验失败并忽略；升级到本版本后重跑安装器即可（写入 `[{ "hooks": [...] }]` 形态） |
 | DSH 不生效 | 插件是进程内加载，安装后需重启 DSH；确认 profile 的 `cordis.patch.yml` 有同名配置块 |
 | 项目级安装后没生效 | 项目模式只写「注册」，hook 脚本和含 token 的 `config.json` 仍在用户目录；确认项目里注册的路径存在 |
 

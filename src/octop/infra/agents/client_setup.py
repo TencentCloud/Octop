@@ -355,10 +355,14 @@ def _claude_hooks(hooks_dir):
     """
     search = {"type": "command", "command": hook_command(f"{hooks_dir}/claude-code/user-prompt-recall.mjs")}
     stop = {"type": "command", "command": hook_command(f"{hooks_dir}/claude-code/stop-capture.mjs")}
-    # **简写形态**：事件直接挂 handler 数组，不套 matcher 组那层。我们的 hook 对所有调用都生效，
-    # 本来就不需要 matcher；而某些终端的 SDK 侧不保证 ``hooks`` 数组按顺序执行，
-    # 少一层嵌套更稳（老配置里的嵌套形态仍会被识别并替换，见 _handlers_of）。
-    return {"UserPromptSubmit": [search], "Stop": [stop]}
+    # Claude Code 的 settings 校验要求事件下是 **matcher 组**，每组再套 ``hooks`` 数组
+    # （``claude doctor`` 对「事件直接挂 handler」的简写形态报
+    # `Hook matcher "hooks" must be an array of hook entries` 并静默忽略）。
+    # 我们的 hook 对所有调用都生效，matcher 省略即可。
+    return {
+        "UserPromptSubmit": [{"hooks": [search]}],
+        "Stop": [{"hooks": [stop]}],
+    }
 
 
 _OUR_SCRIPTS = (

@@ -168,8 +168,9 @@ def test_claude_code_uses_two_command_hooks() -> None:
     )
     assert "该事件不支持 ``mcp_tool``" in script
     assert "SessionEnd`` 不能用" in script
-    # 简写形态：事件直接挂 handler 数组，不套 matcher 组那层
-    assert 'return {"UserPromptSubmit": [search], "Stop": [stop]}' in script
+    # Claude Code 要求 matcher 组里再套 hooks 数组
+    assert '"UserPromptSubmit": [{"hooks": [search]}],' in script
+    assert '"Stop": [{"hooks": [stop]}],' in script
     # 收尾提示按事件名列出两端角色（Cursor 的事件名不同，故不能只写 UserPromptSubmit/Stop）
     assert "用户提交时召回" in script and "memory_search" in script
     assert "回合结束时上报" in script and "memory_capture" in script
@@ -198,8 +199,8 @@ def test_previous_inline_hook_command_is_replaced_by_the_wrapper(tmp_path) -> No
         "Stop"
     ]
     assert len(stops) == 1  # 老命令被替换，没有并列
-    assert stops[0]["type"] == "command"  # 换成简写形态（事件直接挂 handler）
-    command = stops[0]["command"]
+    assert stops[0]["hooks"][0]["type"] == "command"  # matcher 组里套 handler
+    command = stops[0]["hooks"][0]["command"]
     assert command.endswith("claude-code/stop-capture.sh")
     assert ".mjs" not in command  # 配置里不再有那串长命令
     assert (home / ".claude/hooks-events/claude-code/stop-capture.sh").exists()
@@ -225,7 +226,9 @@ def test_foreign_hook_groups_are_kept_next_to_ours(tmp_path) -> None:
         "hooks": [{"type": "command", "command": "git-ai checkpoint"}],
     }
     assert stops[1] == {"type": "command", "command": "/usr/local/bin/other-check"}
-    assert stops[2]["command"].endswith("claude-code/stop-capture.sh")  # 我们的追加在最后
+    assert stops[2]["hooks"][0]["command"].endswith(
+        "claude-code/stop-capture.sh"
+    )  # 我们的追加在最后
 
 
 def test_hook_scripts_are_installed_for_every_hook_terminal() -> None:
@@ -1301,7 +1304,7 @@ def test_legacy_mcp_tool_hook_under_another_server_name_is_replaced(tmp_path) ->
         "UserPromptSubmit"
     ]
     assert len(entries) == 1  # 旧 mcp_tool 那条被替换，只剩我们新写的
-    assert entries[0]["type"] == "command"  # 简写形态：事件直接挂 handler
+    assert entries[0]["hooks"][0]["type"] == "command"  # matcher 组里套 handler
     assert not any(entry.get("type") == "mcp_tool" for entry in entries)
 
 
