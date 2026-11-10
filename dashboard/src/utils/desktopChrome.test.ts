@@ -185,6 +185,9 @@ describe("desktopChrome", () => {
     expect(css).toMatch(
       /html\[data-octop-caption-row\] #octop-stage\s*\{[^}]*flex:\s*1 1 auto;[^}]*transform:\s*translateY\(0\)/,
     );
+    expect(css).toMatch(
+      /html\[data-octop-caption-row\] #root\s*\{[^}]*min-height:\s*0/,
+    );
     expect(css).not.toMatch(/\.octop-win-menu\s*\{[^}]*z-index/);
     expect(css).not.toMatch(/\.octop-win-menu\s*\{[^}]*position:\s*fixed/);
     expect(css).not.toMatch(

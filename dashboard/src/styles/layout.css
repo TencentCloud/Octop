@@ -59,6 +59,10 @@ html[data-octop-caption-row] #octop-stage {
 html[data-octop-caption-row] #root {
   position: absolute;
   inset: 0;
+  /* index.html pins #root to 100lvh for the boot splash. That height is the
+     whole window, and this node already sits under the caption row, so the
+     extra row is clipped off the bottom of the shell. */
+  min-height: 0;
 }
 
 html[data-octop-desktop-chrome="windows"] .octop-win-menu {
