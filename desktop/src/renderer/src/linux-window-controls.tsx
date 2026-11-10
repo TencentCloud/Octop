@@ -1,5 +1,18 @@
 import { useEffect, useState } from "react";
+import {
+  CloseIcon,
+  MaximizeIcon,
+  MinimizeIcon,
+  RestoreIcon,
+} from "../../../../dashboard/src/components/WindowControlIcons";
 import styles from "./linux-window-controls.module.less";
+
+const GLYPH = {
+  minimize: MinimizeIcon,
+  maximize: MaximizeIcon,
+  restore: RestoreIcon,
+  close: CloseIcon,
+} as const;
 
 function linuxDesktop(): boolean {
   return (
@@ -66,21 +79,7 @@ export function LinuxWindowControls() {
   );
 }
 
-function CaptionGlyph({
-  kind,
-}: {
-  kind: "minimize" | "maximize" | "restore" | "close";
-}) {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
-      {kind === "minimize" ? <path d="M1 8h8" stroke="currentColor" /> : null}
-      {kind === "maximize" ? (
-        <rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor" />
-      ) : null}
-      {kind === "restore" ? (
-        <path d="M3 1h6v6M1 3h6v6H1z" fill="none" stroke="currentColor" />
-      ) : null}
-      {kind === "close" ? <path d="M2 2l6 6M8 2L2 8" stroke="currentColor" /> : null}
-    </svg>
-  );
+function CaptionGlyph({ kind }: { kind: keyof typeof GLYPH }) {
+  const Icon = GLYPH[kind];
+  return <Icon aria-hidden="true" />;
 }

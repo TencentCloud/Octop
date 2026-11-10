@@ -95,6 +95,8 @@ export default {
   },
   linux: {
     target: ["deb", "rpm"],
+    executableName: "octop",
+    packageName: "octop",
     icon: "resources/icon.png",
     category: "Utility",
     maintainer: "Octop",

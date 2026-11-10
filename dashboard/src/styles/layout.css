@@ -101,8 +101,9 @@ html[data-octop-desktop-chrome="windows"] .octop-linux-controls button {
 }
 
 html[data-octop-desktop-chrome="windows"] .octop-linux-controls svg {
-  fill: none;
-  stroke-width: 1;
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 
 html[data-octop-desktop-chrome="windows"]
