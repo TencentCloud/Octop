@@ -53,21 +53,21 @@ def test_installer_detects_the_local_terminals() -> None:
 
 
 def test_installer_asks_for_a_user_mcp_token_not_a_user_id() -> None:
-    """凭据是**用户级 MCP token**：只问 token + 专家 ID，不再问「用户标识」。"""
+    """凭据是**用户级 MCP token**（token 绑定专家）：只问 token，不问专家 ID / 用户标识。"""
     script = _script()
 
     # 交互走 /dev/tty：curl | sh 时 stdin 是脚本本身，直接 read 会把脚本吃掉
     assert "if (true </dev/tty) 2>/dev/null; then HAS_TTY=1; fi" in script
-    assert script.count("< /dev/tty") >= 3  # 探测 + 选择 + token + 专家 ID
+    assert script.count("< /dev/tty") >= 2  # 探测 + 选择 + token
     assert "要配置哪些？" in script
-    assert "专家 ID: " in script
+    assert "专家 ID" not in script  # token 绑定专家，不再问专家 ID
     # token 提示说明去哪儿创建（omcp_…），且不回显
     assert "MCP token（omcp_…，在 Octop 的 /api/memory-mcp/tokens 创建；不回显）" in script
     assert "stty -echo" in script
     # 没有 tty 时不盲读 stdin，而是明确要求环境变量
     assert 'TOKEN="${OCTOP_MEMORY_TOKEN:-}"' in script
     assert "非交互运行时请设 OCTOP_MEMORY_TOKEN" in script
-    assert "非交互运行时请设 OCTOP_AGENT_ID" in script
+    assert "OCTOP_AGENT" not in script  # 没有专家 ID 这个必填项
     # 「用户标识」这一整套概念消失：token 就代表「谁问的」
     assert "OCTOP_USER_ID" not in script
     assert "X-Octop-User-Id" not in script
@@ -116,19 +116,19 @@ def test_default_token_is_an_optional_prefill() -> None:
 
 
 def test_known_values_only_prefill_prompts() -> None:
+    """``terminals`` 只是预填；``agent_id`` 保留形参但**被忽略**（token 已绑定专家）。"""
     script = _script(agent_id="RY9RQC", terminals="kiro")
 
-    assert "DEFAULT_AGENT='RY9RQC'" in script
     assert "DEFAULT_TERMINALS='kiro'" in script
+    assert "DEFAULT_AGENT" not in script
+    assert "RY9RQC" not in script
 
 
 def test_setup_script_shell_quotes_query_prefills() -> None:
-    script = _script(agent_id="x';id", terminals="cursor';id", project="/tmp/p';id")
+    script = _script(terminals="cursor';id", project="/tmp/p';id")
     # Classic POSIX single-quote escape: ' → '"'"'
-    assert "DEFAULT_AGENT='x'\"'\"';id'" in script
     assert "DEFAULT_TERMINALS='cursor'\"'\"';id'" in script
     assert "DEFAULT_PROJECT='/tmp/p'\"'\"';id'" in script
-    assert "DEFAULT_AGENT='x';id'" not in script
     assert "DEFAULT_TERMINALS='cursor';id'" not in script
 
 
@@ -317,13 +317,13 @@ def test_dsh_native_install_registers_profile_and_patch_block() -> None:
 
 
 def test_dsh_native_config_block_uses_the_user_token_shape() -> None:
-    """配置块里的连接信息 = 用户级 MCP token 形状（endpoint/token/tokenHeader/agentId）。"""
+    """配置块里的连接信息 = 用户级 MCP token 形状（endpoint/token/tokenHeader，无 agentId）。"""
     script = _script()
 
     block = script[script.index("def _dsh_native_patch_block(config):") :]
     block = block[: block.index("def _is_patch_entry(")]
-    assert 'for key in ("endpoint", "token", "tokenHeader", "agentId"):' in block
-    assert "userId" not in block
+    assert 'for key in ("endpoint", "token", "tokenHeader"):' in block
+    assert "userId" not in block and "agentId" not in block
     config = script[script.index("def _dsh_native_config():") : script.index("def _yaml_scalar(")]
     assert '"tokenHeader": TOKEN_HEADER' in config
     assert "userId" not in config
@@ -342,14 +342,14 @@ def test_dsh_install_cleans_the_legacy_hook_bridge_and_preset() -> None:
     assert "shutil.rmtree(scripts)" in bridge_cleanup
 
 
-def test_loopback_targets_use_authorization_bearer() -> None:
-    """条目与 hooks 都是 ``Authorization: Bearer <MCP token>`` + ``X-Octop-Agent-Id``。"""
+def test_entries_use_authorization_bearer_only() -> None:
+    """条目与 hooks 只用 ``Authorization: Bearer <MCP token>``（token 绑定专家）。"""
     script = _script()
 
     assert '"Authorization": f"Bearer {TOKEN}"' in script
-    assert 'headers = {\n        "X-Octop-Agent-Id": AGENT,' in script
+    assert "X-Octop-Agent-Id" not in script
     assert "客户端 MCP 条目与 hooks：" in script
-    assert "Authorization: Bearer <MCP token> + X-Octop-Agent-Id" in script
+    assert "只用 Authorization: Bearer <MCP token>" in script
 
 
 def test_node_is_resolved_to_an_absolute_path() -> None:
@@ -489,6 +489,19 @@ def test_installer_mentions_the_windows_native_installer() -> None:
     assert '?os=windows" | iex' in script
 
 
+def test_the_mcp_token_is_the_only_credential() -> None:
+    """token 绑定专家：渲染出的脚本 / 配置里没有专家 ID 与专家头。"""
+    scripts = (
+        _script(),
+        render_uninstall_script(),
+        render_setup_ps1(mcp_url=_URL),
+        render_uninstall_ps1(),
+    )
+    for script in scripts:
+        for word in ("X-Octop-Agent-Id", "agentId", "OCTOP_AGENT", "专家 ID", "DEFAULT_AGENT"):
+            assert word not in script, f"安装器还在用专家 ID：{word}"
+
+
 def test_no_internal_only_vocabulary_leaks() -> None:
     """脱敏底线：安装器不能出现废弃的身份头或第二套凭据。"""
     scripts = (
@@ -585,7 +598,7 @@ def test_generated_installer_actually_runs(tmp_path) -> None:
     patch = (profile / "cordis.patch.yml").read_text(encoding="utf-8")
     assert patch.count("- id: octop-memory-native") == 1  # 跑两遍也不重复
     assert "endpoint:" in patch and "tokenHeader:" in patch
-    assert "userId" not in patch
+    assert "userId" not in patch and "agentId" not in patch
     assert "不依赖 ~/.dsh/hooks 的 hook 桥接" in patch
 
 
@@ -636,7 +649,6 @@ def _run_terminals(tmp_path, terminals: str, prepare=None, extra_env=None, home_
         "HOME": str(home),
         "OCTOP_TERMINALS": terminals,
         "OCTOP_MEMORY_TOKEN": _TOKEN,
-        "OCTOP_AGENT_ID": "AGT1",
         **(extra_env or {}),
     }
     result = None
@@ -666,7 +678,7 @@ def _run_uninstall(tmp_path, home: Path, terminals: str, extra_env=None):
 
 
 def test_config_and_entry_carry_the_user_mcp_token(tmp_path) -> None:
-    """config.json 与 MCP 条目都是「MCP 地址 + 用户 token + 专家 ID」，没有 userId。"""
+    """config.json 与 MCP 条目只带「MCP 地址 + 用户 token」：没有 agentId、没有身份头。"""
     home, _ = _run_terminals(tmp_path, "claude-code")
 
     config = json.loads((home / ".claude/hooks-events/config.json").read_text(encoding="utf-8"))
@@ -674,17 +686,14 @@ def test_config_and_entry_carry_the_user_mcp_token(tmp_path) -> None:
         "url": _URL,
         "token": _TOKEN,
         "tokenHeader": "Authorization",
-        "agentId": "AGT1",
     }
+    assert "agentId" not in config
 
     entry = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["mcpServers"][
         "octop-memory-local"
     ]
     assert entry["url"] == _URL
-    assert entry["headers"] == {
-        "X-Octop-Agent-Id": "AGT1",
-        "Authorization": f"Bearer {_TOKEN}",
-    }
+    assert entry["headers"] == {"Authorization": f"Bearer {_TOKEN}"}
 
 
 def test_entry_defaults_to_the_instance_mount(tmp_path) -> None:
@@ -701,7 +710,6 @@ def test_entry_defaults_to_the_instance_mount(tmp_path) -> None:
             "HOME": str(home),
             "OCTOP_TERMINALS": "claude-code",
             "OCTOP_MEMORY_TOKEN": "shared-token",
-            "OCTOP_AGENT_ID": "AGT1",
         },
         capture_output=True,
         text=True,
@@ -712,10 +720,7 @@ def test_entry_defaults_to_the_instance_mount(tmp_path) -> None:
     servers = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["mcpServers"]
     entry = next(iter(servers.values()))
     assert entry["url"] == instance
-    assert entry["headers"] == {
-        "X-Octop-Agent-Id": "AGT1",
-        "Authorization": "Bearer shared-token",
-    }
+    assert entry["headers"] == {"Authorization": "Bearer shared-token"}
 
 
 def test_declared_public_url_becomes_the_entry_address(tmp_path) -> None:
@@ -733,7 +738,6 @@ def test_declared_public_url_becomes_the_entry_address(tmp_path) -> None:
             "HOME": str(home),
             "OCTOP_TERMINALS": "claude-code",
             "OCTOP_MEMORY_TOKEN": "shared-token",
-            "OCTOP_AGENT_ID": "AGT1",
         },
         capture_output=True,
         text=True,
@@ -759,7 +763,6 @@ def test_without_a_token_the_installer_still_demands_one(tmp_path) -> None:
         **os.environ,
         "HOME": str(home),
         "OCTOP_TERMINALS": "claude-code",
-        "OCTOP_AGENT_ID": "AGT1",
     }
     env.pop("OCTOP_MEMORY_TOKEN", None)
     result = subprocess.run(
@@ -851,12 +854,11 @@ def test_dsh_native_install_is_idempotent(tmp_path) -> None:
     patch = (profile / "cordis.patch.yml").read_text(encoding="utf-8")
     assert patch.count("- id: octop-memory-native") == 1
     assert "# <<< octop-memory-native <<<" in patch
-    # 配置块 = 用户级 token 形状（无 userId）
+    # 配置块 = 用户级 token 形状（无 userId / agentId）
     assert "    endpoint: 'http://127.0.0.1:8088/mcp/memory/'" in patch
     assert "    token: 'omcp_test_token'" in patch
     assert "    tokenHeader: 'Authorization'" in patch
-    assert "    agentId: 'AGT1'" in patch
-    assert "userId" not in patch
+    assert "userId" not in patch and "agentId" not in patch  # token 绑定专家
 
 
 @posix_only
@@ -1089,7 +1091,6 @@ def test_project_env_wins_over_the_query_prefill(tmp_path) -> None:
         "HOME": str(home),
         "OCTOP_TERMINALS": "claude-code",
         "OCTOP_MEMORY_TOKEN": _TOKEN,
-        "OCTOP_AGENT_ID": "AGT1",
     }
 
     # 环境变量优先：装到 from-env，而不是 query 预填的 prefilled
@@ -1233,7 +1234,6 @@ def _run_claude_code_installer(tmp_path, claude_json: dict, settings: dict | Non
             "HOME": str(home),
             "OCTOP_TERMINALS": "claude-code",
             "OCTOP_MEMORY_TOKEN": _TOKEN,
-            "OCTOP_AGENT_ID": "AGT1",
         },
         capture_output=True,
         text=True,
@@ -1310,14 +1310,17 @@ def test_legacy_mcp_tool_hook_under_another_server_name_is_replaced(tmp_path) ->
 
 def test_powershell_installer_renders_a_native_installer() -> None:
     """``?os=windows`` 是原生 PowerShell 安装器：不需要 Git Bash，也不写 .cmd 包装链。"""
+    # agent_id 形参保留但被忽略
     script = render_setup_ps1(mcp_url=_URL, agent_id="AGT1", terminals="cursor")
 
     assert "$PSVersionTable.PSVersion.Major" in script
     assert "Read-Host" in script and "Read-Secret" in script  # 不回显
     assert "Join-Path $HOME '.claude\\hooks-events'" in script
     assert "Join-Path $HOME '.cursor\\hooks'" in script
-    assert "$DEFAULT_AGENT = 'AGT1'" in script
     assert "$DEFAULT_TERMINALS = 'cursor'" in script
+    # token 绑定专家：没有专家 ID 可填，agent_id 形参被忽略
+    assert "DEFAULT_AGENT" not in script and "专家 ID" not in script
+    assert "OCTOP_AGENT" not in script
     # 同一个 Python 合并程序 + .cmd 包装脚本
     assert "OCTOP_HOOK_WRAPPER = 'cmd'" in script
     assert "def _cmd_hook_command(mjs):" in script
@@ -1350,10 +1353,16 @@ def test_powershell_uninstaller_renders() -> None:
 
 def test_powershell_quoting_escapes_single_quotes() -> None:
     """PowerShell 单引号串里 ``'`` 要写成 ``''``（不然后面的语句被吃掉）。"""
-    script = render_setup_ps1(mcp_url=_URL, agent_id="a'b", terminals="cursor'x")
+    script = render_setup_ps1(
+        mcp_url=_URL,
+        agent_id="a'b",  # 形参保留但忽略：不应出现在脚本里
+        terminals="cursor'x",
+        project="/tmp/p'x",
+    )
 
-    assert "$DEFAULT_AGENT = 'a''b'" in script
     assert "$DEFAULT_TERMINALS = 'cursor''x'" in script
+    assert "$DEFAULT_PROJECT = '/tmp/p''x'" in script
+    assert "DEFAULT_AGENT" not in script
 
 
 def test_powershell_project_scope_honours_an_explicitly_empty_env() -> None:

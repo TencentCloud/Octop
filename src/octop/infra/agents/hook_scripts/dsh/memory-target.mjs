@@ -53,7 +53,6 @@ function configFromServer(server) {
     endpoint: String(server.url ?? "").trim(),
     token: tokenHeader ? headers[tokenHeader].replace(/^Bearer\s+/i, "") : "",
     tokenHeader,
-    agentId: headers["X-Octop-Agent-Id"] ?? "",
   };
 }
 

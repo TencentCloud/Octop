@@ -91,7 +91,7 @@ if (IS_WORKER) {
 
 const config = loadConfig();
 if (!isConfigured(config)) {
-  log("skip: not configured (need OCTOP_MEMORY_MCP_URL / _TOKEN / _AGENT_ID or config.json)");
+  log("skip: not configured (need OCTOP_MEMORY_MCP_URL / _TOKEN or config.json)");
   process.exit(0);
 }
 let buffer;

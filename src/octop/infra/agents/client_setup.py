@@ -7,7 +7,7 @@ person running it, never fetched::
 
     curl -fsSL "https://<octop>/mcp/memory/setup" | sh
     #   → 检测到：1) Claude Code  2) Kiro  3) DSH  4) Codex  5) Cursor
-    #   → 要配置哪些？   MCP token: ****（不回显）   专家 ID: XXXX
+    #   → 要配置哪些？   MCP token: ****（不回显）
 
 Windows uses a native PowerShell installer (no Git Bash, no ``.cmd`` shim)::
 
@@ -46,10 +46,10 @@ plugin, links it into the selected profile's ``node_modules``, registers the
 up the legacy ``dsh-memory-share`` preset and the ``~/.dsh/hooks`` bridge so the two
 wirings never trigger twice.
 
-Each hook copy carries its own ``config.json`` (endpoint, token, expert). The token is a
-user-level MCP token sent as ``Authorization: Bearer <token>`` plus ``X-Octop-Agent-Id``;
-there is no user-id header — the token already identifies the person. The hook roles are
-fixed: **UserPromptSubmit / beforeSubmitPrompt → memory_search** (pull background in)
+Each hook copy carries its own ``config.json`` (endpoint, token). The token is a user-level
+MCP token that is **bound to exactly one expert**, and it is the only credential: entries and
+hooks send ``Authorization: Bearer <token>`` and nothing else — no expert id header, because
+the token already says which expert the memory belongs to. The hook roles are fixed: **UserPromptSubmit / beforeSubmitPrompt → memory_search** (pull background in)
 and **Stop / stop → memory_capture** (ship the session transcript).
 """
 
@@ -284,14 +284,14 @@ def _install_hooks(target, host):
 
     脚本与 ``config.json`` 始终留在用户目录（项目级安装也一样）：项目里只写「注册」，
     凭据不会出现在仓库里。``config.json`` 的形状就是连接配置本身
-    （``url`` / ``token`` / ``tokenHeader`` / ``agentId``），DSH 原生插件也用它当兜底。
+    （``url`` / ``token`` / ``tokenHeader``），DSH 原生插件也用它当兜底。
     """
     target.mkdir(parents=True, exist_ok=True)
     for rel, blob in HOOK_FILES[host].items():
         path = target / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(base64.b64decode(blob))
-    config = {"url": HOOK_URL, "token": TOKEN, "tokenHeader": TOKEN_HEADER, "agentId": AGENT}
+    config = {"url": HOOK_URL, "token": TOKEN, "tokenHeader": TOKEN_HEADER}
     _dump(target / "config.json", config)
     print(f"  ✓ hook 脚本（{host} 专用，含共享传输模块）+ config.json → {target}")
     scratch = "%TEMP%" if os.name == "nt" else "$TMPDIR"
@@ -302,10 +302,9 @@ def _install_hooks(target, host):
 
 
 def _entry(transport=None):
-    # 用户级 MCP token：``Authorization: Bearer <token>`` + ``X-Octop-Agent-Id``。
-    # 「谁问的」由 token 自己表达，不再有第二个身份头。
+    # 用户级 MCP token 是唯一凭据：``Authorization: Bearer <token>``。
+    # token 绑定一个专家，「谁问的 / 落到哪个专家」全由它表达，不再有第二个身份头。
     headers = {
-        "X-Octop-Agent-Id": AGENT,
         "Authorization": f"Bearer {TOKEN}",
     }
     entry = {"type": transport or "http", "url": ENTRY_URL, "headers": headers}
@@ -661,14 +660,13 @@ def _dsh_bundle_dir():
 def _dsh_native_config():
     """原生插件的连接配置：与客户端 MCP 条目同一套语义（MCP 地址 + 用户级 MCP token）。
 
-    ``tokenHeader`` 固定 ``Authorization``（值写成 ``Bearer <token>``）；``agentId`` 是专家 ID，
-    由插件写成 ``X-Octop-Agent-Id``。身份全由 token 表达，没有额外的标识头。
+    ``tokenHeader`` 固定 ``Authorization``（值写成 ``Bearer <token>``）。token 绑定一个专家，
+    插件不再需要（也不发送）任何专家标识头。
     """
     return {
         "endpoint": ENTRY_URL,
         "token": TOKEN,
         "tokenHeader": TOKEN_HEADER,
-        "agentId": AGENT,
     }
 
 
@@ -698,7 +696,7 @@ def _dsh_native_patch_block(config):
         f"- id: {NATIVE_NAME}",
         "  config:",
     ]
-    for key in ("endpoint", "token", "tokenHeader", "agentId"):
+    for key in ("endpoint", "token", "tokenHeader"):
         lines.append(f"    {key}: {_yaml_scalar(config.get(key, ''))}")
     lines.append(f"# <<< {NATIVE_NAME} <<<")
     return "\\n".join(lines) + "\\n"
@@ -962,7 +960,7 @@ def _install_dsh_native():
     """原生插件安装：写插件目录 → 拆旧桥接 → 登记 profile → 写 cordis.patch.yml 配置块。
 
     安装后 DSH 直接可用：插件行由插件自带的 bundle patch（dsh.bundle.patch）insert，profile
-    的 cordis.patch.yml 只按同 id 覆盖 config（endpoint / token / agentId）。
+    的 cordis.patch.yml 只按同 id 覆盖 config（endpoint / token / tokenHeader）。
     """
     bundle = _install_dsh_native_files()
     if bundle is None:
@@ -1159,7 +1157,6 @@ def _wrapper_encoding():
     return "mbcs" if os.name == "nt" else "utf-8"
 
 
-AGENT = os.environ["OCTOP_AGENT"]
 CC_DIR = pathlib.Path(os.environ["OCTOP_CC_DIR"]).expanduser()
 KIRO_DIR = pathlib.Path(os.environ["OCTOP_KIRO_DIR"]).expanduser()
 DSH_DIR = pathlib.Path(os.environ["OCTOP_DSH_DIR"]).expanduser()
@@ -1189,7 +1186,7 @@ for terminal in os.environ["OCTOP_TERMINALS"].split(","):
 
 print("  · hook 角色：用户提交时召回（CC / Codex 的 UserPromptSubmit，Cursor 的 beforeSubmitPrompt）；")
 print("    回合结束时上报会话 transcript（Stop / Cursor 的 stop）")
-print(f"  · hooks 直连 {HOOK_URL}；客户端 MCP 条目 {ENTRY_URL}（Authorization: Bearer <MCP token> + X-Octop-Agent-Id）")
+print(f"  · hooks 直连 {HOOK_URL}；客户端 MCP 条目 {ENTRY_URL}（只用 Authorization: Bearer <MCP token>）")
 print("  · DSH 用原生插件 octop-memory-native 在进程内召回/上报（不装 hooks 桥接）")
 print("  · octop memory 接入完成（可重复执行，不会影响其它 MCP/hook 条目）")
 '''.strip()
@@ -1264,7 +1261,10 @@ def render_setup_script(
     ``default_token`` is an **optional prefill** for the user-level MCP token — callers pass
     an empty string, because the installer must never ship a credential of its own. The
     script falls back to ``OCTOP_MEMORY_TOKEN`` first and only then uses this value.
-    ``agent_id`` and ``terminals`` (comma list) only prefill the prompts.
+    ``terminals`` (comma list) only prefills the terminal prompt.
+
+    ``agent_id`` is accepted for backwards compatibility and **ignored**: the MCP token is
+    bound to one expert, so there is no expert id to install (and no ``X-Octop-Agent-Id``).
 
     ``project`` is the **prefill** path for a project-scoped install (the interactive
     default). Non-interactive runs read ``OCTOP_PROJECT_DIR`` — the environment wins, and an
@@ -1275,7 +1275,6 @@ def render_setup_script(
     # Query-string prefills must be shell-safe (same escaping as DEFAULT_TOKEN).
     url_literal = _sh_single_quote(mcp_url)
     hook_url_literal = _sh_single_quote(hook_url)
-    agent_literal = _sh_single_quote(agent_id) if agent_id else "''"
     terminals_literal = _sh_single_quote(terminals) if terminals else "''"
     project_literal = _sh_single_quote(project) if project else "''"
     default_token_line = f"DEFAULT_TOKEN={token_literal}" if default_token else ""
@@ -1303,7 +1302,6 @@ export OCTOP_HOOK_WRAPPER
 
 URL={url_literal}
 HOOK_URL={hook_url_literal}
-DEFAULT_AGENT={agent_literal}
 {default_token_line}
 DEFAULT_TERMINALS={terminals_literal}
 DEFAULT_PROJECT={project_literal}
@@ -1476,17 +1474,7 @@ if [ -z "$TOKEN" ] && [ "$HAS_TTY" = 1 ]; then
 fi
 [ -n "$TOKEN" ] || {{ echo "缺少 MCP token：非交互运行时请设 OCTOP_MEMORY_TOKEN=<omcp_…>" >&2; exit 1; }}
 TOKEN_HEADER='Authorization'
-echo "  · 客户端 MCP 条目与 hooks：${{URL}}（Authorization: Bearer <MCP token> + X-Octop-Agent-Id）"
-
-AGENT="${{OCTOP_AGENT_ID:-}}"
-if [ -z "$AGENT" ]; then
-  if [ -n "$DEFAULT_AGENT" ]; then
-    AGENT="$(ask "专家 ID [$DEFAULT_AGENT]: " "$DEFAULT_AGENT")"
-  else
-    AGENT="$(ask "专家 ID: " "")"
-  fi
-fi
-[ -n "$AGENT" ] || {{ echo "缺少专家 ID：非交互运行时请设 OCTOP_AGENT_ID=<id>" >&2; exit 1; }}
+echo "  · 客户端 MCP 条目与 hooks：${{URL}}（只用 Authorization: Bearer <MCP token>）"
 
 command -v node >/dev/null 2>&1 || echo "  ! 未找到 node：hook 需要它，请先安装 Node.js" >&2
 command -v python3 >/dev/null 2>&1 || {{ echo "  ! 未找到 python3：无法合并终端配置" >&2; exit 1; }}
@@ -1529,11 +1517,11 @@ fi
 
 # ---- 4) 先验证这份凭据在该端点可用（免得装完才发现 401）
 if [ "$NODE_BIN" != node ] || command -v node >/dev/null 2>&1; then
-  OCTOP_URL="$HOOK_URL" OCTOP_TOKEN="$TOKEN" OCTOP_AGENT="$AGENT" \\
+  OCTOP_URL="$HOOK_URL" OCTOP_TOKEN="$TOKEN" \\
   "$NODE_BIN" --input-type=module -e '
 const cfg = {{ url: process.env.OCTOP_URL, token: process.env.OCTOP_TOKEN }};
 const headers = {{ "Content-Type": "application/json", Accept: "application/json, text/event-stream",
-  Authorization: `Bearer ${{cfg.token}}`, "X-Octop-Agent-Id": process.env.OCTOP_AGENT }};
+  Authorization: `Bearer ${{cfg.token}}` }};
 try {{
   const r = await fetch(cfg.url, {{ method: "POST", headers, signal: AbortSignal.timeout(8000), body: JSON.stringify({{ jsonrpc: "2.0", id: 1, method: "tools/list" }}) }});
   console.log(`  · 端点自检（hook 直连）：HTTP ${{r.status}}${{r.status === 200 ? "" : "（凭据或地址不对，请检查）"}}`);
@@ -1545,7 +1533,7 @@ fi
 
 # ---- 5) 各终端各自安装 hook 脚本 / 插件 + 合并其配置
 OCTOP_URL="$URL" OCTOP_HOOK_URL="$HOOK_URL" OCTOP_TOKEN="$TOKEN" \\
-OCTOP_AGENT="$AGENT" OCTOP_SERVER_NAME='{_server_name(mcp_url)}' \\
+OCTOP_SERVER_NAME='{_server_name(mcp_url)}' \\
 OCTOP_CC_DIR="$CC_DIR" OCTOP_KIRO_DIR="$KIRO_DIR" OCTOP_DSH_DIR="$DSH_DIR" \\
 OCTOP_CODEX_DIR="$CODEX_DIR" OCTOP_CURSOR_DIR="$CURSOR_DIR" \\
 OCTOP_TERMINALS="$TERMINALS" \\
@@ -2186,7 +2174,7 @@ OCTOP_PY
 _PS_SELF_CHECK_JS = r"""
 const cfg = { url: process.env.OCTOP_CHECK_URL, token: process.env.OCTOP_CHECK_TOKEN };
 const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream",
-  Authorization: `Bearer ${cfg.token}`, "X-Octop-Agent-Id": process.env.OCTOP_CHECK_AGENT };
+  Authorization: `Bearer ${cfg.token}` };
 try {
   const r = await fetch(cfg.url, { method: "POST", headers, signal: AbortSignal.timeout(8000), body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }) });
   console.log(`  · 端点自检（hook 直连）：HTTP ${r.status}${r.status === 200 ? "" : "（凭据或地址不对，请检查）"}`);
@@ -2199,7 +2187,7 @@ try {
 
 _SETUP_PS_TEMPLATE = r"""# octop memory — Windows 终端接入（hooks 发往 __HOOK_URL_TEXT__；可重复执行）
 #   用法（PowerShell）：irm "<octop>/mcp/memory/setup?os=windows" | iex
-#   非交互（CI/批量）：先设 $env:OCTOP_MEMORY_TOKEN / $env:OCTOP_AGENT_ID / $env:OCTOP_TERMINALS
+#   非交互（CI/批量）：先设 $env:OCTOP_MEMORY_TOKEN / $env:OCTOP_TERMINALS
 #
 # 与 POSIX 安装器共用同一套终端宿主和同一份「合并配置」python 程序；差别只在两处：
 #   * 交互走 PowerShell 的 Read-Host（Windows 没有 POSIX 的终端控制这套做法）；
@@ -2210,7 +2198,6 @@ if ($PSVersionTable.PSVersion.Major -lt 5) { throw '需要 PowerShell 5.1 或更
 
   $URL = __URL_LITERAL__
   $HOOK_URL = __HOOK_URL_LITERAL__
-  $DEFAULT_AGENT = __DEFAULT_AGENT_LITERAL__
   $DEFAULT_TOKEN = __DEFAULT_TOKEN_LITERAL__
   $DEFAULT_TERMINALS = __DEFAULT_TERMINALS_LITERAL__
   $DEFAULT_PROJECT = __DEFAULT_PROJECT_LITERAL__
@@ -2358,14 +2345,7 @@ if ($PSVersionTable.PSVersion.Major -lt 5) { throw '需要 PowerShell 5.1 或更
   }
   if (-not $token) { throw '缺少 MCP token：非交互运行时请先设 $env:OCTOP_MEMORY_TOKEN=<omcp_…>' }
   Write-Host "  · hook 直连：$HOOK_URL$localNote"
-  Write-Host "  · 客户端 MCP 条目：$URL（Authorization: Bearer <MCP token> + X-Octop-Agent-Id）"
-
-  $agent = $env:OCTOP_AGENT_ID
-  if (-not $agent -and $interactive) {
-    if ($DEFAULT_AGENT) { $agent = Read-Host "专家 ID [$DEFAULT_AGENT]" } else { $agent = Read-Host '专家 ID' }
-    if (-not $agent) { $agent = $DEFAULT_AGENT }
-  }
-  if (-not $agent) { throw '缺少专家 ID：非交互运行时请先设 $env:OCTOP_AGENT_ID=<id>' }
+  Write-Host "  · 客户端 MCP 条目：$URL（只用 Authorization: Bearer <MCP token>）"
 
   # ---- 4) 解析 node 绝对路径（hook 由终端派生，非 login shell 里没有 PATH 上的 node）
   $nodeBin = $env:OCTOP_NODE
@@ -2423,7 +2403,6 @@ if ($PSVersionTable.PSVersion.Major -lt 5) { throw '需要 PowerShell 5.1 或更
   if ($nodeOk) {
     $env:OCTOP_CHECK_URL = $HOOK_URL
     $env:OCTOP_CHECK_TOKEN = $token
-    $env:OCTOP_CHECK_AGENT = $agent
     $check = @'
 __SELF_CHECK_JS__
 '@
@@ -2435,7 +2414,6 @@ __SELF_CHECK_JS__
     OCTOP_URL = $URL
     OCTOP_HOOK_URL = $HOOK_URL
     OCTOP_TOKEN = $token
-    OCTOP_AGENT = $agent
     OCTOP_SERVER_NAME = __SERVER_NAME_LITERAL__
     OCTOP_CC_DIR = $CC_DIR
     OCTOP_KIRO_DIR = $KIRO_DIR
@@ -2475,7 +2453,7 @@ __MERGE_PY__
   }
   # 别把安装器的临时环境变量留在当前 PowerShell 会话里
   Remove-Item Env:OCTOP_ENV_FILE -ErrorAction SilentlyContinue
-  Remove-Item Env:OCTOP_CHECK_URL, Env:OCTOP_CHECK_TOKEN, Env:OCTOP_CHECK_AGENT -ErrorAction SilentlyContinue
+  Remove-Item Env:OCTOP_CHECK_URL, Env:OCTOP_CHECK_TOKEN -ErrorAction SilentlyContinue
 
   Write-Host '  · 重开终端/IDE（Kiro 重载 hooks；Codex 首次需在 codex 里信任该 hook；DSH 重启后加载插件）后生效'
 }
@@ -2505,13 +2483,15 @@ def render_setup_ps1(
 
     ``default_token`` / ``project`` keep the same "optional prefill" meaning as in
     ``render_setup_script``; non-interactive runs read ``OCTOP_PROJECT_DIR``.
+
+    ``agent_id`` is accepted for backwards compatibility and **ignored** — the MCP token is
+    bound to one expert, so the installer writes no expert id and no ``X-Octop-Agent-Id``.
     """
     hook_url = hook_url or mcp_url
     replacements = {
         "__URL_LITERAL__": _ps_single_quote(mcp_url),
         "__HOOK_URL_LITERAL__": _ps_single_quote(hook_url),
         "__HOOK_URL_TEXT__": hook_url,
-        "__DEFAULT_AGENT_LITERAL__": _ps_single_quote(agent_id) if agent_id else "''",
         "__DEFAULT_TOKEN_LITERAL__": _ps_single_quote(default_token) if default_token else "''",
         "__DEFAULT_PROJECT_LITERAL__": _ps_single_quote(project) if project else "''",
         "__DEFAULT_TERMINALS_LITERAL__": _ps_single_quote(terminals) if terminals else "''",

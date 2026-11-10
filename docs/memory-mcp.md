@@ -3,14 +3,16 @@
 Octop 把专家记忆通过 MCP（Model Context Protocol）开放给外部 Agent / Bot：Claude Code、Codex、DSH 这类编码助手可以和 Octop 专家共用同一份长期记忆。
 
 - 端点：`/mcp/memory`（Streamable HTTP，**stateless**：每次请求独立，服务重启后客户端不会因为 `Mcp-Session-Id` 失效而报 `-32600 Session not found`）
-- 专家选择：请求头 `X-Octop-Agent-Id`（每次请求都可换，新建 / 停用专家即时生效，无需重启）
+- 专家选择：**token 直接绑定一个专家**（在 Dashboard「记忆 → MCP 接入」建 token 时选，之后可随时切换）；客户端不再需要专家 ID
 - 调用者身份：**用户级 token**（`Authorization: Bearer omcp_…`），不是实例共享 token；`X-Octop-User-Id` 不再被信任
 
 ## 1. 鉴权模型
 
 每个 Octop 用户可以有多个 token，每个 token 带一个客户端名字（如 `codex@macbook`），可以：
 
-- 只允许访问指定的专家（`expert_ids`），不填 = 该用户有权访问的所有专家
+- 绑定一个专家（`expert_ids` 恰好 1 个）：客户端只带 token 就能用，服务端按绑定路由
+- 也可以不绑（`null`）或绑多个（高级用法）：此时客户端必须带 `X-Octop-Agent-Id` 指定这次用哪个
+- 随时在 Dashboard 上**切换 token 绑定的专家**（`PATCH /api/memory-mcp/tokens/<token_id>`），下一次请求立即生效
 - 单独吊销某一个客户端，不影响其它客户端
 - 追溯每一条记忆是哪个客户端写的（原始事件的 `payload.caller` / `payload.source_host`）
 
@@ -31,6 +33,12 @@ curl -sS -X POST "https://<octop-host>/api/memory-mcp/tokens" \
 curl -sS "https://<octop-host>/api/memory-mcp/tokens" \
   -H "Authorization: Bearer <your-octop-session-token>"
 
+# 切换这个 token 绑定的专家（也可只改 name）
+curl -sS -X PATCH "https://<octop-host>/api/memory-mcp/tokens/<token_id>" \
+  -H "Authorization: Bearer <your-octop-session-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"expert_ids": ["<另一个专家ID>"]}'
+
 # 吊销
 curl -sS -X DELETE "https://<octop-host>/api/memory-mcp/tokens/<token_id>" \
   -H "Authorization: Bearer <your-octop-session-token>"
@@ -49,20 +57,20 @@ curl -sS -X DELETE "https://<octop-host>/api/memory-mcp/tokens/<token_id>" \
 
 ## 2. 客户端配置
 
-任何支持 Streamable HTTP MCP 的客户端都可以接入，只需三样东西：
+任何支持 Streamable HTTP MCP 的客户端都可以接入，只需两样东西：
 
 | 配置 | 值 |
 |------|----|
 | URL | `https://<octop-host>/mcp/memory/`（或自建入口，见 §5） |
-| Header `Authorization` | `Bearer omcp_…`（§1.1 创建的那个用户 token） |
-| Header `X-Octop-Agent-Id` | 专家 ID（如 `Z026BY`） |
+| Header `Authorization` | `Bearer omcp_…`（§1.1 创建、已绑定专家的那个 token） |
+
+> 只有「不限专家」或「绑定了多个专家」的 token 才需要额外带 `X-Octop-Agent-Id`；绑定单个专家的 token 只靠 token 就够了。
 
 ### 2.1 Claude Code
 
 ```bash
 claude mcp add --transport http octop-memory "https://<octop-host>/mcp/memory/" \
-  --header "Authorization: Bearer omcp_…" \
-  --header "X-Octop-Agent-Id: <专家ID>"
+  --header "Authorization: Bearer omcp_…"
 ```
 
 ### 2.2 Codex
@@ -72,12 +80,23 @@ claude mcp add --transport http octop-memory "https://<octop-host>/mcp/memory/" 
 ```toml
 [mcp_servers.octop-memory]
 url = "https://<octop-host>/mcp/memory/"
-http_headers = { Authorization = "Bearer omcp_…", "X-Octop-Agent-Id" = "<专家ID>" }
+http_headers = { Authorization = "Bearer omcp_…" }
 ```
 
 ### 2.3 DSH / Cursor / Kiro / 其它客户端
 
-在客户端的 MCP 配置里填 §2 的 URL 与两个 header 即可（DSH 的 `mcpServers` 用 `type: "streamable-http"`）。
+在客户端的 MCP 配置里填 §2 的 URL 与 `Authorization` 即可（DSH 的 `mcpServers` 用 `type: "streamable-http"`）。
+
+### 2.3.1 一条命令快速配置（脚本）
+
+```bash
+# 直接带上 token，不再交互问专家 ID；脚本会写 hooks + MCP 条目
+curl -fLsS "https://<octop-host>/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=omcp_… sh
+
+# 只配某一个终端（逗号分隔）
+curl -fLsS "https://<octop-host>/mcp/memory/setup" | \
+  OCTOP_MEMORY_TOKEN=omcp_… OCTOP_TERMINALS=cursor sh
+```
 
 ### 2.4 一键安装器（推荐）
 

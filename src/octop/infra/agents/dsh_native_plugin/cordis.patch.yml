@@ -13,7 +13,6 @@
         endpoint: ''
         token: ''
         tokenHeader: Authorization
-        agentId: ''
         configFallbackPath: '~/.dsh/hooks/config.json'
         recallEnabled: true
         recallMaxHits: 4

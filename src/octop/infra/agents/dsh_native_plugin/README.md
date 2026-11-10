@@ -24,7 +24,7 @@ DSH（DeepSeek Harness）原生「记忆共享」插件：**每轮开始前自�
 
 ## 认证
 
-认证是**用户级 token**：token 随 `Authorization: Bearer <token>` 发送（`tokenHeader` 可改名，非 `Authorization` 的头名按原样写入），专家身份由 `X-Octop-Agent-Id` 表达。不再需要、也不会发送任何用户标识头。
+认证是**用户级 token**：token 随 `Authorization: Bearer <token>` 发送（`tokenHeader` 可改名，非 `Authorization` 的头名按原样写入）。token 在服务端已经绑定一个专家，所以客户端**不需要也不发送任何身份头**（用户标识或专家标识都不传）。
 
 ## 配置
 
@@ -36,7 +36,6 @@ DSH（DeepSeek Harness）原生「记忆共享」插件：**每轮开始前自�
     endpoint: https://<your-octop-host>/mcp/memory/
     token: omcp_xxxxxxxx
     tokenHeader: Authorization
-    agentId: <expert-id>
 ```
 
 `token` 留空时会回退读 `~/.dsh/hooks/config.json`（octop 安装器写的那个），方便从 hooks 方案平滑迁移。

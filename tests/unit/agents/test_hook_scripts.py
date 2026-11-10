@@ -11,6 +11,7 @@ import pytest
 
 _HOOKS = Path(__file__).parents[3] / "src" / "octop" / "infra" / "agents" / "hook_scripts"
 _LIB = _HOOKS / "lib" / "octop-memory-client.mjs"
+_PLUGIN = Path(__file__).parents[3] / "src" / "octop" / "infra" / "agents" / "dsh_native_plugin"
 _NODE = shutil.which("node") or shutil.which("nodejs")
 node_required = pytest.mark.skipif(_NODE is None, reason="需要 node 才能执行 .mjs 断言")
 _HOSTS = {
@@ -50,23 +51,31 @@ def test_transport_module_is_host_agnostic() -> None:
     assert "export async function capture" in text
     assert "export async function callTool" in text
     assert "decompressZstdContainer" in text
-    # 认证是用户级 token：token 走 Authorization: Bearer，专家身份只走 X-Octop-Agent-Id，
-    # 不再有 userId / X-Octop-User-Id 这套旧标识。
-    assert '"X-Octop-Agent-Id"' in text
+    # 认证是用户级 token：token 走 Authorization: Bearer；token 在服务端已绑定专家，
+    # 所以客户端不再发送任何身份头（用户标识或专家标识都不传）。
     assert "`Bearer ${config.token}`" in text
-    assert "X-Octop-User-Id" not in text
-    assert "OCTOP_USER_ID" not in text
-    assert "userId" not in text
+    for identity in ("X-Octop-Agent-Id", "X-Octop-User-Id", "OCTOP_AGENT_ID", "OCTOP_USER_ID"):
+        assert identity not in text, f"共享模块仍发身份头：{identity}"
+    assert "agentId" not in text and "userId" not in text
     for host_word in ("claude-code", "kiro", "dsh", "codex", "cursor", "transcript_path"):
         assert host_word not in text, f"共享模块不应出现宿主细节：{host_word}"
 
 
-def test_no_hook_sends_a_user_identity() -> None:
-    """用户身份由 token 表达，任何宿主都不再读/发 X-Octop-User-Id。"""
-    for path in sorted(_HOOKS.rglob("*.mjs")):
+def test_no_hook_or_plugin_sends_an_identity_header() -> None:
+    """token 已绑定专家：hooks 与原生插件都不出现专家头/用户头及其配置项。"""
+    sources = [*sorted(_HOOKS.rglob("*.mjs")), _PLUGIN / "index.js", *_PLUGIN.glob("lib/*.js")]
+    assert sources, "没找到任何 hook/plugin 源文件"
+    for path in sources:
         text = path.read_text(encoding="utf-8")
-        for stale in ("X-Octop-User-Id", "OCTOP_USER_ID", "userId"):
-            assert stale not in text, f"{path.relative_to(_HOOKS)} 仍在用旧用户标识（{stale}）"
+        for stale in (
+            "X-Octop-Agent-Id",
+            "X-Octop-User-Id",
+            "OCTOP_AGENT_ID",
+            "OCTOP_USER_ID",
+            "agentId",
+            "userId",
+        ):
+            assert stale not in text, f"{path.name} 仍在用旧的客户端身份标识（{stale}）"
 
 
 def test_every_entry_uses_the_shared_configured_guard() -> None:
@@ -173,25 +182,25 @@ def probe() -> dict[str, object]:
 
 
 @node_required
-def test_config_no_longer_reads_a_user_id(probe: dict[str, object]) -> None:
-    """config 里没有 userId：OCTOP_USER_ID / config.json 的 userId 一律不再读。"""
+def test_config_no_longer_reads_an_identity(probe: dict[str, object]) -> None:
+    """config 里没有 userId / agentId：即使设了 OCTOP_USER_ID、OCTOP_AGENT_ID 也不读。"""
     config = probe["config"]
 
     assert isinstance(config, dict)
     assert "userId" not in config
+    assert "agentId" not in config
     assert config["endpoint"] == "https://memory.example.com/mcp/memory/"
-    assert config["agentId"] == "expert-1"
+    assert config["token"] == "omcp_env_token"
 
 
 @node_required
-def test_auth_headers_send_a_user_token_and_the_agent_id(probe: dict[str, object]) -> None:
-    """Authorization 带 Bearer <token>，专家身份走 X-Octop-Agent-Id，没有用户头。"""
+def test_auth_headers_send_only_the_token(probe: dict[str, object]) -> None:
+    """Authorization 带 Bearer <token>；不再有任何身份头（专家/用户都不发）。"""
     headers = probe["bearer"]
 
     assert isinstance(headers, dict)
     assert headers["Authorization"] == "Bearer omcp_abc123"
-    assert headers["X-Octop-Agent-Id"] == "expert-1"
-    assert not [name for name in headers if name.lower() == "x-octop-user-id"]
+    assert not [name for name in headers if name.lower() in ("x-octop-agent-id", "x-octop-user-id")]
 
 
 @node_required

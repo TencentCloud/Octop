@@ -66,15 +66,13 @@ export function loadConfig() {
   return {
     endpoint: process.env.OCTOP_MEMORY_MCP_URL || fromFile.url || "",
     token: process.env.OCTOP_MEMORY_MCP_TOKEN || fromFile.token || "",
-    agentId: process.env.OCTOP_AGENT_ID || fromFile.agentId || "",
     // Configurable header name; ``Authorization`` (the default) takes a bearer.
     tokenHeader: process.env.OCTOP_TOKEN_HEADER || fromFile.tokenHeader || "Authorization",
   };
 }
 
-function baseHeaders(config) {
+function baseHeaders() {
   return {
-    "X-Octop-Agent-Id": config.agentId,
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
@@ -83,19 +81,19 @@ function baseHeaders(config) {
 export function authHeaders(config) {
   // One configurable header carries the token: ``Authorization`` (the default)
   // takes ``Bearer <token>``, any other header name is written verbatim.
-  // The token belongs to a user, so the agent is identified only by
-  // ``X-Octop-Agent-Id``: no user header is sent.
-  const headers = baseHeaders(config);
+  // The MCP token is bound to one expert server-side, so a client sends no
+  // identity header at all — neither a user id nor an expert id.
+  const headers = baseHeaders();
   const header = config.tokenHeader || "Authorization";
   headers[header] = header.toLowerCase() === "authorization" ? `Bearer ${config.token}` : config.token;
   return headers;
 }
 
 /**
- * Whether these hooks have somewhere to send to: an endpoint, an agent, and a token.
+ * Whether these hooks have somewhere to send to: an endpoint and a token.
  */
 export function isConfigured(config) {
-  return !!config.endpoint && !!config.agentId && !!config.token;
+  return !!config.endpoint && !!config.token;
 }
 
 /** One logger per host: ``tag`` is what shows up in the shared log file. */

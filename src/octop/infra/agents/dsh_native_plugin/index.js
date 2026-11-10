@@ -55,7 +55,6 @@ export const Config = z.object({
   endpoint: z.string().default(''),
   token: z.string().default(''),
   tokenHeader: z.string().default('Authorization'),
-  agentId: z.string().default(''),
   /** token 为空时回退读这个文件（octop 安装器写的 hooks config.json）。 */
   configFallbackPath: z.string().default('~/.dsh/hooks/config.json'),
   // ── 召回 ────────────────────────────────────────────────────────────────
@@ -107,13 +106,11 @@ export function resolveConnection(config) {
   const endpoint = (config.endpoint || fallback.url || '').trim()
   const token = (config.token || fallback.token || '').trim()
   const tokenHeader = (config.tokenHeader || fallback.tokenHeader || 'Authorization').trim()
-  const agentId = (config.agentId || fallback.agentId || '').trim()
-  return { endpoint, token, tokenHeader, agentId }
+  return { endpoint, token, tokenHeader }
 }
 
-function baseHeaders(connection) {
+function baseHeaders() {
   return {
-    'X-Octop-Agent-Id': connection.agentId,
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
   }
@@ -121,10 +118,10 @@ function baseHeaders(connection) {
 
 /**
  * token 属于用户：``Authorization``（默认）写成 ``Bearer <token>``，其它头名原样写入。
- * 专家身份只由 ``X-Octop-Agent-Id`` 表达，不再额外发送任何用户标识头。
+ * token 在服务端已绑定一个专家，所以客户端不再发送任何身份头（用户或专家）。
  */
 function authHeaders(connection) {
-  const headers = baseHeaders(connection)
+  const headers = baseHeaders()
   if (!connection.token) return headers
   const header = connection.tokenHeader || 'Authorization'
   headers[header] = header.toLowerCase() === 'authorization' ? `Bearer ${connection.token}` : connection.token
@@ -257,7 +254,7 @@ export function apply(ctx, config) {
   const connection = () => resolveConnection(config)
   const configured = () => {
     const conn = connection()
-    return Boolean(conn.endpoint && conn.agentId && conn.token)
+    return Boolean(conn.endpoint && conn.token)
   }
 
   // ── 召回：每个 agent 的 pre-step ─────────────────────────────────────────
@@ -368,7 +365,7 @@ export function apply(ctx, config) {
   // octop 安装器 / 补 profile patch 的 config，后者要查 loader。这里明确喊一次。
   if (!configured()) {
     logger?.warn?.(
-      'octop-memory-native: loaded but NOT configured (endpoint / token / agentId missing) — recall and capture stay inactive. Run the octop memory setup installer or fill the `octop-memory-native` config block in the profile cordis.patch.yml.',
+      'octop-memory-native: loaded but NOT configured (endpoint / token missing) — recall and capture stay inactive. Run the octop memory setup installer or fill the `octop-memory-native` config block in the profile cordis.patch.yml.',
     )
   }
 }
