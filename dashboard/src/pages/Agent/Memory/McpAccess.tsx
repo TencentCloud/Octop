@@ -97,6 +97,7 @@ export default function McpAccess() {
   const [rotating, setRotating] = useState(false);
   /** Command to show once the token was regenerated; null before that. */
   const [rotatedCommand, setRotatedCommand] = useState<string | null>(null);
+  const [rotatedPlaintext, setRotatedPlaintext] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   /** ``token_id:client`` currently being enabled/disabled. */
   const [togglingClient, setTogglingClient] = useState<string | null>(null);
@@ -294,6 +295,7 @@ export default function McpAccess() {
       return;
     }
     setRotatedCommand(null);
+    setRotatedPlaintext(null);
     setCommandTarget(token);
   };
 
@@ -308,6 +310,7 @@ export default function McpAccess() {
         [result.token.token_id]: result.plaintext,
       }));
       setRotatedCommand(command);
+      setRotatedPlaintext(result.plaintext);
       await copySetupCommand(command);
     } catch (e) {
       message.error(
@@ -325,6 +328,7 @@ export default function McpAccess() {
     const rotated = rotatedCommand !== null;
     setCommandTarget(null);
     setRotatedCommand(null);
+    setRotatedPlaintext(null);
     // A rotate rewrote token_hint and cleared last_used_at.
     if (rotated) void load();
   };
@@ -820,6 +824,9 @@ export default function McpAccess() {
               )}
             />
             <Typography.Text strong>{created.token.name}</Typography.Text>
+            <Typography.Text type="secondary">
+              {t("memory.mcp.tokenLabel", "Token")}
+            </Typography.Text>
             <Space.Compact style={{ width: "100%" }}>
               <Input readOnly value={created.plaintext} />
               <Button onClick={() => void handleCopy()}>
@@ -876,9 +883,22 @@ export default function McpAccess() {
                   )}
                 />
                 <Typography.Text type="secondary">
+                  {t("memory.mcp.tokenLabel", "Token")}
+                </Typography.Text>
+                <Space.Compact style={{ width: "100%" }}>
+                  <Input readOnly value={rotatedPlaintext ?? ""} />
+                  <Button
+                    onClick={() => {
+                      if (rotatedPlaintext) void copyText(rotatedPlaintext);
+                    }}
+                  >
+                    {t("memory.mcp.copyToken", "复制 Token")}
+                  </Button>
+                </Space.Compact>
+                <Typography.Text type="secondary">
                   {t(
                     "memory.mcp.commandReady",
-                    "安装命令（已带上这个 Token，可直接粘贴执行）：",
+                    "一键安装命令（已带上这个 Token，可直接粘贴执行）：",
                   )}
                 </Typography.Text>
                 <Space.Compact style={{ width: "100%" }}>
