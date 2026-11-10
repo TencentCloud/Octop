@@ -253,6 +253,26 @@ control-plane migrations. Local compose enables `vector` via
 `docker/postgres/init-vector.sql`; managed databases need a DBA /
 provider toggle. See [ADR 002](./adr/002-database-backends.md).
 
+### Scheduled SQLite checkpoint backups
+
+These settings require a Harness build with the scheduled backup policy below.
+
+Harness attempts a whole-database backup before the first scheduled cleanup
+with eligible checkpoints. The default `OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE=first`
+writes `memory.sqlite.pre-prune.bak` alongside the database. If free space is
+less than the database plus WAL and 10% headroom, or if the backup fails,
+cleanup continues and a warning is logged. The adjacent
+`memory.sqlite.pre-prune.done` marker records when the attempt completed and
+its result. Remove the marker to allow another attempt the next time there are
+eligible checkpoints.
+
+Set `OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE=always` (or `1`, `true`, `on`, or
+`yes`) to replace the backup before each cleanup and defer checkpoint pruning
+if it cannot be written. Set it to `off` (or `0`, `false`, or `no`) to
+disable backup creation. Unrecognized values fall back to `first` with a warning.
+`OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS` defaults to 7. Set it to 0 to disable
+automatic expiration. Expiration leaves the marker in place.
+
 ## First-boot wizard
 
 The first request to a fresh install lands on the setup page. Greenfield
@@ -294,13 +314,14 @@ Per-agent provider credentials (e.g. API keys) live in the SQLite
 `providers` table and are surfaced through
 `infra/connectors/credential_crypto.py` for connector OAuth flows.
 
-## Optional segmented history archive
+## Retired segmented history archive
 
-`history_v2_enabled` defaults to `false`; enable it with
-`OCTOP_HISTORY_V2_ENABLED=true`.
-This switch only affects the write format of the next complete turn —
-once disabled, turns already saved in the new format are still read
-correctly.
-Before enabling, read
-[Segmented history archive & rollback](versioned-history.md), especially
-the version compatibility and backup/restore boundaries it covers.
+Octop ignores the former `history_v2_enabled` and `OCTOP_HISTORY_V2_ENABLED` settings.
+At startup, Octop migrates existing archive messages and supported trajectory events into the
+control-plane database before starting agents. Successful migrations retain the original
+`history_v2.sqlite` and `history_v2.required` with a `.migrated-<timestamp>` suffix.
+If a message or checkpoint anchor cannot be read, startup reports the affected thread and
+leaves the source archive in place so the data can be recovered and migration retried.
+Stop the old server before upgrading an installation with a v2 archive. Keep checkpoint
+retention disabled if the old server must run with the new Harness before migration.
+Restore a system backup containing a v2 archive with the offline backup CLI, then start Octop.
