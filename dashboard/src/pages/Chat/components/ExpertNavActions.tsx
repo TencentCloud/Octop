@@ -6,6 +6,7 @@ import {
   EyeOff,
   MessageSquarePlus,
   MoreVertical,
+  Pencil,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -28,6 +29,7 @@ export default function ExpertNavActions({
   pinned,
   onTogglePin,
   onNewChat,
+  onEdit,
   onHide,
   onUnhide,
 }: {
@@ -35,6 +37,7 @@ export default function ExpertNavActions({
   pinned: boolean;
   onTogglePin: () => void;
   onNewChat: () => void;
+  onEdit?: () => void;
   onHide?: () => void;
   onUnhide?: () => void;
 }) {
@@ -56,6 +59,17 @@ export default function ExpertNavActions({
       },
     },
   ];
+  if (onEdit) {
+    items.push({
+      key: "edit",
+      icon: <Pencil size={14} />,
+      label: t("experts.editExpert", "编辑专家"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onEdit();
+      },
+    });
+  }
   if (onHide) {
     items.push({
       key: "hide",

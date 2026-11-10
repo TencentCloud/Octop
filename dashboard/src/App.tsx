@@ -19,6 +19,7 @@ import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
 import InvitePage from "./pages/Invite";
 import AuthGuard from "./components/AuthGuard";
+import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import OctopSpinner from "./components/OctopSpinner";
 import { AntdAppProvider } from "./components/AntdAppProvider";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
@@ -132,6 +133,7 @@ function ThemedApp() {
           {desktopChrome ? (
             <DesktopWindowControls chrome={desktopChrome} />
           ) : null}
+          <PwaUpdatePrompt />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />

@@ -1071,6 +1071,12 @@ class GlobalProcessor:
             needs_multimodal=content_blocks_need_vision(content),
         )
         model_ref = model_route.model_ref
+        reasoning_overrides = self._resolve_reasoning_overrides(
+            user_id=user_id,
+            thread_id=thread_id,
+            model_ref=model_ref,
+            meta=None,
+        )
         resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
@@ -1111,6 +1117,7 @@ class GlobalProcessor:
             model=model_ref,
             auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
+            reasoning_overrides=reasoning_overrides,
         )
         self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
@@ -1410,6 +1417,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 command=msg.text,
                 response_lines=slash_lines,
+                user_id=user_id,
             )
             self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
             self.teams.cancel_member_hitl(thread_id)
@@ -2227,12 +2235,20 @@ class GlobalProcessor:
         thread_id: str,
         command: str,
         response_lines: list[str],
+        user_id: int = 0,
     ) -> None:
         """Save slash history, honoring the command's checkpoint persistence policy."""
+        from octop.infra.gateway.process.message_keys import AUTHOR_USER_ID_KEY  # noqa: PLC0415
+
         turn_id = new_ulid()
         response = "\n".join(response_lines).strip()
+        kwargs = {AUTHOR_USER_ID_KEY: user_id} if user_id > 0 else {}
         canonical: list[HumanMessage | AIMessage] = [
-            HumanMessage(content=command, id=f"slash:{turn_id}:human"),
+            HumanMessage(
+                content=command,
+                id=f"slash:{turn_id}:human",
+                additional_kwargs=kwargs,
+            ),
         ]
         if response:
             canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))

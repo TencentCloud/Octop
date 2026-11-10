@@ -429,6 +429,7 @@ Full catalog, auth kinds, and MCP modes: **[docs/connectors.md](docs/connectors.
 | `octop skills` | Enable/disable per-agent skills |
 | `octop plugin` | Install and manage third-party plugins |
 | `octop backup` | Export / restore backups |
+| `octop migrate` | Migrate an OpenClaw or Hermes Agent setup into an expert |
 | `octop clean` | Remove CLI state or wipe `~/.octop/` |
 | `octop memory list` | List running agents eligible for memory maintenance; no database changes. |
 | `octop memory slim [--agent ID]` | Back up and slim SQLite memory through the running host; uses the selected agent or prompts by number. Shows terminal and dashboard progress. [Details](docs/memory-slim.md) |

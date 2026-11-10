@@ -2941,6 +2941,10 @@ export async function attachThread(
           }
           return;
         }
+        if (applyRemoteUserFrame(state, data)) {
+          notify(state);
+          return;
+        }
 
         handleHarnessChunk(state, data as unknown as HarnessChunk, sessionId);
         if (
@@ -3205,6 +3209,15 @@ async function sendTurnWebSocket(
             }
             settle(true);
           }
+          return;
+        }
+        if (
+          applyRemoteUserFrame(
+            state,
+            data as unknown as Record<string, unknown>,
+          )
+        ) {
+          notify(state);
           return;
         }
         handleHarnessChunk(state, data, sessionId);
@@ -3867,6 +3880,53 @@ function dropOptimisticSteerMessages(
     (m) => !clientPendingIds.some((c) => m.id === optimisticSteerMessageId(c)),
   );
   if (next.length !== state.messages.length) state.messages = next;
+}
+
+function authorFromFrame(raw: unknown): ChatMessage["author"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as {
+    user_id?: unknown;
+    display_name?: unknown;
+    username?: unknown;
+    avatar_url?: unknown;
+    avatar_icon?: unknown;
+  };
+  if (typeof row.user_id !== "number" || row.user_id <= 0) return undefined;
+  return {
+    userId: row.user_id,
+    displayName: typeof row.display_name === "string" ? row.display_name : "",
+    username: typeof row.username === "string" ? row.username : "",
+    avatarUrl: typeof row.avatar_url === "string" ? row.avatar_url : null,
+    avatarIcon: typeof row.avatar_icon === "string" ? row.avatar_icon : null,
+  };
+}
+
+/** Show someone else's question as soon as their turn starts. */
+function applyRemoteUserFrame(
+  state: SessionStreamState,
+  data: Record<string, unknown>,
+): boolean {
+  if (String(data.type || "") !== "user") return false;
+  if ((data.meta as { steer?: boolean } | undefined)?.steer) return false;
+  const messageId = String(data.message_id || "").trim();
+  if (!messageId) return false;
+  if (state.messages.some((message) => message.id === messageId)) return true;
+  const content = String(data.content || "");
+  const attachments = attachmentsFromSteerFrame(data.attachments);
+  if (!content && (!attachments || attachments.length === 0)) return true;
+  state.messages = [
+    ...state.messages,
+    {
+      id: messageId,
+      role: "user",
+      content,
+      attachments,
+      author: authorFromFrame(data.author),
+      status: "done",
+      timestamp: Date.now(),
+    },
+  ];
+  return true;
 }
 
 function applySteerProtocolFrame(

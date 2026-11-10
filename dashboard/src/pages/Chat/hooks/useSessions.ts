@@ -31,6 +31,9 @@ export interface Session {
   turnActive?: boolean;
   awaitingUser?: boolean;
   unreadCount?: number;
+  contributed?: boolean;
+  /** False when another user contributed this conversation. */
+  owned?: boolean;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -57,6 +60,8 @@ export function toSession(row: {
   turn_active?: boolean;
   awaiting_user?: boolean;
   unread_count?: number;
+  contributed?: boolean;
+  owned?: boolean;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -92,7 +97,18 @@ export function toSession(row: {
     turnActive: Boolean(row.turn_active),
     awaitingUser: Boolean(row.awaiting_user),
     unreadCount: row.unread_count ?? 0,
+    contributed: Boolean(row.contributed),
+    owned: row.owned !== false,
   };
+}
+
+/** Update one thread already held in the chat session store. */
+export function patchStoredSession(id: string, patch: Partial<Session>) {
+  setModuleSessions((prev) =>
+    prev.map((session) =>
+      session.id === id ? { ...session, ...patch } : session,
+    ),
+  );
 }
 
 /** Mirror server order: pinned first, then recency (empty chats use created_at). */

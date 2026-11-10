@@ -240,11 +240,34 @@ class Gateway:
             "error": error,
             "updated_at": status.updated_at,
         }
+        channel = self._channel_manager.get_channel(channel_id) if self._channel_manager else None
+        metrics = getattr(channel, "health_metrics", None)
+        if callable(metrics):
+            out.update(metrics())
         if status.lease_owner:
             out["lease_owner"] = status.lease_owner
         if status.lease_until is not None:
             out["lease_until"] = status.lease_until
         return out
+
+    def channel_health(self) -> list[dict[str, Any]]:
+        """Per-channel liveness counters. Message bodies are not included."""
+        if self._channel_manager is None:
+            return []
+        rows: list[dict[str, Any]] = []
+        for channel_id in self._channel_manager.channel_ids:
+            channel = self._channel_manager.get_channel(channel_id)
+            status = self.get_runtime_status(channel_id)
+            metrics = getattr(channel, "health_metrics", None)
+            row: dict[str, Any] = {
+                "id": channel_id,
+                "type": getattr(channel, "channel_type", ""),
+                "connected": bool(status.connected) if status is not None else False,
+            }
+            if callable(metrics):
+                row.update(metrics())
+            rows.append(row)
+        return rows
 
     async def boot(self, *, serve_background: bool = True) -> None:
         from octop.infra.gateway.process.channel_thinking import (
@@ -814,6 +837,8 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
+        if row.kind == "feishu":
+            config = self._with_feishu_dedup_path(config)
         from octop.infra.agents.teams.service import is_team_agent  # noqa: PLC0415
 
         team_host = False
@@ -881,6 +906,25 @@ class Gateway:
                 f"channel {row.channel_id} config must be a JSON object",
             )
         return raw
+
+    def _with_feishu_dedup_path(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Point Feishu dedup at this install's data directory.
+
+        The channel library only opens a SQLite file when a path is set.
+        Restart and re-register then still recognize message ids Feishu redelivers.
+        An explicit ``dedup_db_path`` in the channel config is left as-is.
+        """
+        if str(config.get("dedup_db_path") or "").strip():
+            return config
+        paths = getattr(self._agent_manager, "_paths", None)
+        root = getattr(paths, "root", None)
+        if root is None:
+            from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+            root = PathLayout.from_env().root
+        updated = dict(config)
+        updated["dedup_db_path"] = str(root / "feishu-dedup.sqlite")
+        return updated
 
     async def _unregister(self, channel_id: str) -> None:
         """Disconnect locally, then release only the lease this process holds."""

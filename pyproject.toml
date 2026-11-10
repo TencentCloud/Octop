@@ -30,6 +30,10 @@ dependencies = [
     "edge-tts>=6.1",
     "segno>=1.6",
     "websockets>=13.0",
+    # websockets raises "python-socks is required to use a SOCKS proxy" when
+    # the host has a SOCKS proxy env and this package is absent — the browser
+    # host's CDP connection then fails to attach.
+    "python-socks>=2.4",
     "acme>=5.6.0",
     "josepy>=2.2.0",
     "boto3>=1.40.61",

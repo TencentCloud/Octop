@@ -2621,6 +2621,7 @@ dependencies = [
     { name = "pypinyin" },
     { name = "python-docx" },
     { name = "python-pptx" },
+    { name = "python-socks" },
     { name = "questionary" },
     { name = "rich" },
     { name = "scalar-fastapi" },
@@ -2726,6 +2727,7 @@ requires-dist = [
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.6" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "python-pptx", specifier = ">=1.0" },
+    { name = "python-socks", specifier = ">=2.4" },
     { name = "questionary", specifier = ">=2.0" },
     { name = "rapidocr", marker = "extra == 'knowledge-ocr'", specifier = ">=3.4,<4" },
     { name = "rich", specifier = ">=13.7" },
@@ -4113,6 +4115,15 @@ wheels = [
 [package.optional-dependencies]
 asyncio-client = [
     { name = "aiohttp" },
+]
+
+[[package]]
+name = "python-socks"
+version = "3.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/5d/57f4f34cba6cd33dabc557096225487bfd977f8831d789b2b81a885f9ed3/python_socks-3.2.1.tar.gz", hash = "sha256:d21618ae6c6734d357be83263b3791666d12af59480ace8f48f2b5fcc8edc987", size = 39934, upload-time = "2026-10-31T11:56:08.117Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/a6/175dbba852d77cf184dd6095a23dd0fe654898be74fb9dc6bfa16e89088f/python_socks-3.2.1-py3-none-any.whl", hash = "sha256:db2c37d4f7aeebfbba91d2d7670718b2d516061b34296fa8498c6f671e87c504", size = 49553, upload-time = "2026-10-31T11:56:06.54Z" },
 ]
 
 [[package]]

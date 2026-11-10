@@ -203,7 +203,7 @@ def pending_hitl_payload(
     *,
     thread_id: str,
     agent_id: str,
-    user_id: int,
+    user_id: int | None,
 ) -> dict[str, Any] | None:
     record = store.resolve_pending_for_thread(
         thread_id,

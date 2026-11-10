@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from contextlib import closing
@@ -23,6 +24,49 @@ MEMORY_TABLES = (
 )
 CHECKPOINT_TABLES = ("checkpoints", "writes", "hm_checkpoint_blobs")
 COUNT_BUDGET_SECONDS = 5.0
+_VACUUM_RECOMMEND_BYTES = 32 * 1024 * 1024
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    return str(raw).strip().lower() not in {"0", "false", "off", "no"}
+
+
+def _optional_positive_int(name: str) -> int | None:
+    if name not in os.environ:
+        return None
+    raw = os.environ.get(name, "").strip()
+    if not raw or raw == "0":
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def _checkpoint_policy(reclaimable_bytes: int) -> dict[str, Any]:
+    """Retention window shown on the storage page.
+
+    Matches idle maintenance in octop-harness: keep the newest 20 checkpoints
+    unless ``OCTOP_CHECKPOINT_RETENTION`` is turned off.
+    """
+    keep_last = _optional_positive_int("OCTOP_CHECKPOINT_KEEP_LAST")
+    keep_days = _optional_positive_int("OCTOP_CHECKPOINT_KEEP_DAYS")
+    if not _env_flag("OCTOP_CHECKPOINT_RETENTION", True):
+        keep_last = None
+        keep_days = None
+    elif "OCTOP_CHECKPOINT_KEEP_LAST" not in os.environ:
+        keep_last = 20
+    return {
+        "checkpoint_retention_enabled": keep_last is not None or keep_days is not None,
+        "checkpoint_keep_last": keep_last,
+        "checkpoint_keep_days": keep_days,
+        "checkpoint_backup_before_prune": _env_flag("OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE", True),
+        "checkpoint_vacuum_recommended": reclaimable_bytes >= _VACUUM_RECOMMEND_BYTES,
+    }
 
 
 def inspect_sqlite_storage(backend: Any, *, shared: bool) -> dict[str, Any]:
@@ -64,6 +108,7 @@ def inspect_sqlite_storage(backend: Any, *, shared: bool) -> dict[str, Any]:
             "file_check_ms": (time.perf_counter() - started) * 1000,
             "namespace": namespace,
             "checkpoints_available": not shared,
+            **_checkpoint_policy(free * page_size),
         }
         deadline = time.perf_counter() + COUNT_BUDGET_SECONDS
         conn.set_progress_handler(lambda: int(time.perf_counter() >= deadline), 1000)

@@ -403,6 +403,10 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
     assert store.pending_thread_ids(agent_id="agent1", user_id=1) == frozenset({"thr-a", "thr-b"})
     assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
+    assert store.pending_thread_ids(agent_id="agent1", user_id=2, any_user=True) == frozenset(
+        {"thr-a", "thr-b"}
+    )
+    assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=None) is pending
 
 
 def test_hitl_store_other_thread_does_not_expire_pending() -> None:
