@@ -12,6 +12,7 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.users import UserRepo
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge import service as service_module
 from octop.infra.knowledge.service import MAX_DOCS_PER_KB, KnowledgeService
 from octop.infra.utils.paths import PathLayout
@@ -277,3 +278,142 @@ def test_update_base_validates_max_documents_range(service: KnowledgeService) ->
     # Omit keeps value
     service.update_base(kb.id, actor_user_id=owner, description="keep")
     assert service.get_readable_base(kb.id, actor_user_id=owner).max_documents == 10_000
+
+
+def _base_with_tree(service: KnowledgeService) -> tuple[int, str]:
+    """owner id and a base holding ``notes/law/act.md``, ``notes/readme.md`` and ``archive``."""
+    owner = service._services.user_repo.create(username="owner", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs")
+    for path in ("notes/law/act.md", "notes/readme.md"):
+        service.upload_document(
+            kb.id,
+            actor_user_id=owner,
+            filename=path.rsplit("/", 1)[-1],
+            content_type="text/markdown",
+            content=b"x",
+            path=path,
+        )
+    service.create_folder(kb.id, actor_user_id=owner, path="archive")
+    return owner, kb.id
+
+
+def test_move_file_into_another_folder_and_back_to_root(service: KnowledgeService) -> None:
+    owner, kb_id = _base_with_tree(service)
+    repo = service._services.knowledge_repo
+    doc = repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    moved = service.move_document(kb_id, doc.id, actor_user_id=owner, target_folder="archive")
+    assert (moved.id, moved.path, moved.filename) == (doc.id, "archive/readme.md", "readme.md")
+    assert repo.get_document_by_path(kb_id, "notes/readme.md") is None
+
+    at_root = service.move_document(kb_id, doc.id, actor_user_id=owner, target_folder="")
+    assert at_root.path == "readme.md"
+
+
+def test_move_folder_takes_its_subtree(service: KnowledgeService) -> None:
+    owner, kb_id = _base_with_tree(service)
+    repo = service._services.knowledge_repo
+    folder = repo.get_document_by_path(kb_id, "notes")
+
+    moved = service.move_document(kb_id, folder.id, actor_user_id=owner, target_folder="/archive/")
+
+    assert moved.path == "archive/notes"
+    assert sorted(document.path for document in repo.list_documents(kb_id)) == [
+        "archive",
+        "archive/notes",
+        "archive/notes/law",
+        "archive/notes/law/act.md",
+        "archive/notes/readme.md",
+    ]
+
+
+def test_move_keeps_a_sibling_whose_name_shares_the_prefix(service: KnowledgeService) -> None:
+    owner, kb_id = _base_with_tree(service)
+    repo = service._services.knowledge_repo
+    repo.ensure_folder(kb_id, "notes-old")
+
+    service.move_document(
+        kb_id,
+        repo.get_document_by_path(kb_id, "notes").id,
+        actor_user_id=owner,
+        target_folder="archive",
+    )
+
+    assert repo.get_document_by_path(kb_id, "notes-old") is not None
+
+
+@pytest.mark.parametrize("target", ["notes", "notes/law"])
+def test_move_folder_into_itself_is_rejected(service: KnowledgeService, target: str) -> None:
+    owner, kb_id = _base_with_tree(service)
+    folder = service._services.knowledge_repo.get_document_by_path(kb_id, "notes")
+
+    with pytest.raises(OctopError) as raised:
+        service.move_document(kb_id, folder.id, actor_user_id=owner, target_folder=target)
+
+    assert raised.value.code is ErrorCode.KNOWLEDGE_MOVE_INVALID
+
+
+def test_move_rejects_a_name_collision_in_the_target(service: KnowledgeService) -> None:
+    owner, kb_id = _base_with_tree(service)
+    repo = service._services.knowledge_repo
+    service.upload_document(
+        kb_id,
+        actor_user_id=owner,
+        filename="readme.md",
+        content_type="text/markdown",
+        content=b"y",
+        path="archive/readme.md",
+    )
+
+    with pytest.raises(OctopError) as raised:
+        service.move_document(
+            kb_id,
+            repo.get_document_by_path(kb_id, "notes/readme.md").id,
+            actor_user_id=owner,
+            target_folder="archive",
+        )
+
+    assert raised.value.code is ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN
+    assert repo.get_document_by_path(kb_id, "notes/readme.md") is not None
+
+
+@pytest.mark.parametrize("target", ["missing", "notes/readme.md", "../outside"])
+def test_move_needs_an_existing_folder(service: KnowledgeService, target: str) -> None:
+    owner, kb_id = _base_with_tree(service)
+    doc = service._services.knowledge_repo.get_document_by_path(kb_id, "notes/law/act.md")
+
+    with pytest.raises(LookupError, match="folder not found"):
+        service.move_document(kb_id, doc.id, actor_user_id=owner, target_folder=target)
+
+
+def test_move_to_the_current_folder_changes_nothing(service: KnowledgeService) -> None:
+    owner, kb_id = _base_with_tree(service)
+    repo = service._services.knowledge_repo
+    doc = repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    same = service.move_document(kb_id, doc.id, actor_user_id=owner, target_folder="notes")
+
+    assert same.updated_at == doc.updated_at
+    assert same.path == "notes/readme.md"
+
+
+def test_move_does_not_cross_knowledge_bases(service: KnowledgeService) -> None:
+    owner, kb_id = _base_with_tree(service)
+    other = service.create_base(owner_user_id=owner, name="Other")
+    doc = service._services.knowledge_repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    with pytest.raises(LookupError, match="document not found"):
+        service.move_document(other.id, doc.id, actor_user_id=owner, target_folder="")
+
+
+def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    viewer = users.create(username="viewer", password_hash="h", role="user")
+    repo = service._services.knowledge_repo
+    kb = repo.create_base(owner_user_id=owner, name="Docs", shared=True)
+    folder = repo.ensure_folder(kb.id, "a")
+    repo.ensure_folder(kb.id, "b")
+
+    with pytest.raises(PermissionError, match="write"):
+        service.move_document(kb.id, folder.id, actor_user_id=viewer, target_folder="b")
