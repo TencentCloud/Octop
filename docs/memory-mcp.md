@@ -91,7 +91,7 @@ http_headers = { Authorization = "Bearer omcp_…" }
 自动召回、会话上报、一键安装和各终端适配属于**客户端侧**代码，已从本仓拆出：
 
 - 安装器与 hooks：`octop-memory` 仓库的 `plugins/<client>/`
-- DSH 原生插件 `octop-memory-native`：独立仓库 <https://github.com/ArvinQi/octop-memory-native> 发布（npm + GitHub Release）
+- DSH 原生插件 `dsh-octop-memory`：独立仓库 <https://github.com/ArvinQi/dsh-octop-memory> 发布（npm + GitHub Release）
 
 本仓库只提供 MCP 服务端、用户级 token 与 Dashboard 管理页；没有安装器也能用（§2 的手动配置即可）。
 
