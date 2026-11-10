@@ -159,17 +159,35 @@ async def _maybe_attach_oauth_discovery(
     *,
     url: str,
     headers: dict[str, str],
+    oauth_client: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """When auth fails without a bearer token, try MCP OAuth discovery."""
+    """When auth fails without a bearer token, try MCP OAuth discovery.
+
+    ``oauth.available`` means the authorize button can work right now.
+    ``oauth.client_required`` marks an authorization server without dynamic
+    registration: it only becomes available once the server has an
+    ``oauth_client``. A client with explicit endpoints needs no discovery.
+    """
     if result.get("ok") is not False or result.get("error_type") != "auth":
         return result
     auth_header = str(headers.get("Authorization") or "").strip()
     if auth_header.lower().startswith("bearer ") and len(auth_header) > 7:
         return result
+    has_client = bool(oauth_client and oauth_client.get("client_id"))
+    if has_client and oauth_client and oauth_client.get("token_endpoint"):
+        result["oauth"] = {"available": True}
+        return result
     discovery = await discover_oauth_from_mcp_url(url)
     if discovery.get("available"):
         result["oauth"] = {
             "available": True,
+            "issuer": discovery.get("issuer"),
+            "resource": discovery.get("resource"),
+        }
+    elif discovery.get("client_required"):
+        result["oauth"] = {
+            "available": has_client,
+            "client_required": True,
             "issuer": discovery.get("issuer"),
             "resource": discovery.get("resource"),
         }
@@ -563,7 +581,12 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
         # Ensure streamable Accept if caller omitted it.
         headers.setdefault("Accept", "application/json, text/event-stream")
         result = await probe_streamable_http_mcp(url, headers, kind="custom-mcp")
-        return await _maybe_attach_oauth_discovery(result, url=url, headers=headers)
+        return await _maybe_attach_oauth_discovery(
+            result,
+            url=url,
+            headers=headers,
+            oauth_client=normalized.get("oauth_client"),
+        )
 
     if transport == "stdio":
         return await _probe_stdio_mcp(connection)

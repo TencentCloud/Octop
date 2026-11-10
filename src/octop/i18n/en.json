@@ -517,6 +517,8 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
+    "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -1150,5 +1152,56 @@
     "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
     "invalid_id": "A valid {field} is required.",
     "unknown_tool": "Unknown RAGFlow tool: {name}"
+  },
+  "migrate": {
+    "not_found": "No {source} installation was found. Pass its directory with --from.",
+    "nothing": "Nothing to migrate was found in {home}.",
+    "title": "{source} ({home}) → expert {agent}",
+    "column": {
+      "section": "Section",
+      "item": "Item",
+      "status": "Status",
+      "note": "Note"
+    },
+    "section": {
+      "models": "Models",
+      "files": "Workspace files",
+      "skills": "Skills",
+      "mcp": "MCP servers",
+      "channels": "Channels"
+    },
+    "status": {
+      "migrated": "migrated",
+      "would_migrate": "would migrate",
+      "skipped": "skipped",
+      "failed": "failed"
+    },
+    "reason": {
+      "exists": "already exists",
+      "no_api_key": "no API key found; add it in Model settings",
+      "default_model": "the default model",
+      "default_model_set": "the default model is already {detail}",
+      "channel_disabled": "left disabled; stop the old bot, then enable it",
+      "invalid_name": "not a valid skill name",
+      "too_large": "larger than 20 MB",
+      "name_reserved": "the name is used by a built-in connector",
+      "invalid": "{detail}"
+    },
+    "note": {
+      "config_missing": "Config file not found: {path}",
+      "config_unreadable": "Could not read {path}: {error}",
+      "include_missing": "Included config file not found: {path}",
+      "provider_unsupported": "Provider {name} ({api}) has no Octop equivalent and was not migrated.",
+      "provider_key_missing": "No API key was found for provider {name}; add the provider in Model settings.",
+      "mcp_sse_unsupported": "MCP server {name} uses the SSE transport, which custom MCP does not support.",
+      "channel_unsupported": "Channel {name} is not available in Octop.",
+      "channel_credentials_missing": "Channel account {name} has no readable credentials.",
+      "extra_agents": "Other agents are not migrated ({count} found); only the default workspace is read.",
+      "cron_not_migrated": "Scheduled jobs are not migrated ({count} found); recreate them with `octop cron create`."
+    },
+    "summary": "{migrated} migrated, {skipped} skipped, {failed} failed.",
+    "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
+    "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
+    "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
   }
 }

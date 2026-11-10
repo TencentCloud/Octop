@@ -36,4 +36,9 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "acp": (".commands.acp", "acp_cmd", "Run Octop agent as ACP server (stdio)."),
     "plugin": (".commands.plugin", "plugin", "Install and manage plugins."),
     "cloud": (".commands.cloud", "cloud", "Tencent Cloud credential bridge (tccli import)."),
+    "migrate": (
+        ".commands.migrate",
+        "migrate",
+        "Migrate an OpenClaw or Hermes Agent setup into an expert.",
+    ),
 }

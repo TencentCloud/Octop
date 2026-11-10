@@ -47,6 +47,7 @@ import {
   FilePlus,
   FileUp,
   Folder,
+  FolderInput,
   FolderPlus,
   LayoutGrid,
   List as ListIcon,
@@ -126,6 +127,7 @@ import {
   isDirectKnowledgeChild,
   joinKnowledgePath,
   KNOWLEDGE_DOC_TREE_ROOT,
+  canMoveKnowledgeEntryTo,
   knowledgeBasename,
   knowledgeBreadcrumb,
   knowledgeFileNameParts,
@@ -307,6 +309,9 @@ export default function KnowledgeBasesPage() {
     null,
   );
   const [renameName, setRenameName] = useState("");
+  const [moveTarget, setMoveTarget] = useState<KnowledgeDocument | null>(null);
+  const [moveDestination, setMoveDestination] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
   );
@@ -790,6 +795,17 @@ export default function KnowledgeBasesPage() {
     };
     return [root];
   }, [documents, t]);
+
+  /** The folder tree again, with the places `moveTarget` cannot go greyed out. */
+  const moveTreeData = useMemo(() => {
+    if (!moveTarget) return [];
+    const mark = (node: DocTreeNode): DocTreeNode => ({
+      ...node,
+      disabled: !canMoveKnowledgeEntryTo(moveTarget, node.path),
+      children: (node.children as DocTreeNode[] | undefined)?.map(mark),
+    });
+    return docTreeData.map(mark);
+  }, [docTreeData, moveTarget]);
 
   const loadBases = useCallback(async () => {
     try {
@@ -1624,6 +1640,30 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const openMoveEntry = (document: KnowledgeDocument) => {
+    setMoveTarget(document);
+    setMoveDestination(null);
+  };
+
+  const moveEntry = async () => {
+    if (!selected || !moveTarget || moveDestination === null) return;
+    setMoving(true);
+    try {
+      await knowledgeBasesApi.moveDocument(
+        selected.id,
+        moveTarget.id,
+        moveDestination,
+      );
+      setMoveTarget(null);
+      await loadDetail(selected.id);
+      message.success(t("knowledgeBases.moveSuccess"));
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("knowledgeBases.moveFailed"), t));
+    } finally {
+      setMoving(false);
+    }
+  };
+
   const deleteDocument = async (documentId: string) => {
     if (!selected) return;
     try {
@@ -2032,6 +2072,18 @@ export default function KnowledgeBasesPage() {
                 />
               </Tooltip>
             ) : null}
+            <Tooltip title={t("knowledgeBases.moveEntry")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<FolderInput size={14} />}
+                aria-label={t("knowledgeBases.moveEntry")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openMoveEntry(document);
+                }}
+              />
+            </Tooltip>
             <Popconfirm
               title={
                 document.is_dir
@@ -3470,6 +3522,41 @@ export default function KnowledgeBasesPage() {
             if (!isImeComposing(event)) void renameEntry();
           }}
         />
+      </Modal>
+
+      <Modal
+        title={t("knowledgeBases.moveTitle", {
+          name: moveTarget
+            ? knowledgeBasename(moveTarget.path || moveTarget.filename)
+            : "",
+        })}
+        open={moveTarget !== null}
+        onCancel={() => setMoveTarget(null)}
+        onOk={() => void moveEntry()}
+        okText={t("knowledgeBases.moveConfirm")}
+        okButtonProps={{ disabled: moveDestination === null }}
+        confirmLoading={moving}
+        cancelText={t("common.cancel")}
+        destroyOnHidden
+      >
+        <p className={styles.moveHint}>{t("knowledgeBases.moveHint")}</p>
+        <div className={styles.moveTree}>
+          <Tree
+            blockNode
+            defaultExpandAll
+            treeData={moveTreeData}
+            selectedKeys={
+              moveDestination === null
+                ? []
+                : [moveDestination || KNOWLEDGE_DOC_TREE_ROOT]
+            }
+            onSelect={(_keys, info) => {
+              setMoveDestination(
+                info.selected ? (info.node as DocTreeNode).path : null,
+              );
+            }}
+          />
+        </div>
       </Modal>
 
       <TextDocumentEditorModal
