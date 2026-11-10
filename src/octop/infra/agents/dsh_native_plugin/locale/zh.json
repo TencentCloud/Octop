@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Octop 共享记忆（原生插件）",
-    "description": "每轮开始前自动召回 octop 共享记忆注入上下文，轮末把对话增量上报，全程在 DSH 进程内完成，不再依赖 Claude Code hook 桥接。"
-  }
-}

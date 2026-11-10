@@ -56,9 +56,21 @@ import McpAccess from "./McpAccess";
 const api = vi.mocked(memoryMcpApi, true);
 const copyMock = vi.mocked(copyText);
 
-/** The one-line install command a row copies. */
-function setupCommand(plaintext: string): string {
-  return `curl -fsSL "${window.location.origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${plaintext} sh`;
+/** The MCP client config a row copies. */
+function clientConfig(plaintext: string): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        "octop-memory": {
+          type: "http",
+          url: `${window.location.origin}/mcp/memory/`,
+          headers: { Authorization: `Bearer ${plaintext}` },
+        },
+      },
+    },
+    null,
+    2,
+  );
 }
 
 const activeToken: MemoryMcpToken = {
@@ -354,7 +366,7 @@ describe("<McpAccess />", () => {
 
     await waitFor(() =>
       expect(copyMock).toHaveBeenCalledWith(
-        setupCommand("omcp_live_plaintext_value"),
+        clientConfig("omcp_live_plaintext_value"),
       ),
     );
     expect(message.success).toHaveBeenCalledWith("已复制");
@@ -385,13 +397,18 @@ describe("<McpAccess />", () => {
     await waitFor(() => expect(api.rotate).toHaveBeenCalledWith("tok_1"));
     await waitFor(() =>
       expect(copyMock).toHaveBeenCalledWith(
-        setupCommand("omcp_rotated_secret"),
+        clientConfig("omcp_rotated_secret"),
       ),
     );
-    // The new command stays on screen so it can be copied again.
-    expect(
-      await screen.findByDisplayValue(setupCommand("omcp_rotated_secret")),
-    ).toBeInTheDocument();
+    // The new config stays on screen so it can be copied again.
+    await waitFor(() => {
+      const areas = Array.from(document.querySelectorAll("textarea"));
+      expect(
+        areas.some(
+          (area) => area.value === clientConfig("omcp_rotated_secret"),
+        ),
+      ).toBe(true);
+    });
     expect(screen.getByText(/旧 Token 已失效/)).toBeInTheDocument();
 
     // Closing the modal refreshes the list (token_hint changed server-side).

@@ -2,7 +2,6 @@
 
 Octop 把专家记忆通过 MCP（Model Context Protocol）开放给外部 Agent / Bot：Claude Code、Codex、DSH 这类编码助手可以和 Octop 专家共用同一份长期记忆。
 
-> 安装与配置（创建 token、一键 curl 脚本、手动配置、验证与排障）见 [记忆 MCP 安装与配置指引](./memory-mcp-setup.md)。
 
 - 端点：`/mcp/memory`（Streamable HTTP，**stateless**：每次请求独立，服务重启后客户端不会因为 `Mcp-Session-Id` 失效而报 `-32600 Session not found`）
 - 专家选择：**token 直接绑定一个专家**（在 Dashboard「记忆 → MCP 接入」建 token 时选，之后可随时切换）；客户端不再需要专家 ID
@@ -87,48 +86,16 @@ http_headers = { Authorization = "Bearer omcp_…" }
 
 在客户端的 MCP 配置里填 §2 的 URL 与 `Authorization` 即可（DSH 的 `mcpServers` 用 `type: "streamable-http"`）。
 
-### 2.3.1 一条命令快速配置（脚本）
+### 2.4 hooks / 一键安装（客户端侧）
 
-```bash
-# 直接带上 token，不再交互问专家 ID；脚本会写 hooks + MCP 条目
-curl -fLsS "https://<octop-host>/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=omcp_… sh
+自动召回、会话上报、一键安装和各终端适配属于**客户端侧**代码，已从本仓拆出：
 
-# 只配某一个终端（逗号分隔）
-curl -fLsS "https://<octop-host>/mcp/memory/setup" | \
-  OCTOP_MEMORY_TOKEN=omcp_… OCTOP_TERMINALS=cursor sh
-```
+- 安装器与 hooks：`octop-memory` 仓库的 `plugins/<client>/`
+- DSH 原生插件 `octop-memory-native`：独立仓库发布
 
-### 2.4 一键安装器（推荐）
+本仓库只提供 MCP 服务端、用户级 token 与 Dashboard 管理页；没有安装器也能用（§2 的手动配置即可）。
 
-完整说明（含 Windows PowerShell、项目级安装、各终端落点、验证与排障）见 [安装与配置指引](./memory-mcp-setup.md)。
-
-```bash
-# macOS / Linux：检测本机装了哪些终端 → 勾选 → 粘贴自己的 MCP token → 写入 hooks 与 MCP 条目
-curl -fLsS "https://<octop-host>/mcp/memory/setup" | sh
-
-# Windows（原生 PowerShell，不需要 Git Bash）
-irm "https://<octop-host>/mcp/memory/setup?os=windows" | iex
-
-# 只装到某个项目（hook 脚本与含 token 的 config.json 仍留在用户目录）
-curl -fLsS "https://<octop-host>/mcp/memory/setup?project=$PWD" | sh
-
-# 卸载（同样支持 ?os=windows / ?project=）
-curl -fLsS "https://<octop-host>/mcp/memory/uninstall" | sh
-```
-
-支持 **Claude Code / Kiro / DSH / Codex / Cursor** 五个终端：
-
-| 终端 | hooks 目录 | 注册位置 | 备注 |
-|------|-----------|---------|------|
-| Claude Code | `~/.claude/hooks-events/` | `~/.claude/settings.json` | UserPromptSubmit 召回 + Stop 上报 |
-| Kiro | `~/.kiro/hooks/` | `~/.kiro/hooks/*.json` | 同上 |
-| DSH | — | `~/.dsh/bundles/octop-memory-native/` + profile | **原生插件**（进程内召回/上报），不再用 hook 桥接 |
-| Codex | `~/.codex/hooks/` | `~/.codex/config.toml` | 同上 |
-| Cursor | `~/.cursor/hooks/` | `~/.cursor/hooks.json` | 同上 |
-
-安装器**不内置任何凭据**：`/setup` 只返回脚本，token 由你在运行时粘贴（`/api/memory-mcp/tokens` 创建）。DSH 的原生插件把召回与上报放在 DSH 进程里，不依赖 hook 桥接；其余终端由 hook 在提问前注入召回、会话结束时上报 transcript。
-
-## 3. 工具清单
+## 3. 工具清单## 3. 工具清单
 
 ### 3.1 日常工具（任何 token 可用）
 
@@ -137,7 +104,7 @@ curl -fLsS "https://<octop-host>/mcp/memory/uninstall" | sh
 | `memory_search(query, max_results=5, corpus="all")` | 检索记忆，返回带虚拟 `path` 的命中（`corpus=raw` 只看原始事件） |
 | `memory_get(path, start=None, lines=None)` | 把命中里的 `path` 解析成 markdown 全文 |
 | `memory_save(content, source, topic=None, supersedes=None)` | 显式保存一条事实（跳过提炼，立即可召回；`supersedes` 用于更正） |
-| `memory_capture(content, source, session_id=None, assistant=None, thread_id=None, dry_run=False, extract=True)` | 写原始事件（L0），交给提炼管线；默认**不自动晋升** |
+| `memory_capture(content="", source="", session_id=None, assistant=None, thread_id=None, dry_run=False, extract=True, events=None)` | 写原始事件（L0），交给提炼管线；默认**不自动晋升**。`events` 可传客户端已解析好的事件列表 |
 
 ### 3.2 审核 / 运维工具（**仅专家所有者**）
 
@@ -183,9 +150,9 @@ curl -fLsS "https://<octop-host>/mcp/memory/uninstall" | sh
 
 | PR | 内容 | 目标仓库 | 状态 |
 |----|------|----------|------|
-| a | MCP 核心 + 用户级鉴权 + 终端接入（本文档） | Octop | 本 PR |
+| a | MCP 服务端 + 用户级鉴权 + token 管理 UI + 文档（本文档） | Octop | 本 PR |
 | b | 召回质量优化（实体后缀 / 强 token 排序） | octop-memory | 待提 |
-| c | 对话记录解析（下沉到 octop-memory 适配层） | octop-memory | 待提 |
-| d | （已并入本 PR） | — | — |
+| c | 对话记录解析 + 终端安装器 / hooks（`plugins/<client>/`） | octop-memory | 待提 |
+| d | DSH 原生插件 `octop-memory-native` | 独立仓库 | 已拆分 |
 
-DSH 预设（`cordis.patch.yml`）不进入开源仓库。
+服务端不依赖客户端增强：任何支持 Streamable HTTP MCP 的客户端按 §2 手动配置即可接入。

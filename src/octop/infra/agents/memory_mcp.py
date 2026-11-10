@@ -75,102 +75,6 @@ recall pipeline; ``all``/``memory`` are the same pipeline without a filter."""
 
 _SNIPPET_CHARS = 200
 
-_TRANSCRIPT_SOURCES: dict[str, str] = {
-    "claude-code": "claude-code",
-    "kiro": "kiro",
-    "dsh": "dsh",
-    "codex": "codex",
-    "cursor": "cursor",
-}
-"""``source`` values whose payload is a whole session transcript, not one turn."""
-
-_TRANSCRIPT_PATH_ROOTS: tuple[str, ...] = (
-    "~/.claude/projects",
-    "~/.kiro/sessions",
-    "~/.dsh/sessions",
-    "~/.codex/sessions",
-    "~/.cursor",
-)
-"""Where ``memory_capture(transcript_path=…)`` may read from (local hooks only)."""
-
-_GZIP_B64_PREFIX = "H4sI"
-"""``base64(gzip(…))`` always starts with this; a JSONL body always starts with ``{``."""
-
-_HOST_PLUMBING_MARKERS: tuple[str, ...] = (
-    "<local-command-caveat>",
-    "<system-reminder>",
-    "Base directory for this skill:",
-)
-"""Text the terminal injects on its own account; dropped from transcript imports."""
-
-_OWN_CONTENT_PREFIX = "[octop memory "
-"""Uniform marker for anything this service puts back into a conversation."""
-
-_LEGACY_ECHO_MARKERS: tuple[str, ...] = (
-    "## Memory Recall",
-    "[memory] Earlier in this workspace",
-    "[octop-memory hook]",
-)
-"""Older recall markers still present in transcripts already on disk."""
-
-_SKIP_CONTENT_MARKERS: tuple[str, ...] = (_OWN_CONTENT_PREFIX, *_LEGACY_ECHO_MARKERS)
-"""Content carrying any of these is our own plumbing, never L0 evidence."""
-
-
-def _looks_like_transcript(text: str) -> bool:
-    """True when *text* plausibly is JSONL rather than one piece of prose."""
-    return text.lstrip().startswith("{")
-
-
-def _read_transcript_file(raw_path: str) -> str:
-    """Read a transcript file handed over by a local ``mcp_tool`` hook."""
-    from pathlib import Path as _Path  # noqa: PLC0415
-
-    candidate = _Path(raw_path).expanduser()
-    try:
-        resolved = candidate.resolve(strict=True)
-    except OSError as exc:
-        raise ValueError(f"transcript_path is not readable: {raw_path!r} ({exc})") from exc
-    allowed = [(_Path(root).expanduser().resolve()) for root in _TRANSCRIPT_PATH_ROOTS]
-    if not any(resolved == root or root in resolved.parents for root in allowed):
-        raise ValueError(
-            "transcript_path must live under a terminal session store "
-            f"({', '.join(_TRANSCRIPT_PATH_ROOTS)}); got {raw_path!r}"
-        )
-    if resolved.suffix == ".zstd":
-        raise ValueError(
-            "compressed transcripts must be sent as gzip+base64 content "
-            "(the terminal's hook script does this); transcript_path supports plain JSONL"
-        )
-    return resolved.read_text(encoding="utf-8", errors="replace")
-
-
-def _archive_uploaded_session(
-    server: OctopServer,
-    agent_id: str,
-    *,
-    text: str,
-    source: str,
-    session_id: str,
-    user: str | None,
-) -> str | None:
-    """Append this upload to the agent's markdown archive of the raw session."""
-    try:
-        from octop.infra.agents.memory_session_archive import (  # noqa: PLC0415
-            ARCHIVE_DIRNAME,
-            append_session,
-        )
-        from octop.infra.agents.workspace import host_system_dir  # noqa: PLC0415
-
-        workspace, cfg = _resolve_agent_scope(server, agent_id)
-        session_dir = host_system_dir(workspace, cfg) / ARCHIVE_DIRNAME
-        path = append_session(session_dir, session_id=session_id, text=text, host=source, user=user)
-        return str(path) if path else None
-    except Exception:  # noqa: BLE001 - the archive must never break capture
-        logger.warning("memory_capture: session archive failed", exc_info=True)
-        return None
-
-
 _USER_ROLE = "user_message"
 _ASSISTANT_ROLE = "assistant_message"
 
@@ -622,8 +526,6 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         thread_id: str | None = None,
         dry_run: bool = False,
         extract: bool = True,
-        transcript_path: str | None = None,
-        tool_events: str = "none",
         events: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """**写入原始事件（L0）**：一轮对话或一段记录，交给提炼流水线。
@@ -649,8 +551,6 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             thread_id: 可选线程 id，透传给 L0。
             dry_run: 只解析不写入；返回将要写入的事件。
             extract: 写入后是否在后台触发提炼（默认 True）；专家停止时不会自动启动。
-            transcript_path: 仅终端 hook 使用：读本机 transcript 文件（只允许终端会话目录）。
-            tool_events: transcript 形态下是否落工具事件（none / calls / all）。
             events: 已由客户端解析好的事件列表（`event_type` / `content`，可选
                 `payload` / `timestamp_iso`）；提供时跳过服务端解析，直接走
                 `MemoryRuntime.capture`（脱敏、回声保护、长度限制照常生效）。
@@ -724,90 +624,6 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                         if key.startswith("skipped_") and value
                     },
                     "note": "client-parsed events recorded through MemoryRuntime.capture",
-                }
-            # ---- terminal transcript: ``source`` names the terminal, it names the parser
-            nonlocal content
-            if transcript_path and source in _TRANSCRIPT_SOURCES:
-                content = _read_transcript_file(transcript_path)
-            if source in _TRANSCRIPT_SOURCES and (
-                content.startswith(_GZIP_B64_PREFIX) or _looks_like_transcript(content)
-            ):
-                from octop.infra.agents.claude_transcript import import_content  # noqa: PLC0415
-
-                text = content
-                if text.startswith(_GZIP_B64_PREFIX):
-                    import base64  # noqa: PLC0415
-                    import gzip  # noqa: PLC0415
-
-                    try:
-                        text = gzip.decompress(base64.b64decode(text)).decode("utf-8", "replace")
-                    except Exception as exc:  # noqa: BLE001 - surface a usable message
-                        raise ValueError(
-                            f"content starts like gzip+base64 but cannot be decoded: {exc}"
-                        ) from exc
-
-                memory = _open_memory(server, agent_id)
-                runtime = _memory_runtime(server, agent_id)
-
-                def _write_transcript(
-                    resolved_session: str, events: list[dict[str, Any]]
-                ) -> dict[str, Any]:
-                    return dict(
-                        runtime.capture(
-                            {
-                                "session_id": resolved_session,
-                                "thread_id": resolved_session,
-                                "user": caller,
-                                "host": source,
-                                "events": events,
-                            }
-                        )
-                    )
-
-                stats = import_content(
-                    memory,
-                    text,
-                    session_id=session_id,
-                    user=caller,
-                    host=source,
-                    dry_run=dry_run,
-                    skip_markers=_SKIP_CONTENT_MARKERS,
-                    skip_message_markers=_HOST_PLUMBING_MARKERS,
-                    tool_events=tool_events,
-                    parser=_TRANSCRIPT_SOURCES[source],
-                    capture=_write_transcript if not dry_run else None,
-                )
-                archive = None
-                if not dry_run:
-                    archive = _archive_uploaded_session(
-                        server,
-                        agent_id,
-                        text=text,
-                        source=source,
-                        session_id=stats.session_id,
-                        user=caller,
-                    )
-                return {
-                    "marker": "[octop memory capture]",
-                    "recorded": bool(stats.imported) and not dry_run,
-                    "session_id": stats.session_id,
-                    "session_archive": archive,
-                    "parsed": stats.parsed,
-                    "imported": stats.imported,
-                    "skipped_existing": stats.skipped_existing,
-                    "skipped_echo": stats.skipped_echo,
-                    "skipped_own_results": stats.skipped_own_results,
-                    "skipped_tools": stats.skipped_tools,
-                    "tool_events": tool_events,
-                    "events_by_type": stats.by_type,
-                    "sidechain": stats.sidechain,
-                    "dry_run": dry_run,
-                    "source": source,
-                    "caller": caller,
-                    "warnings": stats.warnings,
-                    "note": (
-                        "transcript parsed into L0 raw events; extraction runs off the request path"
-                    ),
                 }
             pending: list[dict[str, Any]] = []
             # ``source`` is self-reported by the caller; the token name is the
@@ -1389,176 +1205,6 @@ class _AgentRouter:
             _current_agent_id.reset(agent_cv)
 
 
-async def _send_text(
-    send: Any, status: int, body: str, *, content_type: str = "text/plain; charset=utf-8"
-) -> None:
-    payload = body.encode("utf-8")
-    await send(
-        {
-            "type": "http.response.start",
-            "status": status,
-            "headers": [
-                (b"content-type", content_type.encode("ascii")),
-                (b"content-length", str(len(payload)).encode("ascii")),
-            ],
-        }
-    )
-    await send({"type": "http.response.body", "body": payload})
-
-
-def _instance_config() -> dict[str, Any]:
-    """The instance ``config.json`` as a dict (empty when missing/unreadable)."""
-    import json  # noqa: PLC0415
-
-    from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
-
-    try:
-        raw = PathLayout.from_env().config.read_text(encoding="utf-8")
-        loaded = json.loads(raw)
-    except Exception:  # noqa: BLE001 - a missing/odd config must not break /setup
-        return {}
-    return loaded if isinstance(loaded, dict) else {}
-
-
-_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
-"""本机地址：只有它没有 TLS 前置，按请求的 scheme 走 http。"""
-
-
-def _host_without_port(host: str) -> str:
-    """``host``（可能带 ``:port`` 或 IPv6 方括号）里的裸主机名，小写。"""
-    value = host.strip()
-    if value.startswith("["):
-        return value[1:].split("]", 1)[0].lower()
-    return value.split(":", 1)[0].lower()
-
-
-def _host_mount_url(scheme: str, host: str) -> str:
-    """本实例自己的挂载点（hooks 永远打它）。"""
-    if _host_without_port(host) in _LOOPBACK_HOSTS:
-        return f"{scheme or 'http'}://{host}/mcp/memory/"
-    return f"https://{host}/mcp/memory/"
-
-
-def _default_mcp_url(scheme: str, host: str) -> str:
-    """客户端条目默认该连的地址：本实例自己的挂载点。"""
-    return _host_mount_url(scheme, host)
-
-
-def _public_mcp_url() -> str | None:
-    """显式覆盖的客户端条目地址（部署可选）。"""
-    from_env = os.environ.get("OCTOP_MEMORY_PUBLIC_MCP_URL", "").strip()
-    if from_env:
-        return from_env
-    value = str(_instance_config().get("memory_public_mcp_url") or "").strip()
-    return value or None
-
-
-_PS_INSTALLER_OS_VALUES = ("windows", "win", "win32", "win64", "powershell", "pwsh", "ps1")
-"""``?os=`` 的取值：这些返回 PowerShell 版安装器/卸载器（不区分大小写）。"""
-
-
-def _wants_powershell(query: dict[str, str]) -> bool:
-    """``/setup``、``/uninstall`` 用 ``?os=windows`` 选 PowerShell 版（默认仍是 sh）。"""
-    for key in ("os", "platform", "format", "shell"):
-        if (query.get(key) or "").strip().lower() in _PS_INSTALLER_OS_VALUES:
-            return True
-    return False
-
-
-class _InstallerApp:
-    """ASGI app for ``/setup``: renders the local-client installer script.
-
-    It hands out no credential — the script asks the user for their own MCP token
-    (``omcp_…``) at run time — so it deliberately sits outside the token check.
-    """
-
-    def __init__(self, server: OctopServer) -> None:
-        self._server = server
-
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        from urllib.parse import parse_qsl  # noqa: PLC0415
-
-        if scope.get("type") != "http":
-            return
-        if str(scope.get("method", "GET")).upper() not in ("GET", "HEAD"):
-            await _send_text(send, 405, "GET only\n")
-            return
-
-        from octop.infra.agents.client_setup import (  # noqa: PLC0415
-            render_setup_ps1,
-            render_setup_script,
-        )
-
-        query = dict(parse_qsl(scope.get("query_string", b"").decode("utf-8")))
-        headers = _headers(scope)
-        scheme = headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
-        host = headers.get("host", "127.0.0.1")
-        instance_url = _host_mount_url(scheme, host)
-        render = render_setup_ps1 if _wants_powershell(query) else render_setup_script
-        script = render(
-            mcp_url=query.get("url") or _public_mcp_url() or _default_mcp_url(scheme, host),
-            hook_url=query.get("hook_url") or instance_url,
-            agent_id=(query.get("agent") or "").strip(),
-            terminals=(query.get("terminals") or "").strip(),
-            # 不内置任何凭据：安装时由用户粘贴自己的用户级 token（review 要求）。
-            default_token="",
-            project=(query.get("project") or "").strip(),
-        )
-        await _send_text(send, 200, script, content_type="text/x-shellscript; charset=utf-8")
-
-
-class _UninstallerApp:
-    """ASGI app for ``/uninstall``: counterpart of ``/setup`` (also unauthenticated)."""
-
-    def __init__(self, server: OctopServer) -> None:
-        self._server = server
-
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        from urllib.parse import parse_qsl  # noqa: PLC0415
-
-        if scope.get("type") != "http":
-            return
-        if str(scope.get("method", "GET")).upper() not in ("GET", "HEAD"):
-            await _send_text(send, 405, "GET only\n")
-            return
-
-        from octop.infra.agents.client_setup import (  # noqa: PLC0415
-            render_uninstall_ps1,
-            render_uninstall_script,
-        )
-
-        query = dict(parse_qsl(scope.get("query_string", b"").decode("utf-8")))
-        render = render_uninstall_ps1 if _wants_powershell(query) else render_uninstall_script
-        script = render(
-            terminals=(query.get("terminals") or "").strip(),
-            project=(query.get("project") or "").strip(),
-        )
-        await _send_text(send, 200, script, content_type="text/x-shellscript; charset=utf-8")
-
-
-class _SetupFirstApp:
-    """Serve ``<mount>/setup`` and ``/uninstall`` before the token check, then MCP."""
-
-    def __init__(self, installer: Any, uninstaller: Any, inner: Any) -> None:
-        self._installer = installer
-        self._uninstaller = uninstaller
-        self._inner = inner
-
-    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
-        if scope.get("type") == "http":
-            path = str(scope.get("path", ""))
-            root = str(scope.get("root_path", ""))
-            relative = path[len(root) :] if root and path.startswith(root) else path
-            cleaned = relative.rstrip("/")
-            if cleaned == "/setup":
-                await self._installer(scope, receive, send)
-                return
-            if cleaned == "/uninstall":
-                await self._uninstaller(scope, receive, send)
-                return
-        await self._inner(scope, receive, send)
-
-
 def _chain_lifespan(previous: Any, managers: list[Any]) -> Callable[[Any], Any]:
     """Wrap the host lifespan so MCP session managers run without hiding hooks."""
 
@@ -1604,14 +1250,7 @@ def install_memory_mcp(app: Any, server: OctopServer) -> None:
     streamable_app = mcp.streamable_http_app()
     managers = [mgr for mgr in (getattr(mcp, "_session_manager", None),) if mgr is not None]
 
-    app.mount(
-        "/mcp/memory",
-        _SetupFirstApp(
-            _InstallerApp(server),
-            _UninstallerApp(server),
-            _TokenAuthMiddleware(_AgentRouter(streamable_app, server), server),
-        ),
-    )
+    app.mount("/mcp/memory", _TokenAuthMiddleware(_AgentRouter(streamable_app, server), server))
     if managers:
         app.router.lifespan_context = _chain_lifespan(app.router.lifespan_context, managers)
 

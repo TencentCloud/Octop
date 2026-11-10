@@ -710,35 +710,6 @@ def test_capture_uses_the_token_name_as_source_host(bind_agent, bind_user, monke
 # ─── capture: terminal transcript uploads ─────────────────────────────────
 
 
-def _claude_transcript() -> str:
-    import json
-
-    return (
-        json.dumps(
-            {
-                "type": "user",
-                "uuid": "u1",
-                "sessionId": "s1",
-                "timestamp": "2026-09-22T05:00:00Z",
-                "message": {"role": "user", "content": "先看看 CLI 的整体结构，再决定怎么改"},
-            }
-        )
-        + "\n"
-        + json.dumps(
-            {
-                "type": "assistant",
-                "uuid": "a1",
-                "sessionId": "s1",
-                "timestamp": "2026-09-22T05:00:05Z",
-                "message": {
-                    "role": "assistant",
-                    "content": [{"type": "text", "text": "好的，我先把相关的文件读一遍再动手"}],
-                },
-            }
-        )
-    )
-
-
 def _real_memory(tmp_path):
     from octop_memory.core import Memory
 
@@ -747,87 +718,6 @@ def _real_memory(tmp_path):
         backend="sqlite",
         backend_config={"db_path": str(tmp_path / "memory.sqlite")},
     )
-
-
-def test_capture_transcript_parses_typed_events(bind_agent, bind_user, monkeypatch, tmp_path):
-    memory = _real_memory(tmp_path)
-    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
-    monkeypatch.setattr(mm, "_archive_uploaded_session", lambda *a, **k: None)
-    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
-    mcp = mm.build_memory_mcp(_server())
-
-    result = _call_tool(
-        mcp,
-        "memory_capture",
-        content=_claude_transcript(),
-        source="claude-code",
-        session_id="cc:s1",
-    )
-
-    assert result["imported"] == 2
-    events = list(memory.list_raw(session_id="cc:s1", limit=10))
-    assert {event.event_type for event in events} == {"user_message", "assistant_message"}
-
-
-def test_capture_gzip_transcript_is_decoded(bind_agent, bind_user, monkeypatch, tmp_path):
-    import base64
-    import gzip
-
-    memory = _real_memory(tmp_path)
-    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
-    monkeypatch.setattr(mm, "_archive_uploaded_session", lambda *a, **k: None)
-    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
-    mcp = mm.build_memory_mcp(_server())
-
-    payload = base64.b64encode(gzip.compress(_claude_transcript().encode())).decode()
-    result = _call_tool(
-        mcp,
-        "memory_capture",
-        content=payload,
-        source="claude-code",
-        session_id="cc:s2",
-    )
-    assert result["imported"] == 2
-
-
-def test_capture_transcript_redacts_secrets(bind_agent, bind_user, monkeypatch, tmp_path):
-    memory = _real_memory(tmp_path)
-    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
-    monkeypatch.setattr(mm, "_archive_uploaded_session", lambda *a, **k: None)
-    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
-    mcp = mm.build_memory_mcp(_server())
-
-    secret = "sk-abcdefgh12345678"
-    transcript = _claude_transcript().replace(
-        "先看看 CLI 的整体结构，再决定怎么改", f"先看看 {secret} 的整体结构，再决定怎么改"
-    )
-    _call_tool(
-        mcp,
-        "memory_capture",
-        content=transcript,
-        source="claude-code",
-        session_id="cc:s3",
-    )
-    events = list(memory.list_raw(session_id="cc:s3", limit=10))
-    assert all(secret not in event.content for event in events)
-
-
-async def test_setup_script_never_embeds_a_token(monkeypatch, tmp_path):
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
-    monkeypatch.setenv("OCTOP_MEMORY_MCP_TOKEN", "omcp_instance_secret")
-    app = mm._InstallerApp(_server())
-    scope = _http_scope({"host": "octop.example.com"})
-    scope["method"] = "GET"
-    status, bodies = await _capture_response(app, scope)
-    assert status == 200
-    body = b"".join(part.get("body", b"") for part in bodies).decode()
-    assert "omcp_instance_secret" not in body
-
-
-def test_powershell_selection():
-    assert mm._wants_powershell({"os": "windows"}) is True
-    assert mm._wants_powershell({"shell": "pwsh"}) is True
-    assert mm._wants_powershell({}) is False
 
 
 # ─── save: MemoryService application layer ────────────────────────────────

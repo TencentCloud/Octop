@@ -52,7 +52,7 @@ const UNRESTRICTED_EXPERT = "__unrestricted__";
 
 /** Public setup guide for the clients this tab issues tokens to. */
 const MCP_SETUP_DOCS_URL =
-  "https://github.com/TencentCloud/Octop/blob/develop/docs/memory-mcp-setup.md";
+  "https://github.com/TencentCloud/Octop/blob/develop/docs/memory-mcp.md";
 
 interface CreateFormValues {
   name: string;
@@ -189,8 +189,20 @@ export default function McpAccess() {
     });
   }, [switchTarget, switchForm]);
 
-  const buildSetupCommand = (plaintext: string) =>
-    `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${plaintext} sh`;
+  const buildClientConfig = (plaintext: string) =>
+    JSON.stringify(
+      {
+        mcpServers: {
+          "octop-memory": {
+            type: "http",
+            url: `${origin}/mcp/memory/`,
+            headers: { Authorization: `Bearer ${plaintext}` },
+          },
+        },
+      },
+      null,
+      2,
+    );
 
   const handleCreate = async () => {
     let values: CreateFormValues;
@@ -280,7 +292,7 @@ export default function McpAccess() {
 
   const handleCopyCommand = async () => {
     if (!created) return;
-    await copySetupCommand(buildSetupCommand(created.plaintext));
+    await copySetupCommand(buildClientConfig(created.plaintext));
   };
 
   /**
@@ -292,7 +304,7 @@ export default function McpAccess() {
   const handleCommandClick = (token: MemoryMcpToken) => {
     const plaintext = plaintextByToken[token.token_id];
     if (plaintext) {
-      void copySetupCommand(buildSetupCommand(plaintext));
+      void copySetupCommand(buildClientConfig(plaintext));
       return;
     }
     setRotatedCommand(null);
@@ -305,7 +317,7 @@ export default function McpAccess() {
     setRotating(true);
     try {
       const result = await memoryMcpApi.rotate(commandTarget.token_id);
-      const command = buildSetupCommand(result.plaintext);
+      const command = buildClientConfig(result.plaintext);
       setPlaintextByToken((prev) => ({
         ...prev,
         [result.token.token_id]: result.plaintext,
@@ -627,23 +639,21 @@ export default function McpAccess() {
       <Alert
         type="info"
         showIcon
-        message={t("memory.mcp.installTitle", "一条命令接入")}
+        message={t("memory.mcp.installTitle", "客户端配置")}
         description={
           <Space direction="vertical" size={6} style={{ width: "100%" }}>
             <Typography.Text type="secondary">
               {t(
                 "memory.mcp.installHint",
-                "在终端里执行下面的命令（把 <你的token> 换成创建的 Token），会自动写入 hooks 与 MCP 条目，支持 Claude Code / Codex / Cursor / Kiro / DSH。",
+                "在客户端里加一个 Streamable HTTP MCP 服务：URL 指向下面的地址，Header 带 Authorization: Bearer <你的 token>。自动召回 / 一键安装的客户端工具已拆到 octop-memory harness 插件。",
               )}
             </Typography.Text>
             <Typography.Paragraph
               code
-              copyable={{
-                text: `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=<你的token> sh`,
-              }}
+              copyable={{ text: `${origin}/mcp/memory/` }}
               style={{ marginBottom: 0 }}
             >
-              {`curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=<你的token> sh`}
+              {`${origin}/mcp/memory/`}
             </Typography.Paragraph>
           </Space>
         }
@@ -858,7 +868,12 @@ export default function McpAccess() {
               )}
             </Typography.Text>
             <Space.Compact style={{ width: "100%" }}>
-              <Input readOnly value={buildSetupCommand(created.plaintext)} />
+              <Input.TextArea
+                readOnly
+                autoSize={{ minRows: 5, maxRows: 12 }}
+                value={buildClientConfig(created.plaintext)}
+                style={{ fontFamily: "monospace", fontSize: 12 }}
+              />
               <Button type="primary" onClick={() => void handleCopyCommand()}>
                 {t("memory.mcp.copyCommand", "复制命令")}
               </Button>
@@ -920,7 +935,12 @@ export default function McpAccess() {
                   )}
                 </Typography.Text>
                 <Space.Compact style={{ width: "100%" }}>
-                  <Input readOnly value={rotatedCommand} />
+                  <Input.TextArea
+                    readOnly
+                    autoSize={{ minRows: 5, maxRows: 12 }}
+                    value={rotatedCommand}
+                    style={{ fontFamily: "monospace", fontSize: 12 }}
+                  />
                   <Button onClick={() => void copySetupCommand(rotatedCommand)}>
                     {t("memory.mcp.copyCommand", "复制命令")}
                   </Button>
