@@ -15,6 +15,7 @@ from octop.infra.errors import OctopError
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
+    from octop.infra.history.store import HistoryStore
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class MemorySlimCoordinator:
 
     def __init__(self, agent_manager: AgentManager) -> None:
         self._agent_manager = agent_manager
+        self.history_store: HistoryStore | None = None
         self.task: asyncio.Task[None] | None = None
         self.agent_id: str | None = None
         self.state: dict[str, Any] = {}
@@ -194,12 +196,24 @@ class MemorySlimCoordinator:
 
             def operation() -> dict[str, Any]:
                 from octop.infra.agents.memory.storage import sqlite_store_is_shared
+                from octop.infra.history.legacy import pin_restored_history_checkpoints
 
                 self._assert_owner(agent_id, owner_id, locale)
                 if sqlite_store_is_shared(registry, agent_id, memory):
                     raise ValueError(tr("memory_storage.shared_sqlite", locale))
+
+                def repin() -> None:
+                    if self.history_store is not None:
+                        pin_restored_history_checkpoints(self.history_store, agent_id, path)
+
+                # This operation finishes before the manager recreates the agent and its timer.
                 result = restore_sqlite(
-                    path, str(memory.backend._ns), backup_id, locale=locale, progress=progress
+                    path,
+                    str(memory.backend._ns),
+                    backup_id,
+                    locale=locale,
+                    progress=progress,
+                    after_restore=repin,
                 )
                 progress({"phase": "restarting", "report": result})
                 return result

@@ -546,6 +546,7 @@ class OctopServer:
             or archive_path.exists()
             or archive_path.with_suffix(".required").exists()
         ):
+            from octop.infra.history.legacy import pin_existing_history_checkpoints  # noqa: PLC0415
             from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
             from octop.infra.history.store import HistoryStore  # noqa: PLC0415
             from octop.infra.history.trajectory_compat import (
@@ -561,6 +562,18 @@ class OctopServer:
                 self.services.trajectory_event_repo,
                 enabled=config.history_v2_enabled,
             )
+            try:
+                await asyncio.to_thread(
+                    pin_existing_history_checkpoints,
+                    history_archive.store,
+                    registry,
+                    config=config,
+                    paths=self.paths,
+                )
+            except BaseException:
+                history_archive.store.close()
+                raise
+            registry.memory_slim.history_store = history_archive.store
             trajectory_store = ArchiveTrajectoryStore(history_archive)
         trajectory_service = TrajectoryService(
             trajectory_store,

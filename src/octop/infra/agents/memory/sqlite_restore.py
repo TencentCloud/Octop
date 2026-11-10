@@ -77,6 +77,7 @@ def restore_sqlite(
     *,
     locale: str,
     progress: Callable[[dict[str, Any]], None],
+    after_restore: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Validate, snapshot current data durably, then use SQLite's backup API.
 
@@ -112,6 +113,8 @@ def restore_sqlite(
             try:
                 src.backup(dest)
                 _validate(dest, namespace, locale)
+                if after_restore is not None:
+                    after_restore()
             except BaseException:
                 # The host has stopped all writers; restoring this snapshot cannot
                 # discard writes made after it. Always retain it for manual recovery.

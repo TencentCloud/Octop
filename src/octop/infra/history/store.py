@@ -102,6 +102,22 @@ class HistoryStore:
                 )
             ]
 
+    def checkpoint_anchors(
+        self, *, agent_id: str | None = None
+    ) -> list[tuple[str, str, dict[str, Any]]]:
+        """Read persistent legacy checkpoint references before starting maintenance."""
+        if not self.path.exists():
+            raise FileNotFoundError(self.path)
+        with self.db.connect() as conn:
+            return [
+                (row["agent_id"], row["thread_id"], json.loads(row["anchor"]))
+                for row in conn.execute(
+                    "SELECT agent_id,thread_id,anchor FROM segments WHERE format='legacy' AND anchor IS NOT NULL "
+                    "AND (? IS NULL OR agent_id=?)",
+                    (agent_id, agent_id),
+                )
+            ]
+
     def turn(self, thread_id: str, *, unfinished: bool = False) -> dict[str, Any] | None:
         if not self.path.exists():
             raise FileNotFoundError(self.path)

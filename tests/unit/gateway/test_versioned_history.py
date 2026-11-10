@@ -53,6 +53,73 @@ async def no_anchor(_anchor):
 
 
 @pytest.mark.asyncio
+async def test_startup_pins_available_history_anchors_when_other_anchors_are_missing(
+    tmp_octop_home, caplog
+):
+    import sqlite3
+    from contextlib import closing
+
+    from langgraph.checkpoint.base import empty_checkpoint
+    from octop_memory import Memory
+
+    from octop.config import OctopConfig
+    from octop.infra.server import OctopServer
+
+    server = OctopServer(home=tmp_octop_home)
+    db = SqlitePool(server.paths.db)
+    run_migrations(db)
+    agents = AgentRepo(db)
+    owner = UserRepo(db).create(username="test", password_hash="x", role="user")
+    store = HistoryStore(
+        tmp_octop_home / "history_v2.sqlite",
+        identity=str(OctopConfig().database.resolve_sqlite_path(tmp_octop_home).resolve()),
+    )
+    archive = HistoryArchive(store, ThreadMessageRepo(db), TrajectoryEventRepo(db), enabled=True)
+
+    def add_agent(agent_id, path):
+        cfg = {"workspace_dir": str(tmp_octop_home), "memory": {"backend": {"db_path": str(path)}}}
+        agents.create(agent_id=agent_id, user_id=owner, name=agent_id, config_json=json.dumps(cfg))
+        agents.set_state(agent_id, "stopped")
+
+    def add_anchor(agent_id, thread_id, checkpoint_id):
+        archive.begin(
+            agent_id,
+            thread_id,
+            anchor={
+                "checkpoint_config": {
+                    "configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}
+                }
+            },
+        )
+
+    add_agent("unavailable", tmp_octop_home / "unavailable.sqlite")
+    add_anchor("unavailable", "io-failure", "missing")
+    path = tmp_octop_home / "memory.sqlite"
+    add_agent("ready", path)
+    add_anchor("ready", "missing-thread", "missing")
+    memory = Memory("agent_ready", backend_config={"db_path": str(path)})
+    config = memory.put({"configurable": {"thread_id": "ready-thread"}}, empty_checkpoint(), {}, {})
+    checkpoint_id = config["configurable"]["checkpoint_id"]
+    add_anchor("ready", "ready-thread", checkpoint_id)
+    memory._checkpointer.conn.close()
+    memory.backend.close()
+    store.close()
+    db.close()
+
+    try:
+        await server.start(serve_background=False)
+        assert server.database_bound
+        assert "Could not register history checkpoint anchors for agent=unavailable" in caplog.text
+        assert "Missing history checkpoint anchor agent=ready thread=missing-thread" in caplog.text
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute(
+                "SELECT thread_id,checkpoint_id FROM hm_checkpoint_pins"
+            ).fetchall() == [("ready-thread", checkpoint_id)]
+    finally:
+        await server.stop()
+
+
+@pytest.mark.asyncio
 async def test_no_migration_single_write_and_cross_boundary_cursor(archive):
     old = [HumanMessage(content="old question", id="u0"), AIMessage(content="old answer", id="a0")]
     archive.messages.append_if_ready("t", message_inputs(old))
@@ -619,6 +686,7 @@ async def test_checkpoint_cursor_pins_old_snapshot_without_copying(archive):
     state = SimpleNamespace(
         values={"messages": old},
         config={"configurable": {"thread_id": "t", "checkpoint_id": "old"}},
+        created_at="2026-01-01T00:00:00Z",
     )
     graph = SimpleNamespace(aget_state=AsyncMock(return_value=state))
     registry = MagicMock()
@@ -638,6 +706,108 @@ async def test_checkpoint_cursor_pins_old_snapshot_without_copying(archive):
     }
     assert not archive.messages.range_rows("t", 0, 100)
     assert archive.messages.projection_status("t") == "pending"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing_archive", [False, True])
+async def test_checkpoint_prune_preserves_v2_paging_and_old_message_fork(
+    archive, tmp_path, existing_archive
+):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from langgraph.graph import END, START, MessagesState, StateGraph
+    from octop_memory.core import Memory
+    from octop_memory.pipeline.lifecycle.checkpoint_gc import prune_checkpoints
+
+    from octop.config import OctopConfig
+    from octop.infra.agents.threads.fork import fork_dashboard_thread
+    from octop.infra.db.repos.sessions import SessionRepo
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.threads import ThreadRegistry
+    from octop.infra.history.legacy import pin_existing_history_checkpoints
+    from octop.infra.history.reader import export_messages, read_page
+
+    path = tmp_path / "memory.sqlite"
+    memory = Memory("agent_a", backend_config={"db_path": str(path)})
+    try:
+        graph = (
+            StateGraph(MessagesState)
+            .add_node("end_turn", lambda _: {})
+            .add_edge(START, "end_turn")
+            .add_edge("end_turn", END)
+            .compile(checkpointer=memory)
+        )
+        config = {"configurable": {"thread_id": "t"}}
+        old = [
+            HumanMessage(content="old question", id="u0"),
+            AIMessage(content="old answer", id="a0"),
+            HumanMessage(content="next question", id="u1"),
+            AIMessage(content="next answer", id="a1"),
+        ]
+        await graph.ainvoke({"messages": old}, config)
+        archive.messages.mark_projection("t", "pending")
+        harness = SimpleNamespace(graph=graph, checkpointer=memory)
+        registry = MagicMock()
+        registry.get_agent.return_value = harness
+        first = await read_page(archive, registry, "a", "t", limit=2)
+        assert first["next_cursor"].startswith("legacy:")
+
+        await graph.ainvoke({"messages": [HumanMessage(content="legacy tail", id="u2")]}, config)
+        anchor_config = (await graph.aget_state(config)).config
+        if existing_archive:
+            turn = archive.begin("a", "t", anchor={"checkpoint_config": anchor_config})
+            recorder = RecordingTracker(archive, turn, [])
+            agent_config = {
+                "workspace_dir": str(tmp_path),
+                "memory": {"backend": {"db_path": str(path)}},
+            }
+            registry.get_row.return_value = SimpleNamespace(
+                agent_id="a", config_json=json.dumps(agent_config)
+            )
+            registry.get_config.return_value = agent_config
+            pin_existing_history_checkpoints(
+                archive.store, registry, config=OctopConfig(), paths=MagicMock()
+            )
+        else:
+            processor = SimpleNamespace(_history_archive=archive, _agent_manager=registry)
+            recorder = await GlobalProcessor._begin_history(processor, "a", "t", {})
+        assert isinstance(recorder, RecordingTracker)
+        recorder.observe({"type": "token", "content": "v2 answer"})
+        await recorder.finish(completed=True)
+
+        for i in range(3):
+            await graph.ainvoke({"messages": [HumanMessage(content=f"later {i}")]}, config)
+        expected = await export_messages(archive, registry, "a", "t")
+        before = await read_page(archive, registry, "a", "t", limit=2)
+        stats = prune_checkpoints(memory, keep_last=1)
+        assert stats.checkpoints_deleted > 0
+        assert memory.get_tuple(anchor_config) is not None
+        assert await export_messages(archive, registry, "a", "t") == expected
+        assert (await read_page(archive, registry, "a", "t", limit=2)) == before
+        older = await read_page(archive, registry, "a", "t", limit=2, cursor=first["next_cursor"])
+        assert messages_from_dict(older["messages"]) == old[:2]
+
+        db = archive.messages._db
+        threads = ThreadRegistry(session_repo=SessionRepo(db), thread_repo=ThreadRepo(db))
+        source = threads.get_thread("t")
+        fork = await fork_dashboard_thread(
+            thread_registry=threads,
+            harness=harness,
+            source=source,
+            user_id=source.user_id,
+            message_id="a0",
+            thread_message_repo=archive.messages,
+            history_archive=archive,
+        )
+        assert fork["copied_messages"] == 2
+        assert (
+            messages_from_dict(await export_messages(archive, registry, "a", fork["thread_id"]))
+            == old[:2]
+        )
+    finally:
+        memory._checkpointer.conn.close()
+        memory.backend.close()
 
 
 @pytest.mark.asyncio

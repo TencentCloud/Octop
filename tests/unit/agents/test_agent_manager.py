@@ -3136,3 +3136,89 @@ async def test_restore_respects_runtime_capability_and_expert_scope(
     finally:
         for row in rows:
             await manager.stop(row.agent_id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_newer_anchor", [False, True])
+async def test_restore_pins_history_before_agent_rebuild(
+    manager, monkeypatch, caplog, missing_newer_anchor
+):
+    import sqlite3
+    from contextlib import closing
+
+    from langgraph.checkpoint.base import empty_checkpoint
+    from octop_harness import HarnessAgentManager
+    from octop_harness.middleware.memory import MemoryMiddleware
+    from octop_memory.application.checkpoint_maintenance import pin_sqlite_checkpoints
+    from octop_memory.pipeline.lifecycle.checkpoint_gc import prune_checkpoints
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.history.service import HistoryArchive
+    from octop.infra.history.store import HistoryStore
+
+    monkeypatch.setattr(MemoryMiddleware, "_arm_maintenance", lambda *a, **k: None)
+    _seed_test_provider(manager)
+    manager._harness_manager = HarnessAgentManager(
+        providers=manager.providers.build_harness_configs(), file_logging=False
+    )
+    user_id = manager._repos.user_repo.create(
+        username="restore-owner", password_hash="x", role="user"
+    )
+    row = await manager.create(AgentCreateSpec(name="restore-pins", user_id=user_id))
+    memory = manager.get_agent(row.agent_id)._memory_runtime.memory
+    assert memory is not None
+    path = Path(memory.backend._db_path)
+    store = HistoryStore(manager.paths.root / "history_v2.sqlite", identity="restore-test")
+    manager.memory_slim.history_store = store
+    archive = HistoryArchive(
+        store,
+        manager._repos.thread_message_repo,
+        manager._repos.trajectory_event_repo,
+        enabled=True,
+    )
+    try:
+        config = {"configurable": {"thread_id": "old", "checkpoint_ns": ""}}
+        anchor = memory.put(config, empty_checkpoint(), {}, {})
+        anchor_id = anchor["configurable"]["checkpoint_id"]
+        archive.begin(row.agent_id, "old", anchor={"checkpoint_config": anchor})
+        for _ in range(5):
+            memory.put(config, empty_checkpoint(), {}, {})
+        backup = path.with_name(path.name + ".before-slim." + "a" * 32 + ".bak")
+        with closing(sqlite3.connect(backup)) as target:
+            memory._checkpointer.conn.backup(target)
+            assert (
+                target.execute(
+                    "SELECT name FROM sqlite_schema WHERE name='hm_checkpoint_pins'"
+                ).fetchone()
+                is None
+            )
+
+        refs = [("old", anchor_id)]
+        if missing_newer_anchor:
+            newer = memory.put({"configurable": {"thread_id": "newer"}}, empty_checkpoint(), {}, {})
+            refs.append(("newer", newer["configurable"]["checkpoint_id"]))
+            archive.begin(row.agent_id, "newer", anchor={"checkpoint_config": newer})
+        pin_sqlite_checkpoints(path, refs)
+
+        create_agent = manager._harness_manager.acreate_agent
+
+        async def create_after_pins(*args, **kwargs):
+            with closing(sqlite3.connect(path)) as restored:
+                assert restored.execute(
+                    "SELECT thread_id,checkpoint_id FROM hm_checkpoint_pins"
+                ).fetchall() == [("old", anchor_id)]
+            return await create_agent(*args, **kwargs)
+
+        monkeypatch.setattr(manager._harness_manager, "acreate_agent", create_after_pins)
+        manager.memory_slim.start_restore(row.agent_id, user_id, backup.name)
+        await manager.memory_slim.task
+        assert manager.memory_slim.state["phase"] == "done"
+        reopened = manager.get_agent(row.agent_id)._memory_runtime.memory
+        assert reopened is not memory
+        assert prune_checkpoints(reopened, keep_last=3, skip_pending=True).checkpoints_deleted == 2
+        assert reopened.get_tuple(anchor) is not None
+        warning = f"Missing history checkpoint anchor agent={row.agent_id} thread=newer"
+        assert (warning in caplog.text) == missing_newer_anchor
+    finally:
+        store.close()
+        await manager.stop(row.agent_id)

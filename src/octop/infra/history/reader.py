@@ -5,10 +5,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import time
 from typing import Any
 
-from octop.infra.history.legacy import checkpoint_snapshot, checkpoint_wires
+from octop.infra.history.legacy import checkpoint_snapshot, checkpoint_wires, pin_history_checkpoint
 from octop.infra.history.service import HistoryArchive
+
+_LEGACY_CURSOR_TTL_SECONDS = 3600
 
 
 async def read_page(
@@ -78,13 +81,19 @@ async def read_page(
                     }
                 }
             }
-        raw, config = await checkpoint_snapshot(registry.get_agent(agent_id), thread_id, anchor)
+        harness = registry.get_agent(agent_id)
+        raw, config = await checkpoint_snapshot(harness, thread_id, anchor)
         stop = min(len(raw), boundary["before"]) if boundary else max(0, len(raw) - offset)
         start = max(0, stop - limit)
         wires, has_more, before = raw[start:stop], start > 0, start
         checkpoint_id = (config or {}).get("configurable", {}).get("checkpoint_id")
         if has_more and not checkpoint_id:
             raise ValueError("Cannot pin the legacy history page")
+        if has_more and boundary is None:
+            assert config is not None
+            await pin_history_checkpoint(
+                harness, thread_id, config, expires_at=time.time() + _LEGACY_CURSOR_TTL_SECONDS
+            )
     next_cursor = None
     if has_more:
         value = {"thread": thread_id, "source": source, "before": before}

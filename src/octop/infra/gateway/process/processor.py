@@ -227,6 +227,7 @@ class GlobalProcessor:
     async def _begin_history(
         self, agent_id: str, thread_id: str, request: dict[str, Any], *, resume: bool = False
     ) -> TurnHistoryTracker:
+        from octop.infra.history.legacy import pin_history_checkpoint  # noqa: PLC0415
         from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
 
         archive = self._history_archive
@@ -247,6 +248,7 @@ class GlobalProcessor:
                 if checkpoint_config and checkpoint_config.get("configurable", {}).get(
                     "checkpoint_id"
                 ):
+                    await pin_history_checkpoint(harness, thread_id, checkpoint_config)
                     anchor = {"checkpoint_config": checkpoint_config}
                 elif getattr(state, "values", {}).get("messages"):
                     raise ValueError("Cannot pin the legacy history boundary")
