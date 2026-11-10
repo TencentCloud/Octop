@@ -230,6 +230,41 @@ def update_token(
     return _to_out(updated)
 
 
+@router.post(
+    "/{token_id}/rotate",
+    response_model=TokenCreated,
+    summary="Rotate a memory MCP token",
+    description=(
+        "Issues a fresh secret for one of the caller's own tokens; the previous plaintext "
+        "stops working immediately. Revoked tokens cannot be rotated."
+    ),
+)
+def rotate_token(
+    token_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> TokenCreated:
+    assert server.services is not None
+    repo = server.services.repos.memory_mcp_token_repo
+    plaintext, token_hash = generate_token()
+    row = repo.rotate(
+        token_id,
+        user_id=user.id,
+        token_hash=token_hash,
+        token_hint=token_hint(plaintext),
+    )
+    if row is None:
+        existing = repo.get_for_user(token_id, user_id=user.id)
+        if existing is not None and existing.revoked_at:
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                f"memory MCP token {token_id!r} was revoked and can no longer be rotated",
+                status=409,
+            )
+        raise OctopError(ErrorCode.NOT_FOUND, f"memory MCP token {token_id!r} not found")
+    return TokenCreated(**_to_out(row).model_dump(), token=plaintext)
+
+
 @router.delete(
     "/{token_id}",
     response_model=TokenRevoked,

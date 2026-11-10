@@ -8,6 +8,7 @@ vi.mock("../../../api/modules/memoryMcp", () => ({
     create: vi.fn(),
     update: vi.fn(),
     revoke: vi.fn(),
+    rotate: vi.fn(),
   },
 }));
 
@@ -48,10 +49,17 @@ import {
   type MemoryMcpToken,
 } from "../../../api/modules/memoryMcp";
 import { message } from "../../../utils/antdMessage";
+import { copyText } from "../../../utils/copyText";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import McpAccess from "./McpAccess";
 
 const api = vi.mocked(memoryMcpApi, true);
+const copyMock = vi.mocked(copyText);
+
+/** The one-line install command a row copies. */
+function setupCommand(plaintext: string): string {
+  return `curl -fsSL "${window.location.origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${plaintext} sh`;
+}
 
 const activeToken: MemoryMcpToken = {
   token_id: "tok_1",
@@ -311,5 +319,93 @@ describe("<McpAccess />", () => {
         "还没有接入记录（客户端带上 X-Octop-Client 后才会出现）",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("copies a token's setup command straight away while its plaintext is cached", async () => {
+    const freshToken: MemoryMcpToken = {
+      ...activeToken,
+      token_id: "tok_2",
+      name: "claude@laptop",
+    };
+    api.list.mockResolvedValue([activeToken, freshToken]);
+    api.create.mockResolvedValue({
+      token: freshToken,
+      plaintext: "omcp_live_plaintext_value",
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+
+    // Creating a token is what puts the plaintext in the session cache.
+    await user.click(screen.getByRole("button", { name: /创建 Token/ }));
+    await user.type(
+      await screen.findByRole("textbox", { name: "名称" }),
+      "claude@laptop",
+    );
+    await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
+    await screen.findByDisplayValue("omcp_live_plaintext_value");
+    await user.click(screen.getByRole("button", { name: "我已保存，关闭" }));
+
+    // The second row (claude@laptop) is the one with a cached plaintext.
+    const commandButtons = await screen.findAllByRole("button", {
+      name: /接入命令/,
+    });
+    await user.click(commandButtons[1]);
+
+    await waitFor(() =>
+      expect(copyMock).toHaveBeenCalledWith(
+        setupCommand("omcp_live_plaintext_value"),
+      ),
+    );
+    expect(message.success).toHaveBeenCalledWith("已复制");
+    // No modal and no regeneration: the plaintext was still known.
+    expect(api.rotate).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(/明文只在创建时显示一次/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("regenerates the token before copying when the plaintext is unknown", async () => {
+    api.rotate.mockResolvedValue({
+      token: { ...activeToken, token_hint: "omcp_…new0" },
+      plaintext: "omcp_rotated_secret",
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+
+    await user.click(screen.getByRole("button", { name: /接入命令/ }));
+    expect(
+      await screen.findByText(/明文只在创建时显示一次/),
+    ).toBeInTheDocument();
+    expect(api.rotate).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /重新生成并复制/ }));
+
+    await waitFor(() => expect(api.rotate).toHaveBeenCalledWith("tok_1"));
+    await waitFor(() =>
+      expect(copyMock).toHaveBeenCalledWith(
+        setupCommand("omcp_rotated_secret"),
+      ),
+    );
+    // The new command stays on screen so it can be copied again.
+    expect(
+      await screen.findByDisplayValue(setupCommand("omcp_rotated_secret")),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/旧 Token 已失效/)).toBeInTheDocument();
+
+    // Closing the modal refreshes the list (token_hint changed server-side).
+    await user.click(screen.getByRole("button", { name: /关\s*闭/ }));
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  it("disables the setup-command action of a revoked token", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, revoked_at: "2026-11-09T09:00:00Z" },
+    ]);
+    render(<McpAccess />);
+
+    expect(await screen.findByText("已撤销")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /接入命令/ })).toBeDisabled();
   });
 });

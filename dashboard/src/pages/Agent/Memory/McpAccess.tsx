@@ -49,6 +49,10 @@ import styles from "./MemorySettings.module.less";
  */
 const UNRESTRICTED_EXPERT = "__unrestricted__";
 
+/** Public setup guide for the clients this tab issues tokens to. */
+const MCP_SETUP_DOCS_URL =
+  "https://github.com/TencentCloud/Octop/blob/develop/docs/memory-mcp-setup.md";
+
 interface CreateFormValues {
   name: string;
   expert_id: string;
@@ -79,6 +83,20 @@ export default function McpAccess() {
   const [creating, setCreating] = useState(false);
   const [createExpertDefault, setCreateExpertDefault] = useState<string>("");
   const [created, setCreated] = useState<MemoryMcpTokenCreated | null>(null);
+  /**
+   * Plaintexts seen this session, keyed by token id. The server keeps only the
+   * digest, so a row without an entry can only copy after a rotate.
+   */
+  const [plaintextByToken, setPlaintextByToken] = useState<
+    Record<string, string>
+  >({});
+  /** Token whose "setup command" modal is open, if any. */
+  const [commandTarget, setCommandTarget] = useState<MemoryMcpToken | null>(
+    null,
+  );
+  const [rotating, setRotating] = useState(false);
+  /** Command to show once the token was regenerated; null before that. */
+  const [rotatedCommand, setRotatedCommand] = useState<string | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
   /** ``token_id:client`` currently being enabled/disabled. */
   const [togglingClient, setTogglingClient] = useState<string | null>(null);
@@ -169,6 +187,9 @@ export default function McpAccess() {
     });
   }, [switchTarget, switchForm]);
 
+  const buildSetupCommand = (plaintext: string) =>
+    `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${plaintext} sh`;
+
   const handleCreate = async () => {
     let values: CreateFormValues;
     try {
@@ -189,6 +210,11 @@ export default function McpAccess() {
       setCreateOpen(false);
       form.resetFields();
       setCreated(result);
+      // Keep the secret for this session so the row can copy its command again.
+      setPlaintextByToken((prev) => ({
+        ...prev,
+        [result.token.token_id]: result.plaintext,
+      }));
       await load();
     } catch (e) {
       message.error(
@@ -241,15 +267,66 @@ export default function McpAccess() {
     }
   };
 
-  const handleCopyCommand = async () => {
-    if (!created) return;
-    const command = `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`;
+  const copySetupCommand = async (command: string) => {
     const ok = await copyText(command);
     if (ok) {
       message.success(t("memory.mcp.copied", "已复制"));
     } else {
       message.error(t("memory.mcp.copyFailed", "复制失败，请手动选中后复制"));
     }
+  };
+
+  const handleCopyCommand = async () => {
+    if (!created) return;
+    await copySetupCommand(buildSetupCommand(created.plaintext));
+  };
+
+  /**
+   * Row action: copy this token's setup command.
+   *
+   * The plaintext is only known for tokens created/rotated in this session;
+   * otherwise the command cannot be rebuilt and the user must regenerate.
+   */
+  const handleCommandClick = (token: MemoryMcpToken) => {
+    const plaintext = plaintextByToken[token.token_id];
+    if (plaintext) {
+      void copySetupCommand(buildSetupCommand(plaintext));
+      return;
+    }
+    setRotatedCommand(null);
+    setCommandTarget(token);
+  };
+
+  const handleRegenerateCommand = async () => {
+    if (!commandTarget) return;
+    setRotating(true);
+    try {
+      const result = await memoryMcpApi.rotate(commandTarget.token_id);
+      const command = buildSetupCommand(result.plaintext);
+      setPlaintextByToken((prev) => ({
+        ...prev,
+        [result.token.token_id]: result.plaintext,
+      }));
+      setRotatedCommand(command);
+      await copySetupCommand(command);
+    } catch (e) {
+      message.error(
+        e instanceof Error
+          ? e.message
+          : t("memory.mcp.rotateFailed", "重新生成失败，请重试"),
+      );
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const closeCommandModal = () => {
+    if (rotating) return;
+    const rotated = rotatedCommand !== null;
+    setCommandTarget(null);
+    setRotatedCommand(null);
+    // A rotate rewrote token_hint and cleared last_used_at.
+    if (rotated) void load();
   };
 
   const handleRevoke = async (token: MemoryMcpToken) => {
@@ -447,9 +524,16 @@ export default function McpAccess() {
     {
       title: t("memory.mcp.columnActions", "操作"),
       key: "actions",
-      width: 210,
+      width: 300,
       render: (_: unknown, token) => (
         <Space size={4}>
+          <Button
+            size="small"
+            disabled={!!token.revoked_at}
+            onClick={() => handleCommandClick(token)}
+          >
+            {t("memory.mcp.command", "接入命令")}
+          </Button>
           <Button
             size="small"
             disabled={!!token.revoked_at}
@@ -497,6 +581,15 @@ export default function McpAccess() {
               "外部 Agent（Claude Code / Codex / Cursor / Kiro / DSH）使用这里的 Token 访问 {{endpoint}}。Token 只显示一次，丢失后请重建。",
               { endpoint: "/mcp/memory" },
             )}
+            <Typography.Link
+              type="secondary"
+              href={MCP_SETUP_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ marginLeft: 8, fontSize: 12 }}
+            >
+              {t("memory.mcp.docsLink", "接入说明")}
+            </Typography.Link>
           </p>
         </div>
         <Button
@@ -560,7 +653,7 @@ export default function McpAccess() {
           dataSource={tokens}
           pagination={false}
           expandable={{ expandedRowRender: renderClients, columnWidth: 48 }}
-          scroll={{ x: 1160 }}
+          scroll={{ x: 1260 }}
           locale={{
             emptyText: (
               <Empty
@@ -740,14 +833,71 @@ export default function McpAccess() {
               )}
             </Typography.Text>
             <Space.Compact style={{ width: "100%" }}>
-              <Input
-                readOnly
-                value={`curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`}
-              />
+              <Input readOnly value={buildSetupCommand(created.plaintext)} />
               <Button type="primary" onClick={() => void handleCopyCommand()}>
                 {t("memory.mcp.copyCommand", "复制命令")}
               </Button>
             </Space.Compact>
+          </Space>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={commandTarget !== null}
+        title={t("memory.mcp.commandTitle", "重新生成接入命令")}
+        okText={t("memory.mcp.commandRegenerate", "重新生成并复制")}
+        cancelText={t("common.cancel", "取消")}
+        confirmLoading={rotating}
+        onOk={() => void handleRegenerateCommand()}
+        onCancel={closeCommandModal}
+        okButtonProps={{ danger: true }}
+        footer={
+          rotatedCommand ? (
+            <Button type="primary" onClick={closeCommandModal}>
+              {t("common.close", "关闭")}
+            </Button>
+          ) : undefined
+        }
+        destroyOnHidden
+      >
+        {commandTarget ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Typography.Text type="secondary">
+              {commandTarget.name} · {commandTarget.token_hint}
+            </Typography.Text>
+            {rotatedCommand ? (
+              <>
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={t(
+                    "memory.mcp.commandRotated",
+                    "已重新生成，旧 Token 已失效。请立即复制命令并更新已配置的客户端。",
+                  )}
+                />
+                <Typography.Text type="secondary">
+                  {t(
+                    "memory.mcp.commandReady",
+                    "安装命令（已带上这个 Token，可直接粘贴执行）：",
+                  )}
+                </Typography.Text>
+                <Space.Compact style={{ width: "100%" }}>
+                  <Input readOnly value={rotatedCommand} />
+                  <Button onClick={() => void copySetupCommand(rotatedCommand)}>
+                    {t("memory.mcp.copyCommand", "复制命令")}
+                  </Button>
+                </Space.Compact>
+              </>
+            ) : (
+              <Alert
+                type="warning"
+                showIcon
+                message={t(
+                  "memory.mcp.commandMissingWarning",
+                  "Token 明文只在创建时显示一次，当前已无法拼出完整命令。重新生成会立即作废旧 Token，需要同步更新已配置的客户端。",
+                )}
+              />
+            )}
           </Space>
         ) : null}
       </Modal>

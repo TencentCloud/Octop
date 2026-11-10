@@ -116,6 +116,17 @@ export const memoryMcpApi = {
       `/memory-mcp/tokens/${encodeURIComponent(tokenId)}`,
       { method: "DELETE" },
     ),
+
+  /**
+   * Issue a fresh secret for an existing token; the old plaintext stops working
+   * immediately. Returns ``TokenOut`` plus the one-time plaintext, exactly like
+   * ``create``. Revoked tokens are rejected by the server (409).
+   */
+  rotate: (tokenId: string) =>
+    request<TokenCreatedWire>(
+      `/memory-mcp/tokens/${encodeURIComponent(tokenId)}/rotate`,
+      { method: "POST" },
+    ).then(toCreated),
 };
 
 export default memoryMcpApi;

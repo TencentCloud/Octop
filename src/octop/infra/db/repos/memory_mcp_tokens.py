@@ -183,6 +183,32 @@ class MemoryMcpTokenRepo:
                 return None
         return self.get_for_user(token_id, user_id=user_id)
 
+    def rotate(
+        self,
+        token_id: str,
+        *,
+        user_id: int,
+        token_hash: str,
+        token_hint: str,
+    ) -> MemoryMcpTokenRow | None:
+        """Replace a live token's secret (hash + hint); old plaintext stops working.
+
+        Returns ``None`` when the row is gone, owned by somebody else, or already
+        revoked — the caller decides whether that is 404 or 409.
+        """
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE memory_mcp_tokens SET token_hash = ?, token_hint = ?, last_used_at = NULL "
+                "WHERE token_id = ? AND user_id = ? AND revoked_at IS NULL",
+                (token_hash, token_hint, token_id, user_id),
+            )
+            if int(cursor.rowcount or 0) <= 0:
+                return None
+            row = conn.execute(
+                "SELECT * FROM memory_mcp_tokens WHERE token_id = ?", (token_id,)
+            ).fetchone()
+        return MemoryMcpTokenRow.from_row(row) if row is not None else None
+
     def revoke(self, token_id: str, *, user_id: int) -> bool:
         """Mark the token revoked; ``False`` when it was already revoked."""
         with self._db.transaction() as conn:

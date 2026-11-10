@@ -335,3 +335,37 @@ def test_patch_sets_and_clears_disabled_clients(seeded: Seeded) -> None:
     assert nulled.json()["disabled_clients"] is None
     row = repo.get_for_user(token_id, user_id=seeded.owner.id)
     assert row is not None and row.disabled_clients is None
+
+
+def test_rotate_issues_a_new_secret_and_invalidates_the_old_one(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    created = _create_token(client, expert_ids=[seeded.owner_agent])
+    repo = seeded.repos.memory_mcp_token_repo
+
+    response = client.post(f"/memory-mcp/tokens/{created['token_id']}/rotate")
+    assert response.status_code == 200, response.text
+    rotated = response.json()
+    assert rotated["token_id"] == created["token_id"]
+    assert rotated["token"] != created["token"]
+    assert rotated["expert_ids"] == [seeded.owner_agent]
+    assert rotated["token_hint"] != created["token_hint"]
+
+    row = repo.get_by_token_hash(hash_token(created["token"]))
+    assert row is None  # the old plaintext no longer resolves
+    row = repo.get_by_token_hash(hash_token(rotated["token"]))
+    assert row is not None and row.token_id == created["token_id"]
+
+
+def test_rotate_other_users_token_is_not_found(seeded: Seeded) -> None:
+    created = _create_token(_client(seeded, seeded.owner))
+    other = _client(seeded, seeded.other)
+    response = other.post(f"/memory-mcp/tokens/{created['token_id']}/rotate")
+    assert response.status_code == 404
+
+
+def test_rotate_revoked_token_is_a_conflict(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token_id = _create_token(client)["token_id"]
+    assert client.delete(f"/memory-mcp/tokens/{token_id}").status_code == 200
+    response = client.post(f"/memory-mcp/tokens/{token_id}/rotate")
+    assert response.status_code == 409

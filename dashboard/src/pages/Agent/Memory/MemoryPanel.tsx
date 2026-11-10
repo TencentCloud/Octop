@@ -126,16 +126,16 @@ const TABS: TabDef[] = [
     icon: Bell,
   },
   {
-    key: "settings",
-    labelKey: "memory.tabs.settings",
-    fallback: "设置",
-    icon: Settings,
-  },
-  {
     key: "mcp",
     labelKey: "memory.tabs.mcp",
     fallback: "MCP 接入",
     icon: KeyRound,
+  },
+  {
+    key: "settings",
+    labelKey: "memory.tabs.settings",
+    fallback: "设置",
+    icon: Settings,
   },
 ];
 
