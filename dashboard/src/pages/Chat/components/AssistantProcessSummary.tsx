@@ -197,12 +197,15 @@ function resolveLiveProcessHint(
   }
 
   // Tool finished, next tokens not yet — keep the fold "alive" so it does
-  // not look stuck on a static count between ReAct rounds.
+  // not look stuck on a static count between ReAct rounds. Once the answer
+  // text is on screen, the count is the status; don't keep saying we're
+  // still organizing.
   const hasProcess =
     split.tools.length > 0 ||
     split.thinkings.length > 0 ||
     split.processSteps.length > 0;
-  if (hasProcess) {
+  const answerText = (split.answerMessage?.content || "").trim();
+  if (hasProcess && !answerText) {
     return t("chat.processOrganizing", { defaultValue: "整理结果中" });
   }
 
@@ -301,10 +304,12 @@ function AssistantProcessSummary({
         <span className={styles.processSummaryText}>
           {liveHint ? (
             <span className={styles.processLiveHint} aria-live="polite">
-              <span className={styles.thinkingDot} />
-              <span className={styles.thinkingDot} />
-              <span className={styles.thinkingDot} />
               <span className={styles.processLiveLabel}>{liveHint}</span>
+              <span className={styles.processLiveDots} aria-hidden="true">
+                <span className={styles.thinkingDot} />
+                <span className={styles.thinkingDot} />
+                <span className={styles.thinkingDot} />
+              </span>
             </span>
           ) : (
             summaryText
