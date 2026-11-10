@@ -78,6 +78,7 @@ import {
   knowledgeBasesApi,
   type KnowledgeBase,
   type KnowledgeCapability,
+  type KnowledgeRerankOptions,
   type KnowledgeDocument,
   type KnowledgeOnnxModel,
 } from "../../api/modules/knowledgeBases";
@@ -361,6 +362,12 @@ export default function KnowledgeBasesPage() {
       provider_name: string;
       models: { id: string; name: string }[];
     }[]
+  >([]);
+  const [rerankEnabledDraft, setRerankEnabledDraft] = useState(false);
+  const [rerankProviderId, setRerankProviderId] = useState<string>();
+  const [rerankModel, setRerankModel] = useState<string>();
+  const [rerankProviders, setRerankProviders] = useState<
+    KnowledgeRerankOptions["providers"]
   >([]);
   const [onnxExpanded, setOnnxExpanded] = useState(false);
   const [onnxExpanding, setOnnxExpanding] = useState(false);
@@ -831,6 +838,9 @@ export default function KnowledgeBasesPage() {
       setOcrBackend(nextCapability.ocr?.backend ?? "onnx");
       setOcrModel(nextCapability.ocr?.model || "rapidocr");
       setOcrProviderId(nextCapability.ocr?.provider_id || undefined);
+      setRerankEnabledDraft(Boolean(nextCapability.rerank?.enabled));
+      setRerankProviderId(nextCapability.rerank?.provider_id || undefined);
+      setRerankModel(nextCapability.rerank?.model || undefined);
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
@@ -875,6 +885,15 @@ export default function KnowledgeBasesPage() {
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
       return undefined;
+    }
+  }, [t]);
+
+  const loadRerankOptions = useCallback(async () => {
+    try {
+      const options = await knowledgeBasesApi.getRerankOptions();
+      setRerankProviders(options.providers);
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
   }, [t]);
 
@@ -1298,6 +1317,9 @@ export default function KnowledgeBasesPage() {
     ) {
       return;
     }
+    if (rerankEnabledDraft && (!rerankProviderId || !rerankModel)) {
+      return;
+    }
     if (
       featureBackend === "onnx" &&
       !catalog.find((model) => model.id === featureModel)?.downloaded
@@ -1339,6 +1361,9 @@ export default function KnowledgeBasesPage() {
         ocr_backend: ocrBackend,
         ocr_model: ocrBackend === "remote" ? ocrModel : "rapidocr",
         ocr_provider_id: ocrBackend === "remote" ? ocrProviderId : "",
+        rerank_enabled: rerankEnabledDraft,
+        rerank_provider_id: rerankProviderId ?? "",
+        rerank_model: rerankModel ?? "",
       });
       setCapability(next);
       setFeatureModalOpen(false);
@@ -1365,6 +1390,9 @@ export default function KnowledgeBasesPage() {
     setOcrBackend(capability?.ocr?.backend ?? "onnx");
     setOcrModel(capability?.ocr?.model || "rapidocr");
     setOcrProviderId(capability?.ocr?.provider_id || undefined);
+    setRerankEnabledDraft(Boolean(capability?.rerank?.enabled));
+    setRerankProviderId(capability?.rerank?.provider_id || undefined);
+    setRerankModel(capability?.rerank?.model || undefined);
     setFeatureModalOpen(true);
     void (async () => {
       const options = await loadEmbeddingOptions(false);
@@ -1377,6 +1405,7 @@ export default function KnowledgeBasesPage() {
       }
     })();
     void loadOcrOptions();
+    void loadRerankOptions();
     void knowledgeBasesApi.getOnnxDownloadStatus().then((state) => {
       if (state.status === "downloading" || state.status === "loading") {
         const modelId = state.model_name;
@@ -3804,6 +3833,8 @@ export default function KnowledgeBasesPage() {
                     (ocrEnabledDraft &&
                       ocrBackend === "remote" &&
                       (!ocrProviderId || !ocrModel)) ||
+                    (rerankEnabledDraft &&
+                      (!rerankProviderId || !rerankModel)) ||
                     (featureBackend === "onnx" &&
                       !catalog.find((model) => model.id === featureModel)
                         ?.downloaded) ||
@@ -4129,6 +4160,58 @@ export default function KnowledgeBasesPage() {
                         />
                       </>
                     )}
+                  </div>
+                ) : null}
+              </div>
+              <div className={styles.ocrSettings}>
+                <div className={styles.formOptionRow}>
+                  <div className={styles.formOptionCopy}>
+                    <span className={styles.switchLabel}>
+                      {t("knowledgeBases.rerankTitle")}
+                    </span>
+                    <span className={styles.formOptionHint}>
+                      {t("knowledgeBases.rerankDescription")}
+                    </span>
+                  </div>
+                  <Switch
+                    size="small"
+                    checked={rerankEnabledDraft}
+                    onChange={setRerankEnabledDraft}
+                  />
+                </div>
+                {rerankEnabledDraft ? (
+                  <div className={styles.featureFields}>
+                    <Select
+                      value={rerankProviderId}
+                      onChange={(id) => {
+                        setRerankProviderId(id);
+                        setRerankModel(undefined);
+                      }}
+                      placeholder={t("knowledgeBases.selectProvider")}
+                      options={rerankProviders.map((provider) => ({
+                        value: provider.provider_id,
+                        label: provider.provider_name,
+                      }))}
+                      notFoundContent={t("knowledgeBases.rerankNoProviders")}
+                    />
+                    <Select
+                      value={rerankModel}
+                      onChange={setRerankModel}
+                      placeholder={t("knowledgeBases.rerankSelectModel")}
+                      options={(
+                        rerankProviders.find(
+                          (provider) =>
+                            provider.provider_id === rerankProviderId,
+                        )?.models ?? []
+                      ).map((model) => ({
+                        value: model.id,
+                        label: model.name,
+                      }))}
+                      disabled={!rerankProviderId}
+                    />
+                    <span className={styles.formOptionHint}>
+                      {t("knowledgeBases.rerankFallbackHint")}
+                    </span>
                   </div>
                 ) : null}
               </div>

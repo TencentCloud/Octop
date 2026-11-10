@@ -519,6 +519,7 @@
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
     "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
+    "KNOWLEDGE_RERANK_NOT_READY": "The selected rerank model is not available. Choose an enabled provider that offers a rerank model.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
