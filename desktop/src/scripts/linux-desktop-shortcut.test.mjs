@@ -17,11 +17,16 @@ const allowedMacros = new Set(["${executable}", "${sanitizedProductName}"]);
 const bashOk =
   process.platform !== "win32" && spawnSync("bash", ["-c", "echo ok"], { encoding: "utf8" }).status === 0;
 
+// Git on Windows checks these scripts out as CRLF. The deb hooks stay LF.
+function readLf(path) {
+  return readFileSync(path, "utf8").replace(/\r\n/g, "\n");
+}
+
 test("deb maintainer scripts keep the stock fpm hooks and place a desktop icon", () => {
-  const install = readFileSync(afterInstallPath, "utf8");
-  const remove = readFileSync(afterRemovePath, "utf8");
-  const library = readFileSync(libPath, "utf8");
-  const config = readFileSync(configPath, "utf8");
+  const install = readLf(afterInstallPath);
+  const remove = readLf(afterRemovePath);
+  const library = readLf(libPath);
+  const config = readLf(configPath);
 
   for (const [name, text] of [
     ["after-install", install],
