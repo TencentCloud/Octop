@@ -1,10 +1,22 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { test } from "node:test";
 
-const css = readFileSync(new URL("./base.css", import.meta.url), "utf8")
-  .replace(/\/\*[\s\S]*?\*\//g, "");
+const require = createRequire(import.meta.url);
+const less = require("less") as {
+  render: (
+    input: string,
+    options?: { filename?: string },
+  ) => Promise<{ css: string }>;
+};
+
+const rendered = await less.render(
+  readFileSync(new URL("./base.less", import.meta.url), "utf8"),
+  { filename: "base.less" },
+);
+const css = rendered.css.replace(/\/\*[\s\S]*?\*\//g, "");
 const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((match) => ({
   selectors: match[1]!.split(",").map((selector) => selector.trim()),
   declarations: Object.fromEntries(
@@ -36,7 +48,7 @@ test("启动页与错误页仅在固定顶部全宽 58px 内允许拖动", () =>
   });
   for (const page of ["splash", "error"]) {
     const source = readFileSync(new URL(`./${page}.tsx`, import.meta.url), "utf8");
-    assert.match(source, /import "\.\/base\.css";/);
+    assert.match(source, /import "\.\/base\.less";/);
   }
 });
 

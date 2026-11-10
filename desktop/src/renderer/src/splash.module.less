@@ -25,16 +25,26 @@
     ),
     var(--page);
   user-select: none;
+
+  :global(html[data-theme="dark"]) & {
+    background:
+      radial-gradient(
+        720px 380px at 50% -8%,
+        rgba(240, 139, 154, 0.1),
+        transparent 68%
+      ),
+      var(--page);
+  }
 }
 
-.splash__stack {
+.stack {
   display: flex;
   flex-direction: column;
   align-items: center;
   animation: splash-in 420ms ease-out both;
 }
 
-.splash__mark {
+.mark {
   height: 64px;
   flex: none;
   /* The red circle sits left in logo_mark.svg; the speed bars pull the
@@ -42,13 +52,13 @@
   transform: translateX(12px);
 }
 
-.splash__logo {
+.logo {
   display: block;
   height: 64px;
   width: auto;
 }
 
-.splash__wordmark {
+.wordmark {
   margin: 18px 0 0;
   font-size: 21px;
   font-weight: 600;
@@ -57,7 +67,7 @@
   color: var(--text);
 }
 
-.splash__text {
+.text {
   margin: 10px 0 0;
   font-size: 13.5px;
   font-weight: 500;
@@ -67,7 +77,7 @@
 
 /* Indeterminate: no progress number exists to show, and a fake percentage
    would have to lie about the wait. */
-.splash__bar {
+.bar {
   position: relative;
   width: 200px;
   height: 3px;
@@ -75,18 +85,26 @@
   border-radius: 999px;
   background: rgba(232, 93, 117, 0.14);
   overflow: hidden;
+
+  :global(html[data-theme="dark"]) & {
+    background: rgba(240, 139, 154, 0.16);
+  }
 }
 
-.splash__bar-thumb {
+.barThumb {
   position: absolute;
   inset-block: 0;
   width: 40%;
   border-radius: inherit;
   background: linear-gradient(90deg, rgba(232, 93, 117, 0.35), var(--brand));
   animation: splash-sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+
+  :global(html[data-theme="dark"]) & {
+    background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
+  }
 }
 
-.splash__version {
+.version {
   position: absolute;
   inset-block-end: 18px;
   margin: 0;
@@ -116,33 +134,15 @@
   }
 }
 
-html[data-theme="dark"] .splash {
-  background:
-    radial-gradient(
-      720px 380px at 50% -8%,
-      rgba(240, 139, 154, 0.1),
-      transparent 68%
-    ),
-    var(--page);
-}
-
-html[data-theme="dark"] .splash__bar {
-  background: rgba(240, 139, 154, 0.16);
-}
-
-html[data-theme="dark"] .splash__bar-thumb {
-  background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .splash__stack,
-  .splash__bar-thumb {
+  .stack,
+  .barThumb {
     animation: none;
   }
 
   /* Keep the bar readable without motion: a static partial fill still says
      "in progress" where an empty track would say "nothing happening". */
-  .splash__bar-thumb {
+  .barThumb {
     width: 60%;
     transform: translateX(34%);
   }

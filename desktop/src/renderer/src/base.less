@@ -65,22 +65,22 @@ body {
   color: var(--text);
   cursor: default;
   overflow: hidden;
-}
 
-/* 与 CHROME_ROW_HEIGHT 一致：仅顶部 58px 可拖动，正文仍可选择和滚动。
-   这条必须盖在页面上并接收点击。pointer-events: none 会让命中落到下面的
-   非拖动层，窗口就拖不动。 */
-body::before {
-  content: "";
-  position: fixed;
-  z-index: 2;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 58px;
-  user-select: none;
-  -webkit-app-region: drag;
-  app-region: drag;
+  /* 与 CHROME_ROW_HEIGHT 一致：仅顶部 58px 可拖动，正文仍可选择和滚动。
+     这条必须盖在页面上并接收点击。pointer-events: none 会让命中落到下面的
+     非拖动层，窗口就拖不动。 */
+  &::before {
+    content: "";
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    user-select: none;
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
 }
 
 /*

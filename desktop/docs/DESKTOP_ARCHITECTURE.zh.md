@@ -519,9 +519,10 @@ Octop/
           mount.tsx
           splash.tsx
           error.tsx
-          base.css
-          splash.css
-          error.css
+          base.less
+          splash.module.less
+          error.module.less
+          linux-window-controls.module.less
           assets/octop-mark.svg
       shared/
         ipc-contract.ts
@@ -530,7 +531,7 @@ Octop/
 ```
 
 壳页（`renderer/`）是独立的 Vite + React 应用：配置在 `renderer/vite.config.ts`，
-用 `@vitejs/plugin-react` 编译 JSX。它只依赖 `react` / `react-dom`，不引入
+用 `@vitejs/plugin-react` 编译 JSX，样式用 Less。它只依赖 `react` / `react-dom`，不引入
 Dashboard 的 antd 或任何共享组件，因为它必须能在 Sidecar 和 Dashboard 都还不存在时
 就渲染出第一帧。electron-vite 构建时直接使用这份配置。
 

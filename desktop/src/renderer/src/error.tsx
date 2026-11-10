@@ -3,8 +3,8 @@ import markUrl from "./assets/octop-mark.svg";
 import { decodeShellError } from "../../shared/shell-error";
 import { LinuxWindowControls } from "./linux-window-controls";
 import { mount } from "./mount";
-import "./base.css";
-import "./error.css";
+import "./base.less";
+import styles from "./error.module.less";
 
 const PAYLOAD_PARAM = "payload";
 const COPY_FEEDBACK_MS = 2200;
@@ -23,9 +23,9 @@ type CopyState = "idle" | "copied" | "failed";
  */
 function FailureMark() {
   return (
-    <div className="result__mark" aria-hidden="true">
-      <img className="result__mark-img" src={markUrl} alt="" width={352} height={255} />
-      <span className="result__badge">
+    <div className={styles.mark} aria-hidden="true">
+      <img className={styles.markImg} src={markUrl} alt="" width={352} height={255} />
+      <span className={styles.badge}>
         <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
           <rect x="5.15" y="1" width="1.7" height="6.2" rx="0.85" fill="currentColor" />
           <circle cx="6" cy="9.95" r="1.05" fill="currentColor" />
@@ -100,18 +100,18 @@ function ErrorPage() {
   const handleRetry = () => window.octopShell?.restart();
 
   return (
-    <main className="result">
+    <main className={styles.result}>
       <LinuxWindowControls />
-      <div className="result__body" role="alert">
+      <div className={styles.body} role="alert">
         <FailureMark />
-        <h1 className="result__title">{title}</h1>
-        <p className="result__message">{message}</p>
+        <h1 className={styles.title}>{title}</h1>
+        <p className={styles.message}>{message}</p>
 
-        <div className="result__actions">
+        <div className={styles.actions}>
           {canRetry ? (
             <button
               type="button"
-              className="result__button result__button--primary"
+              className={`${styles.button} ${styles.buttonPrimary}`}
               onClick={handleRetry}
               autoFocus
             >
@@ -120,7 +120,7 @@ function ErrorPage() {
           ) : null}
           <button
             type="button"
-            className="result__button"
+            className={styles.button}
             onClick={() => window.close()}
             autoFocus={!canRetry}
           >
@@ -128,15 +128,15 @@ function ErrorPage() {
           </button>
         </div>
 
-        <div className="result__aside">
+        <div className={styles.aside}>
           {detail ? (
-            <details className="result__details">
-              <summary className="result__summary">
+            <details className={styles.details}>
+              <summary className={styles.summary}>
                 <svg
                   viewBox="0 0 12 12"
                   width={12}
                   height={12}
-                  className="result__caret"
+                  className={styles.caret}
                   aria-hidden="true"
                 >
                   <path
@@ -150,12 +150,12 @@ function ErrorPage() {
                 </svg>
                 技术详情
               </summary>
-              <pre className="result__detail">{detail}</pre>
+              <pre className={styles.detail}>{detail}</pre>
             </details>
           ) : null}
           <button
             type="button"
-            className="result__link"
+            className={styles.link}
             onClick={handleCopy}
             aria-live="polite"
           >
@@ -164,7 +164,7 @@ function ErrorPage() {
         </div>
       </div>
 
-      {version ? <p className="result__meta">Octop 桌面端 v{version}</p> : null}
+      {version ? <p className={styles.meta}>Octop 桌面端 v{version}</p> : null}
     </main>
   );
 }

@@ -1,6 +1,6 @@
 /*
  * Fatal-error page: the antd "Result" composition (status glyph → headline →
- * explanation → actions), rebuilt on plain CSS because the shell must not depend
+ * explanation → actions), rebuilt in this stylesheet because the shell must not depend
  * on the Dashboard's antd bundle.
  *
  * Same background wash as the splash it replaces, so a failed start feels like
@@ -21,9 +21,19 @@
       transparent 68%
     ),
     var(--page);
+
+  :global(html[data-theme="dark"]) & {
+    background:
+      radial-gradient(
+        720px 380px at 50% -8%,
+        rgba(240, 139, 154, 0.1),
+        transparent 68%
+      ),
+      var(--page);
+  }
 }
 
-.result__body {
+.body {
   margin: auto;
   width: 100%;
   max-width: 520px;
@@ -33,20 +43,20 @@
 
 /* Product mark with the failure badge on its corner: the page belongs to this
    app, and a bare ✕ in a circle could be any program's error screen. */
-.result__mark {
+.mark {
   position: relative;
   display: inline-block;
   height: 52px;
   margin: 0 auto 20px;
 }
 
-.result__mark-img {
+.markImg {
   display: block;
   height: 52px;
   width: auto;
 }
 
-.result__badge {
+.badge {
   position: absolute;
   right: -5px;
   bottom: -5px;
@@ -62,14 +72,14 @@
   background: var(--brand);
   color: #ffffff;
   box-sizing: content-box;
+
+  /* A text "!" sits on the font baseline, so it never lands in the circle. */
+  svg {
+    display: block;
+  }
 }
 
-/* A text "!" sits on the font baseline, so it never lands in the circle. */
-.result__badge svg {
-  display: block;
-}
-
-.result__title {
+.title {
   margin: 0;
   font-size: 23px;
   font-weight: 600;
@@ -79,7 +89,7 @@
   text-wrap: balance;
 }
 
-.result__message {
+.message {
   margin: 12px 0 0;
   font-size: 14px;
   line-height: 1.7;
@@ -88,7 +98,7 @@
   overflow-wrap: anywhere;
 }
 
-.result__actions {
+.actions {
   margin-top: 26px;
   display: flex;
   flex-wrap: wrap;
@@ -96,7 +106,7 @@
   gap: 10px;
 }
 
-.result__button {
+.button {
   height: 36px;
   padding: 0 18px;
   font: inherit;
@@ -111,33 +121,33 @@
     background-color 120ms ease,
     border-color 120ms ease,
     color 120ms ease;
+
+  &:hover {
+    background: var(--surface-sunken);
+    border-color: var(--border-strong);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
 }
 
-.result__button:hover {
-  background: var(--surface-sunken);
-  border-color: var(--border-strong);
-}
-
-.result__button:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-
-.result__button--primary {
+.buttonPrimary {
   color: #ffffff;
   background: var(--brand);
   border-color: var(--brand);
   box-shadow: 0 1px 2px rgba(217, 75, 100, 0.24);
-}
 
-.result__button--primary:hover {
-  background: var(--brand-strong);
-  border-color: var(--brand-strong);
+  &:hover {
+    background: var(--brand-strong);
+    border-color: var(--brand-strong);
+  }
 }
 
 /* Supporting row: technical detail and the copy action are both secondary, so
    they sit below the buttons at text weight instead of competing for the eye. */
-.result__aside {
+.aside {
   margin-top: 26px;
   display: flex;
   flex-direction: column;
@@ -145,12 +155,12 @@
   gap: 10px;
 }
 
-.result__details {
+.details {
   width: 100%;
   max-width: 460px;
 }
 
-.result__summary {
+.summary {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -162,34 +172,34 @@
   cursor: pointer;
   user-select: none;
   list-style: none;
+
+  /* Chromium draws its own triangle; the chevron below replaces it. */
+  &::-webkit-details-marker {
+    display: none;
+  }
+
+  &:hover {
+    color: var(--text-secondary);
+    background: var(--surface-sunken);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+  }
 }
 
-/* Chromium draws its own triangle; the chevron below replaces it. */
-.result__summary::-webkit-details-marker {
-  display: none;
-}
-
-.result__summary:hover {
-  color: var(--text-secondary);
-  background: var(--surface-sunken);
-}
-
-.result__summary:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
-}
-
-.result__caret {
+.caret {
   flex: none;
   transition: transform 120ms ease;
-}
 
-.result__details[open] .result__caret {
-  transform: rotate(90deg);
+  .details[open] & {
+    transform: rotate(90deg);
+  }
 }
 
 /* The box only exists once the user asks for it. */
-.result__detail {
+.detail {
   margin: 10px 0 0;
   padding: 12px 14px;
   max-height: 180px;
@@ -206,7 +216,7 @@
   overflow-wrap: anywhere;
 }
 
-.result__link {
+.link {
   padding: 4px 8px;
   border: none;
   border-radius: 6px;
@@ -216,19 +226,19 @@
   font-weight: 500;
   color: var(--text-tertiary);
   cursor: pointer;
+
+  &:hover {
+    color: var(--text-secondary);
+    background: var(--surface-sunken);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 1px;
+  }
 }
 
-.result__link:hover {
-  color: var(--text-secondary);
-  background: var(--surface-sunken);
-}
-
-.result__link:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 1px;
-}
-
-.result__meta {
+.meta {
   margin: 0 auto;
   padding-top: 24px;
   font-size: 11.5px;
@@ -249,18 +259,8 @@
   }
 }
 
-html[data-theme="dark"] .result {
-  background:
-    radial-gradient(
-      720px 380px at 50% -8%,
-      rgba(240, 139, 154, 0.1),
-      transparent 68%
-    ),
-    var(--page);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .result__body {
+  .body {
     animation: none;
   }
 }

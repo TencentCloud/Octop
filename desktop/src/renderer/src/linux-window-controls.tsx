@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import "./linux-window-controls.css";
+import styles from "./linux-window-controls.module.less";
 
 function linuxDesktop(): boolean {
   return (
@@ -41,7 +41,7 @@ export function LinuxWindowControls() {
   const controls = window.octopDesktop?.windowControls;
 
   return (
-    <div className="octop-linux-controls" role="group" aria-label="窗口控制">
+    <div className={styles.controls} role="group" aria-label="窗口控制">
       <button type="button" title="最小化" aria-label="最小化" onClick={() => controls?.minimize()}>
         <CaptionGlyph kind="minimize" />
       </button>
@@ -55,7 +55,7 @@ export function LinuxWindowControls() {
       </button>
       <button
         type="button"
-        className="octop-linux-controls-close"
+        className={styles.close}
         title="关闭"
         aria-label="关闭"
         onClick={() => controls?.close()}
