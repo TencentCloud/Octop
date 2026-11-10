@@ -1783,6 +1783,7 @@ function ChatPageInner() {
                     key={pendingAsk.messageId}
                     questions={pendingAsk.questions}
                     status="pending"
+                    docked
                     onSubmit={(answer) =>
                       handleHitlDecision(
                         pendingAsk.actions.map(() => ({
