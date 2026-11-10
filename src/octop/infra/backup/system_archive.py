@@ -247,15 +247,6 @@ def create_system_backup(
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db_dest = root / db_arc
-            history_path = paths.root / "history_v2.sqlite"
-            history_dest = root / "history_v2.sqlite"
-            marker = history_path.with_suffix(".required")
-            if include_chats and marker.exists() and not history_path.exists():
-                raise FileNotFoundError("Required history archive is missing")
-            if include_chats and history_path.exists():
-                # Snapshot the child archive before the main thread registry.
-                # A fully consistent multi-file restore still requires quiescence.
-                snapshot_sqlite_file(history_path, history_dest)
             if pool.dialect == "postgresql":
                 dump_postgres(
                     db_config.postgresql_conninfo(),
@@ -283,10 +274,6 @@ def create_system_backup(
             with tarfile.open(partial, mode="w:gz") as tf:
                 tf.add(manifest_path, arcname=_MANIFEST_NAME)
                 tf.add(db_dest, arcname=db_arc)
-                if history_dest.exists():
-                    tf.add(history_dest, arcname="history/history_v2.sqlite")
-                    if marker.exists():
-                        tf.add(marker, arcname="history/history_v2.required")
                 if include_config and paths.config.is_file():
                     tf.add(
                         root / _CONFIG_DIR / "config.json",
@@ -425,6 +412,7 @@ def restore_system_backup(
     restore_config: bool = True,
     preserve_users: bool | None = None,
     owner_user_id: int | None = None,
+    allow_legacy_history: bool = True,
 ) -> dict[str, Any]:
     """Restore database, workspaces, and optional config from a tar.gz archive.
 
@@ -450,14 +438,25 @@ def restore_system_backup(
         extracted = Path(tmp) / "extracted"
         _extract_archive(source, extracted)
         manifest = _extract_manifest_from_dir(extracted)
-        if (
-            (paths.root / "history_v2.required").exists()
-            or (paths.root / "history_v2.sqlite").exists()
-            or (extracted / "history/history_v2.sqlite").exists()
-        ):
+        # Only the stopped CLI restore can install an old archive for next boot.
+        # Live restore rehydrates agents, whose timer could prune its anchors.
+        from octop.infra.history.retire_v2 import ARCHIVE_NAME, MARKER_NAME, has_history_v2
+
+        archive_history = extracted / "history" / ARCHIVE_NAME
+        archive_marker = extracted / "history" / MARKER_NAME
+        if has_history_v2(paths):
             raise OctopError(
                 ErrorCode.SLASH_BAD_ARGS,
-                "Versioned history requires a coordinated offline restore; no database was changed",
+                "Migrate the existing history v2 archive before restoring a backup",
+            )
+        if archive_marker.is_file() and not archive_history.is_file():
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS, "Backup is missing its required history v2 archive"
+            )
+        if archive_history.is_file() and not allow_legacy_history:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "Stop Octop and use the backup restore CLI for a history v2 archive",
             )
         is_migration = _is_migration_backup(manifest)
 
@@ -633,6 +632,10 @@ def restore_system_backup(
         preserved_chat_rows, skipped_chat_rows = (
             restore_preserved_chats(pool, saved_chats) if saved_chats is not None else (0, 0)
         )
+        if archive_history.is_file():
+            shutil.copy2(archive_history, paths.root / ARCHIVE_NAME)
+            if archive_marker.is_file():
+                shutil.copy2(archive_marker, paths.root / MARKER_NAME)
         schema_version = _current_version(pool)
 
     result: dict[str, Any] = {

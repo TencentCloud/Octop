@@ -12,6 +12,7 @@ from octop.infra.db.pool import DatabasePool
 
 # Child-first for DELETE; reverse for INSERT.
 CHAT_TABLES_CHILD_FIRST = (
+    "history_v2_retirement",
     "trajectory_events",
     "thread_messages",
     "thread_history_projection",

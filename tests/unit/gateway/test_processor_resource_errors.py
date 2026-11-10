@@ -56,7 +56,7 @@ async def test_auth_exception_is_displayed_as_failure_and_kept_out_of_checkpoint
         assert events[-1].type == "completed"
     assert failures == [stream_error_message(AUTH, "zh")]
     processor._agent_manager.append_thread_messages.assert_not_called()
-    assert appended  # The product archive retains the failed turn for display.
+    assert appended  # The v1 projection retains the failed turn for display.
 
 
 def test_stream_error_preserves_resource_error_code() -> None:

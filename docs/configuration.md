@@ -294,13 +294,14 @@ Per-agent provider credentials (e.g. API keys) live in the SQLite
 `providers` table and are surfaced through
 `infra/connectors/credential_crypto.py` for connector OAuth flows.
 
-## Optional segmented history archive
+## Retired segmented history archive
 
-`history_v2_enabled` defaults to `false`; enable it with
-`OCTOP_HISTORY_V2_ENABLED=true`.
-This switch only affects the write format of the next complete turn —
-once disabled, turns already saved in the new format are still read
-correctly.
-Before enabling, read
-[Segmented history archive & rollback](versioned-history.md), especially
-the version compatibility and backup/restore boundaries it covers.
+Octop ignores the former `history_v2_enabled` and `OCTOP_HISTORY_V2_ENABLED` settings.
+At startup, Octop migrates existing archive messages and supported trajectory events into the
+control-plane database before starting agents. Successful migrations retain the original
+`history_v2.sqlite` and `history_v2.required` with a `.migrated-<timestamp>` suffix.
+If a message or checkpoint anchor cannot be read, startup reports the affected thread and
+leaves the source archive in place so the data can be recovered and migration retried.
+Stop the old server before upgrading an installation with a v2 archive. Keep checkpoint
+retention disabled if the old server must run with the new Harness before migration.
+Restore a system backup containing a v2 archive with the offline backup CLI, then start Octop.
