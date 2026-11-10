@@ -229,6 +229,17 @@ export default function McpAccess() {
     }
   };
 
+  const handleCopyCommand = async () => {
+    if (!created) return;
+    const command = `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`;
+    const ok = await copyText(command);
+    if (ok) {
+      message.success(t("memory.mcp.copied", "已复制"));
+    } else {
+      message.error(t("memory.mcp.copyFailed", "复制失败，请手动选中后复制"));
+    }
+  };
+
   const handleRevoke = async (token: MemoryMcpToken) => {
     setRevokingId(token.token_id);
     try {
@@ -586,8 +597,8 @@ export default function McpAccess() {
         onCancel={() => setCreated(null)}
         footer={
           <Space>
-            <Button onClick={() => void handleCopy()}>
-              {t("memory.mcp.copy", "复制")}
+            <Button onClick={() => void handleCopyCommand()}>
+              {t("memory.mcp.copyCommand", "复制命令")}
             </Button>
             <Button type="primary" onClick={() => setCreated(null)}>
               {t("memory.mcp.close", "我已保存，关闭")}
@@ -606,22 +617,27 @@ export default function McpAccess() {
               )}
             />
             <Typography.Text strong>{created.token.name}</Typography.Text>
-            <Input readOnly value={created.plaintext} />
+            <Space.Compact style={{ width: "100%" }}>
+              <Input readOnly value={created.plaintext} />
+              <Button onClick={() => void handleCopy()}>
+                {t("memory.mcp.copyToken", "复制 Token")}
+              </Button>
+            </Space.Compact>
             <Typography.Text type="secondary">
               {t(
-                "memory.mcp.installWithToken",
-                "直接在终端执行这条命令即可完成配置：",
+                "memory.mcp.commandReady",
+                "安装命令（已带上这个 Token，可直接粘贴执行）：",
               )}
             </Typography.Text>
-            <Typography.Paragraph
-              code
-              copyable={{
-                text: `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`,
-              }}
-              style={{ marginBottom: 0 }}
-            >
-              {`curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`}
-            </Typography.Paragraph>
+            <Space.Compact style={{ width: "100%" }}>
+              <Input
+                readOnly
+                value={`curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`}
+              />
+              <Button type="primary" onClick={() => void handleCopyCommand()}>
+                {t("memory.mcp.copyCommand", "复制命令")}
+              </Button>
+            </Space.Compact>
           </Space>
         ) : null}
       </Modal>
