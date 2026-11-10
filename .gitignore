@@ -54,7 +54,9 @@ coverage.xml
 .hypothesis/
 
 # IDE / editors
-.vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/css-custom-data.json
 .idea/
 .codebuddy
 *.swp
