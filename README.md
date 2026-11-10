@@ -301,6 +301,18 @@ Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin
 
 See [`.env.example`](.env.example) for the full list.
 
+To serve the dashboard under a reverse-proxy subpath (for example `https://example.com/octop/`), rebuild the frontend with `VITE_BASE_PATH=/octop/` and strip that prefix in the proxy (nginx `proxy_pass …/;`). The default build assumes the domain root.
+
+With Docker, pass it as a build arg — the value is baked into the bundle, so it cannot be set at runtime:
+
+```bash
+docker build -f docker/Dockerfile --build-arg VITE_BASE_PATH=/octop/ -t octop:latest .
+# or: VITE_BASE_PATH=/octop/ bash docker/docker_build.sh
+# or: VITE_BASE_PATH=/octop/ docker compose -f docker/docker-compose.yml up -d --build
+```
+
+The PWA manifest is rewritten at build time to match, so "install app" stays inside the subpath. Your proxy must also forward WebSocket upgrades (`Upgrade` / `Connection` headers) for chat, terminals, and desktop streams.
+
 ## 📑 Contents
 
 - [Highlights](#-highlights)

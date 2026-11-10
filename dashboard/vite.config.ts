@@ -1,4 +1,5 @@
 import { webcrypto } from "node:crypto";
+import fs from "node:fs";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
@@ -48,6 +49,61 @@ function suppressViteDisconnectReload(): Plugin {
       }
       if (next === code) return;
       return { code: next, map: null };
+    },
+  };
+}
+
+/**
+ * `public/manifest.json` is copied to the output verbatim — Vite rewrites the
+ * asset URLs it generates and the `%BASE_URL%` placeholders in `index.html`,
+ * but it never touches files in `public/`. Under `VITE_BASE_PATH=/octop/` the
+ * manifest would therefore keep `id` / `start_url` / `scope` at `/`, so the
+ * installed PWA (and its scope) would open the domain root instead of the
+ * subpath deployment — on a shared host that is a *different* instance.
+ * Rewrite the emitted file so every URL in it carries the base prefix.
+ */
+function rewriteManifestBase(base: string): Plugin {
+  const prefix = base.replace(/\/+$/, "");
+  const outDir = path.resolve(__dirname, "../src/octop/dashboard");
+  const urlKeys = new Set(["id", "start_url", "scope", "src", "url"]);
+  // Recurses through the whole tree (icons[] / screenshots[] / shortcuts[] are
+  // arrays of objects whose URLs live under `src` / `url`), but only strings
+  // under a URL key are rewritten — `name` / `description` stay untouched.
+  const fix = (value: unknown, isUrl: boolean): unknown => {
+    if (typeof value === "string") {
+      if (!isUrl) return value;
+      const alreadyPrefixed =
+        value === prefix || value.startsWith(`${prefix}/`);
+      return value.startsWith("/") && !alreadyPrefixed
+        ? `${prefix}${value}`
+        : value;
+    }
+    if (Array.isArray(value)) return value.map((item) => fix(item, isUrl));
+    if (value && typeof value === "object") {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([key, val]) => [
+          key,
+          fix(val, urlKeys.has(key)),
+        ]),
+      );
+    }
+    return value;
+  };
+  return {
+    name: "octop-manifest-base",
+    apply: "build",
+    closeBundle() {
+      if (prefix === "") return;
+      const file = path.join(outDir, "manifest.json");
+      if (!fs.existsSync(file)) return;
+      const manifest = JSON.parse(fs.readFileSync(file, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      for (const [key, val] of Object.entries(manifest)) {
+        manifest[key] = fix(val, urlKeys.has(key));
+      }
+      fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`);
     },
   };
 }
@@ -170,6 +226,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       suppressViteDisconnectReload(),
+      rewriteManifestBase(viteBase),
       react(),
       VitePWA({
         // prompt: new SW stays in waiting until the user accepts via
