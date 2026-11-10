@@ -23,10 +23,11 @@ import {
   Switch,
   Table,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import type { TableColumnsType } from "antd";
-import { KeyRound, Plus } from "lucide-react";
+import { KeyRound, Plus, Terminal, Trash2, UserRoundCog } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -530,27 +531,29 @@ export default function McpAccess() {
     {
       title: t("memory.mcp.columnActions", "操作"),
       key: "actions",
-      width: 210,
+      width: 132,
       render: (_: unknown, token) => (
-        <Space size={4}>
-          <Button
-            type="link"
-            size="small"
-            style={{ paddingInline: 4 }}
-            disabled={!!token.revoked_at}
-            onClick={() => handleCommandClick(token)}
-          >
-            {t("memory.mcp.command", "接入命令")}
-          </Button>
-          <Button
-            type="link"
-            size="small"
-            style={{ paddingInline: 4 }}
-            disabled={!!token.revoked_at}
-            onClick={() => openSwitchExpert(token)}
-          >
-            {t("memory.mcp.switchExpert", "切换专家")}
-          </Button>
+        <Space size={0}>
+          <Tooltip title={t("memory.mcp.command", "接入命令")}>
+            <Button
+              type="text"
+              size="small"
+              aria-label={t("memory.mcp.command", "接入命令")}
+              icon={<Terminal size={15} />}
+              disabled={!!token.revoked_at}
+              onClick={() => handleCommandClick(token)}
+            />
+          </Tooltip>
+          <Tooltip title={t("memory.mcp.switchExpert", "切换专家")}>
+            <Button
+              type="text"
+              size="small"
+              aria-label={t("memory.mcp.switchExpert", "切换专家")}
+              icon={<UserRoundCog size={15} />}
+              disabled={!!token.revoked_at}
+              onClick={() => openSwitchExpert(token)}
+            />
+          </Tooltip>
           <Popconfirm
             title={t("memory.mcp.revokeConfirmTitle", "撤销这个 Token？")}
             description={t(
@@ -563,16 +566,17 @@ export default function McpAccess() {
             disabled={!!token.revoked_at}
             onConfirm={() => void handleRevoke(token)}
           >
-            <Button
-              danger
-              type="link"
-              size="small"
-              style={{ paddingInline: 4 }}
-              loading={revokingId === token.token_id}
-              disabled={!!token.revoked_at}
-            >
-              {t("memory.mcp.revoke", "撤销")}
-            </Button>
+            <Tooltip title={t("memory.mcp.revoke", "撤销")}>
+              <Button
+                danger
+                type="text"
+                size="small"
+                aria-label={t("memory.mcp.revoke", "撤销")}
+                icon={<Trash2 size={15} />}
+                loading={revokingId === token.token_id}
+                disabled={!!token.revoked_at}
+              />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
@@ -665,7 +669,7 @@ export default function McpAccess() {
           dataSource={tokens}
           pagination={false}
           expandable={{ expandedRowRender: renderClients, columnWidth: 48 }}
-          scroll={{ x: 1180 }}
+          scroll={{ x: 1120 }}
           locale={{
             emptyText: (
               <Empty
