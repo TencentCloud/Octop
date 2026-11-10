@@ -4526,6 +4526,7 @@
       "columnActions": "操作",
       "clientColumnName": "客户端",
       "clientColumnLastSeen": "最近使用",
+      "clientColumnEnabled": "启用",
       "clientColumnCount": "次数",
       "clientsEmpty": "还没有接入记录（客户端带上 X-Octop-Client 后才会出现）",
       "clientSwitchLabel": "{{client}} 接入",

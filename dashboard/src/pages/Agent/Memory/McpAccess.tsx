@@ -409,7 +409,9 @@ export default function McpAccess() {
           <Typography.Text type="secondary">
             {t("memory.mcp.clientColumnCount", "次数")}
           </Typography.Text>
-          <span />
+          <Typography.Text type="secondary">
+            {t("memory.mcp.clientColumnEnabled", "启用")}
+          </Typography.Text>
         </div>
         {entries.map(([client, stat]) => (
           <div key={client} style={{ ...CLIENT_ROW_STYLE, padding: "4px 0" }}>
@@ -528,18 +530,22 @@ export default function McpAccess() {
     {
       title: t("memory.mcp.columnActions", "操作"),
       key: "actions",
-      width: 300,
+      width: 210,
       render: (_: unknown, token) => (
         <Space size={4}>
           <Button
+            type="link"
             size="small"
+            style={{ paddingInline: 4 }}
             disabled={!!token.revoked_at}
             onClick={() => handleCommandClick(token)}
           >
             {t("memory.mcp.command", "接入命令")}
           </Button>
           <Button
+            type="link"
             size="small"
+            style={{ paddingInline: 4 }}
             disabled={!!token.revoked_at}
             onClick={() => openSwitchExpert(token)}
           >
@@ -559,7 +565,9 @@ export default function McpAccess() {
           >
             <Button
               danger
+              type="link"
               size="small"
+              style={{ paddingInline: 4 }}
               loading={revokingId === token.token_id}
               disabled={!!token.revoked_at}
             >
@@ -657,7 +665,7 @@ export default function McpAccess() {
           dataSource={tokens}
           pagination={false}
           expandable={{ expandedRowRender: renderClients, columnWidth: 48 }}
-          scroll={{ x: 1260 }}
+          scroll={{ x: 1180 }}
           locale={{
             emptyText: (
               <Empty

@@ -4526,6 +4526,7 @@
       "columnActions": "Actions",
       "clientColumnName": "Client",
       "clientColumnLastSeen": "Last used",
+      "clientColumnEnabled": "Enabled",
       "clientColumnCount": "Calls",
       "clientsEmpty": "No client activity yet (a client shows up after it sends X-Octop-Client).",
       "clientSwitchLabel": "{{client}} access",
