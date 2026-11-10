@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -332,6 +333,103 @@ async def test_agent_router_allows_shared_expert(monkeypatch):
         status, called = await _run_agent_router(server, "A1")
         assert called is True
     finally:
+        mm._current_user_id.reset(user_cv)
+
+
+_NO_AGENT_HEADER_HINT = "either bind the token to a single expert, or send X-Octop-Agent-Id"
+
+
+async def _run_agent_router_without_header(server: Any) -> tuple[int, dict[str, Any], bool]:
+    """Run the router with no ``X-Octop-Agent-Id``: (status, error body, called)."""
+    called = False
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    router = mm._AgentRouter(inner, server)
+    status, bodies = await _capture_response(router, _http_scope({}))
+    body = json.loads(b"".join(part.get("body", b"") for part in bodies) or b"{}")
+    return status, body, called
+
+
+async def test_single_expert_token_routes_capture_without_agent_header(monkeypatch):
+    """唯一令牌：token 绑定一个专家时，客户端不带 X-Octop-Agent-Id 也能 capture。"""
+    server = _server(agents={"A1": _AgentRow(user_id=1)})
+    runtime = _FakeRuntime()
+    scheduled: list[tuple[str, str]] = []
+    monkeypatch.setattr(mm, "_memory_runtime", lambda server, agent_id: runtime)
+    monkeypatch.setattr(
+        mm,
+        "_schedule_extract",
+        lambda server, agent_id, session_id, *, promote: (
+            scheduled.append((agent_id, session_id)) or False
+        ),
+    )
+    mcp = mm.build_memory_mcp(server)
+    seen: dict[str, Any] = {}
+
+    async def inner(scope, receive, send):
+        seen["agent_id"] = mm._current_agent_id.get()
+        await _tools(mcp)["memory_capture"].fn(content="唯一令牌", source="codex", session_id="s1")
+
+    user_cv = mm._current_user_id.set(1)
+    scope_cv = mm._current_token_scope.set(["A1"])
+    try:
+        status, bodies = await _capture_response(mm._AgentRouter(inner, server), _http_scope({}))
+    finally:
+        mm._current_token_scope.reset(scope_cv)
+        mm._current_user_id.reset(user_cv)
+
+    assert status == 0 and bodies == []
+    assert seen["agent_id"] == "A1"
+    assert len(runtime.calls) == 1
+    assert scheduled == [("A1", "s1")]
+
+
+async def test_multi_expert_token_without_agent_header_is_a_400():
+    server = _server(agents={"A1": _AgentRow(user_id=1), "A2": _AgentRow(user_id=1)})
+    user_cv = mm._current_user_id.set(1)
+    scope_cv = mm._current_token_scope.set(["A1", "A2"])
+    try:
+        status, body, called = await _run_agent_router_without_header(server)
+    finally:
+        mm._current_token_scope.reset(scope_cv)
+        mm._current_user_id.reset(user_cv)
+
+    assert status == 400 and called is False
+    assert body["error"] == _NO_AGENT_HEADER_HINT
+    assert body["allowed_expert_ids"] == ["A1", "A2"]
+
+
+async def test_unrestricted_token_without_agent_header_is_a_400():
+    server = _server(agents={"A1": _AgentRow(user_id=1)})
+    user_cv = mm._current_user_id.set(1)
+    scope_cv = mm._current_token_scope.set(None)
+    try:
+        status, body, called = await _run_agent_router_without_header(server)
+    finally:
+        mm._current_token_scope.reset(scope_cv)
+        mm._current_user_id.reset(user_cv)
+
+    assert status == 400 and called is False
+    assert body["error"] == _NO_AGENT_HEADER_HINT
+    assert "allowed_expert_ids" not in body
+
+
+async def test_single_expert_token_still_checks_expert_access():
+    """回退到唯一专家时，存在性 / 启用 / owner 可见性仍按原规则校验。"""
+    disabled = _server(agents={"A1": _AgentRow(user_id=1, enabled=False)})
+    foreign = _server(agents={"A1": _AgentRow(user_id=2)})
+    user_cv = mm._current_user_id.set(1)
+    scope_cv = mm._current_token_scope.set(["A1"])
+    try:
+        status, _, called = await _run_agent_router_without_header(disabled)
+        assert status == 404 and called is False
+        status, _, called = await _run_agent_router_without_header(foreign)
+        assert status == 403 and called is False
+    finally:
+        mm._current_token_scope.reset(scope_cv)
         mm._current_user_id.reset(user_cv)
 
 

@@ -124,6 +124,29 @@ class MemoryMcpTokenRepo:
             ).fetchone()
         return MemoryMcpTokenRow.from_row(r) if r else None
 
+    def update(
+        self,
+        token_id: str,
+        *,
+        user_id: int,
+        name: str,
+        expert_ids: list[str] | None,
+    ) -> MemoryMcpTokenRow | None:
+        """Replace one live token's name / expert allow-list.
+
+        ``None`` means the row is gone or already revoked — the caller decides
+        whether that is 404 or 409.
+        """
+        with self._db.transaction() as conn:
+            cursor = conn.execute(
+                "UPDATE memory_mcp_tokens SET name = ?, expert_ids = ? "
+                "WHERE token_id = ? AND user_id = ? AND revoked_at IS NULL",
+                (name, _dump_expert_ids(expert_ids), token_id, user_id),
+            )
+            if int(cursor.rowcount or 0) == 0:
+                return None
+        return self.get_for_user(token_id, user_id=user_id)
+
     def revoke(self, token_id: str, *, user_id: int) -> bool:
         """Mark the token revoked; ``False`` when it was already revoked."""
         with self._db.transaction() as conn:

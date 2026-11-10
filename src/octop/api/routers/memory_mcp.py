@@ -7,10 +7,10 @@ plaintext token is returned once, at creation.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from octop.api.common.agent import assert_agent_access_row
 from octop.api.deps import current_user, get_server, require_permission
@@ -42,6 +42,30 @@ class TokenCreateBody(BaseModel):
             "the issuing user can access."
         ),
     )
+
+
+class TokenPatchBody(BaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description="New client name; omit to keep the current one.",
+    )
+    expert_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "New expert allow-list. Null or empty removes the restriction "
+            "(every expert the user can access). Omit to keep the current list."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _require_a_field(self) -> TokenPatchBody:
+        if not self.model_fields_set.intersection({"name", "expert_ids"}):
+            raise ValueError("provide name and/or expert_ids")
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("name must not be null")
+        return self
 
 
 class TokenOut(BaseModel):
@@ -79,6 +103,15 @@ def _to_out(row: MemoryMcpTokenRow) -> TokenOut:
     )
 
 
+def _assert_experts_accessible(repos: Any, expert_ids: list[str] | None, user: User) -> None:
+    """Every expert in the allow-list must exist and be visible to *user*."""
+    for expert_id in expert_ids or []:
+        row = repos.agent_repo.get(expert_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {expert_id!r} not found")
+        assert_agent_access_row(row, user, repos=repos)
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -93,11 +126,7 @@ def create_token(
 ) -> TokenCreated:
     assert server.services is not None
     repos = server.services.repos
-    for expert_id in body.expert_ids or []:
-        row = repos.agent_repo.get(expert_id)
-        if row is None:
-            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {expert_id!r} not found")
-        assert_agent_access_row(row, user, repos=repos)
+    _assert_experts_accessible(repos, body.expert_ids, user)
 
     plaintext, token_hash = generate_token()
     token_row = repos.memory_mcp_token_repo.create(
@@ -124,6 +153,51 @@ def list_tokens(
     assert server.services is not None
     rows = server.services.repos.memory_mcp_token_repo.list_for_user(user.id)
     return [_to_out(row) for row in rows]
+
+
+@router.patch(
+    "/{token_id}",
+    response_model=TokenOut,
+    summary="Update a memory MCP token",
+    description=(
+        "Renames one of the caller's own tokens and/or rebinds its expert allow-list. "
+        "Binding a token to a single expert makes it a 唯一令牌: MCP clients then omit "
+        "`X-Octop-Agent-Id`. Other users' tokens are not found; revoked tokens cannot be "
+        "edited."
+    ),
+)
+def update_token(
+    token_id: str,
+    body: TokenPatchBody,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> TokenOut:
+    assert server.services is not None
+    repos = server.services.repos
+    repo = repos.memory_mcp_token_repo
+    row = repo.get_for_user(token_id, user_id=user.id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"memory MCP token {token_id!r} not found")
+    if row.revoked_at:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            f"memory MCP token {token_id!r} was revoked and can no longer be edited",
+            status=409,
+        )
+
+    name = row.name
+    if "name" in body.model_fields_set:
+        assert body.name is not None  # guaranteed by TokenPatchBody
+        name = body.name
+    expert_ids = row.expert_ids
+    if "expert_ids" in body.model_fields_set:
+        expert_ids = body.expert_ids or None
+        _assert_experts_accessible(repos, expert_ids, user)
+
+    updated = repo.update(token_id, user_id=user.id, name=name, expert_ids=expert_ids)
+    if updated is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"memory MCP token {token_id!r} not found")
+    return _to_out(updated)
 
 
 @router.delete(

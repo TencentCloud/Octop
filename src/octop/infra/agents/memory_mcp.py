@@ -1232,7 +1232,13 @@ class _TokenAuthMiddleware:
 
 
 class _AgentRouter:
-    """Validate ``X-Octop-Agent-Id`` and the token owner's access to that expert.
+    """Bind the request to one expert and check the token owner's access to it.
+
+    The expert comes from ``X-Octop-Agent-Id`` when the client sends it. A token
+    bound to exactly one expert is a 唯一令牌: it names the expert itself, so the
+    client may omit the header. A token with no ``expert_ids`` and one covering
+    several experts still needs the header — the request is rejected with 400
+    rather than guessed at.
 
     The expert set is not snapshotted: existence / ``enabled`` / ownership are
     re-checked per request, so experts created, shared or disabled after process
@@ -1249,15 +1255,27 @@ class _AgentRouter:
             return
 
         headers = _headers(scope)
-        agent_id = headers.get("x-octop-agent-id", "").strip()
+        requested_agent_id = headers.get("x-octop-agent-id", "").strip()
+        token_scope = _current_token_scope.get()
+        if requested_agent_id:
+            agent_id = requested_agent_id
+        elif token_scope is not None and len(token_scope) == 1:
+            agent_id = token_scope[0]
+        else:
+            hint = "either bind the token to a single expert, or send X-Octop-Agent-Id"
+            body: dict[str, Any] = {"error": hint}
+            if token_scope is not None:
+                body["allowed_expert_ids"] = list(token_scope)
+            await _send_json(send, 400, body)
+            return
+
         services = self._server.services
-        row = services.agent_repo.get(agent_id) if (services is not None and agent_id) else None
+        row = services.agent_repo.get(agent_id) if services is not None else None
         if row is None or not row.enabled:
             await _send_json(send, 404, {"error": "missing or unknown agent_id (X-Octop-Agent-Id)"})
             return
 
         user = _user_of(self._server, _current_user_id.get())
-        token_scope = _current_token_scope.get()
         if token_scope is not None and agent_id not in token_scope:
             await _send_json(
                 send,

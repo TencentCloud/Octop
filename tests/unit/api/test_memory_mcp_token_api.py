@@ -173,6 +173,97 @@ def test_empty_expert_ids_means_unrestricted(seeded: Seeded) -> None:
     assert data["expert_ids"] is None
 
 
+def test_patch_renames_and_keeps_the_experts(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    created = _create_token(client, expert_ids=[seeded.owner_agent])
+
+    response = client.patch(
+        f"/memory-mcp/tokens/{created['token_id']}", json={"name": "claude@laptop"}
+    )
+
+    assert response.status_code == 200, response.text
+    patched = response.json()
+    assert patched["name"] == "claude@laptop"
+    assert patched["expert_ids"] == [seeded.owner_agent]
+    assert patched["token_hint"] == created["token_hint"]
+    assert patched["revoked_at"] is None
+    assert "token" not in patched
+    assert created["token"] not in response.text
+
+
+def test_patch_rebinds_experts_and_clears_the_restriction(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token_id = _create_token(client, expert_ids=[seeded.owner_agent])["token_id"]
+
+    rebound = client.patch(f"/memory-mcp/tokens/{token_id}", json={"expert_ids": []})
+    assert rebound.status_code == 200, rebound.text
+    assert rebound.json()["expert_ids"] is None
+
+    rebound = client.patch(
+        f"/memory-mcp/tokens/{token_id}", json={"expert_ids": [seeded.owner_agent]}
+    )
+    assert rebound.json()["expert_ids"] == [seeded.owner_agent]
+
+    cleared = client.patch(f"/memory-mcp/tokens/{token_id}", json={"expert_ids": None})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["expert_ids"] is None
+
+    row = seeded.repos.memory_mcp_token_repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None
+    assert row.expert_ids is None
+
+
+def test_patch_other_users_token_is_not_found(seeded: Seeded) -> None:
+    token_id = _create_token(_client(seeded, seeded.owner))["token_id"]
+
+    response = _client(seeded, seeded.other).patch(
+        f"/memory-mcp/tokens/{token_id}", json={"name": "hijack"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "NOT_FOUND"
+    row = seeded.repos.memory_mcp_token_repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None and row.name == "codex@macbook"
+
+
+def test_patch_revoked_token_is_a_conflict(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token_id = _create_token(client)["token_id"]
+    assert client.delete(f"/memory-mcp/tokens/{token_id}").status_code == 200
+
+    response = client.patch(f"/memory-mcp/tokens/{token_id}", json={"name": "late"})
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert "revoked" in response.json()["error"]["message"]
+
+
+def test_patch_rejects_inaccessible_expert_and_keeps_the_row(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token_id = _create_token(client, expert_ids=[seeded.owner_agent])["token_id"]
+
+    forbidden = client.patch(
+        f"/memory-mcp/tokens/{token_id}", json={"expert_ids": [seeded.other_agent]}
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()["error"]["code"] == "FORBIDDEN"
+
+    missing = client.patch(f"/memory-mcp/tokens/{token_id}", json={"expert_ids": [new_ulid()]})
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "AGENT_NOT_FOUND"
+
+    row = seeded.repos.memory_mcp_token_repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None and row.expert_ids == [seeded.owner_agent]
+
+
+def test_patch_requires_a_field(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token_id = _create_token(client)["token_id"]
+
+    assert client.patch(f"/memory-mcp/tokens/{token_id}", json={}).status_code == 422
+    assert client.patch(f"/memory-mcp/tokens/{token_id}", json={"name": None}).status_code == 422
+
+
 def test_create_requires_memory_permission(seeded: Seeded) -> None:
     denied = User(
         id=seeded.owner.id,
