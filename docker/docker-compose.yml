@@ -25,6 +25,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        # 子路径部署时设 VITE_BASE_PATH=/octop/（与反代剥离的前缀一致）
+        VITE_BASE_PATH: ${VITE_BASE_PATH:-}
     image: octop:latest
     container_name: octop
     restart: unless-stopped

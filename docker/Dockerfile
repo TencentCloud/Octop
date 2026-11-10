@@ -40,6 +40,9 @@ ARG NPM_REGISTRY=
 # build hosts (< 4G RAM) to avoid OOM kills — the value only caps the max,
 # it is not pre-allocated.
 ARG NODE_MAX_OLD_SPACE_SIZE=2048
+# Serve the dashboard under a reverse-proxy subpath (e.g. /octop/). Must match
+# the prefix the proxy strips; empty or "/" builds for the domain root.
+ARG VITE_BASE_PATH=
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./
@@ -55,7 +58,7 @@ COPY dashboard/ ./
 RUN mkdir -p ../src/octop/dashboard
 
 # 镜像构建跳过完整 tsc；生产打包由 vite/esbuild 完成（使用 lockfile 中的 vite，不用 npx）
-RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run build:docker
+RUN VITE_BASE_PATH="${VITE_BASE_PATH:-/}" NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_SIZE}" npm run build:docker
 
 
 # ---------------------------------------------------------------------------

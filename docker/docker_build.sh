@@ -44,6 +44,10 @@ fi
 if [ -n "${APT_MIRROR:-}" ]; then
     BUILD_ARGS+=(--build-arg "APT_MIRROR=${APT_MIRROR}")
 fi
+# 子路径部署（如 https://example.com/octop/）：与反代剥离的前缀保持一致，留空即根路径
+if [ -n "${VITE_BASE_PATH:-}" ]; then
+    BUILD_ARGS+=(--build-arg "VITE_BASE_PATH=${VITE_BASE_PATH}")
+fi
 
 echo "╔══════════════════════════════════════════════════╗"
 echo "║  正在构建 Octop Docker 镜像                      ║"
