@@ -11,6 +11,7 @@ import {
   shell,
   Tray,
   type NativeImage,
+  type WebContents,
 } from "electron";
 import { execFileSync, spawn } from "node:child_process";
 import { constants as fsConstants, existsSync, promises as fs } from "node:fs";
@@ -425,6 +426,22 @@ function registerIpcHandlers(): void {
     runWindowsMenuCommand(win, command);
   });
 
+  ipcMain.on(IPC_CHANNELS.windowMinimize, (event) => {
+    linuxCaptionWindow(event.sender)?.minimize();
+  });
+  ipcMain.on(IPC_CHANNELS.windowToggleMaximize, (event) => {
+    const win = linuxCaptionWindow(event.sender);
+    if (!win) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.on(IPC_CHANNELS.windowClose, (event) => {
+    linuxCaptionWindow(event.sender)?.close();
+  });
+  ipcMain.handle(IPC_CHANNELS.windowIsMaximized, (event): boolean => {
+    return linuxCaptionWindow(event.sender)?.isMaximized() ?? false;
+  });
+
   ipcMain.handle(IPC_CHANNELS.clientSettingsGet, (): ClientSettings => settingsStore.load());
   ipcMain.handle(IPC_CHANNELS.clientSettingsSet, (_e, patch: Partial<ClientSettings>) => {
     const saved = settingsStore.save(patch);
@@ -606,6 +623,25 @@ function watchDashboardLifetime(win: BrowserWindow): void {
   });
 }
 
+/** Linux page-drawn caption buttons. Other platforms keep the native ones. */
+function linuxCaptionWindow(sender: WebContents): BrowserWindow | null {
+  if (process.platform !== "linux") return null;
+  const win = BrowserWindow.fromWebContents(sender);
+  if (!win || win.isDestroyed()) return null;
+  return win;
+}
+
+/** Tell the page when maximize flips, so the glyph can switch to restore. */
+function watchLinuxCaptionState(win: BrowserWindow): void {
+  if (process.platform !== "linux") return;
+  const publish = () => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send(IPC_CHANNELS.windowMaximized, win.isMaximized());
+  };
+  win.on("maximize", publish);
+  win.on("unmaximize", publish);
+}
+
 function openDashboardWindow(appOrigin: string): BrowserWindow {
   dashboardOrigin = appOrigin;
   const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
@@ -618,6 +654,7 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
     onNavigate: openExternal,
   });
   watchDashboardLifetime(win);
+  watchLinuxCaptionState(win);
   return win;
 }
 
@@ -888,6 +925,7 @@ async function boot(): Promise<void> {
     preload: PRELOAD_PATH,
     theme: chromeTheme,
   });
+  watchLinuxCaptionState(early.browserWindow);
 
   // Resolve OCTOP_HOME, reading the login shell on macOS/Linux (GUI apps don't
   // inherit it). The extraction dir and the child env must agree on one root.

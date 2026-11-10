@@ -6,7 +6,12 @@
     "collapsePanel": "收起面板",
     "expandPanel": "展开面板",
     "collapseNav": "收起导航栏",
-    "expandNav": "展开导航栏"
+    "expandNav": "展开导航栏",
+    "windowControls": "窗口控制",
+    "windowMinimize": "最小化",
+    "windowMaximize": "最大化",
+    "windowRestore": "还原",
+    "windowClose": "关闭"
   },
   "sharedResource": {
     "shared": "已共享",

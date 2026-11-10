@@ -6,7 +6,12 @@
     "collapsePanel": "Collapse panel",
     "expandPanel": "Expand panel",
     "collapseNav": "Collapse navigation rail",
-    "expandNav": "Expand navigation rail"
+    "expandNav": "Expand navigation rail",
+    "windowControls": "Window controls",
+    "windowMinimize": "Minimize",
+    "windowMaximize": "Maximize",
+    "windowRestore": "Restore",
+    "windowClose": "Close"
   },
   "sharedResource": {
     "shared": "Shared",

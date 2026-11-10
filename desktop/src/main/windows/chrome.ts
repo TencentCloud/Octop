@@ -6,14 +6,15 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
  *
  * - macOS   `titleBarStyle: "hidden"` keeps the traffic lights and pins them
  *           over the Dashboard's chrome row; the titlebar itself is gone.
- * - Windows and Linux hide the opaque caption and overlay the native buttons
- *           on a transparent strip, so the page shows through. The menu and
- *           the window buttons share that one row (the WorkBuddy / UOS bar):
- *           the native menu bar stays hidden, and the dashboard draws
- *           File / Edit / View / Help once it mounts. The menu stays
- *           installed so its accelerators still fire. A plain frameless
- *           window on Linux would have no controls; the overlay is what
- *           keeps them.
+ * - Windows hides the opaque caption and overlays the native buttons on a
+ *           transparent strip, so the page shows through. The menu and the
+ *           window buttons share that one row: the native menu bar stays
+ *           hidden, and the dashboard draws File / Edit / View / Help once
+ *           it mounts. The menu stays installed so its accelerators still fire.
+ * - Linux uses the same hidden title bar and the same menu row, but does not
+ *           enable the overlay. That overlay paints Adwaita circles. The page
+ *           draws square caption buttons instead, and the close button turns
+ *           red on hover.
  */
 
 /** Caption buttons sit on the page. macOS uses traffic lights instead. */
@@ -129,12 +130,16 @@ export function windowChrome(
   if (usesCaptionOverlay()) {
     return {
       titleBarStyle: "hidden",
-      titleBarOverlay: windowsTitleBarOverlay(mode),
       // Hidden from the first frame. The splash and the dashboard boot screen
       // have no page menu; showing the native bar there is a second row above
       // the caption buttons. The dashboard draws the menu into that same row
       // after it mounts.
       autoHideMenuBar: true,
+      // Linux omits the overlay. Electron's Linux overlay buttons are round;
+      // the page draws square ones and talks to the window over IPC.
+      ...(process.platform === "linux"
+        ? {}
+        : { titleBarOverlay: windowsTitleBarOverlay(mode) }),
     };
   }
   return {};
@@ -170,7 +175,9 @@ export function concealWindowsMenuBar(win: BrowserWindow): void {
 }
 
 export function setWindowsCaptionVisible(win: BrowserWindow, visible: boolean): void {
-  if (!usesCaptionOverlay() || win.isDestroyed()) return;
+  // Linux has no overlay to hide. `setTitleBarOverlay` throws unless one was
+  // enabled at construction. The page hides its own buttons on fullscreen.
+  if (process.platform === "linux" || !usesCaptionOverlay() || win.isDestroyed()) return;
   win.setTitleBarOverlay(windowsCaptionOverlay(visible));
 }
 
@@ -186,7 +193,14 @@ export function applyWindowChromeTheme(
 ): void {
   applyNativeTheme(theme);
   windowsCaptionMode = theme.mode;
-  if (!usesCaptionOverlay() || win.isDestroyed() || win.isFullScreen()) return;
+  if (
+    process.platform === "linux" ||
+    !usesCaptionOverlay() ||
+    win.isDestroyed() ||
+    win.isFullScreen()
+  ) {
+    return;
+  }
   win.setTitleBarOverlay(windowsTitleBarOverlay(theme.mode));
 }
 

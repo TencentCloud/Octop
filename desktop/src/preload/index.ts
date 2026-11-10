@@ -42,11 +42,32 @@ const bridge = {
   },
   /**
    * Report the page theme so the *native* window controls (traffic lights,
-   * caption buttons) match it. Window buttons themselves are never driven from
-   * here: minimise / maximise / close stay native.
+   * Windows caption buttons) match it. Linux draws its own square buttons and
+   * drives them through ``windowControls``.
    */
   setWindowChrome(theme: WindowChromeTheme): void {
     ipcRenderer.send(IPC_CHANNELS.windowChromeTheme, theme);
+  },
+  /**
+   * Linux caption buttons. The shell ignores these on macOS and Windows, where
+   * the buttons stay native.
+   */
+  windowControls: {
+    minimize(): void {
+      ipcRenderer.send(IPC_CHANNELS.windowMinimize);
+    },
+    toggleMaximize(): void {
+      ipcRenderer.send(IPC_CHANNELS.windowToggleMaximize);
+    },
+    close(): void {
+      ipcRenderer.send(IPC_CHANNELS.windowClose);
+    },
+    isMaximized(): Promise<boolean> {
+      return ipcRenderer.invoke(IPC_CHANNELS.windowIsMaximized);
+    },
+    onMaximizedChange(callback: (maximized: boolean) => void): () => void {
+      return subscribe(IPC_CHANNELS.windowMaximized, callback);
+    },
   },
   /**
    * Windows draws no native menu bar under the transparent caption, so the

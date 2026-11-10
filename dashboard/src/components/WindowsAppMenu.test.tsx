@@ -54,6 +54,7 @@ vi.mock("../hooks/useWindowFullscreen", () => ({
 }));
 
 vi.mock("../utils/desktopBridge", () => ({
+  isLinuxDesktopShell: () => false,
   getDesktopBridge: () =>
     state.hasMenu
       ? { windowsMenu: { model: state.model, invoke: state.invoke } }

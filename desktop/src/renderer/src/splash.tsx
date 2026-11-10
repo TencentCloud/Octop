@@ -1,4 +1,5 @@
 import markUrl from "./assets/octop-mark.svg";
+import { LinuxWindowControls } from "./linux-window-controls";
 import { mount } from "./mount";
 import "./base.css";
 import "./splash.css";
@@ -21,6 +22,7 @@ function Splash() {
 
   return (
     <main className="splash" role="status" aria-live="polite">
+      <LinuxWindowControls />
       <div className="splash__stack">
         <div className="splash__mark" aria-hidden="true">
           <img className="splash__logo" src={markUrl} alt="" width={352} height={255} />

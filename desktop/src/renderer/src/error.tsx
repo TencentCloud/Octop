@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import markUrl from "./assets/octop-mark.svg";
 import { decodeShellError } from "../../shared/shell-error";
+import { LinuxWindowControls } from "./linux-window-controls";
 import { mount } from "./mount";
 import "./base.css";
 import "./error.css";
@@ -74,8 +75,7 @@ function ErrorPage() {
     return () => window.clearTimeout(timer);
   }, [copyState]);
 
-  // Native caption buttons are on the window. Esc still closes a page whose
-  // only content is a fatal error.
+  // Linux draws its own caption buttons. Esc still closes this page.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") window.close();
@@ -101,6 +101,7 @@ function ErrorPage() {
 
   return (
     <main className="result">
+      <LinuxWindowControls />
       <div className="result__body" role="alert">
         <FailureMark />
         <h1 className="result__title">{title}</h1>

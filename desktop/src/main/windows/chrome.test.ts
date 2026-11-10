@@ -42,25 +42,34 @@ test("macOS 交通灯用系统常规尺寸，不拉高到页面顶栏", () => {
   });
 });
 
-test("Windows 与 Linux 标题栏透明，菜单和窗口按钮同一行", () => {
+test("Windows 标题栏透明，菜单和窗口按钮同一行", () => {
   assert.equal(chrome.WINDOWS_TITLE_BAR_COLOR, "#00000000");
-  for (const platform of ["win32", "linux"] as const) {
-    onPlatform(platform, () => {
-      assert.equal(chrome.usesCaptionOverlay(), true);
-      assert.deepEqual(chrome.windowChrome("light"), {
-        titleBarStyle: "hidden",
-        titleBarOverlay: {
-          color: "#00000000",
-          symbolColor: "#1a1a1a",
-          height: 32,
-        },
-        autoHideMenuBar: true,
-      });
-      const dark = chrome.windowChrome("dark").titleBarOverlay;
-      assert.ok(dark && typeof dark === "object");
-      assert.equal(dark.symbolColor, "#ffffff");
+  onPlatform("win32", () => {
+    assert.equal(chrome.usesCaptionOverlay(), true);
+    assert.deepEqual(chrome.windowChrome("light"), {
+      titleBarStyle: "hidden",
+      autoHideMenuBar: true,
+      titleBarOverlay: {
+        color: "#00000000",
+        symbolColor: "#1a1a1a",
+        height: 32,
+      },
     });
-  }
+    const dark = chrome.windowChrome("dark").titleBarOverlay;
+    assert.ok(dark && typeof dark === "object");
+    assert.equal(dark.symbolColor, "#ffffff");
+  });
+});
+
+test("Linux 隐藏标题栏但不启用圆形系统按钮", () => {
+  onPlatform("linux", () => {
+    assert.equal(chrome.usesCaptionOverlay(), true);
+    assert.deepEqual(chrome.windowChrome("light"), {
+      titleBarStyle: "hidden",
+      autoHideMenuBar: true,
+    });
+    assert.equal(chrome.windowChrome("dark").titleBarOverlay, undefined);
+  });
 });
 
 test("Windows 与 Linux 再次收起菜单栏，避免启动页多出一行", () => {
@@ -82,8 +91,8 @@ test("Windows 与 Linux 再次收起菜单栏，避免启动页多出一行", ()
   }
 });
 
-test("主题切换只改标题栏按钮颜色，底保持透明", () => {
-  for (const platform of ["win32", "linux"] as const) onPlatform(platform, () => {
+test("主题切换只改 Windows 标题栏按钮颜色，底保持透明", () => {
+  onPlatform("win32", () => {
     const overlays: Array<{ color?: string; symbolColor?: string; height?: number }> = [];
     const win = {
       isDestroyed: () => false,
@@ -107,6 +116,23 @@ test("主题切换只改标题栏按钮颜色，底保持透明", () => {
     assert.equal(overlays[2]?.height, 0);
     assert.equal(overlays[3]?.symbolColor, "#1a1a1a");
     assert.equal(overlays[3]?.height, 32);
+  });
+});
+
+test("Linux 主题切换和全屏都不会把系统标题按钮画回来", () => {
+  onPlatform("linux", () => {
+    let calls = 0;
+    const win = {
+      isDestroyed: () => false,
+      isFullScreen: () => false,
+      setTitleBarOverlay: () => {
+        calls += 1;
+      },
+    } as unknown as BrowserWindow;
+    chrome.applyWindowChromeTheme(win, { mode: "dark", scheme: "dark" });
+    chrome.setWindowsCaptionVisible(win, false);
+    chrome.setWindowsCaptionVisible(win, true);
+    assert.equal(calls, 0);
   });
 });
 

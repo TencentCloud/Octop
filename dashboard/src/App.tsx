@@ -50,8 +50,7 @@ function ThemedApp() {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
-  // Native window buttons (traffic lights / caption buttons) follow the app
-  // theme; the page never draws them.
+  // Native window buttons follow the app theme. Linux draws square ones.
   useNativeWindowChrome();
   const brandTokens = brandTokensFor(palette, isDark, customColor);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,

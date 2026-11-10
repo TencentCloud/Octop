@@ -1,0 +1,51 @@
+/*
+ * Square caption buttons for splash and the failure page. The dashboard draws
+ * the same rectangles once it mounts. Close turns red on hover.
+ */
+.octop-linux-controls {
+  position: fixed;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  display: flex;
+  direction: ltr;
+  height: 32px;
+}
+
+.octop-linux-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: default;
+}
+
+.octop-linux-controls svg {
+  fill: none;
+  stroke-width: 1;
+}
+
+.octop-linux-controls button:not(.octop-linux-controls-close):hover {
+  background: rgba(127, 127, 127, 0.2);
+}
+
+.octop-linux-controls button:not(.octop-linux-controls-close):active {
+  background: rgba(127, 127, 127, 0.32);
+}
+
+.octop-linux-controls-close:hover,
+.octop-linux-controls-close:active {
+  background: #e81123;
+  color: #fff;
+}
+
+.octop-linux-controls-close:active {
+  background: #c50f1f;
+}

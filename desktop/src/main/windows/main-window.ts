@@ -69,8 +69,9 @@ export function createMainWindow(options: {
     minWidth: MIN_WINDOW_SIZE.width,
     minHeight: MIN_WINDOW_SIZE.height,
     show: false,
-    // macOS pins traffic lights over the page. Windows and Linux overlay
-    // transparent caption buttons on the same row as the page menu.
+    // macOS pins traffic lights over the page. Windows overlays transparent
+    // caption buttons on the menu row. Linux keeps that hidden title bar, and
+    // the page draws square buttons in the same corner.
     ...windowChrome(options.theme.mode),
     backgroundColor: options.backgroundColor,
     webPreferences: {

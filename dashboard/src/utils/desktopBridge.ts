@@ -83,9 +83,21 @@ export interface OctopDesktopBridge {
   onBackendReady(callback: (ready: { ok: boolean }) => void): () => void;
   /**
    * Tell the shell what the page looks like so its native window controls match.
-   * There is deliberately no minimise / maximise / close here: those stay native.
+   * macOS and Windows keep native buttons. Linux draws square ones and drives
+   * them through ``windowControls``.
    */
   setWindowChrome(theme: DesktopWindowChromeTheme): void;
+  /**
+   * Linux caption buttons. Absent on a shell from before this handshake.
+   * macOS and Windows ignore the calls.
+   */
+  windowControls?: {
+    minimize(): void;
+    toggleMaximize(): void;
+    close(): void;
+    isMaximized(): Promise<boolean>;
+    onMaximizedChange(callback: (maximized: boolean) => void): () => void;
+  };
   /**
    * Windows caption overlay hides the native menu bar. The page draws the
    * titles and the submenus, then asks the shell to run the chosen command.
@@ -119,6 +131,18 @@ declare global {
 export function isDesktopShell(): boolean {
   return (
     typeof window !== "undefined" && typeof window.octopDesktop !== "undefined"
+  );
+}
+
+/**
+ * Electron on Linux. The page draws square caption buttons there; macOS and
+ * Windows keep the native ones. A Linux browser has no shell bridge.
+ */
+export function isLinuxDesktopShell(
+  userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent,
+): boolean {
+  return (
+    isDesktopShell() && /Linux/.test(userAgent) && !/Android/.test(userAgent)
   );
 }
 

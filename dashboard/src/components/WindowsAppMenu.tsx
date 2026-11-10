@@ -11,6 +11,7 @@ import {
   type WindowsMenuModel,
 } from "../utils/desktopBridge";
 import { chromeSlot } from "../utils/overlayLayers";
+import LinuxWindowControls from "./LinuxWindowControls";
 
 /**
  * One full-width caption row on Windows and Linux. The transparent overlay
@@ -183,6 +184,7 @@ export default function WindowsAppMenu() {
         );
       })}
       {popup}
+      <LinuxWindowControls />
     </div>,
     chromeSlot(),
   );

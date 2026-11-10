@@ -73,6 +73,60 @@ html[data-octop-desktop-chrome="windows"] .octop-win-menu {
   background: var(--fn-bg-layout, #0e0e0e);
 }
 
+/* Linux caption buttons. Electron's overlay paints Adwaita circles; these
+   are the Windows caption rectangles: 46×32, no radius, close turns red. */
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  display: flex;
+  direction: ltr;
+  height: 100%;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fn-text-primary, #1a1a1a);
+  cursor: default;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls svg {
+  fill: none;
+  stroke-width: 1;
+}
+
+html[data-octop-desktop-chrome="windows"]
+  .octop-linux-controls
+  button:not(.octop-linux-controls-close):hover {
+  background: rgba(127, 127, 127, 0.2);
+}
+
+html[data-octop-desktop-chrome="windows"]
+  .octop-linux-controls
+  button:not(.octop-linux-controls-close):active {
+  background: rgba(127, 127, 127, 0.32);
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls-close:hover,
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls-close:active {
+  background: #e81123;
+  color: #fff;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls-close:active {
+  background: #c50f1f;
+}
+
 html[data-octop-desktop-chrome="windows"] .octop-win-menu-item {
   height: 24px;
   margin: 0;

@@ -70,6 +70,12 @@ export const IPC_CHANNELS = {
   installUpdate: "octop:install-update",
   windowsMenuModel: "octop:windows-menu:model",
   windowsMenuInvoke: "octop:windows-menu:invoke",
+  /** Linux square caption buttons. No-op on the other platforms. */
+  windowMinimize: "octop:window-minimize",
+  windowToggleMaximize: "octop:window-toggle-maximize",
+  windowClose: "octop:window-close",
+  windowIsMaximized: "octop:window-is-maximized",
+  windowMaximized: "octop:window-maximized",
   sessionRegister: "octop:session:register",
   sessionRenew: "octop:session:renew",
   sessionRevoke: "octop:session:revoke",
