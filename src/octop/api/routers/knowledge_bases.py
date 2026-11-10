@@ -152,6 +152,14 @@ class RenameDocumentBody(BaseModel):
     new_name: str = Field(min_length=1, max_length=255, description="New document or folder name.")
 
 
+class MoveDocumentBody(BaseModel):
+    target_folder: str = Field(
+        default="",
+        max_length=1024,
+        description="Path of the destination folder in the same knowledge base; empty for root.",
+    )
+
+
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "knowledge services are not initialized")
@@ -1088,6 +1096,34 @@ async def rename_document(
             doc_id,
             actor_user_id=user.id,
             new_name=body.new_name.strip(),
+            is_admin=_is_admin(user),
+        )
+        return _row_payload(document, server=server)
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.post(
+    "/{kb_id}/documents/{doc_id}/move",
+    summary="Move a document or folder into another folder",
+)
+async def move_document(
+    kb_id: str,
+    doc_id: str,
+    body: MoveDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    """Move within one knowledge base. A folder takes its contents along; nothing is reindexed."""
+    try:
+        document = _knowledge_service(server).move_document(
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            target_folder=body.target_folder,
             is_admin=_is_admin(user),
         )
         return _row_payload(document, server=server)
