@@ -50,10 +50,12 @@ import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
-import SharedExpertHint from "./SharedExpertHint";
+import SharedExpertHint, { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
 import ChatEditExpertDrawer, {
@@ -292,15 +294,13 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           <span className={styles.sessionRowLead}>
             <SessionWorkStatusIcon status={workStatus} />
           </span>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
-          {session.contributed ? (
-            <span
-              className={styles.sessionRowPinIndicator}
-              title={t("chat.sharedSession", "已共享")}
-            >
-              <Share2 size={12} strokeWidth={2} />
-            </span>
-          ) : null}
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -840,6 +840,7 @@ export default function MinimalAgentSessionNav({
                     name={agent.name}
                     className={styles.minimalAgentName}
                   />
+                  <ExpertOwnerShareFlag agent={agent} />
                   <ExpertPinMark pinned={isPinned(agent.agent_id)} />
                   <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
@@ -861,6 +862,7 @@ export default function MinimalAgentSessionNav({
                     ? () => setEditAgent(agent)
                     : undefined
                 }
+                editingTeam={isTeamAgent(agent)}
                 onHide={
                   canHide(agent) &&
                   !hiddenAgents.some((row) => row.agent_id === agent.agent_id)

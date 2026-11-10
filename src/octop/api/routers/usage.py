@@ -11,7 +11,7 @@ Query params:
   window      = today | yesterday | last_7d | last_30d | all
                 | day:YYYY-MM-DD | month:YYYY-MM
                 | range:YYYY-MM-DD:YYYY-MM-DD   (default last_30d)
-  granularity = total | by_day | by_agent | by_model            (default by_day)
+  granularity = total | by_day | by_agent | by_model | by_user  (default by_day)
 """
 
 from __future__ import annotations
@@ -121,6 +121,59 @@ def _label_agent_buckets(server: Any, payload: dict[str, Any]) -> dict[str, Any]
     return {**payload, "buckets": labeled}
 
 
+def _user_chart_labels(server: Any) -> dict[int, str]:
+    """Display name for ``by_user`` slices; disambiguate shared display names."""
+    rows: list[tuple[int, str, str]] = []
+    for user in server.user_manager.list_all(include_disabled=True):
+        uid = getattr(user, "id", None)
+        if uid is None:
+            continue
+        username = str(getattr(user, "username", None) or uid).strip() or str(uid)
+        display = getattr(user, "display_name", None)
+        preferred = display.strip() if isinstance(display, str) and display.strip() else username
+        rows.append((int(uid), preferred, username))
+    counts: dict[str, int] = {}
+    for _uid, preferred, _username in rows:
+        counts[preferred] = counts.get(preferred, 0) + 1
+    labels: dict[int, str] = {}
+    for uid, preferred, username in rows:
+        if counts[preferred] > 1 and preferred != username:
+            labels[uid] = f"{preferred} ({username})"
+        else:
+            labels[uid] = preferred
+    return labels
+
+
+def _label_user_buckets(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Replace ``by_user`` bucket labels with display names."""
+    if str(payload.get("granularity") or "") != "by_user":
+        return payload
+    names = _user_chart_labels(server)
+    labeled: list[Any] = []
+    for bucket in payload.get("buckets") or []:
+        if not isinstance(bucket, dict):
+            labeled.append(bucket)
+            continue
+        raw_key = bucket.get("key")
+        if isinstance(raw_key, bool) or not isinstance(raw_key, (int, str)):
+            labeled.append(bucket)
+            continue
+        try:
+            uid = int(raw_key)
+        except ValueError:
+            labeled.append(bucket)
+            continue
+        name = names.get(uid, "").strip()
+        if name:
+            bucket = {**bucket, "label": name}
+        labeled.append(bucket)
+    return {**payload, "buckets": labeled}
+
+
+def _present_summary(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    return _label_user_buckets(server, _label_agent_buckets(server, payload))
+
+
 def _username_map(server: Any) -> dict[int, str]:
     out: dict[int, str] = {}
     users = server.user_manager.list_all(include_disabled=True)
@@ -223,7 +276,7 @@ async def user_summary(
 ) -> dict[str, Any]:
     user_id = _resolve_user_scope(user=user, as_user=as_user, server=server)
     _assert_agent_exists(server, agent_id)
-    return _label_agent_buckets(
+    return _present_summary(
         server,
         _summary_or_raise(
             server=server,
@@ -277,7 +330,7 @@ async def admin_summary(
     the scope; absent both fields mean *all rows*. Admin only."""
     if not user.is_admin:
         raise OctopError(ErrorCode.FORBIDDEN, "admin required")
-    return _label_agent_buckets(
+    return _present_summary(
         server,
         _summary_or_raise(
             server=server,

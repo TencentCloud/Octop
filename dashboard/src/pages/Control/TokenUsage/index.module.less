@@ -232,6 +232,11 @@
 /* Summary pies — fixed frame height; never stretch bar charts over them. */
 .pieGrid {
   flex: 0 0 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.pieGridUsers {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 /*
@@ -444,6 +449,12 @@
   color: var(--fn-text-tertiary);
 }
 
+@media (max-width: 1100px) {
+  .pieGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 980px) {
   .trendGrid {
     grid-template-columns: 1fr;
@@ -451,6 +462,10 @@
 }
 
 @media (max-width: 768px) {
+  .pieGrid {
+    grid-template-columns: 1fr;
+  }
+
   .summaryBody {
     min-height: 0;
   }

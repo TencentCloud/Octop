@@ -18,9 +18,21 @@ const EXPERT_PORTRAIT_IDS = [
   "scene-ecommerce",
   "ai-coding-coach",
   "stock-assistant",
-  "news-trend",
   "parenting-companion",
 ] as const;
+
+/**
+ * Portraits that are the same drawing as another preset. The file stays so
+ * existing experts keep their URL; the picker shows the canonical tile.
+ */
+const PRESET_ALIASES: Record<string, string> = {
+  "news-trend": "scene-media",
+};
+
+export function canonicalExpertPresetId(id: string | null): string | null {
+  if (!id || id === "default") return null;
+  return PRESET_ALIASES[id] ?? id;
+}
 
 export function expertPresetSrc(id: string): string {
   return `/experts/avatars/${id}.svg`;

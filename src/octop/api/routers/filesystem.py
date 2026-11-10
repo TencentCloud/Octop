@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.workspace.dir import default_workspace_parent_dir
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.resource_policy import (
@@ -89,14 +90,20 @@ async def filesystem_defaults(
     directory. ``jail_enforced`` reports whether a non-root ``root_dir`` really
     gets OS-level confinement (Linux + bubblewrap) or only bounds the agent's
     tool paths, so the UI does not promise a sandbox it cannot deliver.
+
+    ``default_workspace_dir`` is ``{OCTOP_HOME}/agents``. Create forms append
+    the new expert id, which is the path the server assigns when the caller
+    does not choose one.
     """
     in_container = running_in_container()
+    workspace_parent = default_workspace_parent_dir()
     allowed = _user_workspace_root(server, user)
     if allowed:
         return {
             "default_root_dir": allowed,
             "tree_root": allowed,
             "browse_roots": [allowed],
+            "default_workspace_dir": workspace_parent,
             "jail_enforced": host_jail_enforced(),
             "in_container": in_container,
         }
@@ -105,6 +112,7 @@ async def filesystem_defaults(
         "default_root_dir": root,
         "tree_root": root,
         "browse_roots": host_browse_roots(),
+        "default_workspace_dir": workspace_parent,
         "jail_enforced": host_jail_enforced(),
         "in_container": in_container,
     }

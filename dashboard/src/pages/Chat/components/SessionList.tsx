@@ -27,10 +27,12 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
-import SharedExpertHint from "./SharedExpertHint";
+import SharedExpertHint, { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
@@ -233,15 +235,13 @@ const SessionItem = memo(function SessionItem({
         />
       ) : (
         <>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
-          {session.contributed ? (
-            <span
-              className={styles.sessionRowPinIndicator}
-              title={t("chat.sharedSession", "已共享")}
-            >
-              <Share2 size={12} strokeWidth={2} />
-            </span>
-          ) : null}
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -382,6 +382,7 @@ function ActiveAgentCard({
                 name={agent.name}
                 className={styles.agentCardName}
               />
+              <ExpertOwnerShareFlag agent={agent} />
               <ExpertPinMark pinned={pinned} />
               <TeamChatBadge agent={agent} compact />
               <RemoteExpertHint agent={agent} compact />
@@ -401,6 +402,7 @@ function ActiveAgentCard({
                 onHide={onHide}
                 onUnhide={onUnhide}
                 onEdit={onEdit}
+                editingTeam={isTeamAgent(agent)}
               />
             ) : null}
           </div>
@@ -526,6 +528,7 @@ function InactiveAgentRow({
               name={agent.name}
               className={styles.agentRowName}
             />
+            <ExpertOwnerShareFlag agent={agent} />
             <ExpertPinMark pinned={pinned} />
             <TeamChatBadge agent={agent} compact />
             <RemoteExpertHint agent={agent} compact />
@@ -543,6 +546,7 @@ function InactiveAgentRow({
               onHide={onHide}
               onUnhide={onUnhide}
               onEdit={onEdit}
+              editingTeam={isTeamAgent(agent)}
             />
           ) : null}
         </div>

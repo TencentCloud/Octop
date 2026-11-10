@@ -11,6 +11,7 @@ import json
 import logging
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,6 +91,30 @@ class RemoveResult:
     already_gone: bool = False
 
 
+@dataclass
+class _RoomFollowup:
+    """Team speech that continues after the host steer turn has ended."""
+
+    turn_id: str
+    user_id: int | None
+    streams: int = 0
+    wrapup: bool = False
+
+
+def _other_user(owner: int | None, user_id: int) -> bool:
+    if owner is None:
+        return False
+    try:
+        return int(owner) != int(user_id)
+    except (TypeError, ValueError):
+        return False
+
+
+# Ended turns remembered so a team member can pin after ``end_turn`` drops
+# the live state. One entry per thread; the cap drops the oldest.
+_ENDED_TURN_CAP = 2048
+
+
 class SteerCoordinator:
     """Per-thread steer state under one lock."""
 
@@ -98,9 +123,15 @@ class SteerCoordinator:
         self._by_thread: dict[str, TurnSteerState] = {}
         self._text_cap = text_cap_bytes
         self._staged_hitl: dict[str, tuple[DrainBundle, int]] = {}
+        self._room_holds: dict[str, _RoomFollowup] = {}
+        self._ended_turns: OrderedDict[str, tuple[str, int | None]] = OrderedDict()
 
     def begin_turn(
-        self, thread_id: str, *, phase: TurnPhase = "streaming_text"
+        self,
+        thread_id: str,
+        *,
+        phase: TurnPhase = "streaming_text",
+        user_id: int | None = None,
     ) -> tuple[str, int, DiscardBundle | None]:
         """Start a steerable turn.
 
@@ -111,6 +142,7 @@ class SteerCoordinator:
         with self._lock:
             previous = self._by_thread.pop(tid, None)
             self._staged_hitl.pop(tid, None)
+            self._ended_turns.pop(tid, None)
             discarded = None
             if previous is not None and previous.queue:
                 reason: DiscardReason = (
@@ -125,7 +157,8 @@ class SteerCoordinator:
                 )
                 discarded = self._discard_locked(previous, reason=reason)
             turn_id = new_ulid()
-            state = TurnSteerState(turn_id=turn_id, phase=phase)
+            owner = int(user_id) if isinstance(user_id, int) and user_id > 0 else None
+            state = TurnSteerState(turn_id=turn_id, phase=phase, user_id=owner)
             state.last_allocated_seq = 1
             self._by_thread[tid] = state
             return turn_id, state.last_allocated_seq, discarded
@@ -146,6 +179,7 @@ class SteerCoordinator:
             return TurnSteerState(
                 turn_id=state.turn_id,
                 phase=state.phase,
+                user_id=state.user_id,
                 queue=list(state.queue),
                 continuation_count=state.continuation_count,
                 last_allocated_seq=state.last_allocated_seq,
@@ -153,6 +187,99 @@ class SteerCoordinator:
                 drained_message_ids=dict(state.drained_message_ids),
                 continuation_meta=dict(state.continuation_meta),
             )
+
+    def blocks_other_sender(self, thread_id: str, user_id: int) -> bool:
+        """True when a shared-session peer must wait for this turn to finish.
+
+        A team room stays busy after the host turn ends, while a member stream
+        or the host wrap-up is still open.
+        """
+        with self._lock:
+            state = self._by_thread.get(thread_id.strip())
+            if (
+                state is not None
+                and state.phase not in ("idle", "terminal")
+                and not self._park_expired(state)
+                and _other_user(state.user_id, user_id)
+            ):
+                return True
+            hold = self._room_holds.get(thread_id.strip())
+            if hold is not None and (hold.streams > 0 or hold.wrapup):
+                return _other_user(hold.user_id, user_id)
+            return False
+
+    def _remember_ended_turn(self, thread_id: str, turn_id: str, user_id: int | None) -> None:
+        """Caller holds ``_lock``."""
+        if not thread_id or not turn_id:
+            return
+        self._ended_turns[thread_id] = (turn_id, user_id)
+        self._ended_turns.move_to_end(thread_id)
+        while len(self._ended_turns) > _ENDED_TURN_CAP:
+            self._ended_turns.popitem(last=False)
+
+    def pin_room_followup(self, thread_id: str) -> str:
+        """Count one team member or wrap-up stream. Returns the turn id to stamp."""
+        tid = thread_id.strip()
+        if not tid:
+            return ""
+        with self._lock:
+            state = self._by_thread.get(tid)
+            hold = self._room_holds.get(tid)
+            if hold is None:
+                if state is None:
+                    ended = self._ended_turns.get(tid)
+                    if ended is None:
+                        return ""
+                    turn_id, owner = ended
+                    hold = _RoomFollowup(turn_id=turn_id, user_id=owner)
+                else:
+                    hold = _RoomFollowup(turn_id=state.turn_id, user_id=state.user_id)
+                self._room_holds[tid] = hold
+                self._ended_turns.pop(tid, None)
+            elif state is not None and hold.streams == 0 and not hold.wrapup:
+                hold.turn_id = state.turn_id
+                if state.user_id is not None:
+                    hold.user_id = state.user_id
+            hold.streams += 1
+            return hold.turn_id
+
+    def release_room_followup(self, thread_id: str, *, expect_wrapup: bool = False) -> None:
+        """Drop one follow-up stream. The last member keeps the room locked for wrap-up."""
+        tid = thread_id.strip()
+        with self._lock:
+            hold = self._room_holds.get(tid)
+            if hold is None:
+                return
+            hold.streams = max(0, hold.streams - 1)
+            if expect_wrapup:
+                hold.wrapup = True
+            elif hold.streams == 0:
+                hold.wrapup = False
+            if hold.streams == 0 and not hold.wrapup:
+                self._room_holds.pop(tid, None)
+
+    def finish_room_followup(self, thread_id: str) -> None:
+        """The room has published its wrap-up, or no wrap-up is coming."""
+        tid = thread_id.strip()
+        with self._lock:
+            hold = self._room_holds.get(tid)
+            if hold is None:
+                return
+            hold.wrapup = False
+            if hold.streams == 0:
+                self._room_holds.pop(tid, None)
+
+    def room_followup_turn_id(self, thread_id: str) -> str:
+        """Turn id stamped on team frames that are still part of the open room generation."""
+        tid = thread_id.strip()
+        with self._lock:
+            hold = self._room_holds.get(tid)
+            if hold is not None and hold.turn_id:
+                return hold.turn_id
+            state = self._by_thread.get(tid)
+            if state is not None:
+                return state.turn_id
+            return ""
 
     def is_active(self, thread_id: str) -> bool:
         with self._lock:
@@ -559,8 +686,11 @@ class SteerCoordinator:
                 # without drain_for_continuation, treat as cancelled strand guard.
                 bundle = self._discard_locked(state, reason=reason)
             state.phase = "idle"
-            # Keep last_allocated_seq / forget turn after idle
-            self._by_thread.pop(thread_id.strip(), None)
+            # Keep last_allocated_seq / forget turn after idle.
+            # Member streams often start after this pop; remember who spoke.
+            tid = thread_id.strip()
+            self._remember_ended_turn(tid, state.turn_id, state.user_id)
+            self._by_thread.pop(tid, None)
             return bundle
 
     def stage_hitl_pending(self, thread_id: str) -> tuple[DrainBundle, int] | None:

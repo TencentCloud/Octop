@@ -9,7 +9,9 @@ import pytest
 from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
+    apply_explicit_workspace_dir,
     default_agent_workspace_dir,
+    default_workspace_parent_dir,
     harness_workspace_path,
     join_agent_facing,
     resolve_workspace_host_path,
@@ -17,7 +19,15 @@ from octop.infra.agents.workspace.dir import (
     seed_workspace_dir_on_create,
     workspace_dir_from_config,
 )
+from octop.infra.utils.host_dirs import host_path_text
 from octop.infra.utils.paths import PathLayout
+
+
+def test_default_workspace_parent_dir_follows_octop_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    assert default_workspace_parent_dir() == host_path_text(tmp_path / "agents")
 
 
 def _scoped_cfg(root: Path, **extra: object) -> dict:
@@ -178,3 +188,28 @@ def test_neutralize_unwritable_local_root(tmp_path: Path) -> None:
     writable.mkdir()
     keep = neutralize_unwritable_local_root(_scoped_cfg(writable))
     assert keep["backend"]["root_dir"] == str(writable)
+
+
+def test_apply_explicit_workspace_dir_keeps_host_root_only() -> None:
+    host = {"backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True}}
+    apply_explicit_workspace_dir(host, "  /data/work  ")
+    assert host["workspace_dir"] == "/data/work"
+
+    omitted = {"backend": {"type": "filesystem", "virtual_mode": True}}
+    apply_explicit_workspace_dir(omitted, "/data/work")
+    assert omitted["workspace_dir"] == "/data/work"
+
+    scoped = {
+        "backend": {"type": "local_shell", "root_dir": "/data/jail", "virtual_mode": True},
+        "workspace_dir": "/.octop/workspaces/A1",
+    }
+    apply_explicit_workspace_dir(scoped, "/data/work")
+    assert scoped["workspace_dir"] == "/.octop/workspaces/A1"
+
+    named = {"backend": {"type": "named", "name": "cos"}}
+    apply_explicit_workspace_dir(named, "/data/work")
+    assert "workspace_dir" not in named
+
+    blank = {"backend": {"type": "local_shell", "root_dir": "/"}}
+    apply_explicit_workspace_dir(blank, "  ")
+    assert "workspace_dir" not in blank

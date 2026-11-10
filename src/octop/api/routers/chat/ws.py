@@ -223,6 +223,23 @@ async def dashboard_chat_ws(
             # connections that are not subscribed yet.
             hub.subscribe(prepared_early.thread_id, connection_id)
 
+            thread_row = gateway.thread_registry.get_thread(prepared_early.thread_id)
+            if gateway.steer.blocks_other_sender(prepared_early.thread_id, user.id) and bool(
+                getattr(thread_row, "contributed", False)
+            ):
+                active = gateway.steer.get_state(prepared_early.thread_id)
+                await send_frame(
+                    {
+                        "type": "turn.busy",
+                        "thread_id": prepared_early.thread_id,
+                        "reason": "shared_turn_busy",
+                        "message_id": _ws_client_message_id(frame),
+                        "client_pending_id": frame.client_pending_id,
+                        "active_turn_id": active.turn_id if active is not None else None,
+                    }
+                )
+                continue
+
             hitl_paused = _thread_hitl_paused(gateway, prepared_early.thread_id, agent_id)
             if not hitl_paused:
                 # A turn parked at an HITL interrupt leaves ``phase='hitl_paused'``
@@ -611,6 +628,14 @@ def _clear_stale_hitl_park(gateway: Any, thread_id: str) -> None:
         logger.info("cleared stale hitl park thread=%s", thread_id)
     except Exception:
         logger.exception("failed to clear stale hitl park thread=%s", thread_id)
+
+
+def _ws_client_message_id(frame: UserTurnWsFrame) -> str | None:
+    for item in frame.messages or []:
+        raw = item.get("id") if isinstance(item, dict) else None
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
 
 
 def _thread_hitl_paused(gateway: Any, thread_id: str, agent_id: str) -> bool:
