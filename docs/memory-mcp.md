@@ -17,7 +17,7 @@ Octop 把专家记忆通过 MCP（Model Context Protocol）开放给外部 Agent
 - 也可以不绑（`null`）或绑多个（高级用法）：此时客户端必须带 `X-Octop-Agent-Id` 指定这次用哪个
 - 随时在 Dashboard 上**切换 token 绑定的专家**（`PATCH /api/memory-mcp/tokens/<token_id>`），下一次请求立即生效
 - 单独吊销某一个客户端，不影响其它客户端
-- 追溯每一条记忆是哪个客户端写的（原始事件的 `payload.caller` / `payload.source_host`）
+- 追溯每一条记忆是哪个客户端写的（`payload.caller` 是用户，`payload.source_host` 取 token 名字，不依赖客户端自报）
 
 服务端只保存 token 的 sha256；校验用常量时间比较。**明文只在创建时返回一次**。
 
@@ -51,12 +51,9 @@ curl -sS -X DELETE "https://<octop-host>/api/memory-mcp/tokens/<token_id>" \
 
 ### 1.2 开启挂载
 
-`/mcp/memory` 默认不挂载（fail-closed，对现有部署零影响），满足任一条件才挂载：
-
-- 设置环境变量 `OCTOP_MEMORY_MCP_ENABLED=1`（显式开启），或
-- 数据库里已经存在至少一个有效 token
-
-首次创建 token 后重启一次 Octop 即可生效。
+`/mcp/memory` 默认不挂载（fail-closed，对现有部署零影响）：只有设置环境变量
+`OCTOP_MEMORY_MCP_ENABLED=1` 才挂载（进程启动时判定，设置后重启一次 Octop 生效）。
+挂载后创建 / 轮换 token、切换专家都立即生效，不需要再重启。
 
 ## 2. 客户端配置
 

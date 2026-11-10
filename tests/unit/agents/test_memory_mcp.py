@@ -635,6 +635,78 @@ def test_capture_redacts_secrets_end_to_end(bind_agent, bind_user, monkeypatch, 
     assert "[REDACTED]" in events[0].content
 
 
+def test_capture_accepts_client_parsed_events(bind_agent, bind_user, monkeypatch, tmp_path):
+    """Clients may parse transcripts themselves and upload typed events."""
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
+    mcp = mm.build_memory_mcp(_server())
+
+    result = _call_tool(
+        mcp,
+        "memory_capture",
+        events=[
+            {
+                "event_type": "user_message",
+                "content": "客户端自己解析好的一轮用户发言，直接上传事件",
+            },
+            {
+                "event_type": "assistant_message",
+                "content": "客户端解析的助手回复，也按事件形式上传",
+            },
+        ],
+        source="claude-code",
+        extract=False,
+    )
+
+    assert result["accepted"] >= 1
+    events = list(memory.list_raw(limit=5))
+    assert {event.event_type for event in events} >= {"user_message"}
+
+
+def test_capture_events_honours_dry_run(bind_agent, bind_user, monkeypatch, tmp_path):
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    mcp = mm.build_memory_mcp(_server())
+    result = _call_tool(
+        mcp,
+        "memory_capture",
+        events=[{"event_type": "user_message", "content": "只解析不写入的客户端事件"}],
+        source="claude-code",
+        dry_run=True,
+    )
+    assert result["recorded"] is False
+    assert len(result["events"]) == 1
+    assert not list(memory.list_raw(limit=5))
+
+
+# ─── capture: provenance ─────────────────────────────────────────────────
+
+
+def test_capture_uses_the_token_name_as_source_host(bind_agent, bind_user, monkeypatch, tmp_path):
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
+    mcp = mm.build_memory_mcp(_server())
+
+    token_cv = mm._current_token_name.set("codex@macbook")
+    try:
+        _call_tool(
+            mcp,
+            "memory_capture",
+            content="来源标记应该用 token 名字而不是客户端自报的 source",
+            source="spoofed-client",
+            extract=False,
+        )
+    finally:
+        mm._current_token_name.reset(token_cv)
+
+    events = list(memory.list_raw(limit=5))
+    assert events
+    assert events[-1].payload["source_host"] == "codex@macbook"
+    assert events[-1].payload["source"] == "spoofed-client"
+
+
 # ─── capture: terminal transcript uploads ─────────────────────────────────
 
 
@@ -648,7 +720,7 @@ def _claude_transcript() -> str:
                 "uuid": "u1",
                 "sessionId": "s1",
                 "timestamp": "2026-09-22T05:00:00Z",
-                "message": {"role": "user", "content": "先看看 CLI 结构"},
+                "message": {"role": "user", "content": "先看看 CLI 的整体结构，再决定怎么改"},
             }
         )
         + "\n"
@@ -660,7 +732,7 @@ def _claude_transcript() -> str:
                 "timestamp": "2026-09-22T05:00:05Z",
                 "message": {
                     "role": "assistant",
-                    "content": [{"type": "text", "text": "好的，先读文件"}],
+                    "content": [{"type": "text", "text": "好的，我先把相关的文件读一遍再动手"}],
                 },
             }
         )
@@ -726,7 +798,9 @@ def test_capture_transcript_redacts_secrets(bind_agent, bind_user, monkeypatch, 
     mcp = mm.build_memory_mcp(_server())
 
     secret = "sk-abcdefgh12345678"
-    transcript = _claude_transcript().replace("先看看 CLI 结构", f"先看看 {secret}")
+    transcript = _claude_transcript().replace(
+        "先看看 CLI 的整体结构，再决定怎么改", f"先看看 {secret} 的整体结构，再决定怎么改"
+    )
     _call_tool(
         mcp,
         "memory_capture",
@@ -886,9 +960,9 @@ async def test_schedule_extract_never_starts_a_stopped_expert(monkeypatch):
 
 def test_mount_is_fail_closed(monkeypatch):
     monkeypatch.delenv("OCTOP_MEMORY_MCP_ENABLED", raising=False)
-    assert mm._memory_mcp_enabled(_server(token_repo=_TokenRepo())) is False
+    assert mm._memory_mcp_enabled() is False
     monkeypatch.setenv("OCTOP_MEMORY_MCP_ENABLED", "1")
-    assert mm._memory_mcp_enabled(_server(token_repo=_TokenRepo())) is True
+    assert mm._memory_mcp_enabled() is True
 
 
 def test_lifespan_chain_keeps_the_previous_hooks():

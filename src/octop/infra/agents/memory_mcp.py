@@ -145,28 +145,6 @@ def _read_transcript_file(raw_path: str) -> str:
     return resolved.read_text(encoding="utf-8", errors="replace")
 
 
-def _transcript_redactor(server: OctopServer, agent_id: str) -> Callable[[str], str] | None:
-    """Secret redaction for transcript uploads, using the expert's privacy config.
-
-    ``claude_transcript`` writes raw events directly (tool events included), so it
-    cannot reuse ``MemoryRuntime.capture``'s filtering; this hook applies the same
-    ``redact_secrets`` rule to each event body before it is stored.
-    """
-    runtime = _memory_runtime(server, agent_id)
-    privacy_fn = getattr(runtime, "_privacy_cfg", None)
-    if not callable(privacy_fn):
-        return None
-    try:
-        privacy_cfg = privacy_fn()
-    except Exception:  # noqa: BLE001 - redaction is best effort, never fail capture
-        return None
-    if not isinstance(privacy_cfg, dict):
-        return None
-    from octop_memory.application.runtime import _redact_text  # noqa: PLC0415
-
-    return lambda text: str(_redact_text(text, privacy_cfg))
-
-
 def _archive_uploaded_session(
     server: OctopServer,
     agent_id: str,
@@ -637,8 +615,8 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
 
     @mcp.tool()
     async def memory_capture(
-        content: str,
-        source: str,
+        content: str = "",
+        source: str = "",
         session_id: str | None = None,
         assistant: str | None = None,
         thread_id: str | None = None,
@@ -646,6 +624,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         extract: bool = True,
         transcript_path: str | None = None,
         tool_events: str = "none",
+        events: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """**写入原始事件（L0）**：一轮对话或一段记录，交给提炼流水线。
 
@@ -662,6 +641,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
 
         Args:
             content: 用户侧内容（或一条提炼过的事实）；只记助手结论时留空。
+                提供 ``events`` 时可以整段省略。
             source: 谁记录的（如 ``claude-code`` / ``codex``），同时作为 L0 的 host。
             session_id: 可选会话 id；缺省派生 ``ext:{source}:{caller}``，同一段工作
                 请保持稳定。
@@ -671,11 +651,80 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             extract: 写入后是否在后台触发提炼（默认 True）；专家停止时不会自动启动。
             transcript_path: 仅终端 hook 使用：读本机 transcript 文件（只允许终端会话目录）。
             tool_events: transcript 形态下是否落工具事件（none / calls / all）。
+            events: 已由客户端解析好的事件列表（`event_type` / `content`，可选
+                `payload` / `timestamp_iso`）；提供时跳过服务端解析，直接走
+                `MemoryRuntime.capture`（脱敏、回声保护、长度限制照常生效）。
         """
         caller = _caller_name()
         agent_id = _agent_id()
 
         def _run() -> dict[str, Any]:
+            # ---- pre-parsed events (client-side parsers): straight to the runtime
+            if events is not None:
+                payload: dict[str, Any] = {
+                    "source": source,
+                    "source_host": _current_token_name.get() or source,
+                    "caller": caller,
+                }
+                normalized: list[dict[str, Any]] = []
+                for item in events[:500]:
+                    if not isinstance(item, dict):
+                        continue
+                    body = item.get("content")
+                    if not isinstance(body, str) or not body.strip():
+                        continue
+                    event: dict[str, Any] = {
+                        "event_type": str(item.get("event_type") or _USER_ROLE),
+                        "content": body,
+                        "payload": {**payload, **(item.get("payload") or {})},
+                    }
+                    timestamp_iso = item.get("timestamp_iso")
+                    if isinstance(timestamp_iso, str) and timestamp_iso:
+                        event["timestamp_iso"] = timestamp_iso
+                    normalized.append(event)
+                if not normalized:
+                    raise ValueError("events is empty after dropping blank entries")
+                effective_session = session_id or f"ext:{source or 'mcp'}:{caller}"
+                if dry_run:
+                    return {
+                        "marker": "[octop memory capture]",
+                        "recorded": False,
+                        "dry_run": True,
+                        "session_id": effective_session,
+                        "events": [
+                            {
+                                "event_type": e["event_type"],
+                                "content": e["content"],
+                                "caller": caller,
+                            }
+                            for e in normalized
+                        ],
+                        "note": "dry run: parsed only, nothing written",
+                    }
+                result = _memory_runtime(server, agent_id).capture(
+                    {
+                        "session_id": effective_session,
+                        "thread_id": thread_id,
+                        "user": caller,
+                        "host": source or "mcp-external",
+                        "events": normalized,
+                    }
+                )
+                accepted = int(result.get("accepted") or 0)
+                return {
+                    "marker": "[octop memory capture]",
+                    "recorded": accepted > 0,
+                    "session_id": effective_session,
+                    "source": source,
+                    "caller": caller,
+                    "accepted": accepted,
+                    "skipped": {
+                        key.removeprefix("skipped_"): value
+                        for key, value in result.items()
+                        if key.startswith("skipped_") and value
+                    },
+                    "note": "client-parsed events recorded through MemoryRuntime.capture",
+                }
             # ---- terminal transcript: ``source`` names the terminal, it names the parser
             nonlocal content
             if transcript_path and source in _TRANSCRIPT_SOURCES:
@@ -698,6 +747,23 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                         ) from exc
 
                 memory = _open_memory(server, agent_id)
+                runtime = _memory_runtime(server, agent_id)
+
+                def _write_transcript(
+                    resolved_session: str, events: list[dict[str, Any]]
+                ) -> dict[str, Any]:
+                    return dict(
+                        runtime.capture(
+                            {
+                                "session_id": resolved_session,
+                                "thread_id": resolved_session,
+                                "user": caller,
+                                "host": source,
+                                "events": events,
+                            }
+                        )
+                    )
+
                 stats = import_content(
                     memory,
                     text,
@@ -709,7 +775,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                     skip_message_markers=_HOST_PLUMBING_MARKERS,
                     tool_events=tool_events,
                     parser=_TRANSCRIPT_SOURCES[source],
-                    redact=_transcript_redactor(server, agent_id),
+                    capture=_write_transcript if not dry_run else None,
                 )
                 archive = None
                 if not dry_run:
@@ -743,15 +809,18 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                         "transcript parsed into L0 raw events; extraction runs off the request path"
                     ),
                 }
-            events: list[dict[str, Any]] = []
-            payload = {"source": source, "source_host": source, "caller": caller}
+            pending: list[dict[str, Any]] = []
+            # ``source`` is self-reported by the caller; the token name is the
+            # server-known client identity, so prefer it for provenance.
+            source_host = _current_token_name.get() or source
+            payload = {"source": source, "source_host": source_host, "caller": caller}
             if content.strip():
-                events.append({"event_type": _USER_ROLE, "content": content, "payload": payload})
+                pending.append({"event_type": _USER_ROLE, "content": content, "payload": payload})
             if assistant:
-                events.append(
+                pending.append(
                     {"event_type": _ASSISTANT_ROLE, "content": assistant, "payload": payload}
                 )
-            if not events:
+            if not pending:
                 raise ValueError("content and assistant are both empty; nothing to record")
 
             effective_session = session_id or f"ext:{source or 'mcp'}:{caller}"
@@ -767,7 +836,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                             "content": event["content"],
                             "caller": caller,
                         }
-                        for event in events
+                        for event in pending
                     ],
                     "note": "dry run: parsed only, nothing written",
                 }
@@ -779,7 +848,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                     "thread_id": thread_id,
                     "user": caller,
                     "host": source or "mcp-external",
-                    "events": events,
+                    "events": pending,
                 }
             )
             accepted = int(result.get("accepted") or 0)
@@ -1505,32 +1574,26 @@ def _chain_lifespan(previous: Any, managers: list[Any]) -> Callable[[Any], Any]:
     return _lifespan
 
 
-def _memory_mcp_enabled(server: OctopServer) -> bool:
-    """Mount when explicitly enabled or when at least one token exists."""
+def _memory_mcp_enabled() -> bool:
+    """Mount only when ``OCTOP_MEMORY_MCP_ENABLED`` asks for it.
+
+    Token existence no longer flips the mount on: the endpoint appears (or not)
+    at process start, so an operator enables it once and every token created
+    afterwards works without a restart.
+    """
     flag = (os.environ.get("OCTOP_MEMORY_MCP_ENABLED") or "").strip().lower()
-    if flag in {"1", "true", "yes", "on"}:
-        return True
-    if flag in {"0", "false", "no", "off"}:
-        return False
-    services = server.services
-    repo = getattr(getattr(services, "repos", None), "memory_mcp_token_repo", None)
-    if repo is None:
-        return False
-    try:
-        return bool(repo.any_active())
-    except Exception:  # noqa: BLE001 - a fresh/read-only DB simply means "not yet"
-        return False
+    return flag in {"1", "true", "yes", "on"}
 
 
 def install_memory_mcp(app: Any, server: OctopServer) -> None:
     """Mount ``/mcp/memory`` and keep the host lifespan intact.
 
-    Mounts only when ``OCTOP_MEMORY_MCP_ENABLED`` is on or a user token already
-    exists (fail-closed: an unconfigured instance exposes nothing). The MCP
+    Mounts only when ``OCTOP_MEMORY_MCP_ENABLED`` is on (fail-closed: an
+    unconfigured instance exposes nothing). The MCP
     session managers are chained into the existing FastAPI lifespan instead of
     replacing it, so future startup/shutdown hooks keep working.
     """
-    if not _memory_mcp_enabled(server):
+    if not _memory_mcp_enabled():
         return
     services = server.services
     assert services is not None, "server.services required for memory MCP mount"

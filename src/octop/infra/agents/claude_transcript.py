@@ -34,7 +34,7 @@ import json
 import logging
 import uuid
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -919,7 +919,7 @@ def _persist(
     skip_message_markers: tuple[str, ...] = (),
     tool_events: str = "all",
     session_prefix: str = SESSION_PREFIX,
-    redact: Callable[[str], str] | None = None,
+    capture: Callable[[str, list[dict[str, Any]]], dict[str, Any]] | None = None,
 ) -> ImportStats:
     """Deduplicate a parsed session against L0 and append only the missing events.
 
@@ -960,9 +960,6 @@ def _persist(
         stats.skipped_tools = len(candidates) - len(kept)
         candidates = kept
 
-    if redact is not None:
-        candidates = [replace(event, content=redact(event.content)) for event in candidates]
-
     stats.sidechain = sum(1 for event in candidates if event.payload.get("sidechain"))
     for event in candidates:
         stats.by_type[event.event_type] = stats.by_type.get(event.event_type, 0) + 1
@@ -981,6 +978,20 @@ def _persist(
     pending = [event for event in candidates if event.key not in seen]
     stats.skipped_existing = len(candidates) - len(pending)
     if dry_run or not pending:
+        return stats
+
+    if capture is not None:
+        payloads = [
+            {
+                "event_type": event.event_type,
+                "content": event.content,
+                "payload": event.payload,
+                "timestamp_iso": event.timestamp.isoformat(),
+            }
+            for event in pending
+        ]
+        result = capture(resolved_session, payloads)
+        stats.imported = int(result.get("accepted") or 0)
         return stats
 
     memory.add_raw_batch(
@@ -1022,7 +1033,7 @@ def import_content(
     skip_message_markers: tuple[str, ...] = (),
     tool_events: str = "all",
     parser: str = "claude-code",
-    redact: Callable[[str], str] | None = None,
+    capture: Callable[[str, list[dict[str, Any]]], dict[str, Any]] | None = None,
 ) -> ImportStats:
     """Replay transcript *content* (JSONL text) into L0.
 
@@ -1047,7 +1058,7 @@ def import_content(
         skip_message_markers=skip_message_markers,
         tool_events=tool_events,
         session_prefix=SESSION_PREFIXES.get(parser, SESSION_PREFIX),
-        redact=redact,
+        capture=capture,
     )
 
 
@@ -1063,7 +1074,7 @@ def import_session(
     skip_message_markers: tuple[str, ...] = (),
     tool_events: str = "all",
     parser: str = "claude-code",
-    redact: Callable[[str], str] | None = None,
+    capture: Callable[[str, list[dict[str, Any]]], dict[str, Any]] | None = None,
 ) -> ImportStats:
     """Replay one transcript *file* into L0 (same-host callers).
 
@@ -1088,7 +1099,7 @@ def import_session(
         skip_message_markers=skip_message_markers,
         tool_events=tool_events,
         session_prefix=SESSION_PREFIXES.get(parser, SESSION_PREFIX),
-        redact=redact,
+        capture=capture,
     )
 
 

@@ -2,7 +2,7 @@
 
 本文是 [记忆 MCP Server](./memory-mcp.md) 的安装/配置分册：怎么拿到 token、怎么在本地终端里装好 hooks 与 MCP 条目、怎么验证和排查。
 
-> 前置：Octop 已开启记忆 MCP（`OCTOP_MEMORY_MCP_ENABLED=1`，或库里已存在有效 token 后重启一次）。
+> 前置：Octop 已开启记忆 MCP（`OCTOP_MEMORY_MCP_ENABLED=1`，重启一次生效）。
 
 ## 1. 先创建一个 Token
 
@@ -167,7 +167,7 @@ Authorization = "Bearer omcp_…"
 | `403 token owner cannot access that expert` | 该专家不属于 token 所有者、也未共享给他 |
 | `404 missing or unknown agent_id` | 专家不存在或已停用；确认专家 ID 正确且处于启用状态 |
 | `403 this client is disabled for this token` | 该接入端被你在 Dashboard 里禁用了；展开 token 行重新打开开关即可 |
-| `/mcp/memory` 404 | 服务未开启记忆 MCP：设 `OCTOP_MEMORY_MCP_ENABLED=1` 或先创建 token 后重启 |
+| `/mcp/memory` 404 | 服务未开启记忆 MCP：设 `OCTOP_MEMORY_MCP_ENABLED=1` 并重启 Octop |
 | Codex hook 不执行 | Codex 首次需要 **trust** hook（或在启动时加 `--dangerously-bypass-hook-trust`） |
 | Claude Code 的 hook 不执行、`claude doctor` 报 `Hook matcher "hooks" must be an array of hook entries` | 旧安装器写的是「事件直接挂 handler」的简写形态，Claude Code 2.1.x 会校验失败并忽略；升级到本版本后重跑安装器即可（写入 `[{ "hooks": [...] }]` 形态） |
 | DSH 不生效 | 插件是进程内加载，安装后需重启 DSH；确认 profile 的 `cordis.patch.yml` 有同名配置块 |
