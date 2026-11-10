@@ -203,6 +203,21 @@ def _forward_headers(request: Request, remote_agent_id: str) -> dict[str, str]:
     return headers
 
 
+def _is_websocket_upgrade(headers: Any) -> bool:
+    """True only for a real WebSocket handshake.
+
+    A reverse proxy often sets ``Connection: upgrade`` on every request
+    (``proxy_set_header Connection "upgrade"``) and leaves ``Upgrade`` empty.
+    Those requests must still be tunneled. ``Connection`` may also be a list.
+    """
+    connection = headers.get("connection") or ""
+    tokens = {part.strip().lower() for part in str(connection).split(",") if part.strip()}
+    if "upgrade" not in tokens:
+        return False
+    upgrade = headers.get("upgrade") or ""
+    return "websocket" in {part.strip().lower() for part in str(upgrade).split(",") if part.strip()}
+
+
 def install(app: Any, server: Any) -> None:
     if getattr(app, _INSTALL_ATTR, False):
         return
@@ -220,8 +235,8 @@ def install(app: Any, server: Any) -> None:
         )
         if target is None:
             return await call_next(request)
-        # WebSocket upgrades are handled by the chat/bridge routers.
-        if (request.headers.get("connection") or "").lower() == "upgrade":
+        # Real WebSocket upgrades are handled by the chat/bridge routers.
+        if _is_websocket_upgrade(request.headers):
             return await call_next(request)
 
         user = getattr(request.state, "octop_user", None)

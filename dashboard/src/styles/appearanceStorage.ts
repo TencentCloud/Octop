@@ -42,7 +42,12 @@ function readLegacyPalette(): ThemePalette {
  * Read light/dark preference + brand palette from the shared `theme` key.
  * Migrates legacy plain-string `theme` and `octop:ui-palette` values.
  */
-export function readStoredAppearance(): StoredAppearance {
+export function readStoredAppearance(userId?: number | null): StoredAppearance {
+  if (typeof userId === "number") {
+    const own = localStorage.getItem(userAppearanceStorageKey(userId));
+    if (!own) return defaultAppearance();
+    return parseUserAppearance(own);
+  }
   const raw = localStorage.getItem(THEME_STORAGE_KEY);
   if (!raw) {
     return {
@@ -86,10 +91,50 @@ export function readStoredAppearance(): StoredAppearance {
   };
 }
 
-/** Persist both fields under the same `theme` key; drop legacy palette key. */
-export function writeStoredAppearance(appearance: StoredAppearance): void {
+function parseUserAppearance(raw: string): StoredAppearance {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      const obj = parsed as Record<string, unknown>;
+      return {
+        preference: isPreference(obj.preference) ? obj.preference : "system",
+        palette: isPalette(obj.palette) ? obj.palette : DEFAULT_PALETTE,
+        customColor:
+          normalizeHexColor(obj.customColor as string) ?? DEFAULT_CUSTOM_COLOR,
+      };
+    }
+  } catch {
+    // fall through
+  }
+  return defaultAppearance();
+}
+
+export function defaultAppearance(): StoredAppearance {
+  return {
+    preference: "system",
+    palette: DEFAULT_PALETTE,
+    customColor: DEFAULT_CUSTOM_COLOR,
+  };
+}
+
+/** Per-user key so two accounts on one browser do not share a palette. */
+export function userAppearanceStorageKey(userId: number): string {
+  return `${THEME_STORAGE_KEY}:user:${userId}`;
+}
+
+function appearanceStorageKey(userId?: number | null): string {
+  return typeof userId === "number"
+    ? userAppearanceStorageKey(userId)
+    : THEME_STORAGE_KEY;
+}
+
+/** Persist both fields. A user id writes that account's key, not the shared boot key. */
+export function writeStoredAppearance(
+  appearance: StoredAppearance,
+  userId?: number | null,
+): void {
   localStorage.setItem(
-    THEME_STORAGE_KEY,
+    appearanceStorageKey(userId),
     JSON.stringify({
       preference: appearance.preference,
       palette: appearance.palette,
@@ -97,7 +142,9 @@ export function writeStoredAppearance(appearance: StoredAppearance): void {
         normalizeHexColor(appearance.customColor ?? "") ?? DEFAULT_CUSTOM_COLOR,
     }),
   );
-  localStorage.removeItem(LEGACY_PALETTE_STORAGE_KEY);
+  if (typeof userId !== "number") {
+    localStorage.removeItem(LEGACY_PALETTE_STORAGE_KEY);
+  }
 }
 
 /** One-shot boot read + migrate for ThemeProvider initial state. */

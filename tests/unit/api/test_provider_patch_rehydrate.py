@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +12,7 @@ from octop.api.routers.providers import (
     ProviderPatchBody,
     _patch_requires_provider_rehydrate,
     _provider_patch_updates,
+    _row_to_dict,
     admin_patch_provider,
 )
 
@@ -36,6 +39,41 @@ def test_stream_usage_patch_rewrites_extra_without_clearing_api_key() -> None:
     assert _provider_patch_updates(body, current_extra_json='{"headers": {"X-A": "1"}}') == {
         "extra_json": '{"headers": {"X-A": "1"}, "stream_usage": false}'
     }
+
+
+def test_default_model_patch_is_stored_and_can_be_cleared() -> None:
+    body = ProviderPatchBody.model_validate({"model": "deepseek-v3"})
+    updates = _provider_patch_updates(body, current_extra_json='{"headers": {"X-A": "1"}}')
+    extra = json.loads(updates["extra_json"])
+    assert extra["default_model"] == "deepseek-v3"
+    assert extra["headers"] == {"X-A": "1"}
+    assert "api_key" not in updates
+    assert _patch_requires_provider_rehydrate(body) is False
+
+    cleared = ProviderPatchBody.model_validate({"model": None})
+    cleared_extra = json.loads(
+        _provider_patch_updates(cleared, current_extra_json=updates["extra_json"])["extra_json"]
+    )
+    assert "default_model" not in cleared_extra
+    assert cleared_extra["headers"] == {"X-A": "1"}
+
+
+def test_row_to_dict_uses_saved_default_model_not_the_first_model() -> None:
+    row = SimpleNamespace(
+        id=1,
+        name="custom",
+        kind="openai",
+        base_url="https://example.invalid",
+        api_key="sk",
+        note=None,
+        enabled=1,
+        extra_json=None,
+        get_models=lambda: [{"id": "first", "name": "First"}],
+    )
+    assert _row_to_dict(row)["model"] is None
+
+    row.extra_json = '{"default_model": "deepseek-v3"}'
+    assert _row_to_dict(row)["model"] == "deepseek-v3"
 
 
 def test_patch_note_only_does_not_require_rehydrate() -> None:

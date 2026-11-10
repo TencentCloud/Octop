@@ -73,6 +73,11 @@ class StorageInspection(BaseModel):
     wal_size: int | None = None
     reclaimable_bytes: int | None = None
     auto_vacuum_enabled: bool | None = None
+    checkpoint_retention_enabled: bool | None = None
+    checkpoint_keep_last: int | None = None
+    checkpoint_keep_days: int | None = None
+    checkpoint_backup_before_prune: bool | None = None
+    checkpoint_vacuum_recommended: bool | None = None
     page_size: int | None = None
     total_pages: int | None = None
     freelist_pages: int | None = None

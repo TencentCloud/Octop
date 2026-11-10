@@ -883,6 +883,42 @@ def default_library_root() -> Path:
     return Path(__file__).parent / "library"
 
 
+# Templates listed in the built-in library before the expert market replaced
+# that tab (22 cards; the blank ``default`` seed was never shown). Matching is
+# by id, not by whatever still happens to live under ``library/``.
+FEATURED_EXPERT_TEMPLATE_IDS = frozenset(
+    {
+        "ai-coding-coach",
+        "ai-safety-guardian",
+        "business-operations",
+        "clinical-learning-subscription",
+        "cowork-plugin-management",
+        "cvm-ai-doctor",
+        "cvm-cluster-doctor",
+        "design",
+        "engineering",
+        "general-assistant",
+        "karpathy-knowledge-base",
+        "meituan-living-assistant",
+        "multi-agent-orchestrator",
+        "news-trend",
+        "office-automation",
+        "ops-engineer",
+        "parenting-companion",
+        "productivity",
+        "stock-assistant",
+        "superpowers-methodology",
+        "tencentcloud-api",
+        "wechat-ops",
+    }
+)
+
+
+def featured_expert_template_ids() -> frozenset[str]:
+    """Ids of the expert templates that shipped before the remote market."""
+    return FEATURED_EXPERT_TEMPLATE_IDS
+
+
 def resolve_expert_agent_name(
     expert: Expert,
     expert_id: str,
