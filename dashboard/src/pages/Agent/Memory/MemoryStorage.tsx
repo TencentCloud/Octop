@@ -58,6 +58,20 @@ export default function MemoryStorage({ agentId }: { agentId: string }) {
   const job = state?.job;
   const running = !terminal(job?.phase);
   const busy = state?.busy ?? true;
+  const backupMode = inspection?.checkpoint_backup_before_prune;
+  const backupDays = inspection?.checkpoint_backup_keep_days ?? 7;
+  let backupPolicy: string | null = null;
+  if (backupMode === "first" || backupMode === "always") {
+    const retention =
+      backupDays === 0
+        ? t("memory.storage.checkpointBackupNeverExpires")
+        : t("memory.storage.checkpointBackupKeepDays", { days: backupDays });
+    backupPolicy = t(`memory.storage.checkpointBackup_${backupMode}`, {
+      retention,
+    });
+  } else if (backupMode === "off") {
+    backupPolicy = t("common.disabled");
+  }
 
   const check = async (manual = false) => {
     if (checkInFlight.current) return;
@@ -312,6 +326,15 @@ export default function MemoryStorage({ agentId }: { agentId: string }) {
                           })
                         : t("common.disabled"),
                     },
+                    ...(backupPolicy !== null
+                      ? [
+                          {
+                            key: "checkpoint-backup",
+                            label: t("memory.storage.checkpointBackup"),
+                            children: backupPolicy,
+                          },
+                        ]
+                      : []),
                   ]
                 : []),
             ]}

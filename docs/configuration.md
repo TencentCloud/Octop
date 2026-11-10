@@ -253,6 +253,26 @@ control-plane migrations. Local compose enables `vector` via
 `docker/postgres/init-vector.sql`; managed databases need a DBA /
 provider toggle. See [ADR 002](./adr/002-database-backends.md).
 
+### Scheduled SQLite checkpoint backups
+
+These settings require a Harness build with the scheduled backup policy below.
+
+Harness attempts a whole-database backup before the first scheduled cleanup
+with eligible checkpoints. The default `OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE=first`
+writes `memory.sqlite.pre-prune.bak` alongside the database. If free space is
+less than the database plus WAL and 10% headroom, or if the backup fails,
+cleanup continues and a warning is logged. The adjacent
+`memory.sqlite.pre-prune.done` marker records when the attempt completed and
+its result. Remove the marker to allow another attempt the next time there are
+eligible checkpoints.
+
+Set `OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE=always` (or `1`, `true`, `on`, or
+`yes`) to replace the backup before each cleanup and defer checkpoint pruning
+if it cannot be written. Set it to `off` (or `0`, `false`, or `no`) to
+disable backup creation. Unrecognized values fall back to `first` with a warning.
+`OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS` defaults to 7. Set it to 0 to disable
+automatic expiration. Expiration leaves the marker in place.
+
 ## First-boot wizard
 
 The first request to a fresh install lands on the setup page. Greenfield

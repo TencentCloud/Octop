@@ -13,6 +13,7 @@ import pytest
 from tests.unit.agents.test_memory_slim import make_manager
 
 from octop.config import OctopConfig
+from octop.infra.agents.memory.sqlite_storage import _checkpoint_policy
 from octop.infra.agents.memory.storage import sqlite_store_is_shared
 
 
@@ -189,3 +190,64 @@ def test_read_only_counts_distinguish_missing_zero_and_timeout(tmp_path, monkeyp
     assert snapshot["memory_counts"][0]["status"] == "timed_out"
     assert snapshot["memory_counts"][0]["rows"] is None
     assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("value", "mode", "warning"),
+    [
+        (None, "first", False),
+        ("first", "first", False),
+        ("always", "always", False),
+        ("1", "always", False),
+        (" TRUE ", "always", False),
+        ("on", "always", False),
+        ("yes", "always", False),
+        ("0", "off", False),
+        ("false", "off", False),
+        ("off", "off", False),
+        ("no", "off", False),
+        ("unrecognized", "first", True),
+    ],
+)
+def test_checkpoint_backup_modes_match_harness(value, mode, warning, monkeypatch, caplog):
+    # Same cases as octop-harness tests/test_checkpoint_backup.py, including
+    # when this test runs against an older installed Harness wheel.
+    variable = "OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE"
+    if value is None:
+        monkeypatch.delenv(variable, raising=False)
+    else:
+        monkeypatch.setenv(variable, value)
+    monkeypatch.delenv("OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS", raising=False)
+    for _ in range(2):
+        policy = _checkpoint_policy(0)
+        assert policy["checkpoint_backup_before_prune"] == mode
+        assert policy["checkpoint_backup_keep_days"] == 7
+    assert caplog.text.count(variable) == int(warning)
+
+
+@pytest.mark.parametrize(("value", "expected"), [("0", 0), (" 14 ", 14), ("-1", 7), ("invalid", 7)])
+def test_checkpoint_backup_keep_days_match_harness(value, expected, monkeypatch):
+    monkeypatch.setenv("OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS", value)
+    assert _checkpoint_policy(0)["checkpoint_backup_keep_days"] == expected
+
+
+def test_checkpoint_backup_policy_agrees_with_installed_harness(monkeypatch):
+    harness = pytest.importorskip("octop_harness.middleware.checkpoint_backup")
+    mode_env = "OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE"
+    days_env = "OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS"
+    for mode, days in (
+        ("", ""),
+        ("first", "7"),
+        ("always", "0"),
+        ("off", "12"),
+        (" TRUE ", " 5 "),
+        ("0", "-1"),
+        ("unexpected-mode", "unexpected-days"),
+    ):
+        monkeypatch.setenv(mode_env, mode)
+        monkeypatch.setenv(days_env, days)
+        policy = _checkpoint_policy(0)
+        assert (
+            policy["checkpoint_backup_before_prune"],
+            policy["checkpoint_backup_keep_days"],
+        ) == harness.checkpoint_backup_policy_from_env()
