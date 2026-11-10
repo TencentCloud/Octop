@@ -4509,6 +4509,8 @@
       "copyToken": "Copy token",
       "copyCommand": "Copy command",
       "tokenLabel": "Token",
+      "installScriptLabel": "One-line install with hooks (macOS / Linux):",
+      "installScriptPsLabel": "Windows PowerShell:",
       "commandReady": "MCP config (token included, paste it into your client's mcpServers):",
       "create": "Create token",
       "loadFailed": "Could not load tokens.",

@@ -204,6 +204,12 @@ export default function McpAccess() {
       2,
     );
 
+  const buildInstallScript = (plaintext: string) =>
+    `curl -fsSL https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.sh | sh -s -- --url ${origin}/mcp/memory/ --token ${plaintext}`;
+
+  const buildInstallPowerShell = (plaintext: string) =>
+    `irm https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.ps1 -OutFile install.ps1; .\\install.ps1 -Url ${origin}/mcp/memory/ -Token ${plaintext}`;
+
   const handleCreate = async () => {
     let values: CreateFormValues;
     try {
@@ -875,6 +881,47 @@ export default function McpAccess() {
                 style={{ fontFamily: "monospace", fontSize: 12 }}
               />
               <Button type="primary" onClick={() => void handleCopyCommand()}>
+                {t("memory.mcp.copyCommand", "复制命令")}
+              </Button>
+            </Space.Compact>
+            <Typography.Text type="secondary">
+              {t(
+                "memory.mcp.installScriptLabel",
+                "一键安装（含 hooks，macOS / Linux）：",
+              )}
+            </Typography.Text>
+            <Space.Compact style={{ width: "100%" }}>
+              <Input.TextArea
+                readOnly
+                autoSize={{ minRows: 3, maxRows: 6 }}
+                value={buildInstallScript(created.plaintext)}
+                style={{ fontFamily: "monospace", fontSize: 12 }}
+              />
+              <Button
+                onClick={() =>
+                  void copySetupCommand(buildInstallScript(created.plaintext))
+                }
+              >
+                {t("memory.mcp.copyCommand", "复制命令")}
+              </Button>
+            </Space.Compact>
+            <Typography.Text type="secondary">
+              {t("memory.mcp.installScriptPsLabel", "Windows PowerShell：")}
+            </Typography.Text>
+            <Space.Compact style={{ width: "100%" }}>
+              <Input.TextArea
+                readOnly
+                autoSize={{ minRows: 3, maxRows: 6 }}
+                value={buildInstallPowerShell(created.plaintext)}
+                style={{ fontFamily: "monospace", fontSize: 12 }}
+              />
+              <Button
+                onClick={() =>
+                  void copySetupCommand(
+                    buildInstallPowerShell(created.plaintext),
+                  )
+                }
+              >
                 {t("memory.mcp.copyCommand", "复制命令")}
               </Button>
             </Space.Compact>

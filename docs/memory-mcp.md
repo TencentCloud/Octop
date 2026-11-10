@@ -86,7 +86,29 @@ http_headers = { Authorization = "Bearer omcp_…" }
 
 在客户端的 MCP 配置里填 §2 的 URL 与 `Authorization` 即可（DSH 的 `mcpServers` 用 `type: "streamable-http"`）。
 
-### 2.4 hooks / 一键安装（客户端侧）
+### 2.4 一键接入（客户端插件，推荐）
+
+安装器在 octop-memory 仓库的 `plugins/harness`，不经过服务端，token 由你在运行时传入。
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.sh \
+  | sh -s -- --url https://<octop-host>/mcp/memory/ --token omcp_…
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.ps1 -OutFile install.ps1
+.\install.ps1 -Url https://<octop-host>/mcp/memory/ -Token omcp_…
+```
+
+只装部分终端加 `--terminals claude-code,codex`；装到项目加 `--project "$PWD"`。
+把 [AI-SETUP.md](https://github.com/TencentCloud/octop-memory/blob/main/plugins/harness/AI-SETUP.md)
+连同 token 一起交给 AI，也可以自动完成安装。
+
+### 2.5 hooks / 安装器（客户端侧）
 
 自动召回、会话上报、一键安装和各终端适配属于**客户端侧**代码，已从本仓拆出：
 

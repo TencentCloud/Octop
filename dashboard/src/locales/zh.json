@@ -4509,6 +4509,8 @@
       "copyToken": "复制 Token",
       "copyCommand": "复制命令",
       "tokenLabel": "Token",
+      "installScriptLabel": "一键安装（含 hooks，macOS / Linux）：",
+      "installScriptPsLabel": "Windows PowerShell：",
       "commandReady": "MCP 配置（已带上这个 Token，可直接粘贴到客户端的 mcpServers 中）：",
       "create": "创建 Token",
       "loadFailed": "Token 列表加载失败",
