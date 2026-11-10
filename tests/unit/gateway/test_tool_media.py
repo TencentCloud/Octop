@@ -476,6 +476,15 @@ def test_plain_text_image_scan_handles_long_web_output() -> None:
     assert time.perf_counter() - started < 1.0
 
 
+@pytest.mark.parametrize("kind", [{"nested": "value"}, ["custom"]])
+def test_history_tool_output_preserves_non_media_type(kind: object) -> None:
+    from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync
+
+    payload = {"type": kind, "data": "ordinary tool result"}
+    output = enrich_tool_output_string_sync(json.dumps(payload), agent_id="A1")
+    assert json.loads(output) == payload
+
+
 def test_is_media_push_tool_allowlist() -> None:
     from octop.infra.gateway.media.tool_media import is_media_push_tool
 
