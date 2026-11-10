@@ -419,18 +419,24 @@ export default function McpAccess() {
             <Typography.Text strong>{client}</Typography.Text>
             <span>{formatServerIsoDateTime(stat.last_seen, timeZone)}</span>
             <span>{stat.count}</span>
-            <Switch
-              size="small"
-              checked={!disabled.has(client)}
-              disabled={!!token.revoked_at}
-              loading={togglingClient === `${token.token_id}:${client}`}
-              aria-label={t("memory.mcp.clientSwitchLabel", "{{client}} 接入", {
-                client,
-              })}
-              onChange={(checked) =>
-                void handleToggleClient(token, client, checked)
-              }
-            />
+            <span className={styles.clientSwitch}>
+              <Switch
+                size="small"
+                checked={!disabled.has(client)}
+                disabled={!!token.revoked_at}
+                loading={togglingClient === `${token.token_id}:${client}`}
+                aria-label={t(
+                  "memory.mcp.clientSwitchLabel",
+                  "{{client}} 接入",
+                  {
+                    client,
+                  },
+                )}
+                onChange={(checked) =>
+                  void handleToggleClient(token, client, checked)
+                }
+              />
+            </span>
           </div>
         ))}
       </div>
