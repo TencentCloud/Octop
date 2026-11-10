@@ -40,24 +40,39 @@ import { copyText } from "../../../utils/copyText";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import styles from "./MemorySettings.module.less";
 
+/**
+ * Sentinel for "no expert binding" in the single-select expert pickers.
+ * Choosing it sends ``expert_ids: null``, which brings the
+ * ``X-Octop-Agent-Id`` requirement back on MCP requests.
+ */
+const UNRESTRICTED_EXPERT = "__unrestricted__";
+
 interface CreateFormValues {
   name: string;
-  expert_ids?: string[];
+  expert_id: string;
+}
+
+interface SwitchExpertFormValues {
+  expert_id?: string;
 }
 
 export default function McpAccess() {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
-  const { agents } = useAgent();
+  const { agents, activeAgentId } = useAgent();
 
   const [tokens, setTokens] = useState<MemoryMcpToken[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<{ detail?: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createExpertDefault, setCreateExpertDefault] = useState<string>("");
   const [created, setCreated] = useState<MemoryMcpTokenCreated | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [switchTarget, setSwitchTarget] = useState<MemoryMcpToken | null>(null);
+  const [switching, setSwitching] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
+  const [switchForm] = Form.useForm<SwitchExpertFormValues>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,11 +104,57 @@ export default function McpAccess() {
     [agents],
   );
 
+  const expertPickerOptions = useMemo(
+    () => [
+      ...expertOptions,
+      {
+        value: UNRESTRICTED_EXPERT,
+        label: t(
+          "memory.mcp.expertUnrestricted",
+          "不限定专家（需客户端带 X-Octop-Agent-Id）",
+        ),
+      },
+    ],
+    [expertOptions, t],
+  );
+
   const expertNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const agent of agents) map.set(agent.agent_id, agent.name);
     return map;
   }, [agents]);
+
+  /** Default for a new token: the expert the user is looking at right now. */
+  const defaultExpertId = useMemo(() => {
+    if (expertOptions.some((option) => option.value === activeAgentId)) {
+      return activeAgentId as string;
+    }
+    return expertOptions[0]?.value ?? UNRESTRICTED_EXPERT;
+  }, [expertOptions, activeAgentId]);
+
+  const openCreate = () => {
+    setCreateExpertDefault(defaultExpertId);
+    setCreateOpen(true);
+  };
+
+  // The create modal is destroyed on close, so the default expert can only be
+  // written once its Form is mounted (same commit as ``createOpen``).
+  useEffect(() => {
+    if (!createOpen) return;
+    form.setFieldsValue({ expert_id: createExpertDefault });
+  }, [createOpen, createExpertDefault, form]);
+
+  const openSwitchExpert = (token: MemoryMcpToken) => {
+    setSwitchTarget(token);
+  };
+
+  useEffect(() => {
+    if (!switchTarget) return;
+    const ids = switchTarget.expert_ids ?? [];
+    switchForm.setFieldsValue({
+      expert_id: ids.length === 1 ? ids[0] : undefined,
+    });
+  }, [switchTarget, switchForm]);
 
   const handleCreate = async () => {
     let values: CreateFormValues;
@@ -106,7 +167,10 @@ export default function McpAccess() {
     try {
       const body: CreateMemoryMcpTokenBody = {
         name: values.name.trim(),
-        expert_ids: values.expert_ids?.length ? values.expert_ids : null,
+        // A token bound to exactly one expert needs no agent header on MCP
+        // requests; null means "unrestricted", which still requires it.
+        expert_ids:
+          values.expert_id === UNRESTRICTED_EXPERT ? null : [values.expert_id],
       };
       const result = await memoryMcpApi.create(body);
       setCreateOpen(false);
@@ -121,6 +185,36 @@ export default function McpAccess() {
       );
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleSwitchExpert = async () => {
+    if (!switchTarget) return;
+    let values: SwitchExpertFormValues;
+    try {
+      values = await switchForm.validateFields();
+    } catch {
+      return;
+    }
+    const expertId = values.expert_id;
+    setSwitching(true);
+    try {
+      await memoryMcpApi.update(switchTarget.token_id, {
+        expert_ids:
+          !expertId || expertId === UNRESTRICTED_EXPERT ? null : [expertId],
+      });
+      message.success(t("memory.mcp.switchExpertSuccess", "已切换上报专家"));
+      setSwitchTarget(null);
+      switchForm.resetFields();
+      await load();
+    } catch (e) {
+      message.error(
+        e instanceof Error
+          ? e.message
+          : t("memory.mcp.switchExpertFailed", "切换失败，请重试"),
+      );
+    } finally {
+      setSwitching(false);
     }
   };
 
@@ -167,14 +261,20 @@ export default function McpAccess() {
       render: (hint: string) => <Typography.Text code>{hint}</Typography.Text>,
     },
     {
-      title: t("memory.mcp.columnExperts", "专家范围"),
+      title: t("memory.mcp.columnExperts", "上报专家"),
       dataIndex: "expert_ids",
       key: "expert_ids",
       render: (_: unknown, token) => {
         const ids = token.expert_ids ?? [];
         if (ids.length === 0) {
-          return <Tag>{t("memory.mcp.allExperts", "不限专家")}</Tag>;
+          return <Tag>{t("memory.mcp.allExperts", "不限")}</Tag>;
         }
+        if (ids.length === 1) {
+          const id = ids[0];
+          return <Tag title={id}>{expertNames.get(id) ?? id}</Tag>;
+        }
+        // Historical tokens may still carry several experts; keep them legible
+        // without pretending there is a single binding.
         return (
           <Space size={[4, 4]} wrap>
             <Typography.Text type="secondary">
@@ -226,29 +326,38 @@ export default function McpAccess() {
     {
       title: t("memory.mcp.columnActions", "操作"),
       key: "actions",
-      width: 110,
+      width: 210,
       render: (_: unknown, token) => (
-        <Popconfirm
-          title={t("memory.mcp.revokeConfirmTitle", "撤销这个 Token？")}
-          description={t(
-            "memory.mcp.revokeConfirmDesc",
-            "撤销后，使用该 Token 的外部 Agent 将立即无法访问记忆，且不可恢复。",
-          )}
-          okText={t("memory.mcp.revoke", "撤销")}
-          cancelText={t("common.cancel", "取消")}
-          okButtonProps={{ danger: true }}
-          disabled={!!token.revoked_at}
-          onConfirm={() => void handleRevoke(token)}
-        >
+        <Space size={4}>
           <Button
-            danger
             size="small"
-            loading={revokingId === token.token_id}
             disabled={!!token.revoked_at}
+            onClick={() => openSwitchExpert(token)}
           >
-            {t("memory.mcp.revoke", "撤销")}
+            {t("memory.mcp.switchExpert", "切换专家")}
           </Button>
-        </Popconfirm>
+          <Popconfirm
+            title={t("memory.mcp.revokeConfirmTitle", "撤销这个 Token？")}
+            description={t(
+              "memory.mcp.revokeConfirmDesc",
+              "撤销后，使用该 Token 的外部 Agent 将立即无法访问记忆，且不可恢复。",
+            )}
+            okText={t("memory.mcp.revoke", "撤销")}
+            cancelText={t("common.cancel", "取消")}
+            okButtonProps={{ danger: true }}
+            disabled={!!token.revoked_at}
+            onConfirm={() => void handleRevoke(token)}
+          >
+            <Button
+              danger
+              size="small"
+              loading={revokingId === token.token_id}
+              disabled={!!token.revoked_at}
+            >
+              {t("memory.mcp.revoke", "撤销")}
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -273,7 +382,7 @@ export default function McpAccess() {
           type="primary"
           icon={<Plus size={15} />}
           style={{ marginLeft: "auto", flexShrink: 0 }}
-          onClick={() => setCreateOpen(true)}
+          onClick={openCreate}
         >
           {t("memory.mcp.create", "创建 Token")}
         </Button>
@@ -304,7 +413,7 @@ export default function McpAccess() {
           columns={columns}
           dataSource={tokens}
           pagination={false}
-          scroll={{ x: 880 }}
+          scroll={{ x: 1000 }}
           locale={{
             emptyText: (
               <Empty
@@ -323,7 +432,7 @@ export default function McpAccess() {
                   </Space>
                 }
               >
-                <Button type="primary" onClick={() => setCreateOpen(true)}>
+                <Button type="primary" onClick={openCreate}>
                   {t("memory.mcp.create", "创建 Token")}
                 </Button>
               </Empty>
@@ -372,26 +481,76 @@ export default function McpAccess() {
             />
           </Form.Item>
           <Form.Item
-            name="expert_ids"
-            label={t("memory.mcp.expertsLabel", "专家范围")}
+            name="expert_id"
+            label={t("memory.mcp.expertsLabel", "上报专家")}
+            rules={[
+              {
+                required: true,
+                message: t("memory.mcp.expertRequired", "请选择上报专家"),
+              },
+            ]}
             extra={t(
               "memory.mcp.expertsHint",
-              "不选择时，该 Token 可访问你有权限访问的所有专家。",
+              "Token 绑定哪个专家，通过它上报的记忆就落到哪个专家。",
             )}
           >
             <Select
-              mode="multiple"
-              allowClear
               showSearch
               optionFilterProp="label"
-              options={expertOptions}
-              placeholder={t(
-                "memory.mcp.expertsPlaceholder",
-                "不选择表示不限专家",
-              )}
+              options={expertPickerOptions}
+              placeholder={t("memory.mcp.expertsPlaceholder", "请选择上报专家")}
             />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={switchTarget !== null}
+        title={t("memory.mcp.switchExpertTitle", "切换上报专家")}
+        okText={t("common.save", "保存")}
+        cancelText={t("common.cancel", "取消")}
+        confirmLoading={switching}
+        onOk={() => void handleSwitchExpert()}
+        onCancel={() => {
+          if (switching) return;
+          setSwitchTarget(null);
+          switchForm.resetFields();
+        }}
+        destroyOnHidden
+      >
+        {switchTarget ? (
+          <Space direction="vertical" size={12} style={{ width: "100%" }}>
+            <Typography.Text type="secondary">
+              {switchTarget.name}
+            </Typography.Text>
+            <Form form={switchForm} layout="vertical" requiredMark={false}>
+              <Form.Item
+                name="expert_id"
+                label={t("memory.mcp.expertsLabel", "上报专家")}
+                rules={[
+                  {
+                    required: true,
+                    message: t("memory.mcp.expertRequired", "请选择上报专家"),
+                  },
+                ]}
+                extra={t(
+                  "memory.mcp.switchExpertHint",
+                  "切换后，用该 Token 上报的记忆将落到新的专家；已写入的记忆不会迁移。",
+                )}
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  options={expertPickerOptions}
+                  placeholder={t(
+                    "memory.mcp.switchExpertPlaceholder",
+                    "请选择专家",
+                  )}
+                />
+              </Form.Item>
+            </Form>
+          </Space>
+        ) : null}
       </Modal>
 
       <Modal

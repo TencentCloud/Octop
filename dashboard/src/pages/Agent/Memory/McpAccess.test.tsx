@@ -6,6 +6,7 @@ vi.mock("../../../api/modules/memoryMcp", () => ({
   memoryMcpApi: {
     list: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     revoke: vi.fn(),
   },
 }));
@@ -22,10 +23,31 @@ vi.mock("../../../utils/copyText", () => ({
   copyText: vi.fn().mockResolvedValue(true),
 }));
 
+// Token expert ids are agent ids, so the page reads the agent list. Two local
+// experts are enough to exercise the single-select and the default binding.
+vi.mock("../../../context/AgentContext", () => {
+  const agents = [
+    { agent_id: "agent_a", name: "专家甲", bridge: false },
+    { agent_id: "agent_b", name: "专家乙", bridge: false },
+  ];
+  return {
+    useAgent: () => ({
+      agents,
+      activeAgentId: "agent_b",
+      activeAgent: null,
+      loading: false,
+      error: null,
+      setActiveAgent: () => undefined,
+      refresh: async () => undefined,
+    }),
+  };
+});
+
 import {
   memoryMcpApi,
   type MemoryMcpToken,
 } from "../../../api/modules/memoryMcp";
+import { message } from "../../../utils/antdMessage";
 import McpAccess from "./McpAccess";
 
 const api = vi.mocked(memoryMcpApi, true);
@@ -51,10 +73,28 @@ describe("<McpAccess />", () => {
 
     expect(await screen.findByText("codex@macbook")).toBeInTheDocument();
     expect(screen.getByText("omcp_…abcd")).toBeInTheDocument();
-    expect(screen.getByText("不限专家")).toBeInTheDocument();
+    expect(screen.getByText("不限")).toBeInTheDocument();
     expect(screen.getByText("有效")).toBeInTheDocument();
     expect(screen.getByText("从未使用")).toBeInTheDocument();
     expect(api.list).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the bound expert name, and a count for multi-expert tokens", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, token_id: "tok_single", expert_ids: ["agent_b"] },
+      {
+        ...activeToken,
+        token_id: "tok_multi",
+        expert_ids: ["agent_a", "agent_b"],
+      },
+    ]);
+    render(<McpAccess />);
+
+    // Single binding renders the expert name; the historical multi-expert row
+    // renders a count plus one tag per expert.
+    await waitFor(() => expect(screen.getAllByText("专家乙")).toHaveLength(2));
+    expect(screen.getByText("专家甲")).toBeInTheDocument();
+    expect(screen.getByText("2 个专家")).toBeInTheDocument();
   });
 
   it("shows the one-time plaintext after creating a token", async () => {
@@ -73,12 +113,17 @@ describe("<McpAccess />", () => {
     await user.click(screen.getByRole("button", { name: /创建 Token/ }));
     const nameInput = await screen.findByRole("textbox", { name: "名称" });
     await user.type(nameInput, "claude@laptop");
+    // The expert picker defaults to the expert currently in view and stays
+    // single-select; re-pick another one to prove the value is sent.
+    expect(await screen.findByText("专家乙 · agent_b")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "上报专家" }));
+    await user.click(await screen.findByTitle("专家甲 · agent_a"));
     await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
 
     await waitFor(() =>
       expect(api.create).toHaveBeenCalledWith({
         name: "claude@laptop",
-        expert_ids: null,
+        expert_ids: ["agent_a"],
       }),
     );
     expect(
@@ -87,6 +132,26 @@ describe("<McpAccess />", () => {
     expect(screen.getByText(/只显示这一次/)).toBeInTheDocument();
     // The list is refreshed after a successful create.
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  it("switches the reporting expert via PATCH and refreshes the list", async () => {
+    api.update.mockResolvedValue({ ...activeToken, expert_ids: ["agent_a"] });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+
+    await user.click(screen.getByRole("button", { name: /切换专家/ }));
+    await user.click(await screen.findByRole("combobox", { name: "上报专家" }));
+    await user.click(await screen.findByTitle("专家甲 · agent_a"));
+    await user.click(screen.getByRole("button", { name: /^保\s*存$/ }));
+
+    await waitFor(() =>
+      expect(api.update).toHaveBeenCalledWith("tok_1", {
+        expert_ids: ["agent_a"],
+      }),
+    );
+    await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    expect(message.success).toHaveBeenCalledWith("已切换上报专家");
   });
 
   it("revokes a token via the confirmation and refreshes the list", async () => {
@@ -106,7 +171,7 @@ describe("<McpAccess />", () => {
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
   });
 
-  it("shows the revoked state and disables revoke for revoked tokens", async () => {
+  it("shows the revoked state and disables row actions for revoked tokens", async () => {
     api.list.mockResolvedValue([
       { ...activeToken, revoked_at: "2026-11-09T09:00:00Z" },
     ]);
@@ -114,5 +179,6 @@ describe("<McpAccess />", () => {
 
     expect(await screen.findByText("已撤销")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /撤\s*销/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /切换专家/ })).toBeDisabled();
   });
 });

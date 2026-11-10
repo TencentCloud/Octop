@@ -41,6 +41,20 @@ export interface CreateMemoryMcpTokenBody {
   expert_ids: string[] | null;
 }
 
+/**
+ * Partial update body for ``PATCH /memory-mcp/tokens/{token_id}``.
+ *
+ * A token bound to exactly one expert needs no ``X-Octop-Agent-Id`` on MCP
+ * requests (the binding decides where reports land); ``expert_ids: null``
+ * clears the binding, which brings the header requirement back.
+ */
+export interface UpdateMemoryMcpTokenBody {
+  /** New display name; omitted leaves it untouched. */
+  name?: string;
+  /** Exactly one id pins the expert; null means "no restriction". */
+  expert_ids?: string[] | null;
+}
+
 export interface RevokeMemoryMcpTokenResponse {
   revoked: boolean;
 }
@@ -61,6 +75,16 @@ export const memoryMcpApi = {
       method: "POST",
       body: JSON.stringify(body),
     }).then(toCreated),
+
+  /** Rename and/or re-bind the token's expert. Returns ``TokenOut`` (no plaintext). */
+  update: (tokenId: string, body: UpdateMemoryMcpTokenBody) =>
+    request<MemoryMcpToken>(
+      `/memory-mcp/tokens/${encodeURIComponent(tokenId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    ),
 
   revoke: (tokenId: string) =>
     request<RevokeMemoryMcpTokenResponse>(
