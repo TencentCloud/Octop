@@ -884,7 +884,6 @@
       "installTitle": "Install \"{{name}}\"",
       "installFailed": "Failed to install template",
       "drawerTitle": "Publish expert template",
-      "drawerHint": "Only expert config markdown (SOUL, IDENTITY, …), skills, and sub-agent definitions are included. Runtime data such as memory DB, uploads, and built-in skills is excluded.",
       "fieldName": "Template name",
       "fieldDescription": "Description",
       "fieldWelcomeZh": "Welcome message (Chinese)",
@@ -3830,7 +3829,6 @@
       "emptyGuideStepHowDetail": "Click Add connection and enter the peer address, username, and password. Probe first to confirm the account, then save and connect. Start the link from the side that can reach the other.",
       "emptyGuideStepChat": "How to chat",
       "emptyGuideStepChatDetail": "After it connects, remote experts and teams show up under Cloud in the chat sidebar. The Experts tab also lists remote experts, and the Teams tab lists remote teams.",
-      "drawerHint": "The display name is used for chat group switching and must be unique. Probe first to verify the account; Save & connect only persists after login and the cloud-collab handshake succeed — a failure will not keep the name.",
       "directionHint": "Initiate from the side that can reach the other. Typically a LAN or laptop connects out to a public/cloud Octop. Probe only checks the account; the handshake must also succeed before the row is saved.",
       "sectionIdentity": "Display",
       "sectionRemote": "Peer account",
@@ -4500,10 +4498,10 @@
       "proactive": "Proactive care",
       "settings": "Settings",
       "userFile": "User profile",
-      "mcp": "MCP access"
+      "mcp": "AI terminal access"
     },
     "mcp": {
-      "title": "MCP access",
+      "title": "AI terminal access",
       "description": "External agents (Claude Code / Codex / Cursor / Kiro / DSH) use a token here to reach {{endpoint}}. A token is shown only once; create a new one if it is lost.",
       "installTitle": "Client setup",
       "installHint": "Add a Streamable HTTP MCP server in your client: point the URL below, send Authorization: Bearer <your token>. The auto-recall installer and hooks now live in the octop-memory harness plugins.",

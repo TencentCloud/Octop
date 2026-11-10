@@ -608,7 +608,7 @@ export default function McpAccess() {
           <KeyRound size={22} />
         </span>
         <div>
-          <h2>{t("memory.mcp.title", "MCP 接入")}</h2>
+          <h2>{t("memory.mcp.title", "AI 终端接入")}</h2>
           <p>
             {t(
               "memory.mcp.description",
