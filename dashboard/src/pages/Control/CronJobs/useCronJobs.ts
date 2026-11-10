@@ -3,7 +3,11 @@ import type { Dayjs } from "dayjs";
 import { useTranslation } from "react-i18next";
 import { octopCronApi } from "../../../api/modules/cronjob";
 import { useAgent } from "../../../context/AgentContext";
-import type { CronJobSpecOutput, OctopCronRow } from "../../../api/types";
+import type {
+  CronJobSpecOutput,
+  OctopCronPatchBody,
+  OctopCronRow,
+} from "../../../api/types";
 import { channelFromSessionKey } from "./cronDisplay";
 import { presetToCron, cronToPreset } from "./components/constants";
 import {
@@ -188,11 +192,40 @@ function toOctopCreateBody(values: CronJobFormValues) {
   };
 }
 
-function toOctopPatchBody(values: CronJobFormValues) {
-  return {
-    ...toOctopCreateBody(values),
-    enabled: Boolean(values.enabled),
-  };
+function sameStringArray(
+  left: string[] | undefined,
+  right: string[] | undefined,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+export function toOctopPatchBody(
+  values: CronJobFormValues,
+  originalValues: CronJobFormValues,
+): OctopCronPatchBody {
+  const next = toOctopCreateBody(values);
+  const original = toOctopCreateBody(originalValues);
+  const patch: OctopCronPatchBody = {};
+
+  if (next.name !== original.name) patch.name = next.name;
+  if (next.trigger !== original.trigger) patch.trigger = next.trigger;
+  if (next.prompt !== original.prompt) patch.prompt = next.prompt;
+  if (next.task_type !== original.task_type) patch.task_type = next.task_type;
+  if (next.session_key !== original.session_key) {
+    patch.session_key = next.session_key;
+  }
+  if (next.fresh_thread !== original.fresh_thread) {
+    patch.fresh_thread = next.fresh_thread;
+  }
+  if (next.enabled !== original.enabled) patch.enabled = next.enabled;
+  if (next.model !== original.model) patch.model = next.model;
+  if (!sameStringArray(next.mcp_servers, original.mcp_servers)) {
+    patch.mcp_servers = next.mcp_servers;
+  }
+
+  return patch;
 }
 
 export function useCronJobs() {
@@ -381,7 +414,14 @@ export function useCronJobs() {
   const updateJob = async (jobId: string, values: CronJobFormValues) => {
     if (!activeAgentId) return false;
     const original = jobs.find((j) => j.id === jobId);
-    const body = toOctopPatchBody(values);
+    if (!original) {
+      message.error(t("common.saveFailed"));
+      return false;
+    }
+    const body = toOctopPatchBody(
+      values,
+      jobToFormValues(original, cronTimezone),
+    );
     const optimistic = {
       ...original,
       name: (values.name || "").trim(),
@@ -390,7 +430,9 @@ export function useCronJobs() {
       model: values.model ?? undefined,
       schedule: {
         ...original?.schedule,
-        cron: scheduleFieldFromTrigger(body.trigger),
+        cron: body.trigger
+          ? scheduleFieldFromTrigger(body.trigger)
+          : original.schedule?.cron,
       },
       request: {
         input: [
