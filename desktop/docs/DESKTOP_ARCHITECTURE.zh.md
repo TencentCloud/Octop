@@ -15,7 +15,7 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 3. **快速冷启动体验**：引入 Early Window 与持久化主题背景机制，消除冷启动白屏，渐进式展示后端加载状态。
 4. **伴随进程随壳启动**：每次启动都拉起自己的 Python 进程，只监听 `127.0.0.1` 上的随机端口；用健康检查确认本次进程就绪，退出时回收本次进程树。
 5. **凭据隔离**：特权自定义协议（`octop://`）代理转发 API 请求，渲染层完全沙箱化运行，后端凭据由主进程统一注入。
-6. **与壳一起更新**：壳、Dashboard 静态资源和绿色 Python 运行时是同一个签名发布。客户端设置作为新增项放进原有 Web 设置，不另开壳设置页。桌面进程拒绝 Web 设置里的应用内升级和 `octop update`。用户手动覆盖安装旧版时，壳在启动前发现更高的本地运行时版本，于是停止启动，并在错误提示里写出检测到的本地版本（见 [§2.3](#23-手动覆盖安装旧版)）。
+6. **与壳一起更新**：壳、Dashboard 静态资源和绿色 Python 运行时是同一次发布。客户端设置作为新增项放进原有 Web 设置，不另开壳设置页。桌面进程拒绝 Web 设置里的应用内升级和 `octop update`。用户手动覆盖安装旧版时，壳在启动前发现更高的本地运行时版本，于是停止启动，并在错误提示里写出检测到的本地版本（见 [§2.3](#23-手动覆盖安装旧版)）。
 
 ### 1.2 系统进程拓扑图
 
@@ -55,8 +55,8 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 
 ### 2.1 产物打包与放置
 
-- 由 CI / Makefile 打包生成两套绿色便携包，extras 与已发布镜像一致。`lite`（默认文件名 `Octop-portable-<plat>-<version>.zip`）只带 `browser`，给能访问公网的机器。`full`（`Octop-portable-<plat>-full-<version>.zip`）再带 `desktop`、`local-embedding`、`knowledge-ocr`，给内网。安装包文件名同样在版本号前插入 `-full`。Pull request 只打 lite；打 tag 和手动 dispatch 两套都打。
-- **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。macOS 在签名和公证之前完成；Linux 的 deb、rpm 都带上这棵树。DMG 没有安装脚本，deb/rpm 安装的也是同一棵已展开的树，所以不能留到安装时再解压。
+- 由 CI / Makefile 打包生成一套绿色便携包，extras 与已发布的精简镜像一致：`Octop-portable-<plat>-<version>.zip` 只带 `browser`。桌面、OCR 和本地向量留在 Docker `:<version>-full`，不进桌面安装包。Pull request、打 tag 和手动 dispatch 都打这一套。
+- **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。复制发生在 electron-builder 打包之前。安装包不签名、不公证。Linux 的 deb、rpm 都带上这棵树。DMG 没有安装脚本，deb/rpm 安装的也是同一棵已展开的树，所以不能留到安装时再解压。
 - **Windows**：zip 与 `portable-version.json` 放在 `resources/portable/`。NSIS `customInstall` 用 `tar.exe` 解到 `$INSTDIR\resources\sidecar\`，卸载时删掉这个目录。不把四万多个文件逐个打进 NSIS。
 - 打 zip 之前删掉 `googleapiclient/discovery_cache/documents`、`PyObjCTest`、`*.dSYM`，以及第三方包里的 `tests` / `test` / `testing`。`octop` 自己的目录和 `numpy/testing` 保留。缺静态 discovery 文档时改为联网拉取。绿色 zip 和安装包是同一棵树，所以两处一起生效。
 - Dashboard 只留 wheel 里的 `packages/octop/dashboard`。壳从这份目录提供 `octop://app/`，不再另拷一份到 `resources/dashboard`。开发时 `OCTOP_DASHBOARD_DIR` 仍可指向另一份构建。
@@ -79,7 +79,7 @@ start.sh/bat   # 独立启动脚本
 
 运行时跟安装目录走。升级替换安装目录（macOS 换掉 `.app`，Linux 换掉 deb / rpm 里的文件，Windows 由 NSIS 重新解压 `resources\sidecar`）。卸载删掉安装目录里的运行时。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。以前解压在 `<OCTOP_HOME>/portable/` 的旧副本不再使用，卸载也不删它。
 
-子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进签名过的 macOS 包，或 Windows / deb / rpm 安装目录。Windows 安装器在展开 `resources\sidecar` 之后，用其中的 `runtime\python.exe` 对 `packages` 执行 `compileall`，写入同一个 `pyc` 目录（`OCTOP_HOME` 未设置时为 `%USERPROFILE%\.octop\pyc`）。编译失败不中止安装，首次启动会再编译。Windows 卸载只删除这个 `pyc` 目录，下次安装再编译一次。
+子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进 macOS 应用包，或 Windows / deb / rpm 安装目录。Windows 安装器在展开 `resources\sidecar` 之后，用其中的 `runtime\python.exe` 对 `packages` 执行 `compileall`，写入同一个 `pyc` 目录（`OCTOP_HOME` 未设置时为 `%USERPROFILE%\.octop\pyc`）。编译失败不中止安装，首次启动会再编译。Windows 卸载只删除这个 `pyc` 目录，下次安装再编译一次。
 
 只有第 3 步的回退路径才做校验与版本感知：
 
@@ -92,7 +92,7 @@ start.sh/bat   # 独立启动脚本
 - 替换只发生在壳自己的发布切换之后。Web 里的「检查更新」「立即升级」和 `octop update` 不能替换这个目录。
 - 解压后赋予解释器执行权限：`chmod +x "$OCTOP_HOME/portable/runtime/bin/python3"`。
 
-Windows 的 `pywin32_system32` 下的 `pywintypes*.dll` 在打 zip 时复制到 `runtime\`，由 `launch.py` 处理 `.pth`。macOS 运行时在签名前就在包内，公证覆盖这些 Mach-O，不再对 `~/.octop/portable` 做 `xattr -dr`。
+Windows 的 `pywin32_system32` 下的 `pywintypes*.dll` 在打 zip 时复制到 `runtime\`，由 `launch.py` 处理 `.pth`。macOS 运行时在打包前就放进应用包。安装包不签名、不公证，也不对 `~/.octop/portable` 做 `xattr -dr`。
 
 ### 2.3 手动覆盖安装旧版
 
@@ -355,7 +355,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 
 ## 6. 更新：与壳同一发布
 
-桌面更新由壳检测、下载并安装。一次发布仍然是同一个签名单位：壳、打包进安装包的 Dashboard 静态资源，以及对应平台的绿色 Python 运行时。没有单独的 Python 或 Dashboard 更新清单，也不能只更新其中一层。
+桌面更新由壳检测、下载并安装。一次发布仍然是同一个安装包：壳、打包进安装包的 Dashboard 静态资源，以及对应平台的绿色 Python 运行时。没有单独的 Python 或 Dashboard 更新清单，也不能只更新其中一层。安装包不签名、不公证。
 
 ### 6.1 更新检测
 
@@ -432,7 +432,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 
 | 平台 | 优化点 |
 |---|---|
-| **macOS** | 使用沉浸式标题栏；同步系统深浅色；正确处理 Dock 重开、应用签名、公证与运行时 quarantine。 |
+| **macOS** | 使用沉浸式标题栏；同步系统深浅色；正确处理 Dock 重开。安装包不签名、不公证。 |
 | **Windows** | 隐藏实心标题栏，用透明 `titleBarOverlay` 把系统按钮叠在页面上并保留 Snap Layouts；NSIS 向导安装，可选安装目录和盘符；确保更新和卸载时不遗留 Python 进程。 |
 | **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 deb 和 rpm，默认安装包是 deb。`apt install` 后在桌面放快捷方式。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
 
@@ -540,8 +540,8 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 `message` 是给用户读的一句话，`detail` 是路径 / errno 这类技术尾巴，默认收在「技术详情」
 折叠区里——不会再出现把 `ENOENT: ...` 直接糊在标题下面的页面。
 
-> 实现状态：`octop-desktop.yml` 已配置各平台 green zip + 原生 Electron 安装包；
-> 签名、公证以及六平台实际 CI 产物仍需在仓库发布前逐项验证。
+> 实现状态：`octop-desktop.yml` 已配置各平台 green zip + 原生 Electron 安装包。
+> 安装包不签名、不公证。六平台实际 CI 产物仍需在仓库发布前逐项验证。
 >
 > 更新链路现状：[§6.3](#63-安装顺序) 的「页面确认 → 下载 → 校验 → Python 干净退出 →
 > 交给安装器」已实现。确认框在 Web 设置页，安装由不带参数的 `installUpdate()` 开始，
@@ -581,8 +581,8 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
    - macOS / Linux：把 `package.sh` 组装好的目录复制到 `desktop/src/resources/portable/`，不把 zip 打进安装包。
    - Windows：zip 放在 `desktop/src/resources/portable/`，安装时再展开。
 3. **Electron 打包**：
-   - macOS：DMG 与 Zip，配置 Developer ID 签名和公证。
-   - Windows：带目录页的 NSIS 安装包，允许选择安装位置和盘符，并配置 Authenticode 签名。
+   - macOS：DMG 与 Zip。不签名、不公证。
+   - Windows：带目录页的 NSIS 安装包，允许选择安装位置和盘符。不签名。
    - Linux：electron-builder 的 `linux.target` 固定为 `["deb", "rpm"]`。x64 与 arm64 各发布这两种包；默认安装包是 deb，rpm 同时发布。deb 的 `postinst` 按第 7.2 节在桌面放快捷方式。
 4. **发布前验证**：
    - 在干净用户目录执行首次启动。
@@ -623,10 +623,10 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 - 完成窗口状态持久化、macOS 标题栏、Windows Snap Layouts 和 Linux 回退。
 - 增加启动阶段埋点，测量窗口显示、服务就绪与首个可交互页面时间。
 
-### 阶段四：跨平台构建、签名与壳更新
+### 阶段四：跨平台构建与壳更新
 
 - 完善 Electron 构建配置和 CI 矩阵，使一次发布同时钉住壳、Dashboard 和绿色 Python 包。
-- 更新检测使用 `GET https://octop.cloud/api/downloads`，并提供「只跟随稳定版」。同时完成 macOS 公证、Windows 签名和 Linux 安装包验证。
+- 更新检测使用 `GET https://octop.cloud/api/downloads`，并提供「只跟随稳定版」。安装包不签名、不公证。
 - 客户端设置加在原有 Web 设置里；桌面进程拒绝应用内升级。更新确认、准入锁和干净退出后再交给安装器。
 - Windows 安装向导提供目录页，用户可选安装位置和盘符；升级沿用该目录。
 - 对每个平台执行干净安装、壳升级、卸载与残留进程检查。Windows 额外覆盖非系统盘安装。

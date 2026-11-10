@@ -33,7 +33,6 @@ docker run --rm \
   -e PBS_PY="$PBS_PY" \
   -e PBS_BASE_URL="${PBS_BASE_URL}" \
   -e OCTOP_GREEN_OFFLINE="${OCTOP_GREEN_OFFLINE:-0}" \
-  -e OCTOP_PACKAGE_VARIANT="${OCTOP_PACKAGE_VARIANT:-lite}" \
   -v "${REPO_ROOT}:/src" \
   -w /src \
   "$IMAGE" \

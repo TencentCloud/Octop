@@ -31,7 +31,7 @@ Octop-<plat>/
    download it at runtime.
    - macOS and Linux: copy the tree `package.sh` assembled into
      `resources/portable/` before electron-builder. The zip is not inside the
-     app. macOS is signed and notarized after that copy.
+     app. The installer is unsigned and not notarized.
    - Windows: copy the zip through `extraResources`, then NSIS extracts it
      with `tar.exe` into `<install>\resources\sidecar\`.
 2. Keep the tree **outside** `app.asar`. First launch uses that tree and does

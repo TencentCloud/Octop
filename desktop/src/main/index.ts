@@ -37,7 +37,7 @@ import { reserveRandomPort } from "./supervisor/random-port";
 import {
   bundledDashboardDir,
   classifyRuntime,
-  portableZipNames,
+  portableZipName,
   extractPortableZip,
   installedRuntimeDir,
   type BundledPortable,
@@ -184,14 +184,8 @@ function portablePlatformTag(): string {
 }
 
 function portableZipPath(): string {
-  // CI places one zip at resources/portable: lite has no suffix, full inserts -full.
-  const dir = join(resourcesRoot(), "portable");
-  const names = portableZipNames(portablePlatformTag(), appVersion);
-  for (const name of names) {
-    const path = join(dir, name);
-    if (existsSync(path)) return path;
-  }
-  return join(dir, names[1]);
+  // CI places one zip at resources/portable.
+  return join(resourcesRoot(), "portable", portableZipName(portablePlatformTag(), appVersion));
 }
 
 async function readBundledPortable(): Promise<BundledPortable> {

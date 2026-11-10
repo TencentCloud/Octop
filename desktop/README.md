@@ -245,26 +245,22 @@ From repo root:
 make -f desktop/portable/Makefile green
 ```
 
-CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants
-(`darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`,
-`windows-amd64`). Lite (default filenames) matches the published image and is
-for machines that can reach the public network. Full (`-full` before the
-version) matches `:{version}-full` and bundles the desktop, OCR, and
-local-embedding extras for an intranet. Pull requests build lite only; a tag
-or manual dispatch builds both. The workflow attaches
-`Octop-portable-<plat>-<version>.zip` (and the `-full` zip) to the GitHub
-Release, then mirrors it to COS. Each job bootstraps portable CPython, packages
-the zip, smoke-tests every frozen requirement, and bundles that exact zip plus
-the Dashboard into a native Electron installer. For macOS this produces DMG and
-ZIP, for Windows NSIS EXE, and for Linux deb and rpm. A deb install also
-places a desktop launcher for the account that ran `apt` (see
-`desktop/docs/DESKTOP_ARCHITECTURE.zh.md` §7.2). Installer files
-are named `Octop-desktop-<plat>-<version>.<ext>` for lite and
-`Octop-desktop-<plat>-full-<version>.<ext>` for full; the portable manifest records
-the original Python version and the bundled zip's SHA-256. Optional CI signing
-secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`,
-`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) are required for a
-signed/notarized release; without them the installers are unsigned.
+CI: `.github/workflows/octop-desktop.yml` builds one package per native
+platform/arch (`darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`,
+`windows-arm64`, `windows-amd64`). The green zip matches the published image
+and includes the `browser` extra only. Desktop, OCR, and local embedding stay
+on the Docker `:<version>-full` image. Pull requests, tags, and manual
+dispatch all build this one package. The workflow attaches
+`Octop-portable-<plat>-<version>.zip` to the GitHub Release, then mirrors it
+to COS. Each job bootstraps portable CPython, packages the zip, smoke-tests
+every frozen requirement, and bundles that exact zip plus the Dashboard into
+a native Electron installer. For macOS this produces DMG and ZIP, for Windows
+NSIS EXE, and for Linux deb and rpm. A deb install also places a desktop
+launcher for the account that ran `apt` (see
+`desktop/docs/DESKTOP_ARCHITECTURE.zh.md` §7.2). Installer files are named
+`Octop-desktop-<plat>-<version>.<ext>`. The portable manifest records the
+original Python version and the bundled zip's SHA-256. Installers are
+unsigned and not notarized.
 
 A `v*` tag triggers building all six platform/architecture variants and attaches
 both portable and desktop assets to the same GitHub Release. For a trial build

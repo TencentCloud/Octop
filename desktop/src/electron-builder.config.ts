@@ -18,19 +18,10 @@ const electronVersion = productVersion.replace(
 if (!/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(electronVersion)) {
   throw new Error(`Unsupported Octop release version: ${productVersion}`);
 }
-// lite keeps Octop-desktop-<plat>-<version>. full inserts -full, matching
-// ghcr.io/tencentcloud/octop:<version>-full.
-const variantInfix = process.env.OCTOP_PACKAGE_VARIANT === "full" ? "-full" : "";
 const artifactName = process.env.OCTOP_PLATFORM
-  ? `Octop-desktop-${process.env.OCTOP_PLATFORM}${variantInfix}-${productVersion}.\${ext}`
-  : `Octop-desktop-\${os}-\${arch}${variantInfix}-\${version}.\${ext}`;
+  ? `Octop-desktop-${process.env.OCTOP_PLATFORM}-${productVersion}.\${ext}`
+  : `Octop-desktop-\${os}-\${arch}-\${version}.\${ext}`;
 const productName = "Octop";
-
-// Without a certificate electron-builder does not skip signing cleanly on macOS:
-// it takes the "empty password will be used for code signing" path and then dies
-// deeper in the pipeline with a misleading ".../desktop/src not a file". CI sets
-// this for the unsigned validation mode; a real release never does.
-const skipSigning = process.env.OCTOP_SKIP_SIGN === "1";
 
 export default {
   extraMetadata: { version: electronVersion },
@@ -58,11 +49,12 @@ export default {
     category: "public.app-category.productivity",
     // Full-bleed opaque icns. Transparent corners make Finder draw a gray plate.
     icon: "resources/icon.icns",
-    // hardenedRuntime without an entitlement to match is rejected by codesign,
-    // so it is only meaningful once there is an identity.
-    ...(skipSigning ? { identity: null, hardenedRuntime: false } : { hardenedRuntime: true }),
+    // Releases are unsigned and not notarized. identity: null is required:
+    // electron-builder otherwise takes the empty-password signing path and
+    // aborts mid mac pipeline.
+    identity: null,
+    hardenedRuntime: false,
     gatekeeperAssess: false,
-    // Signing/notarization are wired through CSC_LINK / APPLE_* env in CI, not here.
     // Usage strings for microphone, speech recognition, screen capture, and the
     // local network. Accessibility has no Info.plist key.
     extendInfo: macPrivacyExtendInfo(),
@@ -88,7 +80,6 @@ export default {
     icon: "resources/icon.ico",
     // CI passes the native runner architecture, never cross-package both here.
     target: ["nsis"],
-    // Keep Authenticode signing via CSC_LINK / WIN_CSC_LINK in CI.
   },
   nsis: {
     oneClick: false,

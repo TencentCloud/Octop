@@ -233,7 +233,7 @@ curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash -s -- --
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
 | 飞牛 NAS（FnOS） | `Octop-fnos-docker-lite-<version>.fpk`（精简镜像）/ `Octop-fnos-docker-<version>.fpk`（完整版：桌面、OCR、本地向量）/ `Octop-fnos-native-amd64-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
 
-上表桌面文件名是 lite，给能访问公网的机器。内网用的 full 在 `<version>` 前插入 `-full`，并带上桌面、OCR 和本地向量，与镜像标签 `:<version>-full` 相同。
+桌面安装包只带 `browser`。桌面控制、OCR 和本地向量留在 Docker 镜像标签 `:<version>-full`。
 
 桌面客户端说明见 [desktop/README.md](desktop/README.md)，飞牛打包指南见 [fnos/README.md](fnos/README.md)。
 

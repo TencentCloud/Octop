@@ -46,14 +46,6 @@ def portable_name(os_name: str, arch: str, version: str) -> str:
     return f"Octop-portable-{os_name}-{arch}-{version}.zip"
 
 
-def full_asset(filename: str, version: str) -> str:
-    """Intranet asset: ``-full`` before the version, same as the image tag."""
-    needle = f"-{version}."
-    if needle not in filename:
-        raise ValueError(f"filename has no version suffix: {filename}")
-    return filename.replace(needle, f"-full-{version}.", 1)
-
-
 def fnos_assets(version: str) -> tuple[tuple[str, str], ...]:
     """FnOS download links in release-page order."""
     return (
@@ -114,62 +106,34 @@ def render_download_section(raw_version: str) -> str:
             "",
             "## Downloads",
             "",
-            "Lite (no `-full` in the filename) is for machines that can reach the public network.",
-            "Full (`-full` before the version) bundles the desktop, OCR, and local-embedding extras for an intranet.",
+            "Desktop installers bundle the browser extra only. Desktop control, OCR, and local embedding stay on the Docker full image.",
             "",
             "### Windows",
             "",
-            "#### Desktop installer — lite (public network, recommended)",
+            "#### Desktop installer",
             f"- {win64} | {win_arm}",
             "",
-            "#### Desktop installer — full (intranet)",
-            f"- {md_link('64-bit', tag, full_asset(desktop_name('windows', 'amd64', version, 'exe'), version))}"
-            f" | {md_link('ARM64', tag, full_asset(desktop_name('windows', 'arm64', version, 'exe'), version))}",
-            "",
-            "#### Portable — lite",
+            "#### Portable",
             f"- {win64_zip} | {win_arm_zip}",
-            "",
-            "#### Portable — full",
-            f"- {md_link('64-bit', tag, full_asset(portable_name('windows', 'amd64', version), version))}"
-            f" | {md_link('ARM64', tag, full_asset(portable_name('windows', 'arm64', version), version))}",
             "",
             "### macOS",
             "",
-            "#### Desktop installer — lite (public network, recommended)",
+            "#### Desktop installer",
             f"- {mac_arm} | {mac_intel}",
             "",
-            "#### Desktop installer — full (intranet)",
-            f"- {md_link('Apple Silicon', tag, full_asset(desktop_name('darwin', 'arm64', version, 'dmg'), version))}"
-            f" | {md_link('Intel', tag, full_asset(desktop_name('darwin', 'amd64', version, 'dmg'), version))}",
-            "",
-            "#### Portable — lite",
+            "#### Portable",
             f"- {mac_arm_zip} | {mac_intel_zip}",
-            "",
-            "#### Portable — full",
-            f"- {md_link('Apple Silicon', tag, full_asset(portable_name('darwin', 'arm64', version), version))}"
-            f" | {md_link('Intel', tag, full_asset(portable_name('darwin', 'amd64', version), version))}",
             "",
             "### Linux",
             "",
-            "#### Desktop installer (deb) — lite (public network, recommended)",
+            "#### Desktop installer (deb)",
             f"- {linux64} | {linux_arm}",
             "",
-            "#### Desktop installer (deb) — full (intranet)",
-            f"- {md_link('64-bit', tag, full_asset(desktop_name('linux', 'amd64', version, 'deb'), version))}"
-            f" | {md_link('ARM64', tag, full_asset(desktop_name('linux', 'arm64', version, 'deb'), version))}",
-            "",
-            "#### rpm — lite",
+            "#### rpm",
             f"- {' | '.join(linux_rpm)}",
             "",
-            "#### rpm — full",
-            f"- {' | '.join(md_link(arch, tag, full_asset(desktop_name('linux', arch, version, 'rpm'), version)) for arch in ('amd64', 'arm64'))}",
-            "",
-            "#### Portable — lite",
+            "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",
-            "",
-            "#### Portable — full",
-            f"- {md_link('64-bit', tag, full_asset(portable_name('linux', 'amd64', version), version))}"
-            f" | {md_link('ARM64', tag, full_asset(portable_name('linux', 'arm64', version), version))}",
             "",
             docker_image_section(version, lite=True, full=True),
             "",

@@ -7,7 +7,7 @@ import AdmZip from "adm-zip";
 
 import {
   bundledDashboardDir,
-  portableZipNames,
+  portableZipName,
   classifyRuntime,
   extractPortableZip,
   installedRuntimeDir,
@@ -127,11 +127,11 @@ function statExists(path: string): boolean {
   }
 }
 
-test("portableZipNames prefers the intranet full zip, then lite", () => {
-  assert.deepEqual(portableZipNames("windows-amd64", "1.0.3b4"), [
-    "Octop-portable-windows-amd64-full-1.0.3b4.zip",
+test("portableZipName is the unsuffixed release zip", () => {
+  assert.equal(
+    portableZipName("windows-amd64", "1.0.3b4"),
     "Octop-portable-windows-amd64-1.0.3b4.zip",
-  ]);
+  );
 });
 
 test("bundledDashboardDir is the copy inside the portable tree", () => {

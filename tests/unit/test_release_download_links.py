@@ -47,11 +47,8 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert f"{base}/Octop-fnos-native-arm64-0.9.31.fpk" in body
     assert "ghcr.io/tencentcloud/octop:0.9.31` (`:latest`)" in body
     assert "ghcr.io/tencentcloud/octop:0.9.31-full" in body
-    assert f"{base}/Octop-desktop-windows-amd64-full-0.9.31.exe" in body
-    assert f"{base}/Octop-portable-darwin-arm64-full-0.9.31.zip" in body
-    assert f"{base}/Octop-desktop-linux-arm64-full-0.9.31.deb" in body
-    assert "public network" in body
-    assert "intranet" in body
+    assert "-full-0.9.31." not in body
+    assert "browser extra only" in body
     assert "Docker lite (x86 and ARM)" in body
     assert "Docker full (desktop, OCR, local models; x86 and ARM)" in body
     assert "Native x86_64" in body

@@ -31,7 +31,7 @@ export function buildSidecarEnv(
   env.OCTOP_DESKTOP_SHELL = "1";
   env.PYTHONNOUSERSITE = "1";
   // Bytecode must not be written next to the sources. On macOS those sources
-  // live inside the signed app bundle; on Windows they live in the install dir.
+  // live inside the app bundle; on Windows they live in the install dir.
   env.PYTHONPYCACHEPREFIX = join(options.octopHome, "pyc");
   // Desktop builds have no account system: the wizard password gate is off, so
   // a fresh install never shows the setup password. The frontend reads
