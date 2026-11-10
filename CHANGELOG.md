@@ -9,7 +9,7 @@
 ### 新增
 - 专家市场默认打开「精选」，用书签标出接入市场前随安装包提供的 22 个专家模板
 - 通道卡片与 `/api/health` 展示每个通道的入站、出站、重连和丢弃计数；记忆存储页显示 checkpoint 保留窗口与 VACUUM 提示
-- 专家记忆新增 MCP Server（`/mcp/memory`）：外部 Agent / Bot 用用户级 token 检索、写入、采集专家记忆；token 可按客户端命名、限定专家范围并单独吊销，外部写入默认进入审核队列；并提供 Claude Code / Kiro / DSH / Codex / Cursor 一键接入（DSH 走原生插件，支持项目级安装与 Windows PowerShell）
+- 专家记忆新增 MCP Server（`/mcp/memory`）：外部 Agent / Bot 用用户级 token 检索、写入、采集专家记忆；token 可按客户端命名、限定专家范围并单独吊销，外部写入默认进入审核队列；并提供 Claude Code / Kiro / DSH / Codex / Cursor 一键接入（DSH 走原生插件，支持项目级安装与 Windows PowerShell）；MCP token 直接绑定上报专家、可在面板切换，客户端只带 token 即可
 
 ### 修复
 - 关机时会等正在进行的数据库查询结束再关闭连接，避免 Windows 上测试进程被访问冲突打断

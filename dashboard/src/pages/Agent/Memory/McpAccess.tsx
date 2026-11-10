@@ -62,6 +62,7 @@ export default function McpAccess() {
   const { agents, activeAgentId } = useAgent();
 
   const [tokens, setTokens] = useState<MemoryMcpToken[]>([]);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<{ detail?: string } | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -388,6 +389,31 @@ export default function McpAccess() {
         </Button>
       </div>
 
+      <Alert
+        type="info"
+        showIcon
+        message={t("memory.mcp.installTitle", "一条命令接入")}
+        description={
+          <Space direction="vertical" size={6} style={{ width: "100%" }}>
+            <Typography.Text type="secondary">
+              {t(
+                "memory.mcp.installHint",
+                "在终端里执行下面的命令（把 <你的token> 换成创建的 Token），会自动写入 hooks 与 MCP 条目，支持 Claude Code / Codex / Cursor / Kiro / DSH。",
+              )}
+            </Typography.Text>
+            <Typography.Paragraph
+              code
+              copyable={{
+                text: `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=<你的token> sh`,
+              }}
+              style={{ marginBottom: 0 }}
+            >
+              {`curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=<你的token> sh`}
+            </Typography.Paragraph>
+          </Space>
+        }
+      />
+
       {loadError ? (
         <Alert
           type="error"
@@ -581,6 +607,21 @@ export default function McpAccess() {
             />
             <Typography.Text strong>{created.token.name}</Typography.Text>
             <Input readOnly value={created.plaintext} />
+            <Typography.Text type="secondary">
+              {t(
+                "memory.mcp.installWithToken",
+                "直接在终端执行这条命令即可完成配置：",
+              )}
+            </Typography.Text>
+            <Typography.Paragraph
+              code
+              copyable={{
+                text: `curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`,
+              }}
+              style={{ marginBottom: 0 }}
+            >
+              {`curl -fsSL "${origin}/mcp/memory/setup" | OCTOP_MEMORY_TOKEN=${created.plaintext} sh`}
+            </Typography.Paragraph>
           </Space>
         ) : null}
       </Modal>

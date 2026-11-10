@@ -4505,6 +4505,9 @@
     "mcp": {
       "title": "MCP access",
       "description": "External agents (Claude Code / Codex / Cursor / Kiro / DSH) use a token here to reach {{endpoint}}. A token is shown only once; create a new one if it is lost.",
+      "installTitle": "One-line install",
+      "installHint": "Run this in a terminal (replace <token> with the created token). It writes hooks and MCP entries for Claude Code / Codex / Cursor / Kiro / DSH.",
+      "installWithToken": "Or run this to configure the client right away:",
       "create": "Create token",
       "loadFailed": "Could not load tokens.",
       "empty": "No MCP tokens yet",

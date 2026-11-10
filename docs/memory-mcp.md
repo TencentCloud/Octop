@@ -2,6 +2,8 @@
 
 Octop 把专家记忆通过 MCP（Model Context Protocol）开放给外部 Agent / Bot：Claude Code、Codex、DSH 这类编码助手可以和 Octop 专家共用同一份长期记忆。
 
+> 安装与配置（创建 token、一键 curl 脚本、手动配置、验证与排障）见 [记忆 MCP 安装与配置指引](./memory-mcp-setup.md)。
+
 - 端点：`/mcp/memory`（Streamable HTTP，**stateless**：每次请求独立，服务重启后客户端不会因为 `Mcp-Session-Id` 失效而报 `-32600 Session not found`）
 - 专家选择：**token 直接绑定一个专家**（在 Dashboard「记忆 → MCP 接入」建 token 时选，之后可随时切换）；客户端不再需要专家 ID
 - 调用者身份：**用户级 token**（`Authorization: Bearer omcp_…`），不是实例共享 token；`X-Octop-User-Id` 不再被信任
@@ -99,6 +101,8 @@ curl -fLsS "https://<octop-host>/mcp/memory/setup" | \
 ```
 
 ### 2.4 一键安装器（推荐）
+
+完整说明（含 Windows PowerShell、项目级安装、各终端落点、验证与排障）见 [安装与配置指引](./memory-mcp-setup.md)。
 
 ```bash
 # macOS / Linux：检测本机装了哪些终端 → 勾选 → 粘贴自己的 MCP token → 写入 hooks 与 MCP 条目
