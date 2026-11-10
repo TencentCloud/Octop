@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
+import svgr from "vite-plugin-svgr";
 import { defineConfig, type Plugin } from "vite";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -33,7 +34,7 @@ function shellThemeBootPlugin(): Plugin {
  */
 export default defineConfig({
   root,
-  plugins: [react(), shellThemeBootPlugin()],
+  plugins: [react(), svgr(), shellThemeBootPlugin()],
   build: {
     // electron-vite leaves the renderer unminified by default, which would ship
     // ~640 kB of React to paint two static pages.

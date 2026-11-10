@@ -3,12 +3,10 @@ import { useTranslation } from "react-i18next";
 
 import { useWindowFullscreen } from "../hooks/useWindowFullscreen";
 import { getDesktopBridge, isLinuxDesktopShell } from "../utils/desktopBridge";
-import {
-  CloseIcon,
-  MaximizeIcon,
-  MinimizeIcon,
-  RestoreIcon,
-} from "./WindowControlIcons";
+import CloseIcon from "../assets/window-controls/close.svg?react";
+import MaximizeIcon from "../assets/window-controls/maximize.svg?react";
+import MinimizeIcon from "../assets/window-controls/minimize.svg?react";
+import RestoreIcon from "../assets/window-controls/restore.svg?react";
 
 const GLYPH = {
   minimize: MinimizeIcon,

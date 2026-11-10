@@ -21,6 +21,7 @@
     "shared/**/*.ts",
     "renderer/**/*.ts",
     "renderer/**/*.tsx",
+    "renderer/**/*.d.ts",
     "electron.vite.config.ts",
     "electron-builder.config.ts"
   ]

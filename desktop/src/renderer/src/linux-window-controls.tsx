@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import {
-  CloseIcon,
-  MaximizeIcon,
-  MinimizeIcon,
-  RestoreIcon,
-} from "../../../../dashboard/src/components/WindowControlIcons";
+import CloseIcon from "../../../../dashboard/src/assets/window-controls/close.svg?react";
+import MaximizeIcon from "../../../../dashboard/src/assets/window-controls/maximize.svg?react";
+import MinimizeIcon from "../../../../dashboard/src/assets/window-controls/minimize.svg?react";
+import RestoreIcon from "../../../../dashboard/src/assets/window-controls/restore.svg?react";
 import styles from "./linux-window-controls.module.less";
 
 const GLYPH = {
