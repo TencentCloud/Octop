@@ -20,7 +20,8 @@ CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _META_KEYS = frozenset({"enabled", "display_name", "default_open", "shared"})
 _OAUTH_KEY = "oauth"
-_SECRET_KEYS = frozenset({_OAUTH_KEY})
+_OAUTH_CLIENT_KEY = "oauth_client"
+_SECRET_KEYS = frozenset({_OAUTH_KEY, _OAUTH_CLIENT_KEY})
 _HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS
 _DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
@@ -169,6 +170,38 @@ def validate_mcp_http_url(url: str) -> str:
     return text
 
 
+def _normalize_oauth_client(name: str, raw: Any) -> dict[str, Any] | None:
+    """Validate a pre-registered OAuth client for servers without dynamic registration."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"server {name!r}: oauth_client must be an object")
+    fields = {
+        key: str(raw.get(key) or "").strip()
+        for key in ("client_id", "scope", "authorization_endpoint", "token_endpoint")
+    }
+    secret = str(raw.get("client_secret") or "")
+    if not any(fields.values()) and not secret:
+        return None
+    if not fields["client_id"]:
+        raise ValueError(f"server {name!r}: oauth_client.client_id is required")
+    if bool(fields["authorization_endpoint"]) != bool(fields["token_endpoint"]):
+        raise ValueError(
+            f"server {name!r}: oauth_client needs both authorization_endpoint and token_endpoint"
+        )
+    for key in ("authorization_endpoint", "token_endpoint"):
+        if not fields[key]:
+            continue
+        try:
+            validate_https_url(fields[key], field=f"oauth_client.{key}")
+        except UnsafeOutboundUrl as exc:
+            raise ValueError(f"server {name!r}: {exc}") from exc
+    out: dict[str, Any] = {key: value for key, value in fields.items() if value}
+    if secret:
+        out["client_secret"] = secret
+    return out
+
+
 def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError(f"server {name!r} must be an object")
@@ -199,6 +232,9 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         headers = _normalize_headers(raw.get("headers"))
         if headers:
             spec["headers"] = headers
+        oauth_client = _normalize_oauth_client(name, raw.get(_OAUTH_CLIENT_KEY))
+        if oauth_client:
+            spec[_OAUTH_CLIENT_KEY] = oauth_client
     else:
         command = str(raw.get("command") or "").strip()
         if not command:
@@ -255,6 +291,12 @@ def validate_servers_map(
 
 def oauth_tokens_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
     raw = spec.get(_OAUTH_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
+def oauth_client_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """Pre-registered OAuth client saved on the server, or ``{}``."""
+    raw = spec.get(_OAUTH_CLIENT_KEY)
     return dict(raw) if isinstance(raw, dict) else {}
 
 
@@ -320,12 +362,20 @@ def build_oauth_storage(
     client_secret = tokens.get("oauth_client_secret")
     if client_secret:
         out["oauth_client_secret"] = str(client_secret)
+    token_endpoint = str(tokens.get("oauth_token_endpoint") or "").strip()
+    if token_endpoint:
+        out["oauth_token_endpoint"] = token_endpoint
     return out
 
 
 def redact_server_for_api(spec: dict[str, Any]) -> dict[str, Any]:
     """Remove secrets; expose oauth preview for the dashboard."""
-    out = {k: v for k, v in spec.items() if k != _OAUTH_KEY}
+    out = {k: v for k, v in spec.items() if k not in _SECRET_KEYS}
+    client = oauth_client_from_spec(spec)
+    if client:
+        secret = client.pop("client_secret", None)
+        client["has_client_secret"] = bool(secret)
+        out[_OAUTH_CLIENT_KEY] = client
     if oauth_configured(spec):
         oauth = oauth_tokens_from_spec(spec)
         preview: dict[str, Any] = {"configured": True}
@@ -349,7 +399,13 @@ def merge_preserved_oauth(
     new_servers: dict[str, Any],
     existing: dict[str, Any],
 ) -> dict[str, Any]:
-    """Drop client-supplied oauth blobs; keep stored tokens per server name."""
+    """Drop client-supplied oauth blobs; keep stored tokens per server name.
+
+    The OAuth client secret is never echoed to the dashboard, so an omitted
+    ``client_secret`` keeps the stored one while the ``client_id`` is unchanged.
+    Tokens belong to the client that obtained them: when the saved client
+    changes they are dropped and the server asks for authorization again.
+    """
     out: dict[str, Any] = {}
     for name, raw in new_servers.items():
         if not isinstance(raw, dict):
@@ -358,13 +414,43 @@ def merge_preserved_oauth(
         spec = dict(raw)
         spec.pop(_OAUTH_KEY, None)
         old = existing.get(name)
+        old_client = oauth_client_from_spec(old) if isinstance(old, dict) else {}
+        client = _merge_oauth_client(spec.get(_OAUTH_CLIENT_KEY), old_client)
+        if client is not None:
+            spec[_OAUTH_CLIENT_KEY] = client
         if isinstance(old, dict):
             old_oauth = old.get(_OAUTH_KEY)
+            client_changed = _comparable_oauth_client(client) != old_client
             if isinstance(old_oauth, dict) and str(old_oauth.get("access_token") or "").strip():
-                spec[_OAUTH_KEY] = dict(old_oauth)
+                spec[_OAUTH_KEY] = {"required": True} if client_changed else dict(old_oauth)
             elif isinstance(old_oauth, dict) and old_oauth.get("required") is True:
                 spec[_OAUTH_KEY] = {"required": True}
         out[name] = spec
+    return out
+
+
+def _merge_oauth_client(raw: Any, old_client: dict[str, Any]) -> Any:
+    if not isinstance(raw, dict):
+        return raw
+    client = {k: v for k, v in raw.items() if k != "has_client_secret"}
+    same_client = str(client.get("client_id") or "").strip() == old_client.get("client_id")
+    if "client_secret" not in client and same_client and old_client.get("client_secret"):
+        client["client_secret"] = old_client["client_secret"]
+    return client
+
+
+def _comparable_oauth_client(client: Any) -> dict[str, Any]:
+    """Shape a not-yet-normalized client like the stored one, for change detection."""
+    if not isinstance(client, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("client_id", "scope", "authorization_endpoint", "token_endpoint"):
+        value = str(client.get(key) or "").strip()
+        if value:
+            out[key] = value
+    secret = str(client.get("client_secret") or "")
+    if secret:
+        out["client_secret"] = secret
     return out
 
 
