@@ -66,6 +66,8 @@ $env:OCTOP_MEMORY_TOKEN="omcp_…"; $env:OCTOP_TERMINALS="codex"; \
 
 每个终端的 hooks 目录都有 `config.json`（`url` / `token`）和 `octop-hook.log`（运行日志）。token 是唯一凭据，配置文件里**没有**专家 ID。
 
+每个 hooks 还会带 `X-Octop-Client: <terminal>`：Dashboard 的「MCP 接入」列表展开后能看到这个 token 被哪些接入端用过（最近使用 / 次数），并可以逐个**启用/禁用**；禁用后该接入端的请求会直接 403，其它接入端不受影响。
+
 ### 2.4 卸载
 
 ```bash
@@ -163,6 +165,7 @@ Authorization = "Bearer omcp_…"
 | `403 this token is not scoped to that expert` | 带的专家不在 token 范围内；切换 token 绑定或换 token |
 | `403 token owner cannot access that expert` | 该专家不属于 token 所有者、也未共享给他 |
 | `404 missing or unknown agent_id` | 专家不存在或已停用；确认专家 ID 正确且处于启用状态 |
+| `403 this client is disabled for this token` | 该接入端被你在 Dashboard 里禁用了；展开 token 行重新打开开关即可 |
 | `/mcp/memory` 404 | 服务未开启记忆 MCP：设 `OCTOP_MEMORY_MCP_ENABLED=1` 或先创建 token 后重启 |
 | Codex hook 不执行 | Codex 首次需要 **trust** hook（或在启动时加 `--dangerously-bypass-hook-trust`） |
 | Claude Code 的 hook 不执行、`claude doctor` 报 `Hook matcher "hooks" must be an array of hook entries` | 旧安装器写的是「事件直接挂 handler」的简写形态，Claude Code 2.1.x 会校验失败并忽略；升级到本版本后重跑安装器即可（写入 `[{ "hooks": [...] }]` 形态） |

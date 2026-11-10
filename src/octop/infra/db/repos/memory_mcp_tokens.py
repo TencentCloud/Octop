@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, map_rows
@@ -27,6 +28,29 @@ def _load_expert_ids(raw: object) -> list[str] | None:
     return [str(item) for item in json.loads(text)]
 
 
+def _dump_disabled_clients(clients: list[str] | None) -> str | None:
+    """``None``/empty means "every client allowed", stored as SQL NULL."""
+    return None if not clients else json.dumps(clients)
+
+
+def _load_disabled_clients(raw: object) -> list[str] | None:
+    if raw is None:
+        return None
+    text = str(raw)
+    if not text:
+        return None
+    return [str(item) for item in json.loads(text)] or None
+
+
+def _load_client_stats(raw: object) -> dict[str, dict[str, Any]] | None:
+    if raw is None:
+        return None
+    text = str(raw)
+    if not text:
+        return None
+    return {str(client): dict(stats) for client, stats in json.loads(text).items()} or None
+
+
 @dataclass(frozen=True)
 class MemoryMcpTokenRow:
     id: int
@@ -39,6 +63,8 @@ class MemoryMcpTokenRow:
     created_at: str
     last_used_at: str | None
     revoked_at: str | None
+    disabled_clients: list[str] | None = None
+    client_stats: dict[str, dict[str, Any]] | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> MemoryMcpTokenRow:
@@ -53,6 +79,8 @@ class MemoryMcpTokenRow:
             created_at=str(r["created_at"]),
             last_used_at=str(r["last_used_at"]) if r["last_used_at"] is not None else None,
             revoked_at=str(r["revoked_at"]) if r["revoked_at"] is not None else None,
+            disabled_clients=_load_disabled_clients(r["disabled_clients"]),
+            client_stats=_load_client_stats(r["client_stats"]),
         )
 
 
@@ -131,17 +159,25 @@ class MemoryMcpTokenRepo:
         user_id: int,
         name: str,
         expert_ids: list[str] | None,
+        disabled_clients: list[str] | None = None,
     ) -> MemoryMcpTokenRow | None:
-        """Replace one live token's name / expert allow-list.
+        """Replace one live token's name / expert allow-list / disabled clients.
 
-        ``None`` means the row is gone or already revoked — the caller decides
-        whether that is 404 or 409.
+        ``None`` for ``disabled_clients`` clears the restriction (every client
+        allowed). ``None`` as the return value means the row is gone or already
+        revoked — the caller decides whether that is 404 or 409.
         """
         with self._db.transaction() as conn:
             cursor = conn.execute(
-                "UPDATE memory_mcp_tokens SET name = ?, expert_ids = ? "
+                "UPDATE memory_mcp_tokens SET name = ?, expert_ids = ?, disabled_clients = ? "
                 "WHERE token_id = ? AND user_id = ? AND revoked_at IS NULL",
-                (name, _dump_expert_ids(expert_ids), token_id, user_id),
+                (
+                    name,
+                    _dump_expert_ids(expert_ids),
+                    _dump_disabled_clients(disabled_clients),
+                    token_id,
+                    user_id,
+                ),
             )
             if int(cursor.rowcount or 0) == 0:
                 return None
@@ -162,4 +198,30 @@ class MemoryMcpTokenRepo:
             conn.execute(
                 "UPDATE memory_mcp_tokens SET last_used_at = ? WHERE token_id = ?",
                 (_utc_now_iso(), token_id),
+            )
+
+    def record_client(self, token_id: str, client: str, now: str | None = None) -> None:
+        """Count one request from ``client`` on this token; keep first/last seen.
+
+        A missing or revoked row is a no-op: the caller has already validated
+        the token, so there is nothing to report. Concurrent requests may lose
+        an increment (read-modify-write) — acceptable for usage statistics.
+        """
+        with self._db.transaction() as conn:
+            r = conn.execute(
+                "SELECT client_stats, revoked_at FROM memory_mcp_tokens WHERE token_id = ?",
+                (token_id,),
+            ).fetchone()
+            if r is None or r["revoked_at"] is not None:
+                return
+            stats = _load_client_stats(r["client_stats"]) or {}
+            seen = now or _utc_now_iso()
+            entry = dict(stats.get(client) or {})
+            entry["first_seen"] = entry.get("first_seen") or seen
+            entry["last_seen"] = seen
+            entry["count"] = int(entry.get("count") or 0) + 1
+            stats[client] = entry
+            conn.execute(
+                "UPDATE memory_mcp_tokens SET client_stats = ? WHERE token_id = ?",
+                (json.dumps(stats), token_id),
             )

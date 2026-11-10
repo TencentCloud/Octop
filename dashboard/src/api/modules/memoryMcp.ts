@@ -12,6 +12,19 @@
 
 import { request } from "../request";
 
+/**
+ * Usage of one client integration, keyed in ``MemoryMcpToken.client_stats`` by
+ * the ``X-Octop-Client`` value the client sends (e.g. ``claude-code``).
+ */
+export interface MemoryMcpClientStat {
+  /** ISO-8601 UTC of the first request carrying this client header. */
+  first_seen: string;
+  /** ISO-8601 UTC of the most recent such request. */
+  last_seen: string;
+  /** Requests seen with this client header. */
+  count: number;
+}
+
 export interface MemoryMcpToken {
   /** Public id used to revoke the token. */
   token_id: string;
@@ -27,6 +40,16 @@ export interface MemoryMcpToken {
   last_used_at: string | null;
   /** ISO-8601 UTC once revoked; null while the token is active. */
   revoked_at: string | null;
+  /**
+   * Clients switched off for this token; null means every client may call.
+   * A disabled client is rejected server-side regardless of ``client_stats``.
+   */
+  disabled_clients: string[] | null;
+  /**
+   * Per-client usage, or null until some client sends ``X-Octop-Client``.
+   * Requests without that header are counted only in ``last_used_at``.
+   */
+  client_stats: Record<string, MemoryMcpClientStat> | null;
 }
 
 /** Successful create result: the token row plus its one-time plaintext. */
@@ -53,6 +76,8 @@ export interface UpdateMemoryMcpTokenBody {
   name?: string;
   /** Exactly one id pins the expert; null means "no restriction". */
   expert_ids?: string[] | null;
+  /** Clients switched off; an empty list is sent as null ("all allowed"). */
+  disabled_clients?: string[] | null;
 }
 
 export interface RevokeMemoryMcpTokenResponse {

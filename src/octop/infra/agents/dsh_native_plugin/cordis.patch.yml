@@ -13,6 +13,7 @@
         endpoint: ''
         token: ''
         tokenHeader: Authorization
+        client: dsh
         configFallbackPath: '~/.dsh/hooks/config.json'
         recallEnabled: true
         recallMaxHits: 4

@@ -64,6 +64,7 @@ class _TokenRow:
         expert_ids: list[str] | None = None,
         token_hash: str,
         revoked_at: str | None = None,
+        disabled_clients: list[str] | None = None,
     ) -> None:
         self.token_id = token_id
         self.user_id = user_id
@@ -71,18 +72,23 @@ class _TokenRow:
         self.expert_ids = expert_ids
         self.token_hash = token_hash
         self.revoked_at = revoked_at
+        self.disabled_clients = disabled_clients
 
 
 class _TokenRepo:
     def __init__(self, rows: dict[str, _TokenRow] | None = None) -> None:
         self.rows = rows or {}
         self.touched: list[str] = []
+        self.recorded: list[tuple[str, str]] = []
 
     def get_by_token_hash(self, token_hash: str) -> _TokenRow | None:
         return self.rows.get(token_hash)
 
     def touch(self, token_id: str) -> None:
         self.touched.append(token_id)
+
+    def record_client(self, token_id: str, client: str) -> None:
+        self.recorded.append((token_id, client))
 
     def any_active(self) -> bool:
         return any(row.revoked_at is None for row in self.rows.values())
@@ -267,6 +273,116 @@ async def test_middleware_sets_user_from_token_and_ignores_user_header():
     assert status != 401
     assert seen == {"user_id": 1, "user_name": "alice", "token_name": "codex@macbook"}
     assert repo.touched == ["tok1"]
+
+
+async def test_middleware_records_identifying_client():
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(token_hash=mm.hash_token(token))
+    called = False
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    mw = mm._TokenAuthMiddleware(inner, _server(token_repo=repo))
+    status, _ = await _capture_response(
+        mw,
+        _http_scope({"authorization": f"Bearer {token}", "x-octop-client": "  codex  "}),
+    )
+    assert status != 401 and status != 403
+    assert called is True
+    assert repo.recorded == [("tok1", "codex")]  # stripped before recording
+
+
+async def test_middleware_truncates_long_client_names():
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(token_hash=mm.hash_token(token))
+
+    async def inner(scope, receive, send):
+        return None
+
+    mw = mm._TokenAuthMiddleware(inner, _server(token_repo=repo))
+    await _capture_response(
+        mw, _http_scope({"authorization": f"Bearer {token}", "x-octop-client": "c" * 100})
+    )
+    assert repo.recorded == [("tok1", "c" * 64)]
+
+
+async def test_middleware_blocks_disabled_client_after_recording_it():
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(
+        token_hash=mm.hash_token(token), disabled_clients=["codex"]
+    )
+    called = False
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    mw = mm._TokenAuthMiddleware(inner, _server(token_repo=repo))
+    status, bodies = await _capture_response(
+        mw,
+        _http_scope({"authorization": f"Bearer {token}", "x-octop-client": "codex"}),
+    )
+    assert status == 403
+    assert called is False
+    assert json.loads(bodies[0]["body"]) == {
+        "error": "this client is disabled for this token",
+        "client": "codex",
+    }
+    assert repo.recorded == [("tok1", "codex")]  # counted before the refusal
+    assert repo.touched == []
+
+
+async def test_middleware_allows_other_clients_and_requests_without_the_header():
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(
+        token_hash=mm.hash_token(token), disabled_clients=["codex"]
+    )
+    seen_clients: list[tuple[int, str]] = []
+
+    async def inner(scope, receive, send):
+        seen_clients.append((int(mm._current_user_id.get() or 0), mm._current_token_name.get()))
+
+    mw = mm._TokenAuthMiddleware(inner, _server(token_repo=repo))
+    allowed, _ = await _capture_response(
+        mw,
+        _http_scope({"authorization": f"Bearer {token}", "x-octop-client": "cursor"}),
+    )
+    assert allowed != 403
+    # no header at all: unchanged behaviour — no stats, no block
+    allowed, _ = await _capture_response(mw, _http_scope({"authorization": f"Bearer {token}"}))
+    assert allowed != 403
+    assert seen_clients == [(1, "codex@macbook"), (1, "codex@macbook")]
+    assert repo.recorded == [("tok1", "cursor")]  # only the identifying request
+
+
+async def test_middleware_survives_client_stats_failures():
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(token_hash=mm.hash_token(token))
+
+    def boom(token_id: str, client: str) -> None:
+        raise RuntimeError("stats store is down")
+
+    repo.record_client = boom  # type: ignore[method-assign]
+    called = False
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    mw = mm._TokenAuthMiddleware(inner, _server(token_repo=repo))
+    status, _ = await _capture_response(
+        mw,
+        _http_scope({"authorization": f"Bearer {token}", "x-octop-client": "codex"}),
+    )
+    assert status != 403
+    assert called is True
 
 
 # ─── expert binding + access checks ────────────────────────────────────────

@@ -1212,10 +1212,32 @@ class _TokenAuthMiddleware:
         if row.revoked_at:
             await _send_json(send, 401, {"error": "token revoked"})
             return
+
         user = _user_of(self._server, row.user_id)
         if user is None:
             await _send_json(send, 401, {"error": "token owner not found"})
             return
+
+        # Clients that identify themselves (``X-Octop-Client``) are counted per
+        # token and can be refused; a request without the header is never
+        # counted and never blocked, so existing clients keep working.
+        client = headers.get("x-octop-client", "").strip()[:64]
+        if client:
+            try:
+                repo.record_client(row.token_id, client)
+            except Exception:  # noqa: BLE001 - usage stats must never fail a request
+                logger.warning(
+                    "memory MCP client stats update failed for token %s",
+                    row.token_id,
+                    exc_info=True,
+                )
+            if client in (row.disabled_clients or []):
+                await _send_json(
+                    send,
+                    403,
+                    {"error": "this client is disabled for this token", "client": client},
+                )
+                return
 
         user_id_cv = _current_user_id.set(int(row.user_id))
         user_name_cv = _current_user_name.set(str(getattr(user, "username", "") or row.user_id))

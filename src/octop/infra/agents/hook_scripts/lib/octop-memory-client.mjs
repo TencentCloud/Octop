@@ -68,14 +68,18 @@ export function loadConfig() {
     token: process.env.OCTOP_MEMORY_MCP_TOKEN || fromFile.token || "",
     // Configurable header name; ``Authorization`` (the default) takes a bearer.
     tokenHeader: process.env.OCTOP_TOKEN_HEADER || fromFile.tokenHeader || "Authorization",
+    // 接入端标识（安装时按宿主写入），服务端据此统计与开关。
+    client: process.env.OCTOP_CLIENT || fromFile.client || "",
   };
 }
 
-function baseHeaders() {
-  return {
+function baseHeaders(config) {
+  const headers = {
     "Content-Type": "application/json",
     Accept: "application/json, text/event-stream",
   };
+  if (config && config.client) headers["X-Octop-Client"] = config.client;
+  return headers;
 }
 
 export function authHeaders(config) {
@@ -83,7 +87,7 @@ export function authHeaders(config) {
   // takes ``Bearer <token>``, any other header name is written verbatim.
   // The MCP token is bound to one expert server-side, so a client sends no
   // identity header at all — neither a user id nor an expert id.
-  const headers = baseHeaders();
+  const headers = baseHeaders(config);
   const header = config.tokenHeader || "Authorization";
   headers[header] = header.toLowerCase() === "authorization" ? `Bearer ${config.token}` : config.token;
   return headers;

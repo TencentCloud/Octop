@@ -689,6 +689,7 @@ def test_config_and_entry_carry_the_user_mcp_token(tmp_path) -> None:
         "url": _URL,
         "token": _TOKEN,
         "tokenHeader": "Authorization",
+        "client": "claude-code",
     }
     assert "agentId" not in config
 

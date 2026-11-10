@@ -291,7 +291,13 @@ def _install_hooks(target, host):
         path = target / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(base64.b64decode(blob))
-    config = {"url": HOOK_URL, "token": TOKEN, "tokenHeader": TOKEN_HEADER}
+    config = {
+        "url": HOOK_URL,
+        "token": TOKEN,
+        "tokenHeader": TOKEN_HEADER,
+        # 接入端标识：服务端按它统计/禁用「哪些客户端在用这个 token」。
+        "client": host,
+    }
     _dump(target / "config.json", config)
     print(f"  ✓ hook 脚本（{host} 专用，含共享传输模块）+ config.json → {target}")
     scratch = "%TEMP%" if os.name == "nt" else "$TMPDIR"

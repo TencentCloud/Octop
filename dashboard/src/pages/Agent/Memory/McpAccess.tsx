@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   Alert,
   Button,
@@ -19,6 +20,7 @@ import {
   Select,
   Skeleton,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -56,6 +58,14 @@ interface SwitchExpertFormValues {
   expert_id?: string;
 }
 
+/** One row of the expanded client panel: name, last use, calls, toggle. */
+const CLIENT_ROW_STYLE: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(120px, 1fr) 190px 72px 52px",
+  columnGap: 12,
+  alignItems: "center",
+};
+
 export default function McpAccess() {
   const { t } = useTranslation();
   const timeZone = useServerTimezone();
@@ -70,6 +80,8 @@ export default function McpAccess() {
   const [createExpertDefault, setCreateExpertDefault] = useState<string>("");
   const [created, setCreated] = useState<MemoryMcpTokenCreated | null>(null);
   const [revokingId, setRevokingId] = useState<string | null>(null);
+  /** ``token_id:client`` currently being enabled/disabled. */
+  const [togglingClient, setTogglingClient] = useState<string | null>(null);
   const [switchTarget, setSwitchTarget] = useState<MemoryMcpToken | null>(null);
   const [switching, setSwitching] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
@@ -257,6 +269,90 @@ export default function McpAccess() {
     }
   };
 
+  /**
+   * Enable/disable one client for a token.
+   *
+   * The Switch is driven by ``token.disabled_clients`` from the list state, so
+   * a failed PATCH needs no explicit rollback: the row keeps the server value
+   * and the switch snaps back once loading clears.
+   */
+  const handleToggleClient = async (
+    token: MemoryMcpToken,
+    client: string,
+    enabled: boolean,
+  ) => {
+    const disabled = new Set(token.disabled_clients ?? []);
+    if (enabled) disabled.delete(client);
+    else disabled.add(client);
+    setTogglingClient(`${token.token_id}:${client}`);
+    try {
+      await memoryMcpApi.update(token.token_id, {
+        // An empty list means "nothing switched off", which the API spells null.
+        disabled_clients: disabled.size > 0 ? [...disabled] : null,
+      });
+      message.success(t("memory.mcp.clientsUpdated", "已更新接入端设置"));
+      await load();
+    } catch (e) {
+      message.error(
+        e instanceof Error
+          ? e.message
+          : t("memory.mcp.clientsUpdateFailed", "更新接入端设置失败，请重试"),
+      );
+    } finally {
+      setTogglingClient(null);
+    }
+  };
+
+  const renderClients = (token: MemoryMcpToken) => {
+    const entries = Object.entries(token.client_stats ?? {});
+    if (entries.length === 0) {
+      return (
+        <Typography.Text type="secondary">
+          {t(
+            "memory.mcp.clientsEmpty",
+            "还没有接入记录（客户端带上 X-Octop-Client 后才会出现）",
+          )}
+        </Typography.Text>
+      );
+    }
+    const disabled = new Set(token.disabled_clients ?? []);
+    return (
+      <div style={{ maxWidth: 680 }}>
+        <div style={{ ...CLIENT_ROW_STYLE, paddingBottom: 4 }}>
+          <Typography.Text type="secondary">
+            {t("memory.mcp.clientColumnName", "客户端")}
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {t("memory.mcp.clientColumnLastSeen", "最近使用")}
+          </Typography.Text>
+          <Typography.Text type="secondary">
+            {t("memory.mcp.clientColumnCount", "次数")}
+          </Typography.Text>
+          <span />
+        </div>
+        {entries.map(([client, stat]) => (
+          <div key={client} style={{ ...CLIENT_ROW_STYLE, padding: "4px 0" }}>
+            <Typography.Text strong>{client}</Typography.Text>
+            <span>{formatServerIsoDateTime(stat.last_seen, timeZone)}</span>
+            <span>{stat.count}</span>
+            <Switch
+              size="small"
+              checked={!disabled.has(client)}
+              disabled={!!token.revoked_at}
+              loading={togglingClient === `${token.token_id}:${client}`}
+              aria-label={t("memory.mcp.clientSwitchLabel", "{{client}} 接入", {
+                client,
+              })}
+              onChange={(checked) =>
+                void handleToggleClient(token, client, checked)
+              }
+            />
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const columns: TableColumnsType<MemoryMcpToken> = [
     {
       title: t("memory.mcp.columnName", "名称"),
@@ -300,6 +396,19 @@ export default function McpAccess() {
               </Tag>
             ))}
           </Space>
+        );
+      },
+    },
+    {
+      title: t("memory.mcp.columnClients", "接入端"),
+      key: "clients",
+      width: 100,
+      render: (_: unknown, token) => {
+        const count = Object.keys(token.client_stats ?? {}).length;
+        return count > 0 ? (
+          <span>{count}</span>
+        ) : (
+          <Typography.Text type="secondary">-</Typography.Text>
         );
       },
     },
@@ -450,7 +559,8 @@ export default function McpAccess() {
           columns={columns}
           dataSource={tokens}
           pagination={false}
-          scroll={{ x: 1000 }}
+          expandable={{ expandedRowRender: renderClients, columnWidth: 48 }}
+          scroll={{ x: 1160 }}
           locale={{
             emptyText: (
               <Empty

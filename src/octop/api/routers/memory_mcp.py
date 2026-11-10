@@ -58,11 +58,18 @@ class TokenPatchBody(BaseModel):
             "(every expert the user can access). Omit to keep the current list."
         ),
     )
+    disabled_clients: list[str] | None = Field(
+        default=None,
+        description=(
+            "Client names (the `X-Octop-Client` header) this token refuses with 403. "
+            "Null or empty allows every client. Omit to keep the current list."
+        ),
+    )
 
     @model_validator(mode="after")
     def _require_a_field(self) -> TokenPatchBody:
-        if not self.model_fields_set.intersection({"name", "expert_ids"}):
-            raise ValueError("provide name and/or expert_ids")
+        if not self.model_fields_set.intersection({"name", "expert_ids", "disabled_clients"}):
+            raise ValueError("provide name and/or expert_ids and/or disabled_clients")
         if "name" in self.model_fields_set and self.name is None:
             raise ValueError("name must not be null")
         return self
@@ -74,6 +81,17 @@ class TokenOut(BaseModel):
     expert_ids: list[str] | None = Field(
         default=None,
         description="Expert allow-list; null means no restriction.",
+    )
+    disabled_clients: list[str] | None = Field(
+        default=None,
+        description="Clients refused with 403; null means every client is allowed.",
+    )
+    client_stats: dict[str, dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Per-client usage seen through `X-Octop-Client`: "
+            "`{client: {first_seen, last_seen, count}}`; null until a client identifies itself."
+        ),
     )
     token_hint: str = Field(description="Masked token for display, e.g. `omcp_abcd…wxyz`.")
     created_at: str = Field(description="Creation time (ISO-8601 UTC).")
@@ -96,6 +114,8 @@ def _to_out(row: MemoryMcpTokenRow) -> TokenOut:
         token_id=row.token_id,
         name=row.name,
         expert_ids=row.expert_ids,
+        disabled_clients=row.disabled_clients,
+        client_stats=row.client_stats,
         token_hint=row.token_hint,
         created_at=row.created_at,
         last_used_at=row.last_used_at,
@@ -160,7 +180,8 @@ def list_tokens(
     response_model=TokenOut,
     summary="Update a memory MCP token",
     description=(
-        "Renames one of the caller's own tokens and/or rebinds its expert allow-list. "
+        "Renames one of the caller's own tokens and/or rebinds its expert allow-list, "
+        "and/or disables specific clients (the `X-Octop-Client` header). "
         "Binding a token to a single expert makes it a 唯一令牌: MCP clients then omit "
         "`X-Octop-Agent-Id`. Other users' tokens are not found; revoked tokens cannot be "
         "edited."
@@ -193,8 +214,17 @@ def update_token(
     if "expert_ids" in body.model_fields_set:
         expert_ids = body.expert_ids or None
         _assert_experts_accessible(repos, expert_ids, user)
+    disabled_clients = row.disabled_clients
+    if "disabled_clients" in body.model_fields_set:
+        disabled_clients = body.disabled_clients or None
 
-    updated = repo.update(token_id, user_id=user.id, name=name, expert_ids=expert_ids)
+    updated = repo.update(
+        token_id,
+        user_id=user.id,
+        name=name,
+        expert_ids=expert_ids,
+        disabled_clients=disabled_clients,
+    )
     if updated is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"memory MCP token {token_id!r} not found")
     return _to_out(updated)

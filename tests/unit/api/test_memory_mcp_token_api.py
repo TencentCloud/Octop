@@ -275,3 +275,63 @@ def test_create_requires_memory_permission(seeded: Seeded) -> None:
     response = _client(seeded, denied).post("/memory-mcp/tokens", json={"name": "codex@macbook"})
     assert response.status_code == 403
     assert response.json()["error"]["details"]["permission"] == "memory"
+
+
+def test_create_reports_empty_client_state(seeded: Seeded) -> None:
+    data = _create_token(_client(seeded, seeded.owner))
+    assert data["disabled_clients"] is None
+    assert data["client_stats"] is None
+
+
+def test_list_reports_client_stats_and_disabled_clients(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    created = _create_token(client)
+    repo = seeded.repos.memory_mcp_token_repo
+    repo.record_client(created["token_id"], "codex", now="2026-01-01T00:00:00Z")
+    repo.record_client(created["token_id"], "codex", now="2026-01-02T00:00:00Z")
+
+    patched = client.patch(
+        f"/memory-mcp/tokens/{created['token_id']}", json={"disabled_clients": ["cursor"]}
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["disabled_clients"] == ["cursor"]
+    assert patched.json()["client_stats"]["codex"]["count"] == 2
+
+    items = client.get("/memory-mcp/tokens").json()
+    assert items[0]["disabled_clients"] == ["cursor"]
+    assert items[0]["client_stats"] == {
+        "codex": {
+            "first_seen": "2026-01-01T00:00:00Z",
+            "last_seen": "2026-01-02T00:00:00Z",
+            "count": 2,
+        }
+    }
+
+
+def test_patch_sets_and_clears_disabled_clients(seeded: Seeded) -> None:
+    client = _client(seeded, seeded.owner)
+    token_id = _create_token(client)["token_id"]
+    repo = seeded.repos.memory_mcp_token_repo
+
+    # Only disabled_clients: the expert list and name stay untouched.
+    set_response = client.patch(
+        f"/memory-mcp/tokens/{token_id}", json={"disabled_clients": ["codex", "cursor"]}
+    )
+    assert set_response.status_code == 200, set_response.text
+    assert set_response.json()["disabled_clients"] == ["codex", "cursor"]
+    assert set_response.json()["name"] == "codex@macbook"
+    row = repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None and row.disabled_clients == ["codex", "cursor"]
+
+    cleared = client.patch(f"/memory-mcp/tokens/{token_id}", json={"disabled_clients": []})
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["disabled_clients"] is None
+    row = repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None and row.disabled_clients is None
+
+    client.patch(f"/memory-mcp/tokens/{token_id}", json={"disabled_clients": ["kiro"]})
+    nulled = client.patch(f"/memory-mcp/tokens/{token_id}", json={"disabled_clients": None})
+    assert nulled.status_code == 200, nulled.text
+    assert nulled.json()["disabled_clients"] is None
+    row = repo.get_for_user(token_id, user_id=seeded.owner.id)
+    assert row is not None and row.disabled_clients is None

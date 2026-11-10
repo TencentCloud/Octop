@@ -103,6 +103,8 @@ def test_schema_v26_creates_table(db: SqlitePool) -> None:
         "user_id",
         "name",
         "expert_ids",
+        "disabled_clients",
+        "client_stats",
         "token_hash",
         "token_hint",
         "created_at",
@@ -211,3 +213,93 @@ def test_touch_sets_last_used_at(db: SqlitePool, repo: MemoryMcpTokenRepo) -> No
     assert row is not None
     assert row.last_used_at is not None
     datetime.fromisoformat(row.last_used_at.replace("Z", "+00:00"))
+
+
+def test_update_disabled_clients_round_trip(db: SqlitePool, repo: MemoryMcpTokenRepo) -> None:
+    user_id = _user(db)
+    _, token_id = _issue(repo, user_id)
+    row = repo.get_for_user(token_id, user_id=user_id)
+    assert row is not None
+    assert row.disabled_clients is None
+
+    updated = repo.update(
+        token_id,
+        user_id=user_id,
+        name=row.name,
+        expert_ids=row.expert_ids,
+        disabled_clients=["codex", "cursor"],
+    )
+    assert updated is not None
+    assert updated.disabled_clients == ["codex", "cursor"]
+    stored = repo.get_for_user(token_id, user_id=user_id)
+    assert stored is not None
+    assert stored.disabled_clients == ["codex", "cursor"]
+
+    # An empty list is the same as "no restriction".
+    cleared = repo.update(
+        token_id,
+        user_id=user_id,
+        name=row.name,
+        expert_ids=row.expert_ids,
+        disabled_clients=[],
+    )
+    assert cleared is not None
+    assert cleared.disabled_clients is None
+
+    repo.update(
+        token_id,
+        user_id=user_id,
+        name=row.name,
+        expert_ids=row.expert_ids,
+        disabled_clients=["kiro"],
+    )
+    released = repo.update(
+        token_id, user_id=user_id, name="renamed", expert_ids=None, disabled_clients=None
+    )
+    assert released is not None
+    assert released.disabled_clients is None
+
+
+def test_record_client_merges_counts(db: SqlitePool, repo: MemoryMcpTokenRepo) -> None:
+    user_id = _user(db)
+    _, token_id = _issue(repo, user_id)
+
+    repo.record_client(token_id, "codex", now="2026-01-01T00:00:00Z")
+    repo.record_client(token_id, "codex", now="2026-01-02T00:00:00Z")
+    repo.record_client(token_id, "cursor", now="2026-01-03T00:00:00Z")
+
+    row = repo.get_for_user(token_id, user_id=user_id)
+    assert row is not None
+    assert row.client_stats == {
+        "codex": {
+            "first_seen": "2026-01-01T00:00:00Z",
+            "last_seen": "2026-01-02T00:00:00Z",
+            "count": 2,
+        },
+        "cursor": {
+            "first_seen": "2026-01-03T00:00:00Z",
+            "last_seen": "2026-01-03T00:00:00Z",
+            "count": 1,
+        },
+    }
+
+    with db.connect() as conn:
+        raw = conn.execute(
+            "SELECT client_stats FROM memory_mcp_tokens WHERE token_id = ?", (token_id,)
+        ).fetchone()["client_stats"]
+    assert json.loads(raw)["codex"]["count"] == 2
+
+
+def test_record_client_ignores_missing_and_revoked_tokens(
+    db: SqlitePool, repo: MemoryMcpTokenRepo
+) -> None:
+    user_id = _user(db)
+    _, token_id = _issue(repo, user_id)
+
+    repo.record_client("tok_missing", "codex")  # no row: still a no-op
+    repo.revoke(token_id, user_id=user_id)
+    repo.record_client(token_id, "codex")
+
+    row = repo.get_for_user(token_id, user_id=user_id)
+    assert row is not None
+    assert row.client_stats is None

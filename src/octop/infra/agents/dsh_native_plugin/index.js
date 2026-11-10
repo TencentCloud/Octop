@@ -106,14 +106,17 @@ export function resolveConnection(config) {
   const endpoint = (config.endpoint || fallback.url || '').trim()
   const token = (config.token || fallback.token || '').trim()
   const tokenHeader = (config.tokenHeader || fallback.tokenHeader || 'Authorization').trim()
-  return { endpoint, token, tokenHeader }
+  const client = (config.client || fallback.client || 'dsh').trim()
+  return { endpoint, token, tokenHeader, client }
 }
 
-function baseHeaders() {
-  return {
+function baseHeaders(connection) {
+  const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
   }
+  if (connection && connection.client) headers['X-Octop-Client'] = connection.client
+  return headers
 }
 
 /**
@@ -121,7 +124,7 @@ function baseHeaders() {
  * token 在服务端已绑定一个专家，所以客户端不再发送任何身份头（用户或专家）。
  */
 function authHeaders(connection) {
-  const headers = baseHeaders()
+  const headers = baseHeaders(connection)
   if (!connection.token) return headers
   const header = connection.tokenHeader || 'Authorization'
   headers[header] = header.toLowerCase() === 'authorization' ? `Bearer ${connection.token}` : connection.token

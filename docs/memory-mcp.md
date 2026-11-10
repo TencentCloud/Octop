@@ -7,6 +7,7 @@ Octop 把专家记忆通过 MCP（Model Context Protocol）开放给外部 Agent
 - 端点：`/mcp/memory`（Streamable HTTP，**stateless**：每次请求独立，服务重启后客户端不会因为 `Mcp-Session-Id` 失效而报 `-32600 Session not found`）
 - 专家选择：**token 直接绑定一个专家**（在 Dashboard「记忆 → MCP 接入」建 token 时选，之后可随时切换）；客户端不再需要专家 ID
 - 调用者身份：**用户级 token**（`Authorization: Bearer omcp_…`），不是实例共享 token；`X-Octop-User-Id` 不再被信任
+- 接入端：hooks / 原生插件会带 `X-Octop-Client: <terminal>`；Dashboard 可看到每个 token 被哪些接入端用过，并按接入端启用/禁用
 
 ## 1. 鉴权模型
 
