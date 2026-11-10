@@ -277,6 +277,17 @@ async def prepare_dashboard_turn(
         )
         if failed:
             locale = getattr(user, "locale", None) or "zh"
+            blocked = await server.app_runtime.agent_registry.connector_auth_blocked(
+                user.id, failed
+            )
+            if blocked:
+                names = ", ".join(str(item["display_name"]) for item in blocked)
+                raise OctopError.localized(
+                    ErrorCode.CONNECTOR_AUTH_REQUIRED,
+                    locale,
+                    details={"connectors": blocked, "servers": names},
+                    servers=names,
+                )
             raise OctopError.localized(
                 ErrorCode.CONNECTOR_MCP_LOAD_FAILED,
                 locale,

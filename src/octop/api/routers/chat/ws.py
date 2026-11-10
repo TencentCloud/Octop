@@ -24,7 +24,7 @@ from octop.api.routers.chat.turn import (
 )
 from octop.infra.agents.teams.team_manager import subscribe_with_member_catchup
 from octop.infra.bridge.ids import parse_bridge_agent_id
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.steer import SteerAdmitOk, SteerAdmitReject, SteerCoordinator
 from octop.infra.gateway.steer.types import preview_text
 from octop.infra.gateway.threads import thread_visible_to
@@ -37,6 +37,18 @@ router = APIRouter()
 
 def _ws_thread_visible(row: Any, agent_id: str, user_id: int) -> bool:
     return row is not None and row.agent_id == agent_id and thread_visible_to(row, user_id)
+
+
+def _prepare_error_frame(exc: OctopError) -> dict[str, Any]:
+    """Error frame for a turn rejected before it started.
+
+    The code lets the chat offer a fix; for connectors waiting for
+    authorization the details say which ones.
+    """
+    frame: dict[str, Any] = {"type": "error", "message": str(exc), "error_code": exc.code.value}
+    if exc.code == ErrorCode.CONNECTOR_AUTH_REQUIRED:
+        frame["error_details"] = exc.details
+    return frame
 
 
 @router.websocket("/agents/{agent_id}/chat/ws")
@@ -213,7 +225,7 @@ async def dashboard_chat_ws(
                     turn=turn,
                 )
             except OctopError as exc:
-                await send_frame({"type": "error", "message": str(exc)})
+                await send_frame(_prepare_error_frame(exc))
                 await send_frame({"type": "done"})
                 continue
 

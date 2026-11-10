@@ -43,6 +43,10 @@ import {
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
+import {
+  ConnectorAuthAction,
+  isConnectorAuthError,
+} from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -749,6 +753,8 @@ function MessageBubble({
     ? formatChatStreamError(errorSource, t)
     : textContent;
   const errorAction = isError ? chatStreamErrorAction(errorSource) : null;
+  const connectorAuthError =
+    isError && isConnectorAuthError(message.errorInfo?.code, errorSource);
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -969,8 +975,18 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {(errorAction || onRegenerate) && (
+                {(errorAction || onRegenerate || connectorAuthError) && (
                   <div className={styles.errorActionRow}>
+                    {connectorAuthError ? (
+                      <ConnectorAuthAction
+                        details={message.errorInfo?.details}
+                        onAuthorized={
+                          onRegenerate
+                            ? () => onRegenerate(message.id)
+                            : undefined
+                        }
+                      />
+                    ) : null}
                     {errorAction?.fix === "disable_stream_usage" &&
                     onDisableStreamUsage ? (
                       <button

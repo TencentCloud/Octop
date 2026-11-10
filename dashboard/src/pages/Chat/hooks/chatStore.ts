@@ -1584,7 +1584,12 @@ function handleHarnessChunk(
       }
       break;
     case "error":
-      appendErrorBubble(state, chunk.message, chunk.error_code);
+      appendErrorBubble(
+        state,
+        chunk.message,
+        chunk.error_code,
+        chunk.error_details,
+      );
       break;
     case "hitl_required":
       handleHitlRequired(state, chunk.request, speaker);
@@ -2727,6 +2732,7 @@ function appendErrorBubble(
   state: SessionStreamState,
   message: string,
   errorCode?: string,
+  details?: Record<string, unknown>,
 ): void {
   state.messages = [
     ...state.messages,
@@ -2737,6 +2743,7 @@ function appendErrorBubble(
       errorInfo: {
         code: errorCode || "stream_error",
         source: "frontend_stream",
+        ...(details ? { details } : {}),
       },
       status: "error",
       timestamp: Date.now(),
