@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 新增
+- 新增 `octop migrate openclaw` / `octop migrate hermes`：把原有助手的模型供应商、人格与记忆文件、技能、MCP 服务器和通道迁移到一个专家，支持 `--dry-run` 预演；已存在的内容不会被覆盖，通道默认不启用
 - 专家市场默认打开「精选」，用书签标出接入市场前随安装包提供的 22 个专家模板
 - 通道卡片与 `/api/health` 展示每个通道的入站、出站、重连和丢弃计数；记忆存储页显示 checkpoint 保留窗口与 VACUUM 提示
 

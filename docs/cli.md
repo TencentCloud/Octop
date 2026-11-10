@@ -32,6 +32,7 @@ Commands:
   config     CLI state (base URL, defaults).
   cron       Cron job management commands.
   init       Bootstrap an Octop server install.
+  migrate    Migrate an OpenClaw or Hermes Agent setup into an expert.
   models     Model catalog and active-model settings.
   plugin     Install and manage plugins.
   provider   Provider management (admin write).
@@ -455,6 +456,56 @@ Commands:
   uninstall  Remove an installed plugin.
   reload     Reload all installed plugins without restart.
 ```
+
+## `octop migrate`
+
+Bring an existing OpenClaw or Hermes Agent setup into one Octop expert. The
+source is read where it lives (`~/.openclaw`, `~/.hermes`, or `--from`) and is
+never modified.
+
+```
+Usage: octop migrate openclaw [OPTIONS]
+       octop migrate hermes [OPTIONS]
+
+Options:
+  --from DIRECTORY     Source home directory (default: auto-detect).
+  --agent TEXT         Expert to migrate into.
+  --user TEXT          Owner of the migrated connectors.
+  --skip [models|files|skills|mcp|channels]
+                       Leave one kind of content out (repeatable).
+  --overwrite          Replace existing workspace files and skills, and the
+                       default model.
+  --dry-run            Show what would happen; write nothing.
+  -h, --help           Show this message and exit.
+```
+
+| Section | OpenClaw | Hermes Agent | Lands in Octop as |
+|---------|----------|--------------|-------------------|
+| `models` | `models.providers`, `agents.defaults.model`, keys from `.env` / `env` / legacy `auth-profiles.json` | `model`, `providers` / `custom_providers`, keys from `.env` | Model providers and, when none is set yet, the default model |
+| `files` | Workspace `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`, `TOOLS.md`, `HEARTBEAT.md`, `memory/*.md` | `SOUL.md`, `memories/MEMORY.md`, `memories/USER.md` | Files in the expert's workspace |
+| `skills` | `<workspace>/skills`, `~/.openclaw/skills` | `~/.hermes/skills` except the bundled ones | Workspace skills of the expert |
+| `mcp` | `mcp.servers` | `mcp_servers` | Custom MCP servers of the acting user (stdio and streamable HTTP) |
+| `channels` | `channels.*` for Telegram, Discord, Feishu, QQ, WeCom, DingTalk | The same platforms' variables in `.env` | Channels of the expert, **disabled** |
+
+Nothing that already exists is replaced: a second run reports everything as
+skipped. `--overwrite` replaces workspace files, skills and the default model;
+providers, MCP servers and channels are never overwritten. Channels arrive
+disabled so the old assistant and Octop do not both answer on the same bot —
+stop the old one, then enable the channel.
+
+Scheduled jobs, SSE-only MCP servers, OAuth-only model logins and platforms
+Octop has no channel for are listed after the table and left behind. Start
+with `--dry-run`; root `--json` prints the same report as JSON. The command
+exits with status 1 when any item failed.
+
+```text
+$ octop --agent <id> migrate openclaw --dry-run
+$ octop --agent <id> migrate hermes --from /srv/hermes --skip channels
+```
+
+Like `agent create`, the command boots a short-lived in-process server; if
+`octop run` is already running, restart it afterwards to load the migrated
+providers and channels.
 
 ## `octop acp`
 
