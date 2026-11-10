@@ -722,7 +722,7 @@
     "graphSettingsTitle": "知识图谱",
     "graphSettingsDescription": "可选能力。启用后，知识库所有者可以为各自的知识库构建实体关系图谱；检索时会沿图谱补充相关片段和关系。",
     "graphSettingsPrivacy": "构建图谱时，文档的每个片段都会发送给所选模型，并按片段数产生模型调用费用。",
-    "graphSelectModel": "选择用于抽取的对话模型",
+    "graphModelLabel": "抽取模型",
     "graphNoProviders": "暂无可用的对话模型提供商",
     "graphNoModels": "该提供商没有可用的对话模型",
     "enable": "启用",

@@ -722,7 +722,7 @@
     "graphSettingsTitle": "Knowledge graph",
     "graphSettingsDescription": "Optional. When enabled, owners can build an entity-relation graph for their knowledge bases, and retrieval follows the graph to add related passages and relations.",
     "graphSettingsPrivacy": "Building a graph sends every document passage to the selected model and costs one model call per passage.",
-    "graphSelectModel": "Select the chat model used for extraction",
+    "graphModelLabel": "Extraction model",
     "graphNoProviders": "No provider with a chat model is available",
     "graphNoModels": "This provider has no chat model available",
     "enable": "Enable",

@@ -4109,20 +4109,22 @@ export default function KnowledgeBasesPage() {
                 {t("knowledgeBases.manageModels")}
               </Typography.Link>
               <div className={styles.ocrSettings}>
-                <div className={styles.formOptionRow}>
-                  <div className={styles.formOptionCopy}>
-                    <span className={styles.switchLabel}>
-                      {t("knowledgeBases.ocrTitle")}
-                    </span>
-                    <span className={styles.formOptionHint}>
-                      {t("knowledgeBases.ocrDescription")}
-                    </span>
+                <div className={styles.formOptions}>
+                  <div className={styles.formOptionRow}>
+                    <div className={styles.formOptionCopy}>
+                      <span className={styles.switchLabel}>
+                        {t("knowledgeBases.ocrTitle")}
+                      </span>
+                      <span className={styles.formOptionHint}>
+                        {t("knowledgeBases.ocrDescription")}
+                      </span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={ocrEnabledDraft}
+                      onChange={setOcrEnabledDraft}
+                    />
                   </div>
-                  <Switch
-                    size="small"
-                    checked={ocrEnabledDraft}
-                    onChange={setOcrEnabledDraft}
-                  />
                 </div>
                 {ocrEnabledDraft ? (
                   <div className={styles.featureFields}>
@@ -4201,20 +4203,22 @@ export default function KnowledgeBasesPage() {
                 ) : null}
               </div>
               <div className={styles.ocrSettings}>
-                <div className={styles.formOptionRow}>
-                  <div className={styles.formOptionCopy}>
-                    <span className={styles.switchLabel}>
-                      {t("knowledgeBases.rerankTitle")}
-                    </span>
-                    <span className={styles.formOptionHint}>
-                      {t("knowledgeBases.rerankDescription")}
-                    </span>
+                <div className={styles.formOptions}>
+                  <div className={styles.formOptionRow}>
+                    <div className={styles.formOptionCopy}>
+                      <span className={styles.switchLabel}>
+                        {t("knowledgeBases.rerankTitle")}
+                      </span>
+                      <span className={styles.formOptionHint}>
+                        {t("knowledgeBases.rerankDescription")}
+                      </span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={rerankEnabledDraft}
+                      onChange={setRerankEnabledDraft}
+                    />
                   </div>
-                  <Switch
-                    size="small"
-                    checked={rerankEnabledDraft}
-                    onChange={setRerankEnabledDraft}
-                  />
                 </div>
                 {rerankEnabledDraft ? (
                   <div className={styles.featureFields}>
@@ -4253,28 +4257,28 @@ export default function KnowledgeBasesPage() {
                 ) : null}
               </div>
               <div className={styles.ocrSettings}>
-                <div className={styles.formOptionRow}>
-                  <div className={styles.formOptionCopy}>
-                    <span className={styles.switchLabel}>
-                      {t("knowledgeBases.graphSettingsTitle")}
-                    </span>
-                    <span className={styles.formOptionHint}>
-                      {t("knowledgeBases.graphSettingsDescription")}
-                    </span>
+                <div className={styles.formOptions}>
+                  <div className={styles.formOptionRow}>
+                    <div className={styles.formOptionCopy}>
+                      <span className={styles.switchLabel}>
+                        {t("knowledgeBases.graphSettingsTitle")}
+                      </span>
+                      <span className={styles.formOptionHint}>
+                        {t("knowledgeBases.graphSettingsDescription")}
+                      </span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={graphEnabledDraft}
+                      onChange={setGraphEnabledDraft}
+                    />
                   </div>
-                  <Switch
-                    size="small"
-                    checked={graphEnabledDraft}
-                    onChange={setGraphEnabledDraft}
-                  />
                 </div>
                 {graphEnabledDraft ? (
                   <div className={styles.featureFields}>
-                    <Alert
-                      type="warning"
-                      showIcon
-                      message={t("knowledgeBases.graphSettingsPrivacy")}
-                    />
+                    <div className={styles.settingsFieldLabel}>
+                      {t("knowledgeBases.graphModelLabel")}
+                    </div>
                     <Select
                       value={graphProviderId}
                       onChange={(id) => {
@@ -4288,23 +4292,45 @@ export default function KnowledgeBasesPage() {
                       }))}
                       notFoundContent={t("knowledgeBases.graphNoProviders")}
                     />
-                    <Select
-                      value={graphModel}
-                      onChange={setGraphModel}
-                      placeholder={t("knowledgeBases.graphSelectModel")}
-                      options={(
+                    <div className={styles.onnxModelList}>
+                      {(
                         graphProviders.find(
                           (provider) =>
                             provider.provider_id === graphProviderId,
                         )?.models ?? []
-                      ).map((model) => ({
-                        value: model.id,
-                        label: model.name,
-                      }))}
-                      disabled={!graphProviderId}
-                      showSearch
-                      optionFilterProp="label"
-                      notFoundContent={t("knowledgeBases.graphNoModels")}
+                      ).map((model) => (
+                        <button
+                          key={model.id}
+                          type="button"
+                          className={cx(
+                            styles.onnxModelItem,
+                            graphModel === model.id &&
+                              styles.onnxModelItemActive,
+                          )}
+                          aria-pressed={graphModel === model.id}
+                          onClick={() => setGraphModel(model.id)}
+                        >
+                          <span className={styles.onnxModelName}>
+                            {model.name}
+                          </span>
+                        </button>
+                      ))}
+                      {graphProviderId &&
+                      (graphProviders.find(
+                        (provider) => provider.provider_id === graphProviderId,
+                      )?.models.length ?? 0) === 0 ? (
+                        <Typography.Text
+                          type="secondary"
+                          className={styles.settingsHint}
+                        >
+                          {t("knowledgeBases.graphNoModels")}
+                        </Typography.Text>
+                      ) : null}
+                    </div>
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message={t("knowledgeBases.graphSettingsPrivacy")}
                     />
                   </div>
                 ) : null}
