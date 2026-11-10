@@ -4498,10 +4498,10 @@
       "proactive": "主动关心",
       "settings": "设置",
       "userFile": "用户档案",
-      "mcp": "AI 终端接入"
+      "mcp": "终端接入"
     },
     "mcp": {
-      "title": "AI 终端接入",
+      "title": "终端接入",
       "description": "外部 Agent（Claude Code / Codex / Cursor / Kiro / DSH）使用这里的 Token 访问 {{endpoint}}。Token 只显示一次，丢失后请重建。",
       "installTitle": "客户端配置",
       "installHint": "在客户端里加一个 Streamable HTTP MCP 服务：URL 指向下面这个地址，Header 带 Authorization: Bearer <你的 token>。自动召回 / 一键安装的客户端工具已拆到 octop-memory harness 插件。",

@@ -4498,10 +4498,10 @@
       "proactive": "Proactive care",
       "settings": "Settings",
       "userFile": "User profile",
-      "mcp": "AI terminal access"
+      "mcp": "Terminal access"
     },
     "mcp": {
-      "title": "AI terminal access",
+      "title": "Terminal access",
       "description": "External agents (Claude Code / Codex / Cursor / Kiro / DSH) use a token here to reach {{endpoint}}. A token is shown only once; create a new one if it is lost.",
       "installTitle": "Client setup",
       "installHint": "Add a Streamable HTTP MCP server in your client: point the URL below, send Authorization: Bearer <your token>. The auto-recall installer and hooks now live in the octop-memory harness plugins.",

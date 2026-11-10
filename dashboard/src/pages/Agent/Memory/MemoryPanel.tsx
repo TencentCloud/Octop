@@ -128,7 +128,7 @@ const TABS: TabDef[] = [
   {
     key: "mcp",
     labelKey: "memory.tabs.mcp",
-    fallback: "AI 终端接入",
+    fallback: "终端接入",
     icon: KeyRound,
   },
   {
