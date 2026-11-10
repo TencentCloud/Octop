@@ -33,29 +33,29 @@ def _configured_request(request: ModelRequest[Any]) -> ModelRequest[Any]:
     return request.override(model=configured)
 
 
-def _roundtrip_supported(request: ModelRequest[Any]) -> bool:
+def _roundtrip_supported() -> bool:
     """Whether this turn's model accepts ``reasoning_content`` on assistant replay.
 
     Providers without a reasoning adapter reject a persisted
     ``additional_kwargs.reasoning_content`` on the next turn (groq answers 400:
     ``property 'reasoning_content' is unsupported``), so the request builder
-    gates replay with ``octop_reasoning_roundtrip``. Absent gate means the
-    request was not built through the capability path; keep the message intact.
+    gates replay with ``octop_reasoning_roundtrip``. An absent or non-boolean
+    gate keeps the message intact, matching callers that predate the gate.
     """
     configurable = get_config().get("configurable") or {}
     if isinstance(configurable, dict) and isinstance(configurable.get(ROUNDTRIP_KEY), bool):
         return bool(configurable[ROUNDTRIP_KEY])
-    return not (isinstance(configurable, dict) and CONFIG_KEY in configurable)
+    return True
 
 
 def _scrub_replayed_reasoning(request: ModelRequest[Any]) -> ModelRequest[Any]:
-    if _roundtrip_supported(request):
+    if _roundtrip_supported():
         return request
     dropped = False
     scrubbed: list[Any] = []
     for message in request.messages:
-        if isinstance(message, AIMessage) and str(
-            (message.additional_kwargs or {}).get("reasoning_content") or ""
+        if isinstance(message, AIMessage) and "reasoning_content" in (
+            message.additional_kwargs or {}
         ):
             kwargs = dict(message.additional_kwargs or {})
             kwargs.pop("reasoning_content", None)

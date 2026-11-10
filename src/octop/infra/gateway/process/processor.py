@@ -1081,6 +1081,7 @@ class GlobalProcessor:
             model_ref=model_ref,
             meta=None,
         )
+        reasoning_gate = reasoning_overrides.pop("_roundtrip", None)
         resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
@@ -1111,9 +1112,6 @@ class GlobalProcessor:
             )
             if composer:
                 message_kwargs[COMPOSER_CTX_KEY] = composer
-        reasoning_gate = bool(
-            model_ref and self._agent_manager.providers.get_model_reasoning_capability(model_ref)
-        )
         request = build_harness_request(
             thread_id=thread_id,
             user_id=user_id,
@@ -1124,7 +1122,7 @@ class GlobalProcessor:
             model=model_ref,
             auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
-            reasoning_overrides=reasoning_overrides,
+            reasoning_overrides=reasoning_overrides or None,
             reasoning_gate=reasoning_gate if isinstance(reasoning_gate, bool) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
