@@ -70,8 +70,9 @@ def _plan(tmp_path: Path) -> MigrationPlan:
     source = tmp_path / "source"
     skill = source / "skills" / "weekly-report"
     (skill / "templates").mkdir(parents=True)
-    (skill / "SKILL.md").write_text("---\nname: weekly-report\n---\n", encoding="utf-8")
-    (skill / "templates" / "report.md").write_text("# template", encoding="utf-8")
+    # Bytes, not text: skills are copied verbatim and Windows text mode would write CRLF.
+    (skill / "SKILL.md").write_bytes(b"---\nname: weekly-report\n---\n")
+    (skill / "templates" / "report.md").write_bytes(b"# template")
     (skill / ".git").mkdir()
     (skill / ".git" / "config").write_text("ignored", encoding="utf-8")
     (source / "SOUL.md").write_text("migrated soul", encoding="utf-8")
