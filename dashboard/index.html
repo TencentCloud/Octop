@@ -179,62 +179,86 @@
         align-items: center;
         animation: octop-boot-in 420ms ease-out both;
       }
-      /* Cropped red mark, same asset in both themes. No tile, so no radius.
-         The circle sits left in the SVG; nudge so it lines up with "Octop". */
-      .octop-boot-mark {
+      /* Horizontal lockup: dark wordmark on light, white on dark. */
+      .octop-boot-logo {
         display: block;
-        height: 64px;
+        height: 72px;
         width: auto;
-        transform: translateX(12px);
+        max-width: min(260px, 75vw);
+        object-fit: contain;
       }
-      .octop-boot-wordmark {
-        margin: 18px 0 0;
-        font-size: 21px;
-        font-weight: 600;
-        line-height: 1.2;
-        letter-spacing: -0.01em;
-        color: #111827;
+      .octop-boot-logo-dark {
+        display: none;
       }
-      html[data-theme="dark"] .octop-boot-wordmark {
-        color: rgba(255, 255, 255, 0.9);
+      html[data-theme="dark"] .octop-boot-logo-light {
+        display: none;
       }
-      #octop-boot-text {
-        margin: 10px 0 0;
-        font-size: 13.5px;
+      html[data-theme="dark"] .octop-boot-logo-dark {
+        display: block;
+      }
+      /* Arc + status: same composition as BrandLoading / shell splash. */
+      .octop-boot-status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 24px 0 0;
+        font-size: 16px;
         font-weight: 500;
-        letter-spacing: 0.02em;
+        line-height: 1;
+        letter-spacing: 0.01em;
       }
-      /* Indeterminate on purpose: there is no percentage to report, and a fake
-         one would have to lie about the wait. */
-      .octop-boot-bar {
+      .octop-boot-spinner {
         position: relative;
-        width: 200px;
-        height: 3px;
-        margin-top: 22px;
-        border-radius: 999px;
-        background: rgba(232, 93, 117, 0.14);
-        overflow: hidden;
+        display: block;
+        width: 22px;
+        height: 22px;
+        flex: none;
       }
-      html[data-theme="dark"] .octop-boot-bar {
-        background: rgba(240, 139, 154, 0.16);
-      }
-      .octop-boot-bar > span {
+      .octop-boot-spinner-track {
         position: absolute;
-        inset-block: 0;
-        width: 40%;
-        border-radius: inherit;
-        background: linear-gradient(90deg, rgba(232, 93, 117, 0.35), #e85d75);
-        animation: octop-boot-sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+        inset: 0;
+        box-sizing: border-box;
+        border: 2px solid rgba(232, 93, 117, 0.14);
+        border-radius: 50%;
       }
-      html[data-theme="dark"] .octop-boot-bar > span {
-        background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
+      html[data-theme="dark"] .octop-boot-spinner-track {
+        border-color: rgba(240, 139, 154, 0.16);
       }
-      @keyframes octop-boot-sweep {
-        from {
-          transform: translateX(-110%);
-        }
+      .octop-boot-spinner-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(
+          from 0deg,
+          transparent 0%,
+          transparent 55%,
+          rgba(232, 93, 117, 0.4) 80%,
+          #e85d75 100%
+        );
+        -webkit-mask: radial-gradient(
+          farthest-side,
+          transparent calc(100% - 2px),
+          #000 calc(100% - 2px + 0.5px)
+        );
+        mask: radial-gradient(
+          farthest-side,
+          transparent calc(100% - 2px),
+          #000 calc(100% - 2px + 0.5px)
+        );
+        animation: octop-boot-spin 0.9s linear infinite;
+      }
+      html[data-theme="dark"] .octop-boot-spinner-ring {
+        background: conic-gradient(
+          from 0deg,
+          transparent 0%,
+          transparent 55%,
+          rgba(240, 139, 154, 0.4) 80%,
+          #f08b9a 100%
+        );
+      }
+      @keyframes octop-boot-spin {
         to {
-          transform: translateX(340%);
+          transform: rotate(360deg);
         }
       }
       @keyframes octop-boot-in {
@@ -248,13 +272,9 @@
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .octop-boot-stack {
+        .octop-boot-stack,
+        .octop-boot-spinner-ring {
           animation: none;
-        }
-        .octop-boot-bar > span {
-          animation: none;
-          width: 60%;
-          transform: translateX(34%);
         }
       }
     </style>
@@ -348,15 +368,24 @@
       <div id="octop-boot" role="status" aria-live="polite">
         <div class="octop-boot-stack">
           <img
-            class="octop-boot-mark"
-            src="%BASE_URL%logo_mark.svg"
-            alt=""
-            width="352"
-            height="255"
+            class="octop-boot-logo octop-boot-logo-light"
+            src="%BASE_URL%logo_horizontal_dark.png"
+            alt="Octop"
+            height="72"
           />
-          <h1 class="octop-boot-wordmark">Octop</h1>
-          <p id="octop-boot-text">Opening…</p>
-          <div class="octop-boot-bar" aria-hidden="true"><span></span></div>
+          <img
+            class="octop-boot-logo octop-boot-logo-dark"
+            src="%BASE_URL%logo_horizontal_white.png"
+            alt="Octop"
+            height="72"
+          />
+          <p class="octop-boot-status">
+            <span class="octop-boot-spinner" aria-hidden="true">
+              <span class="octop-boot-spinner-track"></span>
+              <span class="octop-boot-spinner-ring"></span>
+            </span>
+            <span id="octop-boot-text">Opening…</span>
+          </p>
         </div>
       </div>
     </div>

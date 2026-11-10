@@ -1,4 +1,5 @@
-import markUrl from "./assets/octop-mark.svg";
+import logoDarkUrl from "./assets/logo_horizontal_dark.png";
+import logoWhiteUrl from "./assets/logo_horizontal_white.png";
 import { LinuxWindowControls } from "./linux-window-controls";
 import { mount } from "./mount";
 import "./base.less";
@@ -10,10 +11,9 @@ import styles from "./splash.module.less";
  * page with the failure Result.
  *
  * The sidecar can take ten seconds or more on a cold start, so the page has to
- * read as "working", not as "stuck on a blank screen": the mark, the product
- * name, one line saying what is being waited on, an indeterminate bar that keeps
- * moving, and the build number at the bottom for support. The wordmark already
- * says Octop, so the status line does not repeat it.
+ * read as "working", not as "stuck on a blank screen": the horizontal lockup
+ * above the shared arc and one line saying what is being waited on, plus the
+ * build number at the bottom for support.
  *
  * 顶部 58px 的拖动热区由 base.less 提供，正文区域不参与窗口拖动。
  */
@@ -24,14 +24,25 @@ function Splash() {
     <main className={styles.splash} role="status" aria-live="polite">
       <LinuxWindowControls />
       <div className={styles.stack}>
-        <div className={styles.mark} aria-hidden="true">
-          <img className={styles.logo} src={markUrl} alt="" width={352} height={255} />
-        </div>
-        <h1 className={styles.wordmark}>Octop</h1>
-        <p className={styles.text}>正在启动核心服务…</p>
-        <div className={styles.bar} aria-hidden="true">
-          <div className={styles.barThumb} />
-        </div>
+        <img
+          className={`${styles.logo} ${styles.logoLight}`}
+          src={logoDarkUrl}
+          alt="Octop"
+          height={72}
+        />
+        <img
+          className={`${styles.logo} ${styles.logoDark}`}
+          src={logoWhiteUrl}
+          alt="Octop"
+          height={72}
+        />
+        <p className={styles.status}>
+          <span className={styles.spinner} aria-hidden="true">
+            <span className={styles.track} />
+            <span className={styles.ring} />
+          </span>
+          正在启动服务…
+        </p>
       </div>
       {version ? <p className={styles.version}>{version}</p> : null}
     </main>

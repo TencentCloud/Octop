@@ -52,21 +52,16 @@ describe("index.html boot theme", () => {
     );
   });
 
-  it("paints the cropped red mark, not the framed favicon", () => {
-    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_mark.svg"');
+  it("paints the horizontal lockup for both themes, not the framed favicon", () => {
+    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_horizontal_dark.png"');
+    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_horizontal_white.png"');
     expect(INDEX_HTML).not.toContain('src="%BASE_URL%favico.svg"');
     expect(INDEX_HTML).not.toContain("logo_vertical_white.svg");
   });
 
-  it("nudges the mark so the red circle lines up with the wordmark", () => {
-    expect(INDEX_HTML).toMatch(
-      /\.octop-boot-mark\s*\{[^}]*transform:\s*translateX\(12px\)/,
-    );
-  });
-
-  it("shows an indeterminate bar, not a spinner that hides the wait", () => {
-    expect(INDEX_HTML).toContain('class="octop-boot-bar"');
-    expect(INDEX_HTML).toContain("@keyframes octop-boot-sweep");
+  it("shows the shared arc beside the status line", () => {
+    expect(INDEX_HTML).toContain('class="octop-boot-spinner"');
+    expect(INDEX_HTML).toContain("@keyframes octop-boot-spin");
   });
 
   it("keeps a stored light preference over OS dark", () => {

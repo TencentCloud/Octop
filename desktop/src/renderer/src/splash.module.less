@@ -1,12 +1,13 @@
 /*
  * Splash: the first frame of the app, on screen until the sidecar reports
- * healthy. Mirrors the Dashboard's own boot screen (mark + wordmark + bar) so
- * the swap from shell to Dashboard reads as one continuous startup.
+ * healthy. Mirrors the Dashboard boot screen (horizontal lockup above the
+ * shared arc and status line) so the swap from shell to Dashboard reads as
+ * one continuous startup.
  *
- * A cold start can hold this page for ten seconds or more, so the composition
- * is deliberately more than a spinner in the middle of white: a soft brand wash
- * gives the empty window a shape, the copy says what is being waited on, and the
- * bar keeps moving so the wait never looks like a hang.
+ * A cold start can hold this page for ten seconds or more. The arc is the
+ * Dashboard's OctopSpinner: a faint track and a short brand sweep, empty in
+ * the middle. It is inlined here because this page paints before the
+ * Dashboard bundle exists.
  */
 .splash {
   height: 100%;
@@ -44,64 +45,79 @@
   animation: splash-in 420ms ease-out both;
 }
 
-.mark {
-  height: 64px;
-  flex: none;
-  /* The red circle sits left in logo_mark.svg; the speed bars pull the
-     bounding box right. Nudge so the circle lines up with the wordmark. */
-  transform: translateX(12px);
-}
-
 .logo {
   display: block;
-  height: 64px;
+  height: 72px;
   width: auto;
+  max-width: min(260px, 75vw);
+  object-fit: contain;
 }
 
-.wordmark {
-  margin: 18px 0 0;
-  font-size: 21px;
-  font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-  color: var(--text);
+.logoDark {
+  display: none;
 }
 
-.text {
-  margin: 10px 0 0;
-  font-size: 13.5px;
+:global(html[data-theme="dark"]) {
+  .logoLight {
+    display: none;
+  }
+
+  .logoDark {
+    display: block;
+  }
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 0;
+  font-size: 16px;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  line-height: 1;
+  letter-spacing: 0.01em;
   color: var(--text-secondary);
 }
 
-/* Indeterminate: no progress number exists to show, and a fake percentage
-   would have to lie about the wait. */
-.bar {
+/* Same arc as dashboard OctopSpinner, sized to the status line, not the lockup. */
+.spinner {
   position: relative;
-  width: 200px;
-  height: 3px;
-  margin-top: 22px;
-  border-radius: 999px;
-  background: rgba(232, 93, 117, 0.14);
-  overflow: hidden;
-
-  :global(html[data-theme="dark"]) & {
-    background: rgba(240, 139, 154, 0.16);
-  }
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
 }
 
-.barThumb {
+.track {
   position: absolute;
-  inset-block: 0;
-  width: 40%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, rgba(232, 93, 117, 0.35), var(--brand));
-  animation: splash-sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  inset: 0;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--brand) 14%, transparent);
+  border-radius: 50%;
+}
 
-  :global(html[data-theme="dark"]) & {
-    background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
-  }
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 55%,
+    color-mix(in srgb, var(--brand) 40%, transparent) 80%,
+    var(--brand) 100%
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2px),
+    #000 calc(100% - 2px + 0.5px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2px),
+    #000 calc(100% - 2px + 0.5px)
+  );
+  animation: splash-spin 0.9s linear infinite;
 }
 
 .version {
@@ -114,12 +130,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-@keyframes splash-sweep {
-  from {
-    transform: translateX(-110%);
-  }
+@keyframes splash-spin {
   to {
-    transform: translateX(340%);
+    transform: rotate(360deg);
   }
 }
 
@@ -136,14 +149,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .stack,
-  .barThumb {
+  .ring {
     animation: none;
-  }
-
-  /* Keep the bar readable without motion: a static partial fill still says
-     "in progress" where an empty track would say "nothing happening". */
-  .barThumb {
-    width: 60%;
-    transform: translateX(34%);
   }
 }

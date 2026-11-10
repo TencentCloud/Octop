@@ -81,15 +81,14 @@ test("深色主题覆盖底色，浅色仍是默认", () => {
   assert.equal(dark.declarations["--brand"], "#f08b9a");
 });
 
-test("壳启动标与仪表盘加载标是同一张裁切图", () => {
-  const shell = readFileSync(new URL("./assets/octop-mark.svg", import.meta.url), "utf8");
-  const dashboard = readFileSync(
-    new URL("../../../../dashboard/public/logo_mark.svg", import.meta.url),
-    "utf8",
-  );
-  assert.equal(shell, dashboard);
-  assert.match(shell, /viewBox="117 34 352 255"/);
-  assert.doesNotMatch(shell, /width="32" height="32"/);
+test("壳启动横版标与仪表盘是同一对图", () => {
+  for (const name of ["logo_horizontal_dark.png", "logo_horizontal_white.png"]) {
+    const shell = readFileSync(new URL(`./assets/${name}`, import.meta.url));
+    const dashboard = readFileSync(
+      new URL(`../../../../dashboard/public/${name}`, import.meta.url),
+    );
+    assert.deepEqual(shell, dashboard);
+  }
 });
 
 test("启动页和错误页共用同一段主题脚本，且 CSP 哈希对得上", () => {
