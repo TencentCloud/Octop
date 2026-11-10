@@ -598,6 +598,78 @@ async def test_rename_document_returns_row_payload(
 
 
 @pytest.mark.asyncio
+async def test_move_document_passes_the_target_and_returns_the_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    calls: list[dict[str, object]] = []
+    moved = _Document(id="doc-1", path="archive/act.md", filename="act.md")
+
+    class _FakeService:
+        def move_document(self, kb_id: str, doc_id: str, **kwargs: object) -> _Document:
+            calls.append({"kb_id": kb_id, "doc_id": doc_id, **kwargs})
+            return moved
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: _FakeService())
+
+    result = await knowledge_bases.move_document(
+        kb_id="kb-1",
+        doc_id="doc-1",
+        body=knowledge_bases.MoveDocumentBody(target_folder="archive"),
+        request=_request(),
+        server=SimpleNamespace(services=_services()),
+        user=SimpleNamespace(id=7, is_admin=False),
+    )
+
+    assert calls == [
+        {
+            "kb_id": "kb-1",
+            "doc_id": "doc-1",
+            "actor_user_id": 7,
+            "target_folder": "archive",
+            "is_admin": False,
+        }
+    ]
+    assert result["document_id"] == "doc-1"
+    assert result["path"] == "archive/act.md"
+    assert knowledge_bases.MoveDocumentBody().target_folder == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (LookupError("knowledge folder not found"), ErrorCode.KNOWLEDGE_NOT_FOUND),
+        (PermissionError("write access required"), ErrorCode.KNOWLEDGE_FORBIDDEN),
+        (OctopError(ErrorCode.KNOWLEDGE_MOVE_INVALID, "x"), ErrorCode.KNOWLEDGE_MOVE_INVALID),
+        (OctopError(ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN, "x"), ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN),
+    ],
+)
+async def test_move_document_maps_errors(
+    monkeypatch: pytest.MonkeyPatch, error: Exception, code: ErrorCode
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.move_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.MoveDocumentBody(target_folder="archive"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=SimpleNamespace(id=1, is_admin=False),
+        )
+
+    assert raised.value.code == code
+
+
+@pytest.mark.asyncio
 async def test_rename_document_maps_not_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

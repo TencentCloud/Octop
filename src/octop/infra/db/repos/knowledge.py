@@ -483,7 +483,26 @@ class KnowledgeRepo:
         if document is None or document.kb_id != kb_id:
             return None
         parent = path_parent(document.path)
-        new_path = normalize_kb_path(f"{parent}/{new_name}")
+        return self._relocate_document(document, normalize_kb_path(f"{parent}/{new_name}"))
+
+    def move_document(
+        self, kb_id: str, doc_id: str, target_folder: str
+    ) -> KnowledgeDocumentRow | None:
+        """Move a document (file or folder) under ``target_folder`` (``""`` = root).
+
+        Chunks and original files are keyed by document id, so only paths change.
+        """
+        document = self.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            return None
+        return self._relocate_document(
+            document, normalize_kb_path(f"{target_folder}/{path_basename(document.path)}")
+        )
+
+    def _relocate_document(
+        self, document: KnowledgeDocumentRow, new_path: str
+    ) -> KnowledgeDocumentRow | None:
+        """Give a document a new path, carrying a folder's descendants along."""
         ts = now_ts()
         with self._db.transaction() as conn:
             if document.is_dir:
@@ -493,15 +512,15 @@ class KnowledgeRepo:
                     "UPDATE knowledge_documents SET "
                     "path = ? || substr(path, ?), updated_at = ? "
                     "WHERE kb_id = ? AND substr(path, 1, ?) = ?",
-                    (new_path, len(document.path) + 1, ts, kb_id, len(prefix), prefix),
+                    (new_path, len(document.path) + 1, ts, document.kb_id, len(prefix), prefix),
                 )
             conn.execute(
                 "UPDATE knowledge_documents SET "
                 "filename = ?, path = ?, updated_at = ? "
                 "WHERE document_id = ?",
-                (new_name, new_path, ts, doc_id),
+                (path_basename(new_path), new_path, ts, document.id),
             )
-        return self.get_document(doc_id)
+        return self.get_document(document.id)
 
     def resume_pending_documents(self) -> list[KnowledgeDocumentRow]:
         """Return pending work after resetting jobs interrupted while processing."""
