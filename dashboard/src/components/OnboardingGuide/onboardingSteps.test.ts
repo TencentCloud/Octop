@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { buildOnboardingSteps } from "./onboardingSteps";
 
+const keys = (steps: ReturnType<typeof buildOnboardingSteps>) =>
+  steps.map((s) => s.key);
+
 describe("buildOnboardingSteps", () => {
-  it("gives admins every step, with models pointing at the models page", () => {
+  it("tours admins through every page, models included", () => {
     const steps = buildOnboardingSteps({ role: "admin", permissions: [] });
-    expect(steps.map((s) => s.key)).toEqual([
-      "welcome",
+    expect(keys(steps)).toEqual([
       "chat",
       "experts",
       "models",
@@ -14,12 +16,21 @@ describe("buildOnboardingSteps", () => {
       "knowledgeBases",
       "skillPackages",
     ]);
-    expect(steps.find((s) => s.key === "models")).toMatchObject({
+    expect(steps.find((s) => s.key === "models")).toEqual({
+      key: "models",
       path: "/admin/models",
-      bodyKey: "body",
+      navKey: "models",
+      variant: "default",
     });
-    expect(steps[0].path).toBeNull();
-    expect(steps.slice(1).every((s) => s.path?.startsWith("/"))).toBe(true);
+    // Every step spotlights a real sidebar entry on the page it opens.
+    expect(steps.map((s) => s.navKey)).toEqual([
+      "chat",
+      "experts",
+      "models",
+      "channels",
+      "knowledge-bases",
+      "skill-packages",
+    ]);
   });
 
   it("points members without the models page at the chat model picker", () => {
@@ -27,8 +38,7 @@ describe("buildOnboardingSteps", () => {
       role: "user",
       permissions: ["experts", "channels", "knowledge_bases", "skill_packages"],
     });
-    expect(steps.map((s) => s.key)).toEqual([
-      "welcome",
+    expect(keys(steps)).toEqual([
       "chat",
       "experts",
       "models",
@@ -36,9 +46,11 @@ describe("buildOnboardingSteps", () => {
       "knowledgeBases",
       "skillPackages",
     ]);
-    expect(steps.find((s) => s.key === "models")).toMatchObject({
+    expect(steps.find((s) => s.key === "models")).toEqual({
+      key: "models",
       path: "/chat",
-      bodyKey: "bodyMember",
+      navKey: "chat",
+      variant: "member",
     });
   });
 
@@ -47,11 +59,6 @@ describe("buildOnboardingSteps", () => {
       role: "user",
       permissions: ["knowledge_bases"],
     });
-    expect(steps.map((s) => s.key)).toEqual([
-      "welcome",
-      "chat",
-      "models",
-      "knowledgeBases",
-    ]);
+    expect(keys(steps)).toEqual(["chat", "models", "knowledgeBases"]);
   });
 });

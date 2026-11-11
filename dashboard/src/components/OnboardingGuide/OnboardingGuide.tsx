@@ -1,13 +1,23 @@
-import { useEffect, useMemo, useState, type ComponentType } from "react";
-import { Button, Modal } from "antd";
 import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ComponentType,
+} from "react";
+import { Button, Modal, Tour, type TourStepProps } from "antd";
+import {
+  ArrowLeft,
+  ArrowRight,
   BookOpen,
   Bot,
+  Check,
   Cpu,
+  Lightbulb,
   MessageSquare,
   Package,
   Radio,
-  Sparkles,
   type LucideProps,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -17,14 +27,16 @@ import cx from "classnames";
 import { preferencesApi } from "../../api/modules/preferences";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { navAllowed } from "../../utils/permissions";
+import { publicUrl } from "../../utils/publicUrl";
 import {
   buildOnboardingSteps,
+  type OnboardingStep,
   type OnboardingStepKey,
 } from "./onboardingSteps";
 import styles from "./OnboardingGuide.module.less";
 
 const STEP_ICONS: Record<OnboardingStepKey, ComponentType<LucideProps>> = {
-  welcome: Sparkles,
   chat: MessageSquare,
   experts: Bot,
   models: Cpu,
@@ -33,16 +45,26 @@ const STEP_ICONS: Record<OnboardingStepKey, ComponentType<LucideProps>> = {
   skillPackages: Package,
 };
 
+/** Set on the spotlighted sidebar item so CSS can pulse it. */
+const ACTIVE_ATTR = "data-onboarding-active";
+
+type Phase = "intro" | "tour" | "done";
+
 interface OnboardingGuideProps {
   open: boolean;
   onClose: () => void;
 }
 
+function navTarget(step: OnboardingStep): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[data-nav-key="${step.navKey}"]`);
+}
+
 /**
- * Welcome guide for the dashboard's main concepts.
+ * Welcome guide: an intro card, a spotlight tour that opens each page and
+ * highlights its sidebar entry, then a short wrap-up.
  *
- * Closing it in any way (finish, skip, jump to a page, the close icon) marks it
- * done for this user on the server, so it does not open by itself again.
+ * Leaving it at any point (finish, skip, close, Esc) marks it done for this
+ * user on the server, so it does not open by itself again.
  */
 export default function OnboardingGuide({
   open,
@@ -53,105 +75,239 @@ export default function OnboardingGuide({
   const isMobile = useIsMobile();
   const user = useCurrentUser();
   const steps = useMemo(() => buildOnboardingSteps(user), [user]);
-  const [index, setIndex] = useState(0);
+  const [phase, setPhase] = useState<Phase>("intro");
+  const [current, setCurrent] = useState(0);
 
   useEffect(() => {
-    if (open) setIndex(0);
+    if (!open) return;
+    setPhase("intro");
+    setCurrent(0);
   }, [open]);
 
-  const step = steps[Math.min(index, steps.length - 1)];
-  const isFirst = index === 0;
-  const isLast = index >= steps.length - 1;
-  const Icon = STEP_ICONS[step.key];
-
-  const close = (path?: string) => {
-    onClose();
-    if (path) navigate(path);
-    void preferencesApi
-      .patch({ onboarding_completed: true })
-      .catch(() => undefined);
-  };
-
-  const footer = (
-    <div className={styles.footer}>
-      {isLast ? (
-        <span />
-      ) : (
-        <Button type="text" onClick={() => close()}>
-          {t("onboarding.skip")}
-        </Button>
-      )}
-      <div className={styles.footerNav}>
-        {!isFirst && (
-          <Button onClick={() => setIndex((i) => i - 1)}>
-            {t("onboarding.back")}
-          </Button>
-        )}
-        {isLast ? (
-          <Button type="primary" onClick={() => close()}>
-            {t("onboarding.finish")}
-          </Button>
-        ) : (
-          <Button type="primary" onClick={() => setIndex((i) => i + 1)}>
-            {isFirst ? t("onboarding.start") : t("onboarding.next")}
-          </Button>
-        )}
-      </div>
-    </div>
+  const finish = useCallback(
+    (path?: string) => {
+      onClose();
+      if (path) navigate(path);
+      void preferencesApi
+        .patch({ onboarding_completed: true })
+        .catch(() => undefined);
+    },
+    [navigate, onClose],
   );
 
+  const touring = open && phase === "tour";
+  const step = steps[Math.min(current, steps.length - 1)];
+  const isLast = current >= steps.length - 1;
+
+  const goNext = useCallback(() => {
+    if (isLast) setPhase("done");
+    else setCurrent((i) => i + 1);
+  }, [isLast]);
+  const goBack = useCallback(() => {
+    setCurrent((i) => Math.max(0, i - 1));
+  }, []);
+
+  // Open the step's page, then pulse its sidebar entry under the spotlight.
+  useEffect(() => {
+    if (!touring) return;
+    navigate(step.path);
+    const el = isMobile ? null : navTarget(step);
+    el?.setAttribute(ACTIVE_ATTR, "");
+    return () => el?.removeAttribute(ACTIVE_ATTR);
+  }, [touring, step, navigate, isMobile]);
+
+  useEffect(() => {
+    if (!touring) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest("input, textarea, [contenteditable=true]")) return;
+      if (e.key === "ArrowRight") goNext();
+      else if (e.key === "ArrowLeft") goBack();
+      else if (e.key === "Escape") finish();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [touring, goNext, goBack, finish]);
+
+  const tourSteps: TourStepProps[] = steps.map((s, i) => {
+    const Icon = STEP_ICONS[s.key];
+    const member = s.variant === "member";
+    return {
+      // Mobile keeps the nav in a closed drawer, so the card stays centered.
+      target: isMobile ? null : () => navTarget(s) as HTMLElement,
+      placement: isMobile ? "center" : "right",
+      title: (
+        <div key={`title-${i}`} className={styles.stepHead}>
+          <span className={styles.stepIcon} aria-hidden>
+            <Icon size={20} strokeWidth={1.8} />
+          </span>
+          <span>{t(`onboarding.steps.${s.key}.title`)}</span>
+        </div>
+      ),
+      description: (
+        <div key={`body-${i}`} className={styles.stepBody}>
+          <p className={styles.stepText}>
+            {t(`onboarding.steps.${s.key}.${member ? "bodyMember" : "body"}`)}
+          </p>
+          <p className={styles.stepTip}>
+            <Lightbulb size={14} strokeWidth={1.8} aria-hidden />
+            <span>
+              {t(`onboarding.steps.${s.key}.${member ? "tipMember" : "tip"}`)}
+            </span>
+          </p>
+        </div>
+      ),
+    };
+  });
+
+  const progressLabel = t("onboarding.progress", {
+    current: current + 1,
+    total: steps.length,
+  });
+
   return (
-    <Modal
-      open={open}
-      onCancel={() => close()}
-      footer={footer}
-      width={isMobile ? "calc(100vw - 32px)" : 520}
-      centered
-      destroyOnHidden
-      title={null}
-      className={styles.modal}
-    >
-      <div className={styles.body}>
-        <div
-          className={styles.progress}
-          role="progressbar"
-          aria-valuemin={1}
-          aria-valuemax={steps.length}
-          aria-valuenow={index + 1}
-          aria-label={t("onboarding.progress", {
-            current: index + 1,
-            total: steps.length,
-          })}
-        >
-          {steps.map((s, i) => (
-            <span
-              key={s.key}
-              className={cx(styles.dot, i <= index && styles.dotActive)}
-            />
-          ))}
+    <>
+      <Modal
+        open={open && phase === "intro"}
+        onCancel={() => finish()}
+        footer={null}
+        width={isMobile ? "calc(100vw - 32px)" : 560}
+        centered
+        destroyOnHidden
+        className={styles.modal}
+      >
+        <div className={styles.intro}>
+          <img
+            src={publicUrl("octop-mascot-peek.webp")}
+            alt=""
+            className={styles.mascot}
+            draggable={false}
+          />
+          <h3 className={styles.heroTitle}>{t("onboarding.intro.title")}</h3>
+          <p className={styles.heroText}>{t("onboarding.intro.body")}</p>
+          <ul className={styles.conceptGrid}>
+            {steps.map((s, i) => {
+              const Icon = STEP_ICONS[s.key];
+              return (
+                <li
+                  key={s.key}
+                  className={styles.concept}
+                  style={{ "--i": i } as CSSProperties}
+                >
+                  <Icon size={18} strokeWidth={1.8} aria-hidden />
+                  <span>{t(`onboarding.steps.${s.key}.title`)}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <div className={styles.introActions}>
+            <Button
+              type="primary"
+              size="large"
+              onClick={() => setPhase("tour")}
+            >
+              {t("onboarding.start")}
+              <ArrowRight size={16} strokeWidth={2} />
+            </Button>
+            <Button type="text" onClick={() => finish()}>
+              {t("onboarding.later")}
+            </Button>
+          </div>
+          <span className={styles.duration}>
+            {t("onboarding.intro.duration", { count: steps.length })}
+            {!isMobile && ` · ${t("onboarding.keyboardHint")}`}
+          </span>
         </div>
-        <div className={styles.icon} aria-hidden>
-          <Icon size={28} strokeWidth={1.8} />
-        </div>
-        <h3 className={styles.title}>
-          {t(`onboarding.steps.${step.key}.title`)}
-        </h3>
-        <p className={styles.text}>
-          {t(`onboarding.steps.${step.key}.${step.bodyKey}`)}
-        </p>
-        {step.path && (
-          <Button
-            className={styles.goButton}
-            onClick={() => close(step.path ?? undefined)}
-          >
-            {t(
-              step.bodyKey === "bodyMember"
-                ? `onboarding.steps.${step.key}.goMember`
-                : `onboarding.steps.${step.key}.go`,
-            )}
-          </Button>
+      </Modal>
+
+      <Tour
+        open={touring}
+        current={current}
+        onChange={setCurrent}
+        onClose={() => finish()}
+        steps={tourSteps}
+        rootClassName={styles.tour}
+        disabledInteraction
+        gap={{ offset: 6, radius: 10 }}
+        indicatorsRender={(cur, total) => (
+          <div className={styles.tourProgress}>
+            <div
+              className={styles.tourBar}
+              role="progressbar"
+              aria-valuemin={1}
+              aria-valuemax={total}
+              aria-valuenow={cur + 1}
+              aria-label={progressLabel}
+            >
+              <span
+                className={styles.tourBarFill}
+                style={{ width: `${((cur + 1) / total) * 100}%` }}
+              />
+            </div>
+            <span className={styles.tourCount}>
+              {cur + 1} / {total}
+            </span>
+          </div>
         )}
-      </div>
-    </Modal>
+        actionsRender={() => (
+          <div className={styles.tourActions}>
+            <Button type="text" size="small" onClick={() => finish()}>
+              {t("onboarding.skip")}
+            </Button>
+            {current > 0 && (
+              <Button
+                size="small"
+                onClick={goBack}
+                icon={<ArrowLeft size={14} />}
+              >
+                {t("onboarding.back")}
+              </Button>
+            )}
+            <Button type="primary" size="small" onClick={goNext}>
+              {isLast ? t("onboarding.finish") : t("onboarding.next")}
+            </Button>
+          </div>
+        )}
+      />
+
+      <Modal
+        open={open && phase === "done"}
+        onCancel={() => finish()}
+        footer={null}
+        width={isMobile ? "calc(100vw - 32px)" : 440}
+        centered
+        destroyOnHidden
+        className={styles.modal}
+      >
+        <div className={styles.done}>
+          <div className={styles.burst} aria-hidden>
+            {Array.from({ length: 12 }, (_, i) => (
+              <span
+                key={i}
+                className={styles.spark}
+                style={{ "--a": `${i * 30}deg` } as CSSProperties}
+              />
+            ))}
+            <span className={styles.doneCheck}>
+              <Check size={30} strokeWidth={2.4} />
+            </span>
+          </div>
+          <h3 className={styles.heroTitle}>{t("onboarding.done.title")}</h3>
+          <p className={styles.heroText}>{t("onboarding.done.body")}</p>
+          <div className={cx(styles.introActions, styles.doneActions)}>
+            <Button type="primary" size="large" onClick={() => finish("/chat")}>
+              {t("onboarding.done.chat")}
+            </Button>
+            {navAllowed(user, "experts") && (
+              <Button size="large" onClick={() => finish("/experts")}>
+                {t("onboarding.done.experts")}
+              </Button>
+            )}
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }

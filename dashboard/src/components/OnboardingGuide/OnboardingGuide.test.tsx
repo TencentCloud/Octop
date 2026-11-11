@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -31,7 +31,8 @@ function Location() {
 
 function renderGuide(onClose = vi.fn()) {
   render(
-    <MemoryRouter initialEntries={["/chat"]}>
+    <MemoryRouter initialEntries={["/token-usage"]}>
+      <div data-nav-key="knowledge-bases">nav</div>
       <OnboardingGuide open onClose={onClose} />
       <Routes>
         <Route path="*" element={<Location />} />
@@ -42,6 +43,7 @@ function renderGuide(onClose = vi.fn()) {
 }
 
 const button = (name: string) => screen.getByRole("button", { name });
+const location = () => screen.getByTestId("location").textContent;
 
 describe("OnboardingGuide", () => {
   beforeEach(() => {
@@ -50,79 +52,117 @@ describe("OnboardingGuide", () => {
     userRef.current = { role: "user", permissions: ["knowledge_bases"] };
   });
 
-  it("walks through the steps the user can open", async () => {
+  it("introduces only the pages the user can open", () => {
+    renderGuide();
+    expect(screen.getByText("onboarding.intro.title")).toBeInTheDocument();
+    const concepts = screen
+      .getAllByRole("listitem")
+      .map((li) => li.textContent);
+    expect(concepts).toEqual([
+      "onboarding.steps.chat.title",
+      "onboarding.steps.models.title",
+      "onboarding.steps.knowledgeBases.title",
+    ]);
+  });
+
+  it("opens each step's page and spotlights its sidebar entry", async () => {
     const user = userEvent.setup();
     renderGuide();
-
-    expect(
-      screen.getByText("onboarding.steps.welcome.title"),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("progressbar")).toHaveAttribute(
-      "aria-valuemax",
-      "4",
-    );
+    const kbNav = screen.getByText("nav");
 
     await user.click(button("onboarding.start"));
-    expect(screen.getByText("onboarding.steps.chat.title")).toBeInTheDocument();
+    expect(location()).toBe("/chat");
+    expect(screen.getByText("onboarding.steps.chat.body")).toBeInTheDocument();
 
     await user.click(button("onboarding.next"));
+    expect(location()).toBe("/chat");
+    expect(
+      screen.getByText("onboarding.steps.models.bodyMember"),
+    ).toBeInTheDocument();
+    expect(kbNav).not.toHaveAttribute("data-onboarding-active");
+
+    await user.click(button("onboarding.next"));
+    expect(location()).toBe("/knowledge-bases");
+    expect(kbNav).toHaveAttribute("data-onboarding-active");
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "3",
+    );
+
+    await user.click(button("onboarding.back"));
+    expect(kbNav).not.toHaveAttribute("data-onboarding-active");
+    expect(patchMock).not.toHaveBeenCalled();
+  });
+
+  it("ends on a wrap-up card and records completion", async () => {
+    const user = userEvent.setup();
+    const onClose = renderGuide();
+
+    await user.click(button("onboarding.start"));
+    await user.click(button("onboarding.next"));
+    await user.click(button("onboarding.next"));
+    await user.click(button("onboarding.finish"));
+
+    expect(screen.getByText("onboarding.done.title")).toBeInTheDocument();
+    expect(patchMock).not.toHaveBeenCalled();
+
+    await user.click(button("onboarding.done.chat"));
+    expect(location()).toBe("/chat");
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(patchMock).toHaveBeenCalledWith({ onboarding_completed: true });
+  });
+
+  it("supports arrow keys and Esc during the tour", async () => {
+    const user = userEvent.setup();
+    const onClose = renderGuide();
+
+    await user.click(button("onboarding.start"));
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    });
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowRight" });
+    });
+    expect(location()).toBe("/knowledge-bases");
+    act(() => {
+      fireEvent.keyDown(window, { key: "ArrowLeft" });
+    });
     expect(
       screen.getByText("onboarding.steps.models.bodyMember"),
     ).toBeInTheDocument();
 
-    await user.click(button("onboarding.back"));
-    expect(screen.getByText("onboarding.steps.chat.title")).toBeInTheDocument();
-
-    await user.click(button("onboarding.next"));
-    await user.click(button("onboarding.next"));
-    expect(
-      screen.getByText("onboarding.steps.knowledgeBases.title"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "onboarding.skip" }),
-    ).toBeNull();
-    expect(patchMock).not.toHaveBeenCalled();
-  });
-
-  it("marks the guide done on the server when skipped", async () => {
-    const user = userEvent.setup();
-    const onClose = renderGuide();
-
-    await user.click(button("onboarding.skip"));
-
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(patchMock).toHaveBeenCalledWith({ onboarding_completed: true });
   });
 
-  it("marks the guide done when finished", async () => {
+  it("records completion when postponed from the intro", async () => {
     const user = userEvent.setup();
     const onClose = renderGuide();
 
-    for (const name of [
-      "onboarding.start",
-      "onboarding.next",
-      "onboarding.next",
-    ]) {
-      await user.click(button(name));
-    }
-    await user.click(button("onboarding.finish"));
+    await user.click(button("onboarding.later"));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(patchMock).toHaveBeenCalledWith({ onboarding_completed: true });
+    expect(location()).toBe("/token-usage");
   });
 
-  it("opens the step's page and marks the guide done", async () => {
+  it("offers the experts page at the end when the user can open it", async () => {
     userRef.current = { role: "admin", permissions: [] };
     const user = userEvent.setup();
-    const onClose = renderGuide();
+    renderGuide();
 
     await user.click(button("onboarding.start"));
-    await user.click(button("onboarding.next"));
-    await user.click(button("onboarding.next"));
-    await user.click(button("onboarding.steps.models.go"));
+    for (let i = 0; i < 5; i += 1) {
+      await user.click(button("onboarding.next"));
+    }
+    expect(location()).toBe("/skill-packages");
+    await user.click(button("onboarding.finish"));
+    await user.click(button("onboarding.done.experts"));
 
-    expect(screen.getByTestId("location")).toHaveTextContent("/admin/models");
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(location()).toBe("/experts");
     expect(patchMock).toHaveBeenCalledWith({ onboarding_completed: true });
   });
 });

@@ -4320,48 +4320,57 @@
     "logout": "Log out"
   },
   "onboarding": {
-    "skip": "Skip guide",
+    "skip": "Skip",
     "back": "Back",
     "next": "Next",
-    "start": "Take the tour",
-    "finish": "Get started",
+    "start": "Start the tour",
+    "later": "Maybe later",
+    "finish": "Finish",
     "progress": "Step {{current}} of {{total}}",
+    "keyboardHint": "← → to move, Esc to exit",
+    "intro": {
+      "title": "Welcome to Octop",
+      "body": "Octop is a self-hosted AI assistant platform. The tour opens each of the pages below and shows what it is for. Leave any time, and replay it later from Getting started in your account menu.",
+      "duration": "{{count}} steps, about a minute"
+    },
+    "done": {
+      "title": "You're all set",
+      "body": "You've seen the main building blocks. To replay the tour, open your account menu and choose Getting started.",
+      "chat": "Start chatting",
+      "experts": "Create your first expert"
+    },
     "steps": {
-      "welcome": {
-        "title": "Welcome to Octop",
-        "body": "Octop is a self-hosted AI assistant platform. Take a minute to meet its main building blocks; every step can take you straight to the page. Skip any time and reopen this guide later from Getting started in your account menu."
-      },
       "chat": {
         "title": "Conversation",
-        "body": "Chat with experts on the Conversation page. Each expert is its own AI assistant with a persona, tools and memory, and every thread is saved so you can pick it up later.",
-        "go": "Open conversations"
+        "body": "This is where you chat with experts. Each expert is its own AI assistant with a persona, tools and memory, and every thread is saved.",
+        "tip": "Use the thread list on the left to jump back into earlier conversations."
       },
       "experts": {
         "title": "Experts",
-        "body": "Create an expert in one click from a scenario template that comes with its identity, persona and system prompt, or start from scratch and set it up your way.",
-        "go": "Browse experts"
+        "body": "Create an expert in one click from a scenario template with its identity, persona and system prompt ready, or set one up from scratch.",
+        "tip": "Once it exists, chat with it from the Conversation page."
       },
       "models": {
         "title": "Model Configuration",
-        "body": "Experts need a language model to work. Add model providers (OpenAI-compatible APIs, local Ollama models and more) in Model Configuration and pick a default model.",
-        "go": "Configure models",
-        "bodyMember": "Your administrator connects the model providers. In a conversation, switch between the models they made available from the model picker in the input box.",
-        "goMember": "Pick a model in chat"
+        "body": "Experts need a language model to work. Add model providers here (OpenAI-compatible APIs, local Ollama models and more) and pick a default model.",
+        "tip": "Enable at least one model so experts can reply.",
+        "bodyMember": "Your administrator connects the model providers, so you can use the models they made available.",
+        "tipMember": "Switch models from the model picker in the chat input."
       },
       "channels": {
         "title": "Channels",
         "body": "Connect experts to Feishu, WeCom, DingTalk, Telegram and other messaging apps, so you can talk to them where you already chat.",
-        "go": "Set up channels"
+        "tip": "Some platforms let you create the bot by scanning a QR code."
       },
       "knowledgeBases": {
         "title": "Knowledge Bases",
-        "body": "Upload documents to build a knowledge base. Experts can search and cite it in conversations, and you can share it with other users on this instance.",
-        "go": "Manage knowledge bases"
+        "body": "Upload documents to build a knowledge base that experts can search and cite in conversations.",
+        "tip": "You can share a knowledge base with other users on this instance."
       },
       "skillPackages": {
         "title": "Skill Packages",
-        "body": "Skill packages bundle skills into reusable capabilities. Create or import one, mount it on an expert, and the expert can use those skills.",
-        "go": "View skill packages"
+        "body": "Skill packages bundle skills into reusable capabilities. Create or import one and mount it on an expert to use those skills.",
+        "tip": "One skill package can be mounted on several experts."
       }
     }
   },

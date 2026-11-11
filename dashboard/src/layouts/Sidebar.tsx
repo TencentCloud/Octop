@@ -175,6 +175,7 @@ function NavItemButton({
   return (
     <div
       className={styles.navItemRow}
+      data-nav-key={item.key}
       style={{
         background: active ? "var(--fn-sidebar-item-active-bg)" : "transparent",
       }}

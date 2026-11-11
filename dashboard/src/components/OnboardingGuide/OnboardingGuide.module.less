@@ -1,76 +1,367 @@
-.modal {
-  :global(.ant-modal-content) {
-    padding: 28px 28px 20px;
+@ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+@ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
-.body {
+@keyframes pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes spark {
+  0% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(0) scale(0.4);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--a)) translateY(-46px) scale(1);
+  }
+}
+
+@keyframes navPulse {
+  0% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--fn-color-brand) 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 10px
+      color-mix(in srgb, var(--fn-color-brand) 0%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--fn-color-brand) 0%, transparent);
+  }
+}
+
+/* Sidebar entry under the tour spotlight. */
+:global([data-onboarding-active]) {
+  border-radius: 10px;
+  animation: navPulse 1.6s ease-out infinite;
+}
+
+.modal {
+  :global(.octop-modal-content) {
+    padding: 32px 28px 24px;
+    overflow: hidden;
+  }
+}
+
+/* ---------- intro / done cards ---------- */
+
+.intro,
+.done {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding-top: 4px;
 }
 
-.progress {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 24px;
+.mascot {
+  width: 112px;
+  height: 112px;
+  object-fit: contain;
+  user-select: none;
+  animation:
+    pop 0.5s @ease-pop both,
+    float 3.2s ease-in-out 0.6s infinite;
 }
 
-.dot {
-  width: 18px;
-  height: 4px;
-  border-radius: var(--fn-radius-full, 999px);
-  background: var(--fn-border-secondary);
-  transition: background var(--fn-transition-fast, 0.15s);
+.heroTitle {
+  margin: 12px 0 8px;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  animation: fadeUp 0.45s @ease-out 0.08s both;
 }
 
-.dotActive {
-  background: var(--fn-color-brand);
+.heroText {
+  margin: 0;
+  max-width: 440px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--fn-text-secondary);
+  animation: fadeUp 0.45s @ease-out 0.14s both;
 }
 
-.icon {
+.conceptGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.concept {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  color: var(--fn-color-brand);
-  background: var(--fn-color-brand-bg);
-  margin-bottom: 16px;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-secondary);
+  animation: fadeUp 0.4s @ease-out both;
+  animation-delay: calc(0.2s + var(--i) * 0.06s);
+  transition:
+    transform var(--fn-transition-fast, 0.15s),
+    border-color var(--fn-transition-fast, 0.15s);
+
+  svg {
+    flex-shrink: 0;
+    color: var(--fn-color-brand);
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: var(--fn-color-brand);
+  }
 }
 
-.title {
-  margin: 0 0 8px;
-  font-size: 18px;
+.introActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 24px;
+  animation: fadeUp 0.45s @ease-out 0.5s both;
+
+  :global(.octop-btn-lg) {
+    min-width: 200px;
+  }
+}
+
+.doneActions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+
+  :global(.octop-btn-lg) {
+    min-width: 0;
+  }
+}
+
+.duration {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  animation: fadeUp 0.45s @ease-out 0.6s both;
+}
+
+.burst {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 96px;
+}
+
+.spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--fn-color-brand);
+  animation: spark 0.9s @ease-out 0.15s both;
+
+  &:nth-child(3n + 2) {
+    background: var(--fn-color-success, #52c41a);
+  }
+
+  &:nth-child(3n) {
+    background: var(--fn-color-warning, #faad14);
+  }
+}
+
+.doneCheck {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--fn-color-brand);
+  animation: pop 0.5s @ease-pop both;
+}
+
+/* ---------- tour card ---------- */
+
+.tour {
+  width: min(360px, calc(100vw - 32px));
+
+  :global(.octop-tour-content) {
+    width: 100%;
+  }
+
+  :global(.octop-tour-inner) {
+    padding: 4px;
+  }
+
+  :global(.octop-tour-footer) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  :global(.octop-tour-indicators),
+  :global(.octop-tour-buttons) {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+}
+
+.stepHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--fn-text-primary);
+  animation: fadeUp 0.35s @ease-out both;
 }
 
-.text {
-  margin: 0;
-  max-width: 420px;
-  min-height: 66px;
+.stepIcon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
+  box-shadow: inset 0 0 0 1px var(--fn-border-secondary);
+  animation: pop 0.45s @ease-pop both;
+}
+
+.stepBody {
+  animation: fadeUp 0.35s @ease-out 0.06s both;
+}
+
+.stepText {
+  margin: 4px 0 10px;
   font-size: 14px;
   line-height: 22px;
   color: var(--fn-text-secondary);
 }
 
-.goButton {
-  margin-top: 16px;
+.stepTip {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-secondary);
+
+  svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: var(--fn-color-warning, #faad14);
+  }
 }
 
-.footer {
+.tourProgress {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 10px;
 }
 
-.footerNav {
+.tourBar {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--fn-border-secondary);
+}
+
+.tourBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fn-color-brand);
+  transition: width 0.4s @ease-out;
+}
+
+.tourCount {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fn-text-tertiary);
+}
+
+.tourActions {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+
+  > :first-child {
+    margin-right: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot,
+  .heroTitle,
+  .heroText,
+  .concept,
+  .introActions,
+  .duration,
+  .spark,
+  .doneCheck,
+  .stepHead,
+  .stepIcon,
+  .stepBody,
+  :global([data-onboarding-active]) {
+    animation: none;
+  }
+
+  .spark {
+    display: none;
+  }
+
+  .tourBarFill,
+  .concept {
+    transition: none;
+  }
 }
