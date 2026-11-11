@@ -60,6 +60,7 @@ export const AGENT_RESOLVABLE_STORAGE_KINDS = new Set([
   "s3",
   "oss",
   "obs",
+  "tos",
   "custom",
   "filesystem",
   "shell",
@@ -246,6 +247,46 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     ],
   },
   {
+    kind: "tos",
+    nameKey: "storage.kindTos",
+    descKey: "storage.descTos",
+    color: "#1664ff",
+    icon: storageBrandIcon("tos"),
+    fields: [
+      {
+        key: "access_key",
+        labelKey: "storage.accessKeyLabel",
+        required: true,
+        placeholder: "AKxxx",
+      },
+      {
+        key: "secret_key",
+        labelKey: "storage.secretKeyLabel",
+        required: true,
+        secret: true,
+        placeholder: "xxxxxxxx",
+      },
+      {
+        key: "bucket",
+        labelKey: "storage.bucketLabel",
+        required: true,
+        placeholder: "my-bucket",
+      },
+      {
+        key: "region",
+        labelKey: "storage.regionLabel",
+        required: true,
+        placeholder: "cn-beijing",
+      },
+      {
+        key: "endpoint",
+        labelKey: "storage.endpointLabel",
+        required: true,
+        placeholder: "tos-cn-beijing.volces.com",
+      },
+    ],
+  },
+  {
     kind: "filesystem",
     nameKey: "storage.kindFilesystem",
     descKey: "storage.descFilesystem",
@@ -426,7 +467,7 @@ export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
   {
     id: "object",
     titleKey: "storage.groupObject",
-    kinds: ["cos", "s3", "oss", "obs", "custom"],
+    kinds: ["cos", "s3", "oss", "obs", "tos", "custom"],
   },
   {
     id: "sandbox",

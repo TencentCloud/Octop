@@ -25,6 +25,7 @@ from octop.api.routers.chat.turn import (
 )
 from octop.infra.gateway.media.attachment_hints import (
     VISION_MAX_BYTES,
+    VISION_SAFE_MAX_SIDE,
     format_attachment_path_hint,
     hints_from_content_parts,
     inbound_attachments_from_parts,
@@ -61,6 +62,18 @@ def _tiny_png() -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def _jpeg(size: tuple[int, int]) -> bytes:
+    img = Image.new("RGB", size, (12, 80, 160))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
+
+
+def _long_side(data: bytes) -> int:
+    with Image.open(io.BytesIO(data)) as img:
+        return max(img.size)
 
 
 def test_hints_from_file_content() -> None:
@@ -284,6 +297,58 @@ async def test_small_image_is_path_ref_then_byte_identical_on_expand() -> None:
         expanded = await expand_workspace_image_ref(block, workspace=workspace)
         url = expanded["image_url"]["url"]
         assert base64.b64decode(url.split(",", 1)[1]) == small
+
+
+@pytest.mark.asyncio
+async def test_image_at_safe_edge_stays_byte_identical() -> None:
+    """A photo already inside the shared provider edge is not re-encoded."""
+    raw = _jpeg((VISION_SAFE_MAX_SIDE, 8))
+    assert len(raw) <= VISION_MAX_BYTES
+    part = ImageContent(data=base64.b64encode(raw).decode(), mime_type="image/jpeg")
+    block = await materialize_image_part(part, media_backend=None)
+    assert block is not None
+    url = block["image_url"]["url"]
+    assert base64.b64decode(url.split(",", 1)[1]) == raw
+
+
+@pytest.mark.asyncio
+async def test_inline_long_screenshot_is_fitted_to_safe_edge() -> None:
+    """A small-file long screenshot is scaled before it is inlined."""
+    raw = _jpeg((64, VISION_SAFE_MAX_SIDE + 1000))
+    assert len(raw) <= VISION_MAX_BYTES
+    part = ImageContent(data=base64.b64encode(raw).decode(), mime_type="image/jpeg")
+    block = await materialize_image_part(part, media_backend=None)
+    assert block is not None
+    fitted = base64.b64decode(block["image_url"]["url"].split(",", 1)[1])
+    assert len(fitted) <= VISION_MAX_BYTES
+    assert _long_side(fitted) <= VISION_SAFE_MAX_SIDE
+
+
+@pytest.mark.asyncio
+async def test_long_screenshot_refit_on_expand_keeps_stored_bytes() -> None:
+    """History replays the original file; only the outgoing request is scaled."""
+    raw = _jpeg((64, VISION_SAFE_MAX_SIDE + 1000))
+    assert len(raw) <= VISION_MAX_BYTES
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        stored = await write_inbound(
+            workspace,
+            raw,
+            filename="long.jpg",
+            media_type="image/jpeg",
+        )
+        backend = AgentBackedMediaBackend(workspace)
+        part = ImageContent(local_path=stored.path, mime_type="image/jpeg", size=len(raw))
+        block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
+        assert block is not None
+        assert block["image_url"]["url"].startswith("workspace://")
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        fitted = base64.b64decode(expanded["image_url"]["url"].split(",", 1)[1])
+        assert len(fitted) <= VISION_MAX_BYTES
+        assert _long_side(fitted) <= VISION_SAFE_MAX_SIDE
+        assert await workspace.adownload_bytes(stored.path) == raw
 
 
 def test_inbound_attachments_from_parts() -> None:

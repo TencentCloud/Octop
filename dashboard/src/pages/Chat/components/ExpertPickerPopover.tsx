@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, GraduationCap, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
@@ -145,9 +146,11 @@ export default function ExpertPickerPopover({
         return (
           <div
             key={agent.agent_id}
-            className={`${styles.skillPickerItem} ${
-              active ? styles.expertPickerItemActive : ""
-            } ${styles.expertPickerRow}`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.expertPickerItemActive,
+              styles.expertPickerRow,
+            )}
           >
             <button
               type="button"

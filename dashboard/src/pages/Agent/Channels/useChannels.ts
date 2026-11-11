@@ -26,6 +26,12 @@ export interface ChannelRow {
     connected: boolean;
     error?: string | null;
     updated_at?: number;
+    last_inbound_at?: number | null;
+    last_outbound_at?: number | null;
+    reconnect_count?: number;
+    last_reconnect_at?: number | null;
+    dropped_duplicate?: number;
+    dropped_stale?: number;
   };
 }
 

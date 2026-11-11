@@ -35,6 +35,12 @@
       the splash CSS keys off html[data-theme], not prefers-color-scheme,
       so a stored "light" preference wins over an OS dark setting.
       Storage shape matches appearanceStorage.ts (THEME_STORAGE_KEY = "theme").
+
+      The desktop shell loads this page with ?octopTheme=system|light|dark
+      (DASHBOARD_THEME_QUERY in desktop/src/main/windows/chrome.ts). That
+      device preference wins over localStorage and is written back, then the
+      query is removed so a later reload keeps the stored value. Browser
+      loads have no query and keep using localStorage alone.
     -->
     <script id="octop-boot-theme">
       (function () {
@@ -47,22 +53,54 @@
             return false;
           }
         }
-        try {
+        function isPref(value) {
+          return value === "light" || value === "dark" || value === "system";
+        }
+        function readStoredPref() {
           var raw = localStorage.getItem(KEY);
-          var pref = "system";
-          if (raw === "light" || raw === "dark" || raw === "system") {
-            pref = raw;
-          } else if (raw) {
-            var parsed = JSON.parse(raw);
-            if (
-              parsed &&
-              (parsed.preference === "light" ||
-                parsed.preference === "dark" ||
-                parsed.preference === "system")
-            ) {
-              pref = parsed.preference;
+          if (isPref(raw)) return raw;
+          if (!raw) return "system";
+          var parsed = JSON.parse(raw);
+          if (parsed && isPref(parsed.preference)) return parsed.preference;
+          return "system";
+        }
+        function shellPref() {
+          var query = new URLSearchParams(window.location.search).get(
+            "octopTheme",
+          );
+          return isPref(query) ? query : null;
+        }
+        // Keep palette / customColor; only the light/dark preference moves.
+        function rememberShellPref(pref) {
+          var next = { preference: pref };
+          try {
+            var raw = localStorage.getItem(KEY);
+            if (raw && raw.charAt(0) === "{") {
+              var parsed = JSON.parse(raw);
+              if (parsed && typeof parsed.palette === "string") {
+                next.palette = parsed.palette;
+              }
+              if (parsed && typeof parsed.customColor === "string") {
+                next.customColor = parsed.customColor;
+              }
             }
-          }
+          } catch (e) {}
+          localStorage.setItem(KEY, JSON.stringify(next));
+          try {
+            var url = new URL(window.location.href);
+            url.searchParams.delete("octopTheme");
+            history.replaceState(
+              null,
+              "",
+              url.pathname + url.search + url.hash,
+            );
+          } catch (e2) {}
+        }
+        try {
+          var fromShell = shellPref();
+          var pref = fromShell || "system";
+          if (fromShell) rememberShellPref(fromShell);
+          else pref = readStoredPref();
           if (pref === "dark" || (pref === "system" && systemDark())) {
             mode = "dark";
           }
@@ -87,7 +125,7 @@
       body {
         height: 100%;
         margin: 0;
-        background: #f7f8fa;
+        background: #f5f6f8;
       }
       #root {
         min-height: 100%;
@@ -103,88 +141,139 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 20px;
         padding: max(24px, env(safe-area-inset-top, 0px))
           max(24px, env(safe-area-inset-right, 0px))
           max(24px, env(safe-area-inset-bottom, 0px))
           max(24px, env(safe-area-inset-left, 0px));
         margin: 0;
-        background: #f7f8fa;
+        /* Same composition as the shell's own splash: a soft brand wash gives
+           the empty page a shape instead of a spinner floating in a void. */
+        background: radial-gradient(
+            720px 380px at 50% -8%,
+            rgba(232, 93, 117, 0.11),
+            transparent 68%
+          ),
+          #f5f6f8;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
           "Noto Sans SC", sans-serif;
-        color: #8b8fa3;
+        color: #4b5563;
+        user-select: none;
+        -webkit-user-select: none;
       }
       html[data-theme="dark"],
       html[data-theme="dark"] body {
-        background: #12141c;
+        background: #0e0e0e;
       }
       html[data-theme="dark"] #octop-boot {
-        background: #12141c;
-        color: rgba(255, 255, 255, 0.55);
+        background: radial-gradient(
+            720px 380px at 50% -8%,
+            rgba(240, 139, 154, 0.1),
+            transparent 68%
+          ),
+          #0e0e0e;
+        color: rgba(255, 255, 255, 0.6);
       }
-      #octop-boot-mark {
+      .octop-boot-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: octop-boot-in 420ms ease-out both;
+      }
+      /* Horizontal lockup: dark wordmark on light, white on dark. */
+      .octop-boot-logo {
+        display: block;
+        height: 72px;
+        width: auto;
+        max-width: min(260px, 75vw);
+        object-fit: contain;
+      }
+      .octop-boot-logo-dark {
+        display: none;
+      }
+      html[data-theme="dark"] .octop-boot-logo-light {
+        display: none;
+      }
+      html[data-theme="dark"] .octop-boot-logo-dark {
+        display: block;
+      }
+      /* Arc + status: same composition as BrandLoading / shell splash. */
+      .octop-boot-status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 24px 0 0;
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 1;
+        letter-spacing: 0.01em;
+      }
+      .octop-boot-spinner {
         position: relative;
-        width: 88px;
-        height: 88px;
+        display: block;
+        width: 22px;
+        height: 22px;
         flex: none;
       }
-      #octop-boot-ring {
+      .octop-boot-spinner-track {
+        position: absolute;
+        inset: 0;
         box-sizing: border-box;
+        border: 2px solid rgba(232, 93, 117, 0.14);
+        border-radius: 50%;
+      }
+      html[data-theme="dark"] .octop-boot-spinner-track {
+        border-color: rgba(240, 139, 154, 0.16);
+      }
+      .octop-boot-spinner-ring {
         position: absolute;
         inset: 0;
         border-radius: 50%;
-        border: 3px solid rgba(232, 93, 117, 0.18);
-        border-top-color: #e85d75;
-        animation: octop-boot-spin 0.85s linear infinite;
+        background: conic-gradient(
+          from 0deg,
+          transparent 0%,
+          transparent 55%,
+          rgba(232, 93, 117, 0.4) 80%,
+          #e85d75 100%
+        );
+        -webkit-mask: radial-gradient(
+          farthest-side,
+          transparent calc(100% - 2px),
+          #000 calc(100% - 2px + 0.5px)
+        );
+        mask: radial-gradient(
+          farthest-side,
+          transparent calc(100% - 2px),
+          #000 calc(100% - 2px + 0.5px)
+        );
+        animation: octop-boot-spin 0.9s linear infinite;
       }
-      html[data-theme="dark"] #octop-boot-ring {
-        border-color: rgba(240, 139, 154, 0.22);
-        border-top-color: #f08b9a;
-      }
-      .octop-boot-logo {
-        position: absolute;
-        inset: 14px;
-        width: 60px;
-        height: 60px;
-        border-radius: 14px;
-        object-fit: contain;
-        display: block;
-        animation: octop-boot-breathe 1.6s ease-in-out infinite;
-      }
-      .octop-boot-logo--dark {
-        display: none;
-      }
-      html[data-theme="dark"] .octop-boot-logo--light {
-        display: none;
-      }
-      html[data-theme="dark"] .octop-boot-logo--dark {
-        display: block;
-      }
-      #octop-boot-text {
-        font-size: 14px;
-        font-weight: 500;
-        letter-spacing: 0.04em;
-        user-select: none;
+      html[data-theme="dark"] .octop-boot-spinner-ring {
+        background: conic-gradient(
+          from 0deg,
+          transparent 0%,
+          transparent 55%,
+          rgba(240, 139, 154, 0.4) 80%,
+          #f08b9a 100%
+        );
       }
       @keyframes octop-boot-spin {
         to {
           transform: rotate(360deg);
         }
       }
-      @keyframes octop-boot-breathe {
-        0%,
-        100% {
-          transform: scale(1);
-          opacity: 1;
+      @keyframes octop-boot-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
         }
-        50% {
-          transform: scale(0.94);
-          opacity: 0.88;
+        to {
+          opacity: 1;
+          transform: none;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        #octop-boot-ring,
-        .octop-boot-logo {
+        .octop-boot-stack,
+        .octop-boot-spinner-ring {
           animation: none;
         }
       }
@@ -273,27 +362,33 @@
     </script>
   </head>
   <body>
+    <div id="octop-chrome"></div>
+    <div id="octop-stage">
     <div id="root">
       <div id="octop-boot" role="status" aria-live="polite">
-        <div id="octop-boot-mark" aria-hidden="true">
-          <div id="octop-boot-ring"></div>
+        <div class="octop-boot-stack">
           <img
-            class="octop-boot-logo octop-boot-logo--light"
-            src="%BASE_URL%logo_vertical_dark.svg"
-            alt=""
-            width="60"
-            height="60"
+            class="octop-boot-logo octop-boot-logo-light"
+            src="%BASE_URL%logo_horizontal_dark.png"
+            alt="Octop"
+            height="72"
           />
           <img
-            class="octop-boot-logo octop-boot-logo--dark"
-            src="%BASE_URL%logo_vertical_white.svg"
-            alt=""
-            width="60"
-            height="60"
+            class="octop-boot-logo octop-boot-logo-dark"
+            src="%BASE_URL%logo_horizontal_white.png"
+            alt="Octop"
+            height="72"
           />
+          <p class="octop-boot-status">
+            <span class="octop-boot-spinner" aria-hidden="true">
+              <span class="octop-boot-spinner-track"></span>
+              <span class="octop-boot-spinner-ring"></span>
+            </span>
+            <span id="octop-boot-text">Opening…</span>
+          </p>
         </div>
-        <div id="octop-boot-text">Loading…</div>
       </div>
+    </div>
     </div>
     <script>
       (function () {
@@ -305,7 +400,7 @@
             navigator.userLanguage ||
             ""
           ).toLowerCase();
-          if (lang.indexOf("zh") === 0) el.textContent = "加载中…";
+          if (lang.indexOf("zh") === 0) el.textContent = "正在打开…";
         } catch (e) {}
       })();
     </script>

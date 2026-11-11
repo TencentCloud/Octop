@@ -45,6 +45,7 @@ vendor_one() {
     --python-platform "$pyplat" \
     --python-version 3.12 \
     --only-binary cryptography \
+    --only-binary shapely \
     "${extra[@]+"${extra[@]}"}" \
     -r "$req_file"
 

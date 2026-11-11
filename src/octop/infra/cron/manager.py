@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import random
+import uuid
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -26,6 +29,7 @@ from octop.infra.cron.trigger import (
     build_trigger,
     one_shot_disposition,
 )
+from octop.infra.db.lease import LEASE_SECONDS, RECONCILE_SECONDS, RENEW_SECONDS
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
@@ -73,29 +77,37 @@ class CronManager:
         delivery_service: CronDeliveryService,
         repos: RepoBundle,
         timezone: str = "Asia/Shanghai",
+        instance_id: str | None = None,
     ) -> None:
         self._gateway = gateway
         self._delivery_service = delivery_service
         self._repos = repos
         self._timezone = timezone
+        self._instance_id = instance_id or uuid.uuid4().hex
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone=timezone)
         self._scheduler.add_listener(self._on_job_missed, EVENT_JOB_MISSED)
         self._lock = asyncio.Lock()
         self._mail_watch = AgentlyWatchManager()
         # Process-level jobs (e.g. TLS auto-renew) that must survive reload_from_db.
         self._system_job_ids: set[str] = set()
+        self._scheduled_spec: dict[str, str] = {}
+        self._reconcile_task: asyncio.Task[None] | None = None
+        self._serve_background = True
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point cron persistence at a rebound control-plane pool."""
         self._repos = repos
         self._delivery_service.replace_repos(repos)
 
-    async def boot(self) -> None:
+    async def boot(self, *, serve_background: bool = True) -> None:
+        self._serve_background = serve_background
         self._scheduler.start()
-        rows = self._repos.cron_repo.list_all(include_disabled=False)
-        for row in rows:
-            self._schedule(row)
-        logger.info("CronManager booted; scheduled %d jobs", len(rows))
+        if not serve_background:
+            logger.info("CronManager booted without background schedules")
+            return
+        await self.reconcile_user_jobs()
+        self._reconcile_task = asyncio.create_task(self._reconcile_loop(), name="cron-reconcile")
+        logger.info("CronManager booted; instance %s", self._instance_id)
 
     async def reload_from_db(self) -> None:
         """Drop user cron schedules and re-register enabled jobs from the DB.
@@ -106,21 +118,59 @@ class CronManager:
         """
         async with self._lock:
             await self._mail_watch.close()
-            for job in list(self._scheduler.get_jobs()):
-                job_id = getattr(job, "id", None)
-                if job_id is None or job_id in self._system_job_ids:
-                    continue
-                self._scheduler.remove_job(job_id)
-            rows = self._repos.cron_repo.list_all(include_disabled=False)
-            for row in rows:
-                self._schedule(row)
-            logger.info("CronManager reloaded from DB; scheduled %d jobs", len(rows))
+            self._scheduled_spec.clear()
+        await self.reconcile_user_jobs()
+        logger.info("CronManager reloaded from DB")
 
     async def shutdown(self) -> None:
+        task = self._reconcile_task
+        self._reconcile_task = None
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
         await self._mail_watch.close()
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
             logger.info("CronManager shut down")
+
+    async def reconcile_user_jobs(self) -> None:
+        """Match local schedules to enabled rows. Execution itself still claims a lease."""
+        async with self._lock:
+            rows = self._repos.cron_repo.list_all(include_disabled=False)
+            wanted = {row.cron_id: row for row in rows}
+            for job in self._scheduler_jobs():
+                job_id = getattr(job, "id", None)
+                if not isinstance(job_id, str) or job_id in self._system_job_ids:
+                    continue
+                if job_id not in wanted:
+                    self._scheduled_spec.pop(job_id, None)
+                    await self._mail_watch.unsubscribe(job_id)
+                    self._scheduler.remove_job(job_id)
+            for cron_id in list(self._scheduled_spec):
+                if cron_id not in wanted and cron_id not in self._system_job_ids:
+                    await self._unschedule(cron_id)
+            for row in rows:
+                if self._scheduled_spec.get(
+                    row.cron_id
+                ) == row.trigger and self._schedule_is_attached(row):
+                    continue
+                await self._unschedule(row.cron_id)
+                self._schedule(row)
+
+    async def _reconcile_loop(self) -> None:
+        while True:
+            await asyncio.sleep(RECONCILE_SECONDS + random.uniform(0, 5))
+            try:
+                await self.reconcile_user_jobs()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("cron reconcile failed")
+
+    def _scheduler_jobs(self) -> list[Any]:
+        raw = self._scheduler.get_jobs()
+        return raw if isinstance(raw, list) else []
 
     async def create(self, spec: CronCreateSpec | None = None, **kwargs: Any) -> CronJobRow:
         if spec is None:
@@ -298,13 +348,85 @@ class CronManager:
         raise_on_error: bool = False,
         force: bool = False,
     ) -> None:
-        row = self._repos.cron_repo.get(cron_id)
-        if row is None or (not row.enabled and not force):
+        claimed = self._repos.cron_repo.claim_run(
+            cron_id,
+            owner=self._instance_id,
+            lease_seconds=LEASE_SECONDS,
+            force=force,
+        )
+        if claimed is None:
+            if raise_on_error and self._repos.cron_repo.get(cron_id) is not None:
+                raise OctopError(
+                    ErrorCode.CRON_ALREADY_RUNNING,
+                    f"cron job {cron_id!r} is already running",
+                )
+            logger.info("CronJob %s skipped; another instance holds the run lease", cron_id)
             return
         try:
-            await self._make_job(row).run(raise_on_error=raise_on_error)
+            await self._execute_claimed(claimed, raise_on_error=raise_on_error)
         finally:
             await self._finish_one_shot(cron_id)
+
+    async def _execute_claimed(self, row: Any, *, raise_on_error: bool) -> None:
+        token = str(row.run_lease_token or "")
+        if not token:
+            return
+        stop = asyncio.Event()
+
+        async def _renew() -> None:
+            while True:
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=RENEW_SECONDS)
+                    return
+                except TimeoutError:
+                    if self._repos.cron_repo.renew_run_lease(
+                        row.cron_id,
+                        token=token,
+                        lease_seconds=LEASE_SECONDS,
+                    ):
+                        continue
+                    self._repos.cron_repo.release_run_lease(row.cron_id, token=token)
+                    return
+
+        renew_task = asyncio.create_task(_renew())
+        run_task = asyncio.create_task(
+            self._make_job(row).run(
+                raise_on_error=raise_on_error,
+                lease_token=token,
+                disable_after=str(row.trigger).startswith("date:"),
+            )
+        )
+        try:
+            done, _pending = await asyncio.wait(
+                {renew_task, run_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if run_task not in done:
+                run_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await run_task
+                logger.warning("CronJob %s lost its run lease", row.cron_id)
+                if raise_on_error:
+                    raise OctopError(
+                        ErrorCode.CRON_ALREADY_RUNNING,
+                        f"cron job {row.cron_id!r} lost its run lease",
+                    )
+                return
+            stop.set()
+            await run_task
+        finally:
+            # The run lives on its own task so the lease can be renewed beside it.
+            # Cancelling the caller (CLI ``run-now --wait``) must cancel that run
+            # too, and drop the lease when the result was never recorded.
+            stop.set()
+            renew_task.cancel()
+            if not run_task.done():
+                run_task.cancel()
+            for task in (run_task, renew_task):
+                with suppress(asyncio.CancelledError, Exception):
+                    await task
+            if run_task.cancelled():
+                self._repos.cron_repo.release_run_lease(row.cron_id, token=token)
 
     async def _finish_one_shot(self, cron_id: str) -> None:
         """Disable a ``date:`` job after it runs, success or failure."""
@@ -337,8 +459,8 @@ class CronManager:
             if row.enabled:
                 self._repos.cron_repo.update(job_id, enabled=False)
             return
-        self._repos.cron_repo.mark_missed(job_id)
-        logger.info("CronJob %s missed its one-shot window; disabling", job_id)
+        if self._repos.cron_repo.mark_missed(job_id):
+            logger.info("CronJob %s missed its one-shot window; disabling", job_id)
 
     def _schedule(self, row: Any) -> None:
         if not row.enabled:
@@ -362,6 +484,7 @@ class CronManager:
                 await self._run_mail_event(row.cron_id, message_id)
 
             self._mail_watch.subscribe(source.instance_id, row.cron_id, creds, on_mail)
+            self._scheduled_spec[row.cron_id] = row.trigger
             return
         grace = RECURRING_MISFIRE_GRACE_SECONDS
         if isinstance(trigger, DateTrigger):
@@ -375,8 +498,8 @@ class CronManager:
                 last_run_at=row.last_run_at,
             )
             if action == "miss":
-                self._repos.cron_repo.mark_missed(row.cron_id)
-                logger.info("CronJob %s missed its one-shot time; disabling", row.cron_id)
+                if self._repos.cron_repo.mark_missed(row.cron_id):
+                    logger.info("CronJob %s missed its one-shot time; disabling", row.cron_id)
                 return
             if action == "close":
                 self._repos.cron_repo.update(row.cron_id, enabled=False)
@@ -393,8 +516,10 @@ class CronManager:
             replace_existing=True,
             misfire_grace_time=grace,
         )
+        self._scheduled_spec[row.cron_id] = row.trigger
 
     async def _unschedule(self, cron_id: str) -> None:
+        self._scheduled_spec.pop(cron_id, None)
         await self._mail_watch.unsubscribe(cron_id)
         if self._scheduler.get_job(cron_id):
             self._scheduler.remove_job(cron_id)
@@ -448,12 +573,22 @@ class CronManager:
                 message_id=message_id,
             )
         )
-        event_row = replace(
-            row,
-            prompt=prompt,
-            mcp_servers=list(dict.fromkeys([source.mcp_server_name, *row.mcp_servers])),
+        # The mailbox stream is broadcast. Claiming here keeps a single delivery
+        # even when every instance is watching the same mailbox.
+        claimed = self._repos.cron_repo.claim_run(
+            cron_id,
+            owner=self._instance_id,
+            lease_seconds=LEASE_SECONDS,
         )
-        await self._make_job(event_row).run()
+        if claimed is None:
+            logger.info("CronJob %s mail event skipped; run lease held elsewhere", cron_id)
+            return
+        event_row = replace(
+            claimed,
+            prompt=prompt,
+            mcp_servers=list(dict.fromkeys([source.mcp_server_name, *claimed.mcp_servers])),
+        )
+        await self._execute_claimed(event_row, raise_on_error=False)
 
     async def reload_mail_watches(self) -> None:
         """Rebuild every mailbox watch after a full cron reload."""

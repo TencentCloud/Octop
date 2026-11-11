@@ -24,8 +24,15 @@ export default function MbtiPersonaTag({
     ? localizedName
       ? `${code} ${localizedName}`
       : code
-    : t("experts.mbtiDefault");
+    : t("experts.mbtiUnset");
   const clickable = !!onClick;
+  const tooltipTitle = value
+    ? clickable
+      ? t("experts.mbtiViewDetail")
+      : t("nav.mbti")
+    : clickable
+    ? t("experts.mbtiSetHint")
+    : t("nav.mbti");
 
   const tag = (
     <Tag
@@ -47,13 +54,5 @@ export default function MbtiPersonaTag({
     </Tag>
   );
 
-  return (
-    <>
-      {clickable ? (
-        <Tooltip title={t("experts.mbtiViewDetail")}>{tag}</Tooltip>
-      ) : (
-        <Tooltip title={t("nav.mbti")}>{tag}</Tooltip>
-      )}
-    </>
-  );
+  return <Tooltip title={tooltipTitle}>{tag}</Tooltip>;
 }

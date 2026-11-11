@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Input } from "antd";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { AskQuestion } from "../../../api/types/hitl";
 import styles from "./AskQuestionCard.module.less";
 
@@ -18,6 +19,11 @@ export interface AskQuestionCardProps {
   onSubmit?: (message: string) => void;
   /** Close the card without answering, ending the pause. */
   onDismiss?: () => void;
+  /**
+   * Docked above the composer. Only the options scroll, so the action row
+   * stays on screen.
+   */
+  docked?: boolean;
 }
 
 /** What the user picked for one question. */
@@ -85,9 +91,7 @@ function QuestionCard({
       {done && confirmed !== null ? (
         <div className={styles.doneAnswer}>{confirmed}</div>
       ) : (
-        <div
-          className={`${styles.options} ${interactive ? "" : styles.locked}`}
-        >
+        <div className={cx(styles.options, !interactive && styles.locked)}>
           {options.map((option, optionIndex) => {
             const key = OPTION_KEYS[optionIndex] ?? String(optionIndex + 1);
             const selected = answer.picked.includes(option.label);
@@ -95,9 +99,7 @@ function QuestionCard({
               <button
                 key={option.label}
                 type="button"
-                className={`${styles.option} ${
-                  selected ? styles.selected : ""
-                }`}
+                className={cx(styles.option, selected && styles.selected)}
                 disabled={!interactive}
                 onClick={() => toggle(option.label)}
               >
@@ -116,7 +118,7 @@ function QuestionCard({
           {!openEnded ? (
             <button
               type="button"
-              className={`${styles.option} ${hasOther ? styles.selected : ""}`}
+              className={cx(styles.option, hasOther && styles.selected)}
               disabled={!interactive}
               onClick={() => toggle(OTHER)}
             >
@@ -154,6 +156,7 @@ function AskQuestionCard({
   status,
   onSubmit,
   onDismiss,
+  docked = false,
 }: AskQuestionCardProps) {
   const { t } = useTranslation();
   const interactive = status === "pending" && Boolean(onSubmit);
@@ -172,7 +175,7 @@ function AskQuestionCard({
 
   if (!interactive) {
     return (
-      <details className={`${styles.card} ${styles.completedCard}`}>
+      <details className={cx(styles.card, styles.completedCard)}>
         <summary className={styles.completedSummary}>
           <span className={styles.completedStatus}>
             {status === "approved"
@@ -234,7 +237,7 @@ function AskQuestionCard({
   };
 
   return (
-    <div className={styles.card}>
+    <div className={cx(styles.card, docked && styles.cardDocked)}>
       <div className={styles.titleRow}>
         <span className={styles.title}>{t("chat.ask.title")}</span>
         <span className={styles.titleActions}>
@@ -288,14 +291,14 @@ function AskQuestionCard({
           <>
             <button
               type="button"
-              className={`${styles.actionButton} ${styles.primaryAction}`}
+              className={cx(styles.actionButton, styles.primaryAction)}
               onClick={submit}
             >
               {t("chat.ask.submit")}
             </button>
             <button
               type="button"
-              className={`${styles.actionButton} ${styles.secondaryAction}`}
+              className={cx(styles.actionButton, styles.secondaryAction)}
               onClick={() => setReviewing(false)}
             >
               {t("chat.ask.back")}
@@ -305,7 +308,7 @@ function AskQuestionCard({
           <>
             <button
               type="button"
-              className={`${styles.actionButton} ${styles.primaryAction}`}
+              className={cx(styles.actionButton, styles.primaryAction)}
               disabled={currentAnswer === null}
               onClick={advance}
             >
@@ -314,7 +317,7 @@ function AskQuestionCard({
             {current > 0 ? (
               <button
                 type="button"
-                className={`${styles.actionButton} ${styles.secondaryAction}`}
+                className={cx(styles.actionButton, styles.secondaryAction)}
                 onClick={() => setCurrent((value) => value - 1)}
               >
                 {t("chat.ask.back")}
@@ -322,7 +325,7 @@ function AskQuestionCard({
             ) : null}
             <button
               type="button"
-              className={`${styles.actionButton} ${styles.skipAction}`}
+              className={cx(styles.actionButton, styles.skipAction)}
               onClick={skip}
             >
               {t("chat.ask.skip")}
