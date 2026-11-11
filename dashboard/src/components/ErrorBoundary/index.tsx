@@ -1,10 +1,10 @@
 import { Component, type ReactNode } from "react";
-import { Result, Button, Space } from "antd";
 import i18n from "../../i18n";
 import {
   isChunkLoadError,
   tryReloadOnStaleChunk,
 } from "../../utils/reloadOnStaleChunk";
+import ErrorFallback, { type ErrorFallbackAction } from "./ErrorFallback";
 
 interface Props {
   children: ReactNode;
@@ -71,47 +71,43 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
         return null;
       }
       const canRetry = !isChunkError && this.state.retryCount < MAX_RETRIES;
+      // A stale chunk has one honest fix (reload); an unexpected throw offers
+      // "try again" first, because a re-render is often all it takes.
+      const actions: ErrorFallbackAction[] = [];
+      if (isChunkError) {
+        actions.push({
+          label: i18n.t("errors.reload"),
+          onClick: this.handleReload,
+          variant: "primary",
+        });
+      }
+      if (canRetry) {
+        actions.push({
+          label: i18n.t("errors.retry"),
+          onClick: this.handleRetry,
+          variant: "primary",
+        });
+      }
+      actions.push({
+        label: i18n.t("errors.backHome"),
+        onClick: this.handleHome,
+      });
       return (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            minHeight: "100dvh",
-          }}
-        >
-          <Result
-            status="error"
-            title={
-              isChunkError
-                ? i18n.t("errors.outOfDateTitle")
-                : i18n.t("errors.unexpectedTitle")
-            }
-            subTitle={
-              isChunkError
-                ? i18n.t("errors.outOfDateSubtitle")
-                : this.state.error?.message ||
-                  i18n.t("errors.unexpectedSubtitle")
-            }
-            extra={
-              <Space>
-                {isChunkError && (
-                  <Button type="primary" onClick={this.handleReload}>
-                    {i18n.t("errors.reload")}
-                  </Button>
-                )}
-                {canRetry && (
-                  <Button type="primary" onClick={this.handleRetry}>
-                    {i18n.t("errors.retry")}
-                  </Button>
-                )}
-                <Button onClick={this.handleHome}>
-                  {i18n.t("errors.backHome")}
-                </Button>
-              </Space>
-            }
-          />
-        </div>
+        <ErrorFallback
+          title={
+            isChunkError
+              ? i18n.t("errors.outOfDateTitle")
+              : i18n.t("errors.unexpectedTitle")
+          }
+          subtitle={
+            isChunkError
+              ? i18n.t("errors.outOfDateSubtitle")
+              : i18n.t("errors.unexpectedSubtitle")
+          }
+          detail={isChunkError ? null : this.state.error?.message}
+          detailsLabel={i18n.t("errors.details")}
+          actions={actions}
+        />
       );
     }
     return this.props.children;

@@ -23,6 +23,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   memoryDashboardApi,
@@ -284,9 +285,10 @@ export default function MemorySettings({ agentId }: Props) {
       </Card>
 
       <Card
-        className={`${styles.settingCard} ${
-          !memoryEnabled ? styles.cardDisabled : ""
-        }`}
+        className={cx(
+          styles.settingCard,
+          !memoryEnabled && styles.cardDisabled,
+        )}
       >
         <div className={styles.sectionHeading}>
           <span className={styles.settingIcon}>
@@ -393,9 +395,10 @@ export default function MemorySettings({ agentId }: Props) {
       </Card>
 
       <Card
-        className={`${styles.settingCard} ${
-          !memoryEnabled ? styles.cardDisabled : ""
-        }`}
+        className={cx(
+          styles.settingCard,
+          !memoryEnabled && styles.cardDisabled,
+        )}
       >
         <div className={styles.sectionHeading}>
           <span className={styles.settingIcon}>

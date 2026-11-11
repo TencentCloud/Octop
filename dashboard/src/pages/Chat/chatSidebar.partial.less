@@ -39,10 +39,18 @@
   }
 }
 
-/* Dragging: kill width transitions so the handle tracks the pointer 1:1. */
+/* Dragging: kill width transitions so the rail tracks the pointer 1:1. */
 .sidebarResizing {
   transition: none !important;
   will-change: width, min-width;
+}
+
+/* Collapse/expand is a layout change, not decoration — keep it instant for
+   people who asked the OS for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
 }
 
 .sidebar:not(.sidebarOpen) {
@@ -50,37 +58,6 @@
     width: 0;
     min-width: 0;
     border-right: none;
-  }
-}
-
-.sidebarResizeHandle {
-  position: absolute;
-  top: 0;
-  right: -3px;
-  width: 6px;
-  height: 100%;
-  cursor: col-resize;
-  z-index: 3;
-  touch-action: none;
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 2px;
-    height: 28px;
-    border-radius: 2px;
-    background: var(--fn-border-secondary);
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-
-  &:hover::after,
-  &.sidebarResizeHandleActive::after {
-    opacity: 1;
-    background: #1890ff;
   }
 }
 

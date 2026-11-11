@@ -20,9 +20,13 @@ import {
   Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import type { ResourceVisibilityMode } from "../../../../../api/modules/userGroups";
-import { ResourceVisibilityFields } from "../../../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -522,9 +526,11 @@ export function ModelListEditor({
             return (
               <div
                 key={m.id}
-                className={`${styles.modelListItem}${
-                  isCurrentEditing ? ` ${styles.modelListItemEditing}` : ""
-                }${!isEnabled ? ` ${styles.modelListItemDisabled}` : ""}`}
+                className={cx(
+                  styles.modelListItem,
+                  isCurrentEditing && styles.modelListItemEditing,
+                  !isEnabled && styles.modelListItemDisabled,
+                )}
               >
                 <Tooltip
                   title={
@@ -997,27 +1003,32 @@ export function ModelListEditor({
               </>
             )}
 
-            <div className={styles.modelVisibilityBlock}>
-              <div className={styles.modelVisibilityTitle}>
-                {t("resourceVisibility.groupAccess")}
+            <ResourceVisibilityGate
+              allowOwner={false}
+              visibility={modelVisibility === "groups" ? "groups" : "all"}
+            >
+              <div className={styles.modelVisibilityBlock}>
+                <div className={styles.modelVisibilityTitle}>
+                  {t("resourceVisibility.groupAccess")}
+                </div>
+                <p className={styles.modelVisibilityHint}>
+                  {t("resourceVisibility.groupAccessHint")}
+                </p>
+                <ResourceVisibilityFields
+                  allowOwner={false}
+                  visibility={modelVisibility === "groups" ? "groups" : "all"}
+                  groupIds={modelGroupIds}
+                  onChange={(next) => {
+                    const nextVisibility =
+                      next.visibility === "groups" ? "groups" : "all";
+                    setModelVisibility(nextVisibility);
+                    setModelGroupIds(
+                      nextVisibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <p className={styles.modelVisibilityHint}>
-                {t("resourceVisibility.groupAccessHint")}
-              </p>
-              <ResourceVisibilityFields
-                allowOwner={false}
-                visibility={modelVisibility === "groups" ? "groups" : "all"}
-                groupIds={modelGroupIds}
-                onChange={(next) => {
-                  const nextVisibility =
-                    next.visibility === "groups" ? "groups" : "all";
-                  setModelVisibility(nextVisibility);
-                  setModelGroupIds(
-                    nextVisibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
-            </div>
+            </ResourceVisibilityGate>
 
             <div
               style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import cx from "classnames";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
 import UserMessageComposerTags, {
   hasUserComposerTags,
@@ -42,6 +43,10 @@ import {
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
+import {
+  ConnectorAuthAction,
+  isConnectorAuthError,
+} from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -590,6 +595,23 @@ function MessageBubble({
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
+  const isOwnMessage =
+    message.author == null ||
+    (user != null && message.author.userId === user.id);
+  const authorName = accountDisplayName(
+    isOwnMessage
+      ? user
+      : {
+          display_name: message.author?.displayName,
+          username: message.author?.username,
+        },
+  );
+  const userAvatarUrl = isOwnMessage
+    ? user?.avatar_url
+    : message.author?.avatarUrl;
+  const userAvatarIcon = isOwnMessage
+    ? user?.avatar_icon
+    : message.author?.avatarIcon;
   const { agents, activeAgent } = useAgent();
   const isTeamRoom = isTeamAgent(activeAgent);
   const speakerId =
@@ -614,7 +636,7 @@ function MessageBubble({
     ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
     : expert?.name;
   const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
-  const userName = accountDisplayName(user);
+  const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -682,9 +704,11 @@ function MessageBubble({
       const questions = extractAskQuestions(actions);
       return (
         <div
-          className={`${styles.messageBubble} ${styles.assistantBubble} ${
-            compact ? styles.compactBubble : ""
-          }`}
+          className={cx(
+            styles.messageBubble,
+            styles.assistantBubble,
+            compact && styles.compactBubble,
+          )}
         >
           <div className={styles.bubbleContent}>
             <AskQuestionCard questions={questions} status={hitlStatus} />
@@ -694,9 +718,11 @@ function MessageBubble({
     }
     return (
       <div
-        className={`${styles.messageBubble} ${styles.assistantBubble} ${
-          compact ? styles.compactBubble : ""
-        }`}
+        className={cx(
+          styles.messageBubble,
+          styles.assistantBubble,
+          compact && styles.compactBubble,
+        )}
       >
         <div className={styles.bubbleContent}>
           <HitlApprovalCard
@@ -727,6 +753,8 @@ function MessageBubble({
     ? formatChatStreamError(errorSource, t)
     : textContent;
   const errorAction = isError ? chatStreamErrorAction(errorSource) : null;
+  const connectorAuthError =
+    isError && isConnectorAuthError(message.errorInfo?.code, errorSource);
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -797,17 +825,19 @@ function MessageBubble({
     (isUser || groupPosition === "first" || groupPosition === "only") &&
     (isUser || showAvatar);
   const senderAvatar = !showSender ? null : isUser ? (
-    <MessageSender
-      name={userName}
-      avatar={
-        <ProfileAvatar
-          url={user?.avatar_url}
-          icon={user?.avatar_icon}
-          kind="user"
-          className={styles.msgUserAvatar}
-        />
-      }
-    />
+    <Tooltip title={userName || undefined} mouseEnterDelay={0.35}>
+      <MessageSender
+        name={userName}
+        avatar={
+          <ProfileAvatar
+            url={userAvatarUrl}
+            icon={userAvatarIcon}
+            kind="user"
+            className={styles.msgUserAvatar}
+          />
+        }
+      />
+    </Tooltip>
   ) : expert || avatarProfileId ? (
     <ExpertMessageAvatar
       name={expert?.name || avatarProfileId}
@@ -821,11 +851,13 @@ function MessageBubble({
 
   return (
     <div
-      className={`${styles.messageBubble} ${
-        isUser ? styles.userBubble : styles.assistantBubble
-      } ${showUserComposerTags ? styles.userBubbleWithTags : ""} ${
-        isError ? styles.errorBubble : ""
-      } ${compact ? styles.compactBubble : ""}`}
+      className={cx(
+        styles.messageBubble,
+        isUser ? styles.userBubble : styles.assistantBubble,
+        showUserComposerTags && styles.userBubbleWithTags,
+        isError && styles.errorBubble,
+        compact && styles.compactBubble,
+      )}
     >
       {!isUser && senderAvatar ? (
         <div className={styles.avatarCol}>{senderAvatar}</div>
@@ -943,8 +975,18 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {(errorAction || onRegenerate) && (
+                {(errorAction || onRegenerate || connectorAuthError) && (
                   <div className={styles.errorActionRow}>
+                    {connectorAuthError ? (
+                      <ConnectorAuthAction
+                        details={message.errorInfo?.details}
+                        onAuthorized={
+                          onRegenerate
+                            ? () => onRegenerate(message.id)
+                            : undefined
+                        }
+                      />
+                    ) : null}
                     {errorAction?.fix === "disable_stream_usage" &&
                     onDisableStreamUsage ? (
                       <button
@@ -983,7 +1025,7 @@ function MessageBubble({
                 )}
               </div>
             ) : (
-              <div className={`${styles.assistantText} ${groupCls}`}>
+              <div className={cx(styles.assistantText, groupCls)}>
                 {imageAttachments.length > 0 && (
                   <ImageGallery images={imageAttachments} agentId={agentId} />
                 )}
@@ -1047,9 +1089,10 @@ function MessageBubble({
                 message.content || onEditUserMessage || message.steerPending,
               ))) && (
             <div
-              className={`${styles.msgMetaRow} ${
-                isUser ? styles.msgMetaRowRight : ""
-              }`}
+              className={cx(
+                styles.msgMetaRow,
+                isUser && styles.msgMetaRowRight,
+              )}
             >
               {isUser &&
                 !isEditing &&
@@ -1089,20 +1132,18 @@ function MessageBubble({
                 )}
               {message.timestamp > 0 && (
                 <div
-                  className={`${styles.msgTime} ${
-                    isUser ? styles.msgTimeRight : ""
-                  }`}
+                  className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
                   {!isUser && !isStreaming && speechText && (
                     <>
                       <CopyButton text={textContent} />
                       <button
-                        className={`${styles.msgActionBtn} ${
-                          speakingId === message.id
-                            ? styles.msgActionBtnActive
-                            : ""
-                        }`}
+                        className={cx(
+                          styles.msgActionBtn,
+                          speakingId === message.id &&
+                            styles.msgActionBtnActive,
+                        )}
                         onClick={(e) => {
                           e.stopPropagation();
                           speak(message.id, textContent);

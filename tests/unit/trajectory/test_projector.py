@@ -168,6 +168,27 @@ def test_project_system_chunk_keeps_content_reference_without_body() -> None:
     }
 
 
+def test_project_memory_context_keeps_filename_and_full_body() -> None:
+    body = "# Rules\nPrefer BackendWorkspace paths."
+    events = project_harness_chunk(
+        {
+            "type": "context",
+            "source": "memory",
+            "label": "AGENTS.md",
+            "content": body,
+        },
+        agent_id="A1",
+        thread_id="T1",
+        seq=3,
+    )
+    assert len(events) == 1
+    ev = events[0]
+    assert ev.kind == "context"
+    assert ev.summary == "AGENTS.md"
+    assert ev.payload["content"] == body
+    assert ev.payload["label"] == "AGENTS.md"
+
+
 def test_project_context_chunk_keeps_content_body() -> None:
     events = project_harness_chunk(
         {
@@ -184,7 +205,7 @@ def test_project_context_chunk_keeps_content_body() -> None:
     ev = events[0]
     assert ev.kind == "context"
     assert ev.payload["content"] == "# Rules\nPrefer BackendWorkspace paths."
-    assert "Prefer BackendWorkspace" in ev.summary or "AGENTS.md" in ev.summary
+    assert ev.summary == "AGENTS.md"
 
 
 def test_project_compacted_fact_emits_compacted_event() -> None:
