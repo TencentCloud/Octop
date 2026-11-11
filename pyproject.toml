@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.3b4"
+version = "1.0.3b5"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on octop-harness"
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,8 +21,8 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "octop-harness[all]>=1.0.8",
-    "octop-memory>=1.0.3",
+    "octop-harness[all]>=1.0.9",
+    "octop-memory>=1.0.4",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.3",
     "cryptography>=41",
@@ -30,6 +30,10 @@ dependencies = [
     "edge-tts>=6.1",
     "segno>=1.6",
     "websockets>=13.0",
+    # websockets raises "python-socks is required to use a SOCKS proxy" when
+    # the host has a SOCKS proxy env and this package is absent — the browser
+    # host's CDP connection then fails to attach.
+    "python-socks>=2.4",
     "acme>=5.6.0",
     "josepy>=2.2.0",
     "boto3>=1.40.61",
@@ -81,6 +85,7 @@ knowledge-ocr = [
     "rapidocr>=3.4,<4",
     "onnxruntime>=1.17",
     "pymupdf>=1.24",
+    "shapely>=2.2.0",
 ]
 
 [dependency-groups]

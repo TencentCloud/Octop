@@ -31,7 +31,7 @@ from octop.infra.gateway.process.message_keys import (
     build_composer_context,
 )
 from octop.infra.gateway.process.usage_record import extract_usage_from_chunk
-from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.gateway.threads import ThreadRegistry, thread_visible_to
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 __all__ = [
@@ -71,9 +71,14 @@ async def resolve_thread_id(
         row = thread_registry.get_thread(thread_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
-        if row.user_id != user_id:
+        if not thread_visible_to(row, user_id):
             raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
-        await thread_registry.rebind(session_key=sk, thread_id=thread_id, agent_id=agent_id)
+        await thread_registry.rebind(
+            session_key=sk,
+            thread_id=thread_id,
+            agent_id=agent_id,
+            acting_user_id=user_id,
+        )
         return thread_id, sk
     bound = thread_registry.get_bound_thread_id(sk)
     if bound:

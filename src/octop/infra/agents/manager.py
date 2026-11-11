@@ -224,6 +224,8 @@ def _memory_aux_model_settings(
 def memory_extract_supported_options() -> list[str]:
     """Call options supported by the installed harness, for the settings UI."""
     fields = {
+        "memory_capture_enabled": "memory_capture_enabled",
+        "memory_recall_inject_enabled": "memory_recall_inject_enabled",
         "extract_max_tokens": "memory_extract_max_tokens",
         "extract_light_timeout_s": "memory_aux_light_timeout_s",
         "extract_heavy_timeout_s": "memory_aux_heavy_timeout_s",
@@ -252,8 +254,9 @@ def _memory_extract_settings(
     if not isinstance(mem, dict):
         return {}
     out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
-    if "memory_enabled" in supported_fields and isinstance(mem.get("memory_enabled"), bool):
-        out["memory_enabled"] = mem["memory_enabled"]
+    for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
+        if key in supported_fields and isinstance(mem.get(key), bool):
+            out[key] = mem[key]
     if "memory_extract_on_session_end" in supported_fields and isinstance(
         mem.get("extract_on_session_end"), bool
     ):
@@ -559,6 +562,7 @@ class AgentManager:
         self._reclaim_pending: set[str] = set()
         self._reclaim_holds: dict[str, asyncio.Event] = {}
         self._reclaim_task: asyncio.Task[None] | None = None
+        self._reclaim_sweep_task: asyncio.Task[None] | None = None
         self._reclaim_wake: asyncio.Event | None = None
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
@@ -718,7 +722,23 @@ class AgentManager:
                 )
 
     async def shutdown(self) -> None:
+        # The idle sweep reads the control-plane DB on a worker thread. Wait for
+        # that read to finish before the caller closes the shared connection.
+        sweep = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep is not None and not sweep.done():
+            try:
+                await sweep
+            except Exception:
+                logger.warning("idle reclaim sweep failed during shutdown", exc_info=True)
         self._reclaim_pending.clear()
+        # The idle sweep runs list_all on a worker thread. Cancelling that
+        # task does not stop the thread, so wait until the scan returns before
+        # the caller closes the control-plane connection.
+        sweep_task = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep_task is not None and not sweep_task.done():
+            await sweep_task
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
         if reclaim_task is not None and not reclaim_task.done():
@@ -828,6 +848,7 @@ class AgentManager:
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_workspace_dir_outside_user_root,
             )
 
             if spec.user_id is not None:
@@ -848,6 +869,11 @@ class AgentManager:
                     self._repos.user_policy_repo,
                     spec.user_id,
                     config.get("backend"),
+                )
+                raise_if_workspace_dir_outside_user_root(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
                 )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
                 self._assert_model_ref(spec.user_id, spec.default_model)
@@ -1038,10 +1064,10 @@ class AgentManager:
         layout, so a value a client invents is dropped.
 
         ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
-        updates need it — rewriting the directory silently relocates the agent's workspace, so a
-        scoped or container agent would resolve to the classic layout and lose sight of its
-        skills, sessions and generated files. Internal persists do not: the resolver and the
-        create path must still be able to write it.
+        updates need it — rewriting the directory relocates the agent's workspace, so a scoped or
+        container agent would resolve to the classic layout and lose sight of its skills, sessions
+        and generated files. The directory is chosen at create and stays fixed. Internal persists
+        do not pin: the resolver and the create path must still be able to write it.
         """
         out = dict(cfg)
         row = self._repos.agent_repo.get(agent_id)
@@ -1766,11 +1792,15 @@ class AgentManager:
     def schedule_idle_reclaim_sweep(self) -> None:
         """Queue loaded stores whose freelist is already large enough to compact."""
         try:
-            asyncio.get_running_loop().create_task(
-                self._sweep_bloated_stores(), name="store-reclaim-sweep"
-            )
+            loop = asyncio.get_running_loop()
         except RuntimeError:
             return
+        current = self._reclaim_sweep_task
+        if current is not None and not current.done():
+            return
+        self._reclaim_sweep_task = loop.create_task(
+            self._sweep_bloated_stores(), name="store-reclaim-sweep"
+        )
 
     async def compact_agent_database(self, agent_id: str, *, wait_s: float = 60) -> bool:
         """Rebuild the database now. False means it was deferred until idle."""
@@ -1824,9 +1854,14 @@ class AgentManager:
         self._reclaim_task = loop.create_task(self._reclaim_pending_loop(), name="store-reclaim")
 
     async def _sweep_bloated_stores(self) -> None:
-        queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
-        if queued:
-            self._ensure_reclaim_task()
+        try:
+            queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
+            if queued:
+                self._ensure_reclaim_task()
+        finally:
+            current = asyncio.current_task()
+            if self._reclaim_sweep_task is current:
+                self._reclaim_sweep_task = None
 
     def _queue_bloated_sqlite_stores(self) -> int:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
@@ -2989,7 +3024,11 @@ class AgentManager:
         root_dir = str(spec.get("root_dir") or "").strip()
         if not root_dir:
             return False
-        if root_dir == "/":
+        from octop.infra.agents.workspace.dir import is_explicit_host_root  # noqa: PLC0415
+
+        # ``/`` on POSIX, or a drive root (``C:/``) on Windows. Both can see the
+        # host path of a global skill package.
+        if is_explicit_host_root(root_dir):
             return True
         if workspace_dir is None:
             return False

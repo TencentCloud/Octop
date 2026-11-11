@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.db.repos.knowledge import KnowledgeBaseRow, KnowledgeDocumentRow
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge.blobs import KnowledgeBlobs
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.ocr import (
@@ -475,6 +476,51 @@ class KnowledgeService:
         if self._repo.get_document_by_path(kb_id, new_path) is not None:
             raise ValueError("a knowledge document with this name already exists")
         result = self._repo.rename_document(kb_id, doc_id, cleaned)
+        if result is None:
+            raise LookupError("knowledge document not found")
+        return cast(KnowledgeDocumentRow, result)
+
+    def move_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        target_folder: str,
+        actor_user_id: int,
+        is_admin: bool = False,
+    ) -> KnowledgeDocumentRow:
+        """Move a document (file or folder) into another folder of the same base.
+
+        ``target_folder`` is a folder path; ``""`` is the root. Moving a folder
+        takes its whole subtree. The index is untouched: chunks belong to the
+        document id, not to its path.
+        """
+        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        try:
+            target = normalize_kb_path(target_folder)
+        except ValueError as exc:
+            raise LookupError("knowledge folder not found") from exc
+        if target:
+            folder = self._repo.get_document_by_path(kb_id, target)
+            if folder is None or not folder.is_dir:
+                raise LookupError("knowledge folder not found")
+        if document.is_dir and (target == document.path or target.startswith(f"{document.path}/")):
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_INVALID,
+                "a folder cannot be moved into itself or one of its subfolders",
+            )
+        if target == path_parent(document.path):
+            return cast(KnowledgeDocumentRow, document)
+        new_path = normalize_kb_path(f"{target}/{path_basename(document.path)}")
+        if self._repo.get_document_by_path(kb_id, new_path) is not None:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN,
+                "the target folder already has an item with this name",
+            )
+        result = self._repo.move_document(kb_id, doc_id, target)
         if result is None:
             raise LookupError("knowledge document not found")
         return cast(KnowledgeDocumentRow, result)

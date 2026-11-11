@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import type { TFunction } from "i18next";
 import {
   Button,
   Drawer,
@@ -779,6 +780,36 @@ function AutoReconnectControl({
   );
 }
 
+function formatBridgeLastError(error: string, t: TFunction): string {
+  const prefix = "octop:";
+  if (error.startsWith(prefix)) {
+    const body = error.slice(prefix.length);
+    const queryAt = body.indexOf("?");
+    const key = queryAt === -1 ? body : body.slice(0, queryAt);
+    const params: Record<string, string | number> = {};
+    if (queryAt !== -1) {
+      const search = new URLSearchParams(body.slice(queryAt + 1));
+      search.forEach((value, name) => {
+        params[name] =
+          name === "limit" && /^\d+$/.test(value) ? Number(value) : value;
+      });
+    }
+    const translated = t(key, { ...params, defaultValue: "" });
+    if (translated && translated !== key) return String(translated);
+  }
+  const lower = error.toLowerCase();
+  if (lower.includes("owned by another user")) {
+    return t("apiErrors.BRIDGE_PEER_CONNECTION_OWNED");
+  }
+  if (lower.includes("permission required")) {
+    return t("apiErrors.BRIDGE_PEER_FORBIDDEN");
+  }
+  if (lower.includes("self connect")) {
+    return t("apiErrors.BRIDGE_SELF_CONNECT");
+  }
+  return error;
+}
+
 function BridgeConnectionCard({
   row,
   agents,
@@ -886,7 +917,9 @@ function BridgeConnectionCard({
           </p>
         ) : null}
         {row.last_error ? (
-          <p className={styles.metaError}>{row.last_error}</p>
+          <p className={styles.metaError}>
+            {formatBridgeLastError(row.last_error, t)}
+          </p>
         ) : null}
       </div>
 

@@ -11,6 +11,8 @@ from octop_memory import Memory
 
 @pytest.mark.asyncio
 async def test_storage_inspection_and_background_job(env_with_main_agent, monkeypatch, tmp_path):
+    monkeypatch.setenv("OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE", "first")
+    monkeypatch.setenv("OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS", "7")
     client, srv, auth, aid = env_with_main_agent
     registry = srv.app_runtime.agent_registry
     memory = Memory("test_storage", backend_config={"db_path": str(tmp_path / "store.sqlite")})
@@ -31,6 +33,8 @@ async def test_storage_inspection_and_background_job(env_with_main_agent, monkey
         assert check.json()["elapsed_ms"] >= 0
         assert check.json()["memory_counts"][0]["table"] == "raw_events"
         assert check.json()["checkpoint_counts"][0]["rows"] == 1
+        assert check.json()["checkpoint_backup_before_prune"] == "first"
+        assert check.json()["checkpoint_backup_keep_days"] == 7
         for body in ({}, {"confirmed": False}):
             denied = await client.post(base + "/maintenance", headers=auth, json=body)
             assert denied.status_code == 422

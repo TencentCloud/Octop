@@ -269,6 +269,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
+
+  &:is(button) {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+  }
 }
 
 .sessionRowUnread {
@@ -309,8 +315,16 @@
   background: color-mix(in srgb, var(--fn-text-primary) 6%, transparent);
 }
 
-.sessionRowTitle {
+.sessionRowTitleGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex: 1;
+  min-width: 0;
+}
+
+.sessionRowTitle {
+  flex: 0 1 auto;
   min-width: 0;
   font-size: 13px;
   font-weight: 400;

@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
 import styles from "../index.module.less";
+import { isolateHtmlPreview } from "./htmlPreviewDoc";
 
 /**
  * Rich preview kinds — documents that benefit from rendered view.
@@ -122,7 +123,7 @@ export default function FilePreview({
         <iframe
           title="HTML preview"
           className={styles.htmlFrame}
-          srcDoc={content}
+          srcDoc={isolateHtmlPreview(content)}
           sandbox="allow-scripts allow-popups allow-forms"
         />
       );

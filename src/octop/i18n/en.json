@@ -400,6 +400,7 @@
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
+    "BACKUP_CLIENT_MISSING": "PostgreSQL backup needs {tool}, which is not installed. Install the PostgreSQL client tools where Octop runs, then try again.",
     "FORBIDDEN": "Permission denied.",
     "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
@@ -420,6 +421,7 @@
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
+    "THREAD_CONTRIBUTE_REQUIRES_SHARE": "Only a shared expert can share a conversation with other users.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
@@ -459,6 +461,8 @@
     "BRIDGE_CONNECTION_LIMIT": "At most {limit} cloud collab connections per user. Delete one to add another.",
     "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
+    "BRIDGE_PEER_FORBIDDEN": "The account you signed in with on the peer does not have Cloud collab permission. This is not limited to admins — grant that account Cloud collab on the peer, or sign in with an account that already has it.",
+    "BRIDGE_PEER_CONNECTION_OWNED": "The peer already registered this cloud collab link to another user, so this account cannot take it over. Ask that user to delete it, or sign in with the same peer account. If the address actually points at this Octop, use the peer's real address instead.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
     "CRON_ALREADY_RUNNING": "This task is already running on another instance.",
     "SLASH_UNKNOWN": "Unknown slash command.",
@@ -513,6 +517,8 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
+    "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -1146,5 +1152,56 @@
     "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
     "invalid_id": "A valid {field} is required.",
     "unknown_tool": "Unknown RAGFlow tool: {name}"
+  },
+  "migrate": {
+    "not_found": "No {source} installation was found. Pass its directory with --from.",
+    "nothing": "Nothing to migrate was found in {home}.",
+    "title": "{source} ({home}) → expert {agent}",
+    "column": {
+      "section": "Section",
+      "item": "Item",
+      "status": "Status",
+      "note": "Note"
+    },
+    "section": {
+      "models": "Models",
+      "files": "Workspace files",
+      "skills": "Skills",
+      "mcp": "MCP servers",
+      "channels": "Channels"
+    },
+    "status": {
+      "migrated": "migrated",
+      "would_migrate": "would migrate",
+      "skipped": "skipped",
+      "failed": "failed"
+    },
+    "reason": {
+      "exists": "already exists",
+      "no_api_key": "no API key found; add it in Model settings",
+      "default_model": "the default model",
+      "default_model_set": "the default model is already {detail}",
+      "channel_disabled": "left disabled; stop the old bot, then enable it",
+      "invalid_name": "not a valid skill name",
+      "too_large": "larger than 20 MB",
+      "name_reserved": "the name is used by a built-in connector",
+      "invalid": "{detail}"
+    },
+    "note": {
+      "config_missing": "Config file not found: {path}",
+      "config_unreadable": "Could not read {path}: {error}",
+      "include_missing": "Included config file not found: {path}",
+      "provider_unsupported": "Provider {name} ({api}) has no Octop equivalent and was not migrated.",
+      "provider_key_missing": "No API key was found for provider {name}; add the provider in Model settings.",
+      "mcp_sse_unsupported": "MCP server {name} uses the SSE transport, which custom MCP does not support.",
+      "channel_unsupported": "Channel {name} is not available in Octop.",
+      "channel_credentials_missing": "Channel account {name} has no readable credentials.",
+      "extra_agents": "Other agents are not migrated ({count} found); only the default workspace is read.",
+      "cron_not_migrated": "Scheduled jobs are not migrated ({count} found); recreate them with `octop cron create`."
+    },
+    "summary": "{migrated} migrated, {skipped} skipped, {failed} failed.",
+    "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
+    "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
+    "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
   }
 }
