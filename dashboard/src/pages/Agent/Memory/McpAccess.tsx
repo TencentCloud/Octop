@@ -632,29 +632,6 @@ export default function McpAccess() {
         </Button>
       </div>
 
-      <Alert
-        type="info"
-        showIcon
-        message={t("memory.mcp.installTitle", "客户端配置")}
-        description={
-          <Space direction="vertical" size={6} style={{ width: "100%" }}>
-            <Typography.Text type="secondary">
-              {t(
-                "memory.mcp.installHint",
-                "在客户端里加一个 Streamable HTTP MCP 服务：URL 指向下面的地址，Header 带 Authorization: Bearer <你的 token>。自动召回 / 一键安装的客户端工具已拆到 octop-memory harness 插件。",
-              )}
-            </Typography.Text>
-            <Typography.Paragraph
-              code
-              copyable={{ text: `${origin}/mcp/memory/` }}
-              style={{ marginBottom: 0 }}
-            >
-              {`${origin}/mcp/memory/`}
-            </Typography.Paragraph>
-          </Space>
-        }
-      />
-
       {loadError ? (
         <Alert
           type="error"
