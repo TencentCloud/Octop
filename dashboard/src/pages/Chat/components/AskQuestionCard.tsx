@@ -19,6 +19,11 @@ export interface AskQuestionCardProps {
   onSubmit?: (message: string) => void;
   /** Close the card without answering, ending the pause. */
   onDismiss?: () => void;
+  /**
+   * Docked above the composer. Only the options scroll, so the action row
+   * stays on screen.
+   */
+  docked?: boolean;
 }
 
 /** What the user picked for one question. */
@@ -151,6 +156,7 @@ function AskQuestionCard({
   status,
   onSubmit,
   onDismiss,
+  docked = false,
 }: AskQuestionCardProps) {
   const { t } = useTranslation();
   const interactive = status === "pending" && Boolean(onSubmit);
@@ -231,7 +237,7 @@ function AskQuestionCard({
   };
 
   return (
-    <div className={styles.card}>
+    <div className={cx(styles.card, docked && styles.cardDocked)}>
       <div className={styles.titleRow}>
         <span className={styles.title}>{t("chat.ask.title")}</span>
         <span className={styles.titleActions}>

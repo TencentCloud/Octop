@@ -265,6 +265,132 @@ async def test_admin_can_set_resource_policy(env, tmp_path, monkeypatch):
     assert r.json()["token_quota"] is None
 
 
+async def test_create_expert_without_backend_uses_workspace_root(env, tmp_path, monkeypatch):
+    """Omitting backend must still jail the new expert under workspace_root_dir."""
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    from pathlib import Path
+
+    from tests.support.auth import TEST_PASSWORD, create_user
+
+    c, _srv, auth = env
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    user_auth = await create_user(c, auth, username="jailed_creator", password=TEST_PASSWORD)
+    listed = (await c.get("/api/users", headers=auth)).json()
+    uid = next(u["id"] for u in listed if u["username"] == "jailed_creator")
+    patched = await c.patch(
+        f"/api/users/{uid}",
+        headers=auth,
+        json={"workspace_root_dir": jail.as_posix()},
+    )
+    assert patched.status_code == 200, patched.text
+    allowed = jail.resolve().as_posix()
+
+    async def _assert_jailed(agent_id: str) -> None:
+        detail = (await c.get(f"/api/agents/{agent_id}", headers=user_auth)).json()
+        backend = detail["config"]["backend"]
+        assert backend["type"] == "local_shell"
+        assert backend["root_dir"] == allowed
+        assert backend["virtual_mode"] is True
+        assert detail["config"]["workspace_dir"] == f"/.octop/workspaces/{agent_id}"
+        assert (Path(allowed) / ".octop" / "workspaces" / agent_id).is_dir()
+
+    created = await c.post("/api/agents", headers=user_auth, json={"name": "plain"})
+    assert created.status_code == 201, created.text
+    await _assert_jailed(created.json()["agent_id"])
+
+    from_expert = await c.post(
+        "/api/agents/from-expert/default",
+        headers=user_auth,
+        json={"name": "from-template"},
+    )
+    assert from_expert.status_code == 201, from_expert.text
+    await _assert_jailed(from_expert.json()["agent_id"])
+
+    filesystem = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "filesystem-root",
+            "config": {
+                "backend": {
+                    "type": "filesystem",
+                    "virtual_mode": True,
+                    "root_dir": "/",
+                }
+            },
+        },
+    )
+    assert filesystem.status_code == 201, filesystem.text
+    fs_id = filesystem.json()["agent_id"]
+    fs_detail = (await c.get(f"/api/agents/{fs_id}", headers=user_auth)).json()
+    assert fs_detail["config"]["backend"]["type"] == "filesystem"
+    assert fs_detail["config"]["backend"]["root_dir"] == allowed
+    assert fs_detail["config"]["workspace_dir"] == f"/.octop/workspaces/{fs_id}"
+
+    nested = jail / "proj"
+    nested.mkdir()
+    composite = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "composite-root",
+            "config": {
+                "backend": {
+                    "type": "composite",
+                    "default": {
+                        "type": "local_shell",
+                        "virtual_mode": True,
+                        "root_dir": "/",
+                    },
+                    "routes": {
+                        "/data": {"type": "filesystem", "virtual_mode": True},
+                        "/keep": {
+                            "type": "filesystem",
+                            "virtual_mode": True,
+                            "root_dir": nested.as_posix(),
+                        },
+                        "/remote": {"type": "docker"},
+                    },
+                }
+            },
+        },
+    )
+    assert composite.status_code == 201, composite.text
+    body = (await c.get(f"/api/agents/{composite.json()['agent_id']}", headers=user_auth)).json()
+    backend = body["config"]["backend"]
+    assert backend["default"]["root_dir"] == allowed
+    assert backend["routes"]["/data"]["type"] == "filesystem"
+    assert backend["routes"]["/data"]["root_dir"] == allowed
+    assert backend["routes"]["/keep"]["root_dir"] == nested.resolve().as_posix()
+    assert backend["routes"]["/remote"] == {"type": "docker"}
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    denied = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "composite-outside",
+            "config": {
+                "backend": {
+                    "type": "composite",
+                    "default": {"type": "local_shell", "root_dir": allowed, "virtual_mode": True},
+                    "routes": {
+                        "/nope": {
+                            "type": "filesystem",
+                            "root_dir": outside.as_posix(),
+                            "virtual_mode": True,
+                        }
+                    },
+                }
+            },
+        },
+    )
+    assert denied.status_code == 400, denied.text
+    assert denied.json()["error"]["code"] == "WORKSPACE_ROOT_RESTRICTED"
+
+
 async def test_batch_enable_disable_delete_and_token_quota(env):
     c, _srv, auth = env
     me = (await c.get("/api/auth/me", headers=auth)).json()

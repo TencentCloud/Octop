@@ -224,6 +224,8 @@ def _memory_aux_model_settings(
 def memory_extract_supported_options() -> list[str]:
     """Call options supported by the installed harness, for the settings UI."""
     fields = {
+        "memory_capture_enabled": "memory_capture_enabled",
+        "memory_recall_inject_enabled": "memory_recall_inject_enabled",
         "extract_max_tokens": "memory_extract_max_tokens",
         "extract_light_timeout_s": "memory_aux_light_timeout_s",
         "extract_heavy_timeout_s": "memory_aux_heavy_timeout_s",
@@ -252,8 +254,9 @@ def _memory_extract_settings(
     if not isinstance(mem, dict):
         return {}
     out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
-    if "memory_enabled" in supported_fields and isinstance(mem.get("memory_enabled"), bool):
-        out["memory_enabled"] = mem["memory_enabled"]
+    for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
+        if key in supported_fields and isinstance(mem.get(key), bool):
+            out[key] = mem[key]
     if "memory_extract_on_session_end" in supported_fields and isinstance(
         mem.get("extract_on_session_end"), bool
     ):
@@ -445,6 +448,46 @@ def _sanitize_bound_mcp_tools(agent: Any) -> None:
         agent.replace_mcp_tools(tools)
 
 
+def _bind_custom_mcp_tools(
+    agent: Any,
+    name: str,
+    tools: list[Any],
+    *,
+    user_id: int | None,
+) -> None:
+    """Attach custom MCP tools, replacing that server when another user owns the slot.
+
+    A shared expert's harness has one short name. The owner's tools and a
+    viewer's same-named server both land on ``{name}_*``, and ``append`` keeps
+    the first set. Record who was bound so the next turn can swap.
+    """
+    prefix = f"{name}_"
+    current_names: Any = getattr(agent, "_mcp_tool_name_set", frozenset())
+    occupied = isinstance(current_names, frozenset) and any(
+        isinstance(tool_name, str) and tool_name.startswith(prefix) for tool_name in current_names
+    )
+    if occupied:
+        existing = getattr(agent, "_mcp_tools", None)
+        kept = (
+            [
+                tool
+                for tool in existing
+                if not str(getattr(tool, "name", "") or "").startswith(prefix)
+            ]
+            if isinstance(existing, list)
+            else []
+        )
+        agent.replace_mcp_tools([*kept, *tools])
+    else:
+        agent.append_mcp_tools(tools)
+    if user_id is None:
+        return
+    book = getattr(agent, "_mcp_attached_user", None)
+    attached: dict[str, int] = book if isinstance(book, dict) else {}
+    attached[name] = user_id
+    agent._mcp_attached_user = attached
+
+
 # ---------------------------------------------------------------------------
 # AgentManager
 # ---------------------------------------------------------------------------
@@ -519,6 +562,7 @@ class AgentManager:
         self._reclaim_pending: set[str] = set()
         self._reclaim_holds: dict[str, asyncio.Event] = {}
         self._reclaim_task: asyncio.Task[None] | None = None
+        self._reclaim_sweep_task: asyncio.Task[None] | None = None
         self._reclaim_wake: asyncio.Event | None = None
         self._reload_dirty: set[str] = set()
         self._reload_worker_running: dict[str, bool] = {}
@@ -545,7 +589,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
-        self._tool_guard_rules = ToolGuardRulesStore(paths=paths)
+        self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
@@ -584,6 +628,9 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._tool_guard_rules = ToolGuardRulesStore(
+            paths=self._paths, settings=repos.settings_repo
         )
         self._providers = ProviderStore(provider_repo=repos.provider_repo)
         self._connector_svc = ConnectorService(
@@ -675,7 +722,23 @@ class AgentManager:
                 )
 
     async def shutdown(self) -> None:
+        # The idle sweep reads the control-plane DB on a worker thread. Wait for
+        # that read to finish before the caller closes the shared connection.
+        sweep = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep is not None and not sweep.done():
+            try:
+                await sweep
+            except Exception:
+                logger.warning("idle reclaim sweep failed during shutdown", exc_info=True)
         self._reclaim_pending.clear()
+        # The idle sweep runs list_all on a worker thread. Cancelling that
+        # task does not stop the thread, so wait until the scan returns before
+        # the caller closes the control-plane connection.
+        sweep_task = self._reclaim_sweep_task
+        self._reclaim_sweep_task = None
+        if sweep_task is not None and not sweep_task.done():
+            await sweep_task
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
         if reclaim_task is not None and not reclaim_task.done():
@@ -782,8 +845,10 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_workspace_dir_outside_user_root,
             )
 
             if spec.user_id is not None:
@@ -794,10 +859,21 @@ class AgentManager:
                         self._repos.agent_repo,
                         spec.user_id,
                     )
+                apply_workspace_root_to_config(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
+                    fill_missing=True,
+                )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     spec.user_id,
                     config.get("backend"),
+                )
+                raise_if_workspace_dir_outside_user_root(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
                 )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
                 self._assert_model_ref(spec.user_id, spec.default_model)
@@ -988,10 +1064,10 @@ class AgentManager:
         layout, so a value a client invents is dropped.
 
         ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
-        updates need it — rewriting the directory silently relocates the agent's workspace, so a
-        scoped or container agent would resolve to the classic layout and lose sight of its
-        skills, sessions and generated files. Internal persists do not: the resolver and the
-        create path must still be able to write it.
+        updates need it — rewriting the directory relocates the agent's workspace, so a scoped or
+        container agent would resolve to the classic layout and lose sight of its skills, sessions
+        and generated files. The directory is chosen at create and stays fixed. Internal persists
+        do not pin: the resolver and the create path must still be able to write it.
         """
         out = dict(cfg)
         row = self._repos.agent_repo.get(agent_id)
@@ -1034,12 +1110,32 @@ class AgentManager:
             )
             owner_row = self._repos.agent_repo.get(agent_id)
             if owner_row is not None and owner_row.user_id is not None:
-                from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+                from octop.infra.users.resource_policy import (
+                    POLICY_WORKSPACE_ROOT_DIR,
+                    apply_workspace_root_to_config,
+                    effective_workspace_root_dir,
+                    persisted_workspace_within_root,
+                    raise_if_backend_outside_user_root,
+                )
 
+                allowed_root = effective_workspace_root_dir(
+                    self._repos.user_policy_repo.get(owner_row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+                )
+                workspace_in_jail = persisted_workspace_within_root(
+                    parsed_profile_cfg, allowed_root
+                )
+                if workspace_in_jail:
+                    apply_workspace_root_to_config(
+                        self._repos.user_policy_repo,
+                        owner_row.user_id,
+                        parsed_profile_cfg,
+                        fill_missing=False,
+                    )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                    reject_host_root=bool(allowed_root) and not workspace_in_jail,
                 )
                 self._assert_named_storage_backends(
                     owner_row.user_id,
@@ -1696,11 +1792,15 @@ class AgentManager:
     def schedule_idle_reclaim_sweep(self) -> None:
         """Queue loaded stores whose freelist is already large enough to compact."""
         try:
-            asyncio.get_running_loop().create_task(
-                self._sweep_bloated_stores(), name="store-reclaim-sweep"
-            )
+            loop = asyncio.get_running_loop()
         except RuntimeError:
             return
+        current = self._reclaim_sweep_task
+        if current is not None and not current.done():
+            return
+        self._reclaim_sweep_task = loop.create_task(
+            self._sweep_bloated_stores(), name="store-reclaim-sweep"
+        )
 
     async def compact_agent_database(self, agent_id: str, *, wait_s: float = 60) -> bool:
         """Rebuild the database now. False means it was deferred until idle."""
@@ -1754,9 +1854,14 @@ class AgentManager:
         self._reclaim_task = loop.create_task(self._reclaim_pending_loop(), name="store-reclaim")
 
     async def _sweep_bloated_stores(self) -> None:
-        queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
-        if queued:
-            self._ensure_reclaim_task()
+        try:
+            queued = await asyncio.to_thread(self._queue_bloated_sqlite_stores)
+            if queued:
+                self._ensure_reclaim_task()
+        finally:
+            current = asyncio.current_task()
+            if self._reclaim_sweep_task is current:
+                self._reclaim_sweep_task = None
 
     def _queue_bloated_sqlite_stores(self) -> int:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
@@ -2325,6 +2430,7 @@ class AgentManager:
         *,
         apply_defaults: bool | None = None,
         extra_defaults: list[str] | None = None,
+        agent_owner_id: int | None = None,
     ) -> list[str] | None:
         """Resolve turn MCP servers vs default_open plus optional expert defaults."""
         return self._connector_svc.merge_turn_mcp_servers(
@@ -2332,6 +2438,48 @@ class AgentManager:
             explicit,
             apply_defaults=apply_defaults,
             extra_defaults=extra_defaults,
+            agent_owner_id=agent_owner_id,
+        )
+
+    def present_mcp_names_for_viewer(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Catalog names a non-owner selects for this expert's stored MCP picks."""
+        return self._connector_svc.present_mcp_names_for_viewer(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            names=names,
+        )
+
+    def align_mcp_names_to_harness(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Viewer catalog names → names registered on the expert owner's harness."""
+        return self._connector_svc.align_mcp_names_to_harness(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            names=names,
+        )
+
+    def mcp_names_for_chips(
+        self,
+        owner_user_id: int,
+        viewer_user_id: int,
+        requested: list[str],
+        harness_names: list[str],
+    ) -> list[str]:
+        """History-chip names for the MCP servers actually attached to the turn."""
+        return self._connector_svc.mcp_names_for_chips(
+            owner_user_id=owner_user_id,
+            viewer_user_id=viewer_user_id,
+            requested=requested,
+            harness_names=harness_names,
         )
 
     def default_mcp_servers(self, agent_id: str) -> list[str]:
@@ -2375,9 +2523,51 @@ class AgentManager:
         uid = self._connector_uid_for(row, connector_user_id=connector_user_id) if row else None
         if uid is None and connector_user_id is not None:
             uid = connector_user_id
+        owner_raw = getattr(row, "user_id", None) if row is not None else None
+        owner_id = owner_raw if isinstance(owner_raw, int) else None
+        requested = list(names)
+        aliases: dict[str, str] = {}
+        if owner_id is not None and uid is not None and owner_id != uid:
+            aliases = self._connector_svc.shared_custom_harness_aliases(owner_id)
+            names = []
+            for name in requested:
+                mapped = aliases.get(name, name)
+                if mapped not in names:
+                    names.append(mapped)
+
+        custom_configs: dict[str, Any] = {}
+        load_user: dict[str, int] = {}
+        if uid is not None:
+            custom_configs = self._connector_svc.custom_harness_configs(uid)
+            load_user = dict.fromkeys(custom_configs, uid)
+        if aliases and uid is not None and owner_id is not None:
+            # Load the owner's spec when the turn asked for the shared server.
+            # A viewer's own server with the same short name stays theirs unless
+            # the collision-safe name was selected too.
+            viewer_own = set(self._connector_svc.get_custom_servers(uid))
+            owner_backed = {
+                short
+                for long_name, short in aliases.items()
+                if long_name in requested or (short in requested and short not in viewer_own)
+            }
+            if owner_backed:
+                owner_configs = self._connector_svc.custom_harness_configs(owner_id)
+                for name in owner_backed:
+                    spec = owner_configs.get(name)
+                    if isinstance(spec, dict):
+                        custom_configs[name] = spec
+                        load_user[name] = owner_id
 
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
-        missing_tools = [n for n in names if not any(t.startswith(f"{n}_") for t in tool_set)]
+        attached_raw = getattr(agent, "_mcp_attached_user", None)
+        attached: dict[str, int] = attached_raw if isinstance(attached_raw, dict) else {}
+        missing_tools: list[str] = []
+        for name in names:
+            has_tools = any(tool_name.startswith(f"{name}_") for tool_name in tool_set)
+            expected = load_user.get(name)
+            if has_tools and (expected is None or attached.get(name) == expected):
+                continue
+            missing_tools.append(name)
         logger.info(
             "prepare_chat_mcp agent=%s connector_user_id=%s requested=%s tool_count=%d missing=%s",
             agent_id,
@@ -2395,10 +2585,6 @@ class AgentManager:
             )
             return []
 
-        custom_configs: dict[str, Any] = {}
-        if uid is not None:
-            custom_configs = self._connector_svc.custom_harness_configs(uid)
-
         custom_missing = [n for n in missing_tools if n in custom_configs]
         builtin_missing = [n for n in missing_tools if n not in custom_configs]
 
@@ -2408,7 +2594,7 @@ class AgentManager:
                 if not isinstance(spec, dict) or not spec.get("transport"):
                     continue
                 try:
-                    tools = await self._get_or_load_mcp_tools(uid, name, spec)
+                    tools = await self._get_or_load_mcp_tools(load_user.get(name, uid), name, spec)
                 except Exception:
                     logger.exception(
                         "prepare_chat_mcp agent=%s: failed loading custom MCP %s",
@@ -2418,7 +2604,13 @@ class AgentManager:
                     continue
                 if tools:
                     try:
-                        agent.append_mcp_tools(tools)
+                        bound_user = load_user.get(name, uid)
+                        _bind_custom_mcp_tools(
+                            agent,
+                            name,
+                            tools,
+                            user_id=bound_user if isinstance(bound_user, int) else None,
+                        )
                     except Exception:
                         logger.exception(
                             "prepare_chat_mcp agent=%s: append_mcp_tools failed for %s",
@@ -2508,7 +2700,9 @@ class AgentManager:
                     if not isinstance(spec, dict) or not spec.get("transport"):
                         continue
                     try:
-                        tools = await self._get_or_load_mcp_tools(uid, name, spec)
+                        tools = await self._get_or_load_mcp_tools(
+                            load_user.get(name, uid), name, spec
+                        )
                     except Exception:
                         logger.exception(
                             "prepare_chat_mcp agent=%s: re-inject custom MCP %s failed",
@@ -2517,7 +2711,13 @@ class AgentManager:
                         )
                         continue
                     if tools:
-                        agent.append_mcp_tools(tools)
+                        bound_user = load_user.get(name, uid)
+                        _bind_custom_mcp_tools(
+                            agent,
+                            name,
+                            tools,
+                            user_id=bound_user if isinstance(bound_user, int) else None,
+                        )
                         agent.config.mcp_server_configs[name] = dict(spec)
                     tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
 
@@ -2530,6 +2730,14 @@ class AgentManager:
                 agent_id,
                 still_missing,
             )
+        if aliases:
+            short_to_long = {short: long for long, short in aliases.items()}
+            still_missing = [
+                short_to_long[name]
+                if name in short_to_long and short_to_long[name] in requested
+                else name
+                for name in still_missing
+            ]
         return still_missing
 
     async def _attach_gateway_tools(
@@ -2816,7 +3024,11 @@ class AgentManager:
         root_dir = str(spec.get("root_dir") or "").strip()
         if not root_dir:
             return False
-        if root_dir == "/":
+        from octop.infra.agents.workspace.dir import is_explicit_host_root  # noqa: PLC0415
+
+        # ``/`` on POSIX, or a drive root (``C:/``) on Windows. Both can see the
+        # host path of a global skill package.
+        if is_explicit_host_root(root_dir):
             return True
         if workspace_dir is None:
             return False
@@ -3557,6 +3769,25 @@ class AgentManager:
         backend_spec = cfg.get("backend")
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        if row.user_id is not None:
+            from octop.infra.users.resource_policy import (
+                POLICY_WORKSPACE_ROOT_DIR,
+                clamp_backend_to_workspace_root,
+                effective_workspace_root_dir,
+                persisted_workspace_within_root,
+            )
+
+            allowed = effective_workspace_root_dir(
+                self._repos.user_policy_repo.get(row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+            )
+            # Only rewrite a root the files already live under. Creating an
+            # expert persists the snapped backend before the workspace exists;
+            # startup must not jail a host workspace that was seeded earlier.
+            if allowed and persisted_workspace_within_root(cfg, allowed):
+                try:
+                    backend_spec = clamp_backend_to_workspace_root(backend_spec, allowed)
+                except ValueError as exc:
+                    raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
         if backend_spec is None:
             return default_agent_backend_spec(workspace_dir)
         resolved = resolve_agent_backend_spec(
@@ -3608,11 +3839,11 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
+        from octop.infra.backend.resolve_backend import resolve_octop_backend  # noqa: PLC0415
 
         if cfg is None:
             cfg = self._agent_config_dict(row)
@@ -3634,7 +3865,7 @@ class AgentManager:
         from octop.infra.backend.compat import adapt_backend_protocol  # noqa: PLC0415
 
         return BackendWorkspace(
-            adapt_backend_protocol(resolve_backend(backend, workspace_dir=workspace_dir)),
+            adapt_backend_protocol(resolve_octop_backend(backend, workspace_dir=workspace_dir)),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -4318,6 +4549,7 @@ class AgentManager:
                     *(applied.middleware or []),
                 ],
             )
+        self._tool_guard_rules.ensure_seeded()
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),

@@ -9,6 +9,10 @@ function lastUserIndex(messages: ChatMessage[]): number {
 
 /** Local turn still on screen: from the latest user message through the end. */
 export function inFlightTail(current: ChatMessage[]): ChatMessage[] {
+  const pending = current.findIndex(
+    (message) => message.role === "user" && message.localPending,
+  );
+  if (pending >= 0) return current.slice(pending);
   const idx = lastUserIndex(current);
   if (idx < 0) return current;
   return current.slice(idx);
@@ -68,7 +72,7 @@ export function preferLocalTranscript(
   cached: ChatMessage[] | null | undefined,
 ): ChatMessage[] {
   if (!cached || cached.length === 0) return memory;
-  if (memory.length === 0) return cached;
+  if (memory.length === 0) return memory;
   const tail = inFlightTail(cached);
   const match = sameUserTurn(memory, tail);
   if (!match) return memory;
@@ -86,6 +90,13 @@ export function serverCaughtUp(
   cached: ChatMessage[],
 ): boolean {
   if (cached.length === 0) return true;
+  const loadedIds = new Set(loaded.map((message) => message.id));
+  if (
+    cached.some(
+      (message) => message.role === "user" && !loadedIds.has(message.id),
+    )
+  )
+    return false;
   const tail = inFlightTail(cached);
   const userIdx = lastUserIndex(tail);
   if (userIdx < 0) return false;
@@ -108,8 +119,27 @@ export function serverCaughtUp(
 /** Index of a user message in `tail` whose id the server page does not have. */
 function newSendIndex(tail: ChatMessage[], loadedIds: Set<string>): number {
   return tail.findIndex(
-    (message) => message.role === "user" && !loadedIds.has(message.id),
+    (message) =>
+      message.role === "user" &&
+      message.localPending &&
+      !loadedIds.has(message.id),
   );
+}
+
+/** Keep a paging boundary only when a persisted prefix overlaps this page. */
+export function retainedHistoryPrefix(
+  loaded: ChatMessage[],
+  current: ChatMessage[],
+): ChatMessage[] {
+  const ids = new Set(loaded.map((message) => message.id));
+  const overlap = current.findIndex((message) => ids.has(message.id));
+  if (overlap <= 0 || current[overlap].localPending) return [];
+  const prefix = current.slice(0, overlap);
+  return prefix.every(
+    (message) => !message.localPending && message.status !== "streaming",
+  )
+    ? prefix
+    : [];
 }
 
 /**
@@ -132,7 +162,6 @@ export function mergeHistoryWithLocalTail(
   isStreaming = false,
 ): ChatMessage[] {
   if (current.length === 0) return loaded;
-  if (loaded.length === 0) return current;
 
   const loadedIds = new Set(loaded.map((message) => message.id));
   const firstOverlap = current.findIndex((message) =>
@@ -140,9 +169,11 @@ export function mergeHistoryWithLocalTail(
   );
 
   if (firstOverlap < 0) {
-    // This page does not contain the optimistic user id, so the turn is not
-    // stored here yet.
-    return [...loaded, ...inFlightTail(current)];
+    // Missing from the latest page does not mean newer: it may be old cache
+    // outside the page. Only a send created in this running store can append.
+    const pending = newSendIndex(current, loadedIds);
+    if (pending < 0) return loaded;
+    return appendPendingTurn(loaded, current.slice(pending));
   }
 
   let lastOverlap = firstOverlap;
@@ -153,13 +184,35 @@ export function mergeHistoryWithLocalTail(
     }
   }
 
-  const olderPrefix = current.slice(0, firstOverlap);
+  const olderPrefix = retainedHistoryPrefix(loaded, current);
   const localTail = current.slice(lastOverlap + 1);
   const base = [...olderPrefix, ...loaded];
   if (localTail.length === 0) return base;
 
   const freshSend = newSendIndex(localTail, loadedIds);
-  if (freshSend >= 0) return [...base, ...localTail.slice(freshSend)];
+  if (freshSend >= 0) {
+    // The latest page can already contain this turn's answer while the
+    // optimistic question is still local. Only rows newer than that question
+    // move behind it. An older row the client has not seen yet stays put.
+    const question = localTail[freshSend];
+    const questionTs = question?.timestamp ?? 0;
+    const priorIds = new Set(
+      current
+        .slice(0, lastOverlap + 1 + freshSend)
+        .map((message) => message.id),
+    );
+    const beforeSend: ChatMessage[] = [];
+    const afterSend: ChatMessage[] = [];
+    for (const message of base) {
+      const ts = message.timestamp ?? 0;
+      if (!priorIds.has(message.id) && questionTs > 0 && ts > questionTs) {
+        afterSend.push(message);
+      } else {
+        beforeSend.push(message);
+      }
+    }
+    return [...beforeSend, ...localTail.slice(freshSend), ...afterSend];
+  }
 
   const overlapId = current[lastOverlap].id;
   const loadedOverlap = loaded.findIndex((message) => message.id === overlapId);
@@ -176,4 +229,34 @@ export function mergeHistoryWithLocalTail(
     return [...base.slice(0, base.length - serverAfter.length), ...localTail];
   }
   return base;
+}
+
+/**
+ * Place a not-yet-stored question after history, but keep a stored reply that
+ * is newer than that question behind it. A long tool turn can fill the latest
+ * page with the answer before the optimistic user id is in the page.
+ */
+function appendPendingTurn(
+  before: ChatMessage[],
+  pendingTurn: ChatMessage[],
+): ChatMessage[] {
+  const user = pendingTurn.find((message) => message.role === "user");
+  const userTs = user?.timestamp ?? 0;
+  if (!user || userTs <= 0) return [...before, ...pendingTurn];
+  // A page that already has an older timestamp is real history: a row with
+  // no timestamp stays with that history. A page with no older timestamp is
+  // the tail of this turn, including when the stored answer has no timestamp.
+  const hasOlderTimestamp = before.some((message) => {
+    const ts = message.timestamp ?? 0;
+    return ts > 0 && ts <= userTs;
+  });
+  const older: ChatMessage[] = [];
+  const newer: ChatMessage[] = [];
+  for (const message of before) {
+    const ts = message.timestamp ?? 0;
+    const afterQuestion = ts > userTs || (ts <= 0 && !hasOlderTimestamp);
+    if (afterQuestion) newer.push(message);
+    else older.push(message);
+  }
+  return [...older, ...pendingTurn, ...newer];
 }

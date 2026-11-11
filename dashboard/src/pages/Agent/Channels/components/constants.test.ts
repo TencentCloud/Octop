@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyQqChannelSaveConfig,
-  DEFAULT_CHANNEL_DISPLAY_CONFIG,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,

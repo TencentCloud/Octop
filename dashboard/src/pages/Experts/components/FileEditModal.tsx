@@ -1,14 +1,12 @@
 // dashboard/src/pages/Experts/components/FileEditModal.tsx
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Drawer, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
-import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
-
-const MonacoEditor = lazy(() => import("@/components/monaco"));
+import styles from "./FileEditModal.module.less";
 
 interface FileEditModalProps {
   open: boolean;
@@ -37,7 +35,6 @@ export default function FileEditModal({
   onLocalSave,
 }: FileEditModalProps) {
   const { t } = useTranslation();
-  const { isDark } = useTheme();
   const [value, setValue] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -163,39 +160,14 @@ export default function FileEditModal({
           <Spin />
         </div>
       ) : (
-        <Suspense
-          fallback={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: 1,
-                minHeight: 240,
-              }}
-            >
-              <Spin />
-            </div>
-          }
-        >
-          <div style={{ flex: 1, minHeight: 0, height: "100%" }}>
-            <MonacoEditor
-              height="100%"
-              loading={t("common.loading")}
-              language="markdown"
-              theme={isDark ? "vs-dark" : "light"}
-              value={value}
-              onChange={(v) => setValue(v ?? "")}
-              options={{
-                minimap: { enabled: false },
-                wordWrap: "on",
-                fontSize: 13,
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-              }}
-            />
-          </div>
-        </Suspense>
+        <textarea
+          className={styles.editor}
+          aria-label={title}
+          value={value}
+          spellCheck={false}
+          autoFocus
+          onChange={(event) => setValue(event.target.value)}
+        />
       )}
     </Drawer>
   );

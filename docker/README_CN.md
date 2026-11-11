@@ -44,7 +44,7 @@ docker run -d \
   octop:latest
 ```
 
-已发布标签：`ghcr.io/tencentcloud/octop:<version>` 和 `:latest` 是完整镜像（桌面、OCR、本地向量）。`:<version>-lite` 和 `:lite` 不含这些重依赖。本地构建精简版：`--build-arg OCTOP_IMAGE_VARIANT=lite`。
+已发布标签：`ghcr.io/tencentcloud/octop:<version>` 和 `:latest` 是精简版。`:<version>-full` 和 `:full` 才带桌面、OCR 和本地向量。本地构建默认是完整版，精简版要加 `--build-arg OCTOP_IMAGE_VARIANT=lite`。
 
 ### 国内镜像加速
 

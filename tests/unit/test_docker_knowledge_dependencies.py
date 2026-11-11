@@ -71,6 +71,21 @@ def test_variant_is_validated_and_compiler_is_purged_in_the_install_layer() -> N
         assert "apt-get purge" in install
 
 
+def test_project_sync_purges_compiler_only_when_it_is_installed() -> None:
+    """The source layer must not purge a compiler the dependency layer already removed.
+
+    Lite does not run apt-get update here. An unconditional purge then fails
+    with ``Unable to locate package build-essential``.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    text = (repo / "docker" / "Dockerfile").read_text(encoding="utf-8")
+    layers = [layer for layer in text.split("\nRUN ") if "uv sync " in layer]
+    assert len(layers) == 2
+    project = layers[1]
+    assert "dpkg -s build-essential" in project
+    assert "apt-get purge -y --auto-remove build-essential" in project
+
+
 def test_images_bake_desktop_without_starting_or_downloading_laya() -> None:
     """Both images install the desktop stack and leave Xvnc stopped."""
     repo = Path(__file__).resolve().parents[2]

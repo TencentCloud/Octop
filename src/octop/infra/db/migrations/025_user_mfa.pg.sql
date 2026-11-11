@@ -72,4 +72,23 @@ ALTER TABLE channels ADD COLUMN IF NOT EXISTS runtime_lease_token TEXT;
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS runtime_lease_until BIGINT;
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS runtime_generation INTEGER NOT NULL DEFAULT 0;
 
+ALTER TABLE threads ADD COLUMN IF NOT EXISTS contributed INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS profile_avatars (
+  owner_kind TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  content BYTEA NOT NULL,
+  updated_at BIGINT NOT NULL,
+  PRIMARY KEY (owner_kind, owner_id)
+);
+
+CREATE TABLE IF NOT EXISTS control_files (
+  namespace TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  content BYTEA NOT NULL,
+  PRIMARY KEY (namespace, owner_id, path)
+);
+
 UPDATE _schema_version SET version = 25;

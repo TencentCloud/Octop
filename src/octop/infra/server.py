@@ -23,6 +23,7 @@ from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
+from octop.infra.agents.providers.store import sync_provider_preset_models
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
 from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
@@ -290,7 +291,6 @@ class AppRuntime:
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
     trajectory_service: TrajectoryService | None = None
-    history_archive: Any | None = None
     bridge_manager: Any | None = None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
@@ -298,8 +298,6 @@ class AppRuntime:
 
         Used when the setup wizard hot-swaps the control-plane DB while empty.
         """
-        if self.history_archive is not None:
-            raise ValueError("Restart the server to rebind a database with versioned history")
         self.user_manager.replace_services(services)
         self.agent_registry.replace_persistence(services.repos, config)
         self.gateway.replace_repos(services.repos)
@@ -441,6 +439,12 @@ class OctopServer:
         self._started_at = int(time.time())
 
         if should_defer_control_plane_db(config, self.paths):
+            from octop.infra.history.retire_v2 import has_history_v2  # noqa: PLC0415
+
+            if has_history_v2(self.paths):
+                raise ValueError(
+                    "Cannot migrate history v2 without its original control-plane database"
+                )
             self._started = True
             self._emit_wizard_password(user_count=0)
             logger.info("control-plane database deferred until setup wizard chooses a backend")
@@ -491,6 +495,34 @@ class OctopServer:
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
 
+        added = await asyncio.get_running_loop().run_in_executor(
+            None, sync_provider_preset_models, self.services.provider_repo
+        )
+        if added:
+            logger.info("Added %d newly bundled provider models", added)
+
+        from octop.infra.agents.experts.snapshot_store import (  # noqa: PLC0415
+            adopt_local_snapshots,
+        )
+        from octop.infra.users.profile_avatar import adopt_local_avatars  # noqa: PLC0415
+
+        adopt_local_avatars(
+            self.services.profile_avatar_repo,
+            self.services.settings_repo,
+            self.paths,
+        )
+        adopt_local_snapshots(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+            self.paths.published_experts_dir,
+        )
+        self.plugin_manager.attach_control_plane(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+        )
+        self.plugin_manager.seed_bundled()
+        self.plugin_manager.load_installed(install_deps=True)
+
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             configure_browser_idle_timeout,
         )
@@ -505,36 +537,21 @@ class OctopServer:
             plugin_manager=self.plugin_manager,
         )
 
+        from octop.infra.history.retire_v2 import migrate_history_v2  # noqa: PLC0415
+
+        try:
+            await asyncio.to_thread(migrate_history_v2, self.paths, self.services.db, registry)
+        except Exception:
+            self.services.db.close()
+            self.services = None
+            raise
+
         from octop.infra.history.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
         from octop.infra.history.trajectory.service import TrajectoryService  # noqa: PLC0415
         from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
-        history_archive = None
-        trajectory_store = TrajectoryStore(self.services.trajectory_event_repo)
-        archive_path = self.paths.root / "history_v2.sqlite"
-        if (
-            config.history_v2_enabled
-            or archive_path.exists()
-            or archive_path.with_suffix(".required").exists()
-        ):
-            from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
-            from octop.infra.history.store import HistoryStore  # noqa: PLC0415
-            from octop.infra.history.trajectory_compat import (
-                ArchiveTrajectoryStore,  # noqa: PLC0415
-            )
-
-            identity = str(config.database.resolve_sqlite_path(self.paths.root).resolve())
-            if not config.database.is_sqlite:
-                raise ValueError("Versioned history currently requires the SQLite control plane")
-            history_archive = HistoryArchive(
-                HistoryStore(archive_path, identity=identity),
-                self.services.thread_message_repo,
-                self.services.trajectory_event_repo,
-                enabled=config.history_v2_enabled,
-            )
-            trajectory_store = ArchiveTrajectoryStore(history_archive)
         trajectory_service = TrajectoryService(
-            trajectory_store,
+            TrajectoryStore(self.services.trajectory_event_repo),
             TrajectoryLiveBus(),
         )
 
@@ -542,7 +559,6 @@ class OctopServer:
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
-            history_archive=history_archive,
             instance_id=self.instance_id,
         )
         await gateway.boot(serve_background=self._serve_background)
@@ -661,7 +677,6 @@ class OctopServer:
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
             trajectory_service=trajectory_service,
-            history_archive=history_archive,
             bridge_manager=bridge_mgr,
         )
         from octop.infra.knowledge.gate import (  # noqa: PLC0415
@@ -784,8 +799,6 @@ class OctopServer:
                 await rt.gateway.shutdown()
                 await rt.agent_registry.shutdown()
                 await rt.user_manager.shutdown_all()
-                if rt.history_archive is not None:
-                    rt.history_archive.store.close()
             from octop.infra.backend.browse import dispose_all_browse_sessions
 
             dispose_all_browse_sessions()

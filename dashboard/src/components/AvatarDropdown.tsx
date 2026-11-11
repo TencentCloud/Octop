@@ -30,7 +30,9 @@ import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { authApi } from "../api/modules/auth";
 import { preferencesApi } from "../api/modules/preferences";
+import { holdDesktopLocalAutoLogin } from "../api/desktopSession";
 import { clearAuthToken } from "../api/request";
+import { isDesktopShell } from "../utils/desktopBridge";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { apiErrorMessage } from "../utils/apiError";
 import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
@@ -110,11 +112,14 @@ export default function AvatarDropdown({
 
   const handleLogout = useCallback(async () => {
     setMenuOpen(false);
+    if (isDesktopShell() && user?.username === "local") {
+      holdDesktopLocalAutoLogin();
+    }
     await authApi.logout();
     clearAuthToken();
     await applyGuestLocale();
     navigate("/login", { replace: true });
-  }, [navigate]);
+  }, [navigate, user?.username]);
 
   const handleSaveProfile = async (values: { display_name: string }) => {
     setSaving(true);

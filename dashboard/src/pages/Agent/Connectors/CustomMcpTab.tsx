@@ -56,6 +56,9 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   const [oauthAvailable, setOauthAvailable] = useState<Record<string, boolean>>(
     {},
   );
+  const [oauthClientRequired, setOauthClientRequired] = useState<
+    Record<string, boolean>
+  >({});
   const [authorizingKey, setAuthorizingKey] = useState<string | null>(null);
   const [persistedNames, setPersistedNames] = useState<Set<string>>(
     () => new Set(),
@@ -275,6 +278,12 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       delete next[key];
       return next;
     });
+    setOauthClientRequired((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const applyProbeResult = (
@@ -328,6 +337,24 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       return;
     }
     setOauthAvailable((prev) => ({ ...prev, [card.key]: false }));
+    if (result.oauth?.client_required) {
+      setOauthClientRequired((prev) => ({ ...prev, [card.key]: true }));
+      updateCard(card.key, {
+        oauthClientOpen: true,
+        enabled: false,
+        defaultOpen: false,
+        ...(fromSave ? {} : { collapsed: false }),
+      });
+      if (!fromSave) {
+        message.warning(
+          t(
+            "connectors.customMcp.probeNeedsOAuthClient",
+            "此 MCP 的授权服务器不支持自动注册客户端",
+          ),
+        );
+      }
+      return;
+    }
     if (!fromSave) {
       message.error(
         probeErrorMessage(result, t("connectors.probeFailed", "探测失败"), t),
@@ -744,12 +771,16 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
                       probing={probingKey === card.key}
                       authorizing={authorizingKey === card.key}
                       oauthAvailable={oauthAvailable[card.key] === true}
+                      oauthClientRequired={
+                        oauthClientRequired[card.key] === true
+                      }
                       probeTools={probeResults[card.key]}
                       transportOptions={transportOptions}
                       onUpdate={updateCard}
                       onToggleEnabled={(enabled) => {
                         if (
-                          oauthAvailable[card.key] &&
+                          (oauthAvailable[card.key] ||
+                            oauthClientRequired[card.key]) &&
                           !card.oauthConfigured &&
                           enabled
                         ) {

@@ -65,5 +65,7 @@ def test_docker_publish_still_builds_arm64() -> None:
     boot = text.index("test_docker_image_runs_on_this_cpu_and_stays_disabled")
     push = text.index('docker push "$tag"')
     assert boot < push
+    assert "--noconftest" in text
+    assert "github.event_name == 'workflow_dispatch' && github.sha" in text
     assert "load: true" in text
     assert "fail-fast: false" in text

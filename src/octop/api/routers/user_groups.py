@@ -128,7 +128,7 @@ async def catalog_reader(user: User = Depends(current_user)) -> User:
 
 def _avatar_url(server: Any, user_group_id: str) -> str | None:
     return profile_avatar_url(
-        server.services.paths.group_avatars_dir,
+        server.services.avatars("group"),
         user_group_id,
         f"/api/user-groups/{user_group_id}/avatar",
     )
@@ -266,7 +266,7 @@ async def delete_user_group(
 ) -> None:
     if not server.services.repos.user_group_repo.delete(user_group_id):
         raise OctopError(ErrorCode.NOT_FOUND, "user group not found")
-    delete_profile_avatar(server.services.paths.group_avatars_dir, user_group_id)
+    delete_profile_avatar(server.services.avatars("group"), user_group_id)
 
 
 @router.get("/{user_group_id}/members", summary="List members of a user group")
@@ -311,7 +311,7 @@ async def upload_group_avatar(
 ) -> dict[str, str | None]:
     _require_group(server, user_group_id)
     write_profile_avatar(
-        server.services.paths.group_avatars_dir,
+        server.services.avatars("group"),
         user_group_id,
         await file.read(),
     )
@@ -325,7 +325,7 @@ async def get_group_avatar(
     _: User = Depends(catalog_reader),
 ) -> Any:
     _require_group(server, user_group_id)
-    return avatar_response(server.services.paths.group_avatars_dir, user_group_id)
+    return avatar_response(server.services.avatars("group"), user_group_id)
 
 
 @router.delete(
@@ -339,4 +339,4 @@ async def delete_group_avatar(
     _: User = Depends(require_permission("user_groups")),
 ) -> None:
     _require_group(server, user_group_id)
-    delete_profile_avatar(server.services.paths.group_avatars_dir, user_group_id)
+    delete_profile_avatar(server.services.avatars("group"), user_group_id)

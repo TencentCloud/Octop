@@ -24,12 +24,14 @@ import {
   storeUpdateStatus,
 } from "../../../utils/updateStatusCache";
 import { TabPanelHeader } from "./TabPanelHeader";
+import DesktopUpdatePanel from "./DesktopUpdatePanel";
+import { isDesktopShell } from "../../../utils/desktopBridge";
 import styles from "./UpdateConfig.module.less";
 
 /** Shell snippets shown in the manual upgrade guide (commands are locale-agnostic). */
 const UPGRADE_GUIDE_CODE = {
-  installerUnix: `curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash`,
-  installerWin: `irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex`,
+  installerUnix: `curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash`,
+  installerWin: `irm https://download.octop.cloud/octop/scripts/install.ps1 | iex`,
   cli: `octop update
 # or non-interactive:
 octop update --yes
@@ -149,6 +151,13 @@ function UpgradeGuide() {
 }
 
 export default function UpdateConfig() {
+  // The desktop shell owns detection/download/install; show the shell panel and
+  // never mount the Python self-update flow.
+  if (isDesktopShell()) return <DesktopUpdatePanel />;
+  return <ServerUpdateConfig />;
+}
+
+function ServerUpdateConfig() {
   const { t } = useTranslation();
   const { modal } = App.useApp();
   const [status, setStatus] = useState<UpdateStatus | null>(null);

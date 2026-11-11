@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-GITHUB_REPO = "TencentCloud/Octop"
+# GitHub Actions sets this for forks too; local invocation keeps the upstream default.
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "TencentCloud/Octop")
 DOWNLOAD_BASE = f"https://github.com/{GITHUB_REPO}/releases/download"
 
 
@@ -57,14 +59,14 @@ def fnos_assets(version: str) -> tuple[tuple[str, str], ...]:
     )
 
 
-def docker_image_section(version: str, *, lite: bool) -> str:
-    lines = [
-        "### Docker image",
-        "",
-        f"- Full: `ghcr.io/tencentcloud/octop:{version}` (`:latest`)",
-    ]
+def docker_image_section(version: str, *, lite: bool, full: bool) -> str:
+    lines = ["### Docker image", ""]
     if lite:
-        lines.append(f"- Lite: `ghcr.io/tencentcloud/octop:{version}-lite` (`:lite`)")
+        lines.append(f"- Lite: `ghcr.io/tencentcloud/octop:{version}` (`:latest`)")
+    if full:
+        lines.append(f"- Full: `ghcr.io/tencentcloud/octop:{version}-full` (`:full`)")
+    if len(lines) == 2:
+        return ""
     return "\n".join(lines)
 
 
@@ -91,8 +93,12 @@ def render_download_section(raw_version: str) -> str:
     mac_intel = md_link("Intel", tag, desktop_name("darwin", "amd64", version, "dmg"))
     mac_arm_zip = md_link("Apple Silicon", tag, portable_name("darwin", "arm64", version))
     mac_intel_zip = md_link("Intel", tag, portable_name("darwin", "amd64", version))
-    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "tar.gz"))
-    linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "tar.gz"))
+    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "deb"))
+    linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "deb"))
+    linux_rpm = [
+        md_link(arch, tag, desktop_name("linux", arch, version, "rpm"))
+        for arch in ("amd64", "arm64")
+    ]
     linux64_zip = md_link("64-bit", tag, portable_name("linux", "amd64", version))
     linux_arm_zip = md_link("ARM64", tag, portable_name("linux", "arm64", version))
     return "\n".join(
@@ -100,9 +106,11 @@ def render_download_section(raw_version: str) -> str:
             "",
             "## Downloads",
             "",
+            "Desktop installers bundle the browser extra only. Desktop control, OCR, and local embedding stay on the Docker full image.",
+            "",
             "### Windows",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer",
             f"- {win64} | {win_arm}",
             "",
             "#### Portable",
@@ -110,7 +118,7 @@ def render_download_section(raw_version: str) -> str:
             "",
             "### macOS",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer",
             f"- {mac_arm} | {mac_intel}",
             "",
             "#### Portable",
@@ -118,13 +126,16 @@ def render_download_section(raw_version: str) -> str:
             "",
             "### Linux",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer (deb)",
             f"- {linux64} | {linux_arm}",
+            "",
+            "#### rpm",
+            f"- {' | '.join(linux_rpm)}",
             "",
             "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",
             "",
-            docker_image_section(version, lite=True),
+            docker_image_section(version, lite=True, full=True),
             "",
             fnos_section(version, None),
             "",
@@ -156,14 +167,17 @@ def _replace_section(body: str, heading: str, replacement: str) -> str:
 def patch_release_body(body: str, raw_version: str, present: Iterable[str]) -> str:
     """Keep desktop links, and keep only the FnOS packages that were uploaded.
 
-    The lite image line follows the lite FnOS package: that tag is published
-    only when both CPU architectures exist, which is also when the package is built.
+    The default tag is the lite image. The full tag is published only when
+    both CPU architectures exist, which is also when the full package is built.
     """
     _tag, version = split_tag(raw_version)
     names = {Path(name).name for name in present}
     lite_name = f"Octop-fnos-docker-lite-{version}.fpk"
+    full_name = f"Octop-fnos-docker-{version}.fpk"
     updated = _replace_section(
-        body, "Docker image", docker_image_section(version, lite=lite_name in names)
+        body,
+        "Docker image",
+        docker_image_section(version, lite=lite_name in names, full=full_name in names),
     )
     return _replace_section(updated, "fnOS NAS", fnos_section(version, names))
 

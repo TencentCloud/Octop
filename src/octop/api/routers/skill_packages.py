@@ -179,6 +179,11 @@ def _package_or_404(
     return row
 
 
+def _package_avatars(server: OctopServer) -> Any:
+    assert server.services is not None
+    return server.services.avatars("skill_package")
+
+
 def _package_avatar_api_path(package_id: str) -> str:
     return f"/api/skill-packages/{package_id}/avatar"
 
@@ -196,7 +201,7 @@ def _display_package_icon_url(server: OctopServer, row: SkillPackageRow) -> str:
     text = str(row.icon_url or "").strip()
     api = _package_avatar_api_path(row.id)
     if text.split("?", 1)[0] == api:
-        return profile_avatar_url(server.paths.skill_package_avatars_dir, row.id, api) or api
+        return profile_avatar_url(_package_avatars(server), row.id, api) or api
     return text
 
 
@@ -583,7 +588,7 @@ async def update_skill_package(
     if icon_url is not None and not _is_package_avatar_url(icon_url, package_id):
         from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
 
-        delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+        delete_profile_avatar(_package_avatars(server), package_id)
     if body.visibility is not None:
         _package_access(server).set_visibility(
             RESOURCE_SKILL_PACKAGE,
@@ -620,7 +625,7 @@ async def delete_skill_package(
     store.delete_package(package_id)
     from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
 
-    delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+    delete_profile_avatar(_package_avatars(server), package_id)
     _package_access(server).clear(RESOURCE_SKILL_PACKAGE, package_id)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.strip_skill_package_id(package_id)
@@ -648,15 +653,13 @@ async def upload_skill_package_avatar(
     row = _package_or_404(store, package_id, locale=locale)
     store.assert_can_mutate(row, user)
     write_profile_avatar(
-        server.paths.skill_package_avatars_dir,
+        _package_avatars(server),
         package_id,
         await file.read(),
     )
     icon_url = _package_avatar_api_path(package_id)
     store.repo.update(package_id, icon_url=icon_url)
-    display = (
-        profile_avatar_url(server.paths.skill_package_avatars_dir, package_id, icon_url) or icon_url
-    )
+    display = profile_avatar_url(_package_avatars(server), package_id, icon_url) or icon_url
     return {"icon_url": display}
 
 
@@ -672,7 +675,7 @@ async def get_skill_package_avatar(
     store = _store(server)
     locale = resolve_request_locale(request)
     _package_visible_or_404(store, package_id, user, server, locale=locale)
-    return avatar_response(server.paths.skill_package_avatars_dir, package_id)
+    return avatar_response(_package_avatars(server), package_id)
 
 
 @router.delete(
@@ -692,7 +695,7 @@ async def delete_skill_package_avatar(
     locale = resolve_request_locale(request)
     row = _package_or_404(store, package_id, locale=locale)
     store.assert_can_mutate(row, user)
-    delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+    delete_profile_avatar(_package_avatars(server), package_id)
     store.repo.update(package_id, icon_url="")
 
 
