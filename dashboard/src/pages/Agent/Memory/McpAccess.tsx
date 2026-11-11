@@ -22,6 +22,7 @@ import {
   Space,
   Switch,
   Table,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -296,17 +297,6 @@ export default function McpAccess() {
     }
   };
 
-  const handleCopyCommand = async () => {
-    if (!created) return;
-    await copySetupCommand(buildClientConfig(created.plaintext));
-  };
-
-  /**
-   * Row action: copy this token's setup command.
-   *
-   * The plaintext is only known for tokens created/rotated in this session;
-   * otherwise the command cannot be rebuilt and the user must regenerate.
-   */
   const handleCommandClick = (token: MemoryMcpToken) => {
     const plaintext = plaintextByToken[token.token_id];
     if (plaintext) {
@@ -834,11 +824,19 @@ export default function McpAccess() {
       <Modal
         open={created !== null}
         title={t("memory.mcp.plaintextTitle", "Token 已创建")}
+        width={780}
         maskClosable={false}
         onCancel={() => setCreated(null)}
         footer={
           <Space>
-            <Button onClick={() => void handleCopyCommand()}>
+            <Button
+              onClick={() =>
+                void copySetupCommand(
+                  buildInstallScript(created?.plaintext ?? ""),
+                )
+              }
+              disabled={created === null}
+            >
               {t("memory.mcp.copyCommand", "复制命令")}
             </Button>
             <Button type="primary" onClick={() => setCreated(null)}>
@@ -870,61 +868,83 @@ export default function McpAccess() {
             <Typography.Text type="secondary">
               {t(
                 "memory.mcp.commandReady",
-                "安装命令（已带上这个 Token，可直接粘贴执行）：",
+                "请先复制并保存上面的 Token（关闭后无法再次查看）。接入时任选一种方式：",
               )}
             </Typography.Text>
-            <Space.Compact style={{ width: "100%" }}>
-              <Input.TextArea
-                readOnly
-                autoSize={{ minRows: 5, maxRows: 12 }}
-                value={buildClientConfig(created.plaintext)}
-                style={{ fontFamily: "monospace", fontSize: 12 }}
-              />
-              <Button type="primary" onClick={() => void handleCopyCommand()}>
-                {t("memory.mcp.copyCommand", "复制命令")}
-              </Button>
-            </Space.Compact>
-            <Typography.Text type="secondary">
-              {t(
-                "memory.mcp.installScriptLabel",
-                "一键安装（含 hooks，macOS / Linux）：",
-              )}
-            </Typography.Text>
-            <Space.Compact style={{ width: "100%" }}>
-              <Input.TextArea
-                readOnly
-                autoSize={{ minRows: 3, maxRows: 6 }}
-                value={buildInstallScript(created.plaintext)}
-                style={{ fontFamily: "monospace", fontSize: 12 }}
-              />
-              <Button
-                onClick={() =>
-                  void copySetupCommand(buildInstallScript(created.plaintext))
-                }
-              >
-                {t("memory.mcp.copyCommand", "复制命令")}
-              </Button>
-            </Space.Compact>
-            <Typography.Text type="secondary">
-              {t("memory.mcp.installScriptPsLabel", "Windows PowerShell：")}
-            </Typography.Text>
-            <Space.Compact style={{ width: "100%" }}>
-              <Input.TextArea
-                readOnly
-                autoSize={{ minRows: 3, maxRows: 6 }}
-                value={buildInstallPowerShell(created.plaintext)}
-                style={{ fontFamily: "monospace", fontSize: 12 }}
-              />
-              <Button
-                onClick={() =>
-                  void copySetupCommand(
-                    buildInstallPowerShell(created.plaintext),
-                  )
-                }
-              >
-                {t("memory.mcp.copyCommand", "复制命令")}
-              </Button>
-            </Space.Compact>
+            <Tabs
+              size="small"
+              items={[
+                {
+                  key: "unix",
+                  label: "macOS / Linux",
+                  children: (
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Input.TextArea
+                        readOnly
+                        autoSize={{ minRows: 2, maxRows: 4 }}
+                        value={buildInstallScript(created.plaintext)}
+                        style={{ fontFamily: "monospace", fontSize: 12 }}
+                      />
+                      <Button
+                        onClick={() =>
+                          void copySetupCommand(
+                            buildInstallScript(created.plaintext),
+                          )
+                        }
+                      >
+                        {t("memory.mcp.copyCommand", "复制命令")}
+                      </Button>
+                    </Space.Compact>
+                  ),
+                },
+                {
+                  key: "windows",
+                  label: "Windows",
+                  children: (
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Input.TextArea
+                        readOnly
+                        autoSize={{ minRows: 2, maxRows: 4 }}
+                        value={buildInstallPowerShell(created.plaintext)}
+                        style={{ fontFamily: "monospace", fontSize: 12 }}
+                      />
+                      <Button
+                        onClick={() =>
+                          void copySetupCommand(
+                            buildInstallPowerShell(created.plaintext),
+                          )
+                        }
+                      >
+                        {t("memory.mcp.copyCommand", "复制命令")}
+                      </Button>
+                    </Space.Compact>
+                  ),
+                },
+                {
+                  key: "json",
+                  label: t("memory.mcp.manualConfig", "手动配置"),
+                  children: (
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Input.TextArea
+                        readOnly
+                        autoSize={{ minRows: 6, maxRows: 12 }}
+                        value={buildClientConfig(created.plaintext)}
+                        style={{ fontFamily: "monospace", fontSize: 12 }}
+                      />
+                      <Button
+                        onClick={() =>
+                          void copySetupCommand(
+                            buildClientConfig(created.plaintext),
+                          )
+                        }
+                      >
+                        {t("memory.mcp.copyCommand", "复制命令")}
+                      </Button>
+                    </Space.Compact>
+                  ),
+                },
+              ]}
+            />
           </Space>
         ) : null}
       </Modal>
@@ -932,6 +952,7 @@ export default function McpAccess() {
       <Modal
         open={commandTarget !== null}
         title={t("memory.mcp.commandTitle", "重新生成接入命令")}
+        width={780}
         okText={t("memory.mcp.commandRegenerate", "重新生成并复制")}
         cancelText={t("common.cancel", "取消")}
         confirmLoading={rotating}

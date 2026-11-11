@@ -4511,7 +4511,7 @@
       "tokenLabel": "Token",
       "installScriptLabel": "One-line install with hooks (macOS / Linux):",
       "installScriptPsLabel": "Windows PowerShell:",
-      "commandReady": "MCP config (token included, paste it into your client's mcpServers):",
+      "commandReady": "Copy and keep the token first (it cannot be viewed again after closing). Pick one way to connect below:",
       "create": "Create token",
       "loadFailed": "Could not load tokens.",
       "empty": "No MCP tokens yet",
