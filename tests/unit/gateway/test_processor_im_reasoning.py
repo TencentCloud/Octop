@@ -65,6 +65,12 @@ def _im_message() -> InboundMessage:
     )
 
 
+def _roundtrip_overrides(configurable: dict) -> dict:
+    """The resolved overrides actually stored in the request configuration."""
+    stored = configurable.get("octop_reasoning_overrides")
+    return stored if isinstance(stored, dict) else {}
+
+
 @pytest.mark.asyncio
 async def test_im_request_carries_reasoning_overrides() -> None:
     captured: dict[str, object] = {}
@@ -89,11 +95,15 @@ async def test_im_request_carries_reasoning_overrides() -> None:
         events = [ev async for ev in processor(_im_message())]
 
     assert events
-    assert captured["request"]["configurable"]["octop_reasoning_overrides"] == overrides
+    configurable = captured["request"]["configurable"]
+    assert configurable["octop_reasoning_overrides"] == overrides
+    assert configurable["octop_reasoning_roundtrip"] is True
+    # 内部传递字段不能跟着 resolver 输出进入请求配置。
+    assert "_roundtrip" not in _roundtrip_overrides(configurable)
 
 
 @pytest.mark.asyncio
-async def test_im_request_without_reasoning_capability_has_no_overrides() -> None:
+async def test_im_request_without_reasoning_capability_gates_roundtrip_off() -> None:
     captured: dict[str, object] = {}
 
     async def fake_project_stream(_mgr, _aid, request, **_kwargs):
@@ -109,4 +119,31 @@ async def test_im_request_without_reasoning_capability_has_no_overrides() -> Non
         events = [ev async for ev in processor(_im_message())]
 
     assert events
-    assert not captured["request"].get("reasoning_overrides")
+    configurable = captured["request"]["configurable"]
+    assert configurable["octop_reasoning_roundtrip"] is False
+    assert "octop_reasoning_overrides" not in configurable
+
+
+@pytest.mark.asyncio
+async def test_im_request_without_model_ref_omits_gate() -> None:
+    """未解析出模型时，resolver 返回空 dict、gate 缺失（两个入口一致）。"""
+    captured: dict[str, object] = {}
+
+    async def fake_project_stream(_mgr, _aid, request, **_kwargs):
+        captured["request"] = request
+        yield MagicMock()
+
+    processor = _processor({"model_fields": {"reasoning_effort": "high"}})
+    # fallback 也拿不到模型 → model_ref 为 None，resolver 走空 dict 分支。
+    processor._agent_manager.resolve_fallback_model_ref = MagicMock(return_value="")
+
+    with patch(
+        "octop.infra.gateway.process.processor.project_stream",
+        new=fake_project_stream,
+    ):
+        events = [ev async for ev in processor(_im_message())]
+
+    assert events
+    configurable = captured["request"].get("configurable", {})
+    assert "octop_reasoning_roundtrip" not in configurable
+    assert "octop_reasoning_overrides" not in configurable

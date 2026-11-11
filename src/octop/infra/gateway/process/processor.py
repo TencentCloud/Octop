@@ -824,7 +824,7 @@ class GlobalProcessor:
             return {}
         capability = self._agent_manager.providers.get_model_reasoning_capability(model_ref)
         if capability is None:
-            return {}
+            return {"_roundtrip": False}
         thread = self._thread_registry.get_thread(thread_id)
         user_row = self._user_repo.get(user_id)
         user_prefs = get_model_reasoning_from_json(
@@ -851,7 +851,11 @@ class GlobalProcessor:
             if user_pref is not None
             else None
         )
-        return reasoning_request_parameters(capability, mode=mode, effort=effort)
+        params: dict[str, Any] = dict(
+            reasoning_request_parameters(capability, mode=mode, effort=effort),
+        )
+        params["_roundtrip"] = True
+        return params
 
     # -- IM channel entry (MessageEvent stream) --------------------------------
 
@@ -1002,6 +1006,7 @@ class GlobalProcessor:
             model_ref=model_ref,
             meta=None,
         )
+        reasoning_gate = reasoning_overrides.pop("_roundtrip", None)
         resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
@@ -1042,7 +1047,8 @@ class GlobalProcessor:
             model=model_ref,
             auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
-            reasoning_overrides=reasoning_overrides,
+            reasoning_overrides=reasoning_overrides or None,
+            reasoning_gate=reasoning_gate if isinstance(reasoning_gate, bool) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
@@ -1636,6 +1642,7 @@ class GlobalProcessor:
             model_ref=model_ref,
             meta=meta,
         )
+        reasoning_gate = reasoning_overrides.pop("_roundtrip", None)
 
         message_kwargs: dict[str, Any] = {}
         composer = meta.get(COMPOSER_CTX_KEY)
@@ -1699,7 +1706,8 @@ class GlobalProcessor:
             model=model_ref,
             auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
-            reasoning_overrides=reasoning_overrides,
+            reasoning_overrides=reasoning_overrides or None,
+            reasoning_gate=reasoning_gate if isinstance(reasoning_gate, bool) else None,
             message_id=client_message_id if isinstance(client_message_id, str) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)

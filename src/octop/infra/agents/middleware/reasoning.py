@@ -6,9 +6,11 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
+from langchain_core.messages import AIMessage
 from langgraph.config import get_config
 
 CONFIG_KEY = "octop_reasoning_overrides"
+ROUNDTRIP_KEY = "octop_reasoning_roundtrip"
 
 
 def _configured_request(request: ModelRequest[Any]) -> ModelRequest[Any]:
@@ -31,20 +33,55 @@ def _configured_request(request: ModelRequest[Any]) -> ModelRequest[Any]:
     return request.override(model=configured)
 
 
+def _roundtrip_supported() -> bool:
+    """Whether this turn's model accepts ``reasoning_content`` on assistant replay.
+
+    Providers without a reasoning adapter reject a persisted
+    ``additional_kwargs.reasoning_content`` on the next turn (groq answers 400:
+    ``property 'reasoning_content' is unsupported``), so the request builder
+    gates replay with ``octop_reasoning_roundtrip``. An absent or non-boolean
+    gate keeps the message intact, matching callers that predate the gate.
+    """
+    configurable = get_config().get("configurable") or {}
+    if isinstance(configurable, dict) and isinstance(configurable.get(ROUNDTRIP_KEY), bool):
+        return bool(configurable[ROUNDTRIP_KEY])
+    return True
+
+
+def _scrub_replayed_reasoning(request: ModelRequest[Any]) -> ModelRequest[Any]:
+    if _roundtrip_supported():
+        return request
+    dropped = False
+    scrubbed: list[Any] = []
+    for message in request.messages:
+        if isinstance(message, AIMessage) and "reasoning_content" in (
+            message.additional_kwargs or {}
+        ):
+            kwargs = dict(message.additional_kwargs or {})
+            kwargs.pop("reasoning_content", None)
+            scrubbed.append(message.model_copy(update={"additional_kwargs": kwargs}))
+            dropped = True
+        else:
+            scrubbed.append(message)
+    if not dropped:
+        return request
+    return request.override(messages=scrubbed)
+
+
 class ReasoningRequestMiddleware(AgentMiddleware[Any, Any]):
     def wrap_model_call(
         self,
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], ModelResponse[Any]],
     ) -> ModelResponse[Any]:
-        return handler(_configured_request(request))
+        return handler(_scrub_replayed_reasoning(_configured_request(request)))
 
     async def awrap_model_call(
         self,
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
     ) -> ModelResponse[Any]:
-        return await handler(_configured_request(request))
+        return await handler(_scrub_replayed_reasoning(_configured_request(request)))
 
 
-__all__ = ["CONFIG_KEY", "ReasoningRequestMiddleware"]
+__all__ = ["CONFIG_KEY", "ReasoningRequestMiddleware", "ROUNDTRIP_KEY"]
