@@ -1,0 +1,76 @@
+.modal {
+  :global(.ant-modal-content) {
+    padding: 28px 28px 20px;
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 4px;
+}
+
+.progress {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 24px;
+}
+
+.dot {
+  width: 18px;
+  height: 4px;
+  border-radius: var(--fn-radius-full, 999px);
+  background: var(--fn-border-secondary);
+  transition: background var(--fn-transition-fast, 0.15s);
+}
+
+.dotActive {
+  background: var(--fn-color-brand);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-bg);
+  margin-bottom: 16px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.text {
+  margin: 0;
+  max-width: 420px;
+  min-height: 66px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--fn-text-secondary);
+}
+
+.goButton {
+  margin-top: 16px;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.footerNav {
+  display: flex;
+  gap: 8px;
+}
