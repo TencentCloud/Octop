@@ -49,6 +49,11 @@ from octop.infra.knowledge.ocr import (
     set_ocr_settings,
     validate_ocr_settings,
 )
+from octop.infra.knowledge.rerank import (
+    get_rerank_capability,
+    rerank_models,
+    set_rerank_settings,
+)
 from octop.infra.knowledge.service import (
     MAX_BASES_PER_OWNER,
     MAX_DOCS_PER_KB,
@@ -87,6 +92,12 @@ class FeatureBody(BaseModel):
     ocr_backend: str | None = Field(default=None, pattern="^(onnx|remote)$")
     ocr_model: str | None = None
     ocr_provider_id: str | None = None
+    rerank_enabled: bool | None = Field(
+        default=None,
+        description="Whether retrieved chunks are reordered by a rerank model.",
+    )
+    rerank_provider_id: str | None = None
+    rerank_model: str | None = None
 
 
 class OnnxDownloadBody(BaseModel):
@@ -307,6 +318,8 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
+    if "knowledge rerank" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_RERANK_NOT_READY, locale)
     if "knowledge ocr" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
     if "unique constraint" in text or "duplicate key" in text or "already exists" in text:
@@ -367,6 +380,9 @@ def _capability_payload(server: OctopServer) -> dict[str, Any]:
     assert server.services is not None
     payload = get_capability(server.services.settings_repo.get, server.services.provider_repo)
     payload["ocr"] = get_ocr_capability(
+        server.services.settings_repo.get, server.services.provider_repo
+    )
+    payload["rerank"] = get_rerank_capability(
         server.services.settings_repo.get, server.services.provider_repo
     )
     payload["limits"] = {
@@ -452,6 +468,23 @@ async def ocr_options(
     }
 
 
+@router.get("/rerank-options", summary="List providers that offer a rerank model")
+async def rerank_options(
+    server: OctopServer = Depends(get_server),
+    _admin: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    """Enabled providers with at least one rerank model, for the knowledge settings."""
+    assert server.services is not None
+    providers = []
+    for provider in server.services.provider_repo.list_all():
+        models = rerank_models(provider) if provider.enabled else []
+        if models:
+            providers.append(
+                {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
+            )
+    return {"providers": providers}
+
+
 @router.put("/feature", summary="Enable or disable knowledge bases")
 async def put_feature(
     body: FeatureBody,
@@ -491,6 +524,15 @@ async def put_feature(
                 exc, locale=resolve_request_locale(request), server=server
             ) from exc
     try:
+        # First, so an unusable rerank choice is refused before anything is saved.
+        if body.rerank_enabled is not None:
+            set_rerank_settings(
+                server.services.settings_repo.set,
+                enabled=body.rerank_enabled,
+                provider_id=body.rerank_provider_id,
+                model=body.rerank_model,
+                provider_repo=server.services.provider_repo,
+            )
         set_feature_enabled(
             server.services.settings_repo.get,
             server.services.settings_repo.set,
