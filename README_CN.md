@@ -233,6 +233,8 @@ curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash -s -- --
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
 | 飞牛 NAS（FnOS） | `Octop-fnos-docker-lite-<version>.fpk`（精简镜像）/ `Octop-fnos-docker-<version>.fpk`（完整版：桌面、OCR、本地向量）/ `Octop-fnos-native-amd64-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
 
+桌面安装包只带 `browser`。桌面控制、OCR 和本地向量留在 Docker 镜像标签 `:<version>-full`。
+
 桌面客户端说明见 [desktop/README.md](desktop/README.md)，飞牛打包指南见 [fnos/README.md](fnos/README.md)。
 
 **备选 — PyPI**（若你已自行管理 Python 环境）：
@@ -426,6 +428,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop skills` | 按 Agent 启用/禁用 Skill |
 | `octop plugin` | 安装并管理第三方插件 |
 | `octop backup` | 导出 / 恢复备份 |
+| `octop migrate` | 把 OpenClaw 或 Hermes Agent 的配置迁移到一个专家 |
 | `octop clean` | 清理 CLI 状态或清空 `~/.octop/` |
 | `octop memory list` | 列出可参与记忆维护的运行中 Agent；不改动数据库。 |
 | `octop memory slim [--agent ID]` | 通过运行中的宿主备份并精简 SQLite 记忆；使用指定 Agent 或按提示选择。在终端与控制台显示进度。[详情](docs/memory-slim.md) |

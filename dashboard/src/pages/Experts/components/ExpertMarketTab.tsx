@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, Drawer, Input, Result, Spin, Tag } from "antd";
+import { Button, Drawer, Input, Result, Spin, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
+  Bookmark,
   CheckCircle,
   Download,
   Layers,
@@ -35,6 +36,7 @@ import {
   splitMarkdownFrontmatter,
 } from "../../../utils/markdown";
 import { iconForName } from "./iconForName";
+import { MARKET_SCENE_FEATURED, visibleMarketExperts } from "./marketFeatured";
 import styles from "../index.module.less";
 
 interface ExpertMarketTabProps {
@@ -93,7 +95,7 @@ export default function ExpertMarketTab({
   const { t } = useTranslation();
   const [items, setItems] = useState<MarketExpert[]>([]);
   const [scenes, setScenes] = useState<string[]>([]);
-  const [activeScene, setActiveScene] = useState(SCENE_ALL);
+  const [activeScene, setActiveScene] = useState(MARKET_SCENE_FEATURED);
   const [source, setSource] = useState<
     typeof SOURCE_REMOTE | typeof SOURCE_PUBLISHED
   >(SOURCE_REMOTE);
@@ -194,13 +196,16 @@ export default function ExpertMarketTab({
 
   const visibleItems = useMemo(() => {
     const queryText = keyword.trim();
-    if ((queryText && listQuery === queryText) || !activeScene) return items;
-    const scene = activeScene.toLowerCase();
-    return items.filter((item) => (item.scene || "").toLowerCase() === scene);
+    const searching = Boolean(queryText) && listQuery === queryText;
+    return visibleMarketExperts(items, activeScene, searching);
   }, [activeScene, items, keyword, listQuery]);
 
   const sceneOptions = useMemo(
     () => [
+      {
+        value: MARKET_SCENE_FEATURED,
+        label: t("experts.sceneFeatured", "精选"),
+      },
       { value: SCENE_ALL, label: sceneLabel(SCENE_ALL, t) },
       ...scenes.map((scene) => ({
         value: scene,
@@ -407,6 +412,7 @@ export default function ExpertMarketTab({
                 const label = labelOf(expert, lang);
                 const desc = descOf(expert, lang);
                 const accent = expert.color || "#6366f1";
+                const featured = expert.featured === true;
                 return (
                   <div
                     key={expert.id}
@@ -418,7 +424,27 @@ export default function ExpertMarketTab({
                       } as CSSProperties
                     }
                   >
-                    <div className={styles.marketCardHeader}>
+                    {featured ? (
+                      <Tooltip title={t("experts.featuredHint")}>
+                        <span
+                          className={styles.marketFeaturedMark}
+                          aria-label={t("experts.sceneFeatured", "精选")}
+                        >
+                          <Bookmark
+                            size={16}
+                            fill="currentColor"
+                            strokeWidth={1.75}
+                            aria-hidden
+                          />
+                        </span>
+                      </Tooltip>
+                    ) : null}
+                    <div
+                      className={cx(
+                        styles.marketCardHeader,
+                        featured && styles.marketCardHeaderFeatured,
+                      )}
+                    >
                       <div
                         className={styles.agentCardIcon}
                         style={{

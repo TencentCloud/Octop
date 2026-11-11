@@ -184,6 +184,32 @@ def assert_backend_within_user_root(
         assert_safe_host_path(root_dir, restrict_to_root=allowed_root)
 
 
+def raise_if_workspace_dir_outside_user_root(
+    policy_repo: Any,
+    user_id: int,
+    config: Mapping[str, Any],
+) -> None:
+    """Raise when a user-assigned ``workspace_dir`` sits outside the allowed root.
+
+    No-op when the user has no workspace-root policy or the config omits
+    ``workspace_dir``. Call this only for a path the user just chose — a stored
+    directory that predates the policy must not block unrelated edits.
+    """
+    allowed = effective_workspace_root_dir(policy_repo.get(user_id, POLICY_WORKSPACE_ROOT_DIR))
+    if not allowed:
+        return
+    raw = config.get("workspace_dir")
+    if not isinstance(raw, str) or not raw.strip():
+        return
+    from octop.infra.agents.workspace.dir import resolve_workspace_host_path
+
+    try:
+        host = resolve_workspace_host_path(raw, dict(config))
+        assert_safe_host_path(os.fspath(host), restrict_to_root=allowed)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
+
+
 def raise_if_backend_outside_user_root(
     policy_repo: Any,
     user_id: int,

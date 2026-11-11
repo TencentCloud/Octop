@@ -8,6 +8,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from octop.infra.desktop import shell_owned_env_key
+
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PROTECTED_EXACT = frozenset(
     {
@@ -38,6 +40,19 @@ def env_file_path(root: Path) -> Path:
     return root / "env"
 
 
+def _looks_like_assignment(line: str) -> bool:
+    """True when *line* is a new ``KEY=`` entry, not a quoted continuation."""
+    raw = line.strip()
+    if not raw or raw.startswith("#"):
+        return False
+    if raw.startswith("export "):
+        raw = raw[7:].strip()
+    if "=" not in raw:
+        return False
+    key, _, _ = raw.partition("=")
+    return bool(_KEY_RE.match(key.strip()))
+
+
 def parse_env_text(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     lines = text.splitlines()
@@ -59,11 +74,13 @@ def parse_env_text(text: str) -> dict[str, str]:
         # ``format_env_file`` quotes any value containing whitespace and leaves embedded line
         # breaks raw, so a multi-line value has to be read back across lines. Only a value with
         # an *unterminated* quote continues onto the next line; a value that already contains a
-        # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
-        # the rest of the file.
+        # closing quote (or no quote at all) is left alone. A later ``KEY=`` line ends the
+        # continuation, so a missing closing quote cannot swallow the rest of the file.
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
             while index < len(lines) and quote not in value[1:]:
+                if _looks_like_assignment(lines[index]):
+                    break
                 value = f"{value}\n{lines[index]}"
                 index += 1
             value = value.strip()
@@ -117,9 +134,16 @@ def save_env_file(path: Path, values: dict[str, str]) -> None:
 
 
 def apply_env_file(path: Path) -> dict[str, str]:
-    """Load ``path`` and merge into ``os.environ`` (does not unset missing keys)."""
+    """Load ``path`` and merge into ``os.environ`` (does not unset missing keys).
+
+    Shell-owned keys (``OCTOP_DESKTOP_SHELL``, ``OCTOP_PORT``, …) are never
+    applied: the shell sets them for the whole process and a persisted env file
+    must not be able to flip desktop identity or the loopback bind.
+    """
     values = load_env_file(path)
     for key, value in values.items():
+        if shell_owned_env_key(key):
+            continue
         os.environ[key] = value
     return values
 
@@ -128,9 +152,11 @@ def apply_env_file_replace(path: Path, *, previous: Mapping[str, str]) -> dict[s
     """Apply the file to ``os.environ`` and drop keys that left the file."""
     values = load_env_file(path)
     for key in previous:
-        if key not in values:
+        if key not in values and not shell_owned_env_key(key):
             os.environ.pop(key, None)
     for key, value in values.items():
+        if shell_owned_env_key(key):
+            continue
         os.environ[key] = value
     return values
 

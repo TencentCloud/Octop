@@ -1013,6 +1013,34 @@ async def test_shutdown_drains_sqlite_worker_before_returning(manager: AgentMana
         await asyncio.to_thread(conn._thread.join, 5)
 
 
+@pytest.mark.asyncio
+async def test_shutdown_waits_for_idle_reclaim_sweep(manager: AgentManager) -> None:
+    """The freelist scan uses the control-plane connection from a worker thread."""
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_scan() -> int:
+        entered.set()
+        assert release.wait(5)
+        return 0
+
+    manager._queue_bloated_sqlite_stores = slow_scan  # type: ignore[method-assign]
+    manager.schedule_idle_reclaim_sweep()
+    closing = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        closing = asyncio.create_task(manager.shutdown())
+        await asyncio.sleep(0.05)
+        assert not closing.done()
+        release.set()
+        await asyncio.wait_for(closing, timeout=5)
+    finally:
+        release.set()
+        if closing is not None:
+            await closing
+        else:
+            await manager.shutdown()
+
+
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:
     from dataclasses import replace
 
@@ -2541,6 +2569,71 @@ async def test_update_config_json_cannot_move_the_workspace(
 
     assert manager.get_config(row.agent_id).get("workspace_dir") == scoped
     assert manager.resolve_workspace_dir(row.agent_id) == Path(scoped)
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_keeps_host_root_workspace(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chosen host-root workspace stays put after create, even if a patch names another path."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    row = await manager.create(
+        AgentCreateSpec(
+            name="wsdir-fixed-host",
+            config={
+                **_MEMORY_OFF,
+                "backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+            },
+        ),
+        defer_bootstrap=True,
+    )
+    stored = manager.get_config(row.agent_id).get("workspace_dir")
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps(
+            {**manager.get_config(row.agent_id), "workspace_dir": str(tmp_path / "elsewhere")}
+        ),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == stored
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_keeps_scoped_workspace(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scoped root keeps its workspace even if the patch names another directory."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    row = await manager.create(
+        AgentCreateSpec(
+            name="wsdir-scoped",
+            config={
+                **_MEMORY_OFF,
+                "backend": {
+                    "type": "filesystem",
+                    "root_dir": str(jail),
+                    "virtual_mode": True,
+                },
+            },
+        ),
+        defer_bootstrap=True,
+    )
+    stored = manager.get_config(row.agent_id).get("workspace_dir")
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps(
+            {
+                **manager.get_config(row.agent_id),
+                "workspace_dir": str(tmp_path / "elsewhere"),
+            }
+        ),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == stored
 
 
 @pytest.mark.asyncio

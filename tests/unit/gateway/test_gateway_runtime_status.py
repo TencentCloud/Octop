@@ -69,6 +69,9 @@ async def test_register_success_sets_runtime_connected(tmp_path: Path) -> None:
     assert status.reason is None
     assert gw._channel_manager.add_channel.await_args is not None
     assert gw._channel_manager.add_channel.await_args.kwargs["processor"] is not gw._processor
+    assert gw._channel_manager.add_channel.await_args.args[1]["dedup_db_path"] == str(
+        tmp_path / "feishu-dedup.sqlite"
+    )
 
 
 @pytest.mark.asyncio

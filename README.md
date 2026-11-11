@@ -231,6 +231,8 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
 | FnOS NAS | `Octop-fnos-docker-lite-<version>.fpk` (smaller image) / `Octop-fnos-docker-<version>.fpk` (full: desktop, OCR, local models) / `Octop-fnos-native-amd64-<version>.fpk` (x86_64, no Docker) / `Octop-fnos-native-arm64-<version>.fpk` (ARM64 fallback if no Docker) — install via App Center |
 
+Desktop installers bundle the `browser` extra only. Desktop control, OCR, and local embedding stay on the Docker image tag `:<version>-full`.
+
 See [desktop/README.md](desktop/README.md) for the desktop shell and [fnos/README.md](fnos/README.md) for the FnOS packaging guide.
 
 **Alternative — PyPI** (if you already manage Python yourself):
@@ -429,6 +431,7 @@ Full catalog, auth kinds, and MCP modes: **[docs/connectors.md](docs/connectors.
 | `octop skills` | Enable/disable per-agent skills |
 | `octop plugin` | Install and manage third-party plugins |
 | `octop backup` | Export / restore backups |
+| `octop migrate` | Migrate an OpenClaw or Hermes Agent setup into an expert |
 | `octop clean` | Remove CLI state or wipe `~/.octop/` |
 | `octop memory list` | List running agents eligible for memory maintenance; no database changes. |
 | `octop memory slim [--agent ID]` | Back up and slim SQLite memory through the running host; uses the selected agent or prompts by number. Shows terminal and dashboard progress. [Details](docs/memory-slim.md) |

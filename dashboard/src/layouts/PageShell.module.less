@@ -111,6 +111,10 @@
 .tabbed {
   flex: 1;
   min-height: 0;
+  /* Default min-width:auto lets this row grow with the tab labels. The
+     page then clips the tail with overflow:hidden, and Tabs never sees an
+     overflow, so its more menu stays hidden. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;

@@ -387,3 +387,16 @@ async def test_apply_workspace_quick_prompts_refuses_invalid_json() -> None:
     with pytest.raises(OctopError) as exc:
         await apply_workspace_quick_prompts(workspace, [])
     assert exc.value.code is ErrorCode.SLASH_BAD_ARGS
+
+
+def test_featured_expert_template_ids_are_the_pre_market_library() -> None:
+    from octop.infra.agents.experts.catalog import featured_expert_template_ids
+
+    ids = featured_expert_template_ids()
+
+    assert len(ids) == 22
+    assert "general-assistant" in ids
+    assert "ops-engineer" in ids
+    assert "wechat-ops" in ids
+    assert "default" not in ids
+    assert "tencent-cvm-ops" not in ids
