@@ -148,6 +148,14 @@ class FromExpertBody(AgentRuntimeFields):
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    workspace_dir: str | None = Field(
+        default=None,
+        description=(
+            "Workspace directory when backend is local_shell or filesystem "
+            "rooted at the filesystem root. Ignored for other backends and "
+            "for a scoped root_dir. Omit to use the server default."
+        ),
+    )
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
@@ -195,6 +203,14 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    workspace_dir: str | None = Field(
+        default=None,
+        description=(
+            "Workspace directory when backend is local_shell or filesystem "
+            "rooted at the filesystem root. Ignored for other backends and "
+            "for a scoped root_dir. Omit to use the server default."
+        ),
+    )
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
@@ -777,6 +793,7 @@ async def install_published_expert(
             providers=body.providers,
             default_model=body.default_model,
             backend=body.backend,
+            workspace_dir=body.workspace_dir,
             skill_package_ids=body.skill_package_ids,
             knowledge_base_ids=kb_ids,
             mcp_servers=servers,
@@ -924,6 +941,7 @@ async def install_expert_hub_item(
                 providers=body.providers,
                 default_model=body.default_model,
                 backend=body.backend,
+                workspace_dir=body.workspace_dir,
                 color=body.color,
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
@@ -1049,6 +1067,9 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
+    from octop.infra.agents.workspace.dir import apply_explicit_workspace_dir  # noqa: PLC0415
+
+    apply_explicit_workspace_dir(config_extra, body.workspace_dir)
     apply_enable_trajectory(config_extra, body.enable_trajectory)
     if body.conversation_mode:
         config_extra["conversation_mode"] = body.conversation_mode

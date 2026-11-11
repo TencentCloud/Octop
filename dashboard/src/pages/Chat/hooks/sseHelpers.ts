@@ -171,6 +171,8 @@ export interface ChatMessage {
    * that member's agent id so the bubble can render as a separate person.
    */
   speakerAgentId?: string;
+  /** Server turn that produced this bubble. Different ids must not merge. */
+  turnId?: string;
   /** Host wrap-up after members — never continue the dispatch bubble. */
   teamWrapup?: boolean;
   /**
@@ -232,6 +234,8 @@ export interface SessionStreamState {
   liveSpeakers: Set<string>;
   /** Mid-turn steer: ``turn.started`` / ``turn.resumed`` id (issue #1300). */
   activeTurnId?: string | null;
+  /** User who started ``activeTurnId``. Shared sessions block everyone else. */
+  activeTurnUserId?: number | null;
   /** Server-acked undrained steers (internal; drives transcript lifecycle). */
   pendingSteers: Array<{
     clientPendingId: string;

@@ -171,6 +171,16 @@ def _viewer_mcp_servers(
     return list(present(owner_id, viewer_user_id, names))
 
 
+def _same_user_id(left: Any, right: Any) -> bool:
+    """True when both ids are present and numerically equal."""
+    if left is None or right is None:
+        return False
+    try:
+        return int(left) == int(right)
+    except (TypeError, ValueError):
+        return False
+
+
 def _row_dict(
     row: Any,
     *,
@@ -220,7 +230,7 @@ def _row_dict(
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
-        "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
+        "is_owner": _same_user_id(row.user_id, viewer_user_id),
         "owner_username": owner_username,
         "kind": getattr(row, "kind", None) or "expert",
         **agent_runtime_values(cfg),

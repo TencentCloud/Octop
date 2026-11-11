@@ -1,0 +1,155 @@
+/*
+ * Splash: the first frame of the app, on screen until the sidecar reports
+ * healthy. Mirrors the Dashboard boot screen (horizontal lockup above the
+ * shared arc and status line) so the swap from shell to Dashboard reads as
+ * one continuous startup.
+ *
+ * A cold start can hold this page for ten seconds or more. The arc is the
+ * Dashboard's OctopSpinner: a faint track and a short brand sweep, empty in
+ * the middle. It is inlined here because this page paints before the
+ * Dashboard bundle exists.
+ */
+.splash {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Not quite centred: a stack balanced on the exact midline reads as sitting
+     low once the eye includes the version stamp at the bottom. */
+  justify-content: center;
+  padding: 32px 24px 56px;
+  background:
+    radial-gradient(
+      720px 380px at 50% -8%,
+      rgba(232, 93, 117, 0.11),
+      transparent 68%
+    ),
+    var(--page);
+  user-select: none;
+
+  :global(html[data-theme="dark"]) & {
+    background:
+      radial-gradient(
+        720px 380px at 50% -8%,
+        rgba(240, 139, 154, 0.1),
+        transparent 68%
+      ),
+      var(--page);
+  }
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: splash-in 420ms ease-out both;
+}
+
+.logo {
+  display: block;
+  height: 72px;
+  width: auto;
+  max-width: min(260px, 75vw);
+  object-fit: contain;
+}
+
+.logoDark {
+  display: none;
+}
+
+:global(html[data-theme="dark"]) {
+  .logoLight {
+    display: none;
+  }
+
+  .logoDark {
+    display: block;
+  }
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+}
+
+/* Same arc as dashboard OctopSpinner, sized to the status line, not the lockup. */
+.spinner {
+  position: relative;
+  display: block;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.track {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--brand) 14%, transparent);
+  border-radius: 50%;
+}
+
+.ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 55%,
+    color-mix(in srgb, var(--brand) 40%, transparent) 80%,
+    var(--brand) 100%
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2px),
+    #000 calc(100% - 2px + 0.5px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - 2px),
+    #000 calc(100% - 2px + 0.5px)
+  );
+  animation: splash-spin 0.9s linear infinite;
+}
+
+.version {
+  position: absolute;
+  inset-block-end: 18px;
+  margin: 0;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes splash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes splash-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack,
+  .ring {
+    animation: none;
+  }
+}
