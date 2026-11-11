@@ -2678,7 +2678,9 @@ export default function KnowledgeBasesPage() {
                     </div>
                   </div>
                   <div className={styles.docsPathRow}>
-                    <span className={skillStyles.gridCount}>
+                    <span
+                      className={cx(skillStyles.gridCount, styles.docsCount)}
+                    >
                       {documentCap === null
                         ? t("knowledgeBases.documentCount", {
                             count: fileCount,
@@ -2944,16 +2946,24 @@ export default function KnowledgeBasesPage() {
                                             },
                                           )}`}
                                     </div>
+                                    {document.is_dir ? null : (
+                                      <div
+                                        className={styles.docCardMeta}
+                                        title={formatServerDateTime(
+                                          document.updated_at,
+                                          timeZone,
+                                        )}
+                                      >
+                                        {formatServerDateTime(
+                                          document.updated_at,
+                                          timeZone,
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                  <span
-                                    data-kb-doc-actions=""
-                                    onClick={(event) => event.stopPropagation()}
-                                  >
-                                    {renderDocumentActions(document)}
-                                  </span>
                                 </div>
-                                {document.is_dir ? null : (
-                                  <div className={styles.docCardFooter}>
+                                <div className={styles.docCardFooter}>
+                                  {document.is_dir ? null : (
                                     <Tooltip
                                       title={
                                         document.error_message ||
@@ -2973,20 +2983,15 @@ export default function KnowledgeBasesPage() {
                                         )}
                                       </Tag>
                                     </Tooltip>
-                                    <span
-                                      className={styles.docUpdatedAt}
-                                      title={formatServerDateTime(
-                                        document.updated_at,
-                                        timeZone,
-                                      )}
-                                    >
-                                      {formatServerDateTime(
-                                        document.updated_at,
-                                        timeZone,
-                                      )}
-                                    </span>
-                                  </div>
-                                )}
+                                  )}
+                                  <span
+                                    className={styles.docCardFooterActions}
+                                    data-kb-doc-actions=""
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    {renderDocumentActions(document)}
+                                  </span>
+                                </div>
                               </div>
                             );
                           })}
