@@ -378,12 +378,21 @@ export const knowledgeBasesApi = {
     ),
 
   /** Move a file or folder into another folder of the same base ("" is the root). */
-  moveDocument: (id: string, documentId: string, targetFolder: string) =>
+  moveDocument: (
+    id: string,
+    documentId: string,
+    targetFolder: string,
+    targetKbId?: string,
+  ) =>
     request<KnowledgeDocument>(
       `/knowledge-bases/${id}/documents/${documentId}/move`,
       {
         method: "POST",
-        body: JSON.stringify({ target_folder: targetFolder }),
+        body: JSON.stringify(
+          targetKbId && targetKbId !== id
+            ? { target_folder: targetFolder, target_kb_id: targetKbId }
+            : { target_folder: targetFolder },
+        ),
       },
     ),
 };

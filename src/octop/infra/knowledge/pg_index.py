@@ -129,6 +129,29 @@ class PgVectorKnowledgeIndex:
             ).fetchall()
         return [(int(ordinal), str(text)) for ordinal, text in rows]
 
+    def read_doc_chunks(self, doc_id: str) -> list[tuple[str, list[float], dict[str, object]]]:
+        """Return one document's chunks as ``(text, embedding, metadata)``, in order."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT text, embedding::text, meta_json FROM {_TABLE}
+                WHERE kb_id = %s AND doc_id = %s
+                ORDER BY ordinal
+                """,
+                (self._kb_id, doc_id),
+            ).fetchall()
+        chunks: list[tuple[str, list[float], dict[str, object]]] = []
+        for text, embedding, meta_json in rows:
+            decoded = json.loads(meta_json) if isinstance(meta_json, str) else meta_json
+            chunks.append(
+                (
+                    str(text),
+                    [float(value) for value in json.loads(embedding)],
+                    decoded if isinstance(decoded, dict) else {},
+                )
+            )
+        return chunks
+
     def delete_doc(self, doc_id: str) -> None:
         with self._connect() as conn:
             conn.execute(

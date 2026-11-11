@@ -167,7 +167,15 @@ class MoveDocumentBody(BaseModel):
     target_folder: str = Field(
         default="",
         max_length=1024,
-        description="Path of the destination folder in the same knowledge base; empty for root.",
+        description="Path of the destination folder; empty for the root.",
+    )
+    target_kb_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Knowledge base to move into; omit for the same base. The caller must be able "
+            "to write to both."
+        ),
     )
 
 
@@ -1149,7 +1157,7 @@ async def rename_document(
 
 @router.post(
     "/{kb_id}/documents/{doc_id}/move",
-    summary="Move a document or folder into another folder",
+    summary="Move a document or folder into another folder or knowledge base",
 )
 async def move_document(
     kb_id: str,
@@ -1159,15 +1167,24 @@ async def move_document(
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
-    """Move within one knowledge base. A folder takes its contents along; nothing is reindexed."""
+    """Move a file or folder; a folder takes its contents along.
+
+    Within one base nothing is reindexed. Into another base, originals and chunks
+    move along; files without reusable chunks are indexed again in the target.
+    """
     try:
-        document = _knowledge_service(server).move_document(
+        service = _knowledge_service(server)
+        document = service.move_document(
             kb_id,
             doc_id,
             actor_user_id=user.id,
             target_folder=body.target_folder,
             is_admin=_is_admin(user),
+            target_kb_id=body.target_kb_id,
         )
+        if document.kb_id != kb_id and server.services is not None:
+            for pending_id in service.pending_file_ids(document):
+                enqueue_index_document(server.services, document.kb_id, pending_id)
         return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
