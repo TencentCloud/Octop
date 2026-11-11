@@ -79,3 +79,21 @@ def test_retrieve_context_skips_empty_non_text_turn() -> None:
     )
 
     assert context == ""
+
+
+def test_format_context_cites_only_documents_inside_the_budget() -> None:
+    base = SimpleNamespace(id="kb", name="KB")
+    doc_a = SimpleNamespace(id="a", filename="a.md", path="a.md")
+    doc_b = SimpleNamespace(id="b", filename="b.md", path="b.md")
+    hit_a = SimpleNamespace(text="alpha " * 40, ordinal=0)
+    hit_b = SimpleNamespace(text="beta " * 40, ordinal=0)
+
+    text = retrieve_module._format_context(
+        [(base, hit_a, doc_a), (base, hit_b, doc_b)],
+        char_budget=80,
+        locale="en",
+    )
+
+    marker = text.split(CITATIONS_MARKER_PREFIX, 1)[1]
+    assert "a.md" in marker
+    assert "b.md" not in marker

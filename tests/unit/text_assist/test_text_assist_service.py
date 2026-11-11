@@ -85,6 +85,7 @@ async def test_explicit_model_forwarded() -> None:
 
 def test_assist_kinds_cover_p0() -> None:
     assert "chat.prompt" in ASSIST_KINDS
+    assert "chat.thread_title" in ASSIST_KINDS
     assert "expert.description" in ASSIST_KINDS
     assert "knowledge_base.description" in ASSIST_KINDS
     assert "connector.description" in ASSIST_KINDS

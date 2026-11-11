@@ -43,8 +43,16 @@ export interface UserGroupWrite {
 
 export type ResourceVisibilityMode = "all" | "groups" | "owner";
 
+export interface SharingAudience {
+  user_count: number;
+  group_count: number;
+}
+
 export const userGroupsApi = {
   list: () => request<UserGroup[]>("/user-groups"),
+
+  /** Enabled accounts and user groups. Any signed-in user may call this. */
+  audience: () => request<SharingAudience>("/user-groups/audience"),
 
   create: (body: UserGroupWrite & { name: string }) =>
     request<UserGroup>("/user-groups", {

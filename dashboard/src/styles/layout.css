@@ -14,12 +14,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
-  /* Override index.html boot gray (#f7f8fa) so iOS PWA letterboxing
-     below 100dvh is not a stray gray strip. */
+  /* Override the boot ground (#f5f6f8) so iOS PWA letterboxing
+     below 100dvh follows the theme instead of staying that gray. */
   background: var(--fn-bg-layout, #f5f6f8);
 }
 
 html {
+  /* Window buttons live on exactly one edge: macOS at the start (traffic
+     lights), Windows at the end (caption buttons). Both default to 0 so
+     browser mode and the unused edge need no special casing. */
+  --window-controls-inset-start: 0px;
   --window-controls-inset-end: 0px;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
@@ -27,24 +31,234 @@ html {
   --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
-/* Wails v3 frameless drag: the element under the cursor must set this. */
+/* Window dragging: the shell hides its titlebar but keeps the native buttons,
+   so the element under the cursor has to opt in to be a drag handle. */
+/* Windows and Linux have no native menu bar under the transparent caption.
+   The page draws one full-width row for File / Edit / View / Help, sharing
+   that row with the window buttons. The row and the page are a column:
+   `#octop-chrome` on top, `#octop-stage` (popup container) below. */
+html[data-octop-caption-row] body {
+  display: flex;
+  flex-direction: column;
+}
+
+html[data-octop-caption-row] #octop-chrome {
+  flex: 0 0 auto;
+}
+
+html[data-octop-caption-row] #octop-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  /* Containing block for position:fixed popups mounted in this stage, so a
+     drawer or toast with top:0 starts under the menu instead of the window. */
+  transform: translateY(0);
+}
+
+html[data-octop-caption-row] #root {
+  position: absolute;
+  inset: 0;
+  /* index.html pins #root to 100lvh for the boot splash. That height is the
+     whole window, and this node already sits under the caption row, so the
+     extra row is clipped off the bottom of the shell. */
+  min-height: 0;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: var(--octop-caption-row, 32px);
+  padding-left: 4px;
+  padding-right: var(--window-controls-inset-end, 138px);
+  background: var(--fn-bg-layout, #0e0e0e);
+}
+
+/* Linux caption buttons. Electron's overlay paints Adwaita circles; these
+   are the Windows caption rectangles: 46×32, no radius, close turns red. */
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: 0;
+  display: flex;
+  direction: ltr;
+  height: 100%;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--fn-text-primary, #1a1a1a);
+  cursor: default;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+html[data-octop-desktop-chrome="windows"]
+  .octop-linux-controls
+  button:not(.octop-linux-controls-close):hover {
+  background: rgba(127, 127, 127, 0.2);
+}
+
+html[data-octop-desktop-chrome="windows"]
+  .octop-linux-controls
+  button:not(.octop-linux-controls-close):active {
+  background: rgba(127, 127, 127, 0.32);
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls-close:hover,
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls-close:active {
+  background: #e81123;
+  color: #fff;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-linux-controls-close:active {
+  background: #c50f1f;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-item {
+  height: 24px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fn-text-primary, #1a1a1a);
+  font:
+    13px/24px "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
+  cursor: default;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-item:hover,
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-item.is-open {
+  background: rgba(127, 127, 127, 0.2);
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-popup {
+  /* Portaled to document.body, above the caption row and every overlay under it. */
+  position: fixed;
+  z-index: 12000;
+  min-width: 232px;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  color: var(--fn-text-primary, #1a1a1a);
+}
+
+html[data-theme="dark"][data-octop-desktop-chrome="windows"]
+  .octop-win-menu-popup {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #2c2c2c;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48);
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font:
+    13px/28px "Segoe UI",
+    "Microsoft YaHei",
+    sans-serif;
+  text-align: left;
+  cursor: default;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-command:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="dark"][data-octop-desktop-chrome="windows"]
+  .octop-win-menu-command:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-accel {
+  flex: 0 0 auto;
+  color: var(--fn-text-secondary, #8a8a8a);
+  font-size: 12px;
+}
+
+html[data-octop-desktop-chrome="windows"] .octop-win-menu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme="dark"][data-octop-desktop-chrome="windows"]
+  .octop-win-menu-sep {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 html[data-octop-desktop-chrome] .octop-desktop-drag {
-  --wails-draggable: drag;
+  -webkit-app-region: drag;
+  app-region: drag;
   user-select: none;
 }
 
 html[data-octop-desktop-chrome] .octop-desktop-no-drag,
-html[data-octop-desktop-chrome] .octop-desktop-drag button,
-html[data-octop-desktop-chrome] .octop-desktop-drag a,
-html[data-octop-desktop-chrome] .octop-desktop-drag input,
-html[data-octop-desktop-chrome] .octop-desktop-drag textarea,
-html[data-octop-desktop-chrome] .octop-desktop-drag select,
-html[data-octop-desktop-chrome] .octop-desktop-drag [role="button"],
+/* Controls can be siblings of the drag band or portalled menus/dialogs. */
+html[data-octop-desktop-chrome] button,
+html[data-octop-desktop-chrome] a,
+html[data-octop-desktop-chrome] input,
+html[data-octop-desktop-chrome] textarea,
+html[data-octop-desktop-chrome] select,
+html[data-octop-desktop-chrome] label,
+html[data-octop-desktop-chrome] summary,
+html[data-octop-desktop-chrome] [role="button"],
+html[data-octop-desktop-chrome] [role="tab"],
+html[data-octop-desktop-chrome] [role="separator"],
+html[data-octop-desktop-chrome] [role="slider"],
+html[data-octop-desktop-chrome] [role="combobox"],
+html[data-octop-desktop-chrome] [role="menu"],
+html[data-octop-desktop-chrome] [role="dialog"],
+html[data-octop-desktop-chrome] [role="alertdialog"],
+html[data-octop-desktop-chrome] [tabindex],
+html[data-octop-desktop-chrome] [contenteditable]:not([contenteditable="false"]),
+html[data-octop-desktop-chrome] [draggable="true"],
 html[data-octop-desktop-chrome] [data-octop-no-drag] {
-  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
-/* Right-edge overlays sit under the frameless caption buttons unless inset. */
+/* Right-edge overlays sit under the native caption buttons unless inset. */
 html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
   padding-inline-end: max(
     12px,
@@ -52,17 +266,36 @@ html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
   ) !important;
 }
 
-html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-header,
-html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-header {
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .octop-drawer-right
+  .octop-drawer-header,
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .ant-drawer-right
+  .ant-drawer-header {
   padding-inline-end: max(
     24px,
     var(--window-controls-inset-end, 0px)
   ) !important;
 }
 
-html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-close,
-html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .octop-drawer-right
+  .octop-drawer-close,
+html[data-octop-desktop-chrome]:not([data-octop-caption-row])
+  .ant-drawer-right
+  .ant-drawer-close {
   inset-inline-end: var(--window-controls-inset-end, 0px) !important;
+}
+
+/* macOS only: a drawer covers the title-bar drag strip, and the dialog is
+   no-drag. The header is the replacement hit target. Controls inside stay
+   clickable via the no-drag rules above. Windows and Linux drag from the
+   caption menu. */
+html[data-octop-desktop-chrome="mac"] .octop-drawer-header,
+html[data-octop-desktop-chrome="mac"] .ant-drawer-header {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
 }
 
 #root {

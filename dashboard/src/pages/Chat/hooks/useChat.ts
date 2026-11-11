@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
   useEffect,
 } from "react";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import type {
   MessageMetadata,
   TokenUsage,
@@ -30,7 +31,16 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
-import { mergeHistoryWithLocalTail } from "../utils/mergeHistoryTail";
+import {
+  mergeHistoryWithLocalTail,
+  preferLocalTranscript,
+  serverCaughtUp,
+  retainedHistoryPrefix,
+} from "../utils/mergeHistoryTail";
+import {
+  clearInflightTail,
+  readInflightTail,
+} from "../utils/inflightTranscriptCache";
 import { promoteAskUserToolMessage } from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import {
@@ -382,6 +392,25 @@ function enrichAttachmentPreviewUrls(
   });
 }
 
+function messageAuthor(raw: unknown): ChatMessage["author"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as {
+    user_id?: unknown;
+    display_name?: unknown;
+    username?: unknown;
+    avatar_url?: unknown;
+    avatar_icon?: unknown;
+  };
+  if (typeof row.user_id !== "number" || row.user_id <= 0) return undefined;
+  return {
+    userId: row.user_id,
+    displayName: typeof row.display_name === "string" ? row.display_name : "",
+    username: typeof row.username === "string" ? row.username : "",
+    avatarUrl: typeof row.avatar_url === "string" ? row.avatar_url : null,
+    avatarIcon: typeof row.avatar_icon === "string" ? row.avatar_icon : null,
+  };
+}
+
 function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   const raw: InternalChatMessage[] = entries.map((entry, index) => {
     const tool = extractToolData(entry.content);
@@ -448,6 +477,12 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           : undefined,
       toolData: tool?.data,
       usage: normalizeTokenUsage(entry.usage ?? undefined) ?? undefined,
+      durationMs:
+        typeof entry.duration_ms === "number" &&
+        Number.isFinite(entry.duration_ms) &&
+        entry.duration_ms >= 0
+          ? Math.round(entry.duration_ms)
+          : undefined,
       metadata: normalizeMessageMetadata(entry.metadata ?? undefined),
       errorInfo:
         tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
@@ -480,6 +515,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           ? entry.speaker_agent_id.trim()
           : undefined,
       teamWrapup: Boolean(entry.team_wrapup),
+      author: messageAuthor(entry.author),
       decision: parseDecisionNotice(entry.decision) ?? undefined,
       editedFiles: Array.isArray(entry.edited_files)
         ? entry.edited_files
@@ -675,6 +711,7 @@ export function convertHistoryMessages(
     content: unknown;
     id?: string;
     usage?: unknown;
+    duration_ms?: number;
     timestamp?: number;
     composer_context?: unknown;
     inbound_attachments?: unknown;
@@ -684,6 +721,13 @@ export function convertHistoryMessages(
     team_wrapup?: boolean;
     edited_files?: string[];
     decision?: unknown;
+    author?: {
+      user_id?: number;
+      display_name?: string | null;
+      username?: string | null;
+      avatar_url?: string | null;
+      avatar_icon?: string | null;
+    };
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -701,6 +745,10 @@ export function convertHistoryMessages(
       role: message.role,
       content: toHistoryContentBlocks(message.content),
       usage: normalizeTokenUsage(message.usage ?? undefined),
+      duration_ms:
+        typeof message.duration_ms === "number"
+          ? message.duration_ms
+          : undefined,
       timestamp:
         typeof message.timestamp === "number" ? message.timestamp : undefined,
       metadata: Object.keys(meta).length > 0 ? meta : undefined,
@@ -710,6 +758,7 @@ export function convertHistoryMessages(
         typeof message.agent_id === "string" && message.agent_id.trim()
           ? message.agent_id.trim()
           : undefined,
+      author: message.author,
       team_wrapup: message.team_wrapup === true,
       decision: message.decision,
       edited_files: Array.isArray(message.edited_files)
@@ -763,6 +812,8 @@ async function loadThreadHistory(
     offset,
     cursor: params.cursor,
   });
+  if (history.thread_id !== threadId)
+    throw new Error("History response belongs to another thread");
   const artifacts = normalizeThreadArtifacts(
     history.artifacts,
     agentId,
@@ -805,6 +856,40 @@ async function loadThreadHistory(
   };
 }
 
+function messagesWithInflightCache(
+  sessionId: string,
+  messages: ChatMessage[],
+  loaded: ChatMessage[],
+  turnActive = false,
+): ChatMessage[] {
+  const cached = readInflightTail(sessionId);
+  // A reloaded cache's streaming flag cannot establish that a turn is active.
+  const tail = turnActive
+    ? cached
+    : cached?.map((message) =>
+        message.status === "streaming"
+          ? { ...message, status: "done" as const }
+          : message,
+      );
+  return preferLocalTranscript(messages.length ? messages : loaded, tail);
+}
+
+function dropInflightCacheIfCaughtUp(
+  sessionId: string,
+  loaded: ChatMessage[],
+): void {
+  const cached = readInflightTail(sessionId);
+  if (!cached || cached.length === 0) return;
+  const snap = chatStore.getSnapshot(sessionId);
+  if (
+    snap.isStreaming ||
+    snap.messages.some((message) => message.status === "streaming")
+  ) {
+    return;
+  }
+  if (serverCaughtUp(loaded, cached)) clearInflightTail(sessionId);
+}
+
 // ── The hook ──────────────────────────────────────────────────────────────
 
 /**
@@ -818,6 +903,7 @@ export function useChat(
   isTeamRoom = false,
 ) {
   const stableSessionId = sessionId || "__empty__";
+  const currentUser = useCurrentUser();
   useEffect(() => {
     chatStore.setSessionTeamRoom(stableSessionId, isTeamRoom);
   }, [stableSessionId, isTeamRoom]);
@@ -867,8 +953,21 @@ export function useChat(
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRefreshing, setHistoryRefreshing] = useState(false);
   const loadGenRef = useRef(0);
-  const loadMoreInFlightRef = useRef(false);
-  const refreshInFlightRef = useRef(false);
+  const loadMoreInFlightRef = useRef<number | null>(null);
+  const refreshInFlightRef = useRef<number | null>(null);
+  useEffect(() => {
+    const generation = loadGenRef;
+    ++generation.current;
+    loadMoreInFlightRef.current = null;
+    refreshInFlightRef.current = null;
+    setHistoryLoading(false);
+    setHistoryRefreshing(false);
+    return () => {
+      ++generation.current;
+      loadMoreInFlightRef.current = null;
+      refreshInFlightRef.current = null;
+    };
+  }, [stableSessionId, agentId]);
 
   const attachAfterHistory = useCallback(
     (key: string, targetThreadId: string) => {
@@ -907,6 +1006,16 @@ export function useChat(
         attachments:
           attachments && attachments.length > 0 ? attachments : undefined,
         composerContext,
+        author:
+          currentUser && currentUser.id > 0
+            ? {
+                userId: currentUser.id,
+                displayName: currentUser.display_name ?? "",
+                username: currentUser.username ?? "",
+                avatarUrl: currentUser.avatar_url,
+                avatarIcon: currentUser.avatar_icon,
+              }
+            : undefined,
         status: "done",
         timestamp: Date.now(),
       };
@@ -931,14 +1040,18 @@ export function useChat(
         reasoningEffort,
         conversationMode,
         hitlPolicy,
+        userMsg.id,
       );
     },
-    [stableSessionId],
+    [currentUser, stableSessionId],
   );
 
   const cancelStream = useCallback(() => {
-    chatStore.cancelStream(stableSessionId);
-  }, [stableSessionId]);
+    chatStore.cancelStream(stableSessionId, {
+      agentId,
+      threadId: stableSessionId,
+    });
+  }, [stableSessionId, agentId]);
 
   const loadHistory = useCallback(
     async (targetThreadId: string) => {
@@ -957,19 +1070,25 @@ export function useChat(
       // and nothing would refetch them before a page reload.
       const liveTurn =
         snap.isStreaming || (isTeamRoom && chatStore.hasLiveSocket(key));
+      const cachedTail = readInflightTail(key);
       if (
         (snap.messages.length > 0 || liveTurn) &&
         !chatStore.isHistoryStale(key)
       ) {
-        // Always listen after hydrate so late team / inbox replies land here,
-        // not only when a turn is already marked active.
+        if (cachedTail && snap.messages.length > 0 && snap.isStreaming) {
+          chatStore.restoreInflightTail(key, cachedTail);
+        }
+        // Always listen after hydrate so late team / inbox replies land here.
+        // An empty live view still fetches history so the cached tail can be
+        // spliced onto the persisted prefix instead of replacing it.
         attachAfterHistory(key, targetThreadId);
-        return;
+        if (snap.messages.length > 0) return;
       }
 
       // Never cancelStream here — load/hydrate must not stop a live server turn.
       // (Weak resume: only the Stop control / cancelStream may send `cancel`.)
 
+      const epoch = chatStore.beginHistoryRead(key);
       const gen = ++loadGenRef.current;
       setHistoryLoading(true);
 
@@ -977,31 +1096,56 @@ export function useChat(
         let loaded = await loadThreadHistory(agentId, targetThreadId, {
           offset: 0,
         });
-        while (loaded.projectionLoading && loadGenRef.current === gen) {
+        // Bounded: a stalled projection worker must not keep this loop polling
+        // forever. 20 attempts ≈ 30s worst case, then we surface the state.
+        let projectionAttempts = 0;
+        while (
+          loaded.projectionLoading &&
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch) &&
+          projectionAttempts < 20
+        ) {
+          projectionAttempts += 1;
           await new Promise((resolve) =>
             window.setTimeout(
               resolve,
               Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
             ),
           );
-          if (loadGenRef.current !== gen) return;
+          if (
+            loadGenRef.current !== gen ||
+            !chatStore.isHistoryReadCurrent(key, epoch)
+          )
+            return;
           loaded = await loadThreadHistory(agentId, targetThreadId, {
             offset: 0,
           });
         }
-        if (loadGenRef.current !== gen) return;
+        if (
+          loadGenRef.current !== gen ||
+          !chatStore.isHistoryReadCurrent(key, epoch)
+        )
+          return;
         // Re-read after the await. A send during this fetch appends a local
         // turn the server page does not have yet; replacing the list drops
-        // that bubble while the websocket turn keeps running.
+        // that bubble while the websocket turn keeps running. A browser cache
+        // covers the same gap when this tab discarded the in-memory tail.
         const current = chatStore.getSnapshot(key);
-        const loadedIds = new Set(loaded.messages.map((message) => message.id));
-        const firstOverlap = current.messages.findIndex((message) =>
-          loadedIds.has(message.id),
+        const local = messagesWithInflightCache(
+          key,
+          current.messages,
+          loaded.messages,
+          loaded.turnActive,
         );
-        const keptOlder = firstOverlap > 0;
+        const keptOlder =
+          retainedHistoryPrefix(loaded.messages, current.messages).length > 0;
         chatStore.setHistoryPage(
           key,
-          mergeHistoryWithLocalTail(loaded.messages, current.messages),
+          mergeHistoryWithLocalTail(
+            loaded.messages,
+            local,
+            current.isStreaming,
+          ),
           {
             hasMore: keptOlder ? current.historyHasMore : loaded.hasMore,
             nextOffset: keptOlder
@@ -1012,10 +1156,25 @@ export function useChat(
               : loaded.nextCursor,
           },
         );
+        dropInflightCacheIfCaughtUp(key, loaded.messages);
         setHistoryError(false);
         attachAfterHistory(key, targetThreadId);
+        // Projection never became ready within the bounded window: keep whatever
+        // page arrived (it may be empty) but show it as an error so the user gets
+        // a visible "retry" affordance instead of an endless blank panel.
+        if (
+          loaded.projectionLoading &&
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
+        ) {
+          failedHistoryOperation.current = "initial";
+          setHistoryError(true);
+        }
       } catch {
-        if (loadGenRef.current === gen) {
+        if (
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
+        ) {
           failedHistoryOperation.current = "initial";
           setHistoryError(true);
         }
@@ -1032,7 +1191,7 @@ export function useChat(
     const key = stableSessionId;
     const snap = chatStore.getSnapshot(key);
     if (
-      loadMoreInFlightRef.current ||
+      loadMoreInFlightRef.current !== null ||
       snap.historyLoadingMore ||
       !snap.historyHasMore ||
       !agentId ||
@@ -1041,10 +1200,11 @@ export function useChat(
       return false;
     }
 
-    loadMoreInFlightRef.current = true;
     chatStore.setHistoryLoadingMore(key, true);
     const offset = snap.historyNextOffset;
     const gen = loadGenRef.current;
+    const epoch = chatStore.beginHistoryRead(key);
+    loadMoreInFlightRef.current = gen;
 
     try {
       const {
@@ -1056,6 +1216,11 @@ export function useChat(
         offset,
         cursor: snap.historyNextCursor,
       });
+      if (
+        loadGenRef.current !== gen ||
+        !chatStore.isHistoryReadCurrent(key, epoch)
+      )
+        return false;
       chatStore.prependHistoryMessages(key, older, {
         hasMore,
         nextOffset,
@@ -1064,14 +1229,20 @@ export function useChat(
       if (loadGenRef.current === gen) setHistoryError(false);
       return true;
     } catch {
-      if (loadGenRef.current === gen) {
+      if (
+        loadGenRef.current === gen &&
+        chatStore.isHistoryReadCurrent(key, epoch)
+      ) {
         failedHistoryOperation.current = "older";
         setHistoryError(true);
       }
       return false;
     } finally {
-      loadMoreInFlightRef.current = false;
-      chatStore.setHistoryLoadingMore(key, false);
+      if (loadMoreInFlightRef.current === gen) {
+        loadMoreInFlightRef.current = null;
+        if (chatStore.isHistoryReadCurrent(key, epoch))
+          chatStore.setHistoryLoadingMore(key, false);
+      }
     }
   }, [agentId, stableSessionId]);
 
@@ -1086,7 +1257,7 @@ export function useChat(
       const key = targetSessionId || stableSessionId;
       const snap = chatStore.getSnapshot(key);
       if (
-        refreshInFlightRef.current ||
+        refreshInFlightRef.current !== null ||
         historyRefreshing ||
         historyLoading ||
         shouldBlockHistoryRefresh({
@@ -1103,10 +1274,11 @@ export function useChat(
         return;
       }
 
-      refreshInFlightRef.current = true;
       // Separate from loadGenRef: loadHistory may bump loadGen while we fetch.
       // Always clear the refreshing flag in finally so the footer cannot stick.
       const gen = ++loadGenRef.current;
+      const epoch = chatStore.beginHistoryRead(key);
+      refreshInFlightRef.current = gen;
       setHistoryRefreshing(true);
 
       try {
@@ -1115,37 +1287,51 @@ export function useChat(
           hasMore,
           nextOffset,
           nextCursor,
+          turnActive,
         } = await loadThreadHistory(agentId, key, { offset: 0 });
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
-        if (loadGenRef.current !== gen) return;
+        if (
+          loadGenRef.current !== gen ||
+          !chatStore.isHistoryReadCurrent(key, epoch)
+        )
+          return;
 
         // Keep older pages and any local turn sent while this refresh was
         // in flight. `snap` is from before the await and must not be the
         // message source — a send during the fetch lives only on the store.
         const current = chatStore.getSnapshot(key);
-        const latestIds = new Set(latest.map((m) => m.id));
-        const firstOverlap = current.messages.findIndex((m) =>
-          latestIds.has(m.id),
+        const local = messagesWithInflightCache(
+          key,
+          current.messages,
+          latest,
+          turnActive,
         );
-        const keptOlder = firstOverlap > 0;
+        const keptOlder =
+          retainedHistoryPrefix(latest, current.messages).length > 0;
         chatStore.setHistoryPage(
           key,
-          mergeHistoryWithLocalTail(latest, current.messages),
+          mergeHistoryWithLocalTail(latest, local, current.isStreaming),
           {
             hasMore: keptOlder ? current.historyHasMore : hasMore,
             nextOffset: keptOlder ? current.historyNextOffset : nextOffset,
             nextCursor: keptOlder ? current.historyNextCursor : nextCursor,
           },
         );
+        dropInflightCacheIfCaughtUp(key, latest);
         setHistoryError(false);
       } catch {
-        if (loadGenRef.current === gen) {
+        if (
+          loadGenRef.current === gen &&
+          chatStore.isHistoryReadCurrent(key, epoch)
+        ) {
           failedHistoryOperation.current = "latest";
           setHistoryError(true);
         }
       } finally {
-        refreshInFlightRef.current = false;
-        setHistoryRefreshing(false);
+        if (refreshInFlightRef.current === gen) {
+          refreshInFlightRef.current = null;
+          setHistoryRefreshing(false);
+        }
       }
     },
     [agentId, stableSessionId, historyRefreshing, historyLoading],
@@ -1170,12 +1356,12 @@ export function useChat(
       _sessionKey: string,
       agentId: string,
     ) => {
-      const ok = chatStore.truncateAndReplaceUserMessage(
+      const clientId = chatStore.truncateAndReplaceUserMessage(
         stableSessionId,
         messageId,
         newText,
       );
-      if (!ok) return;
+      if (!clientId) return;
 
       // Re-send without appending a new user message — it is already in the store
       chatStore.sendTurn(
@@ -1187,6 +1373,14 @@ export function useChat(
         undefined,
         undefined,
         stableSessionId !== "__empty__" ? stableSessionId : undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        clientId,
       );
     },
     [stableSessionId],

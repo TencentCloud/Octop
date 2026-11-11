@@ -6,6 +6,7 @@ password; every other field lives in the row's ``extra`` JSON document.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -35,6 +36,16 @@ MAX_TIMEOUT_SECONDS = 60
 _ALLOWED_SCHEMES = ("ldap", "ldaps")
 _DEFAULT_PORTS = {"ldap": 389, "ldaps": 636}
 _ATTRIBUTE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9.-]*$")
+#: Literal addresses that may enable ``ldap://`` without StartTLS. Hostnames stay
+#: on TLS: resolving them at save time would trust DNS, which can change later.
+_CLEARTEXT_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+)
 
 #: Config fields persisted in the provider row's ``extra`` JSON document.
 EXTRA_FIELDS = (
@@ -138,6 +149,13 @@ class LdapConfig:
         notes: list[str] = []
         if self.enabled and not self.verify_tls:
             notes.append("tls_verification_disabled")
+        if (
+            self.enabled
+            and self.scheme == "ldap"
+            and not self.start_tls
+            and _allows_cleartext_ldap(self.host)
+        ):
+            notes.append("cleartext_ldap")
         if not self.admin_groups:
             notes.append("no_admin_groups")
         if self.enabled and not self.allowed_groups and self.auto_provision:
@@ -169,10 +187,18 @@ class LdapConfig:
             if self.start_tls and scheme == "ldaps":
                 raise ValueError("StartTLS cannot be combined with an ldaps:// server URL")
             # Enabling an unencrypted connection would put user passwords on the
-            # wire in clear text; refuse it rather than trusting the operator.
-            if enclosing and scheme == "ldap" and not self.start_tls:
+            # wire in clear text. A literal private or loopback address is the
+            # exception operators asked for; a hostname is not, because DNS can
+            # later point it at a public host.
+            if (
+                enclosing
+                and scheme == "ldap"
+                and not self.start_tls
+                and not _allows_cleartext_ldap(parsed.hostname or "")
+            ):
                 raise ValueError(
-                    "enabling LDAP over ldap:// requires StartTLS; otherwise use an ldaps:// URL"
+                    "enabling LDAP over ldap:// requires StartTLS; otherwise use an "
+                    "ldaps:// URL or a literal private or loopback address"
                 )
         if not self.user_base_dn.strip() and require_complete:
             raise ValueError("user base DN is required")
@@ -290,6 +316,20 @@ def merge_config(
         auto_provision=_as_bool(values.get("auto_provision"), False),
         timeout_seconds=_as_int(values.get("timeout_seconds"), DEFAULT_TIMEOUT_SECONDS),
     )
+
+
+def _allows_cleartext_ldap(host: str) -> bool:
+    """True when ``host`` is a literal address in a private or loopback range."""
+    text = host.strip()
+    if not text:
+        return False
+    try:
+        address = ipaddress.ip_address(text)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped
+    return any(address in network for network in _CLEARTEXT_NETWORKS)
 
 
 def _as_text(value: object, default: str) -> str:

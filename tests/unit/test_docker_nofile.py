@@ -23,3 +23,4 @@ def test_octop_container_has_explicit_nofile_limit(relative_path):
     limit = compose["services"]["octop"]["ulimits"]["nofile"]
     assert limit["soft"] >= 65535
     assert limit["hard"] >= limit["soft"]
+    assert compose["services"]["octop"]["shm_size"] == "1gb"

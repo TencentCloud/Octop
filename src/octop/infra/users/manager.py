@@ -124,18 +124,29 @@ class UserManager:
         self,
         *,
         username: str,
-        password: str,
+        password: str | None = None,
         role: Role | str,
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
         role_name: str | None = None,
+        directory_provider_id: int | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
         loc = normalize_locale(locale)
-        validate_password_policy(password)
+        if directory_provider_id is not None:
+            # A directory reservation has no local secret. The directory bind is
+            # the only way in, so a password sent alongside it is ignored.
+            password_hash = None
+            sso_provider_id: int | None = directory_provider_id
+        else:
+            if not password:
+                raise OctopError(ErrorCode.PASSWORD_TOO_WEAK, "password is required")
+            validate_password_policy(password)
+            password_hash = hash_password(password)
+            sso_provider_id = None
         try:
             keys = validate_permission_keys(permissions or [])
         except ValueError as exc:
@@ -159,11 +170,12 @@ class UserManager:
             try:
                 uid = self._services.user_repo.create(
                     username=username,
-                    password_hash=hash_password(password),
+                    password_hash=password_hash,
                     role=role_id,
                     display_name=display_name,
                     locale=loc,
                     email=normalized_email,
+                    sso_provider_id=sso_provider_id,
                     permissions=keys,
                     role_name=role_name,
                 )
@@ -884,4 +896,4 @@ class UserManager:
         from octop.infra.users.profile_avatar import delete_profile_avatar
 
         self._remove_paths([self._services.paths.user_dir(username)])
-        delete_profile_avatar(self._services.paths.user_avatars_dir, str(user_id))
+        delete_profile_avatar(self._services.avatars("user"), str(user_id))
