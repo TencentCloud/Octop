@@ -26,8 +26,10 @@
 #     --build-arg PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
 #     --build-arg NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
 #     --build-arg APT_MIRROR=mirrors.cloud.tencent.com \
-#     --build-arg NODE_MAX_OLD_SPACE_SIZE=1024 \
 #     -t octop:latest .
+#
+# 内存不足 4GB 的构建机可以追加 --build-arg NODE_MAX_OLD_SPACE_SIZE=1024
+# （默认 4096，只是上限，不会预占）。
 #
 # 或使用 Compose:
 #   docker compose -f docker/docker-compose.yml up -d
@@ -45,10 +47,11 @@
 FROM node:20-slim AS frontend-builder
 
 ARG NPM_REGISTRY=
-# Node heap ceiling for the vite build. Lower this (e.g. 1024) on low-memory
-# build hosts (< 4G RAM) to avoid OOM kills — the value only caps the max,
-# it is not pre-allocated.
-ARG NODE_MAX_OLD_SPACE_SIZE=2048
+# Vite 生产打包在 rendering chunks 时峰值接近 2GB。2048 会在 GC 压力下以
+# 退出码 134（V8 heap out of memory）中止，同一次矩阵里有的架构过、有的不过。
+# 4096 与 `make build-frontend`、fnos-build-fpk 一致。这是上限，不会预占。
+# 内存不足 4GB 的机器用 --build-arg NODE_MAX_OLD_SPACE_SIZE=1024 调低。
+ARG NODE_MAX_OLD_SPACE_SIZE=4096
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./
