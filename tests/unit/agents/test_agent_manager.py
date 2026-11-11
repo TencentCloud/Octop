@@ -2572,6 +2572,71 @@ async def test_update_config_json_cannot_move_the_workspace(
 
 
 @pytest.mark.asyncio
+async def test_update_config_json_keeps_host_root_workspace(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chosen host-root workspace stays put after create, even if a patch names another path."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    row = await manager.create(
+        AgentCreateSpec(
+            name="wsdir-fixed-host",
+            config={
+                **_MEMORY_OFF,
+                "backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+            },
+        ),
+        defer_bootstrap=True,
+    )
+    stored = manager.get_config(row.agent_id).get("workspace_dir")
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps(
+            {**manager.get_config(row.agent_id), "workspace_dir": str(tmp_path / "elsewhere")}
+        ),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == stored
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_keeps_scoped_workspace(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scoped root keeps its workspace even if the patch names another directory."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    row = await manager.create(
+        AgentCreateSpec(
+            name="wsdir-scoped",
+            config={
+                **_MEMORY_OFF,
+                "backend": {
+                    "type": "filesystem",
+                    "root_dir": str(jail),
+                    "virtual_mode": True,
+                },
+            },
+        ),
+        defer_bootstrap=True,
+    )
+    stored = manager.get_config(row.agent_id).get("workspace_dir")
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps(
+            {
+                **manager.get_config(row.agent_id),
+                "workspace_dir": str(tmp_path / "elsewhere"),
+            }
+        ),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == stored
+
+
+@pytest.mark.asyncio
 async def test_internal_persist_can_still_set_the_workspace(manager: AgentManager) -> None:
     """The internal writer must keep writing ``workspace_dir`` (no over-pinning)."""
     from octop.infra.agents.manager import AgentCreateSpec

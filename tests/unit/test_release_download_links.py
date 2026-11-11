@@ -34,8 +34,11 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert f"{base}/Octop-desktop-darwin-amd64-0.9.31.dmg" in body
     assert f"{base}/Octop-portable-darwin-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-portable-darwin-amd64-0.9.31.zip" in body
-    assert f"{base}/Octop-desktop-linux-amd64-0.9.31.tar.gz" in body
-    assert f"{base}/Octop-desktop-linux-arm64-0.9.31.tar.gz" in body
+    # Linux ships deb (default) and rpm.
+    for arch in ("amd64", "arm64"):
+        for ext in ("deb", "rpm"):
+            assert f"{base}/Octop-desktop-linux-{arch}-0.9.31.{ext}" in body
+    assert "AppImage" not in body
     assert f"{base}/Octop-portable-linux-amd64-0.9.31.zip" in body
     assert f"{base}/Octop-portable-linux-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-fnos-docker-0.9.31.fpk" in body
@@ -44,6 +47,8 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert f"{base}/Octop-fnos-native-arm64-0.9.31.fpk" in body
     assert "ghcr.io/tencentcloud/octop:0.9.31` (`:latest`)" in body
     assert "ghcr.io/tencentcloud/octop:0.9.31-full" in body
+    assert "-full-0.9.31." not in body
+    assert "browser extra only" in body
     assert "Docker lite (x86 and ARM)" in body
     assert "Docker full (desktop, OCR, local models; x86 and ARM)" in body
     assert "Native x86_64" in body
@@ -80,3 +85,13 @@ def test_patch_release_body_keeps_lite_when_its_package_shipped() -> None:
     assert patched == body if body.endswith("\n") else patched == body + "\n"
     assert "ghcr.io/tencentcloud/octop:0.9.31` (`:latest`)" in patched
     assert "ghcr.io/tencentcloud/octop:0.9.31-full" in patched
+
+
+def test_download_links_follow_the_fork(monkeypatch) -> None:
+    # GitHub Actions sets GITHUB_REPOSITORY, so a fork's release notes must point
+    # at the fork, not at upstream.
+    monkeypatch.setenv("GITHUB_REPOSITORY", "liukewia/Octop")
+    mod = _load()
+    body = mod.render_download_section("1.0.3b1")
+    assert "https://github.com/liukewia/Octop/releases/download/v1.0.3b1/" in body
+    assert "https://github.com/TencentCloud/Octop/" not in body

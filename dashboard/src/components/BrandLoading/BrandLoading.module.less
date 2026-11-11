@@ -1,0 +1,69 @@
+.host {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 32px 24px;
+  background:
+    radial-gradient(
+      720px 380px at 50% -8%,
+      color-mix(in srgb, var(--fn-color-brand) 11%, transparent),
+      transparent 68%
+    ),
+    var(--fn-bg-layout, #f5f6f8);
+}
+
+.viewport {
+  min-height: 100dvh;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: brandLoadingIn 420ms ease-out both;
+}
+
+.logo {
+  display: block;
+  height: 72px;
+  width: auto;
+  max-width: min(260px, 75vw);
+  object-fit: contain;
+}
+
+.status {
+  --octop-spinner-size: 22px;
+  --octop-spinner-ring-width: 2px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: var(--fn-text-secondary, #4b5563);
+}
+
+@keyframes brandLoadingIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack {
+    animation: none;
+  }
+}
