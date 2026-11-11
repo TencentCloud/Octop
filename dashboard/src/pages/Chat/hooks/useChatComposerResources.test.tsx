@@ -66,6 +66,7 @@ vi.mock("../../../hooks/useCurrentUser", () => ({
 }));
 const { agentState } = vi.hoisted(() => ({
   agentState: {
+    loading: false,
     agents: [
       { agent_id: "expertA", knowledge_base_ids: ["k1"] },
       { agent_id: "expertB", knowledge_base_ids: ["k3"] },
@@ -74,9 +75,14 @@ const { agentState } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../context/AgentContext", () => ({
-  useAgent: () => ({ agents: agentState.agents }),
+  useAgent: () => ({
+    agents: agentState.agents,
+    loading: agentState.loading,
+  }),
 }));
 
+import { connectorsApi } from "../../../api/modules/connectors";
+import { knowledgeBasesApi } from "../../../api/modules/knowledgeBases";
 import { preferencesApi } from "../../../api/modules/preferences";
 import { providerApi } from "../../../api/modules/provider";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -96,10 +102,39 @@ const baseAgents = [
   { agent_id: "expertB", knowledge_base_ids: ["k3"] },
 ];
 
+const baseKnowledgeBases = [
+  { id: "k1", default_open: false, owner_user_id: 7 },
+  { id: "k2", default_open: false, owner_user_id: 7 },
+  { id: "k3", default_open: false, owner_user_id: 7 },
+  { id: "k4", default_open: false, owner_user_id: 7 },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
+  agentState.loading = false;
   agentState.agents = baseAgents.map((item) => ({ ...item }));
+  vi.mocked(knowledgeBasesApi.list).mockResolvedValue(
+    baseKnowledgeBases as never,
+  );
+  vi.mocked(connectorsApi.listInstances).mockResolvedValue([
+    {
+      status: "active",
+      has_credentials: true,
+      mcp_server_name: "c1",
+      display_name: "C1",
+      owner_user_id: 7,
+      kind: "mcp",
+    },
+    {
+      status: "active",
+      has_credentials: true,
+      mcp_server_name: "c2",
+      display_name: "C2",
+      owner_user_id: 7,
+      kind: "mcp",
+    },
+  ] as never);
   vi.mocked(preferencesApi.get).mockResolvedValue(null as never);
   vi.mocked(providerApi.listResolvedModels).mockResolvedValue(
     ["expert", "preferred", "sticky", "peer", "local"].map(model),
@@ -202,6 +237,168 @@ describe("useChatComposerResources — per-expert KB selection", () => {
   });
 });
 
+describe("useChatComposerResources — refresh restores defaults", () => {
+  it("waits for the agent list, then selects expert knowledge bases and connectors", async () => {
+    agentState.loading = true;
+    agentState.agents = [];
+    const { result, rerender } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing"),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(knowledgeBasesApi.list).not.toHaveBeenCalled();
+    expect(connectorsApi.listInstances).not.toHaveBeenCalled();
+    expect(result.current.selectedKnowledgeBaseIds).toEqual([]);
+    expect(result.current.selectedConnectors).toEqual([]);
+
+    agentState.loading = false;
+    agentState.agents = [
+      {
+        agent_id: "expertA",
+        knowledge_base_ids: ["k2"],
+        mcp_servers: ["c1"],
+      },
+    ];
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(["k2"]);
+      expect(result.current.selectedConnectors).toEqual(["c1"]);
+    });
+  });
+
+  it("keeps default-open picks and adds expert defaults that arrive later", async () => {
+    vi.mocked(knowledgeBasesApi.list).mockResolvedValue([
+      { id: "k1", default_open: true, owner_user_id: 7 },
+      { id: "k2", default_open: false, owner_user_id: 7 },
+    ] as never);
+    agentState.agents = [{ agent_id: "expertA", knowledge_base_ids: [] }];
+    const { result, rerender } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing"),
+    );
+
+    await waitFor(() =>
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]),
+    );
+
+    agentState.agents = [{ agent_id: "expertA", knowledge_base_ids: ["k2"] }];
+    rerender();
+
+    await waitFor(() =>
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1", "k2"]),
+    );
+  });
+
+  it("keeps catalogs visible while a new chat reapplies defaults", async () => {
+    agentState.agents = [
+      {
+        agent_id: "expertA",
+        knowledge_base_ids: ["k1"],
+        mcp_servers: ["c1"],
+      },
+    ];
+    const { result, rerender } = renderHook(
+      ({ threadId }: { threadId: string | null }) =>
+        useChatComposerResources("expertA", threadId),
+      { initialProps: { threadId: "thread-existing" as string | null } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]);
+      expect(result.current.selectedConnectors).toEqual(["c1"]);
+    });
+    act(() => {
+      result.current.handleKnowledgeBaseIdsChange(["k2"]);
+      result.current.handleConnectorsChange(["c1", "c2"]);
+    });
+    const knowledgeBases = result.current.chatKnowledgeBases;
+    const connectors = result.current.chatConnectors;
+    expect(knowledgeBases).toBeDefined();
+    expect(connectors.length).toBeGreaterThan(0);
+
+    let releaseKnowledge: (bases: unknown) => void = () => undefined;
+    let releaseConnectors: (instances: unknown) => void = () => undefined;
+    vi.mocked(knowledgeBasesApi.list).mockReturnValue(
+      new Promise((resolve) => {
+        releaseKnowledge = resolve;
+      }) as never,
+    );
+    vi.mocked(connectorsApi.listInstances).mockReturnValue(
+      new Promise((resolve) => {
+        releaseConnectors = resolve;
+      }) as never,
+    );
+
+    rerender({ threadId: null });
+
+    expect(result.current.chatKnowledgeBases).toBe(knowledgeBases);
+    expect(result.current.chatConnectors).toBe(connectors);
+    expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]);
+    expect(result.current.selectedConnectors).toEqual(["c1"]);
+
+    await act(async () => {
+      releaseKnowledge(baseKnowledgeBases);
+      releaseConnectors([
+        {
+          status: "active",
+          has_credentials: true,
+          mcp_server_name: "c1",
+          display_name: "C1",
+          owner_user_id: 7,
+          kind: "mcp",
+        },
+        {
+          status: "active",
+          has_credentials: true,
+          mcp_server_name: "c2",
+          display_name: "C2",
+          owner_user_id: 7,
+          kind: "mcp",
+        },
+      ]);
+    });
+    expect(result.current.chatKnowledgeBases).toBeDefined();
+    expect(result.current.chatConnectors.length).toBe(2);
+    expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]);
+    expect(result.current.selectedConnectors).toEqual(["c1"]);
+  });
+
+  it("keeps the current selection while the agent list reloads", async () => {
+    const { result, rerender } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing"),
+    );
+    await waitFor(() =>
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]),
+    );
+    const knowledgeBases = result.current.chatKnowledgeBases;
+
+    let releaseKnowledge: (bases: unknown) => void = () => undefined;
+    vi.mocked(knowledgeBasesApi.list).mockReturnValue(
+      new Promise((resolve) => {
+        releaseKnowledge = resolve;
+      }) as never,
+    );
+
+    agentState.loading = true;
+    rerender();
+    expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]);
+    expect(result.current.chatKnowledgeBases).toBe(knowledgeBases);
+
+    agentState.loading = false;
+    rerender();
+    expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]);
+    expect(result.current.chatKnowledgeBases).toBe(knowledgeBases);
+
+    await act(async () => {
+      releaseKnowledge(baseKnowledgeBases);
+    });
+    expect(result.current.selectedKnowledgeBaseIds).toEqual(["k1"]);
+    expect(result.current.chatKnowledgeBases).toBeDefined();
+  });
+});
+
 describe("useChatComposerResources — expert default model", () => {
   it("prefers the expert default over the account preferred model", async () => {
     agentState.agents = [
@@ -227,7 +424,7 @@ describe("useChatComposerResources — expert default model", () => {
     );
   });
 
-  it("uses the account preferred model when the expert default is Auto", async () => {
+  it("leaves Auto unset when the expert has no default, even if a preferred model is set", async () => {
     vi.mocked(preferencesApi.get).mockResolvedValue({
       locale: "zh",
       remote_browser_bookmarks: [],
@@ -240,8 +437,9 @@ describe("useChatComposerResources — expert default model", () => {
     );
 
     await waitFor(() =>
-      expect(result.current.selectedModel).toBe("prov/preferred"),
+      expect(result.current.preferredModel).toBe("prov/preferred"),
     );
+    expect(result.current.selectedModel).toBeNull();
   });
 
   it("keeps an explicit thread model ahead of the expert default", async () => {
@@ -288,11 +486,58 @@ describe("useChatComposerResources — peer expert defaults", () => {
     );
 
     await waitFor(() => {
+      expect(result.current.modelsReady).toBe(true);
       expect(result.current.selectedModel).toBe("prov/peer");
       expect(result.current.selectedConnectors).toEqual(["c2"]);
       expect(result.current.selectedKnowledgeBaseIds).toEqual(["k2"]);
       expect(result.current.conversationMode).toBe("plan");
     });
+  });
+
+  it("shows a shared peer expert default even when this catalog omits it", async () => {
+    agentState.agents = [
+      {
+        agent_id: "bridge:cid:peer",
+        bridge: true,
+        bridge_connection_id: "cid",
+        is_owner: false,
+        is_shared: true,
+        default_model: "prov/shared-peer",
+      },
+    ];
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("other"),
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("bridge:cid:peer", null),
+    );
+
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.selectedModel).toBe("prov/shared-peer");
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
+  });
+
+  it("shows a shared local expert default even when this catalog omits it", async () => {
+    agentState.agents = [
+      {
+        agent_id: "expertA",
+        is_shared: true,
+        is_owner: false,
+        default_model: "prov/shared-local",
+      },
+    ];
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("other"),
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", null),
+    );
+
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.selectedModel).toBe("prov/shared-local");
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
   });
 
   it("leaves a remote Auto expert unset instead of the local preferred model", async () => {

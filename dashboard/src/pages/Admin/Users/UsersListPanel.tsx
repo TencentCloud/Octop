@@ -66,7 +66,9 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../api/request";
+import { authApi } from "../../../api/modules/auth";
 import {
   userRolesApi,
   snapshotRoleLabel,
@@ -74,7 +76,6 @@ import {
   userRoleLabel,
   type UserRole,
 } from "../../../api/modules/userRoles";
-import { authApi } from "../../../api/modules/auth";
 import { preferencesApi } from "../../../api/modules/preferences";
 import type { SidebarNavLayout } from "../../../layouts/sidebarNavLayout";
 import { buildPermissionPickerGroups } from "./permissionPickerLayout";
@@ -113,6 +114,7 @@ interface UserRow {
   email?: string | null;
   has_password?: boolean;
   sso_linked?: boolean;
+  directory?: boolean;
   disabled: boolean;
   login_failed_count?: number;
   login_locked?: boolean;
@@ -126,6 +128,8 @@ interface UserRow {
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
+  /** Present when the users list includes MFA status from the backend. */
+  mfa_active?: boolean;
 }
 
 export interface PermissionCatalogItem {
@@ -158,18 +162,6 @@ interface ExpertTemplateOption {
   description?: string;
   icon_url?: string | null;
   icon_name?: string | null;
-}
-
-function expertTemplateChoices(
-  templates: ExpertTemplateOption[],
-): ExpertTemplateOption[] {
-  if (templates.some((item) => item.id === DEFAULT_EXPERT_TEMPLATE_ID)) {
-    return templates;
-  }
-  return [
-    { id: DEFAULT_EXPERT_TEMPLATE_ID, label: DEFAULT_EXPERT_TEMPLATE_ID },
-    ...templates,
-  ];
 }
 
 function ExpertTemplatePicker({
@@ -236,9 +228,10 @@ function ExpertTemplatePicker({
                 type="button"
                 role="option"
                 aria-selected={selected}
-                className={`${styles.expertTemplateRow} ${
-                  selected ? styles.expertTemplateRowSelected : ""
-                }`}
+                className={cx(
+                  styles.expertTemplateRow,
+                  selected && styles.expertTemplateRowSelected,
+                )}
                 onClick={() => onChange?.(item.id)}
               >
                 <span className={styles.expertTemplateAvatar}>
@@ -279,8 +272,9 @@ interface CreateValues extends PolicyFormValues {
   username: string;
   display_name?: string;
   email?: string;
-  password: string;
-  confirm: string;
+  directory?: boolean;
+  password?: string;
+  confirm?: string;
   role: string;
   permissions?: string[];
   role_name?: string | null;
@@ -483,7 +477,7 @@ function RoleNameMark({
     return <span className={className}>—</span>;
   }
   return (
-    <span className={`${styles.roleNameMark} ${className ?? ""}`}>
+    <span className={cx(styles.roleNameMark, className)}>
       {matched ? (
         <ProfileAvatar
           url={matched.avatar_url}
@@ -544,6 +538,7 @@ interface UserCardGridProps {
   onEdit: (row: UserRow) => void;
   onShowAgents: (row: UserRow) => void;
   onResetPassword: (row: UserRow) => void;
+  onResetMfa: (row: UserRow) => Promise<void>;
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
@@ -678,9 +673,10 @@ function TokenQuotaInput({ value, onChange }: TokenQuotaInputProps) {
             <button
               key={preset}
               type="button"
-              className={`${styles.tokenQuotaPreset} ${
-                selected ? styles.tokenQuotaPresetActive : ""
-              }`}
+              className={cx(
+                styles.tokenQuotaPreset,
+                selected && styles.tokenQuotaPresetActive,
+              )}
               onClick={() => onChange?.(preset)}
             >
               {t("adminUsers.policyTokenQuotaPreset", {
@@ -732,9 +728,10 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
             <button
               key={preset}
               type="button"
-              className={`${styles.tokenQuotaPreset} ${
-                selected ? styles.tokenQuotaPresetActive : ""
-              }`}
+              className={cx(
+                styles.tokenQuotaPreset,
+                selected && styles.tokenQuotaPresetActive,
+              )}
               onClick={() => onChange?.(preset)}
             >
               {preset}
@@ -755,7 +752,7 @@ export function ResourcePolicyFields({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={`${styles.createSection} ${styles.policySection}`}>
+    <div className={cx(styles.createSection, styles.policySection)}>
       <div className={styles.createSectionTitle}>
         {t("adminUsers.createSectionPolicy")}
       </div>
@@ -1005,9 +1002,7 @@ export function PermissionCheckboxPicker({
 
   return (
     <div
-      className={`${styles.permPicker} ${
-        disabled ? styles.permPickerDisabled : ""
-      }`}
+      className={cx(styles.permPicker, disabled && styles.permPickerDisabled)}
     >
       {groups.map((group) => {
         const keys = group.blocks.flatMap((block) =>
@@ -1032,7 +1027,7 @@ export function PermissionCheckboxPicker({
                 return (
                   <div
                     key={chip.key}
-                    className={`${styles.permChip} ${styles.permChipAlways}`}
+                    className={cx(styles.permChip, styles.permChipAlways)}
                     title={t("adminUsers.permAlwaysOn")}
                   >
                     <span className={styles.permChipLabel}>{chip.label}</span>
@@ -1050,9 +1045,10 @@ export function PermissionCheckboxPicker({
                   type="button"
                   disabled={disabled}
                   aria-pressed={checked}
-                  className={`${styles.permChip} ${
-                    checked ? styles.permChipSelected : ""
-                  }`}
+                  className={cx(
+                    styles.permChip,
+                    checked && styles.permChipSelected,
+                  )}
                   onClick={() => toggle(item.key, !checked)}
                 >
                   <span className={styles.permChipCheck} aria-hidden>
@@ -1103,9 +1099,10 @@ export function PermissionCheckboxPicker({
                   return (
                     <div
                       key={block.id}
-                      className={`${styles.permPage} ${
-                        pageOpen ? "" : styles.permPageCollapsed
-                      }`}
+                      className={cx(
+                        styles.permPage,
+                        !pageOpen && styles.permPageCollapsed,
+                      )}
                     >
                       <PermFoldHeader
                         title={block.title}
@@ -1206,7 +1203,7 @@ function PermissionSummary({
   const { t } = useTranslation();
   if (row.role === "admin") {
     return (
-      <span className={`${styles.permBadge} ${styles.permBadgeAll}`}>
+      <span className={cx(styles.permBadge, styles.permBadgeAll)}>
         {t("adminUsers.permAll")}
       </span>
     );
@@ -1250,6 +1247,7 @@ function UserCardGrid({
   onEdit,
   onShowAgents,
   onResetPassword,
+  onResetMfa,
   onDelete,
   onUnlockLogin,
   nowSec,
@@ -1281,14 +1279,12 @@ function UserCardGrid({
         return (
           <div
             key={row.id}
-            className={[
+            className={cx(
               styles.userCard,
-              selected ? styles.userCardSelected : "",
-              isLocked ? styles.userCardLocked : "",
-              row.disabled ? styles.userCardDisabled : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              selected && styles.userCardSelected,
+              isLocked && styles.userCardLocked,
+              row.disabled && styles.userCardDisabled,
+            )}
           >
             <div className={styles.userCardBody}>
               <div className={styles.userCardTop}>
@@ -1308,11 +1304,10 @@ function UserCardGrid({
                     className={styles.userCardAvatar}
                   />
                   <span
-                    className={
-                      row.disabled
-                        ? `${styles.userCardStatusDot} ${styles.userCardStatusDotOff}`
-                        : styles.userCardStatusDot
-                    }
+                    className={cx(
+                      styles.userCardStatusDot,
+                      row.disabled && styles.userCardStatusDotOff,
+                    )}
                   />
                 </span>
                 <div className={styles.userCardTitleBlock}>
@@ -1339,11 +1334,16 @@ function UserCardGrid({
               </p>
               <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
-                {row.sso_linked ? (
+                {row.directory ? (
+                  <span>{t("adminUsers.directoryBadge")}</span>
+                ) : row.sso_linked ? (
                   <span>{t("adminUsers.ssoBadge")}</span>
                 ) : null}
                 {row.has_password ? (
                   <span>{t("adminUsers.passwordBadge")}</span>
+                ) : null}
+                {row.mfa_active ? (
+                  <span>{t("adminUsers.mfaBadge")}</span>
                 ) : null}
               </div>
               {isLocked ? (
@@ -1413,6 +1413,23 @@ function UserCardGrid({
               </Tooltip>
 
               <Popconfirm
+                title={t("adminUsers.mfaResetConfirm", {
+                  username: row.username,
+                })}
+                onConfirm={() => void onResetMfa(row)}
+              >
+                <Tooltip title={t("adminUsers.mfaReset")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.userCardIconBtn}
+                    aria-label={t("adminUsers.mfaReset")}
+                  >
+                    <ShieldCheck size={15} />
+                  </button>
+                </Tooltip>
+              </Popconfirm>
+
+              <Popconfirm
                 title={t("adminUsers.deleteConfirm", {
                   username: row.username,
                 })}
@@ -1427,7 +1444,10 @@ function UserCardGrid({
                 >
                   <button
                     type="button"
-                    className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                    className={cx(
+                      styles.userCardIconBtn,
+                      styles.userCardIconBtnDanger,
+                    )}
                     disabled={isSelf}
                     aria-label={t("common.delete")}
                   >
@@ -1521,6 +1541,7 @@ export default function UsersListPanel() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
+  const directoryAccount = Form.useWatch("directory", form) === true;
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm] = Form.useForm<EditValues>();
@@ -1662,9 +1683,7 @@ export default function UsersListPanel() {
       const data = await request<UserRow[]>("/users");
       setRows(data);
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.loadFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.loadFailed"), t));
     } finally {
       setLoading(false);
     }
@@ -1733,9 +1752,7 @@ export default function UsersListPanel() {
         batchMaxAgentsForm.resetFields();
         void refreshUsers();
       } catch (err) {
-        message.error(
-          err instanceof Error ? err.message : t("adminUsers.batchFailed"),
-        );
+        message.error(apiErrorMessage(err, t("adminUsers.batchFailed"), t));
       } finally {
         setBatchSubmitting(false);
       }
@@ -1821,9 +1838,7 @@ export default function UsersListPanel() {
       const data = await request<OctopAgent[]>("/agents?scope=all");
       setAgents(data);
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.loadFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.loadFailed"), t));
       setAgents([]);
     } finally {
       setAgentsLoading(false);
@@ -1914,27 +1929,36 @@ export default function UsersListPanel() {
     if (!createOpen) return;
     let cancelled = false;
     const lang = i18n.language.startsWith("zh") ? "zh" : "en";
-    void request<
-      Array<{
-        id: string;
+    void request<{
+      items: Array<{
+        slug: string;
         label: { zh: string; en: string };
         description?: { zh?: string; en?: string };
         icon_url?: string | null;
         icon_name?: string | null;
-      }>
-    >("/experts")
-      .then((rows) => {
+      }>;
+    }>("/experts/hub")
+      .then((body) => {
         if (cancelled) return;
+        const rows = Array.isArray(body.items) ? body.items : [];
         setExpertTemplates(
           rows.map((row) => ({
-            id: row.id,
-            label: row.label?.[lang] || row.label?.en || row.id,
+            id: row.slug,
+            label: row.label?.[lang] || row.label?.en || row.slug,
             description:
               row.description?.[lang] || row.description?.en || undefined,
             icon_url: row.icon_url,
             icon_name: row.icon_name,
           })),
         );
+        const ids = new Set(rows.map((row) => row.slug));
+        const current = form.getFieldValue("expert_template_id");
+        if (typeof current !== "string" || !ids.has(current)) {
+          const next = ids.has(DEFAULT_EXPERT_TEMPLATE_ID)
+            ? DEFAULT_EXPERT_TEMPLATE_ID
+            : rows[0]?.slug;
+          form.setFieldValue("expert_template_id", next);
+        }
       })
       .catch(() => {
         if (!cancelled) setExpertTemplates([]);
@@ -1942,7 +1966,7 @@ export default function UsersListPanel() {
     return () => {
       cancelled = true;
     };
-  }, [createOpen, i18n.language]);
+  }, [createOpen, form, i18n.language]);
 
   const onCreate = async (values: CreateValues) => {
     setSubmitting(true);
@@ -1953,7 +1977,9 @@ export default function UsersListPanel() {
           username: values.username,
           display_name: values.display_name?.trim() || null,
           email: values.email?.trim() || null,
-          password: values.password,
+          ...(values.directory
+            ? { directory: true }
+            : { password: values.password }),
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
@@ -1993,9 +2019,7 @@ export default function UsersListPanel() {
       setCreateOpen(false);
       void refreshUsers();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.createFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.createFailed"), t));
     } finally {
       setSubmitting(false);
     }
@@ -2012,6 +2036,7 @@ export default function UsersListPanel() {
       username: undefined,
       display_name: undefined,
       email: undefined,
+      directory: false,
       password: undefined,
       confirm: undefined,
       limit_workspace_root: false,
@@ -2075,9 +2100,7 @@ export default function UsersListPanel() {
       void refreshUsers();
       return true;
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.updateFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.updateFailed"), t));
       return false;
     }
   };
@@ -2101,9 +2124,7 @@ export default function UsersListPanel() {
       editForm.resetFields();
       void refreshUsers();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.updateFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.updateFailed"), t));
     } finally {
       setEditSubmitting(false);
     }
@@ -2115,9 +2136,7 @@ export default function UsersListPanel() {
       message.success(t("adminUsers.deleteSuccess"));
       void refreshAll();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("common.deleteFailed"),
-      );
+      message.error(apiErrorMessage(err, t("common.deleteFailed"), t));
     }
   };
 
@@ -2133,11 +2152,19 @@ export default function UsersListPanel() {
       setResetTarget(null);
       resetForm.resetFields();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.resetFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.resetFailed"), t));
     } finally {
       setResetSubmitting(false);
+    }
+  };
+
+  const onResetMfa = async (row: UserRow) => {
+    try {
+      await authApi.adminResetMfa(row.id);
+      message.success(t("adminUsers.mfaResetSuccess"));
+      void refreshUsers();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("adminUsers.mfaResetFailed"), t));
     }
   };
 
@@ -2147,9 +2174,7 @@ export default function UsersListPanel() {
       message.success(t("adminUsers.unlockLoginSuccess"));
       void refreshUsers();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.unlockLoginFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.unlockLoginFailed"), t));
     }
   };
 
@@ -2310,6 +2335,7 @@ export default function UsersListPanel() {
             setResetTarget(row);
             resetForm.resetFields();
           }}
+          onResetMfa={onResetMfa}
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
@@ -2331,12 +2357,10 @@ export default function UsersListPanel() {
             preserveSelectedRowKeys: true,
           }}
           rowClassName={(row) =>
-            [
-              row.disabled ? styles.userTableRowDisabled : "",
-              row.login_locked ? styles.userTableRowLocked : "",
-            ]
-              .filter(Boolean)
-              .join(" ")
+            cx(
+              row.disabled && styles.userTableRowDisabled,
+              row.login_locked && styles.userTableRowLocked,
+            )
           }
           columns={[
             {
@@ -2385,8 +2409,13 @@ export default function UsersListPanel() {
               width: 120,
               render: (_, row) => {
                 const parts = [
-                  row.sso_linked ? t("adminUsers.ssoBadge") : null,
+                  row.directory
+                    ? t("adminUsers.directoryBadge")
+                    : row.sso_linked
+                    ? t("adminUsers.ssoBadge")
+                    : null,
                   row.has_password ? t("adminUsers.passwordBadge") : null,
+                  row.mfa_active ? t("adminUsers.mfaBadge") : null,
                 ].filter(Boolean);
                 return (
                   <span className={styles.userCellMuted}>
@@ -2494,6 +2523,22 @@ export default function UsersListPanel() {
                     </button>
                   </Tooltip>
                   <Popconfirm
+                    title={t("adminUsers.mfaResetConfirm", {
+                      username: row.username,
+                    })}
+                    onConfirm={() => void onResetMfa(row)}
+                  >
+                    <Tooltip title={t("adminUsers.mfaReset")}>
+                      <button
+                        type="button"
+                        className={styles.userCardIconBtn}
+                        aria-label={t("adminUsers.mfaReset")}
+                      >
+                        <ShieldCheck size={14} />
+                      </button>
+                    </Tooltip>
+                  </Popconfirm>
+                  <Popconfirm
                     title={t("adminUsers.deleteConfirm", {
                       username: row.username,
                     })}
@@ -2509,7 +2554,10 @@ export default function UsersListPanel() {
                     >
                       <button
                         type="button"
-                        className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                        className={cx(
+                          styles.userCardIconBtn,
+                          styles.userCardIconBtnDanger,
+                        )}
                         disabled={row.id === currentUserId}
                         aria-label={t("common.delete")}
                       >
@@ -2682,52 +2730,62 @@ export default function UsersListPanel() {
               />
             </Form.Item>
             <Form.Item
-              label={t("adminUsers.formPassword")}
-              name="password"
-              rules={[
-                { required: true, message: t("adminUsers.formPassword") },
-              ]}
+              name="directory"
+              label={t("adminUsers.formDirectory")}
+              extra={t("adminUsers.formDirectoryHint")}
+              valuePropName="checked"
             >
-              <Input.Password
-                prefix={<Lock {...FIELD_ICON_PROPS} />}
-                autoComplete="new-password"
-              />
+              <Switch />
             </Form.Item>
-            <Form.Item
-              label={t("adminUsers.formPasswordConfirm")}
-              name="confirm"
-              dependencies={["password"]}
-              rules={[
-                {
-                  required: true,
-                  message: t("adminUsers.formPasswordConfirm"),
-                },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue("password") === value) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(t("wizard.admin.passwordMismatch")),
-                    );
-                  },
-                }),
-              ]}
-            >
-              <Input.Password
-                prefix={<LockOpen {...FIELD_ICON_PROPS} />}
-                autoComplete="new-password"
-              />
-            </Form.Item>
+            {!directoryAccount && (
+              <>
+                <Form.Item
+                  label={t("adminUsers.formPassword")}
+                  name="password"
+                  rules={[
+                    { required: true, message: t("adminUsers.formPassword") },
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<Lock {...FIELD_ICON_PROPS} />}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t("adminUsers.formPasswordConfirm")}
+                  name="confirm"
+                  dependencies={["password"]}
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.formPasswordConfirm"),
+                    },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue("password") === value) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(
+                          new Error(t("wizard.admin.passwordMismatch")),
+                        );
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<LockOpen {...FIELD_ICON_PROPS} />}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+              </>
+            )}
           </div>
 
           <div className={styles.createSection}>
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
-            <div
-              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-            >
+            <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
@@ -2778,16 +2836,18 @@ export default function UsersListPanel() {
                   <Form.Item
                     label={t("adminUsers.expertTemplate")}
                     name="expert_template_id"
-                    rules={[
-                      {
-                        required: true,
-                        message: t("adminUsers.expertTemplateRequired"),
-                      },
-                    ]}
+                    rules={
+                      expertTemplates.length > 0
+                        ? [
+                            {
+                              required: true,
+                              message: t("adminUsers.expertTemplateRequired"),
+                            },
+                          ]
+                        : []
+                    }
                   >
-                    <ExpertTemplatePicker
-                      options={expertTemplateChoices(expertTemplates)}
-                    />
+                    <ExpertTemplatePicker options={expertTemplates} />
                   </Form.Item>
                 ) : null
               }
@@ -2942,9 +3002,7 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
-            <div
-              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-            >
+            <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>

@@ -2,6 +2,7 @@ import { Button, Drawer, Empty, Space, Spin } from "antd";
 import { Download, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import { trajectoryApi } from "../../../api/modules/trajectory";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
@@ -268,9 +269,7 @@ export default function TrajectoryDrawer({
           onLoadEarlier={loadEarlier}
           onRecordSelect={setSelectedEventId}
         />
-        <div
-          className={`${styles.split} ${isMobile ? styles.splitMobile : ""}`}
-        >
+        <div className={cx(styles.split, isMobile && styles.splitMobile)}>
           <div className={styles.ledgerPane}>
             <TrajectoryLedger
               events={ledgerEvents}

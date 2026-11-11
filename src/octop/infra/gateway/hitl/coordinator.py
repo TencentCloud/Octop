@@ -72,6 +72,27 @@ class HitlAnswerOutcome:
     awaiting_more: bool = False
 
 
+# Marker carried in the description of tool-guard approvals (see
+# ``octop_harness.security.tool_guard.engine.format_block_message``). Security
+# approvals must never be auto-approved by a per-session "allow all" choice:
+# one click would otherwise disable the command guard for the rest of the chat.
+_TOOL_GUARD_MARKERS = ("command guard", "command-guard", "命令护栏")
+
+
+def _is_tool_guard_request(request: dict[str, Any]) -> bool:
+    """True when this HITL request comes from the command guard, not a tool gate."""
+    actions = request.get("action_requests")
+    if not isinstance(actions, list):
+        return False
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        description = str(action.get("description") or "").lower()
+        if any(marker in description for marker in _TOOL_GUARD_MARKERS):
+            return True
+    return False
+
+
 def _action_allows_approve(request: dict[str, Any], name: str) -> bool:
     """True when this tool's review config accepts an ``approve`` decision."""
     configs = request.get("review_configs")
@@ -105,6 +126,9 @@ def approve_decisions_if_allowed(
         return None
     request = chunk.get("request")
     if not isinstance(request, dict):
+        return None
+    # Security-gated tool calls always go to the human, even in an allow-all chat.
+    if _is_tool_guard_request(request):
         return None
     actions = request.get("action_requests")
     if not isinstance(actions, list) or not actions:
@@ -179,7 +203,7 @@ def pending_hitl_payload(
     *,
     thread_id: str,
     agent_id: str,
-    user_id: int,
+    user_id: int | None,
 ) -> dict[str, Any] | None:
     record = store.resolve_pending_for_thread(
         thread_id,
@@ -332,11 +356,17 @@ class HitlChannelCoordinator:
         *,
         agent_id: str,
         user_id: int,
+        thread_id: str | None = None,
     ) -> HitlPendingRecord | None:
         """Return the open ``ask_user_question`` pause this user may answer.
 
         Returns ``None`` for approval pauses (those keep using ``/approve``) and
         for questions addressed to a different user in the same group chat.
+
+        When *thread_id* is set (dashboard turns always stamp it), the pause must
+        belong to that thread. Dashboard sessions share one ``session_key`` per
+        agent+user across many threads; without this guard a new chat's message
+        would answer an ask still open on another thread.
         """
         record = self._store.resolve_for_session(session_key, agent_id=agent_id)
         if record is None or record.status != "pending":
@@ -345,6 +375,12 @@ class HitlChannelCoordinator:
             return None
         if not is_ask_action_requests(record.action_requests):
             return None
+        inbound = (thread_id or "").strip()
+        if inbound:
+            room_match = record.thread_id == inbound
+            member_match = bool(record.resume_thread_id) and record.resume_thread_id == inbound
+            if not room_match and not member_match:
+                return None
         return record
 
     @staticmethod
@@ -511,7 +547,6 @@ class HitlChannelCoordinator:
         locale: str,
         usage_tracker: UsageTracker | None = None,
         outcome: HitlSlashOutcome | None = None,
-        history_factory: Any | None = None,
         history_finalize: Any | None = None,
         member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
@@ -531,7 +566,6 @@ class HitlChannelCoordinator:
             sticky="once",
             usage_tracker=usage_tracker,
             outcome=outcome,
-            history_factory=history_factory,
             history_finalize=history_finalize,
             member_hitl=member_hitl,
         ):
@@ -546,7 +580,6 @@ class HitlChannelCoordinator:
         locale: str,
         usage_tracker: UsageTracker | None = None,
         outcome: HitlSlashOutcome | None = None,
-        history_factory: Any | None = None,
         history_finalize: Any | None = None,
         member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
@@ -569,7 +602,6 @@ class HitlChannelCoordinator:
             sticky=sticky,
             usage_tracker=usage_tracker,
             outcome=outcome,
-            history_factory=history_factory,
             history_finalize=history_finalize,
             member_hitl=member_hitl,
         ):
@@ -586,7 +618,6 @@ class HitlChannelCoordinator:
         sticky: ApprovalSticky,
         usage_tracker: UsageTracker | None,
         outcome: HitlSlashOutcome | None,
-        history_factory: Any | None,
         history_finalize: Any | None,
         member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None,
     ) -> AsyncIterator[MessageEvent]:
@@ -635,12 +666,9 @@ class HitlChannelCoordinator:
             StreamProjectionState,
             project_resume_stream,
         )
+        from octop.infra.history.projection import TurnHistoryTracker
 
-        history_tracker = (
-            await history_factory(ctx.agent_id, thread_id, {}, resume=True)
-            if history_factory
-            else None
-        )
+        history_tracker = TurnHistoryTracker.from_request({}) if history_finalize else None
         tracker = usage_tracker or UsageTracker()
         projection_state = StreamProjectionState()
         history_completed = False

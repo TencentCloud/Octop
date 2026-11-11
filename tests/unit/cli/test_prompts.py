@@ -34,6 +34,20 @@ def test_checkbox_returns_list(monkeypatch: pytest.MonkeyPatch) -> None:
     assert out == ["a", "c"]
 
 
+def test_questionary_none_is_cancel(monkeypatch: pytest.MonkeyPatch) -> None:
+    """questionary.ask() returns None on Ctrl-C instead of raising."""
+    import questionary
+
+    class _Prompt:
+        def ask(self) -> None:
+            return None
+
+    monkeypatch.setattr(questionary, "text", lambda **_kwargs: _Prompt())
+    with pytest.raises(SystemExit) as exc:
+        _prompts._ask("text", message="Display name (optional):")
+    assert exc.value.code == 130
+
+
 def test_cancel_via_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
     def _raise(kind: str, **kw: object) -> object:
         raise KeyboardInterrupt

@@ -19,10 +19,10 @@ def test_bootstrap_main_spec_en_locale_uses_english_label() -> None:
 
     catalog = ExpertCatalog(default_library_root())
     catalog.refresh()
-    expert = catalog.get("general-assistant")
+    expert = catalog.get("default")
     assert expert is not None
     spec = build_create_spec_from_expert(
-        expert_id="general-assistant",
+        expert_id="default",
         expert=expert,
         user_id=1,
         agent_id="main",

@@ -30,6 +30,11 @@ export interface FilesystemDefaults {
    */
   browse_roots?: string[];
   /**
+   * ``{OCTOP_HOME}/agents``. Create forms append the new expert id so the
+   * field shows the path the server would assign.
+   */
+  default_workspace_dir?: string;
+  /**
    * True only when a non-root `root_dir` really gets OS-level confinement
    * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
    * the UI must not promise a sandbox.
@@ -190,6 +195,86 @@ export function blocksAcpOutboundFromConfig(
     rootDir: parsed.rootDir,
     workspaceDir: workspaceDir ?? fromConfig,
   });
+}
+
+const WORKSPACE_ID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const RESERVED_WORKSPACE_IDS = new Set(["api", "admin", "agents", "experts"]);
+
+/** Same shape as the server's short agent id (Crockford base32, 6 chars). */
+export function newWorkspaceAgentId(length = 6): string {
+  const bytes = new Uint8Array(length);
+  for (;;) {
+    globalThis.crypto.getRandomValues(bytes);
+    const id = Array.from(bytes, (b) => WORKSPACE_ID_ALPHABET[b & 31]).join("");
+    if (!RESERVED_WORKSPACE_IDS.has(id.toLowerCase())) return id;
+  }
+}
+
+export function joinWorkspaceDir(parent: string, agentId: string): string {
+  return `${parent.replace(/[/\\]+$/, "")}/${agentId}`;
+}
+
+export function workspaceDirBasename(path: string): string {
+  const trimmed = path.trim().replace(/[/\\]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+/**
+ * Workspace directory the user may assign.
+ *
+ * Only host-rooted ``local_shell`` / ``filesystem`` accept one. A blank value
+ * means "let the server pick the default".
+ */
+export function userWorkspaceDir(options: {
+  backendChoice: string;
+  rootDir?: string | null;
+  workspaceDir?: string | null;
+}): string | undefined {
+  if (
+    options.backendChoice !== "local_shell" &&
+    options.backendChoice !== "filesystem"
+  ) {
+    return undefined;
+  }
+  if (!isHostRootDir(options.rootDir)) return undefined;
+  const text = options.workspaceDir?.trim() ?? "";
+  return text || undefined;
+}
+
+/**
+ * Create payload for a host-root workspace.
+ *
+ * The prefilled default is ``{OCTOP_HOME}/agents/<id>``. Sending that path
+ * together with the same id keeps the folder the server would have chosen.
+ */
+export function createWorkspaceSelection(options: {
+  backendChoice: string;
+  rootDir?: string | null;
+  workspaceDir?: string | null;
+  autoWorkspaceDir?: string | null;
+  agentId?: string | null;
+}): { workspaceDir?: string; agentId?: string } {
+  const workspaceDir = userWorkspaceDir(options);
+  const typed = options.agentId?.trim() || undefined;
+  const auto = options.autoWorkspaceDir?.trim() || "";
+  if (workspaceDir && auto && workspaceDir === auto) {
+    const fromPath = workspaceDirBasename(workspaceDir);
+    return { workspaceDir, agentId: typed || fromPath || undefined };
+  }
+  return { workspaceDir, agentId: typed };
+}
+
+export function shouldProbeWorkspaceDir(
+  choice: string,
+  workspaceDir?: string | null,
+  autoWorkspaceDir?: string | null,
+): boolean {
+  const text = workspaceDir?.trim() ?? "";
+  if (!text) return false;
+  const auto = autoWorkspaceDir?.trim() || "";
+  if (auto && text === auto) return false;
+  return shouldProbeRootDir(choice, text);
 }
 
 export function shouldProbeRootDir(choice: string, rootDir?: string): boolean {
