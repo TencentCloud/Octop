@@ -800,9 +800,14 @@ async def test_move_document_to_another_base_queues_its_pending_files(
             calls.append(kwargs)
             return moved
 
+        def pending_file_ids(self, document: _Document) -> list[str]:
+            return ["doc-1", "doc-2"] if document is moved else []
+
     monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: _FakeService())
     monkeypatch.setattr(
-        knowledge_bases, "enqueue_pending_subtree", lambda _services, doc: queued.append(doc)
+        knowledge_bases,
+        "enqueue_index_document",
+        lambda _services, kb_id, doc_id: queued.append((kb_id, doc_id)),
     )
 
     result = await knowledge_bases.move_document(
@@ -815,7 +820,7 @@ async def test_move_document_to_another_base_queues_its_pending_files(
     )
 
     assert calls[0]["target_kb_id"] == "kb-2"
-    assert queued == [moved]
+    assert queued == [("kb-2", "doc-1"), ("kb-2", "doc-2")]
     assert result["kb_id"] == "kb-2"
 
 

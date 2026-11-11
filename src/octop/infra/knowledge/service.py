@@ -483,61 +483,6 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         return cast(KnowledgeDocumentRow, result)
 
-    def move_document(
-        self,
-        kb_id: str,
-        doc_id: str,
-        *,
-        target_folder: str,
-        actor_user_id: int,
-        is_admin: bool = False,
-        target_kb_id: str | None = None,
-    ) -> KnowledgeDocumentRow:
-        """Move a document (file or folder) into a folder of this or another base.
-
-        ``target_folder`` is a folder path; ``""`` is the root. Moving a folder
-        takes its whole subtree. Within one base the index is untouched: chunks
-        belong to the document id, not to its path. ``target_kb_id`` names
-        another base the actor can write to; see ``_move_across_bases``.
-        """
-        source = self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
-        document = self._repo.get_document(doc_id)
-        if document is None or document.kb_id != kb_id:
-            raise LookupError("knowledge document not found")
-        dest_kb_id = (target_kb_id or "").strip() or kb_id
-        dest = (
-            source
-            if dest_kb_id == kb_id
-            else self.get_writable_base(dest_kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
-        )
-        try:
-            target = normalize_kb_path(target_folder)
-        except ValueError as exc:
-            raise LookupError("knowledge folder not found") from exc
-        if target:
-            folder = self._repo.get_document_by_path(dest.id, target)
-            if folder is None or not folder.is_dir:
-                raise LookupError("knowledge folder not found")
-        if dest.id != kb_id:
-            return self._move_across_bases(document, source=source, dest=dest, target=target)
-        if document.is_dir and (target == document.path or target.startswith(f"{document.path}/")):
-            raise OctopError(
-                ErrorCode.KNOWLEDGE_MOVE_INVALID,
-                "a folder cannot be moved into itself or one of its subfolders",
-            )
-        if target == path_parent(document.path):
-            return cast(KnowledgeDocumentRow, document)
-        new_path = normalize_kb_path(f"{target}/{path_basename(document.path)}")
-        if self._repo.get_document_by_path(kb_id, new_path) is not None:
-            raise OctopError(
-                ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN,
-                "the target folder already has an item with this name",
-            )
-        result = self._repo.move_document(kb_id, doc_id, target)
-        if result is None:
-            raise LookupError("knowledge document not found")
-        return cast(KnowledgeDocumentRow, result)
-
     def _move_across_bases(
         self,
         document: KnowledgeDocumentRow,
@@ -632,6 +577,69 @@ class KnowledgeService:
                 logger.warning(
                     "could not clean up knowledge document %s in %s", row.id, kb_id, exc_info=True
                 )
+
+    def pending_file_ids(self, document: KnowledgeDocumentRow) -> list[str]:
+        """Files of a document or folder still waiting to be indexed."""
+        return [
+            row.id
+            for row in self._repo.list_subtree(document)
+            if not row.is_dir and row.status == "pending"
+        ]
+
+    def move_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        target_folder: str,
+        actor_user_id: int,
+        is_admin: bool = False,
+        target_kb_id: str | None = None,
+    ) -> KnowledgeDocumentRow:
+        """Move a document (file or folder) into a folder of this or another base.
+
+        ``target_folder`` is a folder path; ``""`` is the root. Moving a folder
+        takes its whole subtree. Within one base the index is untouched: chunks
+        belong to the document id, not to its path. ``target_kb_id`` names
+        another base the actor can write to; see ``_move_across_bases``.
+        """
+        source = self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        dest_kb_id = (target_kb_id or "").strip() or kb_id
+        dest = (
+            source
+            if dest_kb_id == kb_id
+            else self.get_writable_base(dest_kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        )
+        try:
+            target = normalize_kb_path(target_folder)
+        except ValueError as exc:
+            raise LookupError("knowledge folder not found") from exc
+        if target:
+            folder = self._repo.get_document_by_path(dest.id, target)
+            if folder is None or not folder.is_dir:
+                raise LookupError("knowledge folder not found")
+        if dest.id != kb_id:
+            return self._move_across_bases(document, source=source, dest=dest, target=target)
+        if document.is_dir and (target == document.path or target.startswith(f"{document.path}/")):
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_INVALID,
+                "a folder cannot be moved into itself or one of its subfolders",
+            )
+        if target == path_parent(document.path):
+            return cast(KnowledgeDocumentRow, document)
+        new_path = normalize_kb_path(f"{target}/{path_basename(document.path)}")
+        if self._repo.get_document_by_path(kb_id, new_path) is not None:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN,
+                "the target folder already has an item with this name",
+            )
+        result = self._repo.move_document(kb_id, doc_id, target)
+        if result is None:
+            raise LookupError("knowledge document not found")
+        return cast(KnowledgeDocumentRow, result)
 
     def delete_base(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)

@@ -74,13 +74,6 @@ def enqueue_index_document(services: Any, kb_id: str, doc_id: str) -> asyncio.Ta
     return asyncio.create_task(_run())
 
 
-def enqueue_pending_subtree(services: Any, document: Any) -> None:
-    """Schedule the pending files of a document or folder, e.g. after a move between bases."""
-    for row in services.knowledge_repo.list_subtree(document):
-        if not row.is_dir and row.status == "pending":
-            enqueue_index_document(services, row.kb_id, row.id)
-
-
 def reindex_all_documents(services: Any, embedding_model: str) -> None:
     """Reset every index to use ``embedding_model`` and schedule fresh work."""
     documents = services.knowledge_repo.reindex_all_documents(embedding_model)

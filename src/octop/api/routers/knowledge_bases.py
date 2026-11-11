@@ -42,11 +42,7 @@ from octop.infra.knowledge.gate import (
     get_capability,
     set_feature_enabled,
 )
-from octop.infra.knowledge.jobs import (
-    enqueue_index_document,
-    enqueue_pending_subtree,
-    reindex_all_documents,
-)
+from octop.infra.knowledge.jobs import enqueue_index_document, reindex_all_documents
 from octop.infra.knowledge.ocr import (
     ensure_ocr_deps_async,
     get_ocr_capability,
@@ -1187,7 +1183,8 @@ async def move_document(
             target_kb_id=body.target_kb_id,
         )
         if document.kb_id != kb_id and server.services is not None:
-            enqueue_pending_subtree(server.services, document)
+            for pending_id in service.pending_file_ids(document):
+                enqueue_index_document(server.services, document.kb_id, pending_id)
         return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(

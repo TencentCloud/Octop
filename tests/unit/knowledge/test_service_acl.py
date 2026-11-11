@@ -407,19 +407,6 @@ def test_move_does_not_cross_knowledge_bases(service: KnowledgeService) -> None:
         service.move_document(other.id, doc.id, actor_user_id=owner, target_folder="")
 
 
-def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
-    users = service._services.user_repo
-    owner = users.create(username="owner", password_hash="h", role="user")
-    viewer = users.create(username="viewer", password_hash="h", role="user")
-    repo = service._services.knowledge_repo
-    kb = repo.create_base(owner_user_id=owner, name="Docs", shared=True)
-    folder = repo.ensure_folder(kb.id, "a")
-    repo.ensure_folder(kb.id, "b")
-
-    with pytest.raises(PermissionError, match="write"):
-        service.move_document(kb.id, folder.id, actor_user_id=viewer, target_folder="b")
-
-
 def _two_bases(service: KnowledgeService) -> tuple[int, str, str]:
     """owner, a source base holding ``notes/law/act.md`` and ``notes/readme.md``, and an
     empty target base with an ``inbox`` folder. Every file is indexed with one chunk."""
@@ -493,6 +480,7 @@ def test_move_to_a_base_with_another_model_indexes_again(service: KnowledgeServi
     )
 
     assert (moved.status, moved.chunk_count) == ("pending", 0)
+    assert service.pending_file_ids(moved) == [doc.id]
     assert KnowledgeIndex(target_id).list_doc_chunks(doc.id) == []
     assert KnowledgeIndex(kb_id).list_doc_chunks(doc.id) == []
     assert service._blobs().exists(target_id, doc.id, "readme.md")
@@ -587,3 +575,16 @@ def test_move_into_a_base_the_actor_cannot_write_is_rejected(service: KnowledgeS
         service.move_document(
             kb_id, doc.id, actor_user_id=owner, target_folder="", target_kb_id=theirs.id
         )
+
+
+def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    viewer = users.create(username="viewer", password_hash="h", role="user")
+    repo = service._services.knowledge_repo
+    kb = repo.create_base(owner_user_id=owner, name="Docs", shared=True)
+    folder = repo.ensure_folder(kb.id, "a")
+    repo.ensure_folder(kb.id, "b")
+
+    with pytest.raises(PermissionError, match="write"):
+        service.move_document(kb.id, folder.id, actor_user_id=viewer, target_folder="b")
