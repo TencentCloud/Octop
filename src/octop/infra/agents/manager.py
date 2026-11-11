@@ -848,6 +848,7 @@ class AgentManager:
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_workspace_dir_outside_user_root,
             )
 
             if spec.user_id is not None:
@@ -868,6 +869,11 @@ class AgentManager:
                     self._repos.user_policy_repo,
                     spec.user_id,
                     config.get("backend"),
+                )
+                raise_if_workspace_dir_outside_user_root(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
                 )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
                 self._assert_model_ref(spec.user_id, spec.default_model)
@@ -1058,10 +1064,10 @@ class AgentManager:
         layout, so a value a client invents is dropped.
 
         ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
-        updates need it — rewriting the directory silently relocates the agent's workspace, so a
-        scoped or container agent would resolve to the classic layout and lose sight of its
-        skills, sessions and generated files. Internal persists do not: the resolver and the
-        create path must still be able to write it.
+        updates need it — rewriting the directory relocates the agent's workspace, so a scoped or
+        container agent would resolve to the classic layout and lose sight of its skills, sessions
+        and generated files. The directory is chosen at create and stays fixed. Internal persists
+        do not pin: the resolver and the create path must still be able to write it.
         """
         out = dict(cfg)
         row = self._repos.agent_repo.get(agent_id)

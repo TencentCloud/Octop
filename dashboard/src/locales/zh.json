@@ -1,10 +1,17 @@
 {
   "app": {
-    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
+    "pageTitle": "Octop"
   },
   "layout": {
     "collapsePanel": "收起面板",
-    "expandPanel": "展开面板"
+    "expandPanel": "展开面板",
+    "collapseNav": "收起导航栏",
+    "expandNav": "展开导航栏",
+    "windowControls": "窗口控制",
+    "windowMinimize": "最小化",
+    "windowMaximize": "最大化",
+    "windowRestore": "还原",
+    "windowClose": "关闭"
   },
   "sharedResource": {
     "shared": "已共享",
@@ -17,12 +24,6 @@
     "cloud": "云端",
     "shared": "共享",
     "empty": "没有符合当前筛选的结果"
-  },
-  "desktopChrome": {
-    "group": "窗口控制",
-    "minimize": "最小化",
-    "maximize": "最大化",
-    "close": "关闭"
   },
   "avatarPicker": {
     "presets": {
@@ -231,6 +232,7 @@
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
     "KNOWLEDGE_MOVE_INVALID": "不能把文件夹移动到它自身或其子文件夹中。",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "目标文件夹中已有同名项目。",
+    "KNOWLEDGE_RERANK_NOT_READY": "所选的重排序模型不可用，请选择已启用且提供重排序模型的供应商。",
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
     "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
     "INVITE_INVALID": "邀请码无效。",
@@ -670,6 +672,11 @@
     "ocrSelectModel": "选择支持图片输入的模型",
     "ocrNoProviders": "暂无支持图片输入的在线模型提供商",
     "ocrNoModels": "该提供商没有支持图片输入的模型",
+    "rerankTitle": "检索重排序（Rerank）",
+    "rerankDescription": "向量检索先多取一批候选片段，再由重排序模型按与问题的相关度重新排序，只保留最相关的几条。",
+    "rerankSelectModel": "选择重排序模型",
+    "rerankNoProviders": "没有提供重排序模型的供应商，请先在模型管理中添加",
+    "rerankFallbackHint": "重排序请求失败时会自动沿用向量检索的顺序，不影响回答。",
     "enable": "启用",
     "featureEnabled": "知识库已启用",
     "featureDisabled": "知识库已停用",
@@ -1179,6 +1186,9 @@
     "backendRootDirJailHint": "保存至非根目录时，会启用沙箱环境并将 AI 文件系统限制在该目录内。此配置下无法调用外部 ACP Runner；通过 IDE / octop acp 接入不受影响。",
     "backendRootDirPathLimitHint": "保存至非根目录时，会将 AI 的文件访问限制在该目录内；但当前系统未提供操作系统级沙箱，AI 进程仍以服务账号自身的权限运行。此配置下无法调用外部 ACP Runner；通过 IDE / octop acp 接入不受影响。",
     "backendRootDirImmutableHint": "创建后不可更改。",
+    "workspaceDir": "工作区目录",
+    "workspaceDirDesc": "已填入系统为这位专家分配的默认目录，也可以改成其他目录。",
+    "workspaceDirImmutableHint": "创建后不可更改。",
     "rootDirListFailed": "无法列出子目录，请检查权限或选择其他路径。",
     "rootDirMkdir": "新建文件夹",
     "rootDirRename": "重命名文件夹",
@@ -1352,7 +1362,9 @@
   },
   "agent_errors": {
     "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
+    "no_models_configured_short": "未配置可用模型",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
+    "model_ref_unavailable_short": "默认模型不可用",
     "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"
   },
   "stream_errors": {
@@ -1540,6 +1552,7 @@
     "processRunningTools": "正在调用工具",
     "processThinkingLive": "深度思考中",
     "send": "发送",
+    "sharedTurnBusy": "上一次对话尚未结束。",
     "stop": "停止",
     "composerHint": "Enter 发送 / Shift+Enter 换行",
     "steer": {
@@ -1593,6 +1606,7 @@
     "disableStreamUsageFailed": "无法自动关闭，请到模型设置里关掉「聊天里显示实时 Token」。",
     "noAgentsTitle": "还没有专家",
     "noAgentsHint": "从专家列表选择模板，快速创建你的第一个 AI 专家。",
+    "noChattableAgentsHint": "你的专家暂时都不能对话，请先启用，或完成它的模型配置。",
     "createExpert": "去创建专家",
     "pickAgent": "请先选择一个专家",
     "bootstrapKickoff": "你好，我们开始吧",
@@ -1613,7 +1627,6 @@
     "contribute": "共享会话",
     "uncontribute": "取消共享",
     "sharedSession": "已共享",
-    "sharedSessionBanner": "这条会话已共享。能打开这个专家的人都能看到，并可以继续问。",
     "threadSettingsOwnerOnly": "只有会话创建人可以改模型和审批设置",
     "shareFailed": "没能改共享状态，请再试一次",
     "deleteSessionConfirm": "确定删除这段会话吗？删除后无法恢复。",
@@ -2897,6 +2910,7 @@
     "allExperts": "全部专家",
     "allUsers": "全部用户",
     "ioBreakdown": "输入 / 输出",
+    "userBreakdown": "用户分布",
     "expertBreakdown": "专家分布",
     "modelBreakdown": "模型分布",
     "ioBarChart": "输入输出对比",
@@ -3972,6 +3986,9 @@
       "latestVersion": "最新版本",
       "checkButton": "检查更新",
       "upgradeButton": "立即升级",
+      "later": "稍后",
+      "shellConfirmTitle": "发现新版本 {{version}}",
+      "shellConfirmBody": "当前版本 {{current}}。升级会下载安装包，然后退出并由安装程序替换客户端；数据库、工作区和配置都会保留。",
       "checking": "正在检查...",
       "upgrading": "正在升级...",
       "alreadyLatest": "已是最新版本。",
@@ -4003,6 +4020,7 @@
       "restartTimeout": "重启超时，请手动执行：octop service restart",
       "restartFailed": "重启请求失败，请检查服务状态后重试",
       "releaseNotes": "更新说明",
+      "shellManaged": "桌面客户端的更新由壳统一检测、下载并安装：壳、前端界面与内置 Python 运行时随同一版本一起发布。",
       "updateModalTitle": "发现新版本",
       "guideTitle": "按安装方式更新",
       "guideIntro": "若不能使用左侧一键升级，请按你的安装方式选择下方命令。升级后请重启服务；配置与数据默认保留在 ~/.octop（或 OCTOP_HOME）。",
@@ -5005,8 +5023,13 @@
       "sharedCheckpointHint": "当前文件由多个记忆命名空间或专家共享，无法安全归属会话检查点，仅展示当前专家的记忆分类条数。文件级维护已禁用。",
       "checkpointCountHint": "检查点用于恢复会话，不等于消息条数；独立会话数按检查点中的会话 ID 去重。共享内容块用于去重存储，全文索引不重复计数。",
       "checkpointRetention": "检查点保留",
-      "checkpointRetentionValue": "最近 {{keep}} 份，天数 {{days}}。删除前会先备份一份。",
+      "checkpointRetentionValue": "最近 {{keep}} 份，天数 {{days}}。",
       "checkpointRetentionNoDays": "不限",
+      "checkpointBackup": "检查点备份",
+      "checkpointBackup_first": "首次清理前备份一次，{{retention}}",
+      "checkpointBackup_always": "每次清理前备份，{{retention}}",
+      "checkpointBackupKeepDays": "保留 {{days}} 天",
+      "checkpointBackupNeverExpires": "永久保留",
       "vacuumRecommended": "删除旧检查点后文件不会马上变小。可回收空间已经不小，建议在空闲时对这个 SQLite 文件执行 VACUUM。",
       "comparisonHint": "前后快照仅对应本次维护。去重维护保留会话历史和有效记忆，因此条数可能不变，共享内容块可能增加。后台写入也可能影响统计；备份单独占用空间，未计入释放量。",
       "deleteBackup": "删除备份",
@@ -5712,7 +5735,8 @@
       "submitFailed": "无法创建管理员。",
       "continue": "继续",
       "alreadyCreated": "管理员「{{username}}」已创建。",
-      "intro": "创建第一个管理员账户。"
+      "intro": "创建第一个管理员账户。",
+      "introNoPassword": "为这台设备上的账户命名，无需设置密码。"
     },
     "model": {
       "intro": "配置一个模型提供商，助手就可以回应你了。你也可以跳过本步，稍后在「模型」页配置。",
@@ -5988,6 +6012,9 @@
     "password": "密码",
     "remember": "记住登录状态",
     "submit": "登录",
+    "createLocalAccount": "新建本机账户",
+    "signInLocalAccount": "登录本地账户",
+    "localSignInFailed": "无法登录本地账户",
     "forgotPassword": "忘记密码？",
     "forgotPasswordTitle": "重置密码",
     "forgotPasswordHelp": "请联系管理员在「用户」页重置。若你维护本机，在安装了 Octop 的电脑上，用运行服务的同一账户执行：",
@@ -7387,7 +7414,8 @@
     "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
     "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
-    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。"
+    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
+    "details": "技术详情"
   },
   "adminProviders": {
     "title": "供应商",

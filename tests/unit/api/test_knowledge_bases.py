@@ -435,6 +435,154 @@ async def test_ocr_options_only_lists_image_capable_models() -> None:
     ]
 
 
+def _rerank_provider(**overrides: object) -> SimpleNamespace:
+    values: dict[str, object] = {
+        "id": 4,
+        "name": "siliconflow",
+        "enabled": True,
+        "api_key": "sk-test",
+        "base_url": "https://example.test/v1",
+        "get_models": lambda: [
+            {"id": "BAAI/bge-reranker-v2-m3", "name": "BGE Reranker"},
+            {"id": "BAAI/bge-m3", "name": "BGE M3"},
+        ],
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+@pytest.mark.asyncio
+async def test_rerank_options_list_enabled_providers_with_a_rerank_model() -> None:
+    from octop.api.routers import knowledge_bases
+
+    providers = [
+        _rerank_provider(),
+        _rerank_provider(id=5, name="disabled", enabled=False),
+        _rerank_provider(id=6, name="chat-only", get_models=lambda: [{"id": "chat-1"}]),
+    ]
+    server = SimpleNamespace(
+        services=SimpleNamespace(provider_repo=SimpleNamespace(list_all=lambda: providers))
+    )
+
+    options = await knowledge_bases.rerank_options(server=server, _admin=object())
+
+    assert options == {
+        "providers": [
+            {
+                "provider_id": "4",
+                "provider_name": "siliconflow",
+                "models": [{"id": "BAAI/bge-reranker-v2-m3", "name": "BGE Reranker"}],
+            }
+        ]
+    }
+
+
+def _feature_server(monkeypatch: pytest.MonkeyPatch, provider: SimpleNamespace) -> SimpleNamespace:
+    """A server whose settings are a dict, with the embedding side of the feature stubbed."""
+    from octop.api.routers import knowledge_bases
+
+    values: dict[str, str] = {}
+    services = SimpleNamespace(
+        settings_repo=SimpleNamespace(get=values.get, set=values.__setitem__),
+        provider_repo=SimpleNamespace(
+            list_all=lambda: [provider],
+            get=lambda pid: provider if pid == provider.id else None,
+        ),
+    )
+    monkeypatch.setattr(knowledge_bases, "set_feature_enabled", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        knowledge_bases,
+        "get_capability",
+        lambda *_a, **_k: {
+            "feature_enabled": False,
+            "selected_model": "",
+            "backend": "onnx",
+            "provider_id": "",
+        },
+    )
+    monkeypatch.setattr(
+        knowledge_bases,
+        "get_ocr_capability",
+        lambda *_a, **_k: {"enabled": False, "backend": "onnx", "model": "", "provider_id": ""},
+    )
+    return SimpleNamespace(services=services, values=values)
+
+
+@pytest.mark.asyncio
+async def test_put_feature_saves_rerank_and_reports_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    server = _feature_server(monkeypatch, _rerank_provider())
+
+    capability = await knowledge_bases.put_feature(
+        knowledge_bases.FeatureBody(
+            enabled=False,
+            rerank_enabled=True,
+            rerank_provider_id="4",
+            rerank_model="BAAI/bge-reranker-v2-m3",
+        ),
+        request=_request(),
+        server=server,
+        _admin=object(),
+    )
+
+    assert capability["rerank"] == {
+        "enabled": True,
+        "provider_id": "4",
+        "model": "BAAI/bge-reranker-v2-m3",
+        "ready": True,
+        "usable": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_put_feature_refuses_a_model_that_is_not_a_reranker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    server = _feature_server(monkeypatch, _rerank_provider())
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.put_feature(
+            knowledge_bases.FeatureBody(
+                enabled=False,
+                rerank_enabled=True,
+                rerank_provider_id="4",
+                rerank_model="BAAI/bge-m3",
+            ),
+            request=_request(),
+            server=server,
+            _admin=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_RERANK_NOT_READY
+    assert server.values == {}
+
+
+@pytest.mark.asyncio
+async def test_put_feature_leaves_rerank_alone_when_not_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    server = _feature_server(monkeypatch, _rerank_provider())
+    server.values.update(
+        knowledge_rerank_enabled="true",
+        knowledge_rerank_provider_id="4",
+        knowledge_rerank_model="BAAI/bge-reranker-v2-m3",
+    )
+
+    capability = await knowledge_bases.put_feature(
+        knowledge_bases.FeatureBody(enabled=False),
+        request=_request(),
+        server=server,
+        _admin=object(),
+    )
+
+    assert capability["rerank"]["usable"] is True
+
+
 @pytest.mark.asyncio
 async def test_embedding_options_omits_non_recommended_onnx() -> None:
     from octop.api.routers import knowledge_bases

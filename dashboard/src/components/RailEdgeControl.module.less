@@ -7,33 +7,68 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
+  /* The strip straddles the divider. The 8px just inside the line stays
+     clear so the panel scrollbar can be dragged. Hover on the outer 8px
+     and on the next 8px inward both light the line. */
+  pointer-events: none;
+
+  &::before,
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    pointer-events: auto;
+  }
 
   &:hover {
     .line {
+      width: 2px;
       background: var(--fn-color-brand);
-      opacity: 0.55;
+      opacity: 0.32;
     }
   }
 }
 
 .edgeEnd {
   right: -8px;
+
+  &::before {
+    left: 50%;
+  }
+
+  /* Past the scrollbar gutter, same width as the outer hover band. */
+  &::after {
+    right: 100%;
+  }
 }
 
 .edgeStart {
   left: -8px;
+
+  &::before {
+    right: 50%;
+  }
+
+  &::after {
+    left: 100%;
+  }
 }
 
 .edgeCollapsed {
-  /* Keep a hit target when the panel is gone */
+  /* Keep a hit target when the panel is gone. Half of 12, so the line stays
+     on the panel edge — the same inset the traffic lights use on the left
+     and the top. A leftover -8px (half of the 16px strip) shifts it outward. */
   width: 12px;
 }
 
-.edgePassThrough {
-  /* The rail itself must not cover a resize handle. The collapse button
-     stays pointer-events: none until a hover rule reveals it. */
-  pointer-events: none;
+.edgeEnd.edgeCollapsed {
+  right: -6px;
+}
+
+.edgeStart.edgeCollapsed {
+  left: -6px;
 }
 
 .line {
@@ -46,6 +81,7 @@
   background: var(--fn-chat-divider, var(--fn-border-primary));
   opacity: 1;
   transition:
+    width 0.15s ease,
     background 0.15s ease,
     opacity 0.15s ease;
   pointer-events: none;
@@ -106,4 +142,26 @@
 
 .btnAfter {
   transform: translate(3px, -50%);
+}
+
+/* Upper stretch of the divider: drag to resize. Stops above the toggle. */
+.resizeGrip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: calc(50% - 28px);
+  z-index: 2;
+  pointer-events: auto;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* Keep the resize hit on the outer side of the line, same as the hover strip. */
+.edgeEnd .resizeGrip {
+  left: 50%;
+}
+
+.edgeStart .resizeGrip {
+  right: 50%;
 }
