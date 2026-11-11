@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "antd";
+import cx from "classnames";
 import styles from "./index.module.less";
 
 interface BetaBadgeProps {
@@ -12,9 +13,7 @@ export default function BetaBadge({ isMobile }: BetaBadgeProps) {
   return (
     <Tooltip title={t("header.betaTooltip")} mouseEnterDelay={0.35}>
       <span
-        className={`${styles.betaBadge} ${
-          isMobile ? styles.betaBadgeMobile : ""
-        }`}
+        className={cx(styles.betaBadge, isMobile && styles.betaBadgeMobile)}
         aria-label={t("header.betaTooltip")}
       >
         {t("header.betaBadge")}

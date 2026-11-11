@@ -73,6 +73,48 @@ describe("UsageStats", () => {
     expect(screen.getByText("185,898")).toBeInTheDocument();
   });
 
+  it("prints the exact count under an abbreviated card", () => {
+    render(
+      <UsageStats
+        items={[
+          {
+            key: "total",
+            label: "总 tokens",
+            value: "278.8万",
+            exact: "2,788,473",
+          },
+        ]}
+        width={400}
+      />,
+    );
+
+    expect(screen.getByText("278.8万")).toBeInTheDocument();
+    expect(screen.getByText("2,788,473")).toBeInTheDocument();
+  });
+
+  it("shows the exact count for an abbreviated metric in the overflow list", async () => {
+    const user = userEvent.setup();
+    render(
+      <UsageStats
+        items={[
+          ...ITEMS.slice(0, 6),
+          {
+            key: "avg",
+            label: "均值/轮",
+            value: "1.23M",
+            exact: "1,234,567",
+          },
+        ]}
+        width={900}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "common.viewMore" }));
+
+    expect(await screen.findByText("1.23M")).toBeInTheDocument();
+    expect(screen.getByText("1,234,567")).toBeInTheDocument();
+  });
+
   it("does not hide metrics behind overflow on mobile", () => {
     render(<UsageStats items={ITEMS} width={900} overflowEnabled={false} />);
 

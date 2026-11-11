@@ -14,6 +14,7 @@ export {
   joinKnowledgePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  knowledgeFileNameParts,
   knowledgePathParent,
   normalizeKnowledgePath,
 } from "../../utils/knowledgePath";
@@ -53,6 +54,22 @@ export function knowledgeDocumentPath(document: KnowledgeTreeSource): string {
   } catch {
     return "";
   }
+}
+
+/**
+ * Whether folder `folderPath` ("" is the root) can receive `moving`: not the
+ * folder it is already in, and for a folder not itself or anything below it.
+ */
+export function canMoveKnowledgeEntryTo(
+  moving: KnowledgeTreeSource,
+  folderPath: string,
+): boolean {
+  const path = knowledgeDocumentPath(moving);
+  if (!path || folderPath === knowledgePathParent(path)) return false;
+  return !(
+    moving.is_dir &&
+    (folderPath === path || folderPath.startsWith(`${path}/`))
+  );
 }
 
 type MutableTreeNode = {

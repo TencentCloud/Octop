@@ -122,6 +122,141 @@ def test_shared_custom_server_uses_collision_safe_name_for_viewer(
     assert svc.list_active_mcp_server_names(viewer_id) == [shared_name]
     assert list(svc.custom_harness_configs(viewer_id)) == [shared_name]
     assert svc.list_default_open_mcp_server_names(viewer_id) == []
+    assert svc.shared_custom_harness_aliases(owner_id) == {shared_name: "linear"}
+    assert svc.align_mcp_names_to_harness(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        names=[shared_name, "linear"],
+    ) == ["linear"]
+    assert svc.present_mcp_names_for_viewer(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        names=["linear", "private"],
+    ) == [shared_name]
+    # Explicit picks stay in the viewer's vocabulary. Harness translation is separate.
+    assert svc.merge_turn_mcp_servers(
+        viewer_id,
+        [shared_name],
+        apply_defaults=False,
+        extra_defaults=["linear", "private"],
+        agent_owner_id=owner_id,
+    ) == [shared_name]
+    assert (
+        svc.merge_turn_mcp_servers(
+            viewer_id,
+            [],
+            apply_defaults=False,
+            extra_defaults=["linear"],
+            agent_owner_id=owner_id,
+        )
+        is None
+    )
+    assert svc.merge_turn_mcp_servers(
+        viewer_id,
+        None,
+        apply_defaults=True,
+        extra_defaults=["linear", "private"],
+        agent_owner_id=owner_id,
+    ) == [shared_name]
+    assert svc.merge_turn_mcp_servers(
+        owner_id,
+        None,
+        apply_defaults=True,
+        extra_defaults=["linear"],
+        agent_owner_id=owner_id,
+    ) == ["linear"]
+
+
+def test_shared_custom_name_collision_keeps_viewer_server_distinct(
+    svc: ConnectorService,
+    db: SqlitePool,
+) -> None:
+    """The viewer's own ``linear`` must not be rewritten to the owner's server."""
+    owner_id = _ensure_user(db)
+    viewer_id = _ensure_second_user(db)
+    svc.put_custom_servers(
+        owner_id,
+        {
+            "linear": {
+                "transport": "streamable_http",
+                "url": "https://mcp.linear.app/mcp",
+                "shared": True,
+            },
+            "paused": {
+                "transport": "streamable_http",
+                "url": "https://paused.example.com/mcp",
+                "shared": True,
+                "enabled": False,
+            },
+        },
+    )
+    svc.put_custom_servers(
+        viewer_id,
+        {
+            "linear": {
+                "transport": "streamable_http",
+                "url": "https://viewer.example.com/mcp",
+                "default_open": True,
+            },
+            "notes": {
+                "transport": "streamable_http",
+                "url": "https://notes.example.com/mcp",
+            },
+        },
+    )
+    aliases = svc.shared_custom_harness_aliases(owner_id)
+    assert list(aliases.values()) == ["linear"]
+    shared_name = next(iter(aliases))
+
+    # IM/default path: expert pick is the shared server; viewer's default_open stays.
+    merged = svc.merge_turn_mcp_servers(
+        viewer_id,
+        None,
+        apply_defaults=True,
+        extra_defaults=["linear", "paused"],
+        agent_owner_id=owner_id,
+    )
+    assert merged == ["linear", shared_name]
+    harness = svc.align_mcp_names_to_harness(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        names=merged or [],
+    )
+    # Both refer to a server named linear; the harness has one slot.
+    assert harness == ["linear"]
+    assert svc.mcp_names_for_chips(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        requested=merged or [],
+        harness_names=harness,
+    ) == [shared_name]
+
+    own_only = ["linear", "notes"]
+    assert svc.align_mcp_names_to_harness(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        names=own_only,
+    ) == ["linear", "notes"]
+    assert svc.mcp_names_for_chips(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        requested=own_only,
+        harness_names=["linear", "notes"],
+    ) == ["linear", "notes"]
+
+    both = [shared_name, "linear", "notes"]
+    both_harness = svc.align_mcp_names_to_harness(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        names=both,
+    )
+    assert both_harness == ["linear", "notes"]
+    assert svc.mcp_names_for_chips(
+        owner_user_id=owner_id,
+        viewer_user_id=viewer_id,
+        requested=both,
+        harness_names=both_harness,
+    ) == [shared_name, "notes"]
 
 
 def test_rejects_public_http_and_allows_lan():

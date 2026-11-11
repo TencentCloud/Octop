@@ -1,68 +1,63 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { message } from "@/utils/antdMessage";
-import { requestUpload } from "../api/request";
 import { shareDownloadLink } from "./downloadLink";
 import { saveBlobAsFile } from "./saveBlobAsFile";
-
-vi.mock("../api/request", () => ({
-  requestUpload: vi.fn(),
-}));
 
 vi.mock("./downloadLink", () => ({
   shareDownloadLink: vi.fn(),
 }));
 
-vi.mock("@/utils/antdMessage", () => ({
-  message: { success: vi.fn(), error: vi.fn() },
-}));
+type BridgeHost = Window & { octopDesktop?: unknown };
 
-type DesktopWindow = Window & {
-  _wails?: { invoke?: (message: string) => void };
-};
+/** Intercept the synthetic <a download> click the helper appends to <body>. */
+function stubDownloadAnchor(): ReturnType<typeof vi.fn> {
+  const click = vi.fn();
+  vi.spyOn(document, "createElement").mockImplementation(
+    () =>
+      ({
+        href: "",
+        download: "",
+        click,
+        style: {},
+      }) as unknown as HTMLElement,
+  );
+  vi.spyOn(document.body, "appendChild").mockImplementation((node) => node);
+  vi.spyOn(document.body, "removeChild").mockImplementation((node) => node);
+  URL.createObjectURL = vi.fn(() => "blob:save");
+  URL.revokeObjectURL = vi.fn();
+  return click;
+}
 
 afterEach(() => {
-  delete (window as DesktopWindow)._wails;
-  vi.mocked(requestUpload).mockReset();
-  vi.mocked(message.success).mockReset();
+  delete (window as BridgeHost).octopDesktop;
   vi.mocked(shareDownloadLink).mockReset();
   vi.restoreAllMocks();
 });
 
 describe("saveBlobAsFile", () => {
-  it("posts the blob to the host Downloads API in the desktop shell", async () => {
-    (window as DesktopWindow)._wails = { invoke: () => undefined };
-    const blob = new Blob(["hello"], { type: "text/plain" });
-    await saveBlobAsFile(blob, "note.txt");
-    expect(requestUpload).toHaveBeenCalledTimes(1);
-    const [path, body] = vi.mocked(requestUpload).mock.calls[0]!;
-    expect(path).toBe("/downloads/local");
-    expect(body).toBeInstanceOf(FormData);
-    expect((body as FormData).get("file")).toBeInstanceOf(Blob);
-    expect(message.success).toHaveBeenCalled();
+  it("uses a download anchor in the desktop shell", async () => {
+    Object.defineProperty(window, "octopDesktop", {
+      configurable: true,
+      value: {},
+    });
+    const click = stubDownloadAnchor();
+
+    await saveBlobAsFile(
+      new Blob(["hello"], { type: "text/plain" }),
+      "note.txt",
+    );
+
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(shareDownloadLink).not.toHaveBeenCalled();
   });
 
   it("uses a download anchor in the browser", async () => {
-    const click = vi.fn();
-    const createElement = vi.spyOn(document, "createElement");
-    createElement.mockImplementation(
-      () =>
-        ({
-          href: "",
-          download: "",
-          click,
-          style: {},
-        }) as unknown as HTMLElement,
-    );
-    vi.spyOn(document.body, "appendChild").mockImplementation((node) => node);
-    vi.spyOn(document.body, "removeChild").mockImplementation((node) => node);
-    URL.createObjectURL = vi.fn(() => "blob:save");
-    URL.revokeObjectURL = vi.fn();
+    const click = stubDownloadAnchor();
 
     await saveBlobAsFile(new Blob(["x"]), "file.bin");
-    expect(requestUpload).not.toHaveBeenCalled();
-    expect(click).toHaveBeenCalled();
-    createElement.mockRestore();
+
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(shareDownloadLink).not.toHaveBeenCalled();
   });
 
   it("hands in-app browsers a download link instead of a blob", async () => {
@@ -73,6 +68,7 @@ describe("saveBlobAsFile", () => {
     const blob = new Blob(["x"]);
 
     await saveBlobAsFile(blob, "report.docx");
+
     expect(shareDownloadLink).toHaveBeenCalledWith(blob, "report.docx");
     expect(click).not.toHaveBeenCalled();
   });

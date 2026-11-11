@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildKnowledgeFileTree,
+  canMoveKnowledgeEntryTo,
   isDirectKnowledgeChild,
   joinKnowledgePath,
   knowledgeBasename,
@@ -79,5 +80,22 @@ describe("knowledgeFolder", () => {
   it("does not navigate for files", () => {
     const card = document.createElement("div");
     expect(shouldOpenKnowledgeFolder(false, { target: card })).toBe(false);
+  });
+
+  it("offers every folder but the current one as a move target for a file", () => {
+    const file = { filename: "act.md", path: "notes/law/act.md" };
+    expect(canMoveKnowledgeEntryTo(file, "")).toBe(true);
+    expect(canMoveKnowledgeEntryTo(file, "notes")).toBe(true);
+    expect(canMoveKnowledgeEntryTo(file, "archive")).toBe(true);
+    expect(canMoveKnowledgeEntryTo(file, "notes/law")).toBe(false);
+  });
+
+  it("never offers a folder itself or its subtree as its own target", () => {
+    const folder = { filename: "notes", path: "notes", is_dir: true };
+    expect(canMoveKnowledgeEntryTo(folder, "")).toBe(false);
+    expect(canMoveKnowledgeEntryTo(folder, "notes")).toBe(false);
+    expect(canMoveKnowledgeEntryTo(folder, "notes/law")).toBe(false);
+    expect(canMoveKnowledgeEntryTo(folder, "notes-old")).toBe(true);
+    expect(canMoveKnowledgeEntryTo(folder, "archive")).toBe(true);
   });
 });

@@ -1,7 +1,8 @@
 # Octop 绿色便携包（多平台）
 
 解压即用：内置便携 CPython + Octop 及依赖，通过 `start.sh` / `start.bat` 启动。  
-**不依赖**系统 Python，也**不包含** Wails / 桌面壳——用浏览器打开 Dashboard。  
+**不依赖**系统 Python，也**不包含**桌面壳——用浏览器打开 Dashboard。
+（Electron 外壳在 `desktop/src/`，打包时把这个 zip 作为 `extraResources` 随包携带。）
 首启走上游正常 setup wizard（本目录**不含** OOB / UI 裁剪）。
 
 ## 与上游解耦
@@ -24,12 +25,13 @@ make -f desktop/portable/Makefile green
 `uv export --frozen`，出包后跑 `desktop/portable/verify_imports.py`
 校验关键包 pin 与 import（含 `langchain-openai` / `langchain-core` 配对），
 避免「同安装、不同环境」因版本错配或原生扩展加载失败而偶发报错。
-平台 overrides（`darwin-amd64` / `windows-arm64` 的 `cryptography==46.x`）
-会一并传入校验，避免与 lock 中的 49.x 误报不一致。
+平台 overrides（`darwin-amd64` / `windows-arm64` 的 `cryptography==46.x`，
+macOS 的 `onnxruntime==1.23.2`，Intel 的 `opencv-python==4.11.0.86`）
+会一并传入校验，避免与 lock 中的版本误报不一致。
 
 ## 产物布局
 
-公开文件名：`Octop-portable-<plat>-<version>.zip`。zip 内目录仍是：
+公开文件名是 `Octop-portable-<plat>-<version>.zip`，只带 `browser`。桌面、OCR 和本地向量在 Docker `:<version>-full`，不进这个 zip。zip 内目录仍是：
 
 ```
 Octop-<plat>/
@@ -88,9 +90,10 @@ OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 绿包脚本已做：
 
 1. `darwin-amd64` 覆盖钉死 `cryptography==46.0.3`（仍有 `macosx_*_universal2` wheel）
-2. 全平台 `--only-binary cryptography`，禁止源码编译
-3. 打包后 `otool` 检查，拒绝 Homebrew/MacPorts 绝对路径
-4. smoke import 覆盖 `cryptography.fernet`
+2. `uv --python-platform *-apple-darwin` 按 macOS 13.0 选 wheel。`onnxruntime` 1.28 只有 `macosx_14_0_arm64`，两个 macOS 都钉 `onnxruntime==1.23.2`（最后一版 `macosx_13_0` wheel，fastembed 0.9.1 允许）。Intel 的 `opencv-python` 5.x 是 `macosx_14_0_x86_64`，钉 `opencv-python==4.11.0.86`（`macosx_13_0_x86_64`，且接受锁定的 numpy 2.5）
+3. 全平台 `--only-binary cryptography`，禁止源码编译
+4. 打包后 `otool` 检查，拒绝 Homebrew/MacPorts 绝对路径
+5. smoke import 覆盖 `cryptography.fernet`
 
 ### Windows / pywin32
 
@@ -102,7 +105,7 @@ OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 
 **不要**设置 `PYTHONPATH=packages`（会跳过 `.pth`，导致 `No module named pywintypes`）。
 
-`windows-arm64` 另排除无 wheel 的 `psycopg-binary` / `sqlite-vec`，并把 `cryptography` 钉到 `46.0.0`（仅该版本提供 `win_arm64` wheel）。
+`windows-arm64` 另排除无 wheel 的 `psycopg-binary` / `sqlite-vec`，并把 `cryptography` 钉到 `46.0.0`（仅该版本提供 `win_arm64` wheel）。`opencv-python` 和 `pyclipper` 从未发布 `win_arm64` wheel，源码包分别要编完整 OpenCV 和 Cython 扩展，因此排除。绿色包不含 OCR。
 
 ## CI
 
@@ -115,4 +118,4 @@ Actions 使用 GitHub 上游 PBS（`PBS_BASE_URL`），本机构建默认 npmmir
 ## Electron 壳
 
 壳只消费 `Octop-portable-<plat>-<version>.zip`（zip 内仍是 `Octop-<plat>/`），不要把绿包编进 asar。步骤见
-[`AGENT_ELECTRON_INTEGRATION.md`](AGENT_ELECTRON_INTEGRATION.md)。
+[`AGENT_ELECTRON_INTEGRATION.md`](../docs/AGENT_ELECTRON_INTEGRATION.md)。
