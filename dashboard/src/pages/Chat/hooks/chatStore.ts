@@ -575,6 +575,7 @@ function getOrCreate(sessionId: string): SessionStreamState {
       isTeamRoom: false,
       liveSpeakers: new Set(),
       activeTurnId: null,
+      activeTurnUserId: null,
       pendingSteers: [],
     };
     sessionStates.set(sessionId, state);
@@ -681,6 +682,8 @@ function clearStreamingFlags(
   state.thinkingStartedAt = null;
   if (opts?.keepSteer) return;
   state.activeTurnId = null;
+  // Team members and the host wrap-up keep talking after the host turn ends.
+  if (!state.isTeamRoom) state.activeTurnUserId = null;
   state.pendingSteers = [];
 }
 
@@ -1513,13 +1516,19 @@ function handleHarnessChunk(
         snapshot,
         Boolean(chunk.team_wrapup),
         liveCatchup,
+        chunkTurnId(chunk),
       );
       if (snapshot && !liveCatchup) clearSpeakerLive(state, speaker);
       break;
     }
     case "reasoning":
       markSpeakerLive(state, speaker);
-      appendStreamingReasoning(state, chunk.content, speaker);
+      appendStreamingReasoning(
+        state,
+        chunk.content,
+        speaker,
+        chunkTurnId(chunk),
+      );
       break;
     case "usage":
       applyUsageChunk(state, chunk);
@@ -1855,6 +1864,39 @@ function appendToTextBubble(
   ];
 }
 
+function chunkTurnId(chunk: object): string {
+  const raw = (chunk as { turn_id?: unknown }).turn_id;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+/** A chunk with a turn id must not continue a bubble from another turn. */
+function bubbleMatchesTurn(
+  message: ChatMessage,
+  turnId: string,
+  activeTurnId: string | null | undefined,
+): boolean {
+  if (!turnId) return true;
+  if (message.turnId) return message.turnId === turnId;
+  if (message.status !== "streaming") return false;
+  return !activeTurnId || activeTurnId === turnId;
+}
+
+function noteTurnOwner(
+  state: SessionStreamState,
+  userId: number | undefined,
+): void {
+  if (userId != null && userId > 0) state.activeTurnUserId = userId;
+}
+
+function noteTurnOwnerFromLatestUser(state: SessionStreamState): void {
+  for (let i = state.messages.length - 1; i >= 0; i--) {
+    const message = state.messages[i];
+    if (message.role !== "user") continue;
+    noteTurnOwner(state, message.author?.userId);
+    return;
+  }
+}
+
 /** Append a token fragment to the last streaming assistant text bubble,
  *  starting a new bubble if the last message is something else. */
 function appendStreamingToken(
@@ -1864,6 +1906,7 @@ function appendStreamingToken(
   snapshot = false,
   wrapup = false,
   keepLive = false,
+  turnId = "",
 ): void {
   if (!content) return;
   const speaker = speakerAgentId?.trim() || undefined;
@@ -1891,6 +1934,7 @@ function appendStreamingToken(
         timestamp: Date.now(),
         speakerAgentId: speaker,
         teamWrapup: true,
+        ...(turnId ? { turnId } : {}),
       },
     ];
     return;
@@ -1903,7 +1947,26 @@ function appendStreamingToken(
       ? { teamRoom: Boolean(state.isTeamRoom) }
       : continueTokenOpts(state),
   );
-  const target = idx >= 0 ? state.messages[idx] : null;
+  const found = idx >= 0 ? state.messages[idx] : null;
+  if (found && !bubbleMatchesTurn(found, turnId, state.activeTurnId)) {
+    sealPriorStreamingAssistants(state, speaker);
+    state.streamId = generateId();
+    state.messages = [
+      ...state.messages,
+      {
+        id: state.streamId,
+        role: "assistant",
+        content,
+        status: snapshot && !keepLive ? "done" : "streaming",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+        ...(turnId ? { turnId } : {}),
+      },
+    ];
+    return;
+  }
+  if (found && turnId && !found.turnId) found.turnId = turnId;
+  const target = found;
   if (snapshot && target) {
     const prev = target.content || "";
     const sameTurn =
@@ -1919,6 +1982,7 @@ function appendStreamingToken(
           status: keepLive ? "streaming" : "done",
           timestamp: Date.now(),
           speakerAgentId: speaker,
+          ...(turnId ? { turnId } : {}),
         },
       ];
       return;
@@ -1949,6 +2013,7 @@ function appendStreamingToken(
         status: keepLive ? "streaming" : "done",
         timestamp: Date.now(),
         speakerAgentId: speaker,
+        ...(turnId ? { turnId } : {}),
       },
     ];
     return;
@@ -1978,6 +2043,7 @@ function appendStreamingToken(
         status: "streaming",
         timestamp: Date.now(),
         speakerAgentId: speaker,
+        ...(turnId ? { turnId } : {}),
       },
     ];
     return;
@@ -2041,6 +2107,7 @@ function appendStreamingToken(
       status: "streaming",
       timestamp: Date.now(),
       speakerAgentId: speaker,
+      ...(turnId ? { turnId } : {}),
     },
   ];
 }
@@ -2052,6 +2119,7 @@ function appendStreamingReasoning(
   state: SessionStreamState,
   content: string,
   speakerAgentId?: string,
+  turnId = "",
 ): void {
   if (!content) return;
   const speaker = speakerAgentId?.trim() || undefined;
@@ -2062,6 +2130,31 @@ function appendStreamingReasoning(
     continueTokenOpts(state),
   );
   const last = lastIdx >= 0 ? state.messages[lastIdx] : null;
+  if (
+    last &&
+    last.role === "assistant" &&
+    !last.toolData &&
+    !bubbleMatchesTurn(last, turnId, state.activeTurnId)
+  ) {
+    sealPriorStreamingAssistants(state, speaker);
+    const id = generateId();
+    state.streamId = id;
+    state.messages = [
+      ...state.messages,
+      {
+        id,
+        role: "assistant",
+        content: "",
+        contentBlocks: [{ type: "thinking", content }],
+        status: "streaming",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+        ...(turnId ? { turnId } : {}),
+      },
+    ];
+    return;
+  }
+  if (last && turnId && !last.turnId) last.turnId = turnId;
   if (last && last.role === "assistant" && !last.toolData) {
     const blocks = last.contentBlocks ? [...last.contentBlocks] : [];
     if (blocks.length > 0 && blocks[blocks.length - 1].type === "thinking") {
@@ -2096,6 +2189,7 @@ function appendStreamingReasoning(
       status: "streaming",
       timestamp: Date.now(),
       speakerAgentId: speaker,
+      ...(turnId ? { turnId } : {}),
     },
   ];
 }
@@ -3103,6 +3197,7 @@ async function sendTurnWebSocket(
     liveSockets.set(sessionId, live);
 
     let settled = false;
+    let sawTurnStarted = false;
     const settle = (ok: boolean) => {
       if (settled) return;
       settled = true;
@@ -3168,9 +3263,13 @@ async function sendTurnWebSocket(
         const data = JSON.parse(String(event.data)) as HarnessChunk;
         if (!data || typeof data !== "object") return;
         if (!frameBelongsToThread(data, live.threadId)) return;
+        const frameType = String((data as { type?: unknown }).type || "");
+        if (frameType === "turn.started" || frameType === "turn.resumed") {
+          sawTurnStarted = true;
+        }
         const frameTurnId = (data as { turn_id?: unknown }).turn_id;
         if (
-          (data as { type?: unknown }).type === "turn.ended" &&
+          frameType === "turn.ended" &&
           typeof frameTurnId === "string" &&
           state.activeTurnId &&
           frameTurnId !== state.activeTurnId
@@ -3188,6 +3287,30 @@ async function sendTurnWebSocket(
           )
         ) {
           notify(state);
+          if (frameType === "turn.busy") {
+            const busyId = String(
+              (data as { message_id?: unknown }).message_id || "",
+            ).trim();
+            const rejectsThisSend =
+              !sawTurnStarted ||
+              (Boolean(clientMessageId) &&
+                busyId === String(clientMessageId).trim());
+            // The server refused this send. Drop the spinner we raised so
+            // Stop cannot cancel the turn that is still running.
+            if (rejectsThisSend) {
+              live.listenOnly = true;
+              controller.signal.removeEventListener("abort", onAbort);
+              if (state.abortController === controller) {
+                state.abortController = null;
+              }
+              state.isStreaming = false;
+              state.thinkingStartedAt = null;
+              clearStreamActivity(sessionId);
+              notify(state);
+              settle(true);
+            }
+            return;
+          }
           if (
             isHostTurnTerminal(
               data,
@@ -3701,6 +3824,32 @@ export interface SteerRestoreEvent {
 
 const steerRestoreListeners = new Set<(event: SteerRestoreEvent) => void>();
 
+export interface SharedTurnBusyEvent {
+  sessionId: string;
+  messageId: string;
+}
+
+const sharedTurnBusyListeners = new Set<(event: SharedTurnBusyEvent) => void>();
+
+export function onSharedTurnBusy(
+  listener: (event: SharedTurnBusyEvent) => void,
+): () => void {
+  sharedTurnBusyListeners.add(listener);
+  return () => {
+    sharedTurnBusyListeners.delete(listener);
+  };
+}
+
+function emitSharedTurnBusy(event: SharedTurnBusyEvent): void {
+  for (const listener of sharedTurnBusyListeners) {
+    try {
+      listener(event);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export function onSteerRestore(
   listener: (event: SteerRestoreEvent) => void,
 ): () => void {
@@ -3908,6 +4057,8 @@ function applyRemoteUserFrame(
 ): boolean {
   if (String(data.type || "") !== "user") return false;
   if ((data.meta as { steer?: boolean } | undefined)?.steer) return false;
+  const author = authorFromFrame(data.author);
+  if (author) noteTurnOwner(state, author.userId);
   const messageId = String(data.message_id || "").trim();
   if (!messageId) return false;
   if (state.messages.some((message) => message.id === messageId)) return true;
@@ -3921,7 +4072,7 @@ function applyRemoteUserFrame(
       role: "user",
       content,
       attachments,
-      author: authorFromFrame(data.author),
+      author,
       status: "done",
       timestamp: Date.now(),
     },
@@ -3935,9 +4086,42 @@ function applySteerProtocolFrame(
   sessionId?: string,
 ): boolean {
   const type = String(data.type || "");
+  if (type === "turn.busy") {
+    const messageId = String(data.message_id || "").trim();
+    if (messageId) {
+      state.messages = state.messages.filter(
+        (message) => message.id !== messageId,
+      );
+    }
+    const clientPendingId = String(data.client_pending_id || "").trim();
+    if (clientPendingId) {
+      dropOptimisticSteerMessages(state, [clientPendingId]);
+      state.pendingSteers = state.pendingSteers.filter(
+        (item) => item.clientPendingId !== clientPendingId,
+      );
+    }
+    emitSharedTurnBusy({
+      sessionId: sessionId || "",
+      messageId,
+    });
+    return true;
+  }
   if (type === "turn.started" || type === "turn.resumed") {
     const turnId = String(data.turn_id || "").trim();
+    if (type === "turn.started" && turnId) {
+      const previous = (state.activeTurnId || "").trim();
+      const foreignStream = state.messages.some(
+        (message) =>
+          message.role === "assistant" &&
+          message.status === "streaming" &&
+          message.turnId !== turnId,
+      );
+      if ((previous && previous !== turnId) || (!previous && foreignStream)) {
+        sealPriorStreamingAssistants(state);
+      }
+    }
     if (turnId) state.activeTurnId = turnId;
+    if (type === "turn.started") noteTurnOwnerFromLatestUser(state);
     // Idle commit becomes a normal turn. Keep the optimistic user row —
     // it is the live bubble until history returns the same text. Stop
     // tracking it so a later turn.ended does not delete it.
@@ -3961,6 +4145,7 @@ function applySteerProtocolFrame(
       return true;
     }
     state.activeTurnId = null;
+    if (!state.isTeamRoom) state.activeTurnUserId = null;
     dropOptimisticSteerMessages(state, steerClientIds(data, state));
     state.pendingSteers = [];
     return true;
@@ -4122,6 +4307,24 @@ function applySteerProtocolFrame(
  * turn knowledge — a missing turnId just omits ``expected_turn_id`` and the
  * busy path binds to the live turn.
  */
+/** Shared session: another person's turn is still running. */
+export function sharedTurnBlocksSender(
+  sessionId: string,
+  userId: number | null | undefined,
+  contributed: boolean,
+): boolean {
+  if (!contributed || userId == null || userId <= 0) return false;
+  const state = sessionStates.get(sessionId);
+  if (!state) return false;
+  const teamStillTalking =
+    Boolean(state.isTeamRoom) && state.liveSpeakers.size > 0;
+  if (!state.isStreaming && !state.activeTurnId && !teamStillTalking)
+    return false;
+  const owner = state.activeTurnUserId;
+  if (owner == null || owner <= 0) return false;
+  return Number(owner) !== Number(userId);
+}
+
 export function sendSteerWhileBusy(
   sessionId: string,
   text: string,

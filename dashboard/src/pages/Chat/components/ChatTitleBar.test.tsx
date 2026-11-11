@@ -49,6 +49,46 @@ describe("ChatTitleBar", () => {
     expect(container.querySelector(".octop-desktop-drag")).not.toBeNull();
   });
 
+  it("shows the expert shared flag beside an owner's contributed title", () => {
+    render(
+      <ChatTitleBar
+        session={{ ...session, contributed: true, owned: true }}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+      />,
+    );
+
+    const heading = screen.getByRole("heading", { name: "Weekly recap" });
+    const badge = screen.getByTitle(/sharedResource\.shared|已共享|Shared/);
+    const more = screen.getByRole("button", { name: "更多" });
+    expect(heading.compareDocumentPosition(badge)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(badge.compareDocumentPosition(more)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("shows only a share icon for a session shared with the viewer", () => {
+    render(
+      <ChatTitleBar
+        session={{ ...session, contributed: true, owned: false }}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+      />,
+    );
+
+    const mark = screen.getByLabelText("chat.sharedSession");
+    expect(mark.querySelector("svg")).not.toBeNull();
+    expect(mark).not.toHaveTextContent(/已共享|Shared|sharedResource/);
+  });
+
   it("shows a team badge next to the title for group chats", () => {
     render(
       <ChatTitleBar

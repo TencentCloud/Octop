@@ -14,6 +14,7 @@ import cx from "classnames";
 import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionShareMark from "./SessionShareMark";
 import TeamChatBadge from "./TeamChatBadge";
 import RemoteExpertHint from "./RemoteExpertHint";
 import styles from "../index.module.less";
@@ -170,6 +171,10 @@ export default function ChatTitleBar({
             <h1 className={styles.chatTitleText} title={title}>
               {title}
             </h1>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
             <TeamChatBadge show={isTeam} />
             <RemoteExpertHint agent={agent} />
             {session.pinned ? (
