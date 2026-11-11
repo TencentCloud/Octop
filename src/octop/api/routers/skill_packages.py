@@ -20,6 +20,7 @@ from octop.infra.agents.experts.skillhub_market import (
 )
 from octop.infra.db.repos.skill_packages import SkillPackageRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.market.errors import PortalMarketError, local_network_error
 from octop.infra.server import OctopServer
 from octop.infra.skills.install import valid_skillhub_icon_url
 from octop.infra.skills.skill_archive import build_skills_zip
@@ -491,7 +492,7 @@ async def create_skill_package(
 @router.post(
     "/from-skillhub",
     status_code=status.HTTP_201_CREATED,
-    summary="Create a skill package from a SkillHub skillset",
+    summary="Create a skill package from the expert market",
 )
 async def create_from_skillhub(
     body: FromSkillHubBody,
@@ -511,6 +512,13 @@ async def create_from_skillhub(
             icon_url=_icon_url(body.icon_url) if body.icon_url is not None else None,
             shared=bool(body.shared),
         )
+    except PortalMarketError as exc:
+        network_error = local_network_error(exc)
+        if network_error is not None:
+            raise network_error from exc
+        raise OctopError(
+            ErrorCode.EXPERT_MARKET_FAILED, "expert market package import failed"
+        ) from exc
     except (SkillHubMarketError, SkillHubDownloadError) as exc:
         raise _map_skillhub_error(exc) from exc
     payload = _package_payload_with_creator(server, store, result.row)

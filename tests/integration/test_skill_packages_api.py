@@ -732,3 +732,77 @@ async def test_create_package_skill_rejects_invalid_base64_files(env: Any) -> No
         },
     )
     assert response.status_code == 400, response.text
+
+
+async def test_portal_only_market_import_preserves_bundle(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+    import json
+
+    from octop.infra.market import experts, http
+    from octop.infra.skills import skill_package_from_skillhub
+
+    client, server, auth = env
+    archive_bytes = io.BytesIO()
+    with zipfile.ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("manifest.json", json.dumps({"id": "portal-only"}))
+        archive.writestr("skills/child/SKILL.md", SAMPLE_SKILL)
+        archive.writestr("references/shared.md", "shared dependency")
+        archive.writestr("scripts/run.py", "print('ready')")
+    payload = archive_bytes.getvalue()
+    monkeypatch.setattr(
+        experts,
+        "get_market_expert",
+        lambda _slug: {
+            "slug": "portal-only",
+            "label": {"zh": "Portal Only"},
+            "download_url": "https://download.octop.cloud/portal-only.zip",
+            "size_bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        },
+    )
+    monkeypatch.setattr(http, "fetch_bytes", lambda *_args, **_kwargs: payload)
+    monkeypatch.setattr(
+        skill_package_from_skillhub,
+        "fetch_skillset",
+        lambda _slug: pytest.fail("must not query SkillHub"),
+    )
+    created = await client.post(
+        "/api/skill-packages/from-skillhub", headers=auth, json={"slug": "portal-only"}
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["name"] == "Portal Only"
+    assert created.json()["skill_count"] == 1
+    assert created.json()["skills"][0]["slug"] == "portal-only"
+    store = skill_package_from_skillhub.SkillPackageStore(
+        repo=server.services.skill_package_repo,
+        root=server.paths.skill_packages_dir,
+    )
+    assert (
+        store.read_skill_file_bytes(created.json()["id"], "portal-only", "scripts/run.py")
+        == b"print('ready')"
+    )
+    duplicate = await client.post(
+        "/api/skill-packages/from-skillhub", headers=auth, json={"slug": "portal-only"}
+    )
+    assert duplicate.status_code == 409, duplicate.text
+
+
+async def test_portal_import_maps_archive_failure(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.api.routers import skill_packages
+    from octop.infra.market.errors import PortalMarketError
+
+    client, _server, auth = env
+
+    def fail(*_args: Any, **_kwargs: Any) -> Any:
+        raise PortalMarketError("invalid archive")
+
+    monkeypatch.setattr(skill_packages, "create_package_from_skillhub", fail)
+    response = await client.post(
+        "/api/skill-packages/from-skillhub", headers=auth, json={"slug": "portal-only"}
+    )
+    assert response.status_code == 502, response.text
+    assert response.json()["error"]["code"] == "EXPERT_MARKET_FAILED"

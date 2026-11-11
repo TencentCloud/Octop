@@ -169,3 +169,192 @@ def test_write_failure_deletes_new_package(
 
     assert store.repo.list_all() == []
     assert list(store.root.iterdir()) == []
+
+
+def _portal_archive(
+    *, expert_id: str = "portal-only", extra: dict[str, bytes] | None = None
+) -> bytes:
+    import io
+    import json
+    import zipfile
+
+    files = {
+        "manifest.json": json.dumps({"id": expert_id}).encode(),
+        "AGENTS.md": b"Read skills/child/SKILL.md, then use scripts/helper.py.",
+        "USER.md": b"template profile",
+        "skills/child/SKILL.md": b"---\nname: child\ndescription: child task\n---\nRead ../../references/shared.md",
+        "references/shared.md": b"shared reference",
+        "scripts/helper.py": b"print('helper')",
+    }
+    files.update(extra or {})
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for path, content in files.items():
+            archive.writestr(path, content)
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def portal_market(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    import hashlib
+
+    from octop.infra.market import experts, http
+
+    payload = _portal_archive()
+    item: dict[str, object] = {
+        "slug": "portal-only",
+        "label": {"zh": "Portal workflow"},
+        "description": {"zh": "A complete workflow"},
+        "download_url": "https://download.octop.cloud/portal.zip",
+        "size_bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    monkeypatch.setattr(experts, "get_market_expert", lambda _slug: item)
+    monkeypatch.setattr(http, "fetch_bytes", lambda *_args, **_kwargs: payload)
+    monkeypatch.setattr(
+        "octop.infra.skills.skill_package_from_skillhub.fetch_skillset",
+        lambda _slug: pytest.fail("portal entry must not query SkillHub"),
+    )
+    return item
+
+
+def test_portal_only_import_keeps_self_contained_dependencies(
+    store: SkillPackageStore, portal_market: dict[str, object]
+) -> None:
+    result = create_package_from_skillhub(store, slug="portal-only", created_by="1")
+
+    assert result.row.name == "Portal workflow"
+    assert result.row.skill_count == 1
+    root = store.package_skills_dir(result.row.id) / "portal-only"
+    assert (root / "references/shared.md").read_bytes() == b"shared reference"
+    assert (root / "scripts/helper.py").read_bytes() == b"print('helper')"
+    child = root / "skills/child"
+    assert (child / "../../USER.md").resolve().read_bytes() == b"template profile"
+    assert (child / "../../references/shared.md").resolve().read_bytes() == b"shared reference"
+    workflow = (root / "SKILL.md").read_text()
+    from octop.infra.utils.frontmatter import parse_frontmatter
+
+    metadata, _ = parse_frontmatter(workflow)
+    assert metadata["name"] == "portal-only"
+    assert metadata["description"] == "A complete workflow"
+    assert "AGENTS.md" in workflow
+    assert "skills/child/SKILL.md" in workflow
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("sha256", "0" * 64),
+        ("size_bytes", 1),
+        ("download_url", "https://attacker.invalid/archive.zip"),
+    ],
+)
+def test_portal_rejects_bad_catalog_archive(
+    store: SkillPackageStore, portal_market: dict[str, object], field: str, value: object
+) -> None:
+    from octop.infra.market.errors import PortalMarketError
+
+    portal_market[field] = value
+    with pytest.raises(PortalMarketError):
+        create_package_from_skillhub(store, slug="portal-only", created_by="1")
+    assert store.repo.list_all() == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"not a zip",
+        _portal_archive(expert_id="wrong"),
+        _portal_archive(extra={"../escape": b"bad"}),
+    ],
+    ids=["not-zip", "wrong-id", "path-traversal"],
+)
+def test_portal_rejects_invalid_archive(
+    store: SkillPackageStore,
+    portal_market: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    payload: bytes,
+) -> None:
+    import hashlib
+
+    from octop.infra.market import http
+    from octop.infra.market.errors import PortalMarketError
+
+    portal_market.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
+    monkeypatch.setattr(http, "fetch_bytes", lambda *_args, **_kwargs: payload)
+    with pytest.raises(PortalMarketError):
+        create_package_from_skillhub(store, slug="portal-only", created_by="1")
+    assert store.repo.list_all() == []
+
+
+def test_portal_write_failure_rolls_back(
+    store: SkillPackageStore, portal_market: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(*_args: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store, "write_skill", fail)
+    with pytest.raises(OSError, match="disk full"):
+        create_package_from_skillhub(store, slug="portal-only", created_by="1")
+    assert store.repo.list_all() == []
+    assert list(store.root.iterdir()) == []
+
+
+def test_absent_portal_entry_keeps_skillhub_fallback(
+    store: SkillPackageStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.market import experts
+    from octop.infra.skills import skill_package_from_skillhub
+
+    monkeypatch.setattr(experts, "get_market_expert", lambda _slug: None)
+    monkeypatch.setattr(skill_package_from_skillhub, "fetch_skillset", lambda _slug: _item())
+    result = create_package_from_skillhub(
+        store,
+        slug="demo-skillset",
+        created_by="1",
+        download_skill_files_fn=lambda _slug: [("SKILL.md", b"---\nname: alpha\n---\n")],
+    )
+    assert result.row.name == "Demo package"
+    assert result.row.skill_count == 1
+
+
+@pytest.mark.parametrize("include_manifest", [True, False])
+def test_portal_rejects_empty_or_missing_manifest(
+    store: SkillPackageStore,
+    portal_market: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+    include_manifest: bool,
+) -> None:
+    import hashlib
+    import io
+    import zipfile
+
+    from octop.infra.market import http
+    from octop.infra.market.errors import PortalMarketError
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        if include_manifest:
+            archive.writestr("manifest.json", '{"id":"portal-only"}')
+        else:
+            archive.writestr("skills/child/SKILL.md", "# Child")
+    payload = buffer.getvalue()
+    portal_market.update(size_bytes=len(payload), sha256=hashlib.sha256(payload).hexdigest())
+    monkeypatch.setattr(http, "fetch_bytes", lambda *_args, **_kwargs: payload)
+    with pytest.raises(PortalMarketError):
+        create_package_from_skillhub(store, slug="portal-only", created_by="1")
+    assert store.repo.list_all() == []
+
+
+def test_duplicate_portal_name_does_not_download(
+    store: SkillPackageStore, portal_market: dict[str, object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.market import http
+
+    store.create(name="Portal workflow", description="", created_by="1")
+    monkeypatch.setattr(
+        http, "fetch_bytes", lambda *_args, **_kwargs: pytest.fail("duplicate must not download")
+    )
+    with pytest.raises(OctopError) as exc_info:
+        create_package_from_skillhub(store, slug="portal-only", created_by="1")
+    assert exc_info.value.code is ErrorCode.SKILL_PACKAGE_NAME_TAKEN
