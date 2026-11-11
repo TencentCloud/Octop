@@ -9,7 +9,7 @@ import sys
 import time
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
@@ -21,6 +21,7 @@ from octop.api.routers.update_store import (
     get_task,
     update_task,
 )
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.setup.self_update import (
@@ -33,6 +34,7 @@ from octop.infra.setup.self_update import (
     is_prerelease,
     parse_changelog_for_version,
     run_upgrade,
+    validate_upgrade_target,
 )
 from octop.infra.setup.service import (
     ServiceRuntime,
@@ -41,6 +43,7 @@ from octop.infra.setup.service import (
     is_service_installed,
     restart_service,
 )
+from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_locale, resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,8 @@ router = APIRouter(prefix="/update", tags=["update"])
 
 _STABLE_ONLY_KEY = "update.stable_only"
 _CACHE_INTERNAL = frozenset({"latest_any", "latest_stable", "description"})
+
+_SHELL_UPDATE_FORBIDDEN = "updates are managed by the desktop shell"
 
 
 class UpdateSettingsBody(BaseModel):
@@ -57,7 +62,8 @@ class UpdateSettingsBody(BaseModel):
 class UpgradeBody(BaseModel):
     version: str | None = Field(
         default=None,
-        description="Pin this release. Defaults to the channel latest (stable when stable_only).",
+        description="Pin a newer release. Same/older versions are rejected before installation. "
+        "Defaults to the channel latest (stable when stable_only).",
     )
 
 
@@ -190,10 +196,12 @@ async def update_status(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return last check result; re-probe PyPI when the server cache TTL expires."""
+    if desktop_shell_enabled():
+        return _desktop_shell_status()
     stable_only = _read_stable_only(server)
     cached = get_cached_status()
     if cached is not None:
-        return _auto_status(cached, stable_only=stable_only)
+        return await asyncio.to_thread(_auto_status, cached, stable_only=stable_only)
     return await asyncio.to_thread(
         _build_status,
         stable_only=stable_only,
@@ -206,6 +214,7 @@ async def check_for_updates(
     _: Any = Depends(require_permission("update")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    _reject_shell_updates()
     stable_only = _read_stable_only(server)
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
@@ -235,6 +244,7 @@ async def update_settings(
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     """Persist whether automatic checks should ignore pre-release versions."""
+    _reject_shell_updates()
     server.services.settings_repo.set(_STABLE_ONLY_KEY, "true" if body.stable_only else "false")
     cached = get_cached_status()
     if cached is None:
@@ -243,8 +253,11 @@ async def update_settings(
             stable_only=body.stable_only,
             include_prerelease=not body.stable_only,
         )
-    remapped = _present_status(
-        cached, stable_only=body.stable_only, include_prerelease=not body.stable_only
+    remapped = await asyncio.to_thread(
+        _present_status,
+        cached,
+        stable_only=body.stable_only,
+        include_prerelease=not body.stable_only,
     )
     cache_status(remapped)
     return _public_status(remapped)
@@ -255,6 +268,7 @@ async def _upgrade_worker(
     *,
     allow_prerelease: bool = False,
     version: str | None = None,
+    locale: str = DEFAULT_LOCALE,
 ) -> None:
     await update_task(task_id, stage="downloading", percent=20)
     upgrade_task = asyncio.create_task(
@@ -263,6 +277,7 @@ async def _upgrade_worker(
             verbose=False,
             allow_prerelease=allow_prerelease,
             version=version,
+            locale=locale,
         )
     )
     percent = 20
@@ -313,12 +328,14 @@ async def _upgrade_worker(
     )
 
 
-@router.post("/upgrade")
+@router.post("/upgrade", summary="Upgrade Octop")
 async def trigger_upgrade(
+    request: Request,
     body: UpgradeBody = Body(default_factory=UpgradeBody),
     server: Any = Depends(get_server),
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
+    _reject_shell_updates()
     if get_editable_path() is not None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -333,10 +350,19 @@ async def trigger_upgrade(
         latest_stable=info.latest_stable if info else None,
         stable_only=stable_only,
     )
+    validate_upgrade_target(target, await asyncio.to_thread(get_local_version))
     allow_prerelease = bool(target and is_prerelease(target))
     task = await create_task()
     asyncio.create_task(
-        _upgrade_worker(task.task_id, allow_prerelease=allow_prerelease, version=target)
+        _upgrade_worker(
+            task.task_id,
+            allow_prerelease=allow_prerelease,
+            version=target,
+            locale=resolve_locale(
+                user_locale=getattr(_, "locale", None),
+                explicit=resolve_request_locale(request),
+            ),
+        )
     )
     return {"task_id": task.task_id, "status": "started"}
 
@@ -366,6 +392,35 @@ def _is_desktop_process() -> bool:
         return True
     raw = (os.environ.get("OCTOP_DESKTOP") or "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
+
+
+def _reject_shell_updates() -> None:
+    """Reject self-update requests when the Electron shell owns this process."""
+    if desktop_shell_enabled():
+        raise OctopError(ErrorCode.FORBIDDEN, _SHELL_UPDATE_FORBIDDEN)
+
+
+def _desktop_shell_status() -> dict[str, Any]:
+    """Status payload for the desktop-hosted process: no PyPI probing, ever."""
+    return {
+        "current_version": get_local_version(),
+        "latest_version": None,
+        "latest_any": None,
+        "latest_stable": None,
+        "description": None,
+        "has_update": False,
+        "is_editable": get_editable_path() is not None,
+        "service_mode": detect_service_mode(),
+        "desktop": True,
+        "updates_managed_by_shell": True,
+        "error": None,
+        "error_code": None,
+        "source": None,
+        "last_check_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "release_notes": None,
+        "stable_only": True,
+        "latest_is_prerelease": False,
+    }
 
 
 def _restart_desktop_process(server: OctopServer) -> None:
@@ -398,6 +453,8 @@ async def restart_service_endpoint(
     server: OctopServer = Depends(get_server),
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
+    if desktop_shell_enabled():
+        raise OctopError(ErrorCode.FORBIDDEN, _SHELL_UPDATE_FORBIDDEN)
     if _is_desktop_process():
         background_tasks.add_task(_restart_desktop_process, server)
         return {"status": "restarting", "service_mode": "desktop"}

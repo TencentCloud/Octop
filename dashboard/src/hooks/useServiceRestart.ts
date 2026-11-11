@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import i18n from "../i18n";
 import { probeHealth } from "../api/probeHealth";
 import { updateApi } from "../api/modules/update";
+import { bustServiceWorkerAndReload } from "../utils/reloadOnStaleChunk";
 
 import { message } from "@/utils/antdMessage";
 
@@ -137,10 +138,12 @@ export function useServiceRestart() {
         ) {
           setRestartPhase("success");
           restartInFlightRef.current = false;
-          restartTimerRef.current = setTimeout(
-            () => window.location.reload(),
-            RELOAD_DELAY_MS,
-          );
+          // The restarted process is serving new HTML, but the page is still
+          // controlled by the previous worker. Drop that worker and Cache
+          // Storage before navigating so the next load is the new shell.
+          restartTimerRef.current = setTimeout(() => {
+            void bustServiceWorkerAndReload();
+          }, RELOAD_DELAY_MS);
           return;
         }
 

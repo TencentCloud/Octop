@@ -42,6 +42,7 @@ async def test_create_connection_rolls_back_when_connect_fails(
 ) -> None:
     repo = MagicMock()
     repo.find_by_display_name.return_value = None
+    repo.list_for_owner.return_value = []
     created = _row()
     repo.create.return_value = created
     repo.get.return_value = None
@@ -93,6 +94,7 @@ async def test_create_connection_rejects_taken_display_name(
 ) -> None:
     repo = MagicMock()
     repo.find_by_display_name.return_value = _row()
+    repo.list_for_owner.return_value = []
     mgr = BridgeManager(
         bridge_repo=repo,
         secret_repo=MagicMock(),
@@ -113,4 +115,100 @@ async def test_create_connection_rejects_taken_display_name(
             connect=True,
         )
     assert ei.value.code == ErrorCode.BRIDGE_DISPLAY_NAME_TAKEN
+    repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_connection_rejects_duplicate_peer_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = MagicMock()
+    repo.find_by_display_name.return_value = None
+    repo.list_for_owner.return_value = [
+        _row(peer_base_url="https://peer.example", peer_username="Bob")
+    ]
+    mgr = BridgeManager(
+        bridge_repo=repo,
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://127.0.0.1:9",
+    )
+    monkeypatch.setattr(
+        "octop.infra.bridge.manager.normalize_peer_base_url",
+        lambda url: url.rstrip("/"),
+    )
+    with pytest.raises(OctopError) as ei:
+        await mgr.create_connection(
+            owner_user_id=1,
+            peer_base_url="https://peer.example/",
+            peer_username="bob",
+            password="secret",
+            display_name="Other",
+            connect=True,
+        )
+    assert ei.value.code == ErrorCode.BRIDGE_PEER_ALREADY_LINKED
+    assert ei.value.details["name"] == "Cloud"
+    repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_connection_rejects_at_user_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = MagicMock()
+    repo.find_by_display_name.return_value = None
+    repo.list_for_owner.return_value = [
+        _row(
+            connection_id=f"c{i}",
+            display_name=f"n{i}",
+            peer_base_url=f"https://n{i}.example",
+            peer_username="bob",
+        )
+        for i in range(10)
+    ]
+    mgr = BridgeManager(
+        bridge_repo=repo,
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://127.0.0.1:9",
+    )
+    monkeypatch.setattr(
+        "octop.infra.bridge.manager.normalize_peer_base_url",
+        lambda url: url.rstrip("/"),
+    )
+    with pytest.raises(OctopError) as ei:
+        await mgr.create_connection(
+            owner_user_id=1,
+            peer_base_url="https://fresh.example",
+            peer_username="bob",
+            password="secret",
+            display_name="Fresh",
+            connect=True,
+        )
+    assert ei.value.code == ErrorCode.BRIDGE_CONNECTION_LIMIT
+    assert ei.value.details["limit"] == 10
+    repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_connection_rejects_self_url() -> None:
+    repo = MagicMock()
+    repo.find_by_display_name.return_value = None
+    repo.list_for_owner.return_value = []
+    mgr = BridgeManager(
+        bridge_repo=repo,
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://127.0.0.1:8787",
+    )
+    with pytest.raises(OctopError) as ei:
+        await mgr.create_connection(
+            owner_user_id=1,
+            peer_base_url="http://localhost:8787",
+            peer_username="alice",
+            password="secret",
+            display_name="Me",
+            connect=True,
+        )
+    assert ei.value.code == ErrorCode.BRIDGE_SELF_CONNECT
     repo.create.assert_not_called()

@@ -7,7 +7,6 @@ import http.client
 import io
 import json
 import logging
-import os
 import stat
 import urllib.error
 import urllib.parse
@@ -15,15 +14,14 @@ import urllib.request
 import zipfile
 from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import urlparse
 
 from octop.infra.skills.skillhub_common import (
-    DEFAULT_SKILLHUB_HOST,
     HTTP_READ_CHUNK,
     MAX_HTTP_BYTES,
     MAX_ZIP_COMPRESSION_RATIO,
     MAX_ZIP_ENTRIES,
     MAX_ZIP_UNCOMPRESSED_BYTES,
+    skill_market_origin,
 )
 from octop.infra.utils.utf8_text import (
     InvalidSkillManifestEncodingError,
@@ -56,8 +54,21 @@ class SkillHubMarketError(RuntimeError):
     """A SkillHub marketplace HTTP request failed."""
 
 
+class SkillHubSkillNotFound(SkillHubMarketError):
+    """The skill exists in a catalog but its package is not published (HTTP 404)."""
+
+
 class SkillHubMarketTimeout(SkillHubMarketError):
     """A SkillHub marketplace HTTP request timed out."""
+
+
+def skill_market_failure_status(exc: BaseException) -> int:
+    """HTTP status for a failed skill-market request."""
+    if isinstance(exc, SkillHubSkillNotFound):
+        return 404
+    if isinstance(exc, SkillHubMarketTimeout):
+        return 504
+    return 502
 
 
 class SkillHubPackageError(SkillHubMarketError):
@@ -69,12 +80,10 @@ class SkillHubPackageTooLarge(SkillHubPackageError):
 
 
 def _resolve_host(host: str | None) -> str:
-    resolved = (host or "").strip() or os.environ.get("SKILLHUB_HOST", "").strip()
-    resolved = (resolved or DEFAULT_SKILLHUB_HOST).rstrip("/")
-    parsed = urlparse(resolved)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise SkillHubMarketError(f"Invalid SkillHub API host: {resolved}")
-    return resolved
+    try:
+        return skill_market_origin(host)
+    except ValueError as exc:
+        raise SkillHubMarketError(f"Invalid SkillHub API host: {exc}") from exc
 
 
 def _http_request(
@@ -121,6 +130,10 @@ def _http_request(
     except SkillHubPackageError:
         raise
     except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise SkillHubSkillNotFound(
+                f"SkillHub skill package not found: HTTP {exc.code}"
+            ) from exc
         raise SkillHubMarketError(f"SkillHub request failed: HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, TimeoutError):
@@ -436,4 +449,5 @@ __all__ = [
     "fetch_skillhub_rankings",
     "parse_skillhub_package",
     "search_skillhub",
+    "skill_market_failure_status",
 ]

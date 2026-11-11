@@ -19,6 +19,17 @@ export function knowledgeBasename(path: string): string {
   return parts[parts.length - 1] ?? "";
 }
 
+/** Editable stem plus the suffix that stays on the stored file. */
+export function knowledgeFileNameParts(path: string): {
+  stem: string;
+  suffix: string;
+} {
+  const name = knowledgeBasename(path);
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return { stem: name, suffix: "" };
+  return { stem: name.slice(0, dot), suffix: name.slice(dot) };
+}
+
 /** Parent folder path; empty string means the knowledge-base root. */
 export function knowledgePathParent(path: string): string {
   const normalized = normalizeKnowledgePath(path);

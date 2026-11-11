@@ -42,6 +42,7 @@ export function hasPendingHitl(messages: ChatMessage[]): boolean {
 export type PendingApproval = {
   messageId: string;
   actions: HitlActionRequest[];
+  pendingId?: string;
 };
 
 /** Latest pending tool-approval card, if any (questions are excluded). */
@@ -62,6 +63,7 @@ export function findPendingApproval(
     return {
       messageId: message.id,
       actions: hitl.action_requests,
+      ...(hitl.pending_id ? { pendingId: hitl.pending_id } : {}),
     };
   }
   return null;

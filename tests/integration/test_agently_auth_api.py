@@ -82,3 +82,34 @@ async def test_agently_auth_rejects_missing_and_other_connector_kinds(env_with_a
         )
         assert missing.status_code == 404
     authorize.assert_not_awaited()
+
+
+async def test_dingtalk_cli_device_auth_and_delete_revokes(env_with_agent, monkeypatch):
+    client, _, auth, _ = env_with_agent
+    created = await client.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={"kind": "dingtalk-cli", "display_name": "DingTalk", "credentials": {}},
+    )
+    assert created.status_code == 201, created.text
+    instance_id = created.json()["instance_id"]
+    idle = {
+        "status": "idle",
+        "verification_url": None,
+        "user_code": None,
+        "expires_at": None,
+        "error": None,
+    }
+    authorize = AsyncMock(return_value=idle)
+    monkeypatch.setattr(agently_auth, "authorize", authorize)
+    started = await client.post(
+        f"/api/connector-instances/{instance_id}/agently-auth/start", headers=auth
+    )
+    assert started.status_code == 200
+    assert authorize.await_args.kwargs["kind"] == "dingtalk-cli"
+    deleted = await client.delete(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert deleted.status_code == 204
+    assert authorize.await_args.args[1] == "disconnect"
+    assert authorize.await_args.kwargs["kind"] == "dingtalk-cli"
+    gone = await client.get(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert gone.status_code == 404

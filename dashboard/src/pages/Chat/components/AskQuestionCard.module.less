@@ -1,8 +1,13 @@
 .card {
-  border: 1px solid var(--fn-border-primary);
+  border: 1px solid
+    color-mix(in srgb, var(--fn-color-brand) 42%, var(--fn-border-primary));
   border-radius: var(--fn-radius-lg);
   padding: 14px 16px;
-  background: var(--fn-bg-primary);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 7%,
+    var(--fn-bg-primary)
+  );
   box-shadow: var(--fn-shadow-xs);
   box-sizing: border-box;
   width: 100%;
@@ -71,6 +76,20 @@
 .steps {
   max-height: min(420px, 42vh);
   overflow-y: auto;
+}
+
+/* Composer dock: the options are the only scroller. Title and actions stay
+   outside it, so the buttons are visible without a second scrollbar. */
+.cardDocked {
+  .steps {
+    /* Leave the chat chrome, this card's title, and the action row on screen. */
+    max-height: min(
+      420px,
+      max(96px, calc(100dvh - 360px - var(--keyboard-offset, 0px)))
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
 }
 
 .block {

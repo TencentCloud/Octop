@@ -11,7 +11,8 @@ from octop.i18n import tr
 from octop.infra.knowledge.citations import append_citations_marker, citations_from_ranked
 from octop.infra.knowledge.embed import embed_knowledge_texts
 from octop.infra.knowledge.gate import assert_knowledge_usable
-from octop.infra.knowledge.index import Hit, KnowledgeIndex
+from octop.infra.knowledge.index import Hit
+from octop.infra.knowledge.plane import open_knowledge_index
 
 DEFAULT_RETRIEVAL_K = 8
 DEFAULT_CONTEXT_CHAR_BUDGET = 6000
@@ -92,7 +93,7 @@ def _retrieve_context_sync(
             for document in services.knowledge_repo.list_documents(kb_id)
             if document.status == "ready" and not document.is_dir
         }
-        for hit in KnowledgeIndex(kb_id).search(query_vectors[0], k=k):
+        for hit in open_knowledge_index(services, kb_id).search(query_vectors[0], k=k):
             document = ready_documents.get(hit.doc_id)
             if document is not None:
                 ranked.append((base, hit, document))
@@ -109,6 +110,7 @@ def _format_context(
     ranked: Sequence[tuple[Any, Hit, Any]], *, char_budget: int, locale: str
 ) -> str:
     sections: list[str] = []
+    included: list[tuple[Any, Hit, Any]] = []
     remaining = char_budget
     for base, hit, document in ranked:
         citation = tr(
@@ -125,8 +127,9 @@ def _format_context(
             continue
         section = f"{citation}{text}"
         sections.append(section)
+        included.append((base, hit, document))
         remaining -= len(section)
     if not sections:
         return ""
     body = tr("knowledge.retrieval.preamble", locale) + "\n\n" + "\n\n".join(sections)
-    return append_citations_marker(body, citations_from_ranked(ranked))
+    return append_citations_marker(body, citations_from_ranked(included))

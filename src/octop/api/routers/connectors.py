@@ -31,6 +31,7 @@ from octop.infra.connectors.catalog import (
 from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_KIND,
     is_custom_mcp_kind,
+    oauth_client_from_spec,
     oauth_configured,
     parse_synthetic_instance_id,
     redact_servers_for_api,
@@ -69,6 +70,11 @@ from octop.infra.connectors.probe import (
 from octop.infra.connectors.service import ConnectorNameTakenError, ConnectorService
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import (
+    CONNECTOR_FEATURE_KEY,
+    RESOURCE_CONNECTOR,
+    GroupAccess,
+)
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -83,6 +89,11 @@ class CreateInstanceBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] = Field(default_factory=dict)
     shared: bool = False
+    visibility: Literal["owner", "all", "groups"] | None = Field(
+        default=None,
+        description="Who may use this instance. When set, overrides ``shared``.",
+    )
+    group_ids: list[str] | None = None
     default_open: bool = Field(
         default=False,
         description=(
@@ -99,6 +110,11 @@ class PatchInstanceBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] | None = None
     shared: bool | None = None
+    visibility: Literal["owner", "all", "groups"] | None = Field(
+        default=None,
+        description="Who may use this instance. When set, overrides ``shared``.",
+    )
+    group_ids: list[str] | None = None
     default_open: bool | None = Field(
         default=None,
         description=(
@@ -190,7 +206,10 @@ def _oauth_callback_html(
     return HTMLResponse(f"<html><body>{escape(message)}</body></html>", status_code=status_code)
 
 
-def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: str) -> str:
+def _resolve_custom_mcp_oauth_target(
+    svc: ConnectorService, user_id: int, server_name: str
+) -> tuple[str, dict[str, Any]]:
+    """MCP URL and saved OAuth client (``{}`` when none) of a custom server."""
     saved = svc.get_custom_servers(user_id)
     raw = saved.get(server_name)
     if not isinstance(raw, dict):
@@ -206,7 +225,7 @@ def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: st
     mcp_url = str(raw.get("url") or "").strip()
     if not mcp_url:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "server url is required")
-    return mcp_url
+    return mcp_url, oauth_client_from_spec(raw)
 
 
 async def _begin_oauth_flow(
@@ -240,6 +259,7 @@ async def _begin_oauth_flow(
         )
 
     mcp_url: str | None = None
+    oauth_client: dict[str, Any] | None = None
     if target_type == "custom_mcp":
         server_name = str(target.get("server_name") or "").strip()
         if not server_name:
@@ -247,7 +267,9 @@ async def _begin_oauth_flow(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
                 "custom_mcp target requires server_name",
             )
-        mcp_url = _resolve_custom_mcp_url(_connector_service(server), user.id, server_name)
+        mcp_url, oauth_client = _resolve_custom_mcp_oauth_target(
+            _connector_service(server), user.id, server_name
+        )
 
     try:
         authorize_url, verifier, ctx = await start_oauth_for_target(
@@ -256,6 +278,7 @@ async def _begin_oauth_flow(
             state=state,
             settings_repo=server.services.settings_repo,
             mcp_url=mcp_url,
+            oauth_client=oauth_client,
         )
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
@@ -284,9 +307,10 @@ def _connector_service(server: Any) -> ConnectorService:
     )
 
 
-def _instance_to_dict(inst: Any) -> dict[str, Any]:
+def _instance_to_dict(inst: Any, *, access: GroupAccess | None = None) -> dict[str, Any]:
     config = ConnectorRepo.parse_config_json(inst) if hasattr(inst, "config_json") else {}
-    return {
+    shared = bool(inst.shared)
+    payload: dict[str, Any] = {
         "instance_id": inst.instance_id,
         "kind": inst.kind,
         "display_name": inst.display_name,
@@ -295,11 +319,57 @@ def _instance_to_dict(inst: Any) -> dict[str, Any]:
         "mcp_server_name": inst.mcp_server_name,
         "has_credentials": inst.has_credentials,
         "default_open": read_default_open(config),
-        "shared": bool(inst.shared),
+        "shared": shared,
         "owner_user_id": inst.user_id,
         "created_at": inst.created_at,
         "updated_at": inst.updated_at,
     }
+    if access is not None:
+        payload.update(access.visibility(RESOURCE_CONNECTOR, inst.instance_id, shared=shared))
+    return payload
+
+
+def _shared_and_visibility(
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+    shared: bool | None,
+    default_shared: bool = False,
+) -> tuple[bool, str, list[str] | None]:
+    """Map visibility/shared fields into ``(shared, visibility, group_ids)``."""
+    if visibility is not None:
+        if visibility == "owner":
+            return False, "owner", []
+        if visibility == "all":
+            return True, "all", []
+        return True, "groups", group_ids
+    flag = default_shared if shared is None else bool(shared)
+    return flag, ("all" if flag else "owner"), []
+
+
+def _apply_connector_visibility(
+    server: Any,
+    instance_id: str,
+    *,
+    visibility: str,
+    group_ids: list[str] | None,
+) -> None:
+    access = GroupAccess(server.services.repos)
+    # Drop the legacy feature-wide grant if present.
+    access.clear(RESOURCE_CONNECTOR, CONNECTOR_FEATURE_KEY)
+    access.set_visibility(RESOURCE_CONNECTOR, instance_id, visibility, group_ids)
+
+
+def _validate_connector_visibility(
+    server: Any,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+) -> None:
+    """Raise before any ``shared`` write when visibility args are invalid."""
+    if visibility is None:
+        return
+    GroupAccess(server.services.repos).validate_visibility(visibility, group_ids)
 
 
 async def _prepare_credentials(
@@ -476,7 +546,12 @@ def _schedule_connector_reload(
 
 
 def _can_manage_connector(inst: Any, user: Any) -> bool:
-    return bool(inst.user_id == user.id or user.role == "admin")
+    """Only the owning user may view credentials or change the instance.
+
+    Sharing lets other users (including admins) select the connector. It does
+    not grant edit, delete, enable, or credential access.
+    """
+    return bool(inst.user_id == user.id)
 
 
 def _assert_can_manage_connector(inst: Any, user: Any) -> None:
@@ -557,6 +632,7 @@ async def list_instances(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """List the current user's connected accounts (custom MCP expanded per server)."""
+    access = GroupAccess(server.services.repos)
     rows = _connector_service(server).list_instances_for_api(user.id)
     for item in rows:
         owner_id = int(item.get("owner_user_id") or user.id)
@@ -565,7 +641,16 @@ async def list_instances(
         item["owner_display_name"] = (
             owner.display_name or owner.username if owner is not None else None
         )
-        item["can_manage"] = owner_id == user.id or user.role == "admin"
+        item["can_manage"] = owner_id == user.id
+        instance_id = str(item.get("instance_id") or "")
+        if instance_id and not instance_id.startswith("custom:"):
+            item.update(
+                access.visibility(
+                    RESOURCE_CONNECTOR,
+                    instance_id,
+                    shared=bool(item.get("shared")),
+                )
+            )
     return rows
 
 
@@ -688,7 +773,7 @@ async def get_instance(
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
 
-    data = _instance_to_dict(inst)
+    data = _instance_to_dict(inst, access=GroupAccess(server.services.repos))
     config: dict[str, Any] = {}
     if inst.config_json:
         try:
@@ -713,6 +798,7 @@ async def get_instance(
 @router.post("/connector-instances", status_code=201, summary="Create connector instance")
 async def create_instance(
     body: CreateInstanceBody,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
@@ -733,7 +819,11 @@ async def create_instance(
     display_name = body.display_name.strip()
     if not display_name:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "display_name is required")
-    description = body.description.strip() if body.description is not None else entry.description
+    description = (
+        body.description.strip()
+        if body.description is not None
+        else entry.description.resolve(resolve_request_locale(request))
+    )
     if not description:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "description is required")
     if repo.name_exists(user.id, display_name) or _custom_name_exists(svc, user.id, display_name):
@@ -752,13 +842,19 @@ async def create_instance(
         ) from exc
 
     instance_id = new_ulid()
+    shared, visibility, group_ids = _shared_and_visibility(
+        visibility=body.visibility,
+        group_ids=body.group_ids,
+        shared=body.shared,
+    )
+    _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids)
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
         kind=body.kind,
         display_name=display_name,
         mcp_server_name=mcp_server_name(body.kind, instance_id),
-        shared=body.shared,
+        shared=shared,
         config_json=build_instance_config_json(
             kind=body.kind,
             default_open=bool(body.default_open),
@@ -767,6 +863,7 @@ async def create_instance(
         ),
     )
     svc.encrypt_and_store(instance_id=instance_id, payload=cred_payload)
+    _apply_connector_visibility(server, instance_id, visibility=visibility, group_ids=group_ids)
     server.services.audit_repo.write(
         actor=user.username,
         action="connector.instance.create",
@@ -778,10 +875,10 @@ async def create_instance(
     _schedule_connector_reload(
         server,
         user.id,
-        all_users=body.shared,
+        all_users=shared,
         mail_instance_id=instance_id if body.kind == "agently-cli" else None,
     )
-    return _instance_to_dict(inst)
+    return _instance_to_dict(inst, access=GroupAccess(server.services.repos))
 
 
 @router.patch("/connector-instances/{instance_id}", summary="Update connector instance")
@@ -847,6 +944,7 @@ async def patch_instance(
         and body.description is None
         and body.credentials is None
         and body.shared is None
+        and body.visibility is None
     ):
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
@@ -862,8 +960,16 @@ async def patch_instance(
         ) or _custom_name_exists(svc, inst.user_id, display_name):
             _raise_name_taken(display_name)
         repo.update_metadata(instance_id, display_name=display_name)
-    if body.shared is not None:
-        repo.update_metadata(instance_id, shared=body.shared)
+    if body.visibility is not None or body.shared is not None:
+        shared, visibility, group_ids = _shared_and_visibility(
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.shared,
+            default_shared=bool(inst.shared),
+        )
+        _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids)
+        repo.update_metadata(instance_id, shared=shared)
+        _apply_connector_visibility(server, instance_id, visibility=visibility, group_ids=group_ids)
     if body.credentials is not None:
         svc = _connector_service(server)
         merged = _merge_credentials(svc.decrypt(instance_id), body.credentials, kind=inst.kind)
@@ -903,13 +1009,18 @@ async def patch_instance(
         )
     inst = repo.get(instance_id)
     assert inst is not None
+    refreshed = repo.get(instance_id)
+    assert refreshed is not None
     _schedule_connector_reload(
         server,
-        inst.user_id,
-        all_users=inst.shared or body.shared is True or body.shared is False,
-        mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
+        refreshed.user_id,
+        all_users=refreshed.shared
+        or body.shared is True
+        or body.shared is False
+        or body.visibility is not None,
+        mail_instance_id=instance_id if refreshed.kind == "agently-cli" else None,
     )
-    return _instance_to_dict(inst)
+    return _instance_to_dict(refreshed, access=GroupAccess(server.services.repos))
 
 
 @router.delete("/connector-instances/{instance_id}", status_code=204, summary="Delete connector")
@@ -948,14 +1059,18 @@ async def delete_instance(
     _assert_can_manage_connector(inst, user)
     user_id = inst.user_id
     cli_creds: dict[str, Any] | None = None
-    if inst.kind in ("feishu-cli", "wecom-cli", "agently-cli") and inst.has_credentials:
+    if (
+        inst.kind in ("feishu-cli", "wecom-cli", "agently-cli", "dingtalk-cli")
+        and inst.has_credentials
+    ):
         try:
             cli_creds = _connector_service(server).decrypt(instance_id)
         except Exception:
             cli_creds = {"instance_id": instance_id}
         else:
             cli_creds = {**cli_creds, "instance_id": instance_id}
-    if inst.kind == "agently-cli":
+    # Device-login CLIs: cancel a pending login and revoke the grant before deleting.
+    if inst.kind in ("agently-cli", "dingtalk-cli"):
         result = await _connector_service(server).agently_auth_for_instance(
             instance_id, inst.user_id, "disconnect", locale=resolve_request_locale(request)
         )
@@ -970,8 +1085,9 @@ async def delete_instance(
             await _connector_service(server).disconnect_qcc(instance_id)
         except ValueError as exc:
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
-    elif inst.kind != "agently-cli":
+    elif inst.kind not in ("agently-cli", "dingtalk-cli"):
         repo.delete(instance_id)
+        GroupAccess(server.services.repos).clear(RESOURCE_CONNECTOR, instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(
@@ -1019,7 +1135,7 @@ async def test_instance(
     creds = await svc.ensure_fresh_credentials(instance_id, inst.kind)
     if not creds:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
-    if inst.kind == "agently-cli":
+    if inst.kind in {"agently-cli", "ragflow"}:
         creds["_locale"] = resolve_request_locale(request)
 
     try:
@@ -1060,7 +1176,7 @@ async def test_credentials(
             str(exc),
             details={"reason": str(exc)},
         ) from exc
-    if body.kind == "agently-cli":
+    if body.kind in {"agently-cli", "ragflow"}:
         cred_payload["_locale"] = resolve_request_locale(request)
     try:
         return await probe_connector(
@@ -1178,8 +1294,11 @@ class FeishuUserAuthInstanceCompleteBody(BaseModel):
 @router.post(
     "/connector-instances/{instance_id}/agently-auth/start",
     response_model=AgentlyAuthResponse,
-    summary="Start Agent Mail device authorization",
-    description="Owner only. Starts one bounded background login for this saved instance.",
+    summary="Start CLI device authorization",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Starts one bounded background login for this saved instance."
+    ),
 )
 async def agently_auth_start(
     instance_id: str,
@@ -1196,8 +1315,11 @@ async def agently_auth_start(
 @router.get(
     "/connector-instances/{instance_id}/agently-auth/status",
     response_model=AgentlyAuthResponse,
-    summary="Read Agent Mail authorization status",
-    description="Owner only. Poll a device login or check stored authorization without exposing tokens.",
+    summary="Read CLI authorization status",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Poll a device login or check stored authorization without exposing tokens."
+    ),
 )
 async def agently_auth_status(
     instance_id: str,
@@ -1217,8 +1339,11 @@ async def agently_auth_status(
 @router.post(
     "/connector-instances/{instance_id}/agently-auth/logout",
     response_model=AgentlyAuthResponse,
-    summary="Log out of Agent Mail",
-    description="Owner only. Cancels pending login, clears the CLI grant and attempts revocation.",
+    summary="Log out of a CLI connector",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Cancels pending login, clears the CLI grant and attempts revocation."
+    ),
 )
 async def agently_auth_logout(
     instance_id: str,
@@ -1237,8 +1362,11 @@ async def agently_auth_logout(
 @router.post(
     "/connector-instances/{instance_id}/agently-auth/refresh",
     response_model=AgentlyAuthResponse,
-    summary="Refresh Agent Mail authorization",
-    description="Owner only. Refreshes the saved CLI grant and returns sanitized authorization status.",
+    summary="Refresh CLI authorization",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Refreshes the saved CLI grant and returns sanitized authorization status."
+    ),
 )
 async def agently_auth_refresh(
     instance_id: str,
@@ -1330,9 +1458,9 @@ async def auth_info(
     del user
     if get_catalog_entry(kind) is None:
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, f"unknown kind {kind!r}")
-    info = auth_info_for_kind(kind, server.services.settings_repo)
-    if kind == "agently-cli":
-        info["auth_hint"] = tr("connector.agently.auth_hint", resolve_request_locale(request))
+    info = auth_info_for_kind(
+        kind, server.services.settings_repo, locale=resolve_request_locale(request)
+    )
     return info
 
 
@@ -1467,6 +1595,8 @@ async def oauth_callback(
             tokens["oauth_client_id"] = ctx["client_id"]
         if ctx.get("client_secret"):
             tokens["oauth_client_secret"] = ctx["client_secret"]
+        if ctx.get("token_endpoint"):
+            tokens["oauth_token_endpoint"] = ctx["token_endpoint"]
         delete_oauth_ctx(server.services.settings_repo, row.state_id)
     except Exception as exc:
         logger.exception("oauth callback failed for %s", row.kind)

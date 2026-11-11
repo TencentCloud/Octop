@@ -18,6 +18,33 @@ vi.mock("react-i18next", () => ({
 afterEach(() => vi.useRealTimers());
 
 describe("MemoryMaintenanceBanner", () => {
+  it("describes PostgreSQL cleanup and directs page jobs back to advanced settings", () => {
+    const { rerender } = render(
+      <MemoryMaintenanceBanner
+        status={{
+          phase: "cleaning",
+          backend: "postgres",
+          scope: "agent",
+          scanned: 0,
+          total: 10,
+        }}
+        blocking
+      />,
+    );
+    expect(screen.getByText(/正在清理当前专家的过期记录/)).toBeInTheDocument();
+    expect(screen.getByText("已清理 0 / 10 条记录")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/回收重复数据占用的磁盘空间/),
+    ).not.toBeInTheDocument();
+    rerender(
+      <MemoryMaintenanceBanner
+        status={{ phase: "done", backend: "postgres", scope: "agent" }}
+        blocking={false}
+      />,
+    );
+    expect(screen.getByText(/记忆高级设置/)).toBeInTheDocument();
+    expect(screen.queryByText(/大小变化/)).not.toBeInTheDocument();
+  });
   it("explains a long pause and points users to another agent without inventing an ETA", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-18T00:00:00Z"));

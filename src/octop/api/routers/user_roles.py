@@ -7,12 +7,13 @@ Invites store only the role name and read the role when the account is created.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 
-from octop.api.deps import get_server, require_permission
+from octop.api.deps import get_server, require_any_permission, require_permission
 from octop.api.routers.users import _assert_can_assign
 from octop.infra.db.repos.user_roles import (
     BUILTIN_USER_ROLE_IDS,
@@ -21,7 +22,11 @@ from octop.infra.db.repos.user_roles import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
-from octop.infra.users.permissions import ALL_PERMISSION_KEYS, validate_permission_keys
+from octop.infra.users.permissions import (
+    ASSIGNABLE_PERMISSION_KEYS,
+    expand_permission_grants,
+    validate_permission_keys,
+)
 from octop.infra.users.resource_policy import (
     POLICY_MAX_AGENTS,
     POLICY_TOKEN_QUOTA,
@@ -50,6 +55,14 @@ class PolicyItem(BaseModel):
 
 class UserRoleBody(BaseModel):
     user_role_name: str = Field(min_length=1, max_length=64)
+    user_role_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Public role id. 1-64 letters or underscores; cannot start or end "
+            "with an underscore. Omit to let the server assign one."
+        ),
+    )
     description: str | None = Field(default=None, max_length=500)
     permissions: list[str] = Field(default_factory=list)
     policies: list[PolicyItem] = Field(default_factory=list)
@@ -73,11 +86,35 @@ def _public(server: Any, row: UserRoleRow) -> dict[str, Any]:
     return public_role(
         row,
         avatar_url=profile_avatar_url(
-            server.services.paths.role_avatars_dir,
+            server.services.avatars("role"),
             row.user_role_id,
             f"/api/users/roles/{row.user_role_id}/avatar",
         ),
     )
+
+
+_ROLE_ID_RE = re.compile(r"^[A-Za-z_]+$")
+_ROLE_ID_MAX = 64
+
+
+def _clean_user_role_id(raw: str | None) -> str | None:
+    """Return a caller-supplied role id, or ``None`` when the server should assign one."""
+    if raw is None:
+        return None
+    role_id = raw.strip()
+    if not role_id:
+        return None
+    if (
+        len(role_id) > _ROLE_ID_MAX
+        or not _ROLE_ID_RE.fullmatch(role_id)
+        or role_id.startswith("_")
+        or role_id.endswith("_")
+    ):
+        raise OctopError(
+            ErrorCode.USER_ROLE_ID_INVALID,
+            "role id must be 1-64 letters or underscores, and cannot start or end with an underscore",
+        )
+    return role_id
 
 
 def _clean_name(raw: str) -> str:
@@ -142,14 +179,14 @@ def _policies_for_write(body: UserRoleBody | UserRolePatchBody) -> list[tuple[st
 
 def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str, Any]:
     if row.is_admin:
-        permissions = sorted(ALL_PERMISSION_KEYS)
+        permissions = sorted(ASSIGNABLE_PERMISSION_KEYS)
         system_role = "admin"
         policies: list[dict[str, str]] = []
         workspace_root_dir = None
         token_quota = None
         max_agents = None
     else:
-        permissions = list(row.permissions)
+        permissions = expand_permission_grants(list(row.permissions))
         system_role = "user"
         policies = [{"name": name, "value": value} for name, value in row.policies]
         workspace_root_dir = workspace_root_dir_of(row.policy_value(POLICY_WORKSPACE_ROOT_DIR))
@@ -175,6 +212,10 @@ def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str,
 
 
 def _name_taken(exc: ValueError) -> None:
+    if str(exc) == "id_taken":
+        raise OctopError(
+            ErrorCode.USER_ROLE_ID_TAKEN, "role id already exists", status=409
+        ) from exc
     if str(exc) != "name_taken":
         raise exc
     raise OctopError(ErrorCode.FORBIDDEN, "role name already exists", status=409) from exc
@@ -182,7 +223,7 @@ def _name_taken(exc: ValueError) -> None:
 
 @router.get("", summary="List role templates")
 async def list_user_roles(
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_any_permission("users", "user_roles")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     return [_public(server, row) for row in _repo(server).list_all()]
@@ -191,7 +232,7 @@ async def list_user_roles(
 @router.post("", status_code=201, summary="Create a role template")
 async def create_user_role(
     body: UserRoleBody,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     try:
@@ -206,6 +247,7 @@ async def create_user_role(
             description=_clean_description(body.description),
             permissions=permissions,
             policies=policies,
+            user_role_id=_clean_user_role_id(body.user_role_id),
         )
     except ValueError as exc:
         _name_taken(exc)
@@ -222,7 +264,7 @@ async def create_user_role(
 async def patch_user_role(
     user_role_id: str,
     body: UserRolePatchBody,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     current = _repo(server).get(user_role_id)
@@ -237,7 +279,7 @@ async def patch_user_role(
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 
         avatar_icon = clean_avatar_icon(body.avatar_icon)
-        delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+        delete_profile_avatar(server.services.avatars("role"), user_role_id)
     if current.is_admin:
         if name is None and description is ... and avatar_icon is ...:
             return _public(server, current)
@@ -290,7 +332,7 @@ async def patch_user_role(
 @router.delete("/{user_role_id}", status_code=204, summary="Delete a role template")
 async def delete_user_role(
     user_role_id: str,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> None:
     current = _repo(server).get(user_role_id)
@@ -307,7 +349,7 @@ async def delete_user_role(
     _repo(server).delete(user_role_id)
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+    delete_profile_avatar(server.services.avatars("role"), user_role_id)
     server.services.audit_repo.write(
         actor=actor.username,
         action="user_role.delete",
@@ -319,7 +361,7 @@ async def delete_user_role(
 async def upload_role_avatar(
     user_role_id: str,
     file: UploadFile = File(...),  # noqa: B008
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, str | None]:
     row = _repo(server).get(user_role_id)
@@ -328,7 +370,7 @@ async def upload_role_avatar(
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
-        server.services.paths.role_avatars_dir,
+        server.services.avatars("role"),
         user_role_id,
         await file.read(),
     )
@@ -338,24 +380,24 @@ async def upload_role_avatar(
 @router.get("/{user_role_id}/avatar")
 async def get_role_avatar(
     user_role_id: str,
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_any_permission("users", "user_roles")),
     server: Any = Depends(get_server),
 ) -> Any:
     from octop.infra.users.profile_avatar import avatar_response
 
     if _repo(server).get(user_role_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
-    return avatar_response(server.services.paths.role_avatars_dir, user_role_id)
+    return avatar_response(server.services.avatars("role"), user_role_id)
 
 
 @router.delete("/{user_role_id}/avatar", status_code=204)
 async def delete_role_avatar(
     user_role_id: str,
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> None:
     if _repo(server).get(user_role_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+    delete_profile_avatar(server.services.avatars("role"), user_role_id)

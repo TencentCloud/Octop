@@ -234,3 +234,26 @@ def test_parse_rejects_unsupported_extension(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unsupported"):
         parse_document(path)
+
+
+def test_parse_wps_routes_to_anydoc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "note.wps"
+    path.write_bytes(b"not-a-real-ole-document")
+    monkeypatch.setattr(
+        "octop.infra.utils.anydoc_convert.extract_markdown_file",
+        lambda _path: "# Title\n\nbody from anydoc",
+    )
+    assert parse_document(path) == "# Title\n\nbody from anydoc"
+
+
+def test_parse_wps_raises_when_anydoc_returns_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "empty.wps"
+    path.write_bytes(b"not-a-real-ole-document")
+    monkeypatch.setattr(
+        "octop.infra.utils.anydoc_convert.extract_markdown_file",
+        lambda _path: "   ",
+    )
+    with pytest.raises(ValueError, match="failed to extract"):
+        parse_document(path)

@@ -49,11 +49,17 @@ export default function MemoryMaintenanceBanner({
     defaultValue: t("chat.memoryMaintenance.compacting"),
   });
   const hint = terminal
-    ? t(`chat.memoryMaintenance.hint_${status.phase}`)
+    ? status.scope === "agent"
+      ? t("chat.memoryMaintenance.hintPageResult")
+      : t(`chat.memoryMaintenance.hint_${status.phase}`)
     : status.phase === "waiting"
     ? t("chat.memoryMaintenance.hintWaiting")
     : blocking
-    ? t("chat.memoryMaintenance.hintBlocking")
+    ? t(
+        status.backend === "postgres"
+          ? "chat.memoryMaintenance.hintPostgresBlocking"
+          : "chat.memoryMaintenance.hintBlocking",
+      )
     : t("chat.memoryMaintenance.hintQueued");
 
   if (terminal && dismissed === resultKey) return null;
@@ -90,10 +96,15 @@ export default function MemoryMaintenanceBanner({
       ) : null}
       {!terminal && status.scanned != null && status.total != null ? (
         <div>
-          {t("chat.memoryMaintenance.scanned", {
-            count: status.scanned,
-            total: status.total,
-          })}
+          {t(
+            status.backend === "postgres"
+              ? "chat.memoryMaintenance.cleaned"
+              : "chat.memoryMaintenance.scanned",
+            {
+              count: status.scanned,
+              total: status.total,
+            },
+          )}
         </div>
       ) : null}
       {terminal ? null : status.percent != null ? (

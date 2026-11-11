@@ -46,6 +46,7 @@ const VARIANT_LABELS: Record<string, string> = {
   token_plan_intl: "Token (Intl)",
   hy_token_plan: "Hy Token Plan",
   hai: "HAI",
+  embedding: "Embedding",
   china: "China",
   international: "International",
   zen_compatible: "Zen · Compatible",
@@ -65,11 +66,22 @@ export function presetLogoId(preset: ProviderPreset): string {
   return preset.logo_id || preset.id;
 }
 
+/** Older embedding preset display names before the "Embeddings" suffix was dropped. */
+const LEGACY_PRESET_NAMES: Record<string, string[]> = {
+  "siliconflow-embedding-cn": ["SiliconFlow Embeddings"],
+  "dashscope-embedding": ["DashScope Embeddings"],
+};
+
 export function findConfiguredProvider(
   preset: ProviderPreset,
   providers: ProviderRow[],
 ): ProviderRow | undefined {
-  return providers.find((p) => p.name === preset.name || p.name === preset.id);
+  const aliases = new Set([
+    preset.name,
+    preset.id,
+    ...(LEGACY_PRESET_NAMES[preset.id] ?? []),
+  ]);
+  return providers.find((p) => aliases.has(p.name));
 }
 
 export function groupPresets(presets: ProviderPreset[]): {
@@ -192,13 +204,48 @@ function localPresetApiKey(provider: { api_key?: string | null }): string {
   return (provider.api_key ?? "").trim().toLowerCase();
 }
 
+function providerNameKey(name: string | null | undefined): string {
+  return (name ?? "").trim().toLowerCase();
+}
+
 export function isOnnxProviderRow(provider: {
   name: string;
   api_key?: string | null;
+  purpose?: string | null;
 }): boolean {
   if (localPresetApiKey(provider) === "onnx") return true;
-  const n = provider.name.toLowerCase();
+  const n = providerNameKey(provider.name);
   return n === "onnx" || n === "onnx (local)";
+}
+
+/** Providers managed exclusively on the embedding Models tab. */
+export function isEmbeddingLaneProvider(provider: {
+  name: string;
+  api_key?: string | null;
+  purpose?: string | null;
+  models?: { embedding?: boolean; task?: string }[];
+}): boolean {
+  if (isOnnxProviderRow(provider)) return true;
+  if (provider.purpose === "embedding") return true;
+  const models = provider.models ?? [];
+  if (models.length === 0) return false;
+  return models.every(
+    (model) => model.embedding === true || model.task === "embedding",
+  );
+}
+
+/** URL hint for Ollama management UI — not used for delete protection. */
+export function isOllamaRuntimeUrl(baseUrl?: string | null): boolean {
+  const raw = (baseUrl ?? "").trim().toLowerCase();
+  if (!raw) return false;
+  try {
+    const href = raw.includes("://") ? raw : `http://${raw}`;
+    const parsed = new URL(href);
+    if (parsed.hostname === "ollama") return true;
+    return parsed.port === "11434";
+  } catch {
+    return raw === "ollama";
+  }
 }
 
 export function isOllamaProviderRow(provider: {
@@ -208,13 +255,16 @@ export function isOllamaProviderRow(provider: {
 }): boolean {
   if (isOnnxProviderRow(provider)) return false;
   if (localPresetApiKey(provider) === "ollama") return true;
-  const n = provider.name.toLowerCase();
-  return (
-    n === "ollama" ||
-    n === "ollama (local)" ||
-    (provider.base_url?.includes("11434") ?? false) ||
-    (provider.base_url?.includes("ollama") ?? false)
-  );
+  const n = providerNameKey(provider.name);
+  return n === "ollama" || n === "ollama (local)";
+}
+
+export function looksLikeOllamaProvider(provider: {
+  name: string;
+  base_url?: string | null;
+  api_key?: string | null;
+}): boolean {
+  return isOllamaProviderRow(provider) || isOllamaRuntimeUrl(provider.base_url);
 }
 
 export function isLocalProviderRow(provider: {

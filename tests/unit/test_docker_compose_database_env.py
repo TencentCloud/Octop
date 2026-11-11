@@ -23,7 +23,8 @@ def _compose_environment_entries(compose_text: str) -> str:
 def test_docker_compose_forwards_database_env_keys() -> None:
     """docker/.env alone does not inject vars — they must be listed under environment."""
     repo = Path(__file__).resolve().parents[2]
-    text = (repo / "docker" / "docker-compose.yml").read_text(encoding="utf-8")
-    env_text = _compose_environment_entries(text)
-    missing = [k for k in _DATABASE_ENV_KEYS if f"{k}=" not in env_text]
-    assert not missing, f"docker-compose.yml environment missing: {missing}"
+    for name in ("docker-compose.yml", "docker-compose.cn.yml"):
+        text = (repo / "docker" / name).read_text(encoding="utf-8")
+        env_text = _compose_environment_entries(text)
+        missing = [k for k in _DATABASE_ENV_KEYS if f"{k}=" not in env_text]
+        assert not missing, f"{name} environment missing: {missing}"

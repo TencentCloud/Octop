@@ -11,6 +11,7 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.recursion_limit",
   "stream_errors.timeout_network",
   "stream_errors.provider_unavailable",
+  "stream_errors.invalid_request",
   "stream_errors.model_call_failed",
   "stream_errors.path_outside_root",
 ] as const;
@@ -20,11 +21,18 @@ export type StreamErrorKey = (typeof _STREAM_ERROR_KEYS)[number];
 export type StreamErrorAction = {
   path: string;
   labelKey: string;
+  /** One-click fix the chat bubble can run instead of only navigating. */
+  fix?: "disable_stream_usage";
 };
 
 const MODEL_RETRY_FAILURE_MARK = "[model_call_failed]";
 const RETRY_WRAPPER_RE = /^model call failed after \d+ attempts?\s+with\s+/i;
 const TECHNICAL_DETAIL_RE = /technical detail:\s*([\s\S]+)$/i;
+const COMPLETION_USAGE_RE = /\s*-?\s*CompletionUsage\([\s\S]*\)\s*$/;
+const NESTED_CALL_RE =
+  /^(?:llm call failed:\s*)?(?:chat model '[^']*' failed for tier='[^']*':\s*)+/i;
+const EXCEPTION_WRAPPER_RE =
+  /^[A-Za-z_][\w.]*(?:Error|Exception)\((['"])([\s\S]*)\1\)\s*$/;
 
 const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
   {
@@ -35,6 +43,11 @@ const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
     "stream_errors.insufficient_balance": {
       path: "/admin/models",
       labelKey: "modelConfig.configureButton",
+    },
+    "stream_errors.invalid_request": {
+      path: "/admin/models",
+      labelKey: "chat.disableStreamUsageAndRetry",
+      fix: "disable_stream_usage",
     },
     "stream_errors.recursion_limit": {
       path: "/agent-config",
@@ -55,6 +68,19 @@ function normalizeMessage(message: string): string {
       break;
     }
   }
+  return msg;
+}
+
+/** Drop provider dumps so the box shows the sentence, not CompletionUsage. */
+function stripErrorNoise(message: string): string {
+  let msg = message.trim().replace(COMPLETION_USAGE_RE, "").trim();
+  msg = msg.replace(NESTED_CALL_RE, "").trim();
+  const wrapped = msg.match(EXCEPTION_WRAPPER_RE);
+  if (wrapped?.[2]) msg = wrapped[2].trim();
+  msg = msg
+    .replace(COMPLETION_USAGE_RE, "")
+    .replace(/\s+-\s*$/, "")
+    .trim();
   return msg;
 }
 
@@ -134,10 +160,21 @@ export function classifyChatStreamError(
   }
 
   if (
+    lower.includes("error code: 422") ||
+    lower.includes("http 422") ||
+    lower.includes("check open ai req parameter") ||
+    lower.includes("input validation error")
+  ) {
+    return "stream_errors.invalid_request";
+  }
+
+  if (
     lower.includes("context_length_exceeded") ||
     lower.includes("maximum context length") ||
     lower.includes("prompt is too long") ||
     lower.includes("input tokens exceed") ||
+    lower.includes("length limit was reached") ||
+    compact.includes("lengthfinishreason") ||
     compact.includes("openaicontextoverflowerror")
   ) {
     return "stream_errors.context_length";
@@ -213,13 +250,15 @@ export function formatChatStreamError(
     return t(key, { defaultValue: message });
   }
   if (detail && detail !== normalizeMessage(message)) {
+    const visible = stripErrorNoise(detail) || detail;
     return t("stream_errors.model_call_failed_detail", {
-      detail,
-      defaultValue: detail,
+      detail: visible,
+      defaultValue: visible,
     });
   }
   if (key) return t(key, { defaultValue: message });
-  return message;
+  const cleaned = stripErrorNoise(normalizeMessage(message));
+  return cleaned || message;
 }
 
 /** Optional settings deep-link for known stream failures. */

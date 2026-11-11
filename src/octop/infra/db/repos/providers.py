@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
+    UNSET,
     DbRow,
     bool_int,
     insert_returning_id,
     map_rows,
     now_ts,
-    partial_updates,
+    optional_updates,
 )
 
 if TYPE_CHECKING:
@@ -106,15 +107,17 @@ class ProviderRepo:
         self,
         provider_id: int,
         *,
-        kind: str | None = None,
-        base_url: str | None = None,
-        api_key: str | None = None,
-        extra_json: str | None = None,
-        models_json: str | None = None,
-        note: str | None = None,
+        kind: str | None | object = UNSET,
+        base_url: str | None | object = UNSET,
+        api_key: str | None | object = UNSET,
+        extra_json: str | None | object = UNSET,
+        models_json: str | None | object = UNSET,
+        note: str | None | object = UNSET,
         enabled: bool | None = None,
     ) -> None:
-        fields, params = partial_updates(
+        # ``None`` clears the column. Omitted args stay ``UNSET`` and are skipped,
+        # so a note-only patch cannot wipe a stored API key.
+        fields, params = optional_updates(
             [
                 ("kind", kind),
                 ("base_url", base_url),

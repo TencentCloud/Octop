@@ -17,6 +17,9 @@ vi.mock("../../../hooks/useVoiceInput", () => ({
   useVoiceInput: () => ({
     recording: false,
     transcribing: false,
+    realtime: false,
+    start: vi.fn(),
+    stop: vi.fn(),
     toggle: vi.fn(),
   }),
 }));
@@ -36,7 +39,9 @@ vi.mock("../hooks/useChatAttachments", () => ({
     uploading: false,
     dragOver: false,
     fileInputRef: { current: null },
+    folderInputRef: { current: null },
     handleFileSelect: vi.fn(),
+    handleFolderSelect: vi.fn(),
     handleFileChange: vi.fn(),
     removeAttachment: vi.fn(),
     clearAttachments: vi.fn(),

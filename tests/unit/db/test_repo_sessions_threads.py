@@ -305,3 +305,36 @@ def test_threads_hitl_policy_roundtrip(repos):
     row = threads.get("thr_hitl")
     assert row is not None
     assert row.hitl_policy == '{"mode":"allow_all"}'
+
+
+def test_contributed_thread_is_listed_for_other_users(repos):
+    _sessions, threads = repos
+    UserRepo(threads._db).create(username="other", password_hash="h", role="user")
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    threads.insert(
+        thread_id="thr_private",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="mine",
+        last_active=10,
+    )
+    threads.insert(
+        thread_id="thr_shared",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="shared",
+        last_active=20,
+    )
+    threads.set_contributed("thr_shared", True)
+    visible = threads.list_visible(agent_id="a1", user_id=2, limit=10)
+    assert [row.thread_id for row in visible] == ["thr_shared"]
+    assert visible[0].contributed is True
+    assert threads.list_by_agent_user(agent_id="a1", user_id=2, limit=10) == []
+    owner_ids = {row.thread_id for row in threads.list_visible(agent_id="a1", user_id=1, limit=10)}
+    assert owner_ids == {"thr_private", "thr_shared"}
+    threads.set_contributed("thr_shared", False)
+    assert threads.list_visible(agent_id="a1", user_id=2, limit=10) == []

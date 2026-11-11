@@ -37,6 +37,7 @@ class _Base:
     default_open: bool = False
     shared: bool = False
     icon_name: str = ""
+    icon_url: str = ""
     embedding_model: str = "model"
     embedding_dim: int = 0
     doc_count: int = 0
@@ -201,6 +202,7 @@ async def test_create_base_uses_selected_model_when_usable(
         "default_open": False,
         "shared": False,
         "icon_name": "",
+        "icon_url": "",
         "max_documents": 100,
     }
 
@@ -596,6 +598,78 @@ async def test_rename_document_returns_row_payload(
 
 
 @pytest.mark.asyncio
+async def test_move_document_passes_the_target_and_returns_the_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    calls: list[dict[str, object]] = []
+    moved = _Document(id="doc-1", path="archive/act.md", filename="act.md")
+
+    class _FakeService:
+        def move_document(self, kb_id: str, doc_id: str, **kwargs: object) -> _Document:
+            calls.append({"kb_id": kb_id, "doc_id": doc_id, **kwargs})
+            return moved
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: _FakeService())
+
+    result = await knowledge_bases.move_document(
+        kb_id="kb-1",
+        doc_id="doc-1",
+        body=knowledge_bases.MoveDocumentBody(target_folder="archive"),
+        request=_request(),
+        server=SimpleNamespace(services=_services()),
+        user=SimpleNamespace(id=7, is_admin=False),
+    )
+
+    assert calls == [
+        {
+            "kb_id": "kb-1",
+            "doc_id": "doc-1",
+            "actor_user_id": 7,
+            "target_folder": "archive",
+            "is_admin": False,
+        }
+    ]
+    assert result["document_id"] == "doc-1"
+    assert result["path"] == "archive/act.md"
+    assert knowledge_bases.MoveDocumentBody().target_folder == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "code"),
+    [
+        (LookupError("knowledge folder not found"), ErrorCode.KNOWLEDGE_NOT_FOUND),
+        (PermissionError("write access required"), ErrorCode.KNOWLEDGE_FORBIDDEN),
+        (OctopError(ErrorCode.KNOWLEDGE_MOVE_INVALID, "x"), ErrorCode.KNOWLEDGE_MOVE_INVALID),
+        (OctopError(ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN, "x"), ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN),
+    ],
+)
+async def test_move_document_maps_errors(
+    monkeypatch: pytest.MonkeyPatch, error: Exception, code: ErrorCode
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def fail(*_args: object, **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", fail)
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.move_document(
+            kb_id="kb-1",
+            doc_id="doc-1",
+            body=knowledge_bases.MoveDocumentBody(target_folder="archive"),
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=SimpleNamespace(id=1, is_admin=False),
+        )
+
+    assert raised.value.code == code
+
+
+@pytest.mark.asyncio
 async def test_rename_document_maps_not_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -732,3 +806,30 @@ def test_map_knowledge_error_prerequisites_distinguished() -> None:
     )
     assert err_model.code == ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
     assert err_model.status == 409
+
+
+class TestRestartRequiredMapping:
+    """#1340: an install that only takes effect after a restart must say so."""
+
+    RESTART_HINT = (
+        "Local embedding components were installed but could not be loaded. "
+        "Restart the server and try again."
+    )
+
+    def test_install_that_needs_a_restart_says_so(self) -> None:
+        from octop.api.routers.knowledge_bases import _map_knowledge_error
+        from octop.infra.errors import ErrorCode
+
+        err = _map_knowledge_error(RuntimeError(self.RESTART_HINT), locale="zh")
+
+        assert err.code is ErrorCode.KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED
+        assert "重启" in err.localized_message("zh")
+        assert "restart" in err.localized_message("en").lower()
+
+    def test_other_prerequisite_failures_keep_the_generic_error(self) -> None:
+        from octop.api.routers.knowledge_bases import _map_knowledge_error
+        from octop.infra.errors import ErrorCode
+
+        err = _map_knowledge_error(RuntimeError("embedding provider is not ready"), locale="zh")
+
+        assert err.code is ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED

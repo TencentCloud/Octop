@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -10,7 +11,10 @@ from octop_gateway.models import MessageEvent
 from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
-from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
+from octop.infra.agents.security.hitl_session import (
+    HitlSessionPolicy,
+    HitlSessionPolicyStore,
+)
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
@@ -19,6 +23,7 @@ from octop.infra.gateway.hitl.format import (
     parse_ask_reply,
     parse_review_configs,
 )
+from octop.infra.gateway.hitl.phrases import ApprovalUtterance
 from octop.infra.gateway.hitl.store import HitlPendingRecord, HitlPendingStore
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.gateway.slash.ctx import ensure_thread_id
@@ -28,6 +33,19 @@ from octop.infra.utils.locale import Locale, normalize_locale
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.slash.ctx import SlashCtx
+
+_log = logging.getLogger(__name__)
+
+ApprovalSticky = Literal["once", "tool", "all"]
+
+
+@dataclass(frozen=True)
+class _StickyStamp:
+    """Policy this approval wrote, so a later choice is not rolled back."""
+
+    thread_id: str
+    previous: HitlSessionPolicy
+    revision: int
 
 
 @dataclass
@@ -54,12 +72,138 @@ class HitlAnswerOutcome:
     awaiting_more: bool = False
 
 
+# Marker carried in the description of tool-guard approvals (see
+# ``octop_harness.security.tool_guard.engine.format_block_message``). Security
+# approvals must never be auto-approved by a per-session "allow all" choice:
+# one click would otherwise disable the command guard for the rest of the chat.
+_TOOL_GUARD_MARKERS = ("command guard", "command-guard", "命令护栏")
+
+
+def _is_tool_guard_request(request: dict[str, Any]) -> bool:
+    """True when this HITL request comes from the command guard, not a tool gate."""
+    actions = request.get("action_requests")
+    if not isinstance(actions, list):
+        return False
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        description = str(action.get("description") or "").lower()
+        if any(marker in description for marker in _TOOL_GUARD_MARKERS):
+            return True
+    return False
+
+
+def _action_allows_approve(request: dict[str, Any], name: str) -> bool:
+    """True when this tool's review config accepts an ``approve`` decision."""
+    configs = request.get("review_configs")
+    if not isinstance(configs, list):
+        return True
+    for config in configs:
+        if not isinstance(config, dict) or config.get("action_name") != name:
+            continue
+        allowed = config.get("allowed_decisions")
+        if not isinstance(allowed, list) or not allowed:
+            return True
+        return "approve" in {str(item) for item in allowed}
+    return True
+
+
+def approve_decisions_if_allowed(
+    policies: Any,
+    thread_id: str,
+    chunk: dict[str, Any],
+) -> list[dict[str, str]] | None:
+    """Approve decisions when the thread bypass already covers every action.
+
+    ``ask_user_question`` is never covered. A tool whose ``allowed_decisions``
+    omit ``approve`` is not auto-resumed. Returns ``None`` when the chunk must
+    still be shown to the user.
+    """
+    if chunk.get("type") != "hitl_required":
+        return None
+    allows = getattr(policies, "allows", None)
+    if not callable(allows):
+        return None
+    request = chunk.get("request")
+    if not isinstance(request, dict):
+        return None
+    # Security-gated tool calls always go to the human, even in an allow-all chat.
+    if _is_tool_guard_request(request):
+        return None
+    actions = request.get("action_requests")
+    if not isinstance(actions, list) or not actions:
+        return None
+    decisions: list[dict[str, str]] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            return None
+        name = action.get("name")
+        if not isinstance(name, str) or not allows(thread_id, name):
+            return None
+        if not _action_allows_approve(request, name):
+            return None
+        decisions.append({"type": "approve"})
+    return decisions
+
+
+async def iter_with_session_auto_approve(
+    source: AsyncIterator[dict[str, Any]],
+    *,
+    thread_id: str,
+    policies: Any,
+    resume: Callable[[list[dict[str, Any]]], AsyncIterator[dict[str, Any]]],
+    max_rounds: int = 8,
+) -> AsyncIterator[dict[str, Any]]:
+    """Continue a paused graph when the session policy already allows the tools.
+
+    The client auto-resume of that same card races the next turn, which expires
+    the pending id and surfaces "approval request has expired". A failed resume
+    yields the held card so the user can still decide.
+    """
+    held: dict[str, Any] | None = None
+    decisions: list[dict[str, Any]] | None = None
+    carried: dict[str, Any] | None = None
+    for _ in range(max_rounds):
+        held = None
+        decisions = None
+        try:
+            async for chunk in source:
+                if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                    allowed = approve_decisions_if_allowed(policies, thread_id, chunk)
+                    if allowed is not None:
+                        held = chunk
+                        decisions = [dict(item) for item in allowed]
+                        continue
+                    held = None
+                    decisions = None
+                yield chunk
+        except Exception:
+            card = held if held is not None else carried
+            if card is None:
+                raise
+            _log.exception("session auto-approve resume failed thread=%s", thread_id)
+            yield card
+            return
+        if decisions is None:
+            return
+        carried = held
+        try:
+            source = resume(decisions)
+        except Exception:
+            _log.exception("session auto-approve resume failed thread=%s", thread_id)
+            if carried is not None:
+                yield carried
+            return
+    if carried is not None:
+        yield carried
+
+
 def pending_hitl_payload(
     store: HitlPendingStore,
     *,
     thread_id: str,
     agent_id: str,
-    user_id: int,
+    user_id: int | None,
 ) -> dict[str, Any] | None:
     record = store.resolve_pending_for_thread(
         thread_id,
@@ -123,11 +267,27 @@ class HitlChannelCoordinator:
     def store(self) -> HitlPendingStore:
         return self._store
 
+    def owned_tool_approval(
+        self,
+        session_key: str,
+        *,
+        agent_id: str,
+        user_id: int,
+    ) -> HitlPendingRecord | None:
+        """Latest tool approval this user may decide, ignoring question pauses."""
+        record = self._store.resolve_for_session(session_key, agent_id=agent_id)
+        if record is None or record.status != "pending" or record.user_id != user_id:
+            return None
+        if is_ask_action_requests(record.action_requests):
+            return None
+        return record
+
     def register_from_request(
         self,
         raw_request: dict[str, Any],
         *,
         ctx: HitlStreamContext,
+        resume_agent_id: str | None = None,
     ) -> HitlPendingRecord:
         return self._store.register(
             thread_id=ctx.thread_id,
@@ -137,6 +297,7 @@ class HitlChannelCoordinator:
             channel_type=ctx.channel_type,
             action_requests=parse_action_requests(raw_request),
             review_configs=parse_review_configs(raw_request),
+            resume_agent_id=resume_agent_id,
         )
 
     @staticmethod
@@ -151,6 +312,29 @@ class HitlChannelCoordinator:
             return [{"type": "approve"} for _ in range(count)]
         reject_message = message or "Rejected by user"
         return [{"type": "reject", "message": reject_message} for _ in range(count)]
+
+    def hand_member_pause(
+        self,
+        record: HitlPendingRecord,
+        decisions: list[dict[str, Any]],
+        *,
+        deliver: Callable[[str, list[dict[str, Any]]], bool] | None,
+        rejected: bool,
+    ) -> bool | None:
+        """Wake a team member job that owns this pause.
+
+        Returns None when the pause is a normal host turn. True means the
+        member job accepted the decision and the caller must not resume the
+        host graph. False means the job is gone.
+        """
+        if not record.resume_agent_id:
+            return None
+        ok = bool(deliver is not None and deliver(record.pending_id, decisions))
+        self._store.mark_resolved(
+            record.pending_id,
+            ("rejected" if rejected else "approved") if ok else "expired",
+        )
+        return ok
 
     def expire_pending_for_thread(
         self,
@@ -172,11 +356,17 @@ class HitlChannelCoordinator:
         *,
         agent_id: str,
         user_id: int,
+        thread_id: str | None = None,
     ) -> HitlPendingRecord | None:
         """Return the open ``ask_user_question`` pause this user may answer.
 
         Returns ``None`` for approval pauses (those keep using ``/approve``) and
         for questions addressed to a different user in the same group chat.
+
+        When *thread_id* is set (dashboard turns always stamp it), the pause must
+        belong to that thread. Dashboard sessions share one ``session_key`` per
+        agent+user across many threads; without this guard a new chat's message
+        would answer an ask still open on another thread.
         """
         record = self._store.resolve_for_session(session_key, agent_id=agent_id)
         if record is None or record.status != "pending":
@@ -185,6 +375,12 @@ class HitlChannelCoordinator:
             return None
         if not is_ask_action_requests(record.action_requests):
             return None
+        inbound = (thread_id or "").strip()
+        if inbound:
+            room_match = record.thread_id == inbound
+            member_match = bool(record.resume_thread_id) and record.resume_thread_id == inbound
+            if not room_match and not member_match:
+                return None
         return record
 
     @staticmethod
@@ -278,6 +474,7 @@ class HitlChannelCoordinator:
         history_tracker: Any | None = None,
         projection_state: Any | None = None,
         outcome: HitlAnswerOutcome | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
         """Collect one IM answer and resume only after the final question."""
         from octop.infra.gateway.process.stream_project import (
@@ -298,6 +495,18 @@ class HitlChannelCoordinator:
 
         yield MessageEvent.typing()
         decisions = self._answer_decisions(record, resume_message)
+        handed = self.hand_member_pause(
+            record,
+            decisions,
+            deliver=member_hitl,
+            rejected=False,
+        )
+        if handed is not None:
+            if handed:
+                yield MessageEvent.text(tr("hitl.approved_ack", lang))
+            else:
+                yield MessageEvent.error_event(tr("hitl.expired", lang))
+            return
         hitl_ctx = HitlStreamContext(
             thread_id=record.thread_id,
             agent_id=record.agent_id,
@@ -338,8 +547,8 @@ class HitlChannelCoordinator:
         locale: str,
         usage_tracker: UsageTracker | None = None,
         outcome: HitlSlashOutcome | None = None,
-        history_factory: Any | None = None,
         history_finalize: Any | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
         lang = normalize_locale(locale)
         if cmd.name == "pending":
@@ -348,9 +557,70 @@ class HitlChannelCoordinator:
             return
 
         yield MessageEvent.typing()
+        async for ev in self._iter_approval_decision(
+            ctx,
+            agent_manager=agent_manager,
+            lang=lang,
+            approve=cmd.name == "approve",
+            arg=cmd.args.strip(),
+            sticky="once",
+            usage_tracker=usage_tracker,
+            outcome=outcome,
+            history_finalize=history_finalize,
+            member_hitl=member_hitl,
+        ):
+            yield ev
 
-        approve = cmd.name == "approve"
-        arg = cmd.args.strip()
+    async def iter_utterance_resolution(
+        self,
+        utterance: ApprovalUtterance,
+        ctx: SlashCtx,
+        *,
+        agent_manager: AgentManager,
+        locale: str,
+        usage_tracker: UsageTracker | None = None,
+        outcome: HitlSlashOutcome | None = None,
+        history_finalize: Any | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
+    ) -> AsyncIterator[MessageEvent]:
+        """Decide the latest pending tool approval from a whole-message phrase."""
+        lang = normalize_locale(locale)
+        sticky: ApprovalSticky
+        if utterance.kind == "tool":
+            sticky = "tool"
+        elif utterance.kind == "all":
+            sticky = "all"
+        else:
+            sticky = "once"
+        yield MessageEvent.typing()
+        async for ev in self._iter_approval_decision(
+            ctx,
+            agent_manager=agent_manager,
+            lang=lang,
+            approve=utterance.kind != "reject",
+            arg="",
+            sticky=sticky,
+            usage_tracker=usage_tracker,
+            outcome=outcome,
+            history_finalize=history_finalize,
+            member_hitl=member_hitl,
+        ):
+            yield ev
+
+    async def _iter_approval_decision(
+        self,
+        ctx: SlashCtx,
+        *,
+        agent_manager: AgentManager,
+        lang: Locale,
+        approve: bool,
+        arg: str,
+        sticky: ApprovalSticky,
+        usage_tracker: UsageTracker | None,
+        outcome: HitlSlashOutcome | None,
+        history_finalize: Any | None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None,
+    ) -> AsyncIterator[MessageEvent]:
         record = self._resolve_slash_record(ctx, approve=approve, arg=arg, lang=lang)
         if isinstance(record, MessageEvent):
             yield record
@@ -364,6 +634,26 @@ class HitlChannelCoordinator:
             approve=approve,
             message=reject_message,
         )
+        effective = sticky
+        stamps: list[_StickyStamp] = []
+        if record is not None and approve and sticky != "once":
+            effective, stamps = self._apply_sticky(record, sticky)
+        if record is not None:
+            handed = self.hand_member_pause(
+                record,
+                decisions,
+                deliver=member_hitl,
+                rejected=not approve,
+            )
+            if handed is not None:
+                if handed:
+                    yield MessageEvent.text(
+                        self._decision_ack(lang, approve=approve, sticky=effective)
+                    )
+                else:
+                    self._restore_sticky(stamps)
+                    yield MessageEvent.error_event(tr("hitl.expired", lang))
+                return
         hitl_ctx = HitlStreamContext(
             thread_id=thread_id,
             agent_id=ctx.agent_id,
@@ -376,12 +666,9 @@ class HitlChannelCoordinator:
             StreamProjectionState,
             project_resume_stream,
         )
+        from octop.infra.history.projection import TurnHistoryTracker
 
-        history_tracker = (
-            await history_factory(ctx.agent_id, thread_id, {}, resume=True)
-            if history_factory
-            else None
-        )
+        history_tracker = TurnHistoryTracker.from_request({}) if history_finalize else None
         tracker = usage_tracker or UsageTracker()
         projection_state = StreamProjectionState()
         history_completed = False
@@ -404,15 +691,15 @@ class HitlChannelCoordinator:
                 hitl_ctx=hitl_ctx,
             ):
                 if record is not None and not ack_sent:
-                    ack = (
-                        tr("hitl.approved_ack", lang) if approve else tr("hitl.rejected_ack", lang)
+                    yield MessageEvent.text(
+                        self._decision_ack(lang, approve=approve, sticky=effective)
                     )
-                    yield MessageEvent.text(ack)
                     ack_sent = True
                 had_output = True
                 yield ev
             history_completed = True
         except Exception as exc:
+            self._restore_sticky(stamps)
             if record is None and not had_output:
                 yield MessageEvent.text(tr("hitl.none_pending", lang))
             else:
@@ -428,8 +715,7 @@ class HitlChannelCoordinator:
             return
 
         if record is not None and not ack_sent:
-            ack = tr("hitl.approved_ack", lang) if approve else tr("hitl.rejected_ack", lang)
-            yield MessageEvent.text(ack)
+            yield MessageEvent.text(self._decision_ack(lang, approve=approve, sticky=effective))
 
         if record is not None and resolved_status is not None:
             self._store.mark_resolved(record.pending_id, resolved_status)
@@ -439,6 +725,75 @@ class HitlChannelCoordinator:
 
         if outcome is not None and (had_output or projection_state.hitl_paused):
             outcome.completed_turn = True
+
+    def clear_bypass(self, thread_ids: list[str]) -> None:
+        for thread_id in thread_ids:
+            self.session_policies.reset_bypass(thread_id)
+
+    async def iter_reset_notice(self, *, locale: str, pending: bool) -> AsyncIterator[MessageEvent]:
+        lang = normalize_locale(locale)
+        key = "hitl.reset_pending_ack" if pending else "hitl.reset_ack"
+        yield MessageEvent.text(tr(key, lang))
+
+    def _restore_sticky(self, stamps: list[_StickyStamp]) -> None:
+        for stamp in stamps:
+            self.session_policies.compare_set(stamp.thread_id, stamp.previous, stamp.revision)
+
+    @staticmethod
+    def _sticky_thread_ids(record: HitlPendingRecord) -> list[str]:
+        thread_ids: list[str] = []
+        for thread_id in (record.thread_id, record.resume_thread_id):
+            if isinstance(thread_id, str) and thread_id.strip() and thread_id not in thread_ids:
+                thread_ids.append(thread_id.strip())
+        return thread_ids
+
+    def _apply_sticky(
+        self,
+        record: HitlPendingRecord,
+        sticky: ApprovalSticky,
+    ) -> tuple[ApprovalSticky, list[_StickyStamp]]:
+        """Remember a chat-scoped bypass before the graph resumes."""
+        stamps: list[_StickyStamp] = []
+
+        def write(thread_id: str, policy: object) -> None:
+            previous = self.session_policies.get(thread_id)
+            self.session_policies.set(thread_id, policy)
+            stamps.append(
+                _StickyStamp(thread_id, previous, self.session_policies.revision(thread_id))
+            )
+
+        if sticky == "once":
+            return "once", stamps
+        thread_ids = self._sticky_thread_ids(record)
+        if sticky == "all":
+            for thread_id in thread_ids:
+                write(thread_id, {"mode": "allow_all"})
+            return "all", stamps
+        names: list[str] = []
+        for action in record.action_requests:
+            if not isinstance(action, dict):
+                continue
+            raw_name = action.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                names.append(raw_name)
+        applied = False
+        for thread_id in thread_ids:
+            updated = self.session_policies.get(thread_id).with_tools(names)
+            if updated.mode == "ask":
+                continue
+            write(thread_id, updated)
+            applied = True
+        return ("tool" if applied else "once"), stamps
+
+    @staticmethod
+    def _decision_ack(lang: Locale, *, approve: bool, sticky: ApprovalSticky) -> str:
+        if not approve:
+            return tr("hitl.rejected_ack", lang)
+        if sticky == "tool":
+            return tr("hitl.approved_tool_ack", lang)
+        if sticky == "all":
+            return tr("hitl.approved_all_ack", lang)
+        return tr("hitl.approved_ack", lang)
 
     def _resolve_slash_record(
         self,

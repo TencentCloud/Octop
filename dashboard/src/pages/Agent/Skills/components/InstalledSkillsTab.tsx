@@ -1,12 +1,20 @@
-import { useMemo, useState, useCallback } from "react";
-import { Form, Segmented, Tooltip } from "antd";
-import { Download, LayoutGrid, List, Plus, RefreshCw } from "lucide-react";
+import { useMemo, useState, useCallback, useEffect } from "react";
+import { Checkbox, Form, Segmented, Tooltip } from "antd";
+import {
+  Download,
+  FileDown,
+  LayoutGrid,
+  List,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAgent } from "../../../../context/AgentContext";
 import { isAgentChatReady } from "../../../../utils/agentError";
 import { CardSkeleton } from "../../../../components/Skeleton";
 import { useCardTableView } from "../../../../hooks/useCardTableView";
-import { EmptyState } from "../../../../components/EmptyState";
+import { OctopEmptyMascot } from "../../../../components/EmptyState";
+import StreamSetupGuide from "../../../../components/StreamSetupGuide/StreamSetupGuide";
 import { SkillCard } from "./SkillCard";
 import { SkillDrawer, type SkillFormValues } from "./SkillDrawer";
 import { SkillImportModal } from "./SkillImportModal";
@@ -45,6 +53,7 @@ interface InstalledSkillsTabProps {
   importing: boolean;
   toggleEnabled: (skill: SkillSpec) => Promise<boolean>;
   deleteSkill: (skill: SkillSpec) => Promise<boolean>;
+  exportSkills: (slugs: string[]) => Promise<boolean>;
 }
 
 export default function InstalledSkillsTab({
@@ -61,6 +70,7 @@ export default function InstalledSkillsTab({
   importing,
   toggleEnabled,
   deleteSkill,
+  exportSkills,
 }: InstalledSkillsTabProps) {
   const { t } = useTranslation();
   const { agents } = useAgent();
@@ -80,6 +90,9 @@ export default function InstalledSkillsTab({
   const [pushSkill, setPushSkill] = useState<SkillDetail | null>(null);
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   const [form] = Form.useForm<SkillFormValues>();
+  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const filteredSkills = useMemo(
     () =>
@@ -95,6 +108,39 @@ export default function InstalledSkillsTab({
         }),
     [skills, kind],
   );
+
+  useEffect(() => {
+    const live = new Set(filteredSkills.map((skill) => skill.slug));
+    setSelectedSlugs((current) => {
+      const next = new Set([...current].filter((slug) => live.has(slug)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filteredSkills]);
+
+  const selectedSkills = useMemo(
+    () => filteredSkills.filter((skill) => selectedSlugs.has(skill.slug)),
+    [filteredSkills, selectedSlugs],
+  );
+  const allSelected =
+    filteredSkills.length > 0 &&
+    selectedSkills.length === filteredSkills.length;
+
+  const toggleSelected = (slug: string) => {
+    setSelectedSlugs((current) => {
+      const next = new Set(current);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedSlugs(
+      allSelected
+        ? new Set()
+        : new Set(filteredSkills.map((skill) => skill.slug)),
+    );
+  };
 
   const onViewChange = (value: string | number) => {
     setViewMode(value === "table" ? "table" : "card");
@@ -149,23 +195,62 @@ export default function InstalledSkillsTab({
     if (ok) setDrawerOpen(false);
   };
 
-  const emptyTitle =
-    kind === "builtin" ? t("skills.builtinSkills") : t("skills.noSkills");
-  const emptyDesc =
-    kind === "builtin"
-      ? t("skills.builtinSkillsDesc")
-      : t("skills.noSkillsDesc");
-
   const listContent =
     loading && skills.length === 0 ? (
       <CardSkeleton count={6} />
     ) : filteredSkills.length === 0 ? (
-      <EmptyState
-        title={emptyTitle}
-        description={emptyDesc}
-        actionLabel={kind === "custom" ? t("skills.createSkill") : undefined}
-        onAction={kind === "custom" ? handleCreate : undefined}
-      />
+      kind === "builtin" ? (
+        <StreamSetupGuide
+          wide
+          plain
+          icon={<OctopEmptyMascot />}
+          title={t("skills.builtinEmptyTitle")}
+          description={t("skills.builtinEmptyDesc")}
+          steps={[
+            {
+              label: t("skills.builtinEmptyStepReady"),
+              detail: t("skills.builtinEmptyStepReadyDetail"),
+            },
+            {
+              label: t("skills.builtinEmptyStepUse"),
+              detail: t("skills.builtinEmptyStepUseDetail"),
+            },
+          ]}
+        />
+      ) : (
+        <StreamSetupGuide
+          wide
+          plain
+          icon={<OctopEmptyMascot />}
+          title={t("skills.customEmptyTitle")}
+          description={t("skills.customEmptyDesc")}
+          steps={[
+            {
+              label: t("skills.customEmptyStepCreate"),
+              detail: t("skills.customEmptyStepCreateDetail"),
+            },
+            {
+              label: t("skills.customEmptyStepImport"),
+              detail: t("skills.customEmptyStepImportDetail"),
+            },
+            {
+              label: t("skills.customEmptyStepUse"),
+              detail: t("skills.customEmptyStepUseDetail"),
+            },
+          ]}
+          primaryAction={{
+            label: t("skills.createSkill"),
+            onClick: handleCreate,
+            icon: <Plus size={14} />,
+          }}
+          secondaryAction={{
+            label: t("skills.importSkills"),
+            onClick: () => setImportModalOpen(true),
+            icon: <Download size={14} />,
+            type: "default",
+          }}
+        />
+      )
     ) : showCardView ? (
       <div className={styles.skillsGrid}>
         {filteredSkills.map((skill) => (
@@ -180,6 +265,10 @@ export default function InstalledSkillsTab({
             onDelete={
               kind === "custom" ? (e) => void handleDelete(skill, e) : undefined
             }
+            selected={kind === "custom" && selectedSlugs.has(skill.slug)}
+            onToggleSelected={
+              kind === "custom" ? () => toggleSelected(skill.slug) : undefined
+            }
           />
         ))}
       </div>
@@ -192,6 +281,12 @@ export default function InstalledSkillsTab({
         onDelete={
           kind === "custom" ? (skill) => void handleDelete(skill) : undefined
         }
+        selectedSlugs={kind === "custom" ? selectedSlugs : undefined}
+        onSelectedSlugsChange={
+          kind === "custom"
+            ? (slugs) => setSelectedSlugs(new Set(slugs))
+            : undefined
+        }
       />
     );
 
@@ -199,7 +294,17 @@ export default function InstalledSkillsTab({
     <>
       <div className={styles.gridToolbar}>
         <span className={styles.gridCount}>
-          {t("skills.totalCount", { count: filteredSkills.length })}
+          {kind === "custom" && showCardView && filteredSkills.length > 0 ? (
+            <Checkbox
+              checked={allSelected}
+              indeterminate={selectedSkills.length > 0 && !allSelected}
+              onChange={toggleSelectAll}
+            >
+              {t("skills.totalCount", { count: filteredSkills.length })}
+            </Checkbox>
+          ) : (
+            t("skills.totalCount", { count: filteredSkills.length })
+          )}
         </span>
         <div className={styles.gridToolbarRight}>
           <Segmented
@@ -242,6 +347,17 @@ export default function InstalledSkillsTab({
           </Tooltip>
           {kind === "custom" ? (
             <>
+              <button
+                type="button"
+                className={styles.toolbarBtn}
+                disabled={selectedSkills.length === 0}
+                onClick={() =>
+                  void exportSkills(selectedSkills.map((skill) => skill.slug))
+                }
+              >
+                <FileDown size={14} />
+                {t("skills.exportSelected", { count: selectedSkills.length })}
+              </button>
               <button
                 type="button"
                 className={styles.toolbarBtn}

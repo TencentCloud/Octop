@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   groupExpertsByConnection,
+  expertDeleteConfirm,
   isBridgeAgentId,
+  isRemoteShadowAgent,
   rewritePeerSpeakerId,
   toBridgeShadowAgentId,
   isRemotePeerOnly,
@@ -14,6 +16,44 @@ describe("isBridgeAgentId", () => {
     expect(isBridgeAgentId("bridge:abc:aid")).toBe(true);
     expect(isBridgeAgentId("01LOCAL")).toBe(false);
     expect(isBridgeAgentId(null)).toBe(false);
+  });
+});
+
+describe("isRemoteShadowAgent", () => {
+  it("treats bridge rows and shadow ids as remote", () => {
+    expect(isRemoteShadowAgent({ agent_id: "01LOCAL", bridge: true })).toBe(
+      true,
+    );
+    expect(isRemoteShadowAgent({ agent_id: "bridge:cid:aid" })).toBe(true);
+    expect(isRemoteShadowAgent({ agent_id: "01LOCAL" })).toBe(false);
+  });
+});
+
+describe("expertDeleteConfirm", () => {
+  const t = (key: string, options?: Record<string, string>) =>
+    `${key}:${options?.name ?? ""}:${options?.connection ?? ""}`;
+
+  it("uses the local copy for a local expert", () => {
+    expect(
+      expertDeleteConfirm({ name: "本地", agent_id: "01LOCAL" }, t),
+    ).toEqual({
+      title: "experts.confirmDelete:本地:",
+      description: "experts.confirmDeleteHint::",
+    });
+  });
+
+  it("names the peer connection when deleting a shadow", () => {
+    const copy = expertDeleteConfirm(
+      {
+        name: "云端",
+        agent_id: "bridge:cid:aid",
+        bridge_connection_name: "公司云端",
+      },
+      t,
+    );
+    expect(copy.title).toBe("experts.confirmDeleteRemote:云端:");
+    expect(copy.description).toContain("experts.confirmDeleteRemoteWhere:");
+    expect(copy.description).toContain("公司云端");
   });
 });
 
@@ -114,6 +154,24 @@ describe("retainDisconnectedBridgeAgents", () => {
       },
     ];
     const merged = retainDisconnectedBridgeAgents(prev, [], new Set());
+    expect(merged).toEqual([]);
+  });
+
+  it("drops removed remotes after a live connection resolves an empty list", () => {
+    const prev = [
+      {
+        agent_id: "bridge:c1:deleted",
+        state: "running",
+        bridge: true,
+        bridge_connection_id: "c1",
+      },
+    ];
+    const merged = retainDisconnectedBridgeAgents(
+      prev,
+      [],
+      new Set(["c1"]),
+      new Set(["c1"]),
+    );
     expect(merged).toEqual([]);
   });
 

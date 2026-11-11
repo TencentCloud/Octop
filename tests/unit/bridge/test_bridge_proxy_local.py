@@ -7,6 +7,7 @@ import json
 import pytest
 
 from octop.api.middleware.bridge_proxy import (
+    _is_websocket_upgrade,
     _local_bridge_shadow_response,
     resolve_tunnel_target,
 )
@@ -52,6 +53,23 @@ def test_other_paths_pass_through() -> None:
         )
         is None
     )
+
+
+def test_constant_connection_upgrade_is_not_a_websocket() -> None:
+    """nginx ``Connection "upgrade"`` without ``Upgrade: websocket`` must still tunnel."""
+    assert _is_websocket_upgrade({"connection": "upgrade"}) is False
+    assert _is_websocket_upgrade({"connection": "keep-alive, upgrade"}) is False
+    assert _is_websocket_upgrade({"connection": "Upgrade", "upgrade": "websocket"}) is True
+    assert (
+        _is_websocket_upgrade({"connection": "keep-alive, Upgrade", "upgrade": "WebSocket"}) is True
+    )
+
+
+def test_resolve_upload_path() -> None:
+    target = resolve_tunnel_target("/api/agents/bridge:cid1:aid1/upload")
+    assert target is not None
+    assert target.remote_path == "/api/agents/aid1/upload"
+    assert target.agent_rest == "/upload"
 
 
 def test_resolve_agents_and_plugins_path() -> None:
@@ -101,9 +119,69 @@ def test_resolve_header_tunneled_paths() -> None:
     assert kb is not None
     env = resolve_tunnel_target("/api/browser/env-status", "bridge:cid1:aid1")
     assert env is not None
+    hitl = resolve_tunnel_target("/api/settings/hitl", "bridge:cid1:aid1")
+    assert hitl is not None
+    assert hitl.remote_path == "/api/settings/hitl"
 
 
 def test_resolve_ignores_local_header_and_unscoped_paths() -> None:
     assert resolve_tunnel_target("/api/mbti/current", "01LOCAL") is None
     assert resolve_tunnel_target("/api/users", "bridge:cid1:aid1") is None
     assert resolve_tunnel_target("/api/plugins/install", "bridge:cid1:aid1") is None
+
+
+@pytest.mark.asyncio
+async def test_proxy_still_tunnels_when_connection_upgrade_is_not_websocket() -> None:
+    import httpx
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+
+    from octop.api.middleware.bridge_proxy import install
+
+    app = FastAPI()
+    seen: dict[str, object] = {}
+
+    class _User:
+        id = 7
+
+    class _Mgr:
+        async def tunnel_http(self, **kwargs: object) -> httpx.Response:
+            seen.update(kwargs)
+            return httpx.Response(200, json={"ok": True})
+
+    class _Server:
+        class _Runtime:
+            bridge_manager = _Mgr()
+
+        app_runtime = _Runtime()
+
+    install(app, _Server())
+
+    @app.middleware("http")
+    async def _user(request, call_next):  # type: ignore[no-untyped-def]
+        request.state.octop_user = _User()
+        return await call_next(request)
+
+    @app.get("/api/agents/{agent_id}/threads")
+    async def _local(agent_id: str) -> JSONResponse:
+        return JSONResponse(
+            {"error": {"code": "AGENT_NOT_FOUND", "message": agent_id}},
+            status_code=404,
+        )
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        proxied = await client.get(
+            "/api/agents/bridge:cid1:aid1/threads",
+            headers={"connection": "upgrade"},
+        )
+        skipped = await client.get(
+            "/api/agents/bridge:cid1:aid1/threads",
+            headers={"connection": "upgrade", "upgrade": "websocket"},
+        )
+
+    assert proxied.status_code == 200
+    assert proxied.json()["ok"] is True
+    assert seen["path"] == "/api/agents/aid1/threads"
+    assert skipped.status_code == 404
+    assert skipped.json()["error"]["code"] == "AGENT_NOT_FOUND"

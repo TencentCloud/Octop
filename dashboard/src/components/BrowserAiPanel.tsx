@@ -5,12 +5,16 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Button, Tooltip, Tag, Spin } from "antd";
+import { Button, Input, Tooltip, Tag, Spin } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
-import { Bot, X, Square, Play, Loader2, Send } from "lucide-react";
+import { Bot, Square, Play, Loader2, Send } from "lucide-react";
+import AssistantFrame, {
+  type AssistantPlacement,
+} from "./AssistantFrame/AssistantFrame";
 import { useTranslation } from "react-i18next";
-import type { OctopAgent } from "../context/AgentContext";
+import cx from "classnames";
+import { useAgent } from "../context/AgentContext";
 import AgentSelector from "../components/AgentSelector";
 import { useAgentThreadChat } from "../hooks/useAgentThreadChat";
 import { browserApi } from "../api/modules/browser";
@@ -27,13 +31,26 @@ export interface BrowserAiTabContext {
   active: boolean;
 }
 
+const BROWSER_AI_AGENT_KEY = "octop:remote-browser:ai-agent";
+
+function readBrowserAgentId(): string | null {
+  try {
+    return localStorage.getItem(BROWSER_AI_AGENT_KEY);
+  } catch {
+    return null;
+  }
+}
+
 interface BrowserAiPanelProps {
-  activeAgent: OctopAgent | null;
   tabs: BrowserAiTabContext[];
   currentUrl: string;
   profileId?: string | null;
   onClose: () => void;
-  layout?: "right" | "bottom";
+  placement: AssistantPlacement;
+  placementLocked?: boolean;
+  onPlacementChange: (placement: AssistantPlacement) => void;
+  /** 工作台切走时收起窗口，会话仍留在这个面板里。 */
+  hidden?: boolean;
   /** Skill recording state from parent (RemoteBrowserPage) */
   browserRecording?: boolean;
   browserRecordingId?: string | null;
@@ -66,12 +83,14 @@ type RecordingPhase =
   | "recording";
 
 export default function BrowserAiPanel({
-  activeAgent,
   tabs,
   currentUrl,
   profileId,
   onClose,
-  layout = "right",
+  placement,
+  placementLocked = false,
+  onPlacementChange,
+  hidden = false,
   browserRecording = false,
   browserRecordingId = null,
   browserLastRecordingId = null,
@@ -82,9 +101,6 @@ export default function BrowserAiPanel({
   onSkillNameSet,
 }: BrowserAiPanelProps) {
   const { t } = useTranslation();
-  const panelClassName = `${styles.panel}${
-    layout === "bottom" ? ` ${styles.panelBottom}` : ""
-  }`;
   const [inputValue, setInputValue] = useState("");
   const [browserReplayBusy, setBrowserReplayBusy] = useState(false);
   const [pendingSkillContent, setPendingSkillContent] = useState<string | null>(
@@ -93,17 +109,51 @@ export default function BrowserAiPanel({
   const [pendingSkillName, setPendingSkillName] = useState<string | null>(null);
   const [, setPendingSkillRecordingId] = useState<string | null>(null);
   const workflowBusyRef = useRef(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imeComposingRef = useRef(false);
 
   // Recording workflow phase
   const [recordingPhase, setRecordingPhase] = useState<RecordingPhase>("idle");
+  const recordingTag =
+    browserRecording && recordingPhase !== "idle" ? (
+      <Tag color="red" className={styles.recordingTag}>
+        ● REC{" "}
+        {skillName && recordingPhase === "recording" ? `— ${skillName}` : ""}
+      </Tag>
+    ) : null;
 
   // Saved skill names for keyword-trigger replay
   const [savedSkillNames, setSavedSkillNames] = useState<string[]>([]);
 
+  const { agents, activeAgentId } = useAgent();
+  const [agentId, setAgentId] = useState<string | null>(readBrowserAgentId);
+  const activeAgent =
+    agents.find((agent) => agent.agent_id === agentId) ?? null;
   const activeTab = useMemo(() => tabs.find((tab) => tab.active), [tabs]);
-  const agentId = activeAgent?.agent_id ?? null;
+
+  useEffect(() => {
+    if (agentId && agents.some((agent) => agent.agent_id === agentId)) return;
+    if (!agents.length) return;
+    const fromGlobal =
+      activeAgentId && agents.some((agent) => agent.agent_id === activeAgentId)
+        ? activeAgentId
+        : null;
+    const next = fromGlobal ?? agents[0].agent_id;
+    setAgentId(next);
+    try {
+      localStorage.setItem(BROWSER_AI_AGENT_KEY, next);
+    } catch {
+      /* 忽略写入失败 */
+    }
+  }, [agentId, agents, activeAgentId]);
+
+  const chooseAgent = (id: string) => {
+    setAgentId(id);
+    try {
+      localStorage.setItem(BROWSER_AI_AGENT_KEY, id);
+    } catch {
+      /* 忽略写入失败 */
+    }
+  };
 
   // Load saved skill names from API on mount / agent change
   useEffect(() => {
@@ -133,7 +183,7 @@ export default function BrowserAiPanel({
     isStreaming,
     send,
     cancelStream,
-  } = useAgentThreadChat(agentId);
+  } = useAgentThreadChat(agentId, { pinKey: "octop:remote-browser:ai-thread" });
 
   // When browserRecording transitions, sync phase
   useEffect(() => {
@@ -188,25 +238,20 @@ export default function BrowserAiPanel({
       const objective = text.trim();
       if (!objective) return;
       setInputValue("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
       setPendingSkillName(objective);
       if (onSkillNameSet) onSkillNameSet(objective);
       setRecordingPhase("awaitDescription");
       chatStore.appendPushMessage(
-        `✅ 任务目标已设定：**${objective}**\n\n` +
-          "接下来请描述你想让AI助手在浏览器中执行的具体操作。\n\n" +
-          `例如："打开B站、小红书和百度，搜索今天天气"。\n\n` +
-          '描述完成后AI会自动执行操作；操作结束后输入"结束"即可停止录制。',
+        t("remoteBrowser.ai.objectiveSet", { objective }),
       );
     },
-    [onSkillNameSet],
+    [onSkillNameSet, t],
   );
 
   const handleDescriptionInput = useCallback(
     (text: string) => {
       const description = text.trim();
       setInputValue("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
       setRecordingPhase("recording");
       send(description);
     },
@@ -239,25 +284,32 @@ export default function BrowserAiPanel({
         const previewText = previewLines.join("\n");
         const truncationNotice =
           data.skillContent.split("\n").length > 20
-            ? `\n\n... (共 ${
-                data.skillContent.split("\n").length
-              } 行，完整内容将在确认后保存)`
+            ? t("skillRecord.previewTruncation", {
+                lines: data.skillContent.split("\n").length,
+              })
             : "";
         chatStore.appendPushMessage(
-          `✅ 录制完成！已生成 ${data.steps ?? 0} 个回放步骤。\n\n` +
-            `📝 **技能「${effectiveSkillName}」脚本预览：**\n\n${previewText}${truncationNotice}\n\n` +
-            '回复"确认"即可应用此技能。\n\n' +
-            `应用后，只需输入 **"${effectiveSkillName}"** 即可一键触发回放相同操作流程。`,
+          t("remoteBrowser.ai.previewMessage", {
+            steps: data.steps ?? 0,
+            name: effectiveSkillName,
+            preview: previewText,
+            truncation: truncationNotice,
+          }),
         );
       } else {
         chatStore.appendPushMessage(
-          `✅ 录制完成！已生成 ${data.steps ?? 0} 个回放步骤。\n\n` +
-            `⚠️ 技能脚本生成失败，请稍后重试。`,
+          t("remoteBrowser.ai.previewNoScript", { steps: data.steps ?? 0 }),
         );
       }
-      antMessage.success(`录制完成，已生成 ${data.steps ?? 0} 个回放步骤`);
+      antMessage.success(
+        t("skillRecord.recordingStopped", { steps: data.steps ?? 0 }),
+      );
     } catch (err) {
-      antMessage.error(err instanceof Error ? err.message : "停止录制失败");
+      antMessage.error(
+        err instanceof Error
+          ? err.message
+          : t("skillRecord.stopFailed", "停止录制失败"),
+      );
     } finally {
       workflowBusyRef.current = false;
     }
@@ -268,6 +320,7 @@ export default function BrowserAiPanel({
     setBrowserRecording,
     setBrowserRecordingId,
     setBrowserLastRecordingId,
+    t,
   ]);
 
   const handleConfirmSkill = useCallback(async () => {
@@ -299,16 +352,19 @@ export default function BrowserAiPanel({
         prev.includes(finalName) ? prev : [...prev, finalName],
       );
       chatStore.appendPushMessage(
-        `🎉 技能 **「${finalName}」** 已成功应用！\n\n` +
-          `之后只需输入 **"${finalName}"** 即可一键触发回放相同的浏览器操作流程。`,
+        t("remoteBrowser.ai.skillAppliedMessage", { name: finalName }),
       );
-      antMessage.success(`技能 "${finalName}" 已成功应用`);
+      antMessage.success(t("skillRecord.skillApplied", { name: finalName }));
     } catch (err) {
-      antMessage.error(err instanceof Error ? err.message : "应用技能失败");
+      antMessage.error(
+        err instanceof Error
+          ? err.message
+          : t("skillRecord.applyFailed", "应用技能失败"),
+      );
     } finally {
       workflowBusyRef.current = false;
     }
-  }, [pendingSkillContent, pendingSkillName, agentId]);
+  }, [pendingSkillContent, pendingSkillName, agentId, t]);
 
   const handleSkillReplay = useCallback(
     async (skillKeyword: string) => {
@@ -326,9 +382,11 @@ export default function BrowserAiPanel({
         const recordingId = recordingIdMatch?.[1] ?? browserLastRecordingId;
         if (!recordingId) {
           chatStore.appendPushMessage(
-            `⚠️ 无法找到技能「${skillKeyword}」的录制记录，回放失败。`,
+            t("remoteBrowser.ai.noRecordingFound", { name: skillKeyword }),
           );
-          antMessage.error("找不到录制记录");
+          antMessage.error(
+            t("remoteBrowser.ai.recordingNotFound", "找不到录制记录"),
+          );
           return;
         }
         const data = await browserApi.replayRecording({
@@ -340,26 +398,44 @@ export default function BrowserAiPanel({
             t("browser.recordReplay.replayPassed", "回放完成"),
           );
           chatStore.appendPushMessage(
-            `🎬 Browser-Skill「${skillKeyword}」回放完成！`,
+            t("remoteBrowser.ai.replayDone", { name: skillKeyword }),
           );
         } else {
           const globalError = data.error || "";
           const failedSteps = (data.steps || [])
             .filter((s) => s.status === "failed")
-            .map((s) => `步骤 ${s.id} (${s.kind}): ${s.error || "执行失败"}`);
+            .map((s) =>
+              t("remoteBrowser.ai.stepLine", {
+                id: s.id,
+                kind: s.kind,
+                error: s.error || t("remoteBrowser.ai.stepFailed", "执行失败"),
+              }),
+            );
           const detailMsg =
             globalError ||
             (failedSteps.length > 0 ? failedSteps.join("\n") : "") ||
             t("browser.recordReplay.replayFailed", "回放失败");
           antMessage.error(detailMsg);
           chatStore.appendPushMessage(
-            `⚠️ 技能「${skillKeyword}」回放失败：\n${detailMsg}`,
+            t("remoteBrowser.ai.replayFailedDetail", {
+              name: skillKeyword,
+              detail: detailMsg,
+            }),
           );
         }
       } catch (err) {
-        antMessage.error(err instanceof Error ? err.message : "回放失败");
+        antMessage.error(
+          err instanceof Error
+            ? err.message
+            : t("browser.recordReplay.replayFailed", "回放失败"),
+        );
         chatStore.appendPushMessage(
-          `⚠️ 技能回放出错：${err instanceof Error ? err.message : "未知错误"}`,
+          t("remoteBrowser.ai.replayError", {
+            error:
+              err instanceof Error
+                ? err.message
+                : t("remoteBrowser.ai.unknownError", "未知错误"),
+          }),
         );
       } finally {
         workflowBusyRef.current = false;
@@ -380,17 +456,23 @@ export default function BrowserAiPanel({
       });
       if (data.status === "passed") {
         antMessage.success(t("browser.recordReplay.replayPassed", "回放完成"));
-        chatStore.appendPushMessage("🔄 技能回放完成！所有步骤已成功执行。");
+        chatStore.appendPushMessage(t("remoteBrowser.ai.replayComplete"));
       } else {
         antMessage.error(
           data.error || t("browser.recordReplay.replayFailed", "回放失败"),
         );
         chatStore.appendPushMessage(
-          `⚠️ 技能回放失败：${data.error || "未知错误"}`,
+          t("remoteBrowser.ai.replayFailedSimple", {
+            error: data.error || t("remoteBrowser.ai.unknownError", "未知错误"),
+          }),
         );
       }
     } catch (err) {
-      antMessage.error(err instanceof Error ? err.message : "回放失败");
+      antMessage.error(
+        err instanceof Error
+          ? err.message
+          : t("browser.recordReplay.replayFailed", "回放失败"),
+      );
     } finally {
       setBrowserReplayBusy(false);
     }
@@ -407,7 +489,6 @@ export default function BrowserAiPanel({
     const text = inputValue.trim();
     if (!text || isStreaming || !activeAgent) return;
     setInputValue("");
-    if (textareaRef.current) textareaRef.current.style.height = "auto";
 
     if (recordingPhase === "awaitObjective") {
       void handleObjectiveInput(text);
@@ -426,7 +507,9 @@ export default function BrowserAiPanel({
       return;
     }
     if (isSkillTriggerCommand(text)) {
-      chatStore.appendPushMessage(`🔄 正在使用技能「${text}」进行回放...`);
+      chatStore.appendPushMessage(
+        t("remoteBrowser.ai.replayingSkill", { text }),
+      );
       void handleSkillReplay(text);
       return;
     }
@@ -445,6 +528,7 @@ export default function BrowserAiPanel({
     handleEndRecording,
     handleConfirmSkill,
     handleSkillReplay,
+    t,
   ]);
 
   const handleKeyDown = useCallback(
@@ -462,16 +546,6 @@ export default function BrowserAiPanel({
     [handleSend],
   );
 
-  const handleTextareaInput = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      setInputValue(e.target.value);
-      const el = e.target;
-      el.style.height = "auto";
-      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-    },
-    [],
-  );
-
   // When recording is active and agent stream just finished, append reminder
   const prevStreamingRef = useRef(false);
   useEffect(() => {
@@ -485,11 +559,9 @@ export default function BrowserAiPanel({
       messages.length > 0 &&
       !workflowBusyRef.current
     ) {
-      chatStore.appendPushMessage(
-        '💡 录制还在进行中。如果操作已完成，输入"结束"即可停止录制并生成技能脚本。',
-      );
+      chatStore.appendPushMessage(t("remoteBrowser.ai.recordingHint"));
     }
-  }, [isStreaming, browserRecording, recordingPhase, messages.length]);
+  }, [isStreaming, browserRecording, recordingPhase, messages.length, t]);
 
   const inputDisabled =
     isStreaming || booting || !threadId || browserReplayBusy;
@@ -539,75 +611,66 @@ export default function BrowserAiPanel({
   ]);
 
   // No agent → show empty state
+  const frame = (content: React.ReactNode) => (
+    <AssistantFrame
+      placement={placement}
+      onPlacementChange={onPlacementChange}
+      placementKey="octop:remote-browser:ai-placement"
+      storageKey="octop:remote-browser:ai"
+      legacySize={{
+        widthKey: "octop:remote-browser:ai-panel-width",
+        heightKey: "octop:remote-browser:ai-panel-height",
+      }}
+      dock="inline"
+      defaultDockWidth={400}
+      placementLocked={placementLocked}
+      hidden={hidden}
+      title={t("remoteBrowser.ai.title", "AI 助手")}
+      headerExtra={recordingTag}
+      onClose={onClose}
+    >
+      <div className={styles.panel}>{content}</div>
+    </AssistantFrame>
+  );
+
   if (!activeAgent) {
-    return (
-      <div className={panelClassName}>
-        <div className={styles.header}>
-          <div className={styles.headerTitle}>
-            <Bot size={14} />
-            <span>{t("remoteBrowser.ai.title", "AI 助手")}</span>
-          </div>
-          <Tooltip title={t("common.close", "关闭")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<X size={14} />}
-              onClick={onClose}
-            />
-          </Tooltip>
+    return frame(
+      <div className={styles.emptyState}>
+        <Bot size={30} color="var(--fn-text-quaternary, #9ca3af)" />
+        <div className={styles.emptyTitle}>
+          {t("remoteBrowser.ai.noAgentTitle", "请选择一个 Agent")}
         </div>
-        <div className={styles.emptyState}>
-          <Bot size={30} color="var(--fn-text-quaternary, #9ca3af)" />
-          <div className={styles.emptyTitle}>
-            {t("remoteBrowser.ai.noAgentTitle", "请选择一个 Agent")}
-          </div>
-          <div className={styles.emptyDesc}>
-            {t(
-              "remoteBrowser.ai.noAgentDesc",
-              "浏览器右侧助手会复用当前 Agent 的对话能力。",
-            )}
-          </div>
-          <div className={styles.emptyAgentPicker}>
-            <AgentSelector variant="select" showLabel={false} />
-          </div>
+        <div className={styles.emptyDesc}>
+          {t(
+            "remoteBrowser.ai.noAgentDesc",
+            "这里的专家和对话只属于浏览器，不会改到其他页签。",
+          )}
         </div>
-      </div>
+        <div className={styles.emptyAgentPicker}>
+          <AgentSelector
+            variant="select"
+            showLabel={false}
+            value={agentId}
+            onChange={chooseAgent}
+          />
+        </div>
+      </div>,
     );
   }
 
-  return (
-    <div className={panelClassName}>
-      <div className={styles.header}>
-        <div className={styles.headerTitle}>
-          <Bot size={14} />
-          <span>{t("remoteBrowser.ai.title", "AI 助手")}</span>
-          {browserRecording && recordingPhase !== "idle" && (
-            <Tag color="red" className={styles.recordingTag}>
-              ● REC{" "}
-              {skillName && recordingPhase === "recording"
-                ? `— ${skillName}`
-                : ""}
-            </Tag>
-          )}
-        </div>
-        <div className={styles.headerActions}>
-          <Tooltip title={t("common.close", "关闭")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<X size={14} />}
-              onClick={onClose}
-            />
-          </Tooltip>
-        </div>
-      </div>
-
+  return frame(
+    <>
       <div className={styles.contextSection}>
         <div className={styles.expertSelectRow}>
           <span className={styles.contextLabel}>
             {t("remoteBrowser.ai.expert", "专家")}
           </span>
-          <AgentSelector variant="select" showLabel={false} />
+          <AgentSelector
+            variant="select"
+            showLabel={false}
+            value={agentId}
+            onChange={chooseAgent}
+          />
         </div>
         <div className={styles.contextGrid}>
           <span className={styles.contextLabel}>
@@ -626,7 +689,7 @@ export default function BrowserAiPanel({
         </div>
       </div>
 
-      <div className={`${styles.messages} ${chatStyles.messageListWrapper}`}>
+      <div className={cx(styles.messages, chatStyles.messageListWrapper)}>
         {booting ? (
           <div className={styles.messagesLoading}>
             <Spin size="small" />
@@ -642,70 +705,81 @@ export default function BrowserAiPanel({
         )}
       </div>
 
-      <div className={styles.sendBar}>
-        {/* Recording action buttons before the send row */}
-        {browserRecording && recordingPhase === "recording" && (
-          <Tooltip title={t("browser.recordReplay.stop", "停止浏览器录制")}>
-            <button
-              type="button"
-              className={`${styles.actionBtn} ${styles.actionBtnDanger}`}
-              onClick={handleEndRecording}
+      <div className={styles.composer}>
+        <Input.TextArea
+          autoSize={{ minRows: 2, maxRows: 5 }}
+          value={inputValue}
+          disabled={booting || !threadId || browserReplayBusy}
+          placeholder={placeholder}
+          onChange={(event) => setInputValue(event.target.value)}
+          onCompositionStart={() => {
+            imeComposingRef.current = true;
+          }}
+          onCompositionEnd={() => {
+            imeComposingRef.current = false;
+          }}
+          onPressEnter={handleKeyDown}
+        />
+        <div className={styles.composerActions}>
+          <span className={styles.composerLead}>
+            {browserRecording && recordingPhase === "recording" && (
+              <Tooltip title={t("browser.recordReplay.stop", "停止浏览器录制")}>
+                <button
+                  type="button"
+                  className={cx(styles.actionBtn, styles.actionBtnDanger)}
+                  onClick={handleEndRecording}
+                >
+                  <Square size={14} />
+                </button>
+              </Tooltip>
+            )}
+            {!browserRecording &&
+              browserLastRecordingId &&
+              !browserReplayBusy && (
+                <Tooltip
+                  title={t(
+                    "browser.recordReplay.replay",
+                    "回放最近一次浏览器录制",
+                  )}
+                >
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    disabled={isStreaming}
+                    onClick={handleReplay}
+                  >
+                    <Play size={14} />
+                  </button>
+                </Tooltip>
+              )}
+            {browserReplayBusy && (
+              <Loader2 size={14} className={styles.spinIcon} />
+            )}
+            <span className={styles.hint}>{t("chat.composerHint")}</span>
+          </span>
+          {isStreaming ? (
+            <Button
+              size="small"
+              danger
+              icon={<Square size={13} />}
+              disabled={booting || !threadId}
+              onClick={cancelStream}
             >
-              <Square size={14} />
-            </button>
-          </Tooltip>
-        )}
-        {!browserRecording && browserLastRecordingId && !browserReplayBusy && (
-          <Tooltip
-            title={t("browser.recordReplay.replay", "回放最近一次浏览器录制")}
-          >
-            <button
-              type="button"
-              className={styles.actionBtn}
-              disabled={isStreaming}
-              onClick={handleReplay}
+              {t("chat.stop")}
+            </Button>
+          ) : (
+            <Button
+              size="small"
+              type="primary"
+              icon={<Send size={13} />}
+              disabled={!inputValue.trim() || inputDisabled}
+              onClick={handleSend}
             >
-              <Play size={14} />
-            </button>
-          </Tooltip>
-        )}
-        {browserReplayBusy && <Loader2 size={14} className={styles.spinIcon} />}
-        <div className={styles.sendRow}>
-          <textarea
-            ref={textareaRef}
-            className={styles.sendTextarea}
-            value={inputValue}
-            onCompositionStart={() => {
-              imeComposingRef.current = true;
-            }}
-            onCompositionEnd={() => {
-              imeComposingRef.current = false;
-            }}
-            onChange={handleTextareaInput}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            rows={1}
-            disabled={inputDisabled}
-          />
-          <button
-            type="button"
-            className={styles.sendBtn}
-            disabled={
-              isStreaming
-                ? booting || !threadId
-                : !inputValue.trim() || inputDisabled
-            }
-            onClick={isStreaming ? cancelStream : handleSend}
-            title={
-              isStreaming
-                ? t("chat.stop", "停止")
-                : t("terminal.ai.send", "发送")
-            }
-          >
-            {isStreaming ? <Square size={16} /> : <Send size={16} />}
-          </button>
+              {t("chat.send")}
+            </Button>
+          )}
         </div>
       </div>
-    </div>
+    </>,
   );
 }

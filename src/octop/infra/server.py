@@ -6,32 +6,38 @@ import asyncio
 import gzip
 import logging
 import os
+import re
 import shutil
 import time
+import uuid
+from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from octop_harness.plugins.registry import PluginRegistry
+
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
+from octop.infra.agents.providers.store import sync_provider_preset_models
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
+from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
-from octop.infra.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.setup import password_file as _wizard_pw
-from octop.infra.setup.password_file import WIZARD_FILE_NAME
 from octop.infra.setup.wizard_tokens import WizardTokenStore
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.process_resources import ensure_nofile_limit
 
 if TYPE_CHECKING:
     from octop.infra.auth.ldap.service import LdapAuthService
@@ -79,15 +85,69 @@ class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
             delaycompress_rotated_logs(Path(dest).parent, enabled=True, keep=Path(dest))
 
     def rotation_filename(self, default_name: str) -> str:
-        """Avoid overwriting an existing daily backup when size rolls twice same day."""
-        if not os.path.exists(default_name) and not os.path.exists(f"{default_name}.gz"):
-            return default_name
+        """Place the date before ``.log``, and avoid clobbering an existing backup.
+
+        A second size-triggered roll the same day becomes ``octop.YYYY-MM-DD.log.001``.
+        """
+        named = super().rotation_filename(default_name)
+        if not os.path.exists(named) and not os.path.exists(f"{named}.gz"):
+            return named
         index = 1
         while True:
-            candidate = f"{default_name}-{index:03d}"
+            candidate = f"{named}.{index:03d}"
             if not os.path.exists(candidate) and not os.path.exists(f"{candidate}.gz"):
                 return candidate
             index += 1
+
+
+def _dated_log_namer(default_name: str) -> str:
+    """Turn ``octop.log.2026-10-16`` into ``octop.2026-10-16.log``."""
+    directory, filename = os.path.split(default_name)
+    if "." not in filename:
+        return default_name
+    base, date = filename.rsplit(".", 1)
+    stem, ext = os.path.splitext(base)
+    if not ext or not date:
+        return default_name
+    renamed = f"{stem}.{date}{ext}"
+    return os.path.join(directory, renamed) if directory else renamed
+
+
+# ``octop.log.2026-10-16``, ``octop.log.2026-10-16-001``, and their ``.gz`` forms.
+_LEGACY_ROTATED_LOG = re.compile(r"^octop\.log\.(\d{4}-\d{2}-\d{2})(?:-(\d+))?(\.gz)?$")
+# New names plus any legacy file a rename could not move.
+_ROTATED_LOG_NAME = re.compile(
+    r"^octop\.(?:"
+    r"\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?"
+    r"|"
+    r"log\.\d{4}-\d{2}-\d{2}(?:-\d+)?"
+    r")(?:\.gz)?$"
+)
+
+
+def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
+    """Rename ``octop.log.YYYY-MM-DD`` to ``octop.YYYY-MM-DD.log``."""
+    if not log_dir.is_dir():
+        return
+    for entry in list(log_dir.iterdir()):
+        match = _LEGACY_ROTATED_LOG.fullmatch(entry.name)
+        if match is None or not entry.is_file():
+            continue
+        date, index, gz = match.group(1), match.group(2), match.group(3) or ""
+        index_part = f".{index}" if index else ""
+        dest = log_dir / f"octop.{date}.log{index_part}{gz}"
+        if dest.exists():
+            continue
+        with suppress(OSError):
+            entry.rename(dest)
+
+
+def _iter_rotated_logs(log_dir: Path) -> Iterator[Path]:
+    if not log_dir.is_dir():
+        return
+    for entry in log_dir.iterdir():
+        if entry.is_file() and _ROTATED_LOG_NAME.fullmatch(entry.name):
+            yield entry
 
 
 def gzip_rotated_log(path: Path) -> None:
@@ -126,11 +186,7 @@ def delaycompress_rotated_logs(
     """
     if not enabled or not log_dir.is_dir():
         return
-    plains = [
-        entry
-        for entry in log_dir.glob("octop.log.*")
-        if entry.is_file() and not entry.name.endswith(".gz")
-    ]
+    plains = [entry for entry in _iter_rotated_logs(log_dir) if not entry.name.endswith(".gz")]
     if not plains:
         return
     keep_path = max(plains, key=lambda p: p.stat().st_mtime) if keep is None else keep
@@ -161,6 +217,21 @@ def _parse_log_max_bytes() -> int:
         return DEFAULT_LOG_MAX_BYTES
 
 
+class _OctopLogFormatter(logging.Formatter):
+    """Process log line, with the active harness agent id when one is in scope."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        text = super().format(record)
+        agent = getattr(record, "agent", None)
+        if not agent:
+            from octop_harness.observability.logging import current_log_agent_id
+
+            agent = current_log_agent_id()
+        if not agent:
+            return text
+        return f"{text} [agent={agent}]"
+
+
 def _build_log_handler(
     log_path: Path,
     retention_days: int,
@@ -178,9 +249,10 @@ def _build_log_handler(
         max_bytes=max_bytes,
         compress_rotated=compress_rotated,
     )
-    # Rotated files get a date suffix, e.g. octop.log.2026-07-16
+    # Rotated files are ``octop.YYYY-MM-DD.log`` (date before the extension).
     handler.suffix = "%Y-%m-%d"
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
+    handler.namer = _dated_log_namer
+    handler.setFormatter(_OctopLogFormatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
     return handler
 
 
@@ -194,8 +266,8 @@ def _purge_stale_logs(log_dir: Path, retention_days: int) -> None:
     if retention_days <= 0:
         return
     cutoff = time.time() - retention_days * 86400
-    for entry in log_dir.glob("octop.log.*"):
-        if entry.is_file() and entry.stat().st_mtime < cutoff:
+    for entry in _iter_rotated_logs(log_dir):
+        if entry.stat().st_mtime < cutoff:
             with suppress(OSError):
                 entry.unlink()
 
@@ -219,7 +291,6 @@ class AppRuntime:
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
     trajectory_service: TrajectoryService | None = None
-    history_archive: Any | None = None
     bridge_manager: Any | None = None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
@@ -227,8 +298,6 @@ class AppRuntime:
 
         Used when the setup wizard hot-swaps the control-plane DB while empty.
         """
-        if self.history_archive is not None:
-            raise ValueError("Restart the server to rebind a database with versioned history")
         self.user_manager.replace_services(services)
         self.agent_registry.replace_persistence(services.repos, config)
         self.gateway.replace_repos(services.repos)
@@ -237,6 +306,7 @@ class AppRuntime:
             config_repo=services.repos.proactive_care_config_repo,
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
+            thread_repo=services.repos.thread_repo,
         )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
@@ -257,6 +327,8 @@ class OctopServer:
         self.wizard_tokens = WizardTokenStore(ttl_seconds=300)
         self._started = False
         self._started_at: int | None = None
+        self.instance_id = uuid.uuid4().hex
+        self._serve_background = True
         self._sso_service: SsoService | None = None
         self._ldap_service: LdapAuthService | None = None
         self._ldap_bind_throttle: LdapBindThrottle | None = None
@@ -323,9 +395,10 @@ class OctopServer:
     def database_bound(self) -> bool:
         return self.services is not None and self.app_runtime is not None
 
-    async def start(self) -> None:
+    async def start(self, *, serve_background: bool = True) -> None:
         if self._started:
             return
+        self._serve_background = serve_background
         self.paths.ensure_root()
         # fnOS/容器内非 root 用户场景：把用户级 npm 全局 bin 目录（~/.npm-global）
         # 纳入进程 PATH，保证连接器 CLI（wecom-cli / lark-cli）可被检测与调用。
@@ -336,6 +409,12 @@ class OctopServer:
 
         apply_env_file(env_file_path(self.paths.root))
         self._setup_logging()
+        ensure_nofile_limit()
+        from octop.infra.backend.grep_safety import install_safe_grep_fallback  # noqa: PLC0415
+        from octop.infra.backend.shell_output import install_shell_output_decoding  # noqa: PLC0415
+
+        install_safe_grep_fallback()
+        install_shell_output_decoding()
         config = ensure_mobile_capabilities_probed(self.paths.config)
         self.config = config
 
@@ -353,12 +432,19 @@ class OctopServer:
         )
         self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
+        self._apply_plugin_channels()
 
         import time  # noqa: PLC0415
 
         self._started_at = int(time.time())
 
         if should_defer_control_plane_db(config, self.paths):
+            from octop.infra.history.retire_v2 import has_history_v2  # noqa: PLC0415
+
+            if has_history_v2(self.paths):
+                raise ValueError(
+                    "Cannot migrate history v2 without its original control-plane database"
+                )
             self._started = True
             self._emit_wizard_password(user_count=0)
             logger.info("control-plane database deferred until setup wizard chooses a backend")
@@ -409,6 +495,34 @@ class OctopServer:
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
 
+        added = await asyncio.get_running_loop().run_in_executor(
+            None, sync_provider_preset_models, self.services.provider_repo
+        )
+        if added:
+            logger.info("Added %d newly bundled provider models", added)
+
+        from octop.infra.agents.experts.snapshot_store import (  # noqa: PLC0415
+            adopt_local_snapshots,
+        )
+        from octop.infra.users.profile_avatar import adopt_local_avatars  # noqa: PLC0415
+
+        adopt_local_avatars(
+            self.services.profile_avatar_repo,
+            self.services.settings_repo,
+            self.paths,
+        )
+        adopt_local_snapshots(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+            self.paths.published_experts_dir,
+        )
+        self.plugin_manager.attach_control_plane(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+        )
+        self.plugin_manager.seed_bundled()
+        self.plugin_manager.load_installed(install_deps=True)
+
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             configure_browser_idle_timeout,
         )
@@ -423,36 +537,21 @@ class OctopServer:
             plugin_manager=self.plugin_manager,
         )
 
+        from octop.infra.history.retire_v2 import migrate_history_v2  # noqa: PLC0415
+
+        try:
+            await asyncio.to_thread(migrate_history_v2, self.paths, self.services.db, registry)
+        except Exception:
+            self.services.db.close()
+            self.services = None
+            raise
+
         from octop.infra.history.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
         from octop.infra.history.trajectory.service import TrajectoryService  # noqa: PLC0415
         from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
-        history_archive = None
-        trajectory_store = TrajectoryStore(self.services.trajectory_event_repo)
-        archive_path = self.paths.root / "history_v2.sqlite"
-        if (
-            config.history_v2_enabled
-            or archive_path.exists()
-            or archive_path.with_suffix(".required").exists()
-        ):
-            from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
-            from octop.infra.history.store import HistoryStore  # noqa: PLC0415
-            from octop.infra.history.trajectory_compat import (
-                ArchiveTrajectoryStore,  # noqa: PLC0415
-            )
-
-            identity = str(config.database.resolve_sqlite_path(self.paths.root).resolve())
-            if not config.database.is_sqlite:
-                raise ValueError("Versioned history currently requires the SQLite control plane")
-            history_archive = HistoryArchive(
-                HistoryStore(archive_path, identity=identity),
-                self.services.thread_message_repo,
-                self.services.trajectory_event_repo,
-                enabled=config.history_v2_enabled,
-            )
-            trajectory_store = ArchiveTrajectoryStore(history_archive)
         trajectory_service = TrajectoryService(
-            trajectory_store,
+            TrajectoryStore(self.services.trajectory_event_repo),
             TrajectoryLiveBus(),
         )
 
@@ -460,9 +559,9 @@ class OctopServer:
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
-            history_archive=history_archive,
+            instance_id=self.instance_id,
         )
-        await gateway.boot()
+        await gateway.boot(serve_background=self._serve_background)
 
         from octop import __version__  # noqa: PLC0415
 
@@ -486,16 +585,18 @@ class OctopServer:
             delivery_service=cron_delivery,
             repos=self.services.repos,
             timezone=config.default_timezone,
+            instance_id=self.instance_id,
         )
-        await cron_mgr.boot()
+        await cron_mgr.boot(serve_background=self._serve_background)
 
-        from octop.infra.setup.tls.renewal import install_auto_renewal_job
+        if self._serve_background:
+            from octop.infra.setup.tls.renewal import install_auto_renewal_job
 
-        install_auto_renewal_job(cron_mgr, paths=self.paths)
+            install_auto_renewal_job(cron_mgr, paths=self.paths)
 
-        from octop.infra.backup.auto import install_auto_backup_job
+            from octop.infra.backup.auto import install_auto_backup_job
 
-        install_auto_backup_job(cron_mgr, server=self)
+            install_auto_backup_job(cron_mgr, server=self)
 
         registry.set_cron_manager(cron_mgr)
         registry.set_team_processor(gateway.processor.teams)
@@ -515,18 +616,26 @@ class OctopServer:
             session_repo=self.services.repos.session_repo,
             agent_repo=self.services.repos.agent_repo,
             user_repo=self.services.repos.user_repo,
+            thread_repo=self.services.repos.thread_repo,
+            care_push_repo=self.services.repos.care_push_repo,
+            is_agent_busy=registry.is_agent_active,
             default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)
 
         await registry.boot()
+        registry.schedule_idle_reclaim_sweep()
         await gateway.refresh_media_backends()
 
         user_mgr = UserManager(self.services)
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
-        from octop.infra.auth.tokens import sign_token
+        from octop.infra.auth.mfa import MfaService
+
+        MfaService(self.services).prune()
+
+        from octop.infra.auth.tokens import PURPOSE_ACCESS, sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 
         services = self.services
@@ -538,12 +647,18 @@ class OctopServer:
             if secret is None:
                 raise RuntimeError("jwt secret missing")
             ttl = services.config.access_token_ttl_seconds
+            row = services.user_repo.get(int(user.id))
+            mfa_version = int(row.mfa_version) if row is not None else 0
+            password_version = int(row.password_version) if row is not None else 0
             return sign_token(
                 secret,
                 sub=int(user.id),
                 uname=str(user.username),
                 role=str(user.role),
+                purpose=PURPOSE_ACCESS,
                 ttl_seconds=ttl,
+                mfa_version=mfa_version,
+                password_version=password_version,
             )
 
         advertise = public_base_url_from_config(config.bind_host, config.port)
@@ -562,11 +677,22 @@ class OctopServer:
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
             trajectory_service=trajectory_service,
-            history_archive=history_archive,
             bridge_manager=bridge_mgr,
         )
+        from octop.infra.knowledge.gate import (  # noqa: PLC0415
+            warn_if_local_embedding_deps_missing,
+        )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
+        from octop.infra.knowledge.ocr import warn_if_local_ocr_deps_missing  # noqa: PLC0415
 
+        warn_if_local_embedding_deps_missing(
+            self.services.settings_repo.get,
+            self.services.provider_repo,
+        )
+        warn_if_local_ocr_deps_missing(
+            self.services.settings_repo.get,
+            self.services.provider_repo,
+        )
         resume_pending_index_jobs(self.services)
 
         # Resume Bridge links that opted into auto-reconnect (best-effort).
@@ -576,34 +702,87 @@ class OctopServer:
 
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
 
+    async def refresh_plugin_channels(self) -> None:
+        """Reconcile only changed kinds and report registration failures to callers."""
+        from octop.infra.errors import ErrorCode, OctopError
+        from octop.infra.gateway.plugin_channels import (
+            changed_plugin_channel_kinds,
+            current_registration_errors,
+        )
+
+        changed = changed_plugin_channel_kinds(PluginRegistry())
+        if self.app_runtime is not None:
+            await self.app_runtime.gateway.reload_plugin_channels(
+                self._apply_plugin_channels, kinds=changed
+            )
+        else:
+            self._apply_plugin_channels()
+        errors = current_registration_errors()
+        if errors:
+            raise OctopError(
+                ErrorCode.PLUGIN_INSTALL_FAILED,
+                "plugin channel registration failed",
+                details={"registration_errors": errors},
+            )
+
+    def _apply_plugin_channels(self) -> None:
+        """Register plugin-contributed channel kinds with the gateway.
+
+        Called after every plugin load/reload so channel kinds are always in
+        sync with the plugin registry. Best-effort: a failure in one plugin's
+        registration never blocks boot (already handled inside
+        ``apply_plugin_channels``).
+        """
+        if self.plugin_manager is None:
+            return
+        try:
+            from octop.infra.gateway.plugin_channels import apply_plugin_channels  # noqa: PLC0415
+
+            apply_plugin_channels(registry=PluginRegistry())
+        except Exception:
+            logger.exception("applying plugin channel kinds failed")
+
     def _emit_wizard_password(self, *, user_count: int) -> None:
         config = self.config
         if config is None:
             return
-        wizard_home = Path.home()
+        wizard_home = self.paths.root
         if config.require_setup_password:
             try:
-                new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_count)
+                new_pw = _wizard_pw.boot_self_heal(
+                    wizard_home,
+                    user_count=user_count,
+                    legacy_home=Path.home(),
+                )
             except OSError as err:
                 logger.warning("wizard self-heal failed: %s", err)
                 new_pw = None
         else:
             new_pw = None
         if new_pw is not None:
+            file_path = _wizard_pw.resolve_password_path(wizard_home, legacy_home=Path.home())
+            try:
+                rel = file_path.relative_to(Path.home())
+                display_file = f"~/{rel.as_posix()}"
+            except ValueError:
+                display_file = str(file_path)
+            file_label = f"File: {display_file}"
+            if len(file_label) > 54:
+                file_label = f"File: ...{str(file_path)[-(54 - 9) :]}"
             banner = (
                 "\n\033[33m"
                 "╔══════════════════════════════════════════════════════════╗\n"
                 "║  Octop first-run wizard password (one-time use):          ║\n"
                 f"║  {new_pw:<54}  ║\n"
                 "║  Open the dashboard and paste it into the setup wizard.  ║\n"
-                "║  File: ~/octop-login.txt                                   ║\n"
+                f"║  {file_label:<54}  ║\n"
                 "╚══════════════════════════════════════════════════════════╝"
                 "\033[0m\n"
             )
             print(banner, flush=True)
             logger.info(
                 "wizard password generated; file=%s",
-                wizard_home / WIZARD_FILE_NAME,
+                file_path,
             )
 
     async def stop(self) -> None:
@@ -620,8 +799,6 @@ class OctopServer:
                 await rt.gateway.shutdown()
                 await rt.agent_registry.shutdown()
                 await rt.user_manager.shutdown_all()
-                if rt.history_archive is not None:
-                    rt.history_archive.store.close()
             from octop.infra.backend.browse import dispose_all_browse_sessions
 
             dispose_all_browse_sessions()
@@ -649,6 +826,7 @@ class OctopServer:
         retention_days = _parse_log_retention_days()
         max_bytes = _parse_log_max_bytes()
         compress_rotated = _parse_log_compress()
+        _migrate_legacy_rotated_logs(log_dir)
         handler = _build_log_handler(
             log_path,
             retention_days,

@@ -64,6 +64,7 @@ def _is_header_tunneled_path(path: str) -> bool:
         "/api/knowledge-bases/capability",
         "/api/browser/env-status",
         "/api/browser/harness-sessions",
+        "/api/settings/hitl",
     }:
         return True
     return raw == "/api/acp" or raw.startswith("/api/acp/")
@@ -202,6 +203,21 @@ def _forward_headers(request: Request, remote_agent_id: str) -> dict[str, str]:
     return headers
 
 
+def _is_websocket_upgrade(headers: Any) -> bool:
+    """True only for a real WebSocket handshake.
+
+    A reverse proxy often sets ``Connection: upgrade`` on every request
+    (``proxy_set_header Connection "upgrade"``) and leaves ``Upgrade`` empty.
+    Those requests must still be tunneled. ``Connection`` may also be a list.
+    """
+    connection = headers.get("connection") or ""
+    tokens = {part.strip().lower() for part in str(connection).split(",") if part.strip()}
+    if "upgrade" not in tokens:
+        return False
+    upgrade = headers.get("upgrade") or ""
+    return "websocket" in {part.strip().lower() for part in str(upgrade).split(",") if part.strip()}
+
+
 def install(app: Any, server: Any) -> None:
     if getattr(app, _INSTALL_ATTR, False):
         return
@@ -219,8 +235,8 @@ def install(app: Any, server: Any) -> None:
         )
         if target is None:
             return await call_next(request)
-        # WebSocket upgrades are handled by the chat/bridge routers.
-        if (request.headers.get("connection") or "").lower() == "upgrade":
+        # Real WebSocket upgrades are handled by the chat/bridge routers.
+        if _is_websocket_upgrade(request.headers):
             return await call_next(request)
 
         user = getattr(request.state, "octop_user", None)
@@ -279,6 +295,24 @@ def install(app: Any, server: Any) -> None:
             )
 
         content = peer_resp.content
+        if peer_resp.status_code >= 400:
+            peer_code: str | None = None
+            try:
+                payload = peer_resp.json()
+                error = payload.get("error") if isinstance(payload, dict) else None
+                if isinstance(error, dict):
+                    raw_code = error.get("code")
+                    peer_code = str(raw_code) if raw_code is not None else None
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                pass
+            logger.warning(
+                "bridge peer request rejected connection=%s method=%s path=%s status=%s code=%s",
+                target.ref.connection_id,
+                request.method,
+                target.remote_path,
+                peer_resp.status_code,
+                peer_code or "unknown",
+            )
         media = peer_resp.headers.get("content-type", "")
         if "json" in media:
             try:

@@ -11,6 +11,7 @@ from octop.i18n.domains.agents import (
 from octop.i18n.domains.attachment import (
     attachment_empty_image,
     attachment_empty_message,
+    attachment_extracted_body,
     attachment_image_unavailable,
     attachment_path_hint,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "agent_state_label",
     "attachment_empty_image",
     "attachment_empty_message",
+    "attachment_extracted_body",
     "attachment_image_unavailable",
     "attachment_path_hint",
     "classify_agent_start_error_message",

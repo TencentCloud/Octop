@@ -6,6 +6,19 @@ from typing import Any
 
 import yaml
 
+_BOM = "\ufeff"
+
+
+def _without_bom(text: str) -> str:
+    """Drop a single leading UTF-8 BOM.
+
+    Notepad and the Windows PowerShell 5.1 ``Set-Content -Encoding UTF8``
+    switch write one into markdown files. ``U+FEFF`` is not whitespace, so a
+    BOM'd ``---`` fence is not recognized as frontmatter and the whole file
+    becomes its own body; the metadata is silently lost.
+    """
+    return text.removeprefix(_BOM)
+
 
 def _find_frontmatter(text: str) -> tuple[int, int] | None:
     """Locate the YAML frontmatter block (``---`` ... ``---``) in *text*.
@@ -14,6 +27,8 @@ def _find_frontmatter(text: str) -> tuple[int, int] | None:
     comments or empty lines are skipped.  Returns ``(start, end)`` where
     *start* is the index of the first ``---`` line and *end* is the index
     of the closing ``---`` line, or ``None`` when no valid block exists.
+
+    Callers should pass text already normalized by :func:`_without_bom`.
     """
     # Fast path: frontmatter at very beginning
     if text.startswith("---\n") or text.startswith("---\r\n"):
@@ -67,8 +82,10 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     no-frontmatter (the file is its own body).
 
     The frontmatter block may be preceded by HTML comments or empty lines;
-    the first ``---`` ... ``---`` fence anywhere in the file is used.
+    the first ``---`` ... ``---`` fence anywhere in the file is used. A single
+    leading UTF-8 BOM is ignored (it is an encoding artifact, not content).
     """
+    text = _without_bom(text)
     positions = _find_frontmatter(text)
     if positions is None:
         return {}, text
@@ -88,7 +105,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 def is_agent_file(text: str) -> bool:
     """True when the file contains a YAML frontmatter fence.
 
-    Leading HTML comments and empty lines are tolerated; the first
-    ``---\\n`` fence in the file is recognized as the frontmatter start.
+    Leading HTML comments, empty lines and a single UTF-8 BOM are tolerated;
+    the first ``---\\n`` fence in the file is recognized as the frontmatter start.
     """
-    return _find_frontmatter(text) is not None
+    return _find_frontmatter(_without_bom(text)) is not None

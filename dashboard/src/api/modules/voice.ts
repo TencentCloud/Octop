@@ -26,6 +26,8 @@ export interface VoiceProviderRow {
 export interface ActiveVoice {
   stt: string;
   tts: string;
+  /** True when the active STT provider streams results over WebSocket. */
+  stt_realtime?: boolean;
 }
 
 export interface VoiceProviderInput {

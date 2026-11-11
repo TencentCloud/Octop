@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 import time
+import uuid
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -16,6 +19,7 @@ from octop_gateway.manager import ChannelManager
 from octop_gateway.models import ChannelSubject
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
+from octop.infra.db.lease import LEASE_SECONDS, RECONCILE_SECONDS
 from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
@@ -28,8 +32,10 @@ from octop.infra.gateway.process.response_mode import (
     normalize_channel_response_mode,
     processor_for_response_mode,
     qq_channel_response_mode,
+    wrap_weixin_stream_processor,
 )
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
+from octop.infra.gateway.steer import SteerCoordinator
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import (
     WS_CHANNEL_ID,
@@ -73,6 +79,8 @@ class ChannelRuntimeStatus:
     reason: str | None = None
     detail: str | None = None
     updated_at: int = 0
+    lease_owner: str | None = None
+    lease_until: int | None = None
 
 
 @dataclass
@@ -91,6 +99,12 @@ async def _probe_processor(_msg: Any) -> Any:
         yield None
 
 
+@dataclass
+class _ChannelLease:
+    token: str
+    generation: int
+
+
 class Gateway:
     """Global AI interaction entry point.
 
@@ -104,12 +118,12 @@ class Gateway:
         agent_manager: AgentManager,
         repos: RepoBundle,
         trajectory_service: Any | None = None,
-        history_archive: Any | None = None,
+        instance_id: str | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._repos = repos
+        self._instance_id = instance_id or uuid.uuid4().hex
         self._trajectory_service = trajectory_service
-        self._history_archive = history_archive
         self._thread_registry = ThreadRegistry(
             session_repo=repos.session_repo,
             thread_repo=repos.thread_repo,
@@ -120,9 +134,13 @@ class Gateway:
         self._slash_meta: SlashRuntimeMeta | None = None
         self._ws_hub = WebSocketHub()
         self._cli_hub = CliHub()
+        self._steer = SteerCoordinator()
         self._ws_channel: WebSocketChannel | None = None
         self._cli_channel: CliChannel | None = None
         self._runtime_status: dict[str, ChannelRuntimeStatus] = {}
+        self._held_channels: dict[str, _ChannelLease] = {}
+        self._claim_channels = True
+        self._reconcile_task: asyncio.Task[None] | None = None
         self._history_backfill = HistoryBackfillQueue()
 
     def replace_repos(self, repos: RepoBundle) -> None:
@@ -139,6 +157,10 @@ class Gateway:
     @property
     def ws_hub(self) -> WebSocketHub:
         return self._ws_hub
+
+    @property
+    def steer(self) -> SteerCoordinator:
+        return self._steer
 
     @property
     def cli_hub(self) -> CliHub:
@@ -183,7 +205,7 @@ class Gateway:
 
     def get_runtime_status(self, channel_id: str) -> ChannelRuntimeStatus | None:
         status = self._runtime_status.get(channel_id)
-        if status is None or status.reason in ("disabled", "unregistered"):
+        if status is None or status.reason in ("disabled", "unregistered", "other_instance"):
             return status
         channel = self._channel_manager.get_channel(channel_id) if self._channel_manager else None
         connected = getattr(channel, "is_connected", None)
@@ -211,13 +233,41 @@ class Gateway:
             if status.detail:
                 detail = self._format_probe_error(RuntimeError(status.detail), locale)
                 error = f"{error}: {detail}"
-        return {
+        out: dict[str, Any] = {
             "connected": status.connected,
             "error": error,
             "updated_at": status.updated_at,
         }
+        channel = self._channel_manager.get_channel(channel_id) if self._channel_manager else None
+        metrics = getattr(channel, "health_metrics", None)
+        if callable(metrics):
+            out.update(metrics())
+        if status.lease_owner:
+            out["lease_owner"] = status.lease_owner
+        if status.lease_until is not None:
+            out["lease_until"] = status.lease_until
+        return out
 
-    async def boot(self) -> None:
+    def channel_health(self) -> list[dict[str, Any]]:
+        """Per-channel liveness counters. Message bodies are not included."""
+        if self._channel_manager is None:
+            return []
+        rows: list[dict[str, Any]] = []
+        for channel_id in self._channel_manager.channel_ids:
+            channel = self._channel_manager.get_channel(channel_id)
+            status = self.get_runtime_status(channel_id)
+            metrics = getattr(channel, "health_metrics", None)
+            row: dict[str, Any] = {
+                "id": channel_id,
+                "type": getattr(channel, "channel_type", ""),
+                "connected": bool(status.connected) if status is not None else False,
+            }
+            if callable(metrics):
+                row.update(metrics())
+            rows.append(row)
+        return rows
+
+    async def boot(self, *, serve_background: bool = True) -> None:
         from octop.infra.gateway.process.channel_thinking import (
             install_channel_thinking_clean,
         )
@@ -238,7 +288,6 @@ class Gateway:
             thread_message_repo=self._repos.thread_message_repo,
             gateway=self,
             trajectory_service=self._trajectory_service,
-            history_archive=self._history_archive,
         )
 
         self._channel_manager = ChannelManager(channels={})
@@ -248,6 +297,7 @@ class Gateway:
         self._ws_channel = WebSocketChannel(
             self._processor,
             hub=self._ws_hub,
+            steer=self._steer,
             channel_id=WS_CHANNEL_ID,
         )
         await self._channel_manager.add_channel(self._ws_channel)
@@ -259,11 +309,15 @@ class Gateway:
         )
         await self._channel_manager.add_channel(self._cli_channel)
 
-        rows = self._repos.channel_repo.list_all(include_disabled=False)
-        if rows:
-            await asyncio.gather(*(self._safe_register_channel(row) for row in rows))
+        self._claim_channels = serve_background
+        if serve_background:
+            await self.reconcile_channels()
+            self._reconcile_task = asyncio.create_task(
+                self._reconcile_loop(),
+                name="channel-reconcile",
+            )
 
-        logger.info("Gateway booted")
+        logger.info("Gateway booted; instance %s", self._instance_id)
 
     async def refresh_media_backends(self) -> None:
         """Re-set media backends on all registered channels.
@@ -281,6 +335,21 @@ class Gateway:
             backend = media_backend_for_agent(self._agent_manager, row.agent_id)
             if backend is not None:
                 channel.set_media_backend(backend)
+
+    async def reload_plugin_channels(self, apply: Callable[[], None], *, kinds: set[str]) -> None:
+        """Stop plugin channels before replacing factories; preserve DB rows."""
+        rows = [
+            row
+            for row in self._repos.channel_repo.list_all(include_disabled=False)
+            if row.kind in kinds
+        ]
+        if self._channel_manager is not None:
+            for row in rows:
+                await self._unregister(row.channel_id)
+        apply()
+        if self._channel_manager is not None:
+            for row in rows:
+                await self._safe_register_channel(row)
 
     async def reload_channels_from_db(self) -> None:
         """Drop and re-register enabled IM channels from the DB.
@@ -302,16 +371,25 @@ class Gateway:
             if channel_id not in builtin:
                 self._runtime_status.pop(channel_id, None)
 
-        rows = self._repos.channel_repo.list_all(include_disabled=False)
-        if rows:
-            await asyncio.gather(*(self._safe_register_channel(row) for row in rows))
+        await self.reconcile_channels()
         await self.refresh_media_backends()
-        logger.info("Gateway channels reloaded from DB (%d enabled)", len(rows))
+        enabled = self._repos.channel_repo.list_all(include_disabled=False)
+        logger.info("Gateway channels reloaded from DB (%d enabled)", len(enabled))
 
     async def shutdown(self) -> None:
         await self._history_backfill.close()
+        task = self._reconcile_task
+        self._reconcile_task = None
+        if task is not None:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        held = list(self._held_channels.items())
         if self._channel_manager:
             await self._channel_manager.stop()
+        for channel_id, lease in held:
+            self._repos.channel_repo.release_runtime_lease(channel_id, token=lease.token)
+        self._held_channels.clear()
         self._channel_manager = None
         self._processor = None
         self._ws_channel = None
@@ -440,14 +518,18 @@ class Gateway:
     ) -> None:
         """Deliver one complete proactive message to a resolved session."""
         channel_id = self._channel_id_for_session(session)
-        await self.push_text(
-            session.channel_type,
-            channel_id,
-            self._resolve_push_subject(session),
-            text,
-        )
-        if ThreadRegistry.is_virtual_channel(session.channel_type):
-            self._bump_virtual_session(session, title_source or text)
+        try:
+            await self.push_text(
+                session.channel_type,
+                channel_id,
+                self._resolve_push_subject(session),
+                text,
+            )
+        finally:
+            # Title the conversation even when the channel push fails. Otherwise
+            # the thread stays "New Chat" until the user sends a follow-up.
+            if ThreadRegistry.is_virtual_channel(session.channel_type):
+                self._bump_virtual_session(session, title_source or text)
 
     @staticmethod
     def _channel_id_for_session(session: SessionRow) -> str:
@@ -574,7 +656,11 @@ class Gateway:
     async def probe_channel(
         self, channel_id: str, *, locale: Locale = DEFAULT_LOCALE
     ) -> dict[str, Any]:
-        """Start/stop an ephemeral channel instance to verify credentials."""
+        """Verify credentials with a short-lived connection.
+
+        Probe does not take the runtime lease, so it can briefly overlap the
+        instance that owns the saved channel.
+        """
         row = self.get_channel(channel_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "channel not found")
@@ -663,19 +749,83 @@ class Gateway:
         connected: bool,
         reason: str | None = None,
         detail: str | None = None,
+        lease_owner: str | None = None,
+        lease_until: int | None = None,
     ) -> None:
         self._runtime_status[channel_id] = ChannelRuntimeStatus(
             connected=connected,
             reason=reason,
             detail=detail,
             updated_at=int(time.time()),
+            lease_owner=lease_owner,
+            lease_until=lease_until,
         )
 
+    async def reconcile_channels(self) -> None:
+        """Claim free channels and drop ones whose lease or generation no longer matches."""
+        if not self._claim_channels or self._channel_manager is None:
+            return
+        rows = self._repos.channel_repo.list_all(include_disabled=False)
+        live = {row.channel_id: row for row in rows}
+        for channel_id, held in list(self._held_channels.items()):
+            row = live.get(channel_id)
+            if row is None or row.runtime_generation != held.generation:
+                await self._unregister(channel_id)
+                continue
+            renewed = self._repos.channel_repo.renew_runtime_lease(
+                channel_id,
+                token=held.token,
+                generation=held.generation,
+                lease_seconds=LEASE_SECONDS,
+            )
+            if not renewed:
+                await self._unregister(channel_id)
+        for row in rows:
+            if row.channel_id not in self._held_channels:
+                await self._safe_register_channel(row)
+
+    async def _reconcile_loop(self) -> None:
+        while True:
+            await asyncio.sleep(RECONCILE_SECONDS + random.uniform(0, 5))
+            try:
+                await self.reconcile_channels()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("channel reconcile failed")
+
     async def _safe_register_channel(self, row: ChannelRow) -> None:
+        if not self._claim_channels:
+            return
+        if row.channel_id in self._held_channels:
+            return
+        claimed = self._repos.channel_repo.claim_runtime_lease(
+            row.channel_id,
+            owner=self._instance_id,
+            lease_seconds=LEASE_SECONDS,
+        )
+        if claimed is None:
+            current = self._repos.channel_repo.get(row.channel_id)
+            owner = current.runtime_lease_owner if current is not None else None
+            until = current.runtime_lease_until if current is not None else None
+            reason = "other_instance" if current is not None and current.enabled else "unregistered"
+            self._set_runtime_status(
+                row.channel_id,
+                connected=False,
+                reason=reason,
+                lease_owner=owner,
+                lease_until=until,
+            )
+            return
+        self._held_channels[row.channel_id] = _ChannelLease(
+            token=str(claimed.runtime_lease_token or ""),
+            generation=claimed.runtime_generation,
+        )
         try:
-            await self._register_channel(row)
+            await self._register_channel(claimed)
         except Exception as exc:
             logger.exception("Failed to register channel %s (%s)", row.channel_id, row.kind)
+            await self._unregister(row.channel_id)
             self._set_runtime_status(
                 row.channel_id, connected=False, reason="error", detail=str(exc)
             )
@@ -684,6 +834,8 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
+        if row.kind == "feishu":
+            config = self._with_feishu_dedup_path(config)
         from octop.infra.agents.teams.service import is_team_agent  # noqa: PLC0415
 
         team_host = False
@@ -701,6 +853,8 @@ class Gateway:
         else:
             response_mode = normalize_channel_response_mode(config.get("response_mode"))
         processor = processor_for_response_mode(self._processor, response_mode)
+        if row.kind == "weixin" and response_mode == "stream":
+            processor = wrap_weixin_stream_processor(processor)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,
@@ -715,6 +869,24 @@ class Gateway:
             if backend is not None:
                 registered.set_media_backend(backend)
         self._set_runtime_status(row.channel_id, connected=True)
+        if row.kind == "weixin" and registered is not None:
+            self._listen_for_weixin_context_token(registered, row)
+
+    def _listen_for_weixin_context_token(self, channel: Any, row: ChannelRow) -> None:
+        """Persist a refreshed iLink send token onto the matching WeChat session."""
+        listener = getattr(channel, "set_context_token_listener", None)
+        if listener is None:
+            return
+
+        def _persist(_account_id: str, user_id: str, token: str, token_ms: int) -> None:
+            self._repos.session_repo.remember_weixin_context_token(
+                agent_id=str(channel.tenant_id or row.agent_id),
+                subject_id=user_id,
+                token=token,
+                token_ms=token_ms,
+            )
+
+        listener(_persist)
 
     def _config_from_row(self, row: ChannelRow) -> dict[str, Any]:
         """Parse the stored JSON config; alias/normalize happens in ``Config.from_dict``."""
@@ -732,11 +904,33 @@ class Gateway:
             )
         return raw
 
+    def _with_feishu_dedup_path(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Point Feishu dedup at this install's data directory.
+
+        The channel library only opens a SQLite file when a path is set.
+        Restart and re-register then still recognize message ids Feishu redelivers.
+        An explicit ``dedup_db_path`` in the channel config is left as-is.
+        """
+        if str(config.get("dedup_db_path") or "").strip():
+            return config
+        paths = getattr(self._agent_manager, "_paths", None)
+        root = getattr(paths, "root", None)
+        if root is None:
+            from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+            root = PathLayout.from_env().root
+        updated = dict(config)
+        updated["dedup_db_path"] = str(root / "feishu-dedup.sqlite")
+        return updated
+
     async def _unregister(self, channel_id: str) -> None:
-        if not self._channel_manager:
-            return
-        try:
-            await self._channel_manager.remove_channel(channel_id)
-        except Exception:
-            logger.exception("Failed to unregister channel %s", channel_id)
+        """Disconnect locally, then release only the lease this process holds."""
+        if self._channel_manager is not None:
+            try:
+                await self._channel_manager.remove_channel(channel_id)
+            except Exception:
+                logger.exception("Failed to unregister channel %s", channel_id)
+        held = self._held_channels.pop(channel_id, None)
+        if held is not None and held.token:
+            self._repos.channel_repo.release_runtime_lease(channel_id, token=held.token)
         self._set_runtime_status(channel_id, connected=False, reason="unregistered")

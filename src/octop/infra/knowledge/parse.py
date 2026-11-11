@@ -55,6 +55,13 @@ def parse_document(path: Path, *, ocr: OcrExtractor | None = None) -> str:
         return ocr(path)
     if suffix == ".docx":
         return _parse_docx(path)
+    if suffix in {".wps", ".doc"}:
+        from octop.infra.utils.anydoc_convert import extract_markdown_file
+
+        text = extract_markdown_file(path)
+        if not text.strip():
+            raise ValueError(f"failed to extract text from {suffix} document")
+        return text
     if suffix == ".pptx":
         from pptx import Presentation
 

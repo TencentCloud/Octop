@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Check, Import, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
@@ -42,6 +43,18 @@ function skillAvatarFallback(skill: SkillSpec): string {
   return name.charAt(0).toUpperCase();
 }
 
+/** User-installed skills first; built-in skills last. */
+function skillPickerKindRank(kind: SkillSpec["kind"]): number {
+  switch (kind) {
+    case "workspace":
+      return 0;
+    case "package":
+      return 1;
+    case "builtin":
+      return 2;
+  }
+}
+
 export default function SkillPickerPopover({
   skills,
   activeSlugs = null,
@@ -62,7 +75,12 @@ export default function SkillPickerPopover({
   }, [activeSlugs]);
 
   const enabledSkills = useMemo(
-    () => skills.filter((s) => s.enabled),
+    () =>
+      skills
+        .filter((skill) => skill.enabled)
+        .sort(
+          (a, b) => skillPickerKindRank(a.kind) - skillPickerKindRank(b.kind),
+        ),
     [skills],
   );
 
@@ -115,9 +133,10 @@ export default function SkillPickerPopover({
           <button
             key={skill.slug}
             type="button"
-            className={`${styles.skillPickerItem} ${
-              active ? styles.skillPickerItemActive : ""
-            }`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.skillPickerItemActive,
+            )}
             aria-pressed={active}
             onClick={() => {
               onSelectSkill(skill.slug);

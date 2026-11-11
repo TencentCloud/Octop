@@ -4,15 +4,21 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
-from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
+from octop.infra.agents.providers.model_flags import (
+    is_chat_eligible_model,
+    is_local_runtime_provider,
+    is_vision_model,
+)
 from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
+    from octop.infra.crypto.sealed_repos import SealedProviderRepo
     from octop.infra.db.repos.agents import AgentRow
     from octop.infra.db.repos.providers import ProviderRepo
 
@@ -23,6 +29,199 @@ KIND_TO_PROTOCOL: dict[str, str] = {
     "azure": "openai",
     "gemini": "openai",
 }
+
+_PRESET_PROVIDER_KEYS: frozenset[str] | None = None
+
+
+def _preset_provider_keys() -> frozenset[str]:
+    """Lowercased bundled preset ids and display names."""
+    global _PRESET_PROVIDER_KEYS
+    if _PRESET_PROVIDER_KEYS is None:
+        from octop.infra.agents.providers.presets import load_provider_presets
+
+        keys: set[str] = set()
+        for preset in load_provider_presets():
+            for raw in (preset.get("id"), preset.get("name")):
+                if isinstance(raw, str) and raw.strip():
+                    keys.add(raw.strip().lower())
+        _PRESET_PROVIDER_KEYS = frozenset(keys)
+    return _PRESET_PROVIDER_KEYS
+
+
+def resolve_provider_stream_usage(
+    *,
+    provider_name: str | None,
+    extra: dict[str, Any] | None = None,
+) -> bool:
+    """Whether ChatOpenAI should send ``stream_options.include_usage``.
+
+    Harness defaults this on so streamed replies carry token usage. Strict
+    OpenAI-compatible stacks (Huawei MindIE, older relays) 422 on that field.
+    Custom providers therefore default off; bundled presets stay on.
+    ``extra_json.stream_usage`` always wins.
+    """
+    if extra is not None and "stream_usage" in extra:
+        return bool(extra["stream_usage"])
+    name = (provider_name or "").strip().lower()
+    return bool(name) and name in _preset_provider_keys()
+
+
+def merge_stream_usage_extra(
+    extra_json: str | None,
+    stream_usage: bool | None,
+) -> str | None:
+    """Write ``stream_usage`` into *extra_json*. ``None`` leaves the blob unchanged."""
+    if stream_usage is None:
+        return extra_json
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    extra["stream_usage"] = bool(stream_usage)
+    return json.dumps(extra)
+
+
+def merge_default_model_extra(extra_json: str | None, model: str | None) -> str | None:
+    """Write or clear the connection-test model inside *extra_json*.
+
+    A blank value removes ``default_model`` so the settings form can stay empty.
+    Other keys in the blob are left in place.
+    """
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    cleaned = (model or "").strip()
+    if cleaned:
+        extra["default_model"] = cleaned
+    else:
+        extra.pop("default_model", None)
+    return json.dumps(extra) if extra else None
+
+
+def merge_provider_purpose_extra(
+    extra_json: str | None,
+    purpose: str | None,
+) -> str | None:
+    """Write ``purpose`` (``chat`` / ``embedding``) into *extra_json*.
+
+    ``None`` leaves the blob unchanged. Unknown values are ignored.
+    """
+    if purpose is None:
+        return extra_json
+    normalized = purpose.strip().lower()
+    if normalized not in {"chat", "embedding"}:
+        return extra_json
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    extra["purpose"] = normalized
+    return json.dumps(extra)
+
+
+def resolve_provider_purpose(
+    *,
+    provider_name: str | None,
+    provider_api_key: str | None = None,
+    extra: dict[str, Any] | None = None,
+    models: list[dict[str, Any]] | None = None,
+) -> str:
+    """Return the UI purpose for a provider: ``embedding`` or ``chat``."""
+    from octop.infra.agents.providers.model_flags import is_embedding_provider
+
+    if is_embedding_provider(
+        provider_name=provider_name,
+        provider_api_key=provider_api_key,
+        extra=extra,
+        models=models,
+    ):
+        return "embedding"
+    return "chat"
+
+
+def stamp_embedding_models(models: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    """Force ``embedding`` / ``task`` flags on every model entry."""
+    if models is None:
+        return None
+    stamped: list[dict[str, Any]] = []
+    for model in models:
+        entry = dict(model)
+        entry["embedding"] = True
+        entry["task"] = "embedding"
+        stamped.append(entry)
+    return stamped
+
+
+def _provider_extra_dict(row: Any) -> dict[str, Any]:
+    raw = getattr(row, "extra_json", None)
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        extra = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return extra if isinstance(extra, dict) else {}
+
+
+def sync_provider_preset_models(provider_repo: ProviderRepo | SealedProviderRepo) -> int:
+    """Append newly bundled cloud models, enabled, without replacing user settings."""
+    from octop.infra.agents.providers.presets import load_provider_presets
+
+    presets = load_provider_presets()
+    added = 0
+    for row in provider_repo.list_all():
+        if is_local_runtime_provider(row.name, provider_api_key=row.api_key):
+            continue
+        models = row.get_models()
+        purpose = resolve_provider_purpose(
+            provider_name=row.name,
+            provider_api_key=row.api_key,
+            extra=_provider_extra_dict(row),
+            models=models,
+        )
+        preset = next(
+            (
+                p
+                for p in presets
+                if row.name in {p["id"], p["name"]}
+                and KIND_TO_PROTOCOL.get(row.kind, row.kind) == p["protocol"]
+                and (row.base_url or "").strip().rstrip("/")
+                == (p.get("base_url") or "").strip().rstrip("/")
+                and purpose == (p.get("purpose") or "chat")
+            ),
+            None,
+        )
+        if preset is None:
+            continue
+        existing = {model["id"] for model in models}
+        missing = [
+            dict(model, enabled=True) for model in preset["models"] if model["id"] not in existing
+        ]
+        if missing:
+            provider_repo.update(row.id, models_json=json.dumps([*models, *missing]))
+            added += len(missing)
+    return added
+
+
+@dataclass(frozen=True)
+class AutoRouteCandidate:
+    """One usable model and its effective prompt capacity."""
+
+    ref: str
+    max_input_tokens: int
 
 
 def _infer_model_input_modalities(
@@ -104,7 +303,7 @@ class ProviderStore:
 
     def __init__(
         self,
-        provider_repo: ProviderRepo,
+        provider_repo: ProviderRepo | SealedProviderRepo,
     ) -> None:
         self._provider_repo = provider_repo
 
@@ -140,14 +339,13 @@ class ProviderStore:
             ]
             if not models:
                 continue
-            headers: dict[str, str] = {}
-            if row.extra_json:
-                try:
-                    extra = json.loads(row.extra_json)
-                    if isinstance(extra, dict) and isinstance(extra.get("headers"), dict):
-                        headers = {str(k): str(v) for k, v in extra["headers"].items()}
-                except Exception:
-                    pass
+            extra = _provider_extra_dict(row)
+            raw_headers = extra.get("headers")
+            headers = (
+                {str(k): str(v) for k, v in raw_headers.items()}
+                if isinstance(raw_headers, dict)
+                else {}
+            )
             out.append(
                 ProviderConfig(
                     id=row.name,
@@ -158,6 +356,10 @@ class ProviderStore:
                     models=models,
                     headers=headers,
                     session_header=session_header_for_provider(row.name, row.base_url),
+                    stream_usage=resolve_provider_stream_usage(
+                        provider_name=row.name,
+                        extra=extra,
+                    ),
                 )
             )
         return out
@@ -229,6 +431,39 @@ class ProviderStore:
                     return f"{row.name}/{model_id}"
         return None
 
+    def list_auto_route_candidates(
+        self,
+        *,
+        needs_multimodal: bool,
+    ) -> list[AutoRouteCandidate]:
+        """Return stable, usable candidates for one automatic route."""
+        candidates: list[AutoRouteCandidate] = []
+        for row in self.iter_usable_rows():
+            for model in row.get_models():
+                if not is_chat_eligible_model(
+                    model,
+                    provider_name=row.name,
+                    provider_api_key=row.api_key,
+                ):
+                    continue
+                if needs_multimodal and not _model_dict_supports_image(model):
+                    continue
+                model_id = str(model.get("id") or "").strip()
+                if not model_id:
+                    continue
+                raw_capacity = model.get("max_input_tokens") or model.get("context_window") or 0
+                try:
+                    capacity = max(0, int(raw_capacity))
+                except (TypeError, ValueError):
+                    capacity = 0
+                candidates.append(
+                    AutoRouteCandidate(
+                        ref=f"{row.name}/{model_id}",
+                        max_input_tokens=capacity,
+                    )
+                )
+        return candidates
+
     def is_model_ref_usable(self, ref: str) -> bool:
         """Return True when *ref* points at a chat-eligible model on a usable provider."""
         ref = ref.strip()
@@ -298,6 +533,7 @@ class ProviderStore:
 
 
 __all__ = [
+    "AutoRouteCandidate",
     "KIND_TO_PROTOCOL",
     "ProviderStore",
     "clear_stale_pins_for_provider",

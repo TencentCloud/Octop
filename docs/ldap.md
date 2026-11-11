@@ -15,7 +15,7 @@
 | 账号开通 | 首次目录登录自动创建 Octop 账号（可关闭） |
 | 角色映射 | 按目录组成员关系判定 `admin` / `user`，仅在建号时判定一次 |
 | 属性同步 | 登录时回写邮箱、显示名；**不动**已存在账号的角色 |
-| 传输安全 | `ldaps://` 或 `ldap://` + StartTLS，证书校验可关（仅测试自签证书） |
+| 传输安全 | `ldaps://` 或 `ldap://` + StartTLS。字面量内网/回环地址可以明文 `ldap://`；主机名不行 |
 | 凭据存储 | 绑定密码经 Fernet 加密后存 `sso_providers.client_secret_enc`，API 从不回传 |
 
 ### 设计要点
@@ -44,8 +44,9 @@
                ├─ 2.3 用「该用户 DN + 用户输入的密码」二次 bind  ← 只 bind 检索结果，绝不 bind 用户输入值
                ├─ 2.4 读取属性（邮箱 / 显示名 / 所属组）
                ├─ 2.5 已有身份关联 → 更新资料（邮箱、显示名）后返回
+               │      无关联，但有预先创建的目录账号（用户名大小写不敏感匹配）→ 绑定 subject 后登录
                │      无关联 且 auto_provision → 建号 + 按组定角色 + 建立身份关联
-               │      无关联 且 auto_provision=false → 403 LDAP_USER_NOT_PROVISIONED
+               │      无关联 且 auto_provision=false 且没有预建账号 → 403 LDAP_USER_NOT_PROVISIONED
                └─ 3. 签发 JWT（与本地登录完全同构）
 ```
 
@@ -104,7 +105,7 @@ debug = false
 [ldap]
   enabled = true
   listen = "127.0.0.1:3893"
-  # Octop 拒绝「启用明文 ldap:// 且未开 StartTLS」的配置，所以本地目录也开 StartTLS。
+  # 主机名上的明文 ldap:// 不能启用。127.0.0.1 可以明文，这里仍开 StartTLS 作为加密示例。
   tls = true
   tlsCertPath = "glauth.crt"
   tlsKeyPath = "glauth.key"
@@ -366,7 +367,7 @@ done
 | `enabled` | `false` | 关闭时登录不再回退目录；可保存未填完的草稿 |
 | `display_name` | `""` | 登录页提示行里显示的名称 |
 | `server_url` | `""` | `ldap://` 或 `ldaps://`；端口缺省 389 / 636 |
-| `start_tls` | `false` | 对明文 `ldap://` 连接做 StartTLS 升级；**不可**与 `ldaps://` 同用。**启用时若用 `ldap://` 且未开 StartTLS 会被拒绝**，避免口令明文传输 |
+| `start_tls` | `false` | 对明文 `ldap://` 连接做 StartTLS 升级；**不可**与 `ldaps://` 同用。启用时，主机名或公网地址的 `ldap://` 必须开 StartTLS 或改用 `ldaps://`。字面量私网（`10/8`、`172.16/12`、`192.168/16`）、回环（`127/8`、`::1`）和 IPv6 ULA（`fc00::/7`）可以明文，面板会提示口令明文传输 |
 | `verify_tls` | `true` | 校验服务端证书；仅自签测试服务器才关。关闭时会持续告警 |
 | `bind_dn` | `""` | 服务账号 DN；留空 = 匿名检索 |
 | `bind_password` | — | 只写字段，从不回传；省略则保留已存值 |
@@ -382,7 +383,7 @@ done
 | `group_member_attribute` | `member` | 组条目上的成员属性。`member` / `uniqueMember` 存成员 **DN**；`memberUid`（经典 OpenLDAP `posixGroup`）存**用户名**——两种取值都会匹配，无需额外配置 |
 | `admin_groups` | `""` | 逗号分隔；可填组 CN（`admin`）或完整 DN（`cn=ops,ou=groups,dc=x`）。**仅首次开通账号时生效** |
 | `allowed_groups` | `""` | 逗号分隔；非空时仅这些组的成员可登录，其他目录账号被拒绝且不会建号 |
-| `auto_provision` | `false` | 默认关闭：目录账号需先有 Octop 账号，或由管理员显式开启自动开通 |
+| `auto_provision` | `false` | 默认关闭。关闭时，已绑定的目录账号可以登录；新用户需在用户管理里创建「目录账号」（不设本地密码，用户名与目录登录名一致）。开启后，过滤命中的目录用户首次登录会自动建号 |
 | `timeout_seconds` | `10` | 连接/接收超时，范围 1–60 |
 
 保存已启用（`enabled=true`）的配置会做完整校验；保存草稿（`enabled=false`）允许字段不全，便于分次填写。
@@ -401,7 +402,7 @@ done
 | 再次登录 | 更新邮箱与显示名；**不**覆盖已有角色、权限与策略 |
 | 邮箱冲突 | 目录邮箱若已被其他 Octop 账号占用，则该账号邮箱留空，不报错 |
 | 账号被停用 | `403 USER_DISABLED` |
-| 未开通且 `auto_provision=false` | `403 LDAP_USER_NOT_PROVISIONED` |
+| 未开通且 `auto_provision=false`，也没有预建目录账号 | `403 LDAP_USER_NOT_PROVISIONED` |
 | 不在 `allowed_groups` 内 | `403 LDAP_GROUP_NOT_ALLOWED`（不建号） |
 | **任何有本地密码的账号**打错密码 | 在本地就结束：`401 AUTH_FAILED`，**绝不**把该口令发给目录（不泄漏本地口令、不占用目录的失败计数）。即便该账号同时也绑定了目录也一样 |
 | 无本地密码的账号（目录开通的，或 Octop 里没有这个用户）打错密码 | 去目录 bind，失败返回 `401`，并按「用户名 + 客户端地址」计入目录登录限流 |
@@ -512,7 +513,7 @@ cd dashboard && npx tsc -b
 | 「测试连接」提示服务账号被拒 | `bind_failed` | `bind_dn` 或 `bind_password` 错；DN 写法需与目录一致（`cn=` / `uid=` / `ou=`） |
 | 「测试连接」提示检索被拒 | `search_failed` | `user_base_dn` 越界，或服务账号没有该子树的检索权限（glauth 需 `[[users.capabilities]] action="search"`） |
 | 登录报 502 | `LDAP_UNAVAILABLE` | 服务地址/端口不可达、服务账号密码已轮换、防火墙或证书校验失败（自签证书测试时关 `verify_tls`） |
-| 登录报 403 未开通 | `LDAP_USER_NOT_PROVISIONED` | 开 `auto_provision`，或先在 Octop 内建同名账号 |
+| 登录报 403 未开通 | `LDAP_USER_NOT_PROVISIONED` | 开 `auto_provision`，或在用户管理里创建目录账号（用户名与目录登录名一致，不设本地密码） |
 | 登录报 401 | `AUTH_FAILED` | 密码错、用户名在 `user_filter` 下检索不到（检查 `username_attribute` 与过滤器）、或解析出多条且无精确匹配 |
 | 登录成功但不是管理员 | — | 用户不在 `admin_groups` 内；确认目录真的返回 `memberOf`（OpenLDAP 需 `memberof` overlay）；改组**不会**自动提权，需在 Octop 内改角色 |
 | 显示名为空 | — | 目录未暴露该属性（glauth 的 `cn` 即如此，改用 `givenName`） |
@@ -524,11 +525,11 @@ cd dashboard && npx tsc -b
 ## 九、生产环境准备清单
 
 1. **服务账号**：建一个只读检索账号，授予 `user_base_dn` 子树读权限；不要用域管账号。
-2. **传输安全**：优先 `ldaps://`，其次 `ldap://` + StartTLS；证书可信时保持 `verify_tls` 开启。
+2. **传输安全**：优先 `ldaps://`，其次 `ldap://` + StartTLS。只有字面量内网或回环地址可以明文 `ldap://`；主机名仍必须加密。证书可信时保持 `verify_tls` 开启。
 3. **过滤器**：按目录类型调整，AD 常用 `(&(objectClass=user)(sAMAccountName={username}))`；OpenLDAP 常用 `(&(objectClass=inetOrgPerson)(uid={username}))`。
 4. **组映射**：确认目录返回 `memberOf`（OpenLDAP 需 overlay），或接受管理员手动授予。
 5. **属性映射**：`display_name_attribute` 建议 `displayName`（AD）或 `cn`/`displayName`（OpenLDAP）。
-6. **首次上线**：可用 `auto_provision=true` 便于导入；稳定后可关掉，改为管理员先在 Octop 内建号。
+6. **首次上线**：可用 `auto_provision=true` 便于导入；要逐个放行时关掉它，在用户管理里预先创建目录账号。若同时设置了 `allowed_groups`，预建账号仍须属于允许登录的组。
 
 ---
 

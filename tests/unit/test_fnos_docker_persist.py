@@ -35,16 +35,75 @@ def test_fnos_manifest_maintainer_and_tags(manifest: Path) -> None:
 
 
 @pytest.mark.parametrize("manifest", [FNOS_DOCKER / "manifest", FNOS_NATIVE / "manifest"])
-def test_fnos_manifest_version_matches_pyproject(manifest: Path) -> None:
+def test_fnos_manifest_version_is_placeholder(manifest: Path) -> None:
     text = manifest.read_text(encoding="utf-8")
-    assert f"version={_pyproject_version()}\n" in text
+    assert "version=0.0.0\n" in text
+    assert f"version={_pyproject_version()}\n" not in text
 
 
-def test_publish_skill_bumps_fnos_manifest_versions() -> None:
+def test_build_fpk_lite_pins_the_lite_image_tag() -> None:
+    text = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert 'OUTNAME="${PREFIX}-docker-lite-${VER}${ITER_SUFFIX}.fpk"' in text
+    assert 'image_tag="${FPK_IMAGE_TAG:-$VER}"' in text
+    assert 'image_tag="${FPK_IMAGE_TAG:-${VER}-full}"' in text
+
+
+def test_publish_workflows_keep_lite_when_full_is_incomplete() -> None:
+    docker = (REPO / ".github/workflows/docker-publish.yml").read_text(encoding="utf-8")
+    fnos = (REPO / ".github/workflows/fnos-build-fpk.yml").read_text(encoding="utf-8")
+    assert "until both amd64 and arm64 exist" in docker
+    assert 'echo "full=false"' in fnos
+    assert "Skipping the full FnOS package" in fnos
+    assert "--sync-notes" in fnos
+
+
+def test_build_fpk_writes_store_version_not_pep440() -> None:
+    text = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert "fnos_store_version" in text
+    assert "version=$STORE_VER" in text
+
+
+@posix_only
+@pytest.mark.parametrize(
+    ("pep440", "store"),
+    [
+        ("1.0.2b6", "1.0.206"),
+        ("1.0.2b7", "1.0.207"),
+        ("1.0.2b8", "1.0.208"),
+        ("1.0.2b10", "1.0.210"),
+        ("1.0.2", "1.0.300"),
+        ("1.0.3b1", "1.0.301"),
+        ("1.0.3", "1.0.400"),
+    ],
+)
+def test_fnos_store_version_sorts_above_stripped_betas(pep440: str, store: str) -> None:
+    script = REPO / "scripts" / "fnos" / "store_version.sh"
+    got = subprocess.check_output(["bash", str(script), pep440], text=True).strip()
+    assert got == store
+
+    def triple(value: str) -> tuple[int, int, int]:
+        major, minor, patch = value.split(".")
+        return int(major), int(minor), int(patch)
+
+    # 已安装的 1.0.2bN 在商店侧只剩 1.0.2，新包必须比它大。
+    assert triple(store) > (1, 0, 2)
+
+
+@posix_only
+def test_fnos_store_version_rejects_unencoded_prerelease() -> None:
+    script = REPO / "scripts" / "fnos" / "store_version.sh"
+    for raw in ("1.0.2a1", "1.0.2rc1", "1.0.2b0", "1.0.2b100", "1.0.2b8.dev0"):
+        result = subprocess.run(["bash", str(script), raw], capture_output=True, text=True)
+        assert result.returncode != 0, raw
+
+
+def test_publish_skill_leaves_fnos_versions_as_placeholders() -> None:
     text = (REPO / ".cursor" / "skills" / "publish" / "SKILL.md").read_text(encoding="utf-8")
     assert "fnos/docker/manifest" in text
     assert "fnos/native/manifest" in text
     assert "fnos/docker/app/docker/docker-compose.yaml" in text
+    assert "占位 `0.0.0`" in text
+    assert "仓库源文件与 pyproject 保持同一 PEP 440" not in text
     assert "uv.lock" in text
 
 
@@ -60,7 +119,10 @@ def test_fnos_docker_compose_uses_trim_data_share_paths() -> None:
     assert "pull_policy: missing" in text
     assert "pull_policy: always" not in text
     assert "ghcr.io/tencentcloud/octop:latest" not in text
-    assert f"ghcr.io/tencentcloud/octop:{_pyproject_version()}" in text
+    assert "ghcr.io/tencentcloud/octop:0.0.0" in text
+    assert f"ghcr.io/tencentcloud/octop:{_pyproject_version()}" not in text
+    build = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert "ghcr.io/tencentcloud/octop:${image_tag}" in build
     assert "env_file:" not in text
     volume_lines = [
         line
@@ -312,7 +374,7 @@ def test_fnos_native_start_reports_failure() -> None:
 
 
 @posix_only
-def test_slim_site_packages_drops_driver_and_discovery(tmp_path: Path) -> None:
+def test_slim_site_packages_keeps_playwright_driver(tmp_path: Path) -> None:
     sp = tmp_path / "site-packages"
     driver = sp / "playwright" / "driver"
     driver.mkdir(parents=True)
@@ -325,7 +387,7 @@ def test_slim_site_packages_drops_driver_and_discovery(tmp_path: Path) -> None:
     (pyc / "a.pyc").write_bytes(b"x")
     (sp / "keep.py").write_text("ok", encoding="utf-8")
     subprocess.check_call(["bash", str(REPO / "scripts/fnos/slim-site-packages.sh"), str(sp)])
-    assert not driver.exists()
+    assert (driver / "node").read_text(encoding="utf-8") == "x"
     assert not cache.exists()
     assert not pyc.exists()
     assert (sp / "keep.py").read_text(encoding="utf-8") == "ok"
@@ -424,10 +486,13 @@ def test_octop_assert_native_arch_rejects_mismatch(tmp_path: Path) -> None:
 set -euo pipefail
 source "{COMMON_SH}"
 export OCTOP_FPK_ARCH_FILE="{marker}"
-export OCTOP_FPK_HOST_ARCH=amd64
+export OCTOP_FPK_HOST_ARCH=x86_64
 octop_assert_native_arch && exit 10
 export OCTOP_FPK_HOST_ARCH=arm64
 octop_assert_native_arch || exit 11
+printf '%s\n' amd64 > "{marker}"
+export OCTOP_FPK_HOST_ARCH=amd64
+octop_assert_native_arch || exit 13
 unset OCTOP_FPK_ARCH_FILE
 octop_assert_native_arch || exit 12
 """

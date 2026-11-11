@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from octop.infra.desktop.session import (
+from octop.infra.control.desktop.session import (
     DesktopSessionLimitError,
     acquire_session,
     active_session_count,
@@ -14,7 +14,7 @@ from octop.infra.desktop.session import (
 
 @pytest.mark.asyncio
 async def test_acquire_replaces_same_user_session(monkeypatch) -> None:
-    monkeypatch.setattr("octop.infra.desktop.session._MAX_DESKTOP_SESSIONS", 1)
+    monkeypatch.setattr("octop.infra.control.desktop.session._MAX_DESKTOP_SESSIONS", 1)
 
     first = await acquire_session(user_id="u1", display=":99", monitor=0)
     second = await acquire_session(user_id="u1", display=":99", monitor=0)
@@ -31,7 +31,7 @@ async def test_acquire_replaces_same_user_session(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_supersede_calls_previous_disconnect() -> None:
-    from octop.infra.desktop.session import clear_user_stream, supersede_user_stream
+    from octop.infra.control.desktop.session import clear_user_stream, supersede_user_stream
 
     calls: list[str] = []
 
@@ -51,7 +51,7 @@ async def test_supersede_calls_previous_disconnect() -> None:
 
 @pytest.mark.asyncio
 async def test_acquire_raises_when_global_cap_reached(monkeypatch) -> None:
-    monkeypatch.setattr("octop.infra.desktop.session._MAX_DESKTOP_SESSIONS", 1)
+    monkeypatch.setattr("octop.infra.control.desktop.session._MAX_DESKTOP_SESSIONS", 1)
 
     s1 = await acquire_session(user_id="u1", display=":99", monitor=0)
     with pytest.raises(DesktopSessionLimitError) as exc:
@@ -65,9 +65,9 @@ async def test_acquire_raises_when_global_cap_reached(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_disconnect_all_streams_closes_sessions(monkeypatch) -> None:
-    from octop.infra.desktop.session import disconnect_all_streams, supersede_user_stream
+    from octop.infra.control.desktop.session import disconnect_all_streams, supersede_user_stream
 
-    monkeypatch.setattr("octop.infra.desktop.session._MAX_DESKTOP_SESSIONS", 3)
+    monkeypatch.setattr("octop.infra.control.desktop.session._MAX_DESKTOP_SESSIONS", 3)
 
     called: list[str] = []
 
@@ -87,7 +87,7 @@ async def test_disconnect_all_streams_closes_sessions(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_release_ignores_stale_session_after_replace(monkeypatch) -> None:
-    monkeypatch.setattr("octop.infra.desktop.session._MAX_DESKTOP_SESSIONS", 2)
+    monkeypatch.setattr("octop.infra.control.desktop.session._MAX_DESKTOP_SESSIONS", 2)
 
     first = await acquire_session(user_id="u1", display=":99", monitor=0)
     second = await acquire_session(user_id="u1", display=":99", monitor=0)

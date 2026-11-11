@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Form, Input, Select } from "antd";
 import RootDirSelect from "./RootDirSelect";
 import { MinusCircle } from "lucide-react";
@@ -6,12 +6,16 @@ import { useTranslation } from "react-i18next";
 import {
   BUILTIN_BACKENDS,
   DEFAULT_BACKEND,
+  LEGACY_STATE_BACKEND,
   fetchFilesystemDefaults,
+  joinWorkspaceDir,
+  newWorkspaceAgentId,
   type BackendOption,
   type FilesystemDefaults,
   type PathMapping,
   builtinDesc,
   builtinLabel,
+  isHostRootDir,
   isValidCompositePath,
 } from "./agentBackendForm";
 import { HOST_FS_ROOT } from "./rootDirTree";
@@ -52,6 +56,14 @@ export default function AgentBackendFields({
   const form = Form.useFormInstance();
   const [fsDefaults, setFsDefaults] = useState<FilesystemDefaults | null>(null);
   const watchedRootDir = Form.useWatch("root_dir", form) as string | undefined;
+  const watchedWorkspaceDir = Form.useWatch("workspace_dir", form) as
+    | string
+    | undefined;
+  const watchedAgentId = Form.useWatch("agent_id", form) as string | undefined;
+  const generatedWorkspaceId = useRef<string | null>(null);
+  const watchedCompositeDefault = Form.useWatch("composite_default", form) as
+    | string
+    | undefined;
 
   useEffect(() => {
     if (skipHostFilesystem) {
@@ -79,6 +91,37 @@ export default function AgentBackendFields({
     }
   }, [fsDefaults, form, watchedRootDir, rootDirMode]);
 
+  useEffect(() => {
+    if (rootDirMode !== "create" || skipHostFilesystem) return;
+    const parent = fsDefaults?.default_workspace_dir?.trim();
+    if (!parent || !isHostRootDir(watchedRootDir)) return;
+    const current = (watchedWorkspaceDir ?? "").trim();
+    const auto = String(form.getFieldValue("workspace_dir_auto") ?? "").trim();
+    if (current && current !== auto) return;
+    const typedId = watchedAgentId?.trim() ?? "";
+    let id = typedId;
+    if (!id) {
+      if (!generatedWorkspaceId.current || !current) {
+        generatedWorkspaceId.current = newWorkspaceAgentId();
+      }
+      id = generatedWorkspaceId.current;
+    }
+    const next = joinWorkspaceDir(parent, id);
+    if (current === next && auto === next) return;
+    form.setFieldsValue({
+      workspace_dir: next,
+      workspace_dir_auto: next,
+    });
+  }, [
+    form,
+    fsDefaults,
+    rootDirMode,
+    skipHostFilesystem,
+    watchedAgentId,
+    watchedRootDir,
+    watchedWorkspaceDir,
+  ]);
+
   const treeRoots = useMemo(
     () =>
       fsDefaults?.browse_roots?.length
@@ -86,6 +129,22 @@ export default function AgentBackendFields({
         : [fsDefaults?.tree_root ?? HOST_FS_ROOT],
     [fsDefaults],
   );
+  const legacyStateOption = useMemo(
+    () => ({
+      value: LEGACY_STATE_BACKEND,
+      label: builtinLabel(LEGACY_STATE_BACKEND, t),
+    }),
+    [t],
+  );
+  const withLegacyState = (
+    options: { value: string; label: string }[],
+    selected: string | undefined,
+  ) =>
+    selected === LEGACY_STATE_BACKEND &&
+    !options.some((option) => option.value === LEGACY_STATE_BACKEND)
+      ? [...options, legacyStateOption]
+      : options;
+
   const routeBackendOptions = useMemo(() => {
     const builtins = BUILTIN_BACKENDS.map((mode) => ({
       value: mode,
@@ -109,6 +168,9 @@ export default function AgentBackendFields({
             value: mode,
             label: builtinLabel(mode, t),
           })),
+          ...(backendChoice === LEGACY_STATE_BACKEND
+            ? [legacyStateOption]
+            : []),
           {
             value: "composite",
             label: t("experts.backendModes.composite"),
@@ -129,10 +191,11 @@ export default function AgentBackendFields({
           ]
         : []),
     ],
-    [backends, t],
+    [backendChoice, backends, legacyStateOption, t],
   );
 
   const desc = builtinDesc(backendChoice, t);
+  const pathLocked = disabled || rootDirMode === "edit";
 
   const pathHasError = (path: string) =>
     path.trim() === "/" ||
@@ -183,10 +246,7 @@ export default function AgentBackendFields({
                 : undefined
             }
           >
-            <RootDirSelect
-              treeRoots={treeRoots}
-              disabled={disabled || rootDirMode === "edit"}
-            />
+            <RootDirSelect treeRoots={treeRoots} disabled={pathLocked} />
           </Form.Item>
           <div style={{ margin: "-8px 0 12px" }}>
             {rootDirMode === "edit" ? (
@@ -226,6 +286,26 @@ export default function AgentBackendFields({
               </>
             )}
           </div>
+          {isHostRootDir(watchedRootDir) ? (
+            <>
+              <Form.Item name="workspace_dir" label={t("experts.workspaceDir")}>
+                <RootDirSelect treeRoots={treeRoots} disabled={pathLocked} />
+              </Form.Item>
+              <div style={{ margin: "-8px 0 12px" }}>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--fn-text-tertiary)",
+                    margin: 0,
+                  }}
+                >
+                  {pathLocked
+                    ? t("experts.workspaceDirImmutableHint")
+                    : t("experts.workspaceDirDesc")}
+                </p>
+              </div>
+            </>
+          ) : null}
         </>
       )}
 
@@ -236,7 +316,13 @@ export default function AgentBackendFields({
             label={t("experts.backendModes.compositeDefault")}
             initialValue={DEFAULT_BACKEND}
           >
-            <Select disabled={disabled} options={routeBackendOptions} />
+            <Select
+              disabled={disabled}
+              options={withLegacyState(
+                routeBackendOptions,
+                watchedCompositeDefault,
+              )}
+            />
           </Form.Item>
 
           <div style={{ marginBottom: 16 }}>
@@ -275,7 +361,10 @@ export default function AgentBackendFields({
                 <Select
                   disabled={disabled}
                   placeholder={t("experts.backendModes.routeBackend")}
-                  options={routeBackendOptions}
+                  options={withLegacyState(
+                    routeBackendOptions,
+                    mapping.backend,
+                  )}
                   value={mapping.backend || undefined}
                   onChange={(v: string) => onUpdatePathMapping(i, "backend", v)}
                   style={{ flex: 1 }}

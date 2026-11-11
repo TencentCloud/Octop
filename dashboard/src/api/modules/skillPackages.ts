@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestBlob, requestUpload } from "../request";
 import type {
   CreateSkillPackageBody,
   CopyPackageSkillsBody,
@@ -55,6 +55,9 @@ export const skillPackagesApi = {
   get: (packageId: string) =>
     request<SkillPackageDetail>(`/skill-packages/${packageId}`),
 
+  exportPackage: (packageId: string) =>
+    requestBlob(`/skill-packages/${encodeURIComponent(packageId)}/export`),
+
   create: (body: CreateSkillPackageBody) =>
     request<SkillPackageDetail>("/skill-packages", {
       method: "POST",
@@ -82,9 +85,39 @@ export const skillPackagesApi = {
   delete: (packageId: string) =>
     request<void>(`/skill-packages/${packageId}`, { method: "DELETE" }),
 
+  uploadAvatar: (packageId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/skill-packages/${encodeURIComponent(packageId)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (packageId: string) =>
+    request<void>(`/skill-packages/${encodeURIComponent(packageId)}/avatar`, {
+      method: "DELETE",
+    }),
+
   getSkill: (packageId: string, slug: string) =>
     request<SkillPackageSkillDetail>(
       `/skill-packages/${packageId}/skills/${encodeURIComponent(slug)}`,
+    ),
+
+  listSkillTree: (packageId: string, slug: string, path = "") => {
+    const qs = path ? `?path=${encodeURIComponent(path)}` : "";
+    return request<Array<{ path: string; is_dir?: boolean; size?: number }>>(
+      `/skill-packages/${packageId}/skills/${encodeURIComponent(
+        slug,
+      )}/tree${qs}`,
+    );
+  },
+
+  readSkillFile: (packageId: string, slug: string, path: string) =>
+    request<{ path: string; content: string }>(
+      `/skill-packages/${packageId}/skills/${encodeURIComponent(
+        slug,
+      )}/file?path=${encodeURIComponent(path)}`,
     ),
 
   createSkill: (packageId: string, body: CreateSkillPackageSkillBody) =>

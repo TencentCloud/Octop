@@ -112,15 +112,40 @@ describe("shouldProbeActiveTurn", () => {
 });
 
 describe("shouldBlockHistoryRefresh", () => {
-  it("blocks only when streaming with a live socket", () => {
+  it("blocks when a live socket still has a generating turn", () => {
     expect(
       shouldBlockHistoryRefresh({ isStreaming: true, hasLiveSocket: true }),
     ).toBe(true);
+    expect(
+      shouldBlockHistoryRefresh({
+        isStreaming: false,
+        hasLiveSocket: true,
+        liveSpeakerCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockHistoryRefresh({
+        isStreaming: false,
+        hasLiveSocket: true,
+        hasStreamingMessage: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("allows an idle live socket (listen-only, turn already finished)", () => {
+    expect(
+      shouldBlockHistoryRefresh({ isStreaming: false, hasLiveSocket: true }),
+    ).toBe(false);
   });
 
   it("allows sticky isStreaming without a socket (recovery path)", () => {
     expect(
-      shouldBlockHistoryRefresh({ isStreaming: true, hasLiveSocket: false }),
+      shouldBlockHistoryRefresh({
+        isStreaming: true,
+        hasLiveSocket: false,
+        liveSpeakerCount: 2,
+        hasStreamingMessage: true,
+      }),
     ).toBe(false);
     expect(
       shouldBlockHistoryRefresh({ isStreaming: false, hasLiveSocket: false }),

@@ -49,6 +49,25 @@ def host_fs_tree_root() -> str:
     return host_path_text(Path(host_home_dir().anchor))
 
 
+def is_host_filesystem_root(root: Any) -> bool:
+    """True when *root* is missing or names the whole host filesystem.
+
+    POSIX uses ``/``. Windows uses a drive root such as ``C:/`` (what
+    :func:`host_fs_tree_root` returns). Empty and missing values are the same
+    sentinel: callers that omit ``root_dir`` mean the host root.
+    """
+    if root is None:
+        return True
+    text = str(root).strip()
+    if text in {"", "/", "\\"}:
+        return True
+    if os.name != "nt" or len(text) < 2 or len(text) > 3:
+        return False
+    if not text[0].isalpha() or text[1] != ":":
+        return False
+    return len(text) == 2 or text[2] in {"/", "\\"}
+
+
 def _ready_drive_roots() -> list[str]:
     """Every ready Windows drive root, POSIX-serialized (``C:/``)."""
     return [

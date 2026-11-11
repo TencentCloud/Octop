@@ -2,12 +2,14 @@ import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Eye, EyeOff, GraduationCap, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
 import { message } from "@/utils/antdMessage";
 import ExpertAgentAvatar, { type ChatAgentOption } from "./ExpertAgentAvatar";
 import RemoteExpertHint from "./RemoteExpertHint";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import { groupExpertsByConnection } from "../../../utils/remoteExpert";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import styles from "../index.module.less";
@@ -144,9 +146,11 @@ export default function ExpertPickerPopover({
         return (
           <div
             key={agent.agent_id}
-            className={`${styles.skillPickerItem} ${
-              active ? styles.expertPickerItemActive : ""
-            } ${styles.expertPickerRow}`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.expertPickerItemActive,
+              styles.expertPickerRow,
+            )}
           >
             <button
               type="button"
@@ -162,11 +166,11 @@ export default function ExpertPickerPopover({
               />
               <span className={styles.expertPickerItemText}>
                 <span className={pickerStyles.itemName}>{agent.name}</span>
-                {agent.is_shared && (
-                  <span className={styles.expertSharedBadge}>
-                    {t("chat.expertSharedBadge", "共享")}
-                  </span>
-                )}
+                <SharedResourceBadge
+                  shared={agent.is_shared}
+                  owned={agent.is_owner !== false}
+                  ownerName={agent.owner_username}
+                />
                 <RemoteExpertHint agent={agent} />
               </span>
             </button>

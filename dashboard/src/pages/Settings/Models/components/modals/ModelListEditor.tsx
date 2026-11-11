@@ -4,7 +4,7 @@
  * Mutations stay local until the parent modal saves (PATCH full models array).
  * Connectivity tests still hit the live provider endpoint.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { App, Button, Form, Input, Select, Switch, Tooltip } from "antd";
 
 import {
@@ -20,7 +20,13 @@ import {
   Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
+import type { ResourceVisibilityMode } from "../../../../../api/modules/userGroups";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -37,6 +43,8 @@ const CONTEXT_WINDOW_PRESETS = [
 const MAX_TOKENS_PRESETS = [
   4_000, 8_000, 16_000, 32_000, 64_000, 128_000,
 ] as const;
+
+const DEFAULT_CONTEXT_WINDOW = 128_000;
 
 export interface LocalModelDownloadControl {
   /** Model ids already present on disk / in the local runtime. */
@@ -55,11 +63,21 @@ interface ModelListEditorProps {
   /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
   canTest?: boolean;
+  /** Lock model purpose (embedding lane providers). */
+  forcePurpose?: "chat" | "embedding";
   localDownload?: LocalModelDownloadControl;
   onTestModel?: (
     modelId: string,
     modelName: string,
-  ) => Promise<{ ok: boolean; latency_ms?: number; error?: string }>;
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ) => Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }>;
 }
 
 const INPUT_TYPE_OPTIONS = [
@@ -74,6 +92,7 @@ export function ModelListEditor({
   onModelsChange,
   apiPrefix = "/providers",
   canTest,
+  forcePurpose,
   localDownload,
   onTestModel,
 }: ModelListEditorProps) {
@@ -94,15 +113,23 @@ export function ModelListEditor({
   const [searchQuery, setSearchQuery] = useState("");
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showReasoningProtocol, setShowReasoningProtocol] = useState(false);
+  const [modelVisibility, setModelVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [modelGroupIds, setModelGroupIds] = useState<string[]>([]);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [testResults, setTestResults] = useState<
     Map<string, "success" | "failure">
   >(new Map());
   const [testingForm, setTestingForm] = useState(false);
   const [form] = Form.useForm();
+  const formAnchorRef = useRef<HTMLDivElement>(null);
   const isOnnx = isOnnxProviderRow(provider);
-  const embeddingValue = Form.useWatch("embedding", form);
-  const embeddingOn = isOnnx || embeddingValue === true;
+  const apiModeValue = Form.useWatch("api_mode", form);
+  const lockedPurpose =
+    forcePurpose ??
+    (provider.purpose === "embedding" ? "embedding" : undefined);
+  const embeddingOn = isOnnx || lockedPurpose === "embedding";
 
   const handleToggleEnabled = (
     modelId: string,
@@ -145,9 +172,17 @@ export function ModelListEditor({
     modelId: string,
     modelName: string,
     embedding?: boolean,
-  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ): Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }> => {
     if (onTestModel) {
-      return onTestModel(modelId, modelName);
+      return onTestModel(modelId, modelName, apiMode, apiFallback);
     }
     const isEmbedding =
       embedding ??
@@ -156,23 +191,40 @@ export function ModelListEditor({
       ok: boolean;
       latency_ms?: number;
       error?: string;
+      fallback_used?: boolean;
+      api_mode_used?: ProviderModel["api_mode"];
     }>(`${apiPrefix}/${provider.id}/test`, {
       method: "POST",
-      body: JSON.stringify({ model_id: modelId, embedding: isEmbedding }),
+      body: JSON.stringify({
+        model_id: modelId,
+        api_mode: apiMode,
+        api_fallback: apiFallback,
+        embedding: isEmbedding,
+      }),
     });
   };
 
   const handleTestModel = async (modelId: string, modelName: string) => {
     setTestingIds((prev) => new Set(prev).add(modelId));
     try {
-      const result = await runTest(modelId, modelName);
+      const result = await runTest(
+        modelId,
+        modelName,
+        undefined,
+        models.find((m) => m.id === modelId)?.api_mode,
+        models.find((m) => m.id === modelId)?.api_fallback,
+      );
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
         setTestResults((prev) => new Map(prev).set(modelId, "success"));
       } else {
         message.error(
@@ -212,16 +264,35 @@ export function ModelListEditor({
     }
     setTestingForm(true);
     try {
-      const result = await runTest(modelId, modelId, embeddingOn);
+      const apiMode = form.getFieldValue("api_mode") as
+        | ProviderModel["api_mode"]
+        | undefined;
+      const apiFallback =
+        apiMode === "responses"
+          ? (form.getFieldValue("api_fallback") as
+              | ProviderModel["api_fallback"]
+              | undefined)
+          : "none";
+      const result = await runTest(
+        modelId,
+        modelId,
+        embeddingOn,
+        apiMode,
+        apiFallback,
+      );
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testFailed", { error: result.error ?? "unknown" }),
@@ -238,7 +309,7 @@ export function ModelListEditor({
     const id = (values.id as string).trim();
     const name = (values.name as string | undefined)?.trim() || id;
     const isOnnx = isOnnxProviderRow(provider);
-    const embedding = isOnnx || values.embedding === true;
+    const embedding = isOnnx || lockedPurpose === "embedding";
     const entry: ProviderModel = {
       id,
       name,
@@ -246,6 +317,8 @@ export function ModelListEditor({
       input: ["text"],
       thinking: null,
     };
+    entry.visibility = modelVisibility === "groups" ? "groups" : "all";
+    entry.group_ids = modelVisibility === "groups" ? [...modelGroupIds] : [];
     if (embedding) {
       entry.embedding = true;
       entry.task = "embedding";
@@ -258,6 +331,14 @@ export function ModelListEditor({
       entry.context_window = values.context_window as number;
     if (values.max_tokens != null)
       entry.max_tokens = values.max_tokens as number;
+    entry.api_mode =
+      (values.api_mode as ProviderModel["api_mode"] | undefined) ||
+      "chat_completions";
+    entry.api_fallback =
+      entry.api_mode === "responses"
+        ? (values.api_fallback as ProviderModel["api_fallback"] | undefined) ??
+          "none"
+        : "none";
     if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
     if (values.reasoning === true) {
       const efforts = (values.reasoning_efforts as string[] | undefined) || [];
@@ -290,6 +371,10 @@ export function ModelListEditor({
   const handleAddModel = async () => {
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
@@ -310,6 +395,10 @@ export function ModelListEditor({
     if (!editingModelId) return;
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       const existing = models.find((m) => m.id === editingModelId);
       if (existing) {
@@ -332,6 +421,8 @@ export function ModelListEditor({
       context_window:
         (model as Record<string, unknown>).context_window ?? undefined,
       max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
+      api_mode: model.api_mode ?? "chat_completions",
+      api_fallback: model.api_fallback ?? "none",
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
       reasoning_toggle: model.reasoning_config?.toggle ?? true,
       reasoning_efforts: model.reasoning_config?.efforts ?? [],
@@ -341,13 +432,20 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
-      embedding: Boolean(model.embedding || model.task === "embedding"),
     });
-    const hasAdvanced =
-      (model as Record<string, unknown>).context_window != null ||
-      (model as Record<string, unknown>).max_tokens != null ||
-      (model as Record<string, unknown>).reasoning != null;
+    setModelVisibility(model.visibility === "groups" ? "groups" : "all");
+    setModelGroupIds(model.group_ids ?? []);
+    const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
+    const cfg = model.reasoning_config;
+    setShowReasoningProtocol(
+      Boolean(
+        (cfg?.efforts?.length ?? 0) > 0 ||
+          cfg?.default_effort ||
+          (cfg?.adapter && cfg.adapter !== "thinking") ||
+          (cfg?.effort_type && cfg.effort_type !== "enum"),
+      ),
+    );
   };
 
   const startAdding = () => {
@@ -355,18 +453,38 @@ export function ModelListEditor({
     form.resetFields();
     setAdding(true);
     setShowAdvanced(false);
+    setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
+    form.setFieldsValue({
+      context_window: DEFAULT_CONTEXT_WINDOW,
+      input: ["text"],
+    });
   };
 
   const resetForm = () => {
     setAdding(false);
     setEditingModelId(null);
     setShowAdvanced(false);
+    setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.resetFields();
   };
 
   const isEditing = editingModelId !== null;
   const isFormVisible = adding || isEditing;
   const hasApiKey = canTest ?? !!provider.api_key;
+
+  useEffect(() => {
+    if (!isFormVisible) return;
+    const el = formAnchorRef.current;
+    if (!el) return;
+    const frame = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isFormVisible, editingModelId, adding]);
 
   const filteredModels = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -408,9 +526,11 @@ export function ModelListEditor({
             return (
               <div
                 key={m.id}
-                className={`${styles.modelListItem}${
-                  isCurrentEditing ? ` ${styles.modelListItemEditing}` : ""
-                }${!isEnabled ? ` ${styles.modelListItemDisabled}` : ""}`}
+                className={cx(
+                  styles.modelListItem,
+                  isCurrentEditing && styles.modelListItemEditing,
+                  !isEnabled && styles.modelListItemDisabled,
+                )}
               >
                 <Tooltip
                   title={
@@ -504,6 +624,8 @@ export function ModelListEditor({
                     type="text"
                     size="small"
                     icon={<Pencil size={14} />}
+                    title={t("models.editModel")}
+                    aria-label={t("models.editModel")}
                     onClick={() =>
                       startEditing(m as ProviderModel & Record<string, unknown>)
                     }
@@ -524,7 +646,7 @@ export function ModelListEditor({
       </div>
 
       {isFormVisible ? (
-        <div className={styles.modelAddForm}>
+        <div ref={formAnchorRef} className={styles.modelAddForm}>
           <Form form={form} layout="vertical" style={{ marginBottom: 0 }}>
             <Form.Item
               name="id"
@@ -545,21 +667,57 @@ export function ModelListEditor({
               <Input placeholder={t("models.modelNamePlaceholder")} />
             </Form.Item>
 
-            {isOnnx ? null : (
-              <Form.Item
-                name="embedding"
-                label={t("models.embeddingModel")}
-                extra={t("models.embeddingModelHint")}
-                valuePropName="checked"
-                initialValue={false}
-                style={{ marginBottom: 12 }}
-              >
-                <Switch size="small" />
-              </Form.Item>
-            )}
+            {/* Purpose is fixed by tab/provider lane — no per-model toggle. */}
 
             {embeddingOn ? null : (
               <>
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" && (
+                    <Form.Item
+                      name="api_mode"
+                      label={t("models.apiMode")}
+                      extra={t("models.apiModeHint")}
+                      initialValue="chat_completions"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiModeChatCompletions"),
+                          },
+                          {
+                            value: "responses",
+                            label: t("models.apiModeResponses"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" &&
+                  apiModeValue === "responses" && (
+                    <Form.Item
+                      name="api_fallback"
+                      label={t("models.apiFallback")}
+                      extra={t("models.apiFallbackHint")}
+                      initialValue="none"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "none",
+                            label: t("models.apiFallbackNone"),
+                          },
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiFallbackChatCompletions"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
                 <Form.Item
                   name="input"
                   label={t("models.inputTypes")}
@@ -576,6 +734,31 @@ export function ModelListEditor({
                     }))}
                   />
                 </Form.Item>
+
+                <div style={{ display: "flex", gap: 12 }}>
+                  <Form.Item
+                    name="context_window"
+                    label={t("models.contextWindow")}
+                    extra={t("models.contextWindowHint")}
+                    initialValue={DEFAULT_CONTEXT_WINDOW}
+                    style={{ flex: 1, marginBottom: 12 }}
+                  >
+                    <TokenCountInput
+                      presets={CONTEXT_WINDOW_PRESETS}
+                      placeholder={t("models.contextWindowPlaceholder")}
+                    />
+                  </Form.Item>
+                  <Form.Item
+                    name="max_tokens"
+                    label={t("models.maxTokens")}
+                    style={{ flex: 1, marginBottom: 12 }}
+                  >
+                    <TokenCountInput
+                      presets={MAX_TOKENS_PRESETS}
+                      placeholder={t("models.maxTokensPlaceholder")}
+                    />
+                  </Form.Item>
+                </div>
 
                 <div
                   style={{
@@ -614,28 +797,6 @@ export function ModelListEditor({
                       marginBottom: 12,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 12 }}>
-                      <Form.Item
-                        name="context_window"
-                        label={t("models.contextWindow")}
-                        style={{ flex: 1, marginBottom: 10 }}
-                      >
-                        <TokenCountInput
-                          presets={CONTEXT_WINDOW_PRESETS}
-                          placeholder={t("models.contextWindowPlaceholder")}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="max_tokens"
-                        label={t("models.maxTokens")}
-                        style={{ flex: 1, marginBottom: 10 }}
-                      >
-                        <TokenCountInput
-                          presets={MAX_TOKENS_PRESETS}
-                          placeholder={t("models.maxTokensPlaceholder")}
-                        />
-                      </Form.Item>
-                    </div>
                     <Form.Item
                       name="reasoning"
                       label={t("models.reasoning")}
@@ -652,6 +813,7 @@ export function ModelListEditor({
                               <Form.Item
                                 name="reasoning_toggle"
                                 label={t("models.reasoningToggle", "允许开关")}
+                                extra={t("models.reasoningToggleHint")}
                                 valuePropName="checked"
                                 initialValue
                                 style={{ flex: 1, marginBottom: 10 }}
@@ -685,127 +847,153 @@ export function ModelListEditor({
                                 />
                               </Form.Item>
                             </div>
-                            <Form.Item
-                              name="reasoning_efforts"
-                              label={t(
-                                "models.reasoningEfforts",
-                                "支持的思考强度",
-                              )}
-                              style={{ marginBottom: 10 }}
+                            <Button
+                              type="link"
+                              size="small"
+                              style={{ padding: 0, marginBottom: 8 }}
+                              icon={
+                                showReasoningProtocol ? (
+                                  <ChevronUp size={14} />
+                                ) : (
+                                  <ChevronDown size={14} />
+                                )
+                              }
+                              onClick={() =>
+                                setShowReasoningProtocol((prev) => !prev)
+                              }
                             >
-                              <Select
-                                mode="tags"
-                                tokenSeparators={[","]}
-                                placeholder="low, medium, high, max, xhigh"
-                              />
-                            </Form.Item>
-                            <div style={{ display: "flex", gap: 12 }}>
-                              <Form.Item
-                                name="reasoning_default_effort"
-                                label={t(
-                                  "models.reasoningDefaultEffort",
-                                  "默认强度",
-                                )}
-                                style={{ flex: 1, marginBottom: 10 }}
-                              >
-                                <Input placeholder="high" />
-                              </Form.Item>
-                              <Form.Item
-                                name="reasoning_effort_type"
-                                label={t(
-                                  "models.reasoningEffortType",
-                                  "强度类型",
-                                )}
-                                initialValue="enum"
-                                style={{ flex: 1, marginBottom: 10 }}
-                              >
-                                <Select
-                                  options={[
-                                    {
-                                      value: "enum",
-                                      label: t(
-                                        "models.reasoningEffortEnum",
-                                        "强度档位",
-                                      ),
-                                    },
-                                    {
-                                      value: "token_budget",
-                                      label: t(
-                                        "models.reasoningEffortBudget",
-                                        "Token 预算",
-                                      ),
-                                    },
-                                  ]}
-                                />
-                              </Form.Item>
-                            </div>
-                            <Form.Item
-                              name="reasoning_adapter"
-                              label={t("models.reasoningAdapter", "推理协议")}
-                              initialValue="thinking"
-                              style={{ marginBottom: 10 }}
-                            >
-                              <Select
-                                options={[
-                                  {
-                                    value: "status_only",
-                                    label: t(
-                                      "models.reasoningAdapterStatusOnly",
-                                      "仅标记（始终推理）",
-                                    ),
-                                  },
-                                  {
-                                    value: "openai_reasoning_effort",
-                                    label: t(
-                                      "models.reasoningAdapterOpenAI",
-                                      "OpenAI / Gemini / Groq",
-                                    ),
-                                  },
-                                  {
-                                    value: "anthropic_adaptive",
-                                    label: t(
-                                      "models.reasoningAdapterAnthropicAdaptive",
-                                      "Anthropic Adaptive",
-                                    ),
-                                  },
-                                  {
-                                    value: "anthropic_budget",
-                                    label: t(
-                                      "models.reasoningAdapterAnthropicBudget",
-                                      "Anthropic Token Budget",
-                                    ),
-                                  },
-                                  {
-                                    value: "thinking",
-                                    label: t(
-                                      "models.reasoningAdapterThinking",
-                                      "DeepSeek / GLM / Kimi",
-                                    ),
-                                  },
-                                  {
-                                    value: "thinking_nested_effort",
-                                    label: t(
-                                      "models.reasoningAdapterNestedEffort",
-                                      "TokenHub 嵌套强度",
-                                    ),
-                                  },
-                                  {
-                                    value: "dashscope",
-                                    label: t(
-                                      "models.reasoningAdapterDashScope",
-                                      "DashScope / 阿里云",
-                                    ),
-                                  },
-                                  {
-                                    value: "openrouter",
-                                    label: t(
-                                      "models.reasoningAdapterOpenRouter",
-                                      "OpenRouter",
-                                    ),
-                                  },
-                                ]}
-                              />
-                            </Form.Item>
+                              {showReasoningProtocol
+                                ? t("models.hideCustomReasoning")
+                                : t("models.customReasoning")}
+                            </Button>
+                            {showReasoningProtocol ? (
+                              <>
+                                <Form.Item
+                                  name="reasoning_efforts"
+                                  label={t(
+                                    "models.reasoningEfforts",
+                                    "支持的思考强度",
+                                  )}
+                                  style={{ marginBottom: 10 }}
+                                >
+                                  <Select
+                                    mode="tags"
+                                    tokenSeparators={[","]}
+                                    placeholder="low, medium, high, max, xhigh"
+                                  />
+                                </Form.Item>
+                                <div style={{ display: "flex", gap: 12 }}>
+                                  <Form.Item
+                                    name="reasoning_default_effort"
+                                    label={t(
+                                      "models.reasoningDefaultEffort",
+                                      "默认强度",
+                                    )}
+                                    style={{ flex: 1, marginBottom: 10 }}
+                                  >
+                                    <Input placeholder="high" />
+                                  </Form.Item>
+                                  <Form.Item
+                                    name="reasoning_effort_type"
+                                    label={t(
+                                      "models.reasoningEffortType",
+                                      "强度类型",
+                                    )}
+                                    initialValue="enum"
+                                    style={{ flex: 1, marginBottom: 10 }}
+                                  >
+                                    <Select
+                                      options={[
+                                        {
+                                          value: "enum",
+                                          label: t(
+                                            "models.reasoningEffortEnum",
+                                            "强度档位",
+                                          ),
+                                        },
+                                        {
+                                          value: "token_budget",
+                                          label: t(
+                                            "models.reasoningEffortBudget",
+                                            "Token 预算",
+                                          ),
+                                        },
+                                      ]}
+                                    />
+                                  </Form.Item>
+                                </div>
+                                <Form.Item
+                                  name="reasoning_adapter"
+                                  label={t(
+                                    "models.reasoningAdapter",
+                                    "推理协议",
+                                  )}
+                                  initialValue="thinking"
+                                  style={{ marginBottom: 10 }}
+                                >
+                                  <Select
+                                    options={[
+                                      {
+                                        value: "status_only",
+                                        label: t(
+                                          "models.reasoningAdapterStatusOnly",
+                                          "仅标记（始终推理）",
+                                        ),
+                                      },
+                                      {
+                                        value: "openai_reasoning_effort",
+                                        label: t(
+                                          "models.reasoningAdapterOpenAI",
+                                          "OpenAI / Gemini / Groq",
+                                        ),
+                                      },
+                                      {
+                                        value: "anthropic_adaptive",
+                                        label: t(
+                                          "models.reasoningAdapterAnthropicAdaptive",
+                                          "Anthropic Adaptive",
+                                        ),
+                                      },
+                                      {
+                                        value: "anthropic_budget",
+                                        label: t(
+                                          "models.reasoningAdapterAnthropicBudget",
+                                          "Anthropic Token Budget",
+                                        ),
+                                      },
+                                      {
+                                        value: "thinking",
+                                        label: t(
+                                          "models.reasoningAdapterThinking",
+                                          "DeepSeek / GLM / Kimi",
+                                        ),
+                                      },
+                                      {
+                                        value: "thinking_nested_effort",
+                                        label: t(
+                                          "models.reasoningAdapterNestedEffort",
+                                          "TokenHub 嵌套强度",
+                                        ),
+                                      },
+                                      {
+                                        value: "dashscope",
+                                        label: t(
+                                          "models.reasoningAdapterDashScope",
+                                          "DashScope / 阿里云",
+                                        ),
+                                      },
+                                      {
+                                        value: "openrouter",
+                                        label: t(
+                                          "models.reasoningAdapterOpenRouter",
+                                          "OpenRouter",
+                                        ),
+                                      },
+                                    ]}
+                                  />
+                                </Form.Item>
+                              </>
+                            ) : null}
                           </>
                         ) : null
                       }
@@ -814,6 +1002,33 @@ export function ModelListEditor({
                 )}
               </>
             )}
+
+            <ResourceVisibilityGate
+              allowOwner={false}
+              visibility={modelVisibility === "groups" ? "groups" : "all"}
+            >
+              <div className={styles.modelVisibilityBlock}>
+                <div className={styles.modelVisibilityTitle}>
+                  {t("resourceVisibility.groupAccess")}
+                </div>
+                <p className={styles.modelVisibilityHint}>
+                  {t("resourceVisibility.groupAccessHint")}
+                </p>
+                <ResourceVisibilityFields
+                  allowOwner={false}
+                  visibility={modelVisibility === "groups" ? "groups" : "all"}
+                  groupIds={modelGroupIds}
+                  onChange={(next) => {
+                    const nextVisibility =
+                      next.visibility === "groups" ? "groups" : "all";
+                    setModelVisibility(nextVisibility);
+                    setModelGroupIds(
+                      nextVisibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
+              </div>
+            </ResourceVisibilityGate>
 
             <div
               style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}

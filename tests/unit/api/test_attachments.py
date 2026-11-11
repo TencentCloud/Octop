@@ -70,6 +70,12 @@ def test_programmer_extensions_are_accepted() -> None:
 
 def test_office_image_and_archive_extensions_are_accepted() -> None:
     assert validate_inbound_media_type("foo/bar", "notes.doc") == "application/msword"
+    assert validate_inbound_media_type("foo/bar", "notes.wps") == "application/msword"
+    assert (
+        validate_inbound_media_type("application/wps-office.wps", "notes.wps")
+        == "application/msword"
+    )
+    assert validate_inbound_media_type("application/kswps", "blob") == "application/msword"
     assert validate_inbound_media_type("foo/bar", "notes.rtf") == "application/rtf"
     assert validate_inbound_media_type("foo/bar", "book.epub") == "application/epub+zip"
     assert validate_inbound_media_type("foo/bar", "map.xmind") == "application/vnd.xmind.workbook"

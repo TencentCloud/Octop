@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, Drawer, Empty, Spin, Typography } from "antd";
+import { Button, Drawer, Empty, Spin } from "antd";
 import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -82,9 +82,7 @@ export function SkillsetFromHubDrawer({
       width={720}
       destroyOnHidden
     >
-      <Typography.Paragraph type="secondary" className={styles.hint}>
-        {t("skillPackages.fromSkillHubHint")}
-      </Typography.Paragraph>
+      <p className={styles.hint}>{t("skillPackages.fromSkillHubHint")}</p>
       {loading ? (
         <div className={styles.loading}>
           <Spin />

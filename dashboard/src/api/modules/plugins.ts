@@ -24,6 +24,8 @@ export interface InstalledPlugin {
   loaded?: boolean;
   /** Global enable switch from config.json (default true). */
   enabled?: boolean;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
   error?: string;
   ui?: { entry: string; manifest: string } | null;
   tools?: {
@@ -98,11 +100,15 @@ export const pluginsApi = {
 
   installFromMarket(
     pluginId: string,
-    force = false,
+    version?: string,
   ): Promise<{ id: string; version: string; name: string; kind: string }> {
-    const qs = force ? "?force=true" : "";
+    const params = new URLSearchParams();
+    if (version) params.set("version", version);
+    const qs = params.toString();
     return request(
-      `/plugins/market/${encodeURIComponent(pluginId)}/install${qs}`,
+      `/plugins/market/${encodeURIComponent(pluginId)}/install${
+        qs ? `?${qs}` : ""
+      }`,
       {
         method: "POST",
       },
@@ -138,6 +144,16 @@ export const pluginsApi = {
     return request(`/plugins/${encodeURIComponent(pluginId)}`, {
       method: "PATCH",
       body: JSON.stringify({ enabled }),
+    });
+  },
+
+  setVisibility(
+    pluginId: string,
+    body: { visibility: "all" | "groups"; group_ids?: string[] },
+  ): Promise<InstalledPlugin> {
+    return request(`/plugins/${encodeURIComponent(pluginId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     });
   },
 

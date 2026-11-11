@@ -147,9 +147,32 @@ def _ensure_agent_profile_columns(db: DatabasePool) -> None:
     _collapse_legacy_agent_welcome_columns(db)
 
 
+def _rename_legacy_cron_schedule_column(db: DatabasePool) -> None:
+    """Rename pre-squash ``cron_jobs.trigger`` to ``schedule_spec``.
+
+    Current inserts and reads use ``schedule_spec``. Databases created before
+    that rename kept the old column, so cron creation failed with
+    "no column named schedule_spec" even after later columns were added.
+    """
+    cols = _table_columns(db, "cron_jobs")
+    if "trigger" not in cols:
+        return
+    if "schedule_spec" not in cols:
+        with db.connect() as conn:
+            conn.execute('ALTER TABLE cron_jobs RENAME COLUMN "trigger" TO schedule_spec')
+        return
+    with db.connect() as conn:
+        conn.execute(
+            'UPDATE cron_jobs SET schedule_spec = "trigger" '
+            "WHERE schedule_spec IS NULL OR schedule_spec = ''"
+        )
+    _drop_column(db, "cron_jobs", "trigger")
+
+
 def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "cron_jobs"):
         return
+    _rename_legacy_cron_schedule_column(db)
     _ensure_column(db, "cron_jobs", "name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(
         db,
@@ -1564,6 +1587,263 @@ def _ensure_skill_copy_policy_schema(db: DatabasePool) -> None:
     _ensure_column(db, "skill_packages", "copy_policy", "TEXT NOT NULL DEFAULT 'snapshot'")
 
 
+def _ensure_skill_package_download_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "skill_packages"):
+        return
+    _ensure_column(db, "skill_packages", "allow_download", "INTEGER NOT NULL DEFAULT 1")
+
+
+def _ensure_skill_package_shared_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "skill_packages"):
+        return
+    _ensure_column(db, "skill_packages", "shared", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _ensure_user_group_profile_schema(db: DatabasePool) -> None:
+    """Enable flag and preset avatar on user groups. Idempotent."""
+    if not _table_exists(db, "user_group"):
+        return
+    _ensure_column(db, "user_group", "enabled", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(db, "user_group", "avatar_icon", "TEXT")
+
+
+def _ensure_instance_lease_schema(db: DatabasePool) -> None:
+    """Cron run leases and channel connection leases (v25). Idempotent."""
+    until = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    if _table_exists(db, "cron_jobs"):
+        _ensure_column(db, "cron_jobs", "run_lease_owner", "TEXT")
+        _ensure_column(db, "cron_jobs", "run_lease_token", "TEXT")
+        _ensure_column(db, "cron_jobs", "run_lease_until", until)
+    if _table_exists(db, "channels"):
+        _ensure_column(db, "channels", "runtime_lease_owner", "TEXT")
+        _ensure_column(db, "channels", "runtime_lease_token", "TEXT")
+        _ensure_column(db, "channels", "runtime_lease_until", until)
+        _ensure_column(
+            db,
+            "channels",
+            "runtime_generation",
+            "INTEGER NOT NULL DEFAULT 0",
+        )
+
+
+def _ensure_control_blobs_schema(db: DatabasePool) -> None:
+    """Profile avatars and shared file trees (plugins, published experts)."""
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS profile_avatars (
+                  owner_kind TEXT NOT NULL,
+                  owner_id TEXT NOT NULL,
+                  media_type TEXT NOT NULL,
+                  content BYTEA NOT NULL,
+                  updated_at BIGINT NOT NULL,
+                  PRIMARY KEY (owner_kind, owner_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS control_files (
+                  namespace TEXT NOT NULL,
+                  owner_id TEXT NOT NULL,
+                  path TEXT NOT NULL,
+                  content BYTEA NOT NULL,
+                  PRIMARY KEY (namespace, owner_id, path)
+                )
+                """
+            )
+        return
+    with db.connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS profile_avatars (
+              owner_kind TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              media_type TEXT NOT NULL,
+              content BLOB NOT NULL,
+              updated_at INTEGER NOT NULL,
+              PRIMARY KEY (owner_kind, owner_id)
+            );
+            CREATE TABLE IF NOT EXISTS control_files (
+              namespace TEXT NOT NULL,
+              owner_id TEXT NOT NULL,
+              path TEXT NOT NULL,
+              content BLOB NOT NULL,
+              PRIMARY KEY (namespace, owner_id, path)
+            );
+            """
+        )
+
+
+def _ensure_thread_contributed_schema(db: DatabasePool) -> None:
+    """``threads.contributed`` (v25). Idempotent for SQLite, which skips the SQL file."""
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _ensure_user_mfa_schema(db: DatabasePool) -> None:
+    """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
+    if not _table_exists(db, "users"):
+        return
+    _ensure_column(db, "users", "mfa_version", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "users", "mfa_failed_count", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "users", "mfa_locked_until", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "users", "password_version", "INTEGER NOT NULL DEFAULT 0")
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_totp (
+                  id                  BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                  user_id             BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                  secret_enc          BYTEA NOT NULL,
+                  verified_at         BIGINT,
+                  pending_expires_at  BIGINT,
+                  last_used_step      BIGINT,
+                  created_at          BIGINT NOT NULL,
+                  updated_at          BIGINT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_webauthn_credentials (
+                  id                  BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                  credential_id       TEXT NOT NULL UNIQUE,
+                  user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                  public_key          BYTEA NOT NULL,
+                  user_handle         TEXT NOT NULL,
+                  rp_id               TEXT NOT NULL,
+                  aaguid              TEXT,
+                  sign_count          BIGINT NOT NULL DEFAULT 0,
+                  backup_eligible     INTEGER NOT NULL DEFAULT 0,
+                  backup_state        INTEGER NOT NULL DEFAULT 0,
+                  name                TEXT,
+                  transports_json     TEXT NOT NULL DEFAULT '[]',
+                  created_at          BIGINT NOT NULL,
+                  last_used_at        BIGINT
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_user_webauthn_user_id "
+                "ON user_webauthn_credentials(user_id)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_recovery_codes (
+                  id                  BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                  user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                  code_hash           TEXT NOT NULL,
+                  used_at             BIGINT,
+                  created_at          BIGINT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_user_recovery_codes_user_id "
+                "ON user_recovery_codes(user_id)"
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS auth_challenges (
+                  id                  BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                  challenge           TEXT UNIQUE,
+                  jti                 TEXT UNIQUE,
+                  kind                TEXT NOT NULL,
+                  user_id             BIGINT REFERENCES users(id) ON DELETE CASCADE,
+                  attempts            INTEGER NOT NULL DEFAULT 0,
+                  expires_at          BIGINT NOT NULL,
+                  consumed_at         BIGINT,
+                  created_at          BIGINT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires_at "
+                "ON auth_challenges(expires_at)"
+            )
+        return
+    with db.connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS user_totp (
+              id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id             INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+              secret_enc          BLOB NOT NULL,
+              verified_at         INTEGER,
+              pending_expires_at  INTEGER,
+              last_used_step      INTEGER,
+              created_at          INTEGER NOT NULL,
+              updated_at          INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS user_webauthn_credentials (
+              id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+              credential_id       TEXT NOT NULL UNIQUE,
+              user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              public_key          BLOB NOT NULL,
+              user_handle         TEXT NOT NULL,
+              rp_id               TEXT NOT NULL,
+              aaguid              TEXT,
+              sign_count          INTEGER NOT NULL DEFAULT 0,
+              backup_eligible     INTEGER NOT NULL DEFAULT 0,
+              backup_state        INTEGER NOT NULL DEFAULT 0,
+              name                TEXT,
+              transports_json     TEXT NOT NULL DEFAULT '[]',
+              created_at          INTEGER NOT NULL,
+              last_used_at        INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_webauthn_user_id
+              ON user_webauthn_credentials(user_id);
+            CREATE TABLE IF NOT EXISTS user_recovery_codes (
+              id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              code_hash           TEXT NOT NULL,
+              used_at             INTEGER,
+              created_at          INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_recovery_codes_user_id
+              ON user_recovery_codes(user_id);
+            CREATE TABLE IF NOT EXISTS auth_challenges (
+              id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+              challenge           TEXT UNIQUE,
+              jti                 TEXT UNIQUE,
+              kind                TEXT NOT NULL,
+              user_id             INTEGER REFERENCES users(id) ON DELETE CASCADE,
+              attempts            INTEGER NOT NULL DEFAULT 0,
+              expires_at          INTEGER NOT NULL,
+              consumed_at         INTEGER,
+              created_at          INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires_at
+              ON auth_challenges(expires_at);
+            """
+        )
+
+
+def _ensure_knowledge_base_icon_url_schema(db: DatabasePool) -> None:
+    """Optional portrait URL on knowledge bases. Idempotent."""
+    if not _table_exists(db, "knowledge_bases"):
+        return
+    _ensure_column(db, "knowledge_bases", "icon_url", "TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_bridge_icon_url_schema(db: DatabasePool) -> None:
+    """Optional portrait URL on bridge connections. Idempotent."""
+    if not _table_exists(db, "bridge_connections"):
+        return
+    _ensure_column(db, "bridge_connections", "icon_url", "TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_bridge_shared_schema(db: DatabasePool) -> None:
+    """Owner can share a bridge link with everyone or selected groups. Idempotent."""
+    if not _table_exists(db, "bridge_connections"):
+        return
+    _ensure_column(db, "bridge_connections", "shared", "INTEGER NOT NULL DEFAULT 0")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1571,6 +1851,7 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     _ensure_column(db, "bridge_connections", "notes", "TEXT")
     _ensure_column(db, "bridge_connections", "icon_name", "TEXT")
     _ensure_column(db, "bridge_connections", "auto_reconnect", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(db, "bridge_connections", "peer_client_host", "TEXT")
     # Make every (owner, display_name) unique before creating the index.
     # Empty names are filled from peer username / URL; colliding names get a suffix.
     with db.connect() as conn:
@@ -1612,6 +1893,23 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
         )
 
 
+def _repair_connector_text_credentials(db: DatabasePool) -> None:
+    """Cast TEXT ``connectors.credential_blob`` values back to BLOB.
+
+    Idempotent. PostgreSQL ``BYTEA`` cannot store the historical TEXT row, and
+    databases already at the current schema version must still be repaired, so
+    this stays out of the numbered migrations.
+    """
+    if db.dialect != "sqlite" or not _table_exists(db, "connectors"):
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors "
+            "SET credential_blob = CAST(credential_blob AS BLOB) "
+            "WHERE typeof(credential_blob) = 'text'"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -1631,6 +1929,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_column(db, "threads", "reasoning_mode", "TEXT")
         _ensure_column(db, "threads", "reasoning_effort", "TEXT")
         _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
         _ensure_thread_conversation_mode_schema(db)
     if _table_exists(db, "agents"):
         _ensure_column(db, "agents", "is_shared", "INTEGER NOT NULL DEFAULT 0")
@@ -1699,6 +1998,9 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
+            if max_version >= 25:
+                _ensure_user_mfa_schema(db)
+                _ensure_instance_lease_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1743,6 +2045,13 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_thread_conversation_mode_schema(db)
     if max_version >= 18:
         _ensure_user_role_schema(db)
+    if max_version >= 21:
+        _ensure_skill_package_download_schema(db)
+    if max_version >= 22:
+        _ensure_skill_package_shared_schema(db)
+    if max_version >= 25:
+        _ensure_user_mfa_schema(db)
+        _ensure_instance_lease_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1903,9 +2212,220 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 21:
+        _ensure_skill_package_download_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 22:
+        _ensure_skill_package_shared_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 24:
+        _ensure_user_group_profile_schema(db)
+        _ensure_knowledge_base_icon_url_schema(db)
+        _ensure_bridge_icon_url_schema(db)
+        _ensure_bridge_shared_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 25:
+        _ensure_user_mfa_schema(db)
+        _ensure_instance_lease_schema(db)
+        _ensure_thread_contributed_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
+
+
+_NAV_PAGE_PERMISSIONS = ("experts", "tasks", "token_usage")
+_NAV_PAGE_PERMISSIONS_FLAG = "granted_nav_page_permissions"
+_PERSONALIZATION_TAB_PERMISSIONS = (
+    "skills",
+    "subagents",
+    "tools",
+    "agent_plugins",
+    "mbti",
+    "memory",
+)
+_PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
+_BRIDGE_PERMISSIONS = ("bridge",)
+_BRIDGE_PERMISSIONS_FLAG = "granted_bridge_permission"
+
+
+def _parse_perm_list(raw: Any) -> list[str] | None:
+    if isinstance(raw, list):
+        return [str(item) for item in raw]
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    return None
+
+
+def _grant_permission_keys_once(
+    db: DatabasePool,
+    keys: tuple[str, ...],
+    flag: str,
+) -> None:
+    """Grant ``keys`` once to accounts that already had those pages open.
+
+    Later removals stick: the settings flag stops this from running again.
+    Admins are skipped; an empty permission list means "all" for that role.
+    """
+    if not _table_exists(db, "settings"):
+        return
+    with db.connect() as conn:
+        existing = conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (flag,),
+        ).fetchone()
+    if existing is not None:
+        return
+
+    def grant(table: str, id_col: str, skip_where: str) -> None:
+        if not _table_exists(db, table):
+            return
+        with db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT {id_col}, permissions FROM {table} WHERE {skip_where}"
+            ).fetchall()
+        updates: list[tuple[str, object]] = []
+        for row in rows:
+            current = _parse_perm_list(row[1])
+            if current is None:
+                continue
+            merged = list(current)
+            changed = False
+            for key in keys:
+                if key not in merged:
+                    merged.append(key)
+                    changed = True
+            if changed:
+                updates.append((json.dumps(merged, ensure_ascii=False), row[0]))
+        if not updates:
+            return
+        with db.transaction() as conn:
+            for payload, pk in updates:
+                conn.execute(
+                    f"UPDATE {table} SET permissions = ? WHERE {id_col} = ?",
+                    (payload, pk),
+                )
+
+    grant("users", "id", "role <> 'admin'")
+    grant("user_role", "id", "user_role_id <> 'admin'")
+    with db.transaction() as conn:
+        if db.dialect == "postgresql":
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                (flag, "1"),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
+                (flag, "1"),
+            )
+
+
+def _grant_default_nav_permissions(db: DatabasePool) -> None:
+    """Grant experts/tasks/token usage once to accounts that already had them open."""
+    _grant_permission_keys_once(db, _NAV_PAGE_PERMISSIONS, _NAV_PAGE_PERMISSIONS_FLAG)
+
+
+def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
+    """Grant personalization tab keys once; those pages used to be open to everyone."""
+    _grant_permission_keys_once(
+        db,
+        _PERSONALIZATION_TAB_PERMISSIONS,
+        _PERSONALIZATION_TAB_PERMISSIONS_FLAG,
+    )
+
+
+def _grant_bridge_permission(db: DatabasePool) -> None:
+    """Grant cloud-collab once; /bridge used to be ungated for every signed-in user."""
+    _grant_permission_keys_once(db, _BRIDGE_PERMISSIONS, _BRIDGE_PERMISSIONS_FLAG)
+
+
+_PAGE_TAB_EXPANSIONS_FLAG = "expanded_page_tab_permissions_v1"
+
+
+def _expand_page_tab_permissions(db: DatabasePool) -> None:
+    """Copy collapsed page tabs onto grants that already had the parent key.
+
+    Runs once. Removing a tab afterwards stays removed.
+    """
+    if not _table_exists(db, "settings"):
+        return
+    with db.connect() as conn:
+        existing = conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (_PAGE_TAB_EXPANSIONS_FLAG,),
+        ).fetchone()
+    if existing is not None:
+        return
+
+    from octop.infra.users.permissions import PAGE_TAB_EXPANSIONS
+
+    def expand(table: str, id_col: str, skip_where: str) -> None:
+        if not _table_exists(db, table):
+            return
+        with db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT {id_col}, permissions FROM {table} WHERE {skip_where}"
+            ).fetchall()
+        updates: list[tuple[str, object]] = []
+        for row in rows:
+            current = _parse_perm_list(row[1])
+            if current is None:
+                continue
+            merged = list(current)
+            changed = False
+            for parent, children, retire in PAGE_TAB_EXPANSIONS:
+                if parent not in merged:
+                    continue
+                for child in children:
+                    if child not in merged:
+                        merged.append(child)
+                        changed = True
+                if retire:
+                    merged = [key for key in merged if key != parent]
+                    changed = True
+            if changed:
+                updates.append((json.dumps(merged, ensure_ascii=False), row[0]))
+        if not updates:
+            return
+        with db.transaction() as conn:
+            for payload, pk in updates:
+                conn.execute(
+                    f"UPDATE {table} SET permissions = ? WHERE {id_col} = ?",
+                    (payload, pk),
+                )
+
+    expand("users", "id", "role <> 'admin'")
+    expand("user_role", "id", "user_role_id <> 'admin'")
+    with db.transaction() as conn:
+        if db.dialect == "postgresql":
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                (_PAGE_TAB_EXPANSIONS_FLAG, "1"),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
+                (_PAGE_TAB_EXPANSIONS_FLAG, "1"),
+            )
 
 
 def run_migrations(db: DatabasePool) -> None:
@@ -1960,3 +2480,21 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
+    _ensure_skill_copy_policy_schema(db)
+    _ensure_skill_package_download_schema(db)
+    _ensure_skill_package_shared_schema(db)
+    _ensure_user_group_profile_schema(db)
+    _ensure_knowledge_base_icon_url_schema(db)
+    _ensure_bridge_icon_url_schema(db)
+    _ensure_bridge_shared_schema(db)
+    # Always repair: version may already be 25 while MFA tables or lease
+    # columns were never created.
+    _ensure_user_mfa_schema(db)
+    _ensure_instance_lease_schema(db)
+    _ensure_control_blobs_schema(db)
+    _ensure_thread_contributed_schema(db)
+    _grant_default_nav_permissions(db)
+    _grant_personalization_tab_permissions(db)
+    _grant_bridge_permission(db)
+    _expand_page_tab_permissions(db)
+    _repair_connector_text_credentials(db)

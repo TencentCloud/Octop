@@ -11,7 +11,11 @@ import click
 from octop.cli.support.ctx import json_output_enabled, resolve_agent
 from octop.cli.support.db import resolve_cli_locale
 from octop.i18n import tr
-from octop.infra.agents.memory.slim_control import list_memory_slim_agents, request_memory_slim
+from octop.infra.agents.memory.slim_control import (
+    list_memory_slim_agents,
+    list_orphan_agent_dirs,
+    request_memory_slim,
+)
 from octop.infra.utils.paths import PathLayout
 
 
@@ -79,10 +83,20 @@ class _Progress:
         self.phase, self.elapsed, self.scanned = phase, elapsed, scanned
 
 
-def _slim_agent(root: Path, agent_id: str, locale: str, *, index: int, total: int) -> None:
+def _slim_agent(
+    root: Path,
+    agent_id: str,
+    locale: str,
+    *,
+    index: int,
+    total: int,
+    remove_directories: bool,
+) -> None:
     progress = _Progress(locale)
     try:
-        for status in request_memory_slim(root, agent_id, locale=locale):
+        for status in request_memory_slim(
+            root, agent_id, locale=locale, remove_directories=remove_directories
+        ):
             if json_output_enabled():
                 click.echo(
                     json.dumps(
@@ -93,16 +107,28 @@ def _slim_agent(root: Path, agent_id: str, locale: str, *, index: int, total: in
             else:
                 progress.show(status)
                 if status.get("phase") == "done":
-                    report = status["report"]
-                    click.echo(
-                        tr(
-                            "memory_slim.result",
-                            locale,
-                            before=f"{report['before']['file_bytes'] / 1048576:.2f}",
-                            after=f"{report['after']['file_bytes'] / 1048576:.2f}",
-                            backup=report["backup_path"],
+                    sweep = status.get("sweep")
+                    if isinstance(sweep, dict):
+                        click.echo(
+                            tr(
+                                "memory_slim.swept",
+                                locale,
+                                namespaces=sweep.get("namespaces", 0),
+                                threads=sweep.get("threads", 0),
+                                directories=sweep.get("directories", 0),
+                            )
                         )
-                    )
+                    report = status.get("report")
+                    if isinstance(report, dict) and "before" in report:
+                        click.echo(
+                            tr(
+                                "memory_slim.result",
+                                locale,
+                                before=f"{report['before']['file_bytes'] / 1048576:.2f}",
+                                after=f"{report['after']['file_bytes'] / 1048576:.2f}",
+                                backup=report["backup_path"],
+                            )
+                        )
             if status.get("phase") == "failed":
                 raise click.ClickException(str(status.get("error", "Maintenance failed")))
     finally:
@@ -119,7 +145,12 @@ def _slim_agent(root: Path, agent_id: str, locale: str, *, index: int, total: in
 @click.option(
     "--all", "all_agents", is_flag=True, help="Sequentially slim all eligible running agents."
 )
-def slim(agent_id: str | None, all_agents: bool) -> None:
+@click.option(
+    "--delete-dirs",
+    is_flag=True,
+    help="After listing them, delete directories whose names match no current agent.",
+)
+def slim(agent_id: str | None, all_agents: bool, delete_dirs: bool) -> None:
     """Back up and slim memory, pausing new turns until completion. Keeps all history."""
     locale = resolve_cli_locale()
     root = PathLayout.from_env().root
@@ -146,6 +177,29 @@ def slim(agent_id: str | None, all_agents: bool) -> None:
                 )
                 agent_id = agents[number - 1]["agent_id"]
             targets = [{"agent_id": agent_id, "name": agent_id}]
+        try:
+            directories = list_orphan_agent_dirs(root)
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise click.ClickException(
+                tr("memory_slim.unavailable", locale, detail=str(exc))
+            ) from exc
+        remove_directories = delete_dirs
+        if directories:
+            if json_output_enabled():
+                click.echo(
+                    json.dumps(
+                        {"phase": "orphan_dirs", "directories": directories},
+                        ensure_ascii=False,
+                    )
+                )
+            else:
+                click.echo(tr("memory_slim.orphan_dirs", locale))
+                for directory in directories:
+                    click.echo(f"  {directory}")
+                if not delete_dirs:
+                    remove_directories = click.confirm(
+                        tr("memory_slim.orphan_dirs_confirm", locale), default=False
+                    )
         total = len(targets)
         for index, target in enumerate(targets, 1):
             target_id = target["agent_id"]
@@ -176,7 +230,14 @@ def slim(agent_id: str | None, all_agents: bool) -> None:
             elif not json_output_enabled():
                 click.echo(tr("memory_slim.target", locale, agent_id=target_id))
             try:
-                _slim_agent(root, target_id, locale, index=index, total=total)
+                _slim_agent(
+                    root,
+                    target_id,
+                    locale,
+                    index=index,
+                    total=total,
+                    remove_directories=remove_directories,
+                )
             except (click.ClickException, OSError, ValueError, RuntimeError) as exc:
                 if not all_agents:
                     raise

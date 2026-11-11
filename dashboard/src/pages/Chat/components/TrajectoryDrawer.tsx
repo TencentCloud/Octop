@@ -2,8 +2,10 @@ import { Button, Drawer, Empty, Space, Spin } from "antd";
 import { Download, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import { trajectoryApi } from "../../../api/modules/trajectory";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useTrajectorySession } from "../hooks/useTrajectorySession";
 import {
@@ -168,12 +170,7 @@ export default function TrajectoryDrawer({
     void (async () => {
       try {
         const blob = await trajectoryApi.export(agentId, threadId);
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `trajectory-${threadId}.jsonl`;
-        link.click();
-        URL.revokeObjectURL(url);
+        await saveBlobAsFile(blob, `trajectory-${threadId}.jsonl`);
       } catch {
         message.error(
           t("chat.trajectoryExportFailed", "Failed to export trajectory"),
@@ -272,9 +269,7 @@ export default function TrajectoryDrawer({
           onLoadEarlier={loadEarlier}
           onRecordSelect={setSelectedEventId}
         />
-        <div
-          className={`${styles.split} ${isMobile ? styles.splitMobile : ""}`}
-        >
+        <div className={cx(styles.split, isMobile && styles.splitMobile)}>
           <div className={styles.ledgerPane}>
             <TrajectoryLedger
               events={ledgerEvents}

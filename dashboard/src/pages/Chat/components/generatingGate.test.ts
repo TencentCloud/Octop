@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { chatGeneratingPhase, shouldShowGenerating } from "./generatingGate";
+import {
+  awaitingVisibleAssistantReply,
+  chatGeneratingPhase,
+  shouldShowGenerating,
+} from "./generatingGate";
 
 describe("shouldShowGenerating", () => {
   it("is true while streaming and not loading history", () => {
@@ -70,6 +74,20 @@ describe("chatGeneratingPhase", () => {
     });
   });
 
+  it("keeps the elapsed wait through a decision-only placeholder", () => {
+    expect(
+      chatGeneratingPhase({
+        isStreaming: true,
+        lastMessageRole: "assistant",
+        awaitingVisibleReply: true,
+      }),
+    ).toEqual({
+      showFooter: true,
+      showElapsed: true,
+      membersOnly: false,
+    });
+  });
+
   it("shows a members-only footer without cancel-phase elapsed", () => {
     expect(
       chatGeneratingPhase({
@@ -82,5 +100,31 @@ describe("chatGeneratingPhase", () => {
       showElapsed: false,
       membersOnly: true,
     });
+  });
+});
+
+describe("awaitingVisibleAssistantReply", () => {
+  it("stays open for a decision stamp with no text or tool", () => {
+    expect(
+      awaitingVisibleAssistantReply([
+        { role: "user", content: "查一下磁盘" },
+        { role: "assistant", content: "", status: "streaming" },
+      ]),
+    ).toBe(true);
+  });
+
+  it("closes once a tool or answer is visible", () => {
+    expect(
+      awaitingVisibleAssistantReply([
+        { role: "user", content: "查一下磁盘" },
+        { role: "assistant", content: "", toolData: { name: "execute" } },
+      ]),
+    ).toBe(false);
+    expect(
+      awaitingVisibleAssistantReply([
+        { role: "user", content: "查一下磁盘" },
+        { role: "assistant", content: "磁盘正常" },
+      ]),
+    ).toBe(false);
   });
 });

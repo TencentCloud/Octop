@@ -20,6 +20,12 @@ import {
   extractPromptFromJob,
   formatCronTimestamp,
 } from "../cronDisplay";
+import {
+  formatTriggerText,
+  lastRunStatusTag,
+  oneShotPhase,
+  oneShotPhaseLabelKey,
+} from "../onceSchedule";
 
 type CronJob = CronJobSpecOutput;
 
@@ -67,6 +73,31 @@ export function CronJobCard({
     typeof meta.octop_last_run_at === "number" ? meta.octop_last_run_at : null;
 
   const accent = job.enabled ? ENABLED_ACCENT : DISABLED_ACCENT;
+  const phase = oneShotPhase(
+    job.schedule?.cron,
+    Boolean(job.enabled),
+    lastStatus,
+  );
+  const pillColor =
+    phase === "failed"
+      ? "#ef4444"
+      : phase === "missed"
+      ? "#d97706"
+      : phase === "pending"
+      ? ENABLED_ACCENT
+      : phase
+      ? DISABLED_ACCENT
+      : accent;
+  const statusLabel = phase
+    ? t(oneShotPhaseLabelKey(phase))
+    : job.enabled
+    ? t("common.enabled")
+    : t("common.disabled");
+  const statusTag = lastStatus ? lastRunStatusTag(lastStatus) : null;
+  const triggerLabel = formatTriggerText(job.schedule?.cron, {
+    mail: t("cronJobs.form.agentlyNewMail"),
+    once: t("cronJobs.form.scheduleModeOnce"),
+  });
 
   const taskType = job.task_type === "text" ? "text" : "agent";
 
@@ -114,15 +145,15 @@ export function CronJobCard({
             <div
               className={styles.cronCardStatus}
               style={{
-                color: accent,
-                background: `${accent}1a`,
+                color: pillColor,
+                background: `${pillColor}1a`,
               }}
             >
               <span
                 className={styles.cronCardStatusDot}
-                style={{ background: accent }}
+                style={{ background: pillColor }}
               />
-              {job.enabled ? t("common.enabled") : t("common.disabled")}
+              {statusLabel}
             </div>
             {/* Task type tag */}
             <Tag style={{ fontSize: 11, margin: 0 }}>
@@ -133,13 +164,15 @@ export function CronJobCard({
           </div>
         </div>
 
-        {/* Toggle switch */}
-        <Switch
-          size="small"
-          checked={job.enabled}
-          onChange={() => onToggleEnabled(job)}
-          className={styles.cronCardSwitch}
-        />
+        <Tooltip title={job.enabled ? t("common.disable") : t("common.enable")}>
+          <Switch
+            size="small"
+            checked={job.enabled}
+            onChange={() => onToggleEnabled(job)}
+            className={styles.cronCardSwitch}
+            aria-label={job.enabled ? t("common.disable") : t("common.enable")}
+          />
+        </Tooltip>
       </div>
 
       {/* Prompt / description */}
@@ -149,11 +182,7 @@ export function CronJobCard({
       <div className={styles.cronCardInfo}>
         <span className={styles.cronCardInfoItem}>
           <Clock size={11} style={{ flexShrink: 0 }} />
-          <code className={styles.cronCardCode}>
-            {job.schedule?.cron?.startsWith("agently:")
-              ? t("cronJobs.form.agentlyNewMail")
-              : job.schedule?.cron || "—"}
-          </code>
+          <code className={styles.cronCardCode}>{triggerLabel}</code>
         </span>
         {lastRunAt && (
           <span className={styles.cronCardInfoItem}>
@@ -165,16 +194,10 @@ export function CronJobCard({
         )}
         {lastStatus && (
           <Tag
-            color={
-              lastStatus === "ok"
-                ? "success"
-                : lastStatus === "error"
-                ? "error"
-                : "default"
-            }
+            color={statusTag?.color ?? "default"}
             style={{ fontSize: 11, margin: 0 }}
           >
-            {lastStatus}
+            {statusTag ? t(statusTag.labelKey) : lastStatus}
           </Tag>
         )}
       </div>
@@ -225,16 +248,24 @@ export function CronJobCard({
           </Tooltip>
         </Dropdown>
 
-        {/* Primary action button — right-aligned */}
-        <button
-          type="button"
-          className={styles.cronCardRunBtn}
-          style={{ color: accent, borderColor: `${accent}55` }}
-          onClick={() => onExecuteNow(job)}
-        >
-          <Play size={13} />
-          {t("cronJobs.executeNow")}
-        </button>
+        <div className={styles.cronCardFooterActions}>
+          <button
+            type="button"
+            className={styles.cronCardToggleBtn}
+            onClick={() => onToggleEnabled(job)}
+          >
+            {job.enabled ? t("common.disable") : t("common.enable")}
+          </button>
+          <button
+            type="button"
+            className={styles.cronCardRunBtn}
+            style={{ color: accent, borderColor: `${accent}55` }}
+            onClick={() => onExecuteNow(job)}
+          >
+            <Play size={13} />
+            {t("cronJobs.executeNow")}
+          </button>
+        </div>
       </div>
     </div>
   );

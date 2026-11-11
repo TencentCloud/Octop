@@ -53,6 +53,41 @@ The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
 
+## Local knowledge indexing and systemd resource limits
+
+Local ONNX embeddings process one chunk at a time with two inference threads.
+Indexing, retrieval, and model probes share one cached model per process and
+serialize inference. Switching the model or `OCTOP_HOME`, or deleting the cached
+model, releases the resident session. Knowledge indexing processes one document
+at a time; large imports continue in the background.
+
+On Linux, `octop service start` and `octop service restart` install/update
+`octop.service.d/15-resource-limits.conf` alongside the existing service unit.
+The main unit, custom `ExecStart`, service user, and other drop-ins are preserved.
+Defaults are `MemoryHigh=60%` and `MemoryMax=75%` of physical RAM,
+`MemorySwapMax=512M`, `OOMPolicy=kill`, a 30-second restart delay, and at most three
+starts within ten minutes. These limits cover the whole service and its children;
+they are a host safeguard, not a guarantee that every model fits. Memory controls
+require the corresponding systemd/cgroup support (user services need cgroup v2
+with the memory controller available).
+
+To set a machine-specific budget, use `systemctl --user edit octop.service`
+(or `sudo systemctl edit octop.service` for a system service). For example:
+
+```ini
+[Service]
+MemoryHigh=5G
+MemoryMax=6G
+MemorySwapMax=512M
+```
+
+The resulting `override.conf` sorts after the managed defaults and survives
+future service updates. Restart the service to apply it. If repeated failures
+hit the start limit, correct the cause before running
+`systemctl --user reset-failed octop.service` and starting the service again
+(omit `--user` for a system service). Foreground, Docker, and macOS launchd
+deployments retain their own process/container resource policies.
+
 ## `config.json`
 
 Generated with defaults on first run; merged with environment overrides
@@ -136,9 +171,9 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_BIND_HOST` | string | `127.0.0.1` | Listen address (use `0.0.0.0` for LAN access) |
 | `OCTOP_PORT` | int | `8088` | Listen port (`0`–`65535`; `0` asks the OS for a free port) |
 | `OCTOP_LOG_LEVEL` | string | `info` | One of `debug` `info` `warning` `error` |
-| `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.log.YYYY-MM-DD` files for this many days |
+| `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.YYYY-MM-DD.log` files for this many days |
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |
-| `OCTOP_LOG_COMPRESS` | bool | `true` | logrotate-style `compress` + `delaycompress`: gzip prior rotated plains on the next cycle (`octop.log.YYYY-MM-DD.gz`); the newest rotated file stays uncompressed until then |
+| `OCTOP_LOG_COMPRESS` | bool | `true` | logrotate-style `compress` + `delaycompress`: gzip prior rotated plains on the next cycle (`octop.YYYY-MM-DD.log.gz`); the newest rotated file stays uncompressed until then |
 | `OCTOP_ACCESS_TOKEN_TTL` | int (seconds) | `86400` | JWT access-token lifetime |
 | `OCTOP_LOGIN_MAX_ATTEMPTS` | int | `5` | Failed-login attempts before lockout |
 | `OCTOP_LOGIN_LOCKOUT_SECONDS` | int | `900` | Lockout duration after `OCTOP_LOGIN_MAX_ATTEMPTS` failures |
@@ -169,6 +204,10 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_AGENT` | string | empty | Default `--agent` for CLI subcommands |
 | `OCTOP_SERVICE_MODE` | `systemd` \| `launchd` | auto | Override the service backend (used by `octop service`) |
 | `OCTOP_SERVICE_SCOPE` | `user` \| `system` | auto | systemd `--user` vs system unit (Linux only) |
+| `OCTOP_PORTAL_ORIGIN` | origin | `https://octop.cloud` | Plugin and expert catalog origin. No path. Empty disables the remote catalog. See [private market](private-market.md) |
+| `OCTOP_MARKET_REMOTE_ORIGIN` | origin | `https://download.octop.cloud` | Origin allowed for market archive `download_url` values. Any path on that origin is accepted. The variable itself has no path. See [private market](private-market.md) |
+| `SKILL_MARKET_ORIGIN` | origin | `https://api.skillhub.cn` | Skill search, rankings, and per-skill zip download. No path. Empty keeps the default. See [skill market](skill-market.md) |
+| `SKILLSET_ORIGIN` | origin | `https://api.skillhub.cn` | Skillset detail and skillset package used when importing a skill package. No path. Empty keeps the default. See [skill market](skill-market.md) |
 
 Invalid integer values are logged and ignored — the on-disk default
 remains in effect. `database_env_configured()` returns `True` when any
@@ -179,6 +218,16 @@ configured backend at boot.
 they are listed under `environment:` in `docker/docker-compose.yml`
 (Compose uses `.env` for interpolation only; unset keys do not enter the
 container). Writing the same keys to the mounted `~/.octop/env` also works.
+
+When `database.driver` is `postgresql`, skill-package sources and knowledge-base
+originals are stored in that same database (`public.skill_package_files` and
+`public.knowledge_files`), and knowledge vectors use pgvector
+(`public.knowledge_chunks`). Names sit next to `skill_packages` and
+`knowledge_bases`. SQLite keeps the local `skill-packages/` and
+`knowledge/` directories. The `vector` extension is not created by Octop
+migrations; enable it with `docker/postgres/init-vector.sql` or
+`CREATE EXTENSION vector` before indexing knowledge. There is no sqlite→PostgreSQL
+content migration in this release — pick the driver at install time.
 
 ### Agent memory vs control plane
 
@@ -204,6 +253,26 @@ control-plane migrations. Local compose enables `vector` via
 `docker/postgres/init-vector.sql`; managed databases need a DBA /
 provider toggle. See [ADR 002](./adr/002-database-backends.md).
 
+### Scheduled SQLite checkpoint backups
+
+These settings require a Harness build with the scheduled backup policy below.
+
+Harness attempts a whole-database backup before the first scheduled cleanup
+with eligible checkpoints. The default `OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE=first`
+writes `memory.sqlite.pre-prune.bak` alongside the database. If free space is
+less than the database plus WAL and 10% headroom, or if the backup fails,
+cleanup continues and a warning is logged. The adjacent
+`memory.sqlite.pre-prune.done` marker records when the attempt completed and
+its result. Remove the marker to allow another attempt the next time there are
+eligible checkpoints.
+
+Set `OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE=always` (or `1`, `true`, `on`, or
+`yes`) to replace the backup before each cleanup and defer checkpoint pruning
+if it cannot be written. Set it to `off` (or `0`, `false`, or `no`) to
+disable backup creation. Unrecognized values fall back to `first` with a warning.
+`OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS` defaults to 7. Set it to 0 to disable
+automatic expiration. Expiration leaves the marker in place.
+
 ## First-boot wizard
 
 The first request to a fresh install lands on the setup page. Greenfield
@@ -223,6 +292,20 @@ step; password verification works without a pool. The modern flow uses
 `GET /api/setup/status` returns `setup_required`, wizard password fields,
 plus `database_bound` / `database_driver`. `setup_lockdown` middleware
 blocks non-setup routes until the wizard completes.
+
+With `OCTOP_REQUIRE_SETUP_PASSWORD=false` there is no CLI password; the
+dashboard learns this from `wizard_password_required` and skips both that
+step and the password fields of the admin step. `POST /api/setup/initial-admin`
+then accepts a body without `password` and mints an unguessable one, so the
+row keeps a real hash while the JWT returned by the same call is the actual
+credential. The desktop shell pins that variable for the sidecar it owns, and
+neither `~/.octop/env` nor `PUT /api/envs` can override it while it runs.
+
+Because nobody knows that password, the shell also holds a device credential
+(encrypted per-install secret at `<OCTOP_HOME>/desktop-device.json`) and
+exchanges it for a fresh JWT at `POST /api/auth/device/token` when the session
+expires, so `OCTOP_ACCESS_TOKEN_TTL` stays at its default `86400` instead of
+being stretched. See `desktop/README.md` → *Accounts (no sign-in wall)*.
 
 For unattended installs, use `octop init --yes` with
 `OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD` (and
@@ -245,13 +328,14 @@ Per-agent provider credentials (e.g. API keys) live in the SQLite
 `providers` table and are surfaced through
 `infra/connectors/credential_crypto.py` for connector OAuth flows.
 
-## Optional segmented history archive
+## Retired segmented history archive
 
-`history_v2_enabled` defaults to `false`; enable it with
-`OCTOP_HISTORY_V2_ENABLED=true`.
-This switch only affects the write format of the next complete turn —
-once disabled, turns already saved in the new format are still read
-correctly.
-Before enabling, read
-[Segmented history archive & rollback](versioned-history.md), especially
-the version compatibility and backup/restore boundaries it covers.
+Octop ignores the former `history_v2_enabled` and `OCTOP_HISTORY_V2_ENABLED` settings.
+At startup, Octop migrates existing archive messages and supported trajectory events into the
+control-plane database before starting agents. Successful migrations retain the original
+`history_v2.sqlite` and `history_v2.required` with a `.migrated-<timestamp>` suffix.
+If a message or checkpoint anchor cannot be read, startup reports the affected thread and
+leaves the source archive in place so the data can be recovered and migration retried.
+Stop the old server before upgrading an installation with a v2 archive. Keep checkpoint
+retention disabled if the old server must run with the new Harness before migration.
+Restore a system backup containing a v2 archive with the offline backup CLI, then start Octop.

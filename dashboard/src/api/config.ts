@@ -1,3 +1,6 @@
+import { resolveWsUrl } from "../utils/desktopWsUrl";
+import { routerBasename } from "../utils/publicUrl";
+
 declare const BASE_URL: string;
 
 /**
@@ -6,7 +9,8 @@ declare const BASE_URL: string;
  * @returns Full API URL (e.g., "http://localhost:8088/api/models" or "/api/models")
  */
 export function getApiUrl(path: string): string {
-  const base = BASE_URL || "";
+  // Absolute API host (define BASE_URL) wins; otherwise Vite public base.
+  const base = BASE_URL || routerBasename() || "";
   const apiPrefix = "/api";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${base}${apiPrefix}${normalizedPath}`;
@@ -20,7 +24,7 @@ export function getApiUrl(path: string): string {
  * @returns Full WebSocket URL
  */
 export function getWsUrl(path: string): string {
-  const base = BASE_URL || "";
+  const base = BASE_URL || routerBasename() || "";
   const apiPrefix = "/api";
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   const httpUrl = `${base}${apiPrefix}${normalizedPath}`;
@@ -32,7 +36,7 @@ export function getWsUrl(path: string): string {
     return httpUrl.replace("https://", "wss://");
   }
 
-  // Relative URL — derive from current page location
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${httpUrl}`;
+  // Relative URL — derive from the page origin, or from the shell's relay when
+  // the page is served by the desktop shell (§5.2).
+  return resolveWsUrl(httpUrl);
 }

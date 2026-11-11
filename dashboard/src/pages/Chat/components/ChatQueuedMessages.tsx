@@ -1,4 +1,4 @@
-import { Paperclip, X } from "lucide-react";
+import { CornerDownLeft, Paperclip, Pencil, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { QueuedChatItem } from "../hooks/useChatMessageQueue";
 import styles from "../index.module.less";
@@ -7,6 +7,8 @@ interface ChatQueuedMessagesProps {
   items: QueuedChatItem[];
   onRemove: (id: string) => void;
   onReclaim: (id: string) => void;
+  /** Commit a local draft as a mid-turn steer. */
+  onSteer?: (id: string) => void;
 }
 
 function previewText(item: QueuedChatItem): string {
@@ -17,6 +19,7 @@ export default function ChatQueuedMessages({
   items,
   onRemove,
   onReclaim,
+  onSteer,
 }: ChatQueuedMessagesProps) {
   const { t } = useTranslation();
 
@@ -38,6 +41,7 @@ export default function ChatQueuedMessages({
                 count: attachmentCount,
               })
             : t("chat.queue.emptyItem"));
+        const canSteer = Boolean(onSteer);
 
         return (
           <div
@@ -45,13 +49,10 @@ export default function ChatQueuedMessages({
             className={styles.queuedMessageItem}
             role="listitem"
           >
-            <span className={styles.queuedMessageIndex}>{index + 1}</span>
-            <button
-              type="button"
-              className={styles.queuedMessageBody}
-              onClick={() => onReclaim(item.id)}
-              title={t("chat.queue.reclaim")}
-            >
+            {items.length > 1 ? (
+              <span className={styles.queuedMessageIndex}>{index + 1}</span>
+            ) : null}
+            <div className={styles.queuedMessageBody}>
               <span className={styles.queuedMessageText}>{label}</span>
               {attachmentCount > 0 && text && (
                 <span
@@ -64,16 +65,38 @@ export default function ChatQueuedMessages({
                   {attachmentCount}
                 </span>
               )}
-            </button>
-            <button
-              type="button"
-              className={styles.queuedMessageRemove}
-              onClick={() => onRemove(item.id)}
-              aria-label={t("chat.queue.remove")}
-              title={t("chat.queue.remove")}
-            >
-              <X size={14} />
-            </button>
+            </div>
+            <div className={styles.queuedMessageActions}>
+              {canSteer ? (
+                <button
+                  type="button"
+                  className={styles.queuedMessageIconBtn}
+                  onClick={() => onSteer?.(item.id)}
+                  title={t("chat.steer.hint")}
+                  aria-label={t("chat.steer.action", "Steer")}
+                >
+                  <CornerDownLeft size={14} aria-hidden />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={styles.queuedMessageIconBtn}
+                onClick={() => onReclaim(item.id)}
+                aria-label={t("chat.queue.reclaim")}
+                title={t("chat.queue.reclaim")}
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                type="button"
+                className={styles.queuedMessageIconBtn}
+                onClick={() => onRemove(item.id)}
+                aria-label={t("chat.queue.remove")}
+                title={t("chat.queue.remove")}
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         );
       })}

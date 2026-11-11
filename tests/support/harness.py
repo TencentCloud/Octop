@@ -90,6 +90,11 @@ def build_harness_manager_mock(
     def _get_agent(agent_id: str) -> AgentEntry:
         return entries[agent_id]
 
+    def _list_agents(agent_id: str | None = None, **_kw: Any) -> list[AgentEntry]:
+        if agent_id is not None:
+            return [entries[agent_id]] if agent_id in entries else []
+        return list(entries.values())
+
     def _remove(agent_id: str) -> None:
         entries.pop(agent_id, None)
 
@@ -145,6 +150,7 @@ def build_harness_manager_mock(
     mock_manager.arebuild_agent = AsyncMock(side_effect=_arebuild)
     mock_manager.aremove_agent = AsyncMock(side_effect=_aremove)
     mock_manager.get_agent.side_effect = _get_agent
+    mock_manager.list_agents = MagicMock(side_effect=_list_agents)
     mock_manager.remove_agent.side_effect = _remove
 
     def _stream(agent_id: str, request: Any) -> Any:

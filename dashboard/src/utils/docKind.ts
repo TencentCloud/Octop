@@ -5,15 +5,16 @@
  * (image/video/audio), so viewers render them through DocumentPreviewCore.
  */
 
-export type DocKind = "pdf" | "word" | "excel" | "pptx" | "ppt";
+export type DocKind = "pdf" | "word" | "excel" | "pptx" | "ppt" | "doc";
 
-const WORD_EXT = new Set(["docx", "doc"]);
 const EXCEL_EXT = new Set(["xlsx", "xls", "xlsm"]);
 
 export function getDocKind(path: string): DocKind | null {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   if (ext === "pdf") return "pdf";
-  if (WORD_EXT.has(ext)) return "word";
+  // OOXML only. Legacy ``.doc`` is OLE and cannot be parsed by docx-preview.
+  if (ext === "docx") return "word";
+  if (ext === "doc") return "doc";
   if (EXCEL_EXT.has(ext)) return "excel";
   if (ext === "pptx") return "pptx";
   if (ext === "ppt") return "ppt";

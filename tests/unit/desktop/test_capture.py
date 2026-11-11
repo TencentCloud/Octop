@@ -7,18 +7,18 @@ import sys
 import types
 from unittest.mock import MagicMock
 
-from octop.infra.desktop.capture import CaptureFrame, ScreenCapture
+from octop.infra.control.desktop.capture import CaptureFrame, ScreenCapture
 
 
 def _force_linux(monkeypatch) -> None:
-    monkeypatch.setattr("octop.infra.desktop.capture.sys.platform", "linux")
+    monkeypatch.setattr("octop.infra.control.desktop.capture.sys.platform", "linux")
 
 
 def test_prefer_import_on_linux_virtual_display(monkeypatch) -> None:
     _force_linux(monkeypatch)
     cap = ScreenCapture(display=":99")
     monkeypatch.setattr(
-        "octop.infra.desktop.capture.shutil.which",
+        "octop.infra.control.desktop.capture.shutil.which",
         lambda name: "/usr/bin/import" if name == "import" else None,
     )
     assert cap._prefer_import_capture() is True
@@ -26,14 +26,14 @@ def test_prefer_import_on_linux_virtual_display(monkeypatch) -> None:
 
 def test_prefer_import_false_on_non_linux(monkeypatch) -> None:
     cap = ScreenCapture(display=":99")
-    monkeypatch.setattr("octop.infra.desktop.capture.sys.platform", "darwin")
+    monkeypatch.setattr("octop.infra.control.desktop.capture.sys.platform", "darwin")
     assert cap._prefer_import_capture() is False
 
 
 def test_capture_prefers_import_on_linux_virtual_display(monkeypatch) -> None:
     _force_linux(monkeypatch)
     monkeypatch.setattr(
-        "octop.infra.desktop.capture.shutil.which",
+        "octop.infra.control.desktop.capture.shutil.which",
         lambda name: "/usr/bin/import" if name == "import" else None,
     )
     frame = CaptureFrame(jpeg_b64="abc", width=100, height=80)
@@ -93,8 +93,12 @@ def test_import_jpeg_passthrough_without_reencode(monkeypatch) -> None:
         def communicate(self, timeout: float | None = None) -> tuple[bytes, bytes]:
             return raw, b""
 
-    monkeypatch.setattr("octop.infra.desktop.capture.shutil.which", lambda name: "/usr/bin/import")
-    monkeypatch.setattr("octop.infra.desktop.capture.subprocess.Popen", lambda *a, **k: _Proc())
+    monkeypatch.setattr(
+        "octop.infra.control.desktop.capture.shutil.which", lambda name: "/usr/bin/import"
+    )
+    monkeypatch.setattr(
+        "octop.infra.control.desktop.capture.subprocess.Popen", lambda *a, **k: _Proc()
+    )
 
     frame = cap._capture_imagemagick(quality=70)
     assert frame is not None

@@ -4,6 +4,7 @@ import { message } from "@/utils/antdMessage";
 
 import { Globe, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   connectorsApi,
@@ -11,7 +12,7 @@ import {
   type CustomMcpServers,
   type CustomMcpTransport,
 } from "../../../api/modules/connectors";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { CustomMcpServerCard } from "./CustomMcpServerCard";
 import {
   EXAMPLE_JSON,
@@ -26,6 +27,11 @@ import {
   type EditorMode,
   type ServerCardState,
 } from "./customMcpUtils";
+import {
+  isAuthPopupBlocked,
+  navigateAuthWindow,
+  tryOpenAuthPopup,
+} from "./openAuthWindow";
 import styles from "./index.module.less";
 
 interface CustomMcpTabProps {
@@ -50,6 +56,9 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   const [oauthAvailable, setOauthAvailable] = useState<Record<string, boolean>>(
     {},
   );
+  const [oauthClientRequired, setOauthClientRequired] = useState<
+    Record<string, boolean>
+  >({});
   const [authorizingKey, setAuthorizingKey] = useState<string | null>(null);
   const [persistedNames, setPersistedNames] = useState<Set<string>>(
     () => new Set(),
@@ -269,6 +278,12 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       delete next[key];
       return next;
     });
+    setOauthClientRequired((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const applyProbeResult = (
@@ -322,8 +337,28 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       return;
     }
     setOauthAvailable((prev) => ({ ...prev, [card.key]: false }));
+    if (result.oauth?.client_required) {
+      setOauthClientRequired((prev) => ({ ...prev, [card.key]: true }));
+      updateCard(card.key, {
+        oauthClientOpen: true,
+        enabled: false,
+        defaultOpen: false,
+        ...(fromSave ? {} : { collapsed: false }),
+      });
+      if (!fromSave) {
+        message.warning(
+          t(
+            "connectors.customMcp.probeNeedsOAuthClient",
+            "此 MCP 的授权服务器不支持自动注册客户端",
+          ),
+        );
+      }
+      return;
+    }
     if (!fromSave) {
-      message.error(result.error ?? t("connectors.probeFailed", "探测失败"));
+      message.error(
+        probeErrorMessage(result, t("connectors.probeFailed", "探测失败"), t),
+      );
     }
   };
 
@@ -442,8 +477,8 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       message.warning(t("connectors.customMcp.emptyName", "请填写服务器名称"));
       return;
     }
-    const popup = window.open("", "octop-oauth", "width=520,height=720");
-    if (!popup) {
+    const popup = tryOpenAuthPopup("", "octop-oauth", "width=520,height=720");
+    if (isAuthPopupBlocked(popup)) {
       message.error(
         t(
           "connectors.oauthPopupBlocked",
@@ -470,7 +505,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       settled = true;
       cleanup();
       try {
-        popup.close();
+        popup?.close();
       } catch {
         // ignore
       }
@@ -519,7 +554,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       const servers = resolveServersForSave();
       if (!servers) {
         try {
-          popup.close();
+          popup?.close();
         } catch {
           // ignore
         }
@@ -548,12 +583,12 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
           t("connectors.oauthTimedOut", "授权超时，请重试一键授权"),
         );
       }, 120_000);
-      popup.location.replace(authorize_url);
+      navigateAuthWindow(popup, authorize_url);
     } catch (e) {
       cleanup();
       setAuthorizingKey(null);
       try {
-        popup.close();
+        popup?.close();
       } catch {
         // ignore
       }
@@ -600,9 +635,10 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
   const saveFooter = (
     <div
-      className={`${styles.customMcpFooter}${
-        showProbeSection ? "" : ` ${styles.customMcpFooterSaveOnly}`
-      }`}
+      className={cx(
+        styles.customMcpFooter,
+        !showProbeSection && styles.customMcpFooterSaveOnly,
+      )}
     >
       {showProbeSection ? (
         <div className={styles.customMcpFooterMain}>
@@ -735,12 +771,16 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
                       probing={probingKey === card.key}
                       authorizing={authorizingKey === card.key}
                       oauthAvailable={oauthAvailable[card.key] === true}
+                      oauthClientRequired={
+                        oauthClientRequired[card.key] === true
+                      }
                       probeTools={probeResults[card.key]}
                       transportOptions={transportOptions}
                       onUpdate={updateCard}
                       onToggleEnabled={(enabled) => {
                         if (
-                          oauthAvailable[card.key] &&
+                          (oauthAvailable[card.key] ||
+                            oauthClientRequired[card.key]) &&
                           !card.oauthConfigured &&
                           enabled
                         ) {

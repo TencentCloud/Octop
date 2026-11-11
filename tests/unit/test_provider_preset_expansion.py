@@ -16,9 +16,10 @@ def test_load_provider_presets_integration() -> None:
 
     deepseek = next(p for p in presets if p["id"] == "deepseek")
     deepseek_ids = {m["id"] for m in deepseek["models"]}
-    assert "deepseek-v4-flash" in deepseek_ids
+    # Harness 1.0.5 renamed the flash catalog id; v4-pro keeps its name.
+    assert "deepseek-flash" in deepseek_ids
     assert "deepseek-v4-pro" in deepseek_ids
-    flash = next(m for m in deepseek["models"] if m["id"] == "deepseek-v4-flash")
+    flash = next(m for m in deepseek["models"] if m["id"] == "deepseek-flash")
     assert flash["reasoning_config"]["adapter"] == "thinking"
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
@@ -58,6 +59,17 @@ def test_load_provider_presets_integration() -> None:
     assert {"hy3", "hy3-preview"} <= hy_ids
     hy3 = next(m for m in hy_plan["models"] if m["id"] == "hy3")
     assert hy3["reasoning_config"]["adapter"] == "status_only"
+
+    hai = next(p for p in presets if p["id"] == "tencent-hai")
+    assert hai["base_url"] == "https://api.model.haihub.cn/v1"
+    assert hai.get("provider_variant") == "hai"
+    # Harness owns the catalog ids and token limits. Octop only overlays reasoning.
+    hai_models = {m["id"]: m for m in hai["models"]}
+    assert hai_models["DeepSeek-V4-Pro"]["reasoning_config"]["adapter"] == "thinking"
+    assert hai_models["deepseek-flash"]["reasoning_config"]["adapter"] == "thinking"
+    assert hai_models["DeepSeek-V3.1-Terminus-W4AFP8"]["reasoning_config"]["adapter"] == "thinking"
+    assert hai_models["Kimi-K2.5"]["reasoning_config"]["adapter"] == "thinking"
+    assert hai_models["MiniMax-M2.7"]["reasoning_config"]["adapter"] == "status_only"
 
     coding_plan = next(p for p in presets if p["id"] == "tencent-coding-plan")
     assert "kimi-k2.5" in {m["id"] for m in coding_plan["models"]}
@@ -104,3 +116,26 @@ def test_load_provider_presets_integration() -> None:
 
     go_ant = next(p for p in presets if p["id"] == "opencode-go-anthropic")
     assert go_ant["base_url"] == "https://opencode.ai/zen/go"
+
+
+def test_embedding_cloud_presets_present() -> None:
+    presets = load_provider_presets()
+    onnx = next(p for p in presets if p["id"] == "onnx")
+    assert onnx.get("purpose") == "embedding"
+    emb_ids = {p["id"] for p in presets if p.get("purpose") == "embedding" and p["id"] != "onnx"}
+    assert emb_ids == {"siliconflow-embedding-cn", "dashscope-embedding"}
+    assert "openai-embedding" not in emb_ids
+
+    silicon = next(p for p in presets if p["id"] == "siliconflow-embedding-cn")
+    assert silicon["name"] == "SiliconFlow"
+    assert "Embeddings" not in silicon["name"]
+    silicon_ids = {m["id"] for m in silicon["models"]}
+    assert "Qwen/Qwen3-Embedding-8B" in silicon_ids
+    assert "BAAI/bge-m3" in silicon_ids
+    assert all(m.get("embedding") is True for m in silicon["models"])
+
+    dashscope = next(p for p in presets if p["id"] == "dashscope-embedding")
+    assert dashscope["name"] == "DashScope"
+    dash_ids = {m["id"] for m in dashscope["models"]}
+    assert "qwen3.7-text-embedding" in dash_ids
+    assert "text-embedding-v4" in dash_ids

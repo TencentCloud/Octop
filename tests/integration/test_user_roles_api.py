@@ -302,3 +302,106 @@ async def test_user_and_role_avatars_roundtrip(env):
     assert removed.status_code == 204
     gone = await c.get(f"/api/users/roles/{role_id}/avatar", headers=auth)
     assert gone.status_code == 404
+
+
+async def test_create_role_accepts_caller_role_id(env):
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={
+            "user_role_id": "data_analyst",
+            "user_role_name": "分析师",
+            "permissions": ["browser"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["user_role_id"] == "data_analyst"
+
+    middle = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={"user_role_id": "a__b", "user_role_name": "双下划线", "permissions": []},
+    )
+    assert middle.status_code == 201, middle.text
+    assert middle.json()["user_role_id"] == "a__b"
+
+    for role_id in ("_analyst", "analyst_", "data-analyst", "data1", "分析"):
+        rejected = await c.post(
+            "/api/users/roles",
+            headers=auth,
+            json={
+                "user_role_id": role_id,
+                "user_role_name": f"无效{role_id}",
+                "permissions": [],
+            },
+        )
+        assert rejected.status_code == 400, rejected.text
+        assert rejected.json()["error"]["code"] == "USER_ROLE_ID_INVALID"
+
+    taken = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={
+            "user_role_id": "data_analyst",
+            "user_role_name": "另一个分析师",
+            "permissions": [],
+        },
+    )
+    assert taken.status_code == 409, taken.text
+    assert taken.json()["error"]["code"] == "USER_ROLE_ID_TAKEN"
+
+    builtin = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={
+            "user_role_id": "admin",
+            "user_role_name": "另一个管理员",
+            "permissions": [],
+        },
+    )
+    assert builtin.status_code == 409, builtin.text
+    assert builtin.json()["error"]["code"] == "USER_ROLE_ID_TAKEN"
+
+
+async def test_create_user_bootstraps_selected_expert(env):
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "with_expert",
+            "password": TEST_PASSWORD,
+            "role": "user",
+            "create_default_expert": True,
+            "expert_template_id": "general-assistant",
+        },
+    )
+    assert created.status_code == 201, created.text
+    user_id = created.json()["id"]
+    agents = await c.get("/api/agents", headers=auth, params={"scope": "all"})
+    assert agents.status_code == 200, agents.text
+    owned = [row for row in agents.json() if row["user_id"] == user_id]
+    assert len(owned) == 1
+    assert owned[0]["template_name"] == "general-assistant"
+
+
+async def test_create_user_keeps_user_when_expert_template_missing(env):
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "no_expert",
+            "password": TEST_PASSWORD,
+            "role": "user",
+            "create_default_expert": True,
+            "expert_template_id": "not-a-real-template",
+        },
+    )
+    assert created.status_code == 201, created.text
+    listed = await c.get("/api/users", headers=auth)
+    assert any(item["username"] == "no_expert" for item in listed.json())
+    agents = await c.get("/api/agents", headers=auth, params={"scope": "all"})
+    owned = [row for row in agents.json() if row["user_id"] == created.json()["id"]]
+    assert owned == []

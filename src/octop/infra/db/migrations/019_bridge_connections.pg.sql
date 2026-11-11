@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS bridge_connections (
   last_error              TEXT,
   last_seen_at            INTEGER,
   auto_reconnect          INTEGER NOT NULL DEFAULT 1,
+  peer_client_host        TEXT,
   created_at              INTEGER NOT NULL,
   updated_at              INTEGER NOT NULL
 );

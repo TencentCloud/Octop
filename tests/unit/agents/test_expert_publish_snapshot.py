@@ -462,3 +462,95 @@ async def test_export_snapshot_keeps_public_portrait_url(tmp_path: Path) -> None
 
     manifest = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     assert manifest["icon_url"] == "/experts/avatars/scene-healthcare.svg"
+
+
+def test_published_creation_imports_when_psycopg_has_no_libpq(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SQLite startup must not require libpq.
+
+    Windows ARM64 portable builds omit ``psycopg-binary`` (no win_arm64 wheel).
+    Importing psycopg then raises ImportError. The same failure happens on any
+    platform whose process cannot load libpq.
+    """
+    import builtins
+    import importlib
+    import sys
+
+    target = "octop.infra.agents.experts.published_creation"
+    importlib.import_module(target)
+    saved = sys.modules.pop(target)
+    real_import = builtins.__import__
+
+    def _import(
+        name: str,
+        globals: dict[str, object] | None = None,
+        locals: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> object:
+        if name == "psycopg" or name.startswith("psycopg."):
+            raise ImportError("no pq wrapper available")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", _import)
+    try:
+        module = importlib.import_module(target)
+        assert module.PsycopgIntegrityError is None
+        assert len(module._DB_INTEGRITY_ERRORS) == 1
+        assert module._DB_INTEGRITY_ERRORS[0] is module.SqliteIntegrityError
+    finally:
+        sys.modules[target] = saved
+
+
+@pytest.mark.asyncio
+async def test_publish_agent_expert_maps_sqlite_integrity_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlite3 import IntegrityError
+
+    from octop.infra.agents.experts import published_creation as mod
+
+    async def _noop_export(**_kwargs: object) -> list[str]:
+        return []
+
+    monkeypatch.setattr(mod, "export_agent_workspace_to_dir", _noop_export)
+
+    class _Repo:
+        def get_by_source_agent_id(self, _agent_id: str) -> None:
+            return None
+
+        def get_by_slug(self, _slug: str) -> None:
+            return None
+
+        def create(self, **_kwargs: object) -> None:
+            raise IntegrityError("UNIQUE constraint failed: published_experts.slug")
+
+    services = SimpleNamespace(
+        published_expert_repo=_Repo(),
+        paths=SimpleNamespace(published_experts_dir=tmp_path),
+    )
+    registry = SimpleNamespace(get_row=lambda _agent_id: None, get_config=lambda _agent_id: {})
+    user = User(id=1, username="owner", role=Role.USER, display_name=None)
+    source = SimpleNamespace(
+        agent_id="agt",
+        description="",
+        icon_name="",
+        icon="",
+        icon_url=None,
+    )
+
+    with pytest.raises(OctopError) as exc:
+        await mod.publish_agent_expert(
+            services=services,
+            registry=registry,
+            user=user,
+            source=source,
+            workspace=SimpleNamespace(),
+            name="Taken",
+            slug="taken",
+            quick_prompts=({"title": "start"},),
+            task_examples={},
+        )
+    assert exc.value.code is ErrorCode.PUBLISHED_EXPERT_SLUG_TAKEN
