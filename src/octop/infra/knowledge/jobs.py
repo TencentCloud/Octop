@@ -38,9 +38,10 @@ def process_document(services: Any, kb_id: str, doc_id: str) -> None:
     assert_knowledge_usable(services.settings_repo.get, getattr(services, "provider_repo", None))
     document = repo.get_document(doc_id)
     base = repo.get_base(kb_id)
-    if document is None or document.kb_id != kb_id or base is None:
+    if document is None or base is None:
         raise LookupError("knowledge document or base not found")
-    if document.is_dir:
+    if document.kb_id != kb_id or document.is_dir:
+        # Moved to another base after this job was queued; the move queued it there.
         return
     repo.update_document(doc_id, status="processing", error_message="")
     try:
@@ -71,6 +72,13 @@ def enqueue_index_document(services: Any, kb_id: str, doc_id: str) -> asyncio.Ta
             await loop.run_in_executor(None, process_document, services, kb_id, doc_id)
 
     return asyncio.create_task(_run())
+
+
+def enqueue_pending_subtree(services: Any, document: Any) -> None:
+    """Schedule the pending files of a document or folder, e.g. after a move between bases."""
+    for row in services.knowledge_repo.list_subtree(document):
+        if not row.is_dir and row.status == "pending":
+            enqueue_index_document(services, row.kb_id, row.id)
 
 
 def reindex_all_documents(services: Any, embedding_model: str) -> None:

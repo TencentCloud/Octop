@@ -125,15 +125,17 @@ import skillStyles from "../Agent/Skills/index.module.less";
 import { KnowledgeBaseAvatar } from "./knowledgeIcons";
 import {
   buildKnowledgeFileTree,
+  buildKnowledgeMoveTree,
   isDirectKnowledgeChild,
   joinKnowledgePath,
   KNOWLEDGE_DOC_TREE_ROOT,
-  canMoveKnowledgeEntryTo,
   knowledgeBasename,
   knowledgeBreadcrumb,
   knowledgeFileNameParts,
+  knowledgeMoveKey,
   shouldOpenKnowledgeFolder,
   type KnowledgeFileTreeNode,
+  type KnowledgeMoveTreeNode,
 } from "./knowledgeFolder";
 import { resolveKnowledgeDeepLink } from "./knowledgeDeepLink";
 import {
@@ -229,6 +231,7 @@ function formatKnowledgeOwner(
 const FOLDER_ICON_COLOR = "#d97706";
 
 type DocTreeNode = TreeDataNode & { path: string; isDir: boolean };
+type MoveTreeNode = TreeDataNode & { kbId: string; path: string };
 
 function DocumentFormatIcon({
   filename,
@@ -311,7 +314,15 @@ export default function KnowledgeBasesPage() {
   );
   const [renameName, setRenameName] = useState("");
   const [moveTarget, setMoveTarget] = useState<KnowledgeDocument | null>(null);
-  const [moveDestination, setMoveDestination] = useState<string | null>(null);
+  const [moveDestination, setMoveDestination] = useState<{
+    kbId: string;
+    path: string;
+  } | null>(null);
+  /** Documents of the other writable bases, loaded when the move dialog opens. */
+  const [moveDocsByBase, setMoveDocsByBase] = useState<
+    Record<string, KnowledgeDocument[]>
+  >({});
+  const [moveLoading, setMoveLoading] = useState(false);
   const [moving, setMoving] = useState(false);
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
@@ -803,16 +814,66 @@ export default function KnowledgeBasesPage() {
     return [root];
   }, [documents, t]);
 
-  /** The folder tree again, with the places `moveTarget` cannot go greyed out. */
+  /** Bases the user can write to, in list order: the places an entry can move to. */
+  const moveBases = useMemo(
+    () => bases.filter((base) => canManageKnowledgeBase(base, user)),
+    [bases, user],
+  );
+
+  /** Every writable base with its folders; where `moveTarget` cannot go is greyed out. */
+  const moveTree = useMemo(() => {
+    if (!moveTarget || !selected) return [];
+    return buildKnowledgeMoveTree(
+      moveBases,
+      { ...moveDocsByBase, [selected.id]: documents },
+      moveTarget,
+      selected.id,
+    );
+  }, [documents, moveBases, moveDocsByBase, moveTarget, selected]);
+
   const moveTreeData = useMemo(() => {
-    if (!moveTarget) return [];
-    const mark = (node: DocTreeNode): DocTreeNode => ({
-      ...node,
-      disabled: !canMoveKnowledgeEntryTo(moveTarget, node.path),
-      children: (node.children as DocTreeNode[] | undefined)?.map(mark),
+    const iconFor = (node: KnowledgeMoveTreeNode) => {
+      const base = node.path
+        ? null
+        : moveBases.find((row) => row.id === node.kbId);
+      return base ? (
+        <KnowledgeBaseAvatar
+          iconUrl={base.icon_url}
+          iconName={base.icon_name}
+          size={14}
+        />
+      ) : (
+        <Folder size={13} className={styles.docTreeFolderIcon} aria-hidden />
+      );
+    };
+    const toAntd = (node: KnowledgeMoveTreeNode): MoveTreeNode => ({
+      key: node.key,
+      kbId: node.kbId,
+      path: node.path,
+      disabled: node.disabled,
+      title: (
+        <span className={styles.docTreeNode}>
+          {iconFor(node)}
+          <span className={styles.docTreeName} title={node.name}>
+            {node.name}
+          </span>
+        </span>
+      ),
+      children: node.children.length ? node.children.map(toAntd) : undefined,
     });
-    return docTreeData.map(mark);
-  }, [docTreeData, moveTarget]);
+    return moveTree.map(toAntd);
+  }, [moveBases, moveTree]);
+
+  /** Open the current base fully; other bases show just their name until expanded. */
+  const moveExpandedKeys = useMemo(() => {
+    const keys: string[] = [];
+    const walk = (node: KnowledgeMoveTreeNode) => {
+      keys.push(node.key);
+      node.children.forEach(walk);
+    };
+    moveTree.filter((node) => node.kbId === selected?.id).forEach(walk);
+    return keys;
+  }, [moveTree, selected?.id]);
 
   const loadBases = useCallback(async () => {
     try {
@@ -1669,9 +1730,25 @@ export default function KnowledgeBasesPage() {
     }
   };
 
-  const openMoveEntry = (document: KnowledgeDocument) => {
+  const openMoveEntry = async (document: KnowledgeDocument) => {
     setMoveTarget(document);
     setMoveDestination(null);
+    const others = moveBases.filter((base) => base.id !== selected?.id);
+    if (!others.length) {
+      setMoveDocsByBase({});
+      return;
+    }
+    setMoveLoading(true);
+    const loaded = await Promise.allSettled(
+      others.map((base) => knowledgeBasesApi.listDocuments(base.id)),
+    );
+    const byBase: Record<string, KnowledgeDocument[]> = {};
+    loaded.forEach((result, index) => {
+      if (result.status === "fulfilled")
+        byBase[others[index].id] = result.value;
+    });
+    setMoveDocsByBase(byBase);
+    setMoveLoading(false);
   };
 
   const moveEntry = async () => {
@@ -1681,11 +1758,20 @@ export default function KnowledgeBasesPage() {
       await knowledgeBasesApi.moveDocument(
         selected.id,
         moveTarget.id,
-        moveDestination,
+        moveDestination.path,
+        moveDestination.kbId,
       );
       setMoveTarget(null);
       await loadDetail(selected.id);
-      message.success(t("knowledgeBases.moveSuccess"));
+      const destBase = bases.find((base) => base.id === moveDestination.kbId);
+      if (destBase && destBase.id !== selected.id) {
+        await loadBases();
+        message.success(
+          t("knowledgeBases.moveSuccessTo", { name: destBase.name }),
+        );
+      } else {
+        message.success(t("knowledgeBases.moveSuccess"));
+      }
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.moveFailed"), t));
     } finally {
@@ -2109,7 +2195,7 @@ export default function KnowledgeBasesPage() {
                 aria-label={t("knowledgeBases.moveEntry")}
                 onClick={(event) => {
                   event.stopPropagation();
-                  openMoveEntry(document);
+                  void openMoveEntry(document);
                 }}
               />
             </Tooltip>
@@ -3570,21 +3656,33 @@ export default function KnowledgeBasesPage() {
       >
         <p className={styles.moveHint}>{t("knowledgeBases.moveHint")}</p>
         <div className={styles.moveTree}>
-          <Tree
-            blockNode
-            defaultExpandAll
-            treeData={moveTreeData}
-            selectedKeys={
-              moveDestination === null
-                ? []
-                : [moveDestination || KNOWLEDGE_DOC_TREE_ROOT]
-            }
-            onSelect={(_keys, info) => {
-              setMoveDestination(
-                info.selected ? (info.node as DocTreeNode).path : null,
-              );
-            }}
-          />
+          {moveLoading ? (
+            <div className={styles.centered}>
+              <Spin />
+            </div>
+          ) : (
+            <Tree
+              blockNode
+              defaultExpandedKeys={moveExpandedKeys}
+              treeData={moveTreeData}
+              selectedKeys={
+                moveDestination === null
+                  ? []
+                  : [
+                      knowledgeMoveKey(
+                        moveDestination.kbId,
+                        moveDestination.path,
+                      ),
+                    ]
+              }
+              onSelect={(_keys, info) => {
+                const node = info.node as MoveTreeNode;
+                setMoveDestination(
+                  info.selected ? { kbId: node.kbId, path: node.path } : null,
+                );
+              }}
+            />
+          )}
         </div>
       </Modal>
 

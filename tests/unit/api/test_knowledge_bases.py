@@ -777,6 +777,7 @@ async def test_move_document_passes_the_target_and_returns_the_row(
             "actor_user_id": 7,
             "target_folder": "archive",
             "is_admin": False,
+            "target_kb_id": None,
         }
     ]
     assert result["document_id"] == "doc-1"
@@ -785,9 +786,44 @@ async def test_move_document_passes_the_target_and_returns_the_row(
 
 
 @pytest.mark.asyncio
+async def test_move_document_to_another_base_queues_its_pending_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    calls: list[dict[str, object]] = []
+    moved = _Document(id="doc-1", path="act.md", filename="act.md", kb_id="kb-2")
+    queued: list[object] = []
+
+    class _FakeService:
+        def move_document(self, kb_id: str, doc_id: str, **kwargs: object) -> _Document:
+            calls.append(kwargs)
+            return moved
+
+    monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: _FakeService())
+    monkeypatch.setattr(
+        knowledge_bases, "enqueue_pending_subtree", lambda _services, doc: queued.append(doc)
+    )
+
+    result = await knowledge_bases.move_document(
+        kb_id="kb-1",
+        doc_id="doc-1",
+        body=knowledge_bases.MoveDocumentBody(target_folder="", target_kb_id="kb-2"),
+        request=_request(),
+        server=SimpleNamespace(services=_services()),
+        user=SimpleNamespace(id=7, is_admin=False),
+    )
+
+    assert calls[0]["target_kb_id"] == "kb-2"
+    assert queued == [moved]
+    assert result["kb_id"] == "kb-2"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "code"),
     [
+        (OctopError(ErrorCode.KNOWLEDGE_MOVE_BUSY, "x"), ErrorCode.KNOWLEDGE_MOVE_BUSY),
         (LookupError("knowledge folder not found"), ErrorCode.KNOWLEDGE_NOT_FOUND),
         (PermissionError("write access required"), ErrorCode.KNOWLEDGE_FORBIDDEN),
         (OctopError(ErrorCode.KNOWLEDGE_MOVE_INVALID, "x"), ErrorCode.KNOWLEDGE_MOVE_INVALID),
