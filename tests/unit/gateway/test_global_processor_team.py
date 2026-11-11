@@ -2341,3 +2341,63 @@ def test_stamp_stream_speaker_sets_agent_alias() -> None:
     )
     assert member["agent_id"] == "doctor"
     assert member["agent"] == "doctor"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,filename", [("file", "report.zip"), ("image", "avatar.png")])
+async def test_team_member_media_reaches_bound_im_once(
+    processor_env: dict, tmp_path: Path, kind: str, filename: str
+) -> None:
+    import base64
+
+    from langchain_core.messages import ToolMessage
+    from octop_harness.backends import resolve_backend
+    from octop_harness.backends.workspace import BackendWorkspace
+    from octop_harness.request import ChatRequest
+
+    from octop.infra.backend.resolver import default_agent_backend_spec
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    _bind_im_session(processor_env)
+    workspace = BackendWorkspace(
+        resolve_backend(default_agent_backend_spec(tmp_path), workspace_dir=str(tmp_path)),
+        str(tmp_path),
+    )
+    await workspace.aupload_bytes(filename, b"member-file-bytes")
+    block = {
+        "type": kind,
+        "filename": filename,
+        "source": {"type": "url", "url": filename},
+    }
+    old = ToolMessage(content=json.dumps(block), name="send_file_to_user", tool_call_id="old")
+    live = ToolMessage(content=json.dumps(block), name="send_file_to_user", tool_call_id="live")
+    result = {"type": "tool_result", "messages": [old, live]}
+
+    async def stream(_agent_id: str, _request: dict) -> object:
+        yield {"type": "tool_result", "messages": [old]}
+        yield {"type": "tool_call_chunk", "id": "live", "name": "send_file_to_user"}
+        yield result
+        yield result
+
+    processor._agent_manager.stream = stream
+    harness = MagicMock()
+    harness.workspace = workspace
+    harness.aget_history = AsyncMock(return_value=[])
+    processor._agent_manager.get_agent.return_value = harness
+    gateway._channel_manager.push_content = AsyncMock()
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(messages="send", thread_id="thr_parent~child", agent_id="child"),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+
+    gateway._channel_manager.push_content.assert_awaited_once()
+    channel_id, subject, parts = gateway._channel_manager.push_content.await_args.args
+    assert channel_id == "ch-feishu-1"
+    assert subject is not None
+    assert len(parts) == 1
+    assert base64.b64decode(parts[0].data) == b"member-file-bytes"
+    assert parts[0].type == kind

@@ -37,7 +37,13 @@ from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
-from octop.infra.gateway.media.tool_media import tool_name_base
+from octop.infra.gateway.media.tool_media import (
+    media_events_from_tool_result,
+    note_live_tool_call,
+    select_turn_tool_results,
+    tool_name_base,
+)
+from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
 from octop.infra.history.projection import (
     live_message_inputs,
     message_inputs,
@@ -396,6 +402,8 @@ class TeamManager:
         reasoning_parts: list[str] = []
         relayed_visible = False
         saw_tool_call = False
+        live_tool_call_ids: set[str] = set()
+        emitted_media_ids: set[str] = set()
         decision_payload: dict[str, Any] | None = None
         emitted_tool_error_ids: set[str] = set()
         hold_room = self._defer_member_wall(speaker_id, member_tid, room_thread_id)
@@ -479,6 +487,7 @@ class TeamManager:
                     kind = str(chunk.get("type") or "")
                     if kind == "tool_call_chunk":
                         saw_tool_call = True
+                        note_live_tool_call(chunk, live_tool_call_ids)
                     elif kind == "tool_result":
                         log_failed_tool_results(
                             chunk,
@@ -487,6 +496,34 @@ class TeamManager:
                             seen=emitted_tool_error_ids,
                             live=saw_tool_call,
                         )
+                        media_chunk = select_turn_tool_results(
+                            chunk, live_tool_call_ids, emitted_media_ids
+                        )
+                        if media_chunk is not None:
+                            workspace = harness_workspace_for_agent(self._agent_manager, speaker_id)
+                            manager = (
+                                self._gateway.channel_manager if self._gateway is not None else None
+                            )
+                            if workspace is not None and manager is not None:
+                                async for event in media_events_from_tool_result(
+                                    media_chunk, workspace=workspace
+                                ):
+                                    for session in self._thread_registry.im_sessions_for_thread(
+                                        room_thread_id
+                                    ):
+                                        try:
+                                            await manager.push_content(
+                                                session.channel_id,
+                                                session.to_channel_subject(),
+                                                event.content,
+                                            )
+                                        except Exception:
+                                            logger.warning(
+                                                "failed to push team media thread=%s speaker=%s",
+                                                room_thread_id,
+                                                speaker_id,
+                                                exc_info=True,
+                                            )
                     if kind == "token":
                         piece = str(chunk.get("content") or "")
                         if piece:
