@@ -250,6 +250,13 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
 
+  /**
+   * Experts the user owns that are not chat-ready. The history rail only lists
+   * agents that can chat, so it needs this to tell "you have no experts" apart
+   * from "none of yours are running" before offering the create-expert nudge.
+   */
+  const unreadyExperts = Math.max(0, agents.length - sidebarAgents.length);
+
   const {
     status: memoryMaint,
     visible: memoryMaintVisible,
@@ -1383,6 +1390,7 @@ function ChatPageInner() {
       isSidebarResizing={isSidebarResizing}
       sidebarElRef={sidebarElRef}
       agents={sidebarAgents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
@@ -1532,20 +1540,25 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile && activeSession && activeSessionTitle && (
-              <ChatTitleBar
-                session={activeSession}
-                title={activeSessionTitle}
-                onRename={renameSession}
-                onPin={pinSession}
-                onFork={handleForkSession}
-                onDelete={handleDeleteSession}
-                forkDisabled={sessionForkDisabled}
-                forkDisabledHint={sessionForkDisabledHint}
-                isTeam={isTeamChat}
-                agent={activeAgent}
-              />
-            )}
+            {!isMobile &&
+              (activeSession && activeSessionTitle ? (
+                <ChatTitleBar
+                  session={activeSession}
+                  title={activeSessionTitle}
+                  onRename={renameSession}
+                  onPin={pinSession}
+                  onFork={handleForkSession}
+                  onDelete={handleDeleteSession}
+                  forkDisabled={sessionForkDisabled}
+                  forkDisabledHint={sessionForkDisabledHint}
+                  isTeam={isTeamChat}
+                  agent={activeAgent}
+                />
+              ) : (
+                /* Empty chat: same row, same bounds — the composer must not
+                   jump up before the first message exists. */
+                <div className={styles.chatTitleBarEmpty} />
+              ))}
 
             {memoryMaintVisible && memoryMaint && (
               <MemoryMaintenanceBanner
@@ -1588,6 +1601,7 @@ function ChatPageInner() {
                   agent={activeAgent}
                   noAgents={noAgents}
                   loading={agentsLoading}
+                  canConfigureModels={canConfigureModels}
                 />
               ) : showWelcome && modelsReady && availableModels.length === 0 ? (
                 <ModelConfigEmpty canConfigure={canConfigureModels} />

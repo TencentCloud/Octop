@@ -1,10 +1,17 @@
 {
   "app": {
-    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
+    "pageTitle": "Octop"
   },
   "layout": {
     "collapsePanel": "收起面板",
-    "expandPanel": "展开面板"
+    "expandPanel": "展开面板",
+    "collapseNav": "收起导航栏",
+    "expandNav": "展开导航栏",
+    "windowControls": "窗口控制",
+    "windowMinimize": "最小化",
+    "windowMaximize": "最大化",
+    "windowRestore": "还原",
+    "windowClose": "关闭"
   },
   "sharedResource": {
     "shared": "已共享",
@@ -17,12 +24,6 @@
     "cloud": "云端",
     "shared": "共享",
     "empty": "没有符合当前筛选的结果"
-  },
-  "desktopChrome": {
-    "group": "窗口控制",
-    "minimize": "最小化",
-    "maximize": "最大化",
-    "close": "关闭"
   },
   "avatarPicker": {
     "presets": {
@@ -1354,7 +1355,9 @@
   },
   "agent_errors": {
     "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
+    "no_models_configured_short": "未配置可用模型",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
+    "model_ref_unavailable_short": "默认模型不可用",
     "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"
   },
   "stream_errors": {
@@ -1593,6 +1596,7 @@
     "disableStreamUsageFailed": "无法自动关闭，请到模型设置里关掉「聊天里显示实时 Token」。",
     "noAgentsTitle": "还没有专家",
     "noAgentsHint": "从专家列表选择模板，快速创建你的第一个 AI 专家。",
+    "noChattableAgentsHint": "你的专家暂时都不能对话，请先启用，或完成它的模型配置。",
     "createExpert": "去创建专家",
     "pickAgent": "请先选择一个专家",
     "bootstrapKickoff": "你好，我们开始吧",
@@ -3972,6 +3976,9 @@
       "latestVersion": "最新版本",
       "checkButton": "检查更新",
       "upgradeButton": "立即升级",
+      "later": "稍后",
+      "shellConfirmTitle": "发现新版本 {{version}}",
+      "shellConfirmBody": "当前版本 {{current}}。升级会下载安装包，然后退出并由安装程序替换客户端；数据库、工作区和配置都会保留。",
       "checking": "正在检查...",
       "upgrading": "正在升级...",
       "alreadyLatest": "已是最新版本。",
@@ -4003,6 +4010,7 @@
       "restartTimeout": "重启超时，请手动执行：octop service restart",
       "restartFailed": "重启请求失败，请检查服务状态后重试",
       "releaseNotes": "更新说明",
+      "shellManaged": "桌面客户端的更新由壳统一检测、下载并安装：壳、前端界面与内置 Python 运行时随同一版本一起发布。",
       "updateModalTitle": "发现新版本",
       "guideTitle": "按安装方式更新",
       "guideIntro": "若不能使用左侧一键升级，请按你的安装方式选择下方命令。升级后请重启服务；配置与数据默认保留在 ~/.octop（或 OCTOP_HOME）。",
@@ -5717,7 +5725,8 @@
       "submitFailed": "无法创建管理员。",
       "continue": "继续",
       "alreadyCreated": "管理员「{{username}}」已创建。",
-      "intro": "创建第一个管理员账户。"
+      "intro": "创建第一个管理员账户。",
+      "introNoPassword": "为这台设备上的账户命名，无需设置密码。"
     },
     "model": {
       "intro": "配置一个模型提供商，助手就可以回应你了。你也可以跳过本步，稍后在「模型」页配置。",
@@ -5993,6 +6002,9 @@
     "password": "密码",
     "remember": "记住登录状态",
     "submit": "登录",
+    "createLocalAccount": "新建本机账户",
+    "signInLocalAccount": "登录本地账户",
+    "localSignInFailed": "无法登录本地账户",
     "forgotPassword": "忘记密码？",
     "forgotPasswordTitle": "重置密码",
     "forgotPasswordHelp": "请联系管理员在「用户」页重置。若你维护本机，在安装了 Octop 的电脑上，用运行服务的同一账户执行：",
@@ -7390,7 +7402,8 @@
     "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
     "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
-    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。"
+    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
+    "details": "技术详情"
   },
   "adminProviders": {
     "title": "供应商",

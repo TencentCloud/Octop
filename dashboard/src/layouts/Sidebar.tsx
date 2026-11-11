@@ -5,17 +5,17 @@ import type { TFunction } from "i18next";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import { ArrowRightLeft, ChevronDown, X } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, X } from "lucide-react";
 import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
+import { useDesktopChromeStyle } from "../hooks/useDesktopChrome";
 import { useUserRole } from "../hooks/useUserRole";
 import { useCurrentUser, useSetCurrentUser } from "../hooks/useCurrentUser";
 import { useUpdateStatus } from "../hooks/useUpdateStatus";
 import { prefetchRoute } from "../routes/prefetch";
 import { useServerCapabilities } from "../hooks/useServerCapabilities";
-import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
-import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/components/ChatSidebarPanel";
+import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/chatRailEvents";
 import {
   CHAT_HISTORY_RAIL_ID,
   OPEN_NAV_RECORDS_EVENT,
@@ -25,6 +25,12 @@ import type { MinimalNavPane } from "./layoutModeStorage";
 import MinimalRecordsHost from "./MinimalRecordsHost";
 import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
 import SidebarMinimalPaneToggle from "./SidebarMinimalPaneToggle";
+import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../utils/railShortcuts";
 import { preferencesApi } from "../api/modules/preferences";
 import { publicUrl } from "../utils/publicUrl";
 import {
@@ -39,7 +45,6 @@ import { sectionsFromLayout, type SidebarNavLayout } from "./sidebarNavLayout";
 import SidebarNavCustomizer from "./SidebarNavCustomizer";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
-import { DESKTOP_DRAG_REGION_CLASS } from "../utils/desktopChrome";
 
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
 const LEGACY_COLLAPSED_GROUP_IDS: Record<string, string> = {
@@ -122,6 +127,19 @@ interface SidebarProps {
   isMobile?: boolean;
 }
 
+function historyRailLabels(
+  t: TFunction<"translation", undefined>,
+  open: boolean,
+) {
+  const label = open
+    ? t("chat.collapseHistorySidebar", "收起对话历史")
+    : t("chat.expandHistorySidebar", "展开对话历史");
+  return {
+    label,
+    hint: `${label} (${railShortcutLabel("toggle-history", isMacPlatform())})`,
+  };
+}
+
 function NavItemButton({
   item,
   active,
@@ -140,7 +158,6 @@ function NavItemButton({
   onNavigate: (path: string) => void;
   onToggleChatRail?: () => void;
   showChatRailToggle?: boolean;
-  /** History rail is currently visible (classic chat route, panel open). */
   chatRailOpen?: boolean;
   role: string | null;
   hasUpdate: boolean;
@@ -149,9 +166,10 @@ function NavItemButton({
   const showToggle = Boolean(
     showChatRailToggle && item.key === "chat" && onToggleChatRail,
   );
-  const railLabel = chatRailOpen
-    ? t("chat.collapseHistorySidebar", "收起对话历史")
-    : t("chat.expandHistorySidebar", "展开对话历史");
+  const { label: railLabel, hint: railHint } = historyRailLabels(
+    t,
+    Boolean(chatRailOpen),
+  );
 
   return (
     <div
@@ -180,7 +198,7 @@ function NavItemButton({
             ? "var(--fn-sidebar-item-active-text)"
             : "var(--fn-text-secondary)",
           fontSize: typeSize(14, isMobile),
-          fontWeight: active ? 500 : 400,
+          fontWeight: 400,
           paddingRight: showToggle ? 4 : 12,
         }}
       >
@@ -243,9 +261,10 @@ function NavItemButton({
           }}
           aria-expanded={Boolean(chatRailOpen)}
           aria-label={railLabel}
-          title={railLabel}
+          aria-keyshortcuts={railShortcutAria("toggle-history")}
+          title={railHint}
         >
-          <ArrowRightLeft size={14} strokeWidth={1.8} aria-hidden />
+          <ArrowLeftRight size={14} strokeWidth={1.8} aria-hidden />
         </button>
       ) : null}
     </div>
@@ -406,6 +425,9 @@ export default function Sidebar({
   const { layoutMode, minimalPane, setMinimalPane } = useLayoutMode();
   const isMinimal = layoutMode === "minimal";
   const onChatPath = isChatPath(location.pathname);
+  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
+  const showChatRailToggle = !isMinimal;
+  const chatRailOpen = showChatRailToggle && onChatPath && chatSidebarOpen;
   const catalog = useMemo(
     () => buildNavSections(user, { mobileEnabled }),
     [user, mobileEnabled],
@@ -436,12 +458,11 @@ export default function Sidebar({
       cancelled = true;
     };
   }, [user]);
-  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
-  // Classic only: keep the control beside Chat whether the history rail is open or closed.
-  const showChatRailToggle = !isMinimal;
-  const chatRailOpen = showChatRailToggle && onChatPath && chatSidebarOpen;
-
   const isRailCollapsed = collapsed && !isMobile;
+  const desktopChrome = useDesktopChromeStyle();
+  // macOS traffic lights sit above the brand; Windows already has its own
+  // caption row, so the logo starts at the top of the rail.
+  const reserveTrafficLightBand = desktopChrome === "mac";
   const wordmarkSrc = isDark
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
@@ -483,52 +504,27 @@ export default function Sidebar({
     if (isMobile) onToggle();
   };
 
-  const handleToggleChatRail = useCallback(() => {
-    if (isMinimal) {
-      selectMinimalPane("records", { expand: true });
-      return;
-    }
-    if (onChatPath && chatSidebarOpen) {
-      setChatSidebarOpen(false);
-      return;
-    }
-    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
-    setChatSidebarOpen(true);
-    if (!onChatPath) {
-      navigate("/chat");
-    }
-    if (isMobile) onToggle();
-  }, [
-    chatSidebarOpen,
-    isMinimal,
-    isMobile,
-    navigate,
-    onChatPath,
-    onToggle,
-    selectMinimalPane,
-    setChatSidebarOpen,
-  ]);
-
   const brandInner = (
     <>
       <img
-        src={isRailCollapsed ? "/pwa-192.png" : wordmarkSrc}
+        src={isRailCollapsed ? publicUrl("logo_mark.svg") : wordmarkSrc}
         alt="Octop"
+        className={isRailCollapsed ? styles.brandMarkCollapsed : undefined}
         style={{
-          height: isRailCollapsed ? 32 : isMobile ? 38 : 36,
-          width: isRailCollapsed ? 32 : "auto",
-          maxWidth: isRailCollapsed ? 32 : isMobile ? 190 : 160,
+          height: isRailCollapsed ? 26 : isMobile ? 38 : 36,
+          width: "auto",
+          maxWidth: isRailCollapsed ? 36 : isMobile ? 190 : 160,
           objectFit: "contain",
           display: "block",
           flexShrink: 0,
-          borderRadius: isRailCollapsed ? 8 : undefined,
         }}
       />
       {!isRailCollapsed && !isMobile && (
-        <>
+        /* Let the version badges shrink without squeezing the wordmark. */
+        <div className={styles.brandMeta}>
           <CurrentVersionBadge isMobile={isMobile} />
           <AppVersionBadge isMobile={isMobile} />
-        </>
+        </div>
       )}
     </>
   );
@@ -538,7 +534,11 @@ export default function Sidebar({
       className={styles.sidebarUser}
       style={{
         flexShrink: 0,
-        padding: isRailCollapsed ? "10px 0" : "10px 12px",
+        // Collapsed avatar is centered, so its left gap is half the leftover
+        // rail width. The same gap sits under it. 32px is `.accountAvatar`.
+        padding: isRailCollapsed
+          ? `10px 0 calc((max(${COLLAPSED_WIDTH}px, var(--window-controls-inset-start, 0px)) - 32px) / 2)`
+          : "10px 12px",
         display: "flex",
         justifyContent: isRailCollapsed ? "center" : "stretch",
       }}
@@ -578,6 +578,16 @@ export default function Sidebar({
     }
   }, [isMinimal, settingsPaneLabel, minimalPane, setMinimalPane]);
 
+  const handleToggleChatRail = useCallback(() => {
+    if (onChatPath && chatSidebarOpen) {
+      setChatSidebarOpen(false);
+      return;
+    }
+    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
+    setChatSidebarOpen(true);
+    if (!onChatPath) navigate("/chat");
+  }, [chatSidebarOpen, navigate, onChatPath, setChatSidebarOpen]);
+
   const paneToggle = settingsPaneLabel ? (
     <SidebarMinimalPaneToggle
       settingsLabel={settingsPaneLabel}
@@ -588,21 +598,19 @@ export default function Sidebar({
   ) : null;
 
   const classicNavBody = isRailCollapsed ? (
-    <div style={{ padding: "8px 0" }}>
-      <SidebarCollapsedIconNav
-        items={navSections.flatMap((section) => {
-          if (section.id && isGroupCollapsed(section.id)) {
-            return [];
-          }
-          return section.items;
-        })}
-        selectedKey={selectedKey}
-        onNavigate={handleNavigate}
-        role={role}
-        hasUpdate={hasUpdate}
-        t={t}
-      />
-    </div>
+    <SidebarCollapsedIconNav
+      items={navSections.flatMap((section) => {
+        if (section.id && isGroupCollapsed(section.id)) {
+          return [];
+        }
+        return section.items;
+      })}
+      selectedKey={selectedKey}
+      onNavigate={handleNavigate}
+      role={role}
+      hasUpdate={hasUpdate}
+      t={t}
+    />
   ) : (
     <NavList
       sections={navSections}
@@ -620,7 +628,7 @@ export default function Sidebar({
   const minimalNavBody = (
     <div className={styles.minimalNavBody}>
       {isRailCollapsed ? (
-        <div style={{ padding: "8px 0", flexShrink: 0 }}>
+        <div style={{ flexShrink: 0 }}>
           <SidebarCollapsedIconNav
             items={primaryItems}
             selectedKey={selectedKey}
@@ -648,8 +656,6 @@ export default function Sidebar({
               sections={navSections}
               selectedKey={selectedKey}
               onNavigate={handleNavigate}
-              onToggleChatRail={handleToggleChatRail}
-              showChatRailToggle={false}
               isMobile={isMobile}
               isGroupCollapsed={isGroupCollapsed}
               toggleGroup={toggleGroup}
@@ -696,6 +702,7 @@ export default function Sidebar({
   if (isMobile) {
     return (
       <div
+        className={styles.mobileDrawer}
         style={{
           position: "fixed",
           top: 0,
@@ -787,54 +794,68 @@ export default function Sidebar({
   }
 
   // Desktop: custom sidebar with icon-only collapsed mode.
-  // Right border is drawn by MainLayout's RailEdgeControl.
+  // The trailing divider is MainLayout's RailEdgeControl, not a border here.
   return (
-    <div
-      style={{
-        width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-        minWidth: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-        background: "var(--fn-sidebar-bg)",
-        borderRight: "none",
-        transition:
-          "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-        alignSelf: "stretch",
-        minHeight: 0,
-      }}
-    >
+    <div className={styles.navRailHost}>
       <div
-        className={cx(styles.sidebarBrand, DESKTOP_DRAG_REGION_CLASS)}
+        className={styles.navRail}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          minWidth: 0,
-          padding: isRailCollapsed ? "12px 0" : "14px 14px 10px",
-          justifyContent: isRailCollapsed ? "center" : "flex-start",
-          flexShrink: 0,
-        }}
-      >
-        {brandInner}
-      </div>
-
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: isMinimal && minimalPane === "records" ? "hidden" : "auto",
-          overflowX: "hidden",
+          width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
+          // On macOS the collapsed rail is the traffic-light column.
+          // Icons, logo and footer center on it; the shell centers the
+          // lights on the same line.
+          minWidth: `max(${
+            isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
+          }px, var(--window-controls-inset-start, 0px))`,
+          background: "var(--fn-sidebar-bg)",
+          borderRight: "none",
+          transition:
+            "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          flexShrink: 0,
+          alignSelf: "stretch",
+          minHeight: 0,
         }}
       >
-        {navScrollBody}
-      </div>
+        {/* macOS only: room for the traffic lights. Windows caption is a
+            separate full-width row above the shell, so no blank here. */}
+        {reserveTrafficLightBand ? (
+          <div className={styles.navChrome} aria-hidden />
+        ) : null}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+            // Same top inset either way, so expanding only widens the bar.
+            padding: isRailCollapsed ? "10px 0 12px" : "10px 8px 10px 14px",
+            justifyContent: isRailCollapsed ? "center" : "flex-start",
+            flexShrink: 0,
+          }}
+        >
+          {brandInner}
+        </div>
+        <div
+          className={isRailCollapsed ? styles.navScrollCollapsed : undefined}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY:
+              isMinimal && minimalPane === "records" ? "hidden" : "auto",
+            overflowX: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {navScrollBody}
+        </div>
 
-      {userFooter}
-      {customizer}
+        {userFooter}
+        {customizer}
+      </div>
     </div>
   );
 }

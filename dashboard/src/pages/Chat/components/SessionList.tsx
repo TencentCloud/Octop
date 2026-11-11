@@ -558,6 +558,12 @@ function InactiveAgentRow({
 
 interface SessionListProps {
   agents: OctopAgent[];
+  /**
+   * Experts the user owns that are not chat-ready (stopped, failed, still
+   * starting). The rail lists only agents that can chat, so without this count
+   * "no agents here" cannot tell "you have none" from "none are running".
+   */
+  unreadyExperts?: number;
   sessions: Session[];
   activeId: string | null;
   activeAgentId: string | null;
@@ -581,6 +587,7 @@ interface SessionListProps {
 
 export default function SessionList({
   agents,
+  unreadyExperts = 0,
   sessions,
   activeId,
   activeAgentId,
@@ -737,6 +744,17 @@ export default function SessionList({
     [catalog, t],
   );
 
+  /**
+   * The rail only lists experts that can chat right now, so "no agents here"
+   * has two very different causes: the user has none, or the ones they have
+   * are stopped / waiting on a model. Only the first one should be answered
+   * with "create your first expert".
+   */
+  const emptyAgentsCopy =
+    unreadyExperts > 0
+      ? { text: t("chat.noChattableAgentsHint"), action: t("chat.goToExperts") }
+      : { text: t("chat.noAgentsHint"), action: t("chat.createExpert") };
+
   const renderAgentRow = (agent: OctopAgent, hiddenRow: boolean) => {
     const isActive = agent.agent_id === activeAgentId;
     const hits = searching
@@ -832,20 +850,22 @@ export default function SessionList({
         onClose={() => setEditAgent(null)}
       />
       {agents.length > 0 ? (
-        <div className={styles.sessionSearchWrap}>
-          <Search
-            size={14}
-            className={styles.sessionSearchIcon}
-            strokeWidth={2}
-          />
-          <input
-            type="search"
-            className={styles.sessionSearchInput}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t("chat.searchSessions", "搜索会话")}
-            aria-label={t("chat.searchSessions", "搜索会话")}
-          />
+        <div className={styles.sessionHeaderRow}>
+          <div className={styles.sessionSearchWrap} data-octop-no-drag>
+            <Search
+              size={14}
+              className={styles.sessionSearchIcon}
+              strokeWidth={2}
+            />
+            <input
+              type="search"
+              className={styles.sessionSearchInput}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("chat.searchSessions", "搜索会话")}
+              aria-label={t("chat.searchSessions", "搜索会话")}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -856,14 +876,14 @@ export default function SessionList({
       {agents.length === 0 ? (
         <div className={styles.sessionEmptyAgents}>
           <p className={styles.sessionEmptyAgentsText}>
-            {t("chat.noAgentsHint")}
+            {emptyAgentsCopy.text}
           </p>
           <button
             type="button"
             className={styles.sessionEmptyAgentsLink}
             onClick={() => navigate("/experts")}
           >
-            {t("chat.createExpert")}
+            {emptyAgentsCopy.action}
           </button>
         </div>
       ) : (
