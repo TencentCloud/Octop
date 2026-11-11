@@ -450,6 +450,7 @@
     "CONNECTOR_NOT_BOUND": "连接器未绑定到此专家。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
     "CONNECTOR_MCP_LOAD_FAILED": "无法加载 MCP 工具：{servers}",
+    "CONNECTOR_AUTH_REQUIRED": "以下连接器需要授权后才能使用：{servers}",
     "BRIDGE_NOT_FOUND": "未找到云端协同连接。",
     "BRIDGE_AUTH_FAILED": "对端 Octop 拒绝了登录凭证。请核对地址、用户名和密码；也可先点「探测」验证账号是否可用。",
     "BRIDGE_PEER_UNREACHABLE": "无法连接对端 Octop 实例。请确认：地址可访问、账号密码正确，且对端已升级到支持云端协同的版本（需开放 /api/bridge/ws）。若对端在内网，需由可达的一侧主动发起连接。",
