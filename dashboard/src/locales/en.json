@@ -4327,6 +4327,61 @@
     "disableFailed": "Failed to disable, please check your password",
     "logout": "Log out"
   },
+  "onboarding": {
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "start": "Start the tour",
+    "later": "Maybe later",
+    "finish": "Finish",
+    "progress": "Step {{current}} of {{total}}",
+    "keyboardHint": "← → to move, Esc to exit",
+    "intro": {
+      "title": "Welcome to Octop",
+      "body": "Octop is a self-hosted AI assistant platform. The tour opens each of the pages below and shows what it is for. Leave any time, and replay it later from Getting started in your account menu.",
+      "duration": "{{count}} steps, about a minute"
+    },
+    "done": {
+      "title": "You're all set",
+      "body": "You've seen the main building blocks. To replay the tour, open your account menu and choose Getting started.",
+      "chat": "Start chatting",
+      "experts": "Create your first expert"
+    },
+    "steps": {
+      "chat": {
+        "title": "Conversation",
+        "body": "This is where you chat with experts. Each expert is its own AI assistant with a persona, tools and memory, and every thread is saved.",
+        "tip": "Use the thread list on the left to jump back into earlier conversations."
+      },
+      "experts": {
+        "title": "Experts",
+        "body": "Create an expert in one click from a scenario template with its identity, persona and system prompt ready, or set one up from scratch.",
+        "tip": "Once it exists, chat with it from the Conversation page."
+      },
+      "models": {
+        "title": "Model Configuration",
+        "body": "Experts need a language model to work. Add model providers here (OpenAI-compatible APIs, local Ollama models and more) and pick a default model.",
+        "tip": "Enable at least one model so experts can reply.",
+        "bodyMember": "Your administrator connects the model providers, so you can use the models they made available.",
+        "tipMember": "Switch models from the model picker in the chat input."
+      },
+      "channels": {
+        "title": "Channels",
+        "body": "Connect experts to Feishu, WeCom, DingTalk, Telegram and other messaging apps, so you can talk to them where you already chat.",
+        "tip": "Some platforms let you create the bot by scanning a QR code."
+      },
+      "knowledgeBases": {
+        "title": "Knowledge Bases",
+        "body": "Upload documents to build a knowledge base that experts can search and cite in conversations.",
+        "tip": "You can share a knowledge base with other users on this instance."
+      },
+      "skillPackages": {
+        "title": "Skill Packages",
+        "body": "Skill packages bundle skills into reusable capabilities. Create or import one and mount it on an expert to use those skills.",
+        "tip": "One skill package can be mounted on several experts."
+      }
+    }
+  },
   "account": {
     "myAccount": "My Account",
     "settings": "Personal Settings",
@@ -4338,6 +4393,7 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "helpFeedback": "Help & Feedback",
+    "onboarding": "Getting started",
     "helpBuilding": "Under construction",
     "projectUrl": "Project",
     "checkUpdates": "Check for Updates",

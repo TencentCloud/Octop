@@ -32,6 +32,7 @@ from octop.infra.users.preferences import (
     RemoteBrowserBookmark,
     get_remote_browser_bookmarks_from_json,
     merge_model_preferences_json,
+    merge_onboarding_completed_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
 )
@@ -752,6 +753,13 @@ class UserManager:
             preferred_model=preferred_model,
             model_reasoning=model_reasoning,
         )
+        self._services.user_repo.set_preferences_json(row.id, merged)
+
+    async def set_onboarding_completed(self, username: str, completed: bool) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        merged = merge_onboarding_completed_json(row.preferences_json, completed)
         self._services.user_repo.set_preferences_json(row.id, merged)
 
     async def disable(self, username: str) -> None:
