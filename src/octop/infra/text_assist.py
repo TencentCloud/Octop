@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 AssistKind = Literal[
     "chat.prompt",
+    "chat.thread_title",
     "expert.description",
     "expert.welcome_message",
     "team.description",
@@ -34,7 +35,8 @@ AssistKind = Literal[
 ]
 
 ASSIST_KINDS: frozenset[str] = frozenset(get_args(AssistKind))
-_FORM_KINDS: frozenset[str] = ASSIST_KINDS - {"chat.prompt"}
+_TEXT_KINDS: frozenset[str] = frozenset({"chat.prompt", "chat.thread_title"})
+_FORM_KINDS: frozenset[str] = ASSIST_KINDS - _TEXT_KINDS
 _TIMEOUT_SECONDS = 30.0
 
 
@@ -65,7 +67,7 @@ def _prompt_pair(
     locale: Locale,
 ) -> tuple[str, str]:
     system = tr(f"text_assist.kinds.{kind}.system", locale)
-    if kind == "chat.prompt":
+    if kind in _TEXT_KINDS:
         user = tr(f"text_assist.kinds.{kind}.user", locale, text=text)
     elif text:
         user = tr(
@@ -90,8 +92,9 @@ async def run_text_assist(
 ) -> str:
     """Polish or generate short copy for a known assist kind.
 
-    ``chat.prompt`` requires non-empty ``text``. Form kinds require
-    ``context.name``; ``text`` may be empty to generate from the name.
+    ``chat.prompt`` and ``chat.thread_title`` require non-empty ``text``.
+    Form kinds require ``context.name``; ``text`` may be empty to generate
+    from the name.
     ``default_model`` is forwarded to harness: omit it or pass ``auto`` and
     ``ChatModelFactory.get_for`` selects the model.
     """
@@ -102,7 +105,7 @@ async def run_text_assist(
     name = _context_name(context)
     loc = normalize_locale(str(locale))
 
-    if kind == "chat.prompt":
+    if kind in _TEXT_KINDS:
         if not draft:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "text is required")
     elif kind in _FORM_KINDS:

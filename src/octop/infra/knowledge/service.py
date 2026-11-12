@@ -5,26 +5,25 @@ Visibility is owner or instance-wide ``shared``.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, cast
 
 from octop.config import DEFAULT_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.db.repos.knowledge import KnowledgeBaseRow, KnowledgeDocumentRow
-from octop.infra.knowledge.files import (
-    delete_document_file,
-    delete_knowledge_base_files,
-    document_path,
-    write_document,
-)
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.knowledge.blobs import KnowledgeBlobs
 from octop.infra.knowledge.gate import assert_knowledge_usable
-from octop.infra.knowledge.index import KnowledgeIndex
 from octop.infra.knowledge.ocr import (
     OCR_IMAGE_SUFFIXES,
     load_ocr_config,
     optional_ocr_extractor,
 )
 from octop.infra.knowledge.parse import parse_document
+from octop.infra.knowledge.plane import open_knowledge_index, postgres_database
 from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path_parent
+
+logger = logging.getLogger(__name__)
 
 MAX_DOCS_PER_KB = 100
 MAX_BASES_PER_OWNER = 20
@@ -192,7 +191,7 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        path = document_path(kb_id, doc_id, document.filename)
+        path = self._blobs().ensure_local(kb_id, doc_id, document.filename)
         text = parse_document(path, ocr=optional_ocr_extractor(self._services))
         if len(text) > _MAX_PREVIEW_CHARS:
             text = text[:_MAX_PREVIEW_CHARS]
@@ -200,6 +199,23 @@ class KnowledgeService:
             "id": document.id,
             "filename": document.filename,
             "text": text,
+        }
+
+    def list_document_chunks(
+        self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
+    ) -> dict[str, object]:
+        """Return the indexed slices actually stored for one document."""
+        from octop.infra.knowledge.plane import open_knowledge_index
+
+        self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id or document.is_dir:
+            raise LookupError("knowledge document not found")
+        rows = open_knowledge_index(self._services, kb_id).list_doc_chunks(document.id)
+        return {
+            "id": document.id,
+            "filename": document.filename,
+            "chunks": [{"ordinal": ordinal, "text": text} for ordinal, text in rows],
         }
 
     def resolve_document_file(
@@ -216,16 +232,16 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        path = document_path(kb_id, doc_id, document.filename)
+        path = self._blobs().ensure_local(kb_id, doc_id, document.filename)
         if not path.is_file():
             raise FileNotFoundError("knowledge document original file not found")
         return path, document.filename, document.content_type
 
     def document_has_original(self, document: KnowledgeDocumentRow) -> bool:
-        """True when the uploaded original still exists on disk."""
+        """True when the uploaded original still exists."""
         if document.is_dir:
             return False
-        return document_path(document.kb_id, document.id, document.filename).is_file()
+        return self._blobs().exists(document.kb_id, document.id, document.filename)
 
     def read_text_document(
         self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
@@ -239,7 +255,7 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.content_type not in _TEXT_CONTENT_TYPES:
             raise ValueError("unsupported knowledge document content type: not editable text")
-        raw = document_path(kb_id, doc_id, document.filename).read_bytes()
+        raw = self._blobs().read_bytes(kb_id, doc_id, document.filename)
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -313,7 +329,7 @@ class KnowledgeService:
         limit = self._max_document_bytes()
         if len(encoded) > limit:
             raise ValueError(f"knowledge document size exceeds maximum of {limit} bytes")
-        write_document(kb_id, document.id, document.filename, encoded)
+        self._blobs().write(kb_id, document.id, document.filename, encoded)
         self._repo.update_document(
             doc_id,
             byte_size=len(encoded),
@@ -402,7 +418,7 @@ class KnowledgeService:
             max_documents=base.max_documents,
         )
         try:
-            write_document(kb_id, document.id, name, content)
+            self._blobs().write(kb_id, document.id, name, content)
         except Exception:
             self._repo.delete_document(document.id)
             raise
@@ -419,8 +435,8 @@ class KnowledgeService:
         for row in removed:
             if row.is_dir:
                 continue
-            KnowledgeIndex(kb_id).delete_doc(row.id)
-            delete_document_file(kb_id, row.id, row.filename)
+            open_knowledge_index(self._services, kb_id).delete_doc(row.id)
+            self._blobs().delete(kb_id, row.id, row.filename)
 
     def reindex_document(
         self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
@@ -467,15 +483,181 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         return cast(KnowledgeDocumentRow, result)
 
+    def _move_across_bases(
+        self,
+        document: KnowledgeDocumentRow,
+        *,
+        source: KnowledgeBaseRow,
+        dest: KnowledgeBaseRow,
+        target: str,
+    ) -> KnowledgeDocumentRow:
+        """Move a file or folder into ``target`` of another base.
+
+        Originals and chunks are copied to the target before the rows switch
+        base, and removed from the source after, so a failure leaves the source
+        intact. Chunks are reused when both bases embed with the same model;
+        otherwise (or when a file has none yet) the file goes back to pending
+        and the caller schedules indexing in the target.
+        """
+        new_path = normalize_kb_path(f"{target}/{path_basename(document.path)}")
+        if self._repo.get_document_by_path(dest.id, new_path) is not None:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN,
+                "the target folder already has an item with this name",
+            )
+        files = [row for row in self._repo.list_subtree(document) if not row.is_dir]
+        if any(row.status == "processing" for row in files):
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_BUSY,
+                "documents still being indexed cannot move to another knowledge base",
+            )
+        if dest.max_documents > 0 and dest.doc_count + len(files) > dest.max_documents:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_DOC_LIMIT,
+                f"knowledge bases support at most {dest.max_documents} documents",
+            )
+        blobs = self._blobs()
+        source_index = open_knowledge_index(self._services, source.id)
+        dest_index = open_knowledge_index(self._services, dest.id)
+        same_model = source.embedding_model == dest.embedding_model
+        reindex: list[str] = []
+        copied: list[KnowledgeDocumentRow] = []
+        try:
+            for row in files:
+                copied.append(row)
+                if blobs.exists(source.id, row.id, row.filename):
+                    content = blobs.read_bytes(source.id, row.id, row.filename)
+                    blobs.write(dest.id, row.id, row.filename, content)
+                chunks = (
+                    source_index.read_doc_chunks(row.id)
+                    if same_model and row.status == "ready"
+                    else []
+                )
+                if chunks:
+                    dest_index.replace_doc_chunks(
+                        row.id,
+                        [text for text, _, _ in chunks],
+                        [embedding for _, embedding, _ in chunks],
+                        metadata=[meta for _, _, meta in chunks],
+                    )
+                elif row.status != "failed":
+                    reindex.append(row.id)
+            result = self._repo.move_to_base(
+                document,
+                target_kb_id=dest.id,
+                target_folder=target,
+                max_documents=dest.max_documents,
+                reindex_ids=reindex,
+            )
+        except ValueError as exc:
+            self._discard_copies(dest.id, copied)
+            if "at most" in str(exc):
+                raise OctopError(ErrorCode.KNOWLEDGE_DOC_LIMIT, str(exc)) from exc
+            raise
+        except Exception:
+            self._discard_copies(dest.id, copied)
+            raise
+        if result is None:
+            raise LookupError("knowledge document not found")
+        self._discard_copies(source.id, files)
+        dimension = source.embedding_dim if same_model else 0
+        if dimension and not dest.embedding_dim:
+            self._repo.update_base(dest.id, embedding_dim=dimension)
+        return cast(KnowledgeDocumentRow, result)
+
+    def _discard_copies(self, kb_id: str, rows: list[KnowledgeDocumentRow]) -> None:
+        """Best-effort removal of originals and chunks a base no longer owns."""
+        index = open_knowledge_index(self._services, kb_id)
+        blobs = self._blobs()
+        for row in rows:
+            try:
+                index.delete_doc(row.id)
+                blobs.delete(kb_id, row.id, row.filename)
+            except Exception:
+                logger.warning(
+                    "could not clean up knowledge document %s in %s", row.id, kb_id, exc_info=True
+                )
+
+    def pending_file_ids(self, document: KnowledgeDocumentRow) -> list[str]:
+        """Files of a document or folder still waiting to be indexed."""
+        return [
+            row.id
+            for row in self._repo.list_subtree(document)
+            if not row.is_dir and row.status == "pending"
+        ]
+
+    def move_document(
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        target_folder: str,
+        actor_user_id: int,
+        is_admin: bool = False,
+        target_kb_id: str | None = None,
+    ) -> KnowledgeDocumentRow:
+        """Move a document (file or folder) into a folder of this or another base.
+
+        ``target_folder`` is a folder path; ``""`` is the root. Moving a folder
+        takes its whole subtree. Within one base the index is untouched: chunks
+        belong to the document id, not to its path. ``target_kb_id`` names
+        another base the actor can write to; see ``_move_across_bases``.
+        """
+        source = self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        document = self._repo.get_document(doc_id)
+        if document is None or document.kb_id != kb_id:
+            raise LookupError("knowledge document not found")
+        dest_kb_id = (target_kb_id or "").strip() or kb_id
+        dest = (
+            source
+            if dest_kb_id == kb_id
+            else self.get_writable_base(dest_kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        )
+        try:
+            target = normalize_kb_path(target_folder)
+        except ValueError as exc:
+            raise LookupError("knowledge folder not found") from exc
+        if target:
+            folder = self._repo.get_document_by_path(dest.id, target)
+            if folder is None or not folder.is_dir:
+                raise LookupError("knowledge folder not found")
+        if dest.id != kb_id:
+            return self._move_across_bases(document, source=source, dest=dest, target=target)
+        if document.is_dir and (target == document.path or target.startswith(f"{document.path}/")):
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_INVALID,
+                "a folder cannot be moved into itself or one of its subfolders",
+            )
+        if target == path_parent(document.path):
+            return cast(KnowledgeDocumentRow, document)
+        new_path = normalize_kb_path(f"{target}/{path_basename(document.path)}")
+        if self._repo.get_document_by_path(kb_id, new_path) is not None:
+            raise OctopError(
+                ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN,
+                "the target folder already has an item with this name",
+            )
+        result = self._repo.move_document(kb_id, doc_id, target)
+        if result is None:
+            raise LookupError("knowledge document not found")
+        return cast(KnowledgeDocumentRow, result)
+
     def delete_base(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        database = postgres_database(self._services)
+        if database is not None:
+            from octop.infra.knowledge.pg_index import PgVectorKnowledgeIndex
+
+            PgVectorKnowledgeIndex(kb_id, database).delete_kb()
         self._repo.delete_base(kb_id)
         from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, GroupAccess
 
         repos = getattr(self._services, "repos", None)
         if repos is not None:
             GroupAccess(repos).clear(RESOURCE_KNOWLEDGE_BASE, kb_id)
-        delete_knowledge_base_files(kb_id)
+        self._blobs().delete_base(kb_id)
+
+    def _blobs(self) -> KnowledgeBlobs:
+        return KnowledgeBlobs.from_services(self._services)
 
     def _require_base(self, kb_id: str) -> KnowledgeBaseRow:
         base = self._repo.get_base(kb_id)

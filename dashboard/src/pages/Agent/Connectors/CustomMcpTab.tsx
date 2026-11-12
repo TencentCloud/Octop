@@ -4,14 +4,17 @@ import { message } from "@/utils/antdMessage";
 
 import { Globe, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   connectorsApi,
   type ConnectorProbeResult,
   type CustomMcpServers,
   type CustomMcpTransport,
+  type OAuthPendingResult,
 } from "../../../api/modules/connectors";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { pendingOutcome, reportOAuthOutcome } from "./connectorOAuth";
+import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { CustomMcpServerCard } from "./CustomMcpServerCard";
 import {
   EXAMPLE_JSON,
@@ -55,6 +58,9 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
   const [oauthAvailable, setOauthAvailable] = useState<Record<string, boolean>>(
     {},
   );
+  const [oauthClientRequired, setOauthClientRequired] = useState<
+    Record<string, boolean>
+  >({});
   const [authorizingKey, setAuthorizingKey] = useState<string | null>(null);
   const [persistedNames, setPersistedNames] = useState<Set<string>>(
     () => new Set(),
@@ -274,6 +280,12 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       delete next[key];
       return next;
     });
+    setOauthClientRequired((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const applyProbeResult = (
@@ -327,8 +339,28 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       return;
     }
     setOauthAvailable((prev) => ({ ...prev, [card.key]: false }));
+    if (result.oauth?.client_required) {
+      setOauthClientRequired((prev) => ({ ...prev, [card.key]: true }));
+      updateCard(card.key, {
+        oauthClientOpen: true,
+        enabled: false,
+        defaultOpen: false,
+        ...(fromSave ? {} : { collapsed: false }),
+      });
+      if (!fromSave) {
+        message.warning(
+          t(
+            "connectors.customMcp.probeNeedsOAuthClient",
+            "此 MCP 的授权服务器不支持自动注册客户端",
+          ),
+        );
+      }
+      return;
+    }
     if (!fromSave) {
-      message.error(result.error ?? t("connectors.probeFailed", "探测失败"));
+      message.error(
+        probeErrorMessage(result, t("connectors.probeFailed", "探测失败"), t),
+      );
     }
   };
 
@@ -504,17 +536,28 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
     const claimPending = async () => {
       if (!stateId || settled) return;
+      let pending: OAuthPendingResult;
       try {
-        const pending = await connectorsApi.oauthPending(stateId);
-        if (pending.applied || pending.server_name) {
-          await finish();
-        }
+        pending = await connectorsApi.oauthPending(stateId);
       } catch {
         // keep polling until timeout
+        return;
+      }
+      const outcome = pendingOutcome(pending);
+      if (outcome.status !== "ok") {
+        settled = true;
+        cleanup();
+        setAuthorizingKey(null);
+        reportOAuthOutcome(outcome, t);
+        return;
+      }
+      if (pending.applied || pending.server_name) {
+        await finish();
       }
     };
 
     const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
       if (ev.data?.type !== "octop:connector-oauth") return;
       if (ev.data.state_id !== stateId) return;
       void claimPending();
@@ -605,9 +648,10 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
   const saveFooter = (
     <div
-      className={`${styles.customMcpFooter}${
-        showProbeSection ? "" : ` ${styles.customMcpFooterSaveOnly}`
-      }`}
+      className={cx(
+        styles.customMcpFooter,
+        !showProbeSection && styles.customMcpFooterSaveOnly,
+      )}
     >
       {showProbeSection ? (
         <div className={styles.customMcpFooterMain}>
@@ -740,12 +784,16 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
                       probing={probingKey === card.key}
                       authorizing={authorizingKey === card.key}
                       oauthAvailable={oauthAvailable[card.key] === true}
+                      oauthClientRequired={
+                        oauthClientRequired[card.key] === true
+                      }
                       probeTools={probeResults[card.key]}
                       transportOptions={transportOptions}
                       onUpdate={updateCard}
                       onToggleEnabled={(enabled) => {
                         if (
-                          oauthAvailable[card.key] &&
+                          (oauthAvailable[card.key] ||
+                            oauthClientRequired[card.key]) &&
                           !card.oauthConfigured &&
                           enabled
                         ) {

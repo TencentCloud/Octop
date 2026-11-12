@@ -30,6 +30,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { ResizableTable } from "@/components/ResizableTable";
 import { TextAssistBar } from "@/components/TextAssistBar";
 import { message } from "@/utils/antdMessage";
@@ -594,7 +595,10 @@ export default function RolesPanel() {
                     >
                       <button
                         type="button"
-                        className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                        className={cx(
+                          styles.userCardIconBtn,
+                          styles.userCardIconBtnDanger,
+                        )}
                         disabled={!row.deletable}
                         aria-label={t("common.delete")}
                       >
@@ -794,9 +798,7 @@ export default function RolesPanel() {
             </div>
           ) : (
             <>
-              <div
-                className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-              >
+              <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
                 <span>{t("adminUsers.roleCustomHint")}</span>
               </div>
               <Form.Item

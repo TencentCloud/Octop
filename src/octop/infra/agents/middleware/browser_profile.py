@@ -12,6 +12,7 @@ from langgraph.config import get_config
 from langgraph.prebuilt.tool_node import ToolCallRequest
 from langgraph.types import Command
 
+from octop.infra.control.browser.bundled import browser_enabled
 from octop.infra.utils.browser_media import parse_octop_user_id, user_browser_profile
 
 logger = logging.getLogger(__name__)
@@ -21,12 +22,23 @@ _MISSING_USER = (
     "browser_use blocked: the current turn has no Octop user id, "
     "so a browser profile cannot be isolated."
 )
+_NOT_ENABLED = (
+    "browser_use blocked: Chromium is installed but not enabled. "
+    "Ask the user to enable it on the Remote Browser page."
+)
 
 
 def _bind_browser_profile(request: ToolCallRequest) -> ToolCallRequest | ToolMessage:
     tool_call = request.tool_call
     if str(tool_call.get("name") or "") != _BROWSER_TOOL:
         return request
+
+    if not browser_enabled():
+        return ToolMessage(
+            content=_NOT_ENABLED,
+            tool_call_id=str(tool_call.get("id") or ""),
+            status="error",
+        )
 
     configurable = dict(get_config().get("configurable") or {})
     user_id = parse_octop_user_id(configurable.get("user"))

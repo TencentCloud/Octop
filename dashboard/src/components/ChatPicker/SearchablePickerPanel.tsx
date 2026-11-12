@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Search } from "lucide-react";
+import cx from "classnames";
 import { useFilteredList } from "../../hooks/useFilteredList";
 import styles from "./picker.module.less";
 
@@ -84,7 +85,7 @@ export default function SearchablePickerPanel<T>({
 
       <button
         type="button"
-        className={`${styles.footer} ${footerMuted ? styles.footerMuted : ""}`}
+        className={cx(styles.footer, footerMuted && styles.footerMuted)}
         data-picker-footer=""
         onClick={onFooterClick}
       >

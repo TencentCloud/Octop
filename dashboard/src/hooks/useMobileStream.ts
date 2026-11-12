@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { getAuthToken } from "../api/request";
+import { resolveWsUrl } from "../utils/desktopWsUrl";
 import { H264CanvasDecoder, parseVideoInit } from "../utils/h264CanvasDecoder";
 
 export type MobileStreamState =
@@ -20,8 +21,7 @@ export interface MobileStreamOptions {
 }
 
 function buildWsUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://${window.location.host}/api/mobile-stream/ws`;
+  return resolveWsUrl("/api/mobile-stream/ws");
 }
 
 export function useMobileStream() {

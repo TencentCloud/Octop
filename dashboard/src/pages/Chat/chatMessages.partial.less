@@ -728,14 +728,11 @@
   }
 }
 
-.inlineToolStatusLive {
+.inlineToolLiveDots {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
+  gap: 3px;
   flex-shrink: 0;
-  color: var(--fn-color-brand);
-  font-size: 12px;
 
   .thinkingDot {
     width: 5px;
@@ -966,6 +963,7 @@
   align-items: stretch;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   padding: 8px 12px;
   border-radius: 10px;
@@ -1329,11 +1327,25 @@
   gap: 6px;
   min-width: 0;
   color: var(--fn-color-brand);
+}
+
+.processLiveDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
 
   .thinkingDot {
     width: 5px;
     height: 5px;
-    flex-shrink: 0;
+
+    &:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.4s;
+    }
   }
 }
 
@@ -1365,6 +1377,8 @@
 }
 
 .processThinkingItem {
+  min-width: 0;
+  max-width: 100%;
   padding: 8px 10px;
   border-radius: 8px;
   border-left: 2px solid var(--fn-border-secondary);
@@ -1372,6 +1386,9 @@
   color: var(--fn-text-secondary);
   font-size: 13px;
   line-height: 1.55;
+  word-break: break-word;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .processToolItem {

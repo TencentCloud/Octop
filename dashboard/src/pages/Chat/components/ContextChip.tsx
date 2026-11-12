@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
+import cx from "classnames";
 import styles from "../index.module.less";
 
 export type ContextChipVariant =
@@ -35,9 +36,11 @@ export default function ContextChip({
 }: ContextChipProps) {
   return (
     <div
-      className={`${styles.contextChip} ${variantClass[variant]} ${
-        compact ? styles.contextChipCompact : ""
-      }`}
+      className={cx(
+        styles.contextChip,
+        variantClass[variant],
+        compact && styles.contextChipCompact,
+      )}
     >
       <span className={styles.contextChipIcon}>{icon}</span>
       <span className={styles.contextChipLabel}>{label}</span>
