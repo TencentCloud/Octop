@@ -315,7 +315,8 @@ To serve the dashboard under a reverse-proxy subpath (for example `https://examp
 <p>
   <a href="https://buy.cloud.tencent.com/lighthouse?blueprintType=APP_OS&blueprintOfficialId=lhbp-nxq7695q&regionId=1&zone=ap-guangzhou-6&bundleId=bundle_rs_mc_med2_01&loginSet=AUTO_PASSWORD&goodsNum=0&from=lh-console"><img alt="Deploy on Lighthouse" width="194" height="49" src="docs/assets/deploy-on-lighthouse.png" /></a><br>
   <a href="https://buy.cloud.tencent.com/cvm?tab=custom&step=1&devPayMode=monthly&regionId=1&zoneId=100007&instanceType=SA9.64XLARGE1152&supportConfidentiality=false&platform=TencentOS&imageId=img-n3gxkolf&systemDiskType=CLOUD_HSSD&systemDiskSize=100&systemDiskBackupQuota=0&isBackup=false&backupDiskType=ALL&backupDiskCustomizeValue=&backupQuotaSegment=1&backupQuota=1&wanIp=0&loginSet=BIND_SSH_KEY&tags=null&templateCreateMode=createLt"><img alt="Deploy on CVM" width="194" height="49" src="docs/assets/deploy-on-cvm.png" /></a><br>
-  <a href="https://zenith.hosting/host/octop"><img alt="Deploy with Zenith" width="194" height="49" src="https://cdn.zenith.hosting/buttons/deploy-with-zenith.svg" /></a>
+  <a href="https://zenith.hosting/host/octop"><img alt="Deploy with Zenith" width="194" height="49" src="https://cdn.zenith.hosting/buttons/deploy-with-zenith.svg" /></a><br>
+  <a href="https://zop.dev/zopday/app/deploy?image=ghcr.io/tencentcloud/octop&port=8088&name=octop&utm_source=github&utm_medium=one_click&utm_content=octop"><img alt="Deploy to ZopDay" width="230" height="49" src="https://zop.dev/deploytozopday-inkhard.svg" /></a>
 </p>
 
 ## 📑 Contents
