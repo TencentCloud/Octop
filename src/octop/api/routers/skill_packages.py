@@ -29,7 +29,7 @@ from octop.infra.skills.skill_package_store import (
     is_skill_package_name_conflict,
     raise_skill_package_name_taken,
 )
-from octop.infra.skills.skill_packages import SkillPackageError, read_skill_directory
+from octop.infra.skills.skill_packages import SkillPackageError
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
 from octop.infra.users.groups import (
     RESOURCE_SKILL_PACKAGE,
@@ -140,7 +140,7 @@ def _files_from_package_skill_body(
 
 
 def _package_skill_exists(store: SkillPackageStore, package_id: str, slug: str) -> bool:
-    return (store.package_skills_dir(package_id) / slug / "SKILL.md").is_file()
+    return store.has_skill(package_id, slug)
 
 
 class LocalizedSkillCopy(BaseModel):
@@ -163,6 +163,7 @@ def _store(server: OctopServer) -> SkillPackageStore:
     return SkillPackageStore(
         repo=server.services.skill_package_repo,
         root=server.paths.skill_packages_dir,
+        database=server.services.config.database,
     )
 
 
@@ -176,6 +177,11 @@ def _package_or_404(
     if row is None:
         raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
     return row
+
+
+def _package_avatars(server: OctopServer) -> Any:
+    assert server.services is not None
+    return server.services.avatars("skill_package")
 
 
 def _package_avatar_api_path(package_id: str) -> str:
@@ -195,7 +201,7 @@ def _display_package_icon_url(server: OctopServer, row: SkillPackageRow) -> str:
     text = str(row.icon_url or "").strip()
     api = _package_avatar_api_path(row.id)
     if text.split("?", 1)[0] == api:
-        return profile_avatar_url(server.paths.skill_package_avatars_dir, row.id, api) or api
+        return profile_avatar_url(_package_avatars(server), row.id, api) or api
     return text
 
 
@@ -582,7 +588,7 @@ async def update_skill_package(
     if icon_url is not None and not _is_package_avatar_url(icon_url, package_id):
         from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
 
-        delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+        delete_profile_avatar(_package_avatars(server), package_id)
     if body.visibility is not None:
         _package_access(server).set_visibility(
             RESOURCE_SKILL_PACKAGE,
@@ -619,7 +625,7 @@ async def delete_skill_package(
     store.delete_package(package_id)
     from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
 
-    delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+    delete_profile_avatar(_package_avatars(server), package_id)
     _package_access(server).clear(RESOURCE_SKILL_PACKAGE, package_id)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.strip_skill_package_id(package_id)
@@ -647,15 +653,13 @@ async def upload_skill_package_avatar(
     row = _package_or_404(store, package_id, locale=locale)
     store.assert_can_mutate(row, user)
     write_profile_avatar(
-        server.paths.skill_package_avatars_dir,
+        _package_avatars(server),
         package_id,
         await file.read(),
     )
     icon_url = _package_avatar_api_path(package_id)
     store.repo.update(package_id, icon_url=icon_url)
-    display = (
-        profile_avatar_url(server.paths.skill_package_avatars_dir, package_id, icon_url) or icon_url
-    )
+    display = profile_avatar_url(_package_avatars(server), package_id, icon_url) or icon_url
     return {"icon_url": display}
 
 
@@ -671,7 +675,7 @@ async def get_skill_package_avatar(
     store = _store(server)
     locale = resolve_request_locale(request)
     _package_visible_or_404(store, package_id, user, server, locale=locale)
-    return avatar_response(server.paths.skill_package_avatars_dir, package_id)
+    return avatar_response(_package_avatars(server), package_id)
 
 
 @router.delete(
@@ -691,7 +695,7 @@ async def delete_skill_package_avatar(
     locale = resolve_request_locale(request)
     row = _package_or_404(store, package_id, locale=locale)
     store.assert_can_mutate(row, user)
-    delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+    delete_profile_avatar(_package_avatars(server), package_id)
     store.repo.update(package_id, icon_url="")
 
 
@@ -720,7 +724,7 @@ async def get_package_skill(
     locale = resolve_request_locale(request)
     _package_visible_or_404(store, package_id, user, server, locale=locale)
     skill = _package_skill_or_404(store, package_id, slug, locale=locale)
-    raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
+    raw = store.read_skill_file_text(package_id, slug, "SKILL.md")
     frontmatter, body = parse_frontmatter(raw)
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
 
@@ -795,12 +799,11 @@ def _read_package_skill_files(
     store: SkillPackageStore, package_id: str
 ) -> list[tuple[str, list[tuple[str, bytes]]]]:
     packed: list[tuple[str, list[tuple[str, bytes]]]] = []
-    root = store.package_skills_dir(package_id)
     for summary in store.list_skill_summaries(package_id):
         if summary.get("corrupt"):
             continue
         slug = str(summary.get("slug") or "")
-        packed.append((slug, read_skill_directory(root / slug)))
+        packed.append((slug, store.read_skill_files(package_id, slug)))
     if not packed:
         raise SkillPackageError("skill package has no skills")
     return packed
@@ -925,7 +928,7 @@ async def delete_package_skill(
 
 
 def _package_has_skill(store: SkillPackageStore, package_id: str, slug: str) -> bool:
-    return (store.package_skills_dir(package_id) / slug / "SKILL.md").is_file()
+    return store.has_skill(package_id, slug)
 
 
 async def _refresh_package(server: OctopServer, package_id: str) -> None:
@@ -1067,6 +1070,7 @@ async def hub_install_package_skill(
         SkillHubPackageError,
         SkillHubPackageTooLarge,
         download_skillhub_package,
+        skill_market_failure_status,
     )
 
     locale = resolve_request_locale(request)
@@ -1111,18 +1115,11 @@ async def hub_install_package_skill(
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except SkillHubPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except SkillHubMarketError:
-        transport = "cli"
-        from octop.api.routers.skills import (  # noqa: PLC0415
-            _download_skillhub_package_via_cli,
-        )
-
-        try:
-            files = await _download_skillhub_package_via_cli(skill_name)
-        except (SkillHubPackageTooLarge, SkillPackageTooLarge) as package_exc:
-            raise HTTPException(status_code=413, detail=str(package_exc)) from package_exc
-        except (SkillHubPackageError, SkillPackageError) as package_exc:
-            raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
+    except SkillHubMarketError as exc:
+        raise HTTPException(
+            status_code=skill_market_failure_status(exc),
+            detail=str(exc),
+        ) from exc
 
     try:
         await install_skill_from_skillhub(

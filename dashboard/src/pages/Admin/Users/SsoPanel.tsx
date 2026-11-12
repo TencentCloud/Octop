@@ -29,6 +29,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import {
   ssoApi,
@@ -369,13 +370,11 @@ export default function SsoPanel() {
                       return (
                         <li
                           key={key}
-                          className={[
+                          className={cx(
                             styles.ssoGuideItem,
-                            done ? styles.ssoGuideDone : "",
-                            current ? styles.ssoGuideCurrent : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
+                            done && styles.ssoGuideDone,
+                            current && styles.ssoGuideCurrent,
+                          )}
                         >
                           <span className={styles.ssoGuideIndex} aria-hidden>
                             {done ? <Check size={12} /> : index + 1}
@@ -392,12 +391,10 @@ export default function SsoPanel() {
                     {t("adminSso.loginPreview")}
                   </div>
                   <div
-                    className={[
+                    className={cx(
                       styles.ssoPreviewBtn,
-                      enabled ? "" : styles.ssoPreviewBtnMuted,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
+                      !enabled && styles.ssoPreviewBtnMuted,
+                    )}
                   >
                     {t("login.oidcWith", {
                       name: displayName.trim() || t("adminSso.statusUnnamed"),
@@ -490,14 +487,11 @@ export default function SsoPanel() {
                         <button
                           key={preset.id}
                           type="button"
-                          className={[
+                          className={cx(
                             styles.ssoPresetChip,
-                            activePreset === preset.id
-                              ? styles.ssoPresetChipActive
-                              : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
+                            activePreset === preset.id &&
+                              styles.ssoPresetChipActive,
+                          )}
                           onClick={() => applyPreset(preset)}
                         >
                           {t(preset.labelKey)}

@@ -24,14 +24,31 @@ from octop.api.routers.chat.turn import (
 )
 from octop.infra.agents.teams.team_manager import subscribe_with_member_catchup
 from octop.infra.bridge.ids import parse_bridge_agent_id
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.steer import SteerAdmitOk, SteerAdmitReject, SteerCoordinator
 from octop.infra.gateway.steer.types import preview_text
+from octop.infra.gateway.threads import thread_visible_to
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _ws_thread_visible(row: Any, agent_id: str, user_id: int) -> bool:
+    return row is not None and row.agent_id == agent_id and thread_visible_to(row, user_id)
+
+
+def _prepare_error_frame(exc: OctopError) -> dict[str, Any]:
+    """Error frame for a turn rejected before it started.
+
+    The code lets the chat offer a fix; for connectors waiting for
+    authorization the details say which ones.
+    """
+    frame: dict[str, Any] = {"type": "error", "message": str(exc), "error_code": exc.code.value}
+    if exc.code == ErrorCode.CONNECTOR_AUTH_REQUIRED:
+        frame["error_details"] = exc.details
+    return frame
 
 
 @router.websocket("/agents/{agent_id}/chat/ws")
@@ -108,7 +125,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "subscribe requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
+                if not _ws_thread_visible(row, agent_id, user.id):
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
@@ -153,7 +170,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "cancel requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
+                if not _ws_thread_visible(row, agent_id, user.id):
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
@@ -208,7 +225,7 @@ async def dashboard_chat_ws(
                     turn=turn,
                 )
             except OctopError as exc:
-                await send_frame({"type": "error", "message": str(exc)})
+                await send_frame(_prepare_error_frame(exc))
                 await send_frame({"type": "done"})
                 continue
 
@@ -217,6 +234,33 @@ async def dashboard_chat_ws(
             # moment control yields, and push_to_thread drops frames for
             # connections that are not subscribed yet.
             hub.subscribe(prepared_early.thread_id, connection_id)
+
+            thread_row = gateway.thread_registry.get_thread(prepared_early.thread_id)
+            if gateway.steer.blocks_other_sender(prepared_early.thread_id, user.id) and bool(
+                getattr(thread_row, "contributed", False)
+            ):
+                active = gateway.steer.get_state(prepared_early.thread_id)
+                await send_frame(
+                    {
+                        "type": "turn.busy",
+                        "thread_id": prepared_early.thread_id,
+                        "reason": "shared_turn_busy",
+                        "message_id": _ws_client_message_id(frame),
+                        "client_pending_id": frame.client_pending_id,
+                        "active_turn_id": active.turn_id if active is not None else None,
+                    }
+                )
+                continue
+
+            hitl_paused = _thread_hitl_paused(gateway, prepared_early.thread_id, agent_id)
+            if not hitl_paused:
+                # A turn parked at an HITL interrupt leaves ``phase='hitl_paused'``
+                # behind so follow-ups queue behind the approval. If the approval
+                # was resolved elsewhere (another tab / reload) or never reached
+                # this client, every new message would be rejected as a steer and
+                # the chat deadlocks. No pending request → drop the stale park so
+                # this message starts a fresh turn instead.
+                _clear_stale_hitl_park(gateway, prepared_early.thread_id)
 
             steered = await _maybe_admit_steer(
                 text=(turn.text or "").strip() or _plain_text_from_turn(turn),
@@ -227,7 +271,7 @@ async def dashboard_chat_ws(
                 steer=gateway.steer,
                 hub=hub,
                 send_frame=send_frame,
-                hitl_paused=_thread_hitl_paused(gateway, prepared_early.thread_id, agent_id),
+                hitl_paused=hitl_paused,
                 content_blocks=_steer_blocks_from_turn(turn),
             )
             if steered:
@@ -574,6 +618,38 @@ def _plain_text_from_turn(turn: Any) -> str:
     return ""
 
 
+def _clear_stale_hitl_park(gateway: Any, thread_id: str) -> None:
+    """Drop a leftover ``hitl_paused`` steer park when no approval is pending.
+
+    Kept separate from ``_thread_hitl_paused`` so the probe stays read-only and
+    the mutation is obvious at the call site.
+    """
+    steer = getattr(gateway, "steer", None)
+    get_state = getattr(steer, "get_state", None)
+    if steer is None or not callable(get_state):
+        return
+    try:
+        state = get_state(thread_id)
+    except Exception:
+        logger.exception("hitl park probe failed thread=%s", thread_id)
+        return
+    if state is None or getattr(state, "phase", None) != "hitl_paused":
+        return
+    try:
+        steer.discard(thread_id, reason="hitl_paused")
+        logger.info("cleared stale hitl park thread=%s", thread_id)
+    except Exception:
+        logger.exception("failed to clear stale hitl park thread=%s", thread_id)
+
+
+def _ws_client_message_id(frame: UserTurnWsFrame) -> str | None:
+    for item in frame.messages or []:
+        raw = item.get("id") if isinstance(item, dict) else None
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
+
+
 def _thread_hitl_paused(gateway: Any, thread_id: str, agent_id: str) -> bool:
     processor = getattr(gateway, "processor", None)
     hitl = getattr(processor, "hitl_coordinator", None) if processor is not None else None
@@ -720,7 +796,7 @@ async def _handle_steer_remove(
         )
         return
     row = gateway.thread_registry.get_thread(thread_id)
-    if row is None or row.agent_id != agent_id or row.user_id != user_id:
+    if not _ws_thread_visible(row, agent_id, user_id):
         await send_frame(
             {
                 "type": "steer.ack",

@@ -1,3 +1,4 @@
+import { Tabs } from "antd";
 import { useTranslation } from "react-i18next";
 import TabLabel, { type TabIcon } from "./index";
 import styles from "./index.module.less";
@@ -14,7 +15,7 @@ interface TabBarProps<T extends string> {
   onChange: (key: T) => void;
 }
 
-/** Shared underline tab bar with Lucide icons (admin advanced style). */
+/** Underline tab bar. Overflow uses Ant Design Tabs' own more menu. */
 export default function TabBar<T extends string>({
   tabs,
   activeKey,
@@ -23,22 +24,14 @@ export default function TabBar<T extends string>({
   const { t } = useTranslation();
 
   return (
-    <div className={styles.tabBar} role="tablist">
-      {tabs.map((tab) => {
-        const selected = activeKey === tab.key;
-        return (
-          <button
-            key={tab.key}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            className={`${styles.tab} ${selected ? styles.active : ""}`}
-            onClick={() => onChange(tab.key)}
-          >
-            <TabLabel icon={tab.icon}>{t(tab.labelKey)}</TabLabel>
-          </button>
-        );
-      })}
-    </div>
+    <Tabs
+      className={styles.tabBar}
+      activeKey={activeKey}
+      onChange={(key) => onChange(key as T)}
+      items={tabs.map((tab) => ({
+        key: tab.key,
+        label: <TabLabel icon={tab.icon}>{t(tab.labelKey)}</TabLabel>,
+      }))}
+    />
   );
 }

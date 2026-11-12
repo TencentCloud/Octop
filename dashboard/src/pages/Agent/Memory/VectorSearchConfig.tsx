@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { App, Select, Input, Button, Spin, Progress, Alert } from "antd";
 
 import { Download, CheckCircle, AlertCircle } from "lucide-react";
+import cx from "classnames";
 import api from "../../../api";
 import type { EmbeddingConfig } from "../../../api/types/embedding";
 import { useEmbeddingDownloadWS } from "../../../hooks/useEmbeddingDownloadWS";
@@ -262,7 +263,7 @@ export default function VectorSearchConfig() {
           <h3 className={styles.sectionTitle}>
             {t("memory.vs.currentApplied")}
           </h3>
-          <span className={`${styles.statusBadge} ${styles[appliedStatus]}`}>
+          <span className={cx(styles.statusBadge, styles[appliedStatus])}>
             {appliedStatus === "loading"
               ? t("memory.vs.loading")
               : appliedStatus === "downloading"
@@ -307,9 +308,10 @@ export default function VectorSearchConfig() {
         <div className={styles.radioGroup}>
           {/* Disabled */}
           <label
-            className={`${styles.radioOption} ${
-              config.provider === "none" ? styles.radioSelected : ""
-            }`}
+            className={cx(
+              styles.radioOption,
+              config.provider === "none" && styles.radioSelected,
+            )}
           >
             <input
               type="radio"
@@ -328,9 +330,10 @@ export default function VectorSearchConfig() {
 
           {/* Local model */}
           <label
-            className={`${styles.radioOption} ${
-              config.provider === "local" ? styles.radioSelected : ""
-            }`}
+            className={cx(
+              styles.radioOption,
+              config.provider === "local" && styles.radioSelected,
+            )}
           >
             <input
               type="radio"
@@ -351,9 +354,10 @@ export default function VectorSearchConfig() {
 
           {/* Third-party service */}
           <label
-            className={`${styles.radioOption} ${
-              config.provider === "custom" ? styles.radioSelected : ""
-            }`}
+            className={cx(
+              styles.radioOption,
+              config.provider === "custom" && styles.radioSelected,
+            )}
           >
             <input
               type="radio"
@@ -412,7 +416,7 @@ export default function VectorSearchConfig() {
                     <span className={styles.statusLabel}>
                       {t("memory.vs.downloadStatus")}
                     </span>
-                    <span className={`${styles.statusBadge} ${styles.loading}`}>
+                    <span className={cx(styles.statusBadge, styles.loading)}>
                       {t("memory.vs.loading")}
                     </span>
                   </div>
@@ -436,7 +440,7 @@ export default function VectorSearchConfig() {
                       {t("memory.vs.downloadStatus")}
                     </span>
                     <span
-                      className={`${styles.statusBadge} ${styles.downloading}`}
+                      className={cx(styles.statusBadge, styles.downloading)}
                     >
                       {t("memory.vs.downloading")}
                     </span>
@@ -479,7 +483,7 @@ export default function VectorSearchConfig() {
                     <span className={styles.statusLabel}>
                       {t("memory.vs.downloadStatus")}
                     </span>
-                    <span className={`${styles.statusBadge} ${styles.failed}`}>
+                    <span className={cx(styles.statusBadge, styles.failed)}>
                       {t("memory.vs.failed")}
                     </span>
                   </div>
@@ -505,7 +509,7 @@ export default function VectorSearchConfig() {
                     <span className={styles.statusLabel}>
                       {t("memory.vs.downloadStatus")}
                     </span>
-                    <span className={`${styles.statusBadge} ${styles.done}`}>
+                    <span className={cx(styles.statusBadge, styles.done)}>
                       {t("memory.vs.done")}
                     </span>
                   </div>
@@ -523,7 +527,7 @@ export default function VectorSearchConfig() {
                   <span className={styles.statusLabel}>
                     {t("memory.vs.downloadStatus")}
                   </span>
-                  <span className={`${styles.statusBadge} ${styles.idle}`}>
+                  <span className={cx(styles.statusBadge, styles.idle)}>
                     {t("memory.vs.idle")}
                   </span>
                 </div>

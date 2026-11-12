@@ -44,6 +44,7 @@ describe("useUpdateStatus", () => {
     vi.useRealTimers();
     clearStoredUpdateStatus();
     localStorage.clear();
+    delete window.octopDesktop;
   });
 
   it("probes on mount when cache is empty", async () => {
@@ -121,6 +122,48 @@ describe("useUpdateStatus", () => {
 
   it("listens for the shared change event name", () => {
     expect(UPDATE_STATUS_CHANGED_EVENT).toBe("octop:update-status-changed");
+  });
+
+  it("probes the desktop shell and does not ask Python", async () => {
+    const checkForUpdates = vi.fn().mockResolvedValue({
+      status: "update-available",
+      currentVersion: "1.0.3b1",
+      latestVersion: "v1.0.4",
+      error: null,
+    });
+    window.octopDesktop = { checkForUpdates } as typeof window.octopDesktop;
+    const { result } = renderHook(() => useUpdateStatus());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(getUpdateStatus).not.toHaveBeenCalled();
+    expect(checkForUpdates).toHaveBeenCalledTimes(1);
+    expect(result.current.hasUpdate).toBe(true);
+    expect(result.current.status?.latest_version).toBe("v1.0.4");
+    expect(result.current.status?.current_version).toBe("1.0.3b1");
+    delete window.octopDesktop;
+  });
+
+  it("shows the channel head when the shell has nothing to install", async () => {
+    const checkForUpdates = vi.fn().mockResolvedValue({
+      status: "up-to-date",
+      currentVersion: "1.0.3b1",
+      latestVersion: "v1.0.2",
+      error: null,
+    });
+    window.octopDesktop = { checkForUpdates } as typeof window.octopDesktop;
+    const { result } = renderHook(() => useUpdateStatus());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.hasUpdate).toBe(false);
+    expect(result.current.status?.latest_version).toBe("v1.0.2");
+    expect(result.current.status?.current_version).toBe("1.0.3b1");
+    delete window.octopDesktop;
   });
 
   it("trusts server has_update for chrome reminders", async () => {

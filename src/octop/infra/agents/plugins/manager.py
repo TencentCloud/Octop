@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -26,7 +27,17 @@ from octop_harness.plugins import (
 )
 
 from octop.infra.agents.plugins.legacy_imports import ensure_legacy_harness_agent_alias
+from octop.infra.db.repos.control_files import ControlFileRepo
+from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
+from octop.infra.market import (
+    PortalMarketError,
+    get_market_plugin,
+    is_market_archive_url,
+    list_market_plugins,
+    pick_localized,
+)
+from octop.infra.market.errors import local_network_error
 from octop.infra.utils.json_file import (
     JsonFileCorruptError,
     read_json_object,
@@ -34,6 +45,9 @@ from octop.infra.utils.json_file import (
 )
 
 logger = logging.getLogger(__name__)
+
+PLUGINS_ENABLED = "plugins.enabled"
+PLUGINS_REVISION = "plugins.revision"
 
 _MAX_PLUGIN_ARCHIVE_BYTES = 100 * 1024 * 1024
 _MAX_PLUGIN_ZIP_ENTRIES = 2_000
@@ -351,6 +365,23 @@ def _read_installed_version(plugin_dir: Path) -> str | None:
     return text or None
 
 
+def _read_tree(root: Path) -> list[tuple[str, bytes]]:
+    payloads: list[tuple[str, bytes]] = []
+    if not root.is_dir():
+        return payloads
+    for dirpath, _dirnames, filenames in os.walk(root):
+        current = Path(dirpath)
+        for filename in filenames:
+            path = current / filename
+            try:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                payloads.append((path.relative_to(root).as_posix(), path.read_bytes()))
+            except OSError:
+                continue
+    return payloads
+
+
 def _version_tuple(version: str | None) -> tuple[int, ...]:
     ver = str(version or "0").strip() or "0"
     parts: list[int] = []
@@ -369,6 +400,8 @@ class PluginManager:
     def __init__(self, *, plugins_dir: Path, config_path: Path) -> None:
         self._plugins_dir = plugins_dir
         self._config_path = config_path
+        self._control_files: ControlFileRepo | None = None
+        self._plugin_settings: SettingsRepo | None = None
         self._plugins_dir.mkdir(parents=True, exist_ok=True)
         # Last-known tool metadata so Admin / Experts can still list tools after
         # a global disable unloads the plugin from the process registry.
@@ -380,21 +413,137 @@ class PluginManager:
         return self._plugins_dir
 
     def global_enabled_map(self) -> dict[str, bool]:
+        settings = self._plugin_settings
+        if settings is not None:
+            raw = settings.get(PLUGINS_ENABLED)
+            if raw:
+                try:
+                    data = json.loads(raw)
+                except json.JSONDecodeError:
+                    data = None
+                if isinstance(data, dict):
+                    return {str(key): bool(value) for key, value in data.items()}
+            return {}
         return _read_global_plugins(self._config_path)
+
+    def attach_control_plane(self, files: ControlFileRepo, settings: SettingsRepo) -> None:
+        """Use the shared file table as the plugin source of truth."""
+        self._control_files = files
+        self._plugin_settings = settings
+        self._adopt_local_plugins()
+        self._ensure_plugin_cache()
+
+    def _adopt_local_plugins(self) -> None:
+        """Copy this machine's plugin trees once, before the revision marker exists."""
+        files = self._control_files
+        settings = self._plugin_settings
+        if files is None or settings is None:
+            return
+        if settings.get(PLUGINS_REVISION) is not None:
+            return
+        for child in self._plugins_dir.iterdir():
+            if not child.is_dir() or child.name.startswith(".") or child.is_symlink():
+                continue
+            if not (child / "plugin.yaml").is_file():
+                continue
+            if files.has_owner(ControlFileRepo.PLUGIN, child.name):
+                continue
+            payloads = _read_tree(child)
+            if payloads:
+                files.replace_tree(ControlFileRepo.PLUGIN, child.name, payloads)
+        if settings.get(PLUGINS_ENABLED) is None:
+            flags = _read_global_plugins(self._config_path)
+            settings.set(PLUGINS_ENABLED, json.dumps(flags, sort_keys=True))
+        owners = files.owners(ControlFileRepo.PLUGIN)
+        settings.set(PLUGINS_REVISION, "1" if owners else "0")
+
+    def _set_enabled_flag(self, plugin_id: str, enabled: bool) -> None:
+        settings = self._plugin_settings
+        if settings is None:
+            _write_global_plugin_enabled(self._config_path, plugin_id, enabled)
+            return
+        current = self.global_enabled_map()
+        current[plugin_id] = bool(enabled)
+        settings.set(PLUGINS_ENABLED, json.dumps(current, sort_keys=True))
+
+    def _revision_marker(self) -> Path:
+        return self._plugins_dir / ".control-revision"
+
+    def _ensure_plugin_cache(self) -> None:
+        files = self._control_files
+        settings = self._plugin_settings
+        if files is None or settings is None:
+            return
+        revision = settings.get(PLUGINS_REVISION) or "0"
+        marker = self._revision_marker()
+        try:
+            current = marker.read_text(encoding="utf-8") if marker.is_file() else None
+        except OSError:
+            current = None
+        if current == revision:
+            return
+        self._plugins_dir.mkdir(parents=True, exist_ok=True)
+        owners = set(files.owners(ControlFileRepo.PLUGIN))
+        if not owners and revision == "0":
+            marker.write_text(revision, encoding="utf-8")
+            return
+        for child in list(self._plugins_dir.iterdir()):
+            if child.name == ".control-revision" or not child.is_dir():
+                continue
+            if child.name not in owners:
+                shutil.rmtree(child, ignore_errors=True)
+        for owner in owners:
+            dest = self._plugins_dir / owner
+            if dest.exists():
+                shutil.rmtree(dest)
+            dest.mkdir(parents=True)
+            for relative, content in files.list_files(ControlFileRepo.PLUGIN, owner):
+                target = dest / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+        marker.write_text(revision, encoding="utf-8")
+
+    def _bump_plugin_revision(self) -> None:
+        settings = self._plugin_settings
+        if settings is None:
+            return
+        raw = settings.get(PLUGINS_REVISION) or "0"
+        try:
+            revision = str(int(raw) + 1)
+        except ValueError:
+            revision = "1"
+        settings.set(PLUGINS_REVISION, revision)
+        try:
+            self._revision_marker().write_text(revision, encoding="utf-8")
+        except OSError:
+            logger.warning("failed to record plugin cache revision")
+
+    def _persist_plugin_tree(self, plugin_id: str) -> None:
+        files = self._control_files
+        if files is None:
+            return
+        files.replace_tree(
+            ControlFileRepo.PLUGIN,
+            plugin_id,
+            _read_tree(self._plugins_dir / plugin_id),
+        )
+        self._bump_plugin_revision()
 
     def seed_bundled(self) -> list[str]:
         """Upgrade already-installed bundled plugins when catalog versions are newer."""
         from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
         from octop.infra.agents.plugins.seed import seed_bundled_plugins
 
-        return seed_bundled_plugins(
+        copied = seed_bundled_plugins(
             bundled_root=default_bundled_plugins_root(),
             plugins_dir=self._plugins_dir,
             config_path=self._config_path,
         )
+        for plugin_id in copied:
+            self._persist_plugin_tree(plugin_id)
+        return copied
 
     def market_root(self) -> Path:
-        """In-tree marketplace catalog root (future: remote index)."""
         from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
 
         return default_bundled_plugins_root()
@@ -409,65 +558,118 @@ class PluginManager:
             return dest
         return None
 
-    def list_market(self) -> list[dict[str, Any]]:
-        """List marketplace catalog entries (in-tree today; remote API later)."""
-        root = self.market_root()
-        out: list[dict[str, Any]] = []
-        if not root.is_dir():
-            return out
-        for plugin_dir in discover_plugin_dirs(root):
-            try:
-                manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
-            except Exception as exc:
-                out.append(
-                    {
-                        "id": plugin_dir.name,
-                        "error": str(exc),
-                        "installed": (self._plugins_dir / plugin_dir.name).is_dir(),
-                    },
-                )
-                continue
-            installed_dir = self.plugin_dir(manifest.id)
-            installed_version = (
-                None if installed_dir is None else _read_installed_version(installed_dir)
-            )
-            out.append(
-                {
-                    "id": manifest.id,
-                    "version": manifest.version,
-                    "name": manifest.name,
-                    "kind": manifest.kind,
-                    "description": manifest.description,
-                    "icon": parse_plugin_icon(
-                        plugin_dir,
-                        asset_prefix=f"/api/plugins/market/{manifest.id}/ui",
-                    ),
-                    "group": parse_plugin_group(plugin_dir),
-                    "requires": parse_plugin_requires(plugin_dir),
-                    "installed": installed_dir is not None,
-                    "installed_version": installed_version,
-                    "update_available": (
-                        installed_dir is not None
-                        and _version_tuple(manifest.version) > _version_tuple(installed_version)
-                    ),
-                },
-            )
-        return out
+    def list_market(self, language: str = "zh") -> list[dict[str, Any]]:
+        """List marketplace plugins from the portal catalog."""
+        try:
+            remote = list_market_plugins()
+        except PortalMarketError as exc:
+            logger.warning("remote plugin market unavailable: %s", exc)
+            network_error = local_network_error(exc)
+            if network_error is not None:
+                raise network_error from exc
+            raise OctopError(
+                ErrorCode.PLUGIN_MARKET_FAILED,
+                "plugin market failed: upstream request failed",
+                details={"reason": "upstream request failed"},
+            ) from exc
+        return [self._remote_plugin_row(item, language) for item in remote]
 
-    def install_from_market(self, plugin_id: str, *, force: bool = False) -> LoadedPlugin:
-        """Install a catalog plugin by copying the in-tree package locally.
+    def _remote_plugin_row(self, item: dict[str, Any], language: str) -> dict[str, Any]:
+        plugin_id = str(item.get("id") or "").strip()
+        version = str(item.get("version") or "")
+        installed_dir = self.plugin_dir(plugin_id) if plugin_id else None
+        installed_version = (
+            None if installed_dir is None else _read_installed_version(installed_dir)
+        )
+        icon = item.get("icon")
+        group = item.get("group")
+        raw_requires = item.get("requires")
+        requires = raw_requires if isinstance(raw_requires, list) else []
+        return {
+            "id": plugin_id,
+            "version": version,
+            "name": pick_localized(item.get("name"), language) or plugin_id,
+            "kind": str(item.get("kind") or "tool"),
+            "description": pick_localized(item.get("description"), language),
+            "icon": icon.strip() if isinstance(icon, str) and icon.strip() else None,
+            "group": group.strip() if isinstance(group, str) and group.strip() else None,
+            "requires": [
+                str(item_name).strip() for item_name in requires if str(item_name).strip()
+            ],
+            "installed": installed_dir is not None,
+            "installed_version": installed_version,
+            "update_available": (
+                installed_dir is not None
+                and _version_tuple(version) > _version_tuple(installed_version)
+            ),
+        }
 
-        Future: download a ZIP from a remote API / object storage and extract.
+    def install_from_market(
+        self,
+        plugin_id: str,
+        *,
+        version: str | None = None,
+        force: bool = False,
+    ) -> LoadedPlugin:
+        """Install one marketplace release from its CDN archive.
+
+        ``version`` selects the catalog release. ``latest`` means the release
+        currently listed for that id. A different release already on disk is
+        replaced. ``force`` replaces the same release.
         """
-        source = self.market_plugin_dir(plugin_id)
-        if source is None:
+        requested = version.strip() if version else None
+        if requested == "latest":
+            requested = None
+        try:
+            remote = get_market_plugin(plugin_id)
+        except PortalMarketError as exc:
+            logger.warning("remote plugin market unavailable: %s", exc)
+            network_error = local_network_error(exc)
+            if network_error is not None:
+                raise network_error from exc
+            raise OctopError(
+                ErrorCode.PLUGIN_MARKET_FAILED,
+                "plugin market failed: upstream request failed",
+                details={"reason": "upstream request failed"},
+            ) from exc
+        if remote is None:
             raise OctopError(
                 ErrorCode.NOT_FOUND,
                 f"marketplace plugin {plugin_id!r} not found",
             )
-        loaded = self.install_path(source, force=force)
-        _write_global_plugin_enabled(self._config_path, loaded.manifest.id, True)
+        catalog_version = str(remote.get("version") or "")
+        if requested and catalog_version != requested:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"marketplace plugin {plugin_id!r} version {requested!r} not found",
+            )
+        url = remote.get("download_url")
+        if not isinstance(url, str) or not is_market_archive_url(url):
+            raise OctopError(
+                ErrorCode.PLUGIN_INSTALL_FAILED,
+                f"marketplace plugin {plugin_id!r} has no archive",
+            )
+        loaded = self.install_url(
+            url,
+            force=self._replace_market_release(
+                plugin_id,
+                requested or catalog_version,
+                force=force,
+            ),
+            expect_id=plugin_id,
+            expect_version=catalog_version or None,
+        )
+        self._set_enabled_flag(loaded.manifest.id, True)
         return loaded
+
+    def _replace_market_release(self, plugin_id: str, version: str, *, force: bool) -> bool:
+        """Replace disk contents when installing a different catalog release."""
+        if force:
+            return True
+        installed_dir = self.plugin_dir(plugin_id)
+        if installed_dir is None or not version:
+            return False
+        return _read_installed_version(installed_dir) != version
 
     def resolve_market_ui_file(self, plugin_id: str, rel_path: str) -> Path:
         """Resolve a marketplace catalog asset (icons only)."""
@@ -484,6 +686,7 @@ class PluginManager:
         return self._resolve_plugin_asset(plugin_dir, cleaned)
 
     def load_installed(self, *, install_deps: bool = True) -> list[LoadedPlugin]:
+        self._ensure_plugin_cache()
         enabled = self.global_enabled_map()
         previous = {plugin.manifest.id: plugin for plugin in PluginRegistry().all_loaded()}
         PluginRegistry().clear()
@@ -531,6 +734,7 @@ class PluginManager:
         up — unlike ``load_installed``, this does not clear already-loaded
         plugins.
         """
+        self._ensure_plugin_cache()
         enabled = self.global_enabled_map()
         newly: list[LoadedPlugin] = []
         for plugin_dir in discover_plugin_dirs(self._plugins_dir):
@@ -566,6 +770,7 @@ class PluginManager:
         return registration_errors().get(plugin_id)
 
     def list_installed(self) -> list[dict[str, Any]]:
+        self._ensure_plugin_cache()
         out: list[dict[str, Any]] = []
         enabled_map = self.global_enabled_map()
         for plugin_dir in discover_plugin_dirs(self._plugins_dir):
@@ -634,7 +839,7 @@ class PluginManager:
                 f"invalid plugin manifest: {exc}",
             ) from exc
 
-        _write_global_plugin_enabled(self._config_path, plugin_id, enabled)
+        self._set_enabled_flag(plugin_id, enabled)
         if enabled:
             if PluginRegistry().get(plugin_id) is None:
                 try:
@@ -671,6 +876,7 @@ class PluginManager:
 
     def plugin_dir(self, plugin_id: str) -> Path | None:
         """Return the on-disk plugin directory when it exists."""
+        self._ensure_plugin_cache()
         dest = self._plugins_dir / plugin_id
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
             return dest
@@ -715,7 +921,15 @@ class PluginManager:
             f"plugin UI file not found: {cleaned}",
         )
 
-    def install_path(self, source: Path, *, force: bool = False) -> LoadedPlugin:
+    def install_path(
+        self,
+        source: Path,
+        *,
+        force: bool = False,
+        expect_id: str | None = None,
+        expect_version: str | None = None,
+    ) -> LoadedPlugin:
+        self._ensure_plugin_cache()
         source = source.resolve()
         if not source.is_dir():
             raise OctopError(
@@ -729,6 +943,16 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
+        if expect_id is not None and manifest.id != expect_id:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"plugin id {manifest.id!r} does not match {expect_id!r}",
+            )
+        if expect_version is not None and manifest.version != expect_version:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"plugin version {manifest.version!r} does not match {expect_version!r}",
+            )
         dest = self._plugins_dir / manifest.id
         if dest.exists():
             if not force:
@@ -739,6 +963,7 @@ class PluginManager:
                 )
             shutil.rmtree(dest)
         shutil.copytree(source, dest)
+        self._persist_plugin_tree(manifest.id)
         unload_plugin(manifest.id)
         try:
             return _load_plugin_dir(dest, install_deps=True)
@@ -749,7 +974,14 @@ class PluginManager:
                 details={"reason": str(exc)},
             ) from exc
 
-    def install_archive(self, archive: Path, *, force: bool = False) -> LoadedPlugin:
+    def install_archive(
+        self,
+        archive: Path,
+        *,
+        force: bool = False,
+        expect_id: str | None = None,
+        expect_version: str | None = None,
+    ) -> LoadedPlugin:
         """Install a plugin from a local ZIP archive.
 
         The archive must contain exactly one plugin directory (at the zip root
@@ -807,16 +1039,33 @@ class PluginManager:
                     ErrorCode.PLUGIN_INVALID_ARCHIVE,
                     "zip must contain exactly one plugin directory with plugin.yaml",
                 )
-            return self.install_path(candidates[0], force=force)
+            return self.install_path(
+                candidates[0],
+                force=force,
+                expect_id=expect_id,
+                expect_version=expect_version,
+            )
 
-    def install_url(self, url: str, *, force: bool = False) -> LoadedPlugin:
+    def install_url(
+        self,
+        url: str,
+        *,
+        force: bool = False,
+        expect_id: str | None = None,
+        expect_version: str | None = None,
+    ) -> LoadedPlugin:
         resolved = normalize_plugin_download_url(url)
         _assert_http_url(resolved)
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "plugin.zip"
             _download_plugin_archive(resolved, archive)
             try:
-                return self.install_archive(archive, force=force)
+                return self.install_archive(
+                    archive,
+                    force=force,
+                    expect_id=expect_id,
+                    expect_version=expect_version,
+                )
             except OctopError as exc:
                 if exc.code is not ErrorCode.PLUGIN_INVALID_ARCHIVE:
                     raise
@@ -833,6 +1082,9 @@ class PluginManager:
         dest = self._plugins_dir / plugin_id
         if dest.is_dir():
             shutil.rmtree(dest)
+        if self._control_files is not None:
+            self._control_files.delete_owner(ControlFileRepo.PLUGIN, plugin_id)
+            self._bump_plugin_revision()
 
     def plugin_skill_names(self, plugin_id: str) -> set[str]:
         """Return skill directory names registered by one loaded plugin."""

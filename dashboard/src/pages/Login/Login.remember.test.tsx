@@ -12,6 +12,8 @@ vi.mock("../../api/modules/auth", () => ({
     getOauthStatus: () => Promise.resolve({ providers: [] }),
     getLdapStatus: () => Promise.resolve({ enabled: false }),
     getCaptcha: () => Promise.resolve({ provider: "none" }),
+    getLdapStatus: () => Promise.resolve({ enabled: false, display_name: "" }),
+    getPasskeyLoginStatus: () => Promise.resolve({ passwordless_login: false }),
   },
 }));
 
@@ -79,6 +81,7 @@ describe("SSO popup completion under a public base", () => {
         configurable: true,
         value: {
           pathname: "/tools/octop/login",
+          hostname: "localhost",
           origin: "http://localhost:3000",
           replace,
         },

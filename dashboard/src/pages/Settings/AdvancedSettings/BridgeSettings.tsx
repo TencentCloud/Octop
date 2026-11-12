@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import type { TFunction } from "i18next";
 import {
   Button,
   Drawer,
@@ -53,7 +54,10 @@ import {
   ResourceAvatarPicker,
 } from "../../../components/AvatarPicker";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
-import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
 import { ResourceAudienceFilter } from "../../../components/ResourceAudienceFilter";
 import {
   SharedAvatarMark,
@@ -776,6 +780,36 @@ function AutoReconnectControl({
   );
 }
 
+function formatBridgeLastError(error: string, t: TFunction): string {
+  const prefix = "octop:";
+  if (error.startsWith(prefix)) {
+    const body = error.slice(prefix.length);
+    const queryAt = body.indexOf("?");
+    const key = queryAt === -1 ? body : body.slice(0, queryAt);
+    const params: Record<string, string | number> = {};
+    if (queryAt !== -1) {
+      const search = new URLSearchParams(body.slice(queryAt + 1));
+      search.forEach((value, name) => {
+        params[name] =
+          name === "limit" && /^\d+$/.test(value) ? Number(value) : value;
+      });
+    }
+    const translated = t(key, { ...params, defaultValue: "" });
+    if (translated && translated !== key) return String(translated);
+  }
+  const lower = error.toLowerCase();
+  if (lower.includes("owned by another user")) {
+    return t("apiErrors.BRIDGE_PEER_CONNECTION_OWNED");
+  }
+  if (lower.includes("permission required")) {
+    return t("apiErrors.BRIDGE_PEER_FORBIDDEN");
+  }
+  if (lower.includes("self connect")) {
+    return t("apiErrors.BRIDGE_SELF_CONNECT");
+  }
+  return error;
+}
+
 function BridgeConnectionCard({
   row,
   agents,
@@ -883,7 +917,9 @@ function BridgeConnectionCard({
           </p>
         ) : null}
         {row.last_error ? (
-          <p className={styles.metaError}>{row.last_error}</p>
+          <p className={styles.metaError}>
+            {formatBridgeLastError(row.last_error, t)}
+          </p>
         ) : null}
       </div>
 
@@ -1946,26 +1982,28 @@ export default function BridgeSettingsPanel({
             </Form.Item>
           </div>
 
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={createVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={createVisibility}
+                  groupIds={createGroupIds}
+                  onChange={(next) => {
+                    setCreateVisibility(next.visibility);
+                    setCreateGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={createVisibility}
-                groupIds={createGroupIds}
-                onChange={(next) => {
-                  setCreateVisibility(next.visibility);
-                  setCreateGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
 
         {probeResult ? (
@@ -2240,26 +2278,28 @@ export default function BridgeSettingsPanel({
             </div>
           ) : null}
 
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={editVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={editVisibility}
+                  groupIds={editGroupIds}
+                  onChange={(next) => {
+                    setEditVisibility(next.visibility);
+                    setEditGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={editVisibility}
-                groupIds={editGroupIds}
-                onChange={(next) => {
-                  setEditVisibility(next.visibility);
-                  setEditGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
 
         {editProbeResult ? (
