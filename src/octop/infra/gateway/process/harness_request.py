@@ -193,7 +193,7 @@ async def build_content_from_message(
     current_text = "\n\n".join(part for part in [msg.text or "", *file_hints, *extracted] if part)
     # Commands and HITL answers are consumed before request assembly. Keep their
     # control text intact and add quoted context only to the model's user turn.
-    if msg.channel_type == "telegram":
+    if msg.channel_type in ("telegram", "qq"):
         quote = msg.metadata.get("reply_quote_text") or (
             None if msg.metadata.get("reply_to_is_own_bot") else msg.metadata.get("reply_to_text")
         )

@@ -14,12 +14,15 @@ from octop.infra.gateway.process.harness_request import build_content_from_messa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("channel_type", ["telegram", "qq"])
 @pytest.mark.parametrize("locale,label", [("en", "[Quoted message]"), ("zh", "[引用消息]")])
 @pytest.mark.parametrize("own_reply,explicit", [(False, False), (True, False), (True, True)])
-async def test_telegram_quote_is_added_only_to_model_content(locale, label, own_reply, explicit):
+async def test_quoted_message_is_added_only_to_model_content(
+    channel_type, locale, label, own_reply, explicit
+):
     msg = InboundMessage(
         channel_id="tg",
-        channel_type="telegram",
+        channel_type=channel_type,
         content=[TextContent(text="explain this")],
         metadata={
             "reply_to_text": "whole message",
