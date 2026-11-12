@@ -1,0 +1,145 @@
+# Replicas share one PostgreSQL control plane.
+# Browser sessions stick via the Ingress cookie. Do not add Service
+# sessionAffinity: ClientIP, or every user behind one Ingress Pod lands
+# on a single Octop replica.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: octop
+  labels:
+    app.kubernetes.io/name: octop
+    app.kubernetes.io/component: server
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: octop
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: octop
+        app.kubernetes.io/component: server
+    spec:
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: octop
+                    app.kubernetes.io/component: server
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-postgres
+          image: pgvector/pgvector:pg16
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - until pg_isready -h octop-pgvector -p 5432; do sleep 2; done
+      containers:
+        - name: octop
+          # :latest is the lite image. Local embeddings, OCR, and the virtual
+          # desktop need :<version>-full plus about 1Gi of shm. Desktop stays off.
+
+          image: ghcr.io/tencentcloud/octop:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8088
+          env:
+            - name: HOME
+              value: /data
+            - name: OCTOP_HOME
+              value: /data/.octop
+            - name: OCTOP_BIND_HOST
+              value: 0.0.0.0
+            - name: OCTOP_PORT
+              value: "8088"
+            - name: OCTOP_DATABASE_DRIVER
+              value: postgresql
+            - name: OCTOP_DATABASE_HOST
+              value: octop-pgvector
+            - name: OCTOP_DATABASE_PORT
+              value: "5432"
+            - name: OCTOP_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: octop-pg
+                  key: database
+            - name: OCTOP_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: octop-pg
+                  key: user
+            - name: OCTOP_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: octop-pg
+                  key: password
+            # The entrypoint reads OCTOP_DEFAULT_PASSWORD and runs octop init
+            # only when that password passes policy.
+
+            - name: OCTOP_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: octop-admin
+                  key: password
+            - name: OCTOP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: octop-admin
+                  key: username
+            - name: OCTOP_DEFAULT_TIMEZONE
+              value: Asia/Shanghai
+            # Keep this in sync with the Ingress host.
+
+            - name: OCTOP_CORS_ORIGINS
+              value: https://octop.example.com
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+          volumeMounts:
+            - name: home
+              mountPath: /data/.octop
+      volumes:
+        # Per-Pod runtime directory. Control plane, skill packages, and
+        # knowledge bases live in PostgreSQL. Do not switch this to
+        # ReadWriteMany: local SQLite such as the Feishu dedup file is not
+        # safe for concurrent writers.
+
+        - name: home
+          emptyDir: {}

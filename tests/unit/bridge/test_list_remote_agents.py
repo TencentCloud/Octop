@@ -103,6 +103,7 @@ async def test_list_remote_agents_keeps_peer_ownership() -> None:
                     "name": "别人共享",
                     "is_owner": False,
                     "is_shared": True,
+                    "default_model": "prov/shared-default",
                 },
             ]
 
@@ -113,6 +114,7 @@ async def test_list_remote_agents_keeps_peer_ownership() -> None:
     assert by_remote["mine"]["is_shared"] is False
     assert by_remote["shared"]["is_owner"] is False
     assert by_remote["shared"]["is_shared"] is True
+    assert by_remote["shared"]["default_model"] == "prov/shared-default"
     assert by_remote["mine"]["state"] == "stopped"
     assert by_remote["shared"]["state"] == "stopped"
 

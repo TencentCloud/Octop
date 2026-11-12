@@ -100,6 +100,7 @@ async def test_filesystem_defaults_for_admin(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from octop.infra.agents.workspace.dir import default_workspace_parent_dir
     from octop.infra.utils.host_dirs import (
         host_browse_roots,
         host_fs_tree_root,
@@ -115,9 +116,11 @@ async def test_filesystem_defaults_for_admin(
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
+
     assert body["default_root_dir"] == host_fs_tree_root()
     assert body["tree_root"] == host_fs_tree_root()
     assert body["browse_roots"] == host_browse_roots()
+    assert body["default_workspace_dir"] == default_workspace_parent_dir()
     assert body["jail_enforced"] == host_jail_enforced()
     assert body["in_container"] is False
     assert "home" not in body

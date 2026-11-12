@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
+import { request } from "../../../api/request";
 import {
   teamsApi,
   type TeamRecord,
@@ -20,6 +21,7 @@ import {
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   buildModelSelectOptions,
@@ -29,6 +31,23 @@ import {
 } from "../../../utils/modelOptions";
 import { TEAM_AVATAR_URL, TEAM_ICON_NAME } from "../../../utils/teamAgent";
 import ExpertAgentAvatar from "../../Chat/components/ExpertAgentAvatar";
+import {
+  buildBackendSpec,
+  DEFAULT_BACKEND,
+  defaultCreateBackendChoice,
+  ensureBubblewrapAfterProbe,
+  ensureBwrapMessage,
+  ensureBwrapToastKind,
+  parseBackendSpec,
+  probeRootDir,
+  rootDirProbeMessage,
+  createWorkspaceSelection,
+  shouldProbeRootDir,
+  shouldProbeWorkspaceDir,
+  validatePathMappings,
+  type PathMapping,
+} from "./agentBackendForm";
+import AgentBackendFields from "./AgentBackendFields";
 import { metaForFile } from "./iconForName";
 import TeamMemberPicker, {
   mergeTeamPickerExperts,
@@ -44,6 +63,8 @@ interface TeamDrawerProps {
   experts: OctopAgent[];
   onClose: () => void;
   onSaved: (team: TeamRecord) => void;
+  /** Edit mode: sample icon / upload already persisted; refresh the team card. */
+  onIconUrlChange?: (agentId: string, iconUrl: string) => void;
 }
 
 interface TeamFormValues {
@@ -52,6 +73,11 @@ interface TeamFormValues {
   default_model: string;
   welcome_message?: string;
   member_ids: string[];
+  backend_choice: string;
+  composite_default?: string;
+  root_dir?: string;
+  workspace_dir?: string;
+  workspace_dir_auto?: string;
 }
 
 export default function TeamDrawer({
@@ -61,27 +87,38 @@ export default function TeamDrawer({
   experts,
   onClose,
   onSaved,
+  onIconUrlChange,
 }: TeamDrawerProps) {
   const { t } = useTranslation();
+  const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
+  const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
   const [form] = Form.useForm<TeamFormValues>();
-  const { models, modelsLoading } = useAgentFormResources(open);
+  const { models, modelsLoading, backends, backendsLoading } =
+    useAgentFormResources(open);
   const [submitting, setSubmitting] = useState(false);
+  const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [templateFiles, setTemplateFiles] = useState<TeamTemplateFile[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [rosterExtras, setRosterExtras] = useState<TeamMemberOption[]>([]);
   const [iconUrl, setIconUrl] = useState<string | null>(TEAM_AVATAR_URL);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const iconTouchedRef = useRef(false);
   const pickerExperts = useMemo(
     () => mergeTeamPickerExperts(experts, rosterExtras),
     [experts, rosterExtras],
   );
+  const backendChoice =
+    Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
 
   useEffect(() => {
     if (!open) {
+      iconTouchedRef.current = false;
       setRosterExtras([]);
+      setPathMappings([]);
       return;
     }
+    iconTouchedRef.current = false;
     if (mode === "edit" && team) {
       form.setFieldsValue({
         name: team.name,
@@ -89,10 +126,35 @@ export default function TeamDrawer({
         default_model: defaultModelToForm(team.default_model),
         welcome_message: team.welcome_message ?? "",
         member_ids: team.member_ids ?? [],
+        backend_choice: DEFAULT_BACKEND,
+        composite_default: DEFAULT_BACKEND,
+        root_dir: undefined,
+        workspace_dir: "",
       });
+      setPathMappings([]);
       setIconUrl(team.icon_url?.trim() || TEAM_AVATAR_URL);
       setAvatarFile(null);
       let cancelled = false;
+      void request<{
+        config?: { backend?: unknown; workspace_dir?: unknown };
+      }>(`/agents/${team.agent_id}`)
+        .then((detail) => {
+          if (cancelled) return;
+          const cfg = detail.config ?? {};
+          const parsed = parseBackendSpec(cfg.backend);
+          const workspace =
+            typeof cfg.workspace_dir === "string" ? cfg.workspace_dir : "";
+          setPathMappings(parsed.pathMappings);
+          form.setFieldsValue({
+            backend_choice: parsed.backendChoice,
+            composite_default: parsed.compositeDefault,
+            root_dir: parsed.rootDir,
+            workspace_dir: workspace,
+          });
+        })
+        .catch(() => {
+          if (!cancelled) setPathMappings([]);
+        });
       void teamsApi
         .get(team.agent_id)
         .then((record) => {
@@ -104,7 +166,9 @@ export default function TeamDrawer({
             welcome_message: record.welcome_message ?? "",
             member_ids: record.members.map((member) => member.agent_id),
           });
-          setIconUrl(record.icon_url?.trim() || TEAM_AVATAR_URL);
+          if (!iconTouchedRef.current) {
+            setIconUrl(record.icon_url?.trim() || TEAM_AVATAR_URL);
+          }
           setRosterExtras(
             record.members.map((member) => ({
               agent_id: member.agent_id,
@@ -131,11 +195,17 @@ export default function TeamDrawer({
       default_model: MODEL_AUTO_VALUE,
       welcome_message: t("experts.teams.welcomeDefault"),
       member_ids: [],
+      backend_choice: createBackendChoice,
+      composite_default: DEFAULT_BACKEND,
+      root_dir: undefined,
+      workspace_dir: "",
+      workspace_dir_auto: "",
     });
+    setPathMappings([]);
     setIconUrl(TEAM_AVATAR_URL);
     setAvatarFile(null);
     setRosterExtras([]);
-  }, [form, mode, open, t, team]);
+  }, [createBackendChoice, form, mode, open, t, team]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,8 +231,74 @@ export default function TeamDrawer({
   const blocked = submitting || hasNoModels;
   const { imageUrl, presetId } = splitExpertAvatarUrl(iconUrl);
 
+  const addPathMapping = () =>
+    setPathMappings((prev) => [...prev, { path: "", backend: "" }]);
+  const removePathMapping = (index: number) =>
+    setPathMappings((prev) => prev.filter((_, i) => i !== index));
+  const updatePathMapping = (
+    index: number,
+    field: keyof PathMapping,
+    value: string,
+  ) =>
+    setPathMappings((prev) =>
+      prev.map((mapping, i) =>
+        i === index ? { ...mapping, [field]: value } : mapping,
+      ),
+    );
+
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    if (mode === "create" && values.backend_choice === "composite") {
+      const pathError = validatePathMappings(pathMappings, t);
+      if (pathError) {
+        message.error(pathError);
+        return;
+      }
+    }
+    if (
+      mode === "create" &&
+      shouldProbeRootDir(values.backend_choice, values.root_dir)
+    ) {
+      const probe = await probeRootDir(values.root_dir ?? "/");
+      if (!probe.ok) {
+        message.error(
+          `${rootDirProbeMessage(probe, t)}\n${t(
+            "experts.rootDirProbe.guidance",
+          )}`,
+        );
+        return;
+      }
+    }
+    const autoWorkspaceDir =
+      mode === "create" ? form.getFieldValue("workspace_dir_auto") : undefined;
+    const workspaceSelection =
+      mode === "create"
+        ? createWorkspaceSelection({
+            backendChoice: values.backend_choice,
+            rootDir: values.root_dir,
+            workspaceDir: values.workspace_dir,
+            autoWorkspaceDir,
+          })
+        : { workspaceDir: undefined, agentId: undefined };
+    const workspaceDir = workspaceSelection.workspaceDir;
+    if (
+      workspaceDir &&
+      shouldProbeWorkspaceDir(
+        values.backend_choice,
+        workspaceDir,
+        autoWorkspaceDir,
+      )
+    ) {
+      const probe = await probeRootDir(workspaceDir);
+      if (!probe.ok) {
+        message.error(
+          `${rootDirProbeMessage(probe, t)}\n${t(
+            "experts.rootDirProbe.guidance",
+          )}`,
+        );
+        return;
+      }
+    }
     const body = {
       name: values.name.trim(),
       description: values.description?.trim() || null,
@@ -174,8 +310,25 @@ export default function TeamDrawer({
       welcome_message: values.welcome_message?.trim() || null,
       member_ids: selectedRosterIds(values.member_ids, pickerExperts),
     };
+    const backendSpec = buildBackendSpec(
+      values.backend_choice,
+      values.composite_default ?? DEFAULT_BACKEND,
+      pathMappings,
+      values.root_dir,
+    );
     setSubmitting(true);
+    let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
+      if (
+        mode === "create" &&
+        shouldProbeRootDir(values.backend_choice, values.root_dir)
+      ) {
+        const bwrap = await ensureBubblewrapAfterProbe();
+        const kind = ensureBwrapToastKind(bwrap.status);
+        if (kind !== "none") {
+          bwrapToast = { kind, text: ensureBwrapMessage(bwrap, t) };
+        }
+      }
       const saved =
         mode === "edit" && team
           ? await teamsApi.update(team.agent_id, body)
@@ -183,6 +336,13 @@ export default function TeamDrawer({
               ...body,
               name: body.name,
               member_ids: body.member_ids,
+              ...(workspaceSelection.agentId
+                ? { agent_id: workspaceSelection.agentId }
+                : {}),
+              config: {
+                backend: backendSpec,
+                ...(workspaceDir ? { workspace_dir: workspaceDir } : {}),
+              },
             });
       if (avatarFile) {
         try {
@@ -200,6 +360,11 @@ export default function TeamDrawer({
           ? t("experts.teams.updated")
           : t("experts.teams.created"),
       );
+      if (bwrapToast?.kind === "success") {
+        message.success(bwrapToast.text);
+      } else if (bwrapToast?.kind === "warning") {
+        message.warning(bwrapToast.text);
+      }
       onSaved(saved);
     } catch (err: unknown) {
       message.error(apiErrorMessage(err, t("experts.createFailed"), t));
@@ -266,6 +431,7 @@ export default function TeamDrawer({
             onPick={(file) => {
               if (mode === "edit" && team) {
                 void (async () => {
+                  iconTouchedRef.current = true;
                   setAvatarBusy(true);
                   try {
                     const result = await octopAgentsApi.uploadAvatar(
@@ -274,6 +440,7 @@ export default function TeamDrawer({
                     );
                     setIconUrl(result.icon_url);
                     setAvatarFile(null);
+                    onIconUrlChange?.(team.agent_id, result.icon_url);
                   } catch (err) {
                     message.error(
                       apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
@@ -285,52 +452,74 @@ export default function TeamDrawer({
                 })();
                 return;
               }
+              iconTouchedRef.current = true;
               setAvatarFile(file);
               setIconUrl(URL.createObjectURL(file));
             }}
             onSelectPreset={(id) => {
               void (async () => {
                 const nextUrl = id ? expertPresetSrc(id) : TEAM_AVATAR_URL;
+                const previousUrl = iconUrl;
+                iconTouchedRef.current = true;
                 setAvatarFile(null);
-                if (mode === "edit" && team && isUploadedAvatarUrl(iconUrl)) {
-                  setAvatarBusy(true);
-                  try {
-                    await octopAgentsApi.deleteAvatar(team.agent_id);
-                  } catch {
-                    // Preset path still wins on save / local state.
-                  } finally {
-                    setAvatarBusy(false);
-                  }
-                }
                 setIconUrl(nextUrl);
+                if (!(mode === "edit" && team)) return;
+                setAvatarBusy(true);
+                try {
+                  if (isUploadedAvatarUrl(previousUrl)) {
+                    try {
+                      await octopAgentsApi.deleteAvatar(team.agent_id);
+                    } catch {
+                      // Preset path still wins when the portrait is saved.
+                    }
+                  }
+                  const saved = await teamsApi.update(team.agent_id, {
+                    icon_url: nextUrl,
+                  });
+                  const applied = saved.icon_url?.trim() || nextUrl;
+                  setIconUrl(applied);
+                  onIconUrlChange?.(team.agent_id, applied);
+                } catch (err) {
+                  setIconUrl(previousUrl);
+                  message.error(
+                    apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                  );
+                } finally {
+                  setAvatarBusy(false);
+                }
               })();
             }}
             onRemove={
               imageUrl || avatarFile
                 ? () => {
                     void (async () => {
+                      const previousUrl = iconUrl;
+                      iconTouchedRef.current = true;
                       setAvatarFile(null);
-                      if (
-                        mode === "edit" &&
-                        team &&
-                        isUploadedAvatarUrl(iconUrl)
-                      ) {
-                        setAvatarBusy(true);
-                        try {
-                          await octopAgentsApi.deleteAvatar(team.agent_id);
-                        } catch (err) {
-                          message.error(
-                            apiErrorMessage(
-                              err,
-                              t("experts.avatarRemoveFailed"),
-                              t,
-                            ),
-                          );
-                        } finally {
-                          setAvatarBusy(false);
-                        }
-                      }
                       setIconUrl(TEAM_AVATAR_URL);
+                      if (!(mode === "edit" && team)) return;
+                      setAvatarBusy(true);
+                      try {
+                        if (isUploadedAvatarUrl(previousUrl)) {
+                          await octopAgentsApi.deleteAvatar(team.agent_id);
+                        } else {
+                          await teamsApi.update(team.agent_id, {
+                            icon_url: TEAM_AVATAR_URL,
+                          });
+                        }
+                        onIconUrlChange?.(team.agent_id, TEAM_AVATAR_URL);
+                      } catch (err) {
+                        setIconUrl(previousUrl);
+                        message.error(
+                          apiErrorMessage(
+                            err,
+                            t("experts.avatarRemoveFailed"),
+                            t,
+                          ),
+                        );
+                      } finally {
+                        setAvatarBusy(false);
+                      }
                     })();
                   }
                 : undefined
@@ -403,6 +592,17 @@ export default function TeamDrawer({
             optionFilterProp="label"
           />
         </Form.Item>
+        <AgentBackendFields
+          backends={backends}
+          backendsLoading={backendsLoading}
+          backendChoice={backendChoice}
+          pathMappings={pathMappings}
+          rootDirMode={mode === "edit" ? "edit" : "create"}
+          disabled={mode === "edit"}
+          onAddPathMapping={addPathMapping}
+          onRemovePathMapping={removePathMapping}
+          onUpdatePathMapping={updatePathMapping}
+        />
         <Form.Item
           name="member_ids"
           label={t("experts.teams.members")}

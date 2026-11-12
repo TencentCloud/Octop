@@ -9,7 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
-from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
+from octop.infra.agents.providers.model_flags import (
+    is_chat_eligible_model,
+    is_local_runtime_provider,
+    is_vision_model,
+)
 from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
@@ -81,6 +85,28 @@ def merge_stream_usage_extra(
     return json.dumps(extra)
 
 
+def merge_default_model_extra(extra_json: str | None, model: str | None) -> str | None:
+    """Write or clear the connection-test model inside *extra_json*.
+
+    A blank value removes ``default_model`` so the settings form can stay empty.
+    Other keys in the blob are left in place.
+    """
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    cleaned = (model or "").strip()
+    if cleaned:
+        extra["default_model"] = cleaned
+    else:
+        extra.pop("default_model", None)
+    return json.dumps(extra) if extra else None
+
+
 def merge_provider_purpose_extra(
     extra_json: str | None,
     purpose: str | None,
@@ -148,6 +174,46 @@ def _provider_extra_dict(row: Any) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return extra if isinstance(extra, dict) else {}
+
+
+def sync_provider_preset_models(provider_repo: ProviderRepo | SealedProviderRepo) -> int:
+    """Append newly bundled cloud models, enabled, without replacing user settings."""
+    from octop.infra.agents.providers.presets import load_provider_presets
+
+    presets = load_provider_presets()
+    added = 0
+    for row in provider_repo.list_all():
+        if is_local_runtime_provider(row.name, provider_api_key=row.api_key):
+            continue
+        models = row.get_models()
+        purpose = resolve_provider_purpose(
+            provider_name=row.name,
+            provider_api_key=row.api_key,
+            extra=_provider_extra_dict(row),
+            models=models,
+        )
+        preset = next(
+            (
+                p
+                for p in presets
+                if row.name in {p["id"], p["name"]}
+                and KIND_TO_PROTOCOL.get(row.kind, row.kind) == p["protocol"]
+                and (row.base_url or "").strip().rstrip("/")
+                == (p.get("base_url") or "").strip().rstrip("/")
+                and purpose == (p.get("purpose") or "chat")
+            ),
+            None,
+        )
+        if preset is None:
+            continue
+        existing = {model["id"] for model in models}
+        missing = [
+            dict(model, enabled=True) for model in preset["models"] if model["id"] not in existing
+        ]
+        if missing:
+            provider_repo.update(row.id, models_json=json.dumps([*models, *missing]))
+            added += len(missing)
+    return added
 
 
 @dataclass(frozen=True)

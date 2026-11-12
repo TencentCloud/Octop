@@ -376,6 +376,43 @@ class UsageRepo:
                     }
                     for r in bucket_rows
                 ]
+            elif granularity == "by_user":
+                bucket_rows = conn.execute(
+                    f"""
+                    SELECT
+                        user_id            AS bucket,
+                        SUM(input_tokens)  AS input_tokens,
+                        SUM(uncached_input_tokens) AS uncached_input_tokens,
+                        SUM(cache_read_tokens) AS cache_read_tokens,
+                        SUM(cache_write_tokens) AS cache_write_tokens,
+                        SUM(output_tokens) AS output_tokens,
+                        SUM(reasoning_tokens) AS reasoning_tokens,
+                        SUM(total_tokens)  AS total_tokens,
+                        SUM(model_calls) AS model_calls,
+                        COUNT(*)            AS turns
+                    FROM usage_log WHERE {where_sql}
+                    GROUP BY bucket
+                    ORDER BY total_tokens DESC
+                    LIMIT 100
+                    """,
+                    params,
+                ).fetchall()
+                buckets = [
+                    {
+                        "key": str(int(r["bucket"])),
+                        "label": str(int(r["bucket"])),
+                        "input_tokens": int(r["input_tokens"] or 0),
+                        "uncached_input_tokens": int(r["uncached_input_tokens"] or 0),
+                        "cache_read_tokens": int(r["cache_read_tokens"] or 0),
+                        "cache_write_tokens": int(r["cache_write_tokens"] or 0),
+                        "output_tokens": int(r["output_tokens"] or 0),
+                        "reasoning_tokens": int(r["reasoning_tokens"] or 0),
+                        "total_tokens": int(r["total_tokens"] or 0),
+                        "model_calls": int(r["model_calls"] or 0),
+                        "turns": int(r["turns"] or 0),
+                    }
+                    for r in bucket_rows
+                ]
             # ``total`` granularity → no buckets
 
         avg = totals["total_tokens"] // totals["turns"] if totals["turns"] else 0

@@ -32,6 +32,18 @@ async def test_admin_creates_provider(env):
     assert "user_id" not in body
 
 
+async def test_duplicate_provider_name_is_conflict(env):
+    """POST /admin/providers with a taken name is 409, not an unhandled 500."""
+    c, _, auth = env
+    body = {"name": "taken-name", "kind": "openai", "api_key": "k"}
+    created = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert created.status_code == 201
+
+    again = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
+
+
 async def test_regular_user_cannot_create_provider(env):
     """POST /admin/providers is admin-only."""
     c, _, admin_auth = env

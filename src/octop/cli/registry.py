@@ -40,4 +40,10 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
         "office_preview",
         "Install and probe Office-to-PDF preview (LibreOffice Kit).",
     ),
+    "cloud": (".commands.cloud", "cloud", "Tencent Cloud credential bridge (tccli import)."),
+    "migrate": (
+        ".commands.migrate",
+        "migrate",
+        "Migrate an OpenClaw or Hermes Agent setup into an expert.",
+    ),
 }

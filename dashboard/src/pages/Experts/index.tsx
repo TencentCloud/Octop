@@ -817,6 +817,14 @@ export default function ExpertsPage() {
         team={teamDrawer?.mode === "edit" ? teamDrawer.team : null}
         experts={localTeamMembers}
         onClose={() => setTeamDrawer(null)}
+        onIconUrlChange={(agentId, iconUrl) => {
+          setLocalAgents((prev) =>
+            prev.map((item) =>
+              item.agent_id === agentId ? { ...item, icon_url: iconUrl } : item,
+            ),
+          );
+          void refreshAgents({ silent: true });
+        }}
         onSaved={(saved: TeamRecord) => {
           setTeamDrawer(null);
           setActiveTab("teams");
@@ -830,6 +838,7 @@ export default function ExpertsPage() {
                     default_model: saved.default_model ?? null,
                     color: saved.color ?? item.color,
                     icon_name: saved.icon_name ?? item.icon_name,
+                    icon_url: saved.icon_url ?? item.icon_url,
                     welcome_message:
                       saved.welcome_message ?? item.welcome_message,
                     member_ids: saved.member_ids,

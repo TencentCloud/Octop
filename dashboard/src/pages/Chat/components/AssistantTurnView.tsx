@@ -30,6 +30,7 @@ import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowledgeCitations";
 import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
 import { messageSpeakerId } from "../utils/messageGrouping";
+import { isAssistantProcessLive } from "./liveAssistantTurn";
 import styles from "../index.module.less";
 
 interface AssistantTurnViewProps {
@@ -38,6 +39,8 @@ interface AssistantTurnViewProps {
   isStreaming?: boolean;
   /** True while this assistant turn is still being generated (incl. between tool calls). */
   isTurnInProgress?: boolean;
+  /** This group sits after the latest user message, even if the session flag is idle. */
+  afterLatestUser?: boolean;
   /**
    * Speakers still generating in the session store (survives tool gaps after
    * the composer unlocks). Empty string = unlabeled host.
@@ -136,6 +139,7 @@ export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
   isTurnInProgress = false,
+  afterLatestUser = false,
   liveSpeakers = [],
   onRegenerate,
   onDisableStreamUsage,
@@ -160,7 +164,12 @@ export default function AssistantTurnView({
 
   const speakerLive = turnHasLiveSpeaker(messages, liveSpeakers);
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
-  const turnStreaming = isTurnInProgress || hasStreamingMsg || speakerLive;
+  const turnStreaming = isAssistantProcessLive({
+    isTurnInProgress,
+    afterLatestUser,
+    hasStreamingMessage: hasStreamingMsg,
+    speakerLive,
+  });
 
   const hitlLayout = useMemo(
     () => layoutAssistantTurnHitl(messages),

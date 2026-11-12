@@ -15,7 +15,11 @@ export {
 } from "./url";
 export { USER_AVATAR_PRESETS } from "./presets/user";
 export { ROLE_AVATAR_PRESETS } from "./presets/role";
-export { EXPERT_AVATAR_PRESETS, expertPresetSrc } from "./presets/expert";
+export {
+  EXPERT_AVATAR_PRESETS,
+  canonicalExpertPresetId,
+  expertPresetSrc,
+} from "./presets/expert";
 export { TEAM_AVATAR_PRESETS } from "./presets/team";
 export { SKILL_PACKAGE_AVATAR_PRESETS } from "./presets/skillPackage";
 export { KNOWLEDGE_AVATAR_PRESETS } from "./presets/knowledge";

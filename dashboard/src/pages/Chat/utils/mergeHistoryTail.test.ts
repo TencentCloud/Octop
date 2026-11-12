@@ -201,6 +201,70 @@ describe("mergeHistoryWithLocalTail", () => {
     expect(mergeHistoryWithLocalTail(loaded, current, false)).toEqual(loaded);
   });
 
+  it("keeps a stored answer after the question when the latest page starts mid-turn", () => {
+    const loaded = [
+      msg("old", "assistant", "之前", 1_000),
+      msg("final", "assistant", "最终结论", 5_200),
+    ];
+    const current = [
+      msg("old", "assistant", "之前", 1_000),
+      pending("user", "user", "问题", 5_000),
+      msg("preamble", "assistant", "先看一下", 5_100),
+    ];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, true).map((m) => m.id),
+    ).toEqual(["old", "user", "preamble", "final"]);
+  });
+
+  it("keeps an older unseen row in place and only moves the newer answer", () => {
+    const loaded = [
+      msg("old", "assistant", "之前", 1_000),
+      msg("prev", "assistant", "更早的另一条", 2_000),
+      msg("final", "assistant", "最终结论", 5_200),
+    ];
+    const current = [
+      msg("old", "assistant", "之前", 1_000),
+      pending("user", "user", "问题", 5_000),
+      msg("preamble", "assistant", "先看一下", 5_100),
+    ];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, true).map((m) => m.id),
+    ).toEqual(["old", "prev", "user", "preamble", "final"]);
+  });
+
+  it("puts an untimestamped stored answer after the question when the page has no older row", () => {
+    const loaded = [msg("final", "assistant", "最终结论", 0)];
+    const current = [
+      pending("user", "user", "问题", 5_000),
+      msg("preamble", "assistant", "先看一下", 5_100),
+    ];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, true).map((m) => m.id),
+    ).toEqual(["user", "preamble", "final"]);
+  });
+
+  it("leaves an untimestamped row with older history before the new question", () => {
+    const loaded = [
+      msg("old", "assistant", "之前", 1_000),
+      msg("mystery", "assistant", "没有时间", 0),
+    ];
+    const current = [pending("user", "user", "问题", 5_000)];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, true).map((m) => m.id),
+    ).toEqual(["old", "mystery", "user"]);
+  });
+
+  it("puts the question before a stored answer when the page has no shared id", () => {
+    const loaded = [msg("final", "assistant", "最终结论", 5_200)];
+    const current = [
+      pending("user", "user", "问题", 5_000),
+      msg("preamble", "assistant", "先看一下", 5_100),
+    ];
+    expect(
+      mergeHistoryWithLocalTail(loaded, current, true).map((m) => m.id),
+    ).toEqual(["user", "preamble", "final"]);
+  });
+
   it("does not replace newer server turns with an older cached stream", () => {
     const loaded = [
       msg("u1", "user", "继续"),
