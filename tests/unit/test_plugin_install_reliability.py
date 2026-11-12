@@ -6,6 +6,7 @@ import asyncio
 import json
 import shutil
 import threading
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,30 @@ from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.errors import ErrorCode, OctopError
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/plugins/echo-tool"
+MARKET_ARCHIVE = "https://download.octop.cloud/plugins/echo-tool.zip"
+
+
+def mock_market_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        module,
+        "get_market_plugin",
+        lambda plugin_id: {
+            "id": plugin_id,
+            "version": "1.0.0",
+            "download_url": MARKET_ARCHIVE,
+        },
+    )
+
+    def download(_url: str, archive: Path, *, max_bytes: int | None = None) -> None:
+        with zipfile.ZipFile(archive, "w") as zipped:
+            for path in FIXTURE.rglob("*"):
+                if path.is_file():
+                    zipped.write(
+                        path,
+                        arcname=f"echo-tool/{path.relative_to(FIXTURE).as_posix()}",
+                    )
+
+    monkeypatch.setattr(module, "download", download)
 
 
 @pytest.fixture
@@ -128,7 +153,7 @@ async def test_cancellation_holds_lock_until_worker_finishes(
 def test_disabled_market_force_stays_disabled(
     manager: PluginManager, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(manager, "market_plugin_dir", lambda _: FIXTURE)
+    mock_market_install(monkeypatch)
     manager.install_from_market("echo-tool")
     manager.set_enabled("echo-tool", False)
     manager.install_from_market("echo-tool", force=True)
@@ -142,7 +167,7 @@ async def test_market_install_persists_enabled_and_preserves_settings(
     config = tmp_path / "config.json"
     settings = {"database": {"backend": "sqlite"}, "plugins": {"other": {"enabled": False}}}
     config.write_text(json.dumps(settings), encoding="utf-8")
-    monkeypatch.setattr(manager, "market_plugin_dir", lambda _: FIXTURE)
+    mock_market_install(monkeypatch)
     await manager.install_async("install_from_market", "echo-tool")
     settings["plugins"]["echo-tool"] = {"enabled": True}
     assert json.loads(config.read_text(encoding="utf-8")) == settings
@@ -158,7 +183,7 @@ async def test_market_config_failure_rolls_back(
     config = tmp_path / "config.json"
     corrupt = b"{broken config"
     config.write_bytes(corrupt)
-    monkeypatch.setattr(manager, "market_plugin_dir", lambda _: FIXTURE)
+    mock_market_install(monkeypatch)
     with pytest.raises(OctopError) as exc:
         await manager.install_async("install_from_market", "echo-tool", force=installed)
     assert exc.value.code is ErrorCode.CONFIG_FILE_CORRUPT
