@@ -14,6 +14,7 @@ This directory contains the Docker build and deployment assets for Octop.
 | `docker-compose.yml` | One-command local / self-hosted deployment |
 | `docker-compose.cn.yml` | Same stack, pulls `ghcr.nju.edu.cn/tencentcloud/octop:latest` (no local build) |
 | `docker-compose.postgres.yml` | PostgreSQL (+ pgvector) for dual-backend dev/tests |
+| `docker-compose.cluster.yml` | Lab: one PostgreSQL and two Octop processes with separate data directories |
 | `postgres/init-vector.sql` | Instance-level `CREATE EXTENSION vector` (initdb.d; **not** Octop migrations) |
 | `docker-entrypoint.sh` | Container entrypoint: first-run init + start server |
 
@@ -24,7 +25,7 @@ This directory contains the Docker build and deployment assets for Octop.
 From the repository root:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` (≥8 characters with letters and digits) creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If the variable is unset, or the password fails policy (too short, missing letters/digits, or a common password), **no** admin is created — open the dashboard and complete the setup wizard. The wizard unlock password is in `/data/.octop/octop-login.txt` (also noted in `credential.txt`).
@@ -34,7 +35,7 @@ Compose sets the open-file limit to 65535 for multi-agent workloads. Server star
 **Option 2: Build script**
 
 ```bash
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   --name octop \
   --ulimit nofile=65535:65535 \
@@ -55,7 +56,7 @@ PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
 PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
 NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
 APT_MIRROR=mirrors.cloud.tencent.com \
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 ```
 
 ### Environment variables
@@ -71,7 +72,7 @@ bash docker/docker_build.sh
 | `OPENAI_API_KEY` | — | OpenAI-compatible API key |
 | `DASHSCOPE_API_KEY` | — | Alibaba DashScope API key |
 
-For Compose, put these in `docker/.env`. Values only reach the container if listed under `environment:` in `docker-compose.yml` (Compose interpolates `.env`; it does not auto-export every key). Alternatively write the same keys into the mounted data dir as `~/.octop/env`.
+For Compose, put these in `deploy/docker/.env`. Values only reach the container if listed under `environment:` in `docker-compose.yml` (Compose interpolates `.env`; it does not auto-export every key). Alternatively write the same keys into the mounted data dir as `~/.octop/env`.
 
 ### Node.js
 
@@ -97,6 +98,10 @@ image to receive these dependencies; restarting an older image is insufficient.
 - `docker run` example uses named volume `octop-data`
 - First boot: a valid `OCTOP_DEFAULT_PASSWORD` runs `octop init` and writes `credential.txt`; unset or rejected passwords skip admin creation and write the wizard unlock password to `/data/.octop/octop-login.txt`. The container does not exit because of a weak default.
 
+### Kubernetes
+
+Manifests for multiple replicas, a shared PostgreSQL (with pgvector), and one external entrypoint are in [../k8s/README.md](../k8s/README.md).
+
 ### Health check
 
 The image probes `GET /api/health`:
@@ -110,6 +115,6 @@ curl http://localhost:8088/api/health
 ```bash
 docker logs -f octop
 docker exec -it octop octop --version
-docker compose -f docker/docker-compose.yml down
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f deploy/docker/docker-compose.yml down
+docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```

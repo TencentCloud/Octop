@@ -848,6 +848,7 @@ class AgentManager:
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_backend_types_disallowed,
                 raise_if_workspace_dir_outside_user_root,
             )
 
@@ -876,6 +877,13 @@ class AgentManager:
                     config,
                 )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    require_present=True,
+                )
                 self._assert_model_ref(spec.user_id, spec.default_model)
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
@@ -1116,6 +1124,7 @@ class AgentManager:
                     effective_workspace_root_dir,
                     persisted_workspace_within_root,
                     raise_if_backend_outside_user_root,
+                    raise_if_backend_types_disallowed,
                 )
 
                 allowed_root = effective_workspace_root_dir(
@@ -1140,6 +1149,13 @@ class AgentManager:
                 self._assert_named_storage_backends(
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                )
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    previous=parse_config_json(owner_row.config_json).get("backend"),
                 )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
@@ -3215,6 +3231,13 @@ class AgentManager:
             resource_key=ref,
             is_owner=False,
         )
+
+    def _named_storage_kind(self, name: str) -> str | None:
+        row = self._repos.storage_backend_repo.get_by_name(name)
+        if row is None:
+            return None
+        kind = (row.kind or "").strip().lower()
+        return kind or None
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs

@@ -1,0 +1,39 @@
+# Public entry. The cookie pins one browser's HTTP and WebSocket to one Pod.
+# session-cookie-change-on-failure moves the next request after that Pod is gone.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: octop
+  labels:
+    app.kubernetes.io/name: octop
+    app.kubernetes.io/component: server
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/affinity-mode: persistent
+    nginx.ingress.kubernetes.io/session-cookie-name: OCTOP_AFFINITY
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: Lax
+    nginx.ingress.kubernetes.io/session-cookie-expires: "10800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"
+    nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "true"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - octop.example.com
+      secretName: octop-tls
+  rules:
+    - host: octop.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: octop
+                port:
+                  number: 8088

@@ -278,13 +278,13 @@ Open **http://127.0.0.1:8088**. With Docker, a valid `OCTOP_DEFAULT_PASSWORD` cr
 
 ```bash
 # Build and start
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # China mirror when ghcr.io is unreachable (no local build)
-docker compose -f docker/docker-compose.cn.yml up -d
+docker compose -f deploy/docker/docker-compose.cn.yml up -d
 
 # Or build manually
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -294,6 +294,8 @@ docker run -d \
 ```
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
+
+Kubernetes manifests for a shared PostgreSQL and multiple replicas are in [deploy/k8s/README.md](deploy/k8s/README.md).
 
 > **Password policy:** at least 8 characters with letters and digits.
 
@@ -351,7 +353,7 @@ To serve the dashboard under a reverse-proxy subpath (for example `https://examp
 | Local script | macOS / Linux | `bash scripts/install.sh` |
 | Local script | Windows | `scripts\install.bat` or `install.ps1` |
 | PyPI | Any | `pip install octop` (optional extras such as `local-embedding`) |
-| Docker | Any | `docker/docker-compose.yml`; China mirror: `docker/docker-compose.cn.yml` |
+| Docker | Any | `deploy/docker/docker-compose.yml`; China mirror: `deploy/docker/docker-compose.cn.yml` |
 
 All install scripts provision an isolated environment at `~/.octop/venv` and a `~/.octop/bin/octop` wrapper — they do not touch system Python.
 
@@ -520,7 +522,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-docker/        Docker Compose, entrypoint, build & deploy scripts
+deploy/        Docker (deploy/docker) and Kubernetes (deploy/k8s)
 tests/         unit/ + integration/
 ```
 
