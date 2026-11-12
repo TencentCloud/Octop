@@ -11,7 +11,9 @@ import {
   type ConnectorProbeResult,
   type CustomMcpServers,
   type CustomMcpTransport,
+  type OAuthPendingResult,
 } from "../../../api/modules/connectors";
+import { pendingOutcome, reportOAuthOutcome } from "./connectorOAuth";
 import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { CustomMcpServerCard } from "./CustomMcpServerCard";
 import {
@@ -534,17 +536,28 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
 
     const claimPending = async () => {
       if (!stateId || settled) return;
+      let pending: OAuthPendingResult;
       try {
-        const pending = await connectorsApi.oauthPending(stateId);
-        if (pending.applied || pending.server_name) {
-          await finish();
-        }
+        pending = await connectorsApi.oauthPending(stateId);
       } catch {
         // keep polling until timeout
+        return;
+      }
+      const outcome = pendingOutcome(pending);
+      if (outcome.status !== "ok") {
+        settled = true;
+        cleanup();
+        setAuthorizingKey(null);
+        reportOAuthOutcome(outcome, t);
+        return;
+      }
+      if (pending.applied || pending.server_name) {
+        await finish();
       }
     };
 
     const onMessage = (ev: MessageEvent) => {
+      if (ev.origin !== window.location.origin) return;
       if (ev.data?.type !== "octop:connector-oauth") return;
       if (ev.data.state_id !== stateId) return;
       void claimPending();

@@ -109,6 +109,8 @@ export interface ErrorChunk {
   type: "error";
   message: string;
   error_code?: string;
+  /** Structured context for some codes, e.g. connectors awaiting authorization. */
+  error_details?: Record<string, unknown>;
   agent_id?: string;
 }
 

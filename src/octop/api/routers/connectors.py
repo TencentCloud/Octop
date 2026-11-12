@@ -206,6 +206,54 @@ def _oauth_callback_html(
     return HTMLResponse(f"<html><body>{escape(message)}</body></html>", status_code=status_code)
 
 
+def _oauth_outcome_html(
+    request: Request,
+    server: Any,
+    row: Any,
+    *,
+    status: Literal["cancelled", "error"],
+    message_key: str,
+    **fmt: Any,
+) -> HTMLResponse:
+    """Report a failed or cancelled authorization back to the page that started it.
+
+    The outcome is parked like a token so a page polling ``/oauth/pending``
+    sees it; a popup also posts it to its opener, a full-page flow returns
+    to ``redirect_after`` with ``oauth_state`` and ``oauth_error``.
+    """
+    locale = resolve_request_locale(request)
+    message = tr(f"connector.oauth.{message_key}", locale, **fmt)
+    server.services.settings_repo.set(
+        f"connector.oauth.pending.{row.state_id}",
+        json.dumps(
+            {"user_id": row.user_id, "kind": row.kind, "status": status, "message": message}
+        ),
+    )
+    redirect = urlsplit(sanitize_redirect_after(row.redirect_after, default="/connectors"))
+    query = [
+        (key, value)
+        for key, value in parse_qsl(redirect.query, keep_blank_values=True)
+        if key not in ("oauth_state", "oauth_error")
+    ]
+    query += [("oauth_state", row.state_id), ("oauth_error", status)]
+    target = json.dumps(redirect._replace(query=urlencode(query)).geturl()).replace("<", "\\u003c")
+    payload = json.dumps(
+        {"type": "octop:connector-oauth", "state_id": row.state_id, "status": status}
+    ).replace("<", "\\u003c")
+    html = f"""<!DOCTYPE html><html><body>
+<script>
+  if (window.opener) {{
+    window.opener.postMessage({payload}, window.location.origin);
+    window.close();
+  }} else {{
+    window.location.href = {target};
+  }}
+</script>
+<p>{escape(message)}</p>
+</body></html>"""
+    return HTMLResponse(html, status_code=400)
+
+
 def _resolve_custom_mcp_oauth_target(
     svc: ConnectorService, user_id: int, server_name: str
 ) -> tuple[str, dict[str, Any]]:
@@ -1555,7 +1603,21 @@ async def oauth_callback(
     server: Any = Depends(get_server),
 ) -> HTMLResponse:
     """OAuth redirect target. Exchanges the code and stores credentials. No JWT required."""
+    repo = server.services.repos.connector_repo
     if error:
+        # The user cancelled or the provider refused. Tell the custom MCP page
+        # that started the flow instead of leaving it waiting for a token.
+        failed_row = repo.consume_oauth_state(state) if state else None
+        if failed_row is not None and is_custom_mcp_kind(failed_row.kind):
+            delete_oauth_ctx(server.services.settings_repo, failed_row.state_id)
+            return _oauth_outcome_html(
+                request,
+                server,
+                failed_row,
+                status="cancelled" if error == "access_denied" else "error",
+                message_key="callback_auth_failed",
+                error=error,
+            )
         return _oauth_callback_html(
             request,
             "callback_auth_failed",
@@ -1569,7 +1631,6 @@ async def oauth_callback(
             status_code=400,
         )
 
-    repo = server.services.repos.connector_repo
     row = repo.consume_oauth_state(state)
     if row is None:
         return _oauth_callback_html(
@@ -1600,10 +1661,20 @@ async def oauth_callback(
         delete_oauth_ctx(server.services.settings_repo, row.state_id)
     except Exception as exc:
         logger.exception("oauth callback failed for %s", row.kind)
-        return _oauth_callback_html(
+        if not is_custom_mcp_kind(row.kind):
+            return _oauth_callback_html(
+                request,
+                "callback_token_exchange_failed",
+                status_code=400,
+                detail=str(exc),
+            )
+        delete_oauth_ctx(server.services.settings_repo, row.state_id)
+        return _oauth_outcome_html(
             request,
-            "callback_token_exchange_failed",
-            status_code=400,
+            server,
+            row,
+            status="error",
+            message_key="callback_token_exchange_failed",
             detail=str(exc),
         )
 
@@ -1630,10 +1701,12 @@ async def oauth_callback(
             pending_payload["applied"] = True
         except Exception as exc:
             logger.exception("custom MCP oauth apply failed")
-            return _oauth_callback_html(
+            return _oauth_outcome_html(
                 request,
-                "callback_save_failed",
-                status_code=400,
+                server,
+                row,
+                status="error",
+                message_key="callback_save_failed",
                 detail=str(exc),
             )
 
@@ -1689,6 +1762,8 @@ async def oauth_pending(
         raise OctopError(ErrorCode.FORBIDDEN, "not your oauth session")
     server.services.settings_repo.delete(key)
     return {
+        "status": data.get("status") or "ok",
+        "message": data.get("message"),
         "kind": data.get("kind"),
         "tokens": data.get("tokens") or {},
         "server_name": data.get("server_name"),

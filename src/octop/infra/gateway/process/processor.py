@@ -1483,6 +1483,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
             failure_saved = True
@@ -1577,6 +1580,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             failure_saved = True
@@ -1908,6 +1914,14 @@ class GlobalProcessor:
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
+                blocked = await self._agent_manager.connector_auth_blocked(user_id, failed)
+                if blocked:
+                    names = ", ".join(str(item["display_name"]) for item in blocked)
+                    raise OctopError(
+                        ErrorCode.CONNECTOR_AUTH_REQUIRED,
+                        f"connector authorization required: {names}",
+                        details={"connectors": blocked, "servers": names},
+                    )
                 raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
             logger.warning(
                 "skipping turn MCP for agent=%s user=%s (%s)",

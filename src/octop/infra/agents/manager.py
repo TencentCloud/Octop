@@ -2538,8 +2538,43 @@ class AgentManager:
         custom_configs: dict[str, Any] = {}
         load_user: dict[str, int] = {}
         if uid is not None:
+            # Renew OAuth tokens that are about to expire, and flag the ones that
+            # cannot be renewed, before building the specs the tools load from.
+            for token_owner in {i for i in (uid, owner_id) if i is not None}:
+                try:
+                    await self._connector_svc.ensure_fresh_custom_servers(token_owner)
+                except Exception:
+                    logger.warning(
+                        "prepare_chat_mcp agent=%s: custom MCP token refresh failed",
+                        agent_id,
+                        exc_info=True,
+                    )
             custom_configs = self._connector_svc.custom_harness_configs(uid)
             load_user = dict.fromkeys(custom_configs, uid)
+        # Tools stay cached on the agent after the first load, so a token that
+        # lapsed since then is only caught by checking the stored status.
+        awaiting_auth: set[str] = set()
+        if uid is not None:
+            try:
+                awaiting_auth = {
+                    str(item["server"])
+                    for item in await self._connector_svc.auth_blocked_servers(
+                        uid, requested, probe=False
+                    )
+                }
+            except Exception:
+                logger.warning(
+                    "prepare_chat_mcp agent=%s: connector auth check failed",
+                    agent_id,
+                    exc_info=True,
+                )
+        if awaiting_auth:
+            logger.info(
+                "prepare_chat_mcp agent=%s: waiting for authorization %s",
+                agent_id,
+                sorted(awaiting_auth),
+            )
+            return sorted(awaiting_auth)
         if aliases and uid is not None and owner_id is not None:
             # Load the owner's spec when the turn asked for the shared server.
             # A viewer's own server with the same short name stays theirs unless
@@ -2739,6 +2774,16 @@ class AgentManager:
                 for name in still_missing
             ]
         return still_missing
+
+    async def connector_auth_blocked(
+        self, user_id: int, server_names: list[str]
+    ) -> list[dict[str, Any]]:
+        """Of the MCP servers that failed to load, the ones waiting for authorization."""
+        try:
+            return await self._connector_svc.auth_blocked_servers(user_id, server_names)
+        except Exception:
+            logger.warning("connector auth check failed for user=%s", user_id, exc_info=True)
+            return []
 
     async def _attach_gateway_tools(
         self,
