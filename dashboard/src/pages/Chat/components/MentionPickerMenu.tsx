@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { FileText, Plug } from "lucide-react";
+import cx from "classnames";
 import type { ChatConnectorOption } from "./ConnectorPickerPopover";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
@@ -212,9 +213,10 @@ export default function MentionPickerMenu({
               <button
                 key={mentionPickKey(item)}
                 type="button"
-                className={`${styles.mentionItem} ${
-                  active ? styles.mentionItemActive : ""
-                }`}
+                className={cx(
+                  styles.mentionItem,
+                  active && styles.mentionItemActive,
+                )}
                 onMouseEnter={() => onHover(idx)}
                 onClick={() => onSelect(item)}
               >

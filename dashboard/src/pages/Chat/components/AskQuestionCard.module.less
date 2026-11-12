@@ -78,6 +78,20 @@
   overflow-y: auto;
 }
 
+/* Composer dock: the options are the only scroller. Title and actions stay
+   outside it, so the buttons are visible without a second scrollbar. */
+.cardDocked {
+  .steps {
+    /* Leave the chat chrome, this card's title, and the action row on screen. */
+    max-height: min(
+      420px,
+      max(96px, calc(100dvh - 360px - var(--keyboard-offset, 0px)))
+    );
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
 .block {
   padding: 4px 0 14px;
 }

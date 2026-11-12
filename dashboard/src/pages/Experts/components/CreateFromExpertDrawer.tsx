@@ -69,7 +69,9 @@ import {
   ensureBwrapToastKind,
   probeRootDir,
   rootDirProbeMessage,
+  createWorkspaceSelection,
   shouldProbeRootDir,
+  shouldProbeWorkspaceDir,
   supportsHostSkillPackages,
   validatePathMappings,
   type PathMapping,
@@ -236,6 +238,8 @@ export default function CreateFromExpertDrawer({
       backend_choice: string;
       composite_default: string;
       root_dir?: string;
+      workspace_dir?: string;
+      workspace_dir_auto?: string;
       skill_package_ids?: string[];
       knowledge_base_ids?: string[];
       mcp_servers?: string[];
@@ -333,6 +337,8 @@ export default function CreateFromExpertDrawer({
       conversation_mode: DEFAULT_CONVERSATION_MODE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
+      workspace_dir: "",
+      workspace_dir_auto: "",
       skill_package_ids: [],
       knowledge_base_ids: [],
       mcp_servers: [],
@@ -430,6 +436,33 @@ export default function CreateFromExpertDrawer({
         return;
       }
     }
+    const autoWorkspaceDir = form.getFieldValue("workspace_dir_auto");
+    const workspaceSelection = createWorkspaceSelection({
+      backendChoice: values.backend_choice,
+      rootDir: values.root_dir,
+      workspaceDir: values.workspace_dir,
+      autoWorkspaceDir,
+      agentId: values.agent_id,
+    });
+    const workspaceDir = workspaceSelection.workspaceDir;
+    if (
+      workspaceDir &&
+      shouldProbeWorkspaceDir(
+        values.backend_choice,
+        workspaceDir,
+        autoWorkspaceDir,
+      )
+    ) {
+      const probe = await probeRootDir(workspaceDir);
+      if (!probe.ok) {
+        message.error(
+          `${rootDirProbeMessage(probe, t)}\n${t(
+            "experts.rootDirProbe.guidance",
+          )}`,
+        );
+        return;
+      }
+    }
     setSubmitting(true);
     let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
@@ -462,9 +495,10 @@ export default function CreateFromExpertDrawer({
       const payload = {
         name: values.name,
         description: values.description || undefined,
-        agent_id: values.agent_id?.trim() || undefined,
+        agent_id: workspaceSelection.agentId,
         default_model: defaultModelFromForm(values.default_model) ?? undefined,
         backend: backendSpec,
+        ...(workspaceDir ? { workspace_dir: workspaceDir } : {}),
         skill_package_ids: skillPackagesSupported
           ? values.skill_package_ids ?? []
           : [],

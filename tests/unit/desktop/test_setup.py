@@ -295,6 +295,23 @@ def test_virtual_desktop_installed_ok_with_units() -> None:
         assert _virtual_desktop_installed() is True
 
 
+def test_resolve_linux_installed_but_stopped_needs_start() -> None:
+    """Packages on disk are not an enabled desktop until Xvnc is actually up."""
+    from octop.infra.control.desktop.setup import _resolve_linux_setup
+
+    with (
+        patch("octop.infra.control.desktop.setup._check_vnc_localhost", return_value=(None, "")),
+        patch.dict("os.environ", {"DISPLAY": "", "WAYLAND_DISPLAY": ""}, clear=False),
+        patch("octop.infra.control.desktop.setup._display_from_env_file", return_value=None),
+        patch("octop.infra.control.desktop.setup._virtual_desktop_installed", return_value=True),
+        patch("octop.infra.control.desktop.setup._xvnc_service_active", return_value=False),
+    ):
+        state, display, reason, _vnc = _resolve_linux_setup(locale="en")
+    assert state == "needs_start"
+    assert display is None
+    assert reason == ""
+
+
 def test_resolve_linux_partial_install_needs_reinstall() -> None:
     from octop.infra.control.desktop.setup import _resolve_linux_setup
 

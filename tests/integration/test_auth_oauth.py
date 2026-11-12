@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -122,3 +123,43 @@ async def test_oauth_callback_accepts_dingtalk_auth_code(
     )
     assert response.status_code == 302
     assert seen["code"] == "ding-auth"
+
+
+@pytest.mark.parametrize("kind", ["dingtalk", "feishu", "wecom"])
+async def test_oauth_config_and_authorization_preserve_forwarded_port(client, kind: str) -> None:
+    c, _srv, home = client
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    proxy_headers = {
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-Host": "octop.example",
+        "X-Forwarded-Port": "8011",
+    }
+    admin_headers = {**bearer(token), **proxy_headers}
+    callback_uri = "https://octop.example:8011/api/auth/oauth/callback"
+
+    saved = await c.put(
+        f"/api/auth/oauth/providers/{kind}",
+        headers=admin_headers,
+        json={
+            "enabled": True,
+            "client_id": "test-app-id",
+            "client_secret": "test-app-secret",
+            "extra": {"agent_id": "1000001"} if kind == "wecom" else {},
+        },
+    )
+    assert saved.status_code == 200
+    assert saved.json()["redirect_uri"] == callback_uri
+
+    config = await c.get(f"/api/auth/oauth/providers/{kind}", headers=admin_headers)
+    assert config.status_code == 200
+    assert config.json()["redirect_uri"] == callback_uri
+
+    started = await c.post(
+        "/api/auth/oauth/start",
+        headers=proxy_headers,
+        json={"kind": kind, "redirect_after": "/chat"},
+    )
+    assert started.status_code == 200
+    query = parse_qs(urlsplit(started.json()["authorization_url"]).query)
+    assert query["redirect_uri"] == [callback_uri]

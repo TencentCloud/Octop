@@ -30,6 +30,8 @@ services:
       nofile:
         soft: 65535
         hard: 65535
+    # Xvnc needs more than Docker's default 64MB /dev/shm after the user enables the desktop.
+    shm_size: "1gb"
     privileged: true
     network_mode: host
     volumes:

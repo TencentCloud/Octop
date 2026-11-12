@@ -22,6 +22,22 @@ def _write_manifest(expert_dir: Path, *, extra: dict | None = None) -> None:
     )
 
 
+def test_skill_count_in_expert_dir_counts_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import skill_count_in_expert_dir
+
+    expert_dir = tmp_path / "expert"
+    (expert_dir / "skills" / "one").mkdir(parents=True)
+    (expert_dir / "skills" / "one" / "SKILL.md").write_text("# One", encoding="utf-8")
+    (expert_dir / "skills" / "notes.md").write_text("not a skill", encoding="utf-8")
+    (expert_dir / ".octop" / "skills" / "builtin").mkdir(parents=True)
+    (expert_dir / ".octop" / "skills" / "builtin" / "SKILL.md").write_text(
+        "# Builtin", encoding="utf-8"
+    )
+
+    assert skill_count_in_expert_dir(expert_dir) == 1
+    assert skill_count_in_expert_dir(tmp_path / "missing") == 0
+
+
 def test_expert_discovers_seed_paths(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
@@ -48,7 +64,7 @@ def test_resolve_expert_icon_url_uses_scene_for_skillhub() -> None:
 
     assert (
         resolve_expert_icon_url(
-            "skillhub-skillset-healthcare-nursing-plan",
+            "healthcare-nursing-plan",
             None,
             scene="healthcare",
         )
@@ -57,8 +73,8 @@ def test_resolve_expert_icon_url_uses_scene_for_skillhub() -> None:
     # Do not invent missing per-skillset SVG paths.
     assert (
         resolve_expert_icon_url(
-            "skillhub-skillset-healthcare-nursing-plan",
-            "/experts/avatars/skillhub-skillset-healthcare-nursing-plan.svg",
+            "healthcare-nursing-plan",
+            "/experts/avatars/healthcare-nursing-plan.svg",
             scene="healthcare",
         )
         == "/experts/avatars/scene-healthcare.svg"
@@ -93,12 +109,12 @@ def test_skillhub_market_manifest_gets_scene_icon_url(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
     market_root = tmp_path / "market"
-    expert_dir = market_root / "skillhub-skillset-healthcare-nursing-plan"
+    expert_dir = market_root / "healthcare-nursing-plan"
     expert_dir.mkdir(parents=True)
     _write_manifest(
         expert_dir,
         extra={
-            "id": "skillhub-skillset-healthcare-nursing-plan",
+            "id": "healthcare-nursing-plan",
             "icon_name": "heart",
             "source": {"type": "skillhub", "scene": "healthcare"},
         },
@@ -108,7 +124,7 @@ def test_skillhub_market_manifest_gets_scene_icon_url(tmp_path: Path) -> None:
     (tmp_path / "bundled").mkdir()
     catalog.refresh()
 
-    expert = catalog.get("skillhub-skillset-healthcare-nursing-plan")
+    expert = catalog.get("healthcare-nursing-plan")
     assert expert is not None
     assert expert.summary.icon_url == "/experts/avatars/scene-healthcare.svg"
 
@@ -247,23 +263,18 @@ def test_bundled_default_expert_only_has_agents_md() -> None:
     assert names == {"AGENTS.md"}
 
 
-def test_bundled_office_automation_discovers_skills() -> None:
+def test_bundled_ops_engineer_is_the_terminal_expert() -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 
     catalog = ExpertCatalog(default_library_root())
     catalog.refresh()
-    expert = catalog.get("office-automation")
+    expert = catalog.get("ops-engineer")
     assert expert is not None
-    assert expert.prompt_files
-    assert len(expert.files) > 50
-    names = {item["name"] for item in catalog.read_file_contents("office-automation")}
-    assert "skills/docx/SKILL.md" in names
-    docx_skill = next(
-        item["content"]
-        for item in catalog.read_file_contents("office-automation")
-        if item["name"] == "skills/docx/SKILL.md"
-    )
-    assert "DOCX" in docx_skill
+    assert expert.summary.label_zh == "运维工程师 Ops"
+    assert "SOUL.md" in expert.files
+    assert "IDENTITY.md" in expert.files
+    assert "USER.md" not in expert.files
+    assert "SOUL.md" in expert.prompt_files
 
 
 def test_expert_quick_prompts_from_manifest(tmp_path: Path) -> None:
@@ -376,3 +387,16 @@ async def test_apply_workspace_quick_prompts_refuses_invalid_json() -> None:
     with pytest.raises(OctopError) as exc:
         await apply_workspace_quick_prompts(workspace, [])
     assert exc.value.code is ErrorCode.SLASH_BAD_ARGS
+
+
+def test_featured_expert_template_ids_are_the_pre_market_library() -> None:
+    from octop.infra.agents.experts.catalog import featured_expert_template_ids
+
+    ids = featured_expert_template_ids()
+
+    assert len(ids) == 22
+    assert "general-assistant" in ids
+    assert "ops-engineer" in ids
+    assert "wechat-ops" in ids
+    assert "default" not in ids
+    assert "tencent-cvm-ops" not in ids

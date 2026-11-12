@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -23,19 +24,32 @@ REPO = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO / "docker" / "docker-entrypoint.sh"
 
 
+def _bash_path(path: Path) -> str:
+    """Path bash can open. Git Bash does not treat ``C:\\...`` as a filesystem path."""
+    posix = path.resolve().as_posix()
+    if os.name == "nt" and len(posix) >= 3 and posix[1] == ":":
+        return f"/{posix[0].lower()}{posix[2:]}"
+    return posix
+
+
 def _source_helpers() -> str:
-    return f'OCTOP_ENTRYPOINT_LIB=1; source "{ENTRYPOINT}"'
+    return f'OCTOP_ENTRYPOINT_LIB=1; source "{_bash_path(ENTRYPOINT)}"'
 
 
 def _bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    # A bare "bash" on Windows is CreateProcess's System32\bash.exe (the WSL
+    # launcher), which is found before Git Bash on PATH. which() searches PATH.
+    if bash_exe is None:
+        raise RuntimeError("bash is not on PATH")
     merged = os.environ.copy()
     if env:
         merged.update(env)
     return subprocess.run(
-        ["bash", "-c", script],
+        [bash_exe, "-c", script],
         check=False,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
         env=merged,
         timeout=15,
     )
@@ -407,6 +421,60 @@ def test_entrypoint_init_failure_leaves_no_marker_and_retries_next_boot(tmp_path
     second, calls = _run_entrypoint(tmp_path)
     assert second.returncode == 0, second.stderr
     assert any(call.startswith("init ") for call in calls), calls
+
+
+def _df_stub(size: int) -> str:
+    """Shell function so the warning logic does not depend on an executable ``df`` on PATH."""
+    return f"df() {{ printf '%s\\n' size {size}; }}\n"
+
+
+@bash_only
+def test_entrypoint_warns_when_desktop_shm_is_default(tmp_path: Path) -> None:
+    conf = tmp_path / "octop-desktop"
+    conf.mkdir()
+    script = (
+        _source_helpers()
+        + "\n"
+        + _df_stub(67108864)
+        + f'octop_warn_small_shm "{_bash_path(conf)}"\n'
+    )
+    result = _bash(script)
+    assert result.returncode == 0, result.stderr
+    assert "--shm-size=1g" in result.stderr
+    assert "64MB" in result.stderr
+
+
+@bash_only
+def test_entrypoint_stays_quiet_when_shm_is_enough(tmp_path: Path) -> None:
+    conf = tmp_path / "octop-desktop"
+    conf.mkdir()
+    missing = tmp_path / "missing"
+    script = (
+        _source_helpers()
+        + "\n"
+        + _df_stub(1073741824)
+        + f'octop_warn_small_shm "{_bash_path(conf)}"\n'
+        + f'octop_warn_small_shm "{_bash_path(missing)}"\n'
+    )
+    result = _bash(script)
+    assert result.returncode == 0, result.stderr
+    assert "shm" not in result.stderr
+
+
+@bash_only
+def test_entrypoint_arm_prepare_skips_non_arm() -> None:
+    script = (
+        _source_helpers()
+        + "\nunset OPENBLAS_CORETYPE\n"
+        + 'octop_prepare_arm_runtime\nprintf "%s" "${OPENBLAS_CORETYPE:-}"\n'
+    )
+    result = _bash(script)
+    if platform.machine().lower() in {"aarch64", "arm64"}:
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == "ARMV8"
+        return
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
 
 
 def test_init_skip_message_couples_entrypoint_and_init_command() -> None:

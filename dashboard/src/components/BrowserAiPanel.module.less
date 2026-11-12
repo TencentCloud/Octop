@@ -3,54 +3,24 @@
 .panel {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
   height: 100%;
   min-width: 0;
+  min-height: 0;
   flex: 1;
-  background: var(--fn-bg-primary);
-  border-left: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
+  padding: 12px 16px 16px;
+  background: transparent;
   overflow: hidden;
-}
-
-.panelBottom {
-  border-left: none;
-}
-
-// ── Panel header ───────────────────────────────────────────────────────────
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-  background: var(--fn-bg-secondary);
-  gap: 8px;
-}
-
-.headerTitle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fn-text-primary);
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
 }
 
 // ── Context section ────────────────────────────────────────────────────────
 
 .contextSection {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
   flex-shrink: 0;
+  padding: 9px 10px 10px;
+  background: var(--fn-bg-secondary);
+  border-radius: 10px;
 }
 
 .contextGrid {
@@ -156,95 +126,34 @@
   margin-top: 8px;
 }
 
-// ── Send bar (bottom of panel — matches Terminal AiPanel style) ──────────
-
-.sendBar {
-  padding: 8px 12px;
-  border-top: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-  flex-shrink: 0;
+.composer {
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
+  flex: 0 0 auto;
+  flex-direction: column;
   gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fn-border-secondary);
 }
 
-.sendRow {
-  flex: 1;
-  min-width: 0;
+.composerActions {
   display: flex;
-  align-items: flex-end;
   gap: 8px;
-}
-
-.sendTextarea {
-  flex: 1;
-  min-width: 0;
-  min-height: 32px;
-  max-height: 120px;
-  padding: 6px 10px;
-  border: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.12));
-  border-radius: 10px;
-  background: var(--fn-bg-primary);
-  color: var(--fn-text-primary);
-  font-size: 13px;
-  line-height: 1.4;
-  resize: none;
-  font-family: inherit;
-  overflow-y: auto;
-  scrollbar-width: none; /* Firefox */
-
-  &::-webkit-scrollbar {
-    display: none; /* Safari & Chrome */
-  }
-
-  &::placeholder {
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    overflow: hidden;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: var(--fn-color-brand, #6366f1);
-    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-}
-
-.sendBtn {
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  border-radius: 10px;
-  border: none;
-  background: linear-gradient(
-    135deg,
-    var(--fn-color-brand),
-    var(--fn-color-brand-soft)
-  );
-  color: #fff;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  justify-content: space-between;
+}
 
-  &:hover:not(:disabled) {
-    transform: scale(1.05);
-    box-shadow: 0 4px 12px
-      color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
-  }
+.composerLead {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
 
-  &:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-  }
+.hint {
+  min-width: 0;
+  font-size: 11px;
+  opacity: 0.5;
 }
 
 // ── Recording indicator ─────────────────────────────────────────────────

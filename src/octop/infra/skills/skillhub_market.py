@@ -7,7 +7,6 @@ import http.client
 import io
 import json
 import logging
-import os
 import stat
 import urllib.error
 import urllib.parse
@@ -15,15 +14,14 @@ import urllib.request
 import zipfile
 from pathlib import PurePosixPath
 from typing import Any
-from urllib.parse import urlparse
 
 from octop.infra.skills.skillhub_common import (
-    DEFAULT_SKILLHUB_HOST,
     HTTP_READ_CHUNK,
     MAX_HTTP_BYTES,
     MAX_ZIP_COMPRESSION_RATIO,
     MAX_ZIP_ENTRIES,
     MAX_ZIP_UNCOMPRESSED_BYTES,
+    skill_market_origin,
 )
 from octop.infra.utils.utf8_text import (
     InvalidSkillManifestEncodingError,
@@ -64,6 +62,15 @@ class SkillHubMarketTimeout(SkillHubMarketError):
     """A SkillHub marketplace HTTP request timed out."""
 
 
+def skill_market_failure_status(exc: BaseException) -> int:
+    """HTTP status for a failed skill-market request."""
+    if isinstance(exc, SkillHubSkillNotFound):
+        return 404
+    if isinstance(exc, SkillHubMarketTimeout):
+        return 504
+    return 502
+
+
 class SkillHubPackageError(SkillHubMarketError):
     """A downloaded SkillHub package failed validation."""
 
@@ -73,12 +80,10 @@ class SkillHubPackageTooLarge(SkillHubPackageError):
 
 
 def _resolve_host(host: str | None) -> str:
-    resolved = (host or "").strip() or os.environ.get("SKILLHUB_HOST", "").strip()
-    resolved = (resolved or DEFAULT_SKILLHUB_HOST).rstrip("/")
-    parsed = urlparse(resolved)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise SkillHubMarketError(f"Invalid SkillHub API host: {resolved}")
-    return resolved
+    try:
+        return skill_market_origin(host)
+    except ValueError as exc:
+        raise SkillHubMarketError(f"Invalid SkillHub API host: {exc}") from exc
 
 
 def _http_request(
@@ -444,4 +449,5 @@ __all__ = [
     "fetch_skillhub_rankings",
     "parse_skillhub_package",
     "search_skillhub",
+    "skill_market_failure_status",
 ]

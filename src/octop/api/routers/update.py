@@ -21,6 +21,7 @@ from octop.api.routers.update_store import (
     get_task,
     update_task,
 )
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.setup.self_update import (
@@ -50,6 +51,8 @@ router = APIRouter(prefix="/update", tags=["update"])
 
 _STABLE_ONLY_KEY = "update.stable_only"
 _CACHE_INTERNAL = frozenset({"latest_any", "latest_stable", "description"})
+
+_SHELL_UPDATE_FORBIDDEN = "updates are managed by the desktop shell"
 
 
 class UpdateSettingsBody(BaseModel):
@@ -193,6 +196,8 @@ async def update_status(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return last check result; re-probe PyPI when the server cache TTL expires."""
+    if desktop_shell_enabled():
+        return _desktop_shell_status()
     stable_only = _read_stable_only(server)
     cached = get_cached_status()
     if cached is not None:
@@ -209,6 +214,7 @@ async def check_for_updates(
     _: Any = Depends(require_permission("update")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    _reject_shell_updates()
     stable_only = _read_stable_only(server)
     pypi_info = await asyncio.to_thread(fetch_pypi_info)
     if pypi_info is None:
@@ -238,6 +244,7 @@ async def update_settings(
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
     """Persist whether automatic checks should ignore pre-release versions."""
+    _reject_shell_updates()
     server.services.settings_repo.set(_STABLE_ONLY_KEY, "true" if body.stable_only else "false")
     cached = get_cached_status()
     if cached is None:
@@ -328,6 +335,7 @@ async def trigger_upgrade(
     server: Any = Depends(get_server),
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
+    _reject_shell_updates()
     if get_editable_path() is not None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -386,6 +394,35 @@ def _is_desktop_process() -> bool:
     return raw in {"1", "true", "yes", "on"}
 
 
+def _reject_shell_updates() -> None:
+    """Reject self-update requests when the Electron shell owns this process."""
+    if desktop_shell_enabled():
+        raise OctopError(ErrorCode.FORBIDDEN, _SHELL_UPDATE_FORBIDDEN)
+
+
+def _desktop_shell_status() -> dict[str, Any]:
+    """Status payload for the desktop-hosted process: no PyPI probing, ever."""
+    return {
+        "current_version": get_local_version(),
+        "latest_version": None,
+        "latest_any": None,
+        "latest_stable": None,
+        "description": None,
+        "has_update": False,
+        "is_editable": get_editable_path() is not None,
+        "service_mode": detect_service_mode(),
+        "desktop": True,
+        "updates_managed_by_shell": True,
+        "error": None,
+        "error_code": None,
+        "source": None,
+        "last_check_time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "release_notes": None,
+        "stable_only": True,
+        "latest_is_prerelease": False,
+    }
+
+
 def _restart_desktop_process(server: OctopServer) -> None:
     time.sleep(0.4)
 
@@ -416,6 +453,8 @@ async def restart_service_endpoint(
     server: OctopServer = Depends(get_server),
     _: Any = Depends(require_permission("update")),
 ) -> dict[str, Any]:
+    if desktop_shell_enabled():
+        raise OctopError(ErrorCode.FORBIDDEN, _SHELL_UPDATE_FORBIDDEN)
     if _is_desktop_process():
         background_tasks.add_task(_restart_desktop_process, server)
         return {"status": "restarting", "service_mode": "desktop"}
