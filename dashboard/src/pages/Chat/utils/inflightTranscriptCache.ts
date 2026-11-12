@@ -38,6 +38,7 @@ function slimMessage(message: ChatMessage): ChatMessage {
         ? Math.round(message.durationMs)
         : undefined,
     speakerAgentId: message.speakerAgentId,
+    author: message.author,
     teamWrapup: message.teamWrapup,
     errorInfo: message.errorInfo,
     toolData: message.toolData
@@ -49,6 +50,19 @@ function slimMessage(message: ChatMessage): ChatMessage {
           output: clipText(message.toolData.output),
         }
       : undefined,
+  };
+}
+
+function parseCachedAuthor(raw: unknown): ChatMessage["author"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as Partial<NonNullable<ChatMessage["author"]>>;
+  if (typeof row.userId !== "number" || row.userId <= 0) return undefined;
+  return {
+    userId: row.userId,
+    displayName: typeof row.displayName === "string" ? row.displayName : "",
+    username: typeof row.username === "string" ? row.username : "",
+    avatarUrl: typeof row.avatarUrl === "string" ? row.avatarUrl : null,
+    avatarIcon: typeof row.avatarIcon === "string" ? row.avatarIcon : null,
   };
 }
 
@@ -107,6 +121,7 @@ function parseTail(raw: string): ChatMessage[] | null {
           typeof row.speakerAgentId === "string"
             ? row.speakerAgentId
             : undefined,
+        author: parseCachedAuthor(row.author),
         teamWrapup: row.teamWrapup === true ? true : undefined,
         toolData:
           row.toolData && typeof row.toolData === "object"

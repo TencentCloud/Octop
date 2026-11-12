@@ -152,6 +152,7 @@ interface EditFormValues {
   backend_choice: string;
   composite_default: string;
   root_dir?: string;
+  workspace_dir?: string;
   max_iters?: number;
   max_input_length?: number;
   temperature?: number;
@@ -331,6 +332,8 @@ function EditAgentDrawerBody({
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
+          workspace_dir:
+            typeof cfg.workspace_dir === "string" ? cfg.workspace_dir : "",
           ...readAgentRuntimeFormValues(ag),
           enable_trajectory: cfg.enable_trajectory !== false,
           knowledge_base_ids: Array.isArray(ag.knowledge_base_ids)

@@ -94,6 +94,7 @@ import {
 } from "./ChatToolDockContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
+import SessionShareMark from "./components/SessionShareMark";
 import TeamChatBadge from "./components/TeamChatBadge";
 import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
@@ -213,7 +214,7 @@ function ChatPageInner() {
   const agentChatReady = isAgentChatReady(activeAgent?.state, activeAgent);
   const trajectoryEnabled =
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
-  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
+  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {}, user);
   const isTeamChat = isTeamAgent(activeAgent);
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [profileAgentId, setProfileAgentId] = useState<string | null>(null);
@@ -248,6 +249,13 @@ function ChatPageInner() {
     () => selectEnabledExperts(agents, resolvedAgentId, { pinActive: false }),
     [agents, resolvedAgentId],
   );
+
+  /**
+   * Experts the user owns that are not chat-ready. The history rail only lists
+   * agents that can chat, so it needs this to tell "you have no experts" apart
+   * from "none of yours are running" before offering the create-expert nudge.
+   */
+  const unreadyExperts = Math.max(0, agents.length - sidebarAgents.length);
 
   const {
     status: memoryMaint,
@@ -579,6 +587,7 @@ function ChatPageInner() {
     availableModels,
     modelsReady,
     activeModelRef,
+    preferredModel,
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
@@ -596,6 +605,7 @@ function ChatPageInner() {
     composerSession?.reasoningEffort,
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
+    composerSession?.owned !== false,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -604,7 +614,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
-    activeModelRef,
+    preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -710,8 +720,15 @@ function ChatPageInner() {
       connectors: chatConnectors,
       knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
+      models: availableModels,
     }),
-    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
+    [
+      chatSkills,
+      chatConnectors,
+      chatKnowledgeBases,
+      chatAgentOptions,
+      availableModels,
+    ],
   );
 
   const { handleSend } = useChatSend({
@@ -746,6 +763,33 @@ function ChatPageInner() {
     setBrowserLastRecordingId,
   });
 
+  const sharedTurnBusy = useCallback(
+    (threadId?: string | null) => {
+      const id = threadId || activeThreadId || "";
+      if (!id) return false;
+      const session =
+        id === activeThreadId
+          ? composerSession
+          : sessions.find((item) => item.id === id);
+      if (!session?.contributed) return false;
+      return chatStore.sharedTurnBlocksSender(id, user?.id, true);
+    },
+    [activeThreadId, composerSession, sessions, user?.id],
+  );
+
+  useEffect(() => {
+    return chatStore.onSharedTurnBusy((event) => {
+      if (
+        event.sessionId &&
+        activeThreadId &&
+        event.sessionId !== activeThreadId
+      ) {
+        return;
+      }
+      antMessage.warning(t("chat.sharedTurnBusy"));
+    });
+  }, [activeThreadId, t]);
+
   // Wrap handleSend: skill-recording keywords, then pending HITL routing.
   // An open ask pause must become respond-resume (not a new turn); any other
   // pending HITL must not start a turn that would cancel the interrupt.
@@ -755,11 +799,15 @@ function ChatPageInner() {
       attachments?: ChatAttachment[],
       overrides?: ChatSendOverrides,
     ) => {
+      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
+      if (sharedTurnBusy(targetThreadId)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return;
+      }
       if (interceptUserMessage(text)) {
         // The workflow intercepted the message — don't send it to the agent
         return;
       }
-      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
       const ask =
         targetThreadId && targetThreadId === activeThreadId
           ? pendingAsk
@@ -798,6 +846,7 @@ function ChatPageInner() {
       hasPendingHitlPause,
       activeThreadId,
       resumeHitl,
+      sharedTurnBusy,
       t,
     ],
   );
@@ -864,11 +913,26 @@ function ChatPageInner() {
   // commits sendSteerWhileBusy. The click always acts: the
   // server routes delivery=auto (busy → steer queue, idle → new turn); a
   // dead socket degrades to the normal send path — never a silent no-op.
+  const enqueueUnlessSharedBusy = useCallback<typeof enqueueQueued>(
+    (input) => {
+      if (sharedTurnBusy(activeThreadId)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return "empty";
+      }
+      return enqueueQueued(input);
+    },
+    [activeThreadId, enqueueQueued, sharedTurnBusy, t],
+  );
+
   const handleSteerQueued = useCallback(
     (id: string) => {
       const key = activeThreadId || "";
       const item = queuedItems.find((q) => q.id === id);
       if (!item || !key) return;
+      if (sharedTurnBusy(key)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return;
+      }
       const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
       const result = chatStore.sendSteerWhileBusy(key, item.text, {
         expectedTurnId: turnId || undefined,
@@ -885,6 +949,8 @@ function ChatPageInner() {
       activeTurnId,
       queuedItems,
       removeQueued,
+      sharedTurnBusy,
+      t,
       wrappedHandleSend,
     ],
   );
@@ -1126,6 +1192,7 @@ function ChatPageInner() {
       lastUserModel,
       selectedModel,
       activeAgent?.default_model,
+      preferredModel,
       activeModelRef,
     ]);
     if (providerId == null) {
@@ -1144,6 +1211,7 @@ function ChatPageInner() {
     availableModels,
     selectedModel,
     activeAgent?.default_model,
+    preferredModel,
     activeModelRef,
     messages,
     t,
@@ -1322,6 +1390,7 @@ function ChatPageInner() {
       isSidebarResizing={isSidebarResizing}
       sidebarElRef={sidebarElRef}
       agents={sidebarAgents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
@@ -1411,6 +1480,10 @@ function ChatPageInner() {
                     <span className={styles.mobileTitleText}>
                       {activeSessionTitle}
                     </span>
+                    <SessionShareMark
+                      contributed={activeSession?.contributed}
+                      owned={activeSession?.owned}
+                    />
                     <TeamChatBadge show={isTeamChat} />
                     <RemoteExpertHint agent={activeAgent} />
                   </div>
@@ -1467,20 +1540,25 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile && activeSession && activeSessionTitle && (
-              <ChatTitleBar
-                session={activeSession}
-                title={activeSessionTitle}
-                onRename={renameSession}
-                onPin={pinSession}
-                onFork={handleForkSession}
-                onDelete={handleDeleteSession}
-                forkDisabled={sessionForkDisabled}
-                forkDisabledHint={sessionForkDisabledHint}
-                isTeam={isTeamChat}
-                agent={activeAgent}
-              />
-            )}
+            {!isMobile &&
+              (activeSession && activeSessionTitle ? (
+                <ChatTitleBar
+                  session={activeSession}
+                  title={activeSessionTitle}
+                  onRename={renameSession}
+                  onPin={pinSession}
+                  onFork={handleForkSession}
+                  onDelete={handleDeleteSession}
+                  forkDisabled={sessionForkDisabled}
+                  forkDisabledHint={sessionForkDisabledHint}
+                  isTeam={isTeamChat}
+                  agent={activeAgent}
+                />
+              ) : (
+                /* Empty chat: same row, same bounds — the composer must not
+                   jump up before the first message exists. */
+                <div className={styles.chatTitleBarEmpty} />
+              ))}
 
             {memoryMaintVisible && memoryMaint && (
               <MemoryMaintenanceBanner
@@ -1523,6 +1601,7 @@ function ChatPageInner() {
                   agent={activeAgent}
                   noAgents={noAgents}
                   loading={agentsLoading}
+                  canConfigureModels={canConfigureModels}
                 />
               ) : showWelcome && modelsReady && availableModels.length === 0 ? (
                 <ModelConfigEmpty canConfigure={canConfigureModels} />
@@ -1536,48 +1615,52 @@ function ChatPageInner() {
                   isTeam={isTeamChat}
                 />
               ) : (
-                <ChatAgentProfileProvider
-                  canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
-                  onOpen={(agentId) => {
-                    setProfileAgentId(
-                      agentId && agentId !== resolvedAgentId ? agentId : null,
-                    );
-                    setAgentProfileOpen(true);
-                  }}
-                  isTeam={isTeamChat}
-                >
-                  <MessageList
-                    messages={messages}
-                    agentId={resolvedAgentId}
-                    composerLookups={composerLookups}
-                    loading={awaitingThreadHistory}
-                    historyHasMore={historyHasMore}
-                    historyLoadingMore={historyLoadingMore}
-                    historyRefreshing={historyRefreshing}
-                    onLoadMoreHistory={loadMoreHistory}
-                    onRefreshHistory={refreshHistory}
-                    isStreaming={isStreaming}
-                    liveSpeakers={liveSpeakers}
-                    thinkingStartedAt={thinkingStartedAt}
-                    sessionKey={activeThreadId ?? undefined}
-                    onRegenerate={handleRegenerate}
-                    onDisableStreamUsage={handleDisableStreamUsage}
-                    onEditUserMessage={handleEditUserMessage}
-                    onWithdrawSteer={handleWithdrawSteer}
-                    onForkAssistantMessage={handleForkAssistantMessage}
-                    forkDisabled={forkDisabled}
-                    forkDisabledHint={forkDisabledHint}
-                    onAcpPermissionSelect={handleAcpPermissionSelect}
-                    onHitlDecision={handleHitlDecision}
-                    onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
-                    onEditFile={
-                      !sharedExpertViewer && panelFilePaths.length > 0
-                        ? openFileList
-                        : undefined
-                    }
-                  />
-                </ChatAgentProfileProvider>
+                <>
+                  <ChatAgentProfileProvider
+                    canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                    onOpen={(agentId) => {
+                      setProfileAgentId(
+                        agentId && agentId !== resolvedAgentId ? agentId : null,
+                      );
+                      setAgentProfileOpen(true);
+                    }}
+                    isTeam={isTeamChat}
+                  >
+                    <MessageList
+                      messages={messages}
+                      agentId={resolvedAgentId}
+                      composerLookups={composerLookups}
+                      loading={awaitingThreadHistory}
+                      historyHasMore={historyHasMore}
+                      historyLoadingMore={historyLoadingMore}
+                      historyRefreshing={historyRefreshing}
+                      onLoadMoreHistory={loadMoreHistory}
+                      onRefreshHistory={refreshHistory}
+                      isStreaming={isStreaming}
+                      liveSpeakers={liveSpeakers}
+                      thinkingStartedAt={thinkingStartedAt}
+                      sessionKey={activeThreadId ?? undefined}
+                      onRegenerate={handleRegenerate}
+                      onDisableStreamUsage={handleDisableStreamUsage}
+                      onEditUserMessage={handleEditUserMessage}
+                      onWithdrawSteer={handleWithdrawSteer}
+                      onForkAssistantMessage={handleForkAssistantMessage}
+                      forkDisabled={forkDisabled}
+                      forkDisabledHint={forkDisabledHint}
+                      onAcpPermissionSelect={handleAcpPermissionSelect}
+                      onHitlDecision={handleHitlDecision}
+                      onTurnRailVisibilityChange={setTurnRailVisible}
+                      onOpenBrowser={
+                        hasBrowserTool ? openBrowserTab : undefined
+                      }
+                      onEditFile={
+                        !sharedExpertViewer && panelFilePaths.length > 0
+                          ? openFileList
+                          : undefined
+                      }
+                    />
+                  </ChatAgentProfileProvider>
+                </>
               )}
             </div>
 
@@ -1760,6 +1843,7 @@ function ChatPageInner() {
                     key={pendingAsk.messageId}
                     questions={pendingAsk.questions}
                     status="pending"
+                    docked
                     onSubmit={(answer) =>
                       handleHitlDecision(
                         pendingAsk.actions.map(() => ({
@@ -1825,7 +1909,7 @@ function ChatPageInner() {
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}
-              onQueue={enqueueQueued}
+              onQueue={enqueueUnlessSharedBusy}
               queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
@@ -1858,6 +1942,7 @@ function ChatPageInner() {
               onHitlPolicyChange={
                 hitlEnabled ? handleComposerHitlPolicyChange : undefined
               }
+              lockThreadSettings={composerSession?.owned === false}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={

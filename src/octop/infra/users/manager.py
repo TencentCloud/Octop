@@ -32,6 +32,7 @@ from octop.infra.users.preferences import (
     RemoteBrowserBookmark,
     get_remote_browser_bookmarks_from_json,
     merge_model_preferences_json,
+    merge_onboarding_completed_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
 )
@@ -579,11 +580,14 @@ class UserManager:
         workspace_root_dir: Any = UNSET,
         token_quota: Any = UNSET,
         max_agents: Any = UNSET,
+        allowed_backend_types: Any = UNSET,
     ) -> None:
         from octop.infra.users.resource_policy import (
+            POLICY_ALLOWED_BACKEND_TYPES,
             POLICY_MAX_AGENTS,
             POLICY_TOKEN_QUOTA,
             POLICY_WORKSPACE_ROOT_DIR,
+            normalize_allowed_backend_types,
             normalize_max_agents,
             normalize_token_quota,
             normalize_workspace_root_dir,
@@ -596,6 +600,7 @@ class UserManager:
         root_arg: Any = UNSET
         quota_arg: Any = UNSET
         max_agents_arg: Any = UNSET
+        backend_types_arg: Any = UNSET
         if workspace_root_dir is not UNSET:
             root_arg = normalize_workspace_root_dir(workspace_root_dir)
             updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
@@ -605,6 +610,9 @@ class UserManager:
         if max_agents is not UNSET:
             max_agents_arg = normalize_max_agents(max_agents)
             updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
+        if allowed_backend_types is not UNSET:
+            backend_types_arg = normalize_allowed_backend_types(allowed_backend_types)
+            updates[POLICY_ALLOWED_BACKEND_TYPES] = backend_types_arg
         if not updates:
             return
         self._services.user_policy_repo.merge(row.id, updates)
@@ -628,6 +636,13 @@ class UserManager:
                 action="user.set_max_agents",
                 target=username,
                 payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
+        if allowed_backend_types is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_allowed_backend_types",
+                target=username,
+                payload=backend_types_arg or "",
             )
 
     async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
@@ -738,6 +753,13 @@ class UserManager:
             preferred_model=preferred_model,
             model_reasoning=model_reasoning,
         )
+        self._services.user_repo.set_preferences_json(row.id, merged)
+
+    async def set_onboarding_completed(self, username: str, completed: bool) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        merged = merge_onboarding_completed_json(row.preferences_json, completed)
         self._services.user_repo.set_preferences_json(row.id, merged)
 
     async def disable(self, username: str) -> None:

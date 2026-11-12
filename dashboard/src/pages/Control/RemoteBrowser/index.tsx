@@ -46,11 +46,14 @@ import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
 import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
+import {
+  readAssistantPlacement,
+  type AssistantPlacement,
+} from "../../../components/AssistantFrame/AssistantFrame";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
 import BrowserViewer, {
   type BrowserViewerHandle,
 } from "../../../components/BrowserViewer";
-import { useAgent } from "../../../context/AgentContext";
 import { browserApi } from "../../../api/modules/browser";
 import * as chatStore from "../../Chat/hooks/chatStore";
 import { request } from "../../../api/request";
@@ -126,12 +129,7 @@ const STREAM_ACTIVE_KEY = "octop:remote-browser:stream-active";
 const DEFAULT_REFRESH_INTERVAL = 500;
 const DEFAULT_START_URL = "https://cloud.tencent.com";
 const BROWSER_AI_PANEL_KEY = "octop:remote-browser:ai-panel-open";
-const BROWSER_AI_PANEL_WIDTH_KEY = "octop:remote-browser:ai-panel-width";
-const BROWSER_AI_PANEL_HEIGHT_KEY = "octop:remote-browser:ai-panel-height";
-const BROWSER_AI_PANEL_MIN_WIDTH = 260;
-const BROWSER_AI_PANEL_MAX_WIDTH = 620;
-const BROWSER_AI_PANEL_MIN_HEIGHT = 200;
-const BROWSER_AI_PANEL_MAX_HEIGHT = 520;
+const BROWSER_AI_PLACEMENT_KEY = "octop:remote-browser:ai-placement";
 
 function profileStorageKey(userId?: number): string {
   return userId == null
@@ -300,7 +298,6 @@ export default function RemoteBrowserPage({
   const isMobile = useIsMobile();
   const currentUser = useCurrentUser();
   const browserProfile = resolveBrowserProfile(currentUser?.id);
-  const { activeAgent, activeAgentId, agents } = useAgent();
   const [searchParams] = useSearchParams();
   const threadFromUrl =
     searchParams.get("thread") ??
@@ -338,41 +335,12 @@ export default function RemoteBrowserPage({
       return false;
     }
   });
-  const [aiPanelWidth, setAiPanelWidth] = useState(() => {
-    try {
-      const saved = localStorage.getItem(BROWSER_AI_PANEL_WIDTH_KEY);
-      const n = saved ? Number(saved) : 340;
-      if (Number.isFinite(n)) {
-        return Math.min(
-          Math.max(n, BROWSER_AI_PANEL_MIN_WIDTH),
-          BROWSER_AI_PANEL_MAX_WIDTH,
-        );
-      }
-    } catch {
-      /* ignore */
-    }
-    return 340;
-  });
-  const [aiPanelHeight, setAiPanelHeight] = useState(() => {
-    try {
-      const saved = localStorage.getItem(BROWSER_AI_PANEL_HEIGHT_KEY);
-      const n = saved ? Number(saved) : 320;
-      if (Number.isFinite(n)) {
-        return Math.min(
-          Math.max(n, BROWSER_AI_PANEL_MIN_HEIGHT),
-          BROWSER_AI_PANEL_MAX_HEIGHT,
-        );
-      }
-    } catch {
-      /* ignore */
-    }
-    return 320;
-  });
-  const aiDragRef = useRef<{
-    startX: number;
-    startY: number;
-    startSize: number;
-  } | null>(null);
+  const [aiPlacement, setAiPlacement] = useState<AssistantPlacement>(() =>
+    readAssistantPlacement(BROWSER_AI_PLACEMENT_KEY, "right"),
+  );
+  const assistantPlacement: AssistantPlacement = isMobile
+    ? "bottom"
+    : aiPlacement;
 
   const {
     mode: viewportMode,
@@ -430,11 +398,6 @@ export default function RemoteBrowserPage({
   } = useBrowserStream();
 
   const isStreaming = status === "streaming" || status === "browser_started";
-  const effectiveActiveAgent =
-    activeAgent ??
-    (activeAgentId
-      ? agents.find((agent) => agent.agent_id === activeAgentId) ?? null
-      : null);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -820,95 +783,6 @@ export default function RemoteBrowserPage({
       /* ignore */
     }
   }, []);
-
-  const handleAiResizeMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      if (isMobile) {
-        aiDragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          startSize: aiPanelHeight,
-        };
-        const onMove = (mv: MouseEvent) => {
-          if (!aiDragRef.current) return;
-          const delta = aiDragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(
-              aiDragRef.current.startSize + delta,
-              BROWSER_AI_PANEL_MIN_HEIGHT,
-            ),
-            BROWSER_AI_PANEL_MAX_HEIGHT,
-          );
-          setAiPanelHeight(next);
-        };
-        const onUp = (mv: MouseEvent) => {
-          if (!aiDragRef.current) return;
-          const delta = aiDragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(
-              aiDragRef.current.startSize + delta,
-              BROWSER_AI_PANEL_MIN_HEIGHT,
-            ),
-            BROWSER_AI_PANEL_MAX_HEIGHT,
-          );
-          setAiPanelHeight(next);
-          try {
-            localStorage.setItem(BROWSER_AI_PANEL_HEIGHT_KEY, String(next));
-          } catch {
-            /* ignore */
-          }
-          aiDragRef.current = null;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-        return;
-      }
-
-      aiDragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        startSize: aiPanelWidth,
-      };
-      const onMove = (mv: MouseEvent) => {
-        if (!aiDragRef.current) return;
-        const delta = aiDragRef.current.startX - mv.clientX;
-        const next = Math.min(
-          Math.max(
-            aiDragRef.current.startSize + delta,
-            BROWSER_AI_PANEL_MIN_WIDTH,
-          ),
-          BROWSER_AI_PANEL_MAX_WIDTH,
-        );
-        setAiPanelWidth(next);
-      };
-      const onUp = (mv: MouseEvent) => {
-        if (!aiDragRef.current) return;
-        const delta = aiDragRef.current.startX - mv.clientX;
-        const next = Math.min(
-          Math.max(
-            aiDragRef.current.startSize + delta,
-            BROWSER_AI_PANEL_MIN_WIDTH,
-          ),
-          BROWSER_AI_PANEL_MAX_WIDTH,
-        );
-        setAiPanelWidth(next);
-        try {
-          localStorage.setItem(BROWSER_AI_PANEL_WIDTH_KEY, String(next));
-        } catch {
-          /* ignore */
-        }
-        aiDragRef.current = null;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [aiPanelHeight, aiPanelWidth, isMobile],
-  );
 
   // --- Skill recording guide ---
   const [browserRecording, setBrowserRecording] = useState(false);
@@ -1369,7 +1243,13 @@ export default function RemoteBrowserPage({
             style={{ marginBottom: 0 }}
           />
         ) : null}
-        <div className={cx(styles.mainRow, isMobile && styles.mainRowMobile)}>
+        <div
+          className={cx(
+            styles.mainRow,
+            (isMobile || (isAiPanelOpen && assistantPlacement === "bottom")) &&
+              styles.mainRowMobile,
+          )}
+        >
           <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
               <>
@@ -1552,38 +1432,27 @@ export default function RemoteBrowserPage({
           </div>
 
           {isAiPanelOpen && (
-            <div
-              className={isMobile ? styles.aiPanelBottom : styles.aiPanelRight}
-              style={
-                isMobile ? { height: aiPanelHeight } : { width: aiPanelWidth }
-              }
-            >
-              <div
-                className={
-                  isMobile ? styles.resizeHandleTop : styles.resizeHandleLeft
-                }
-                onMouseDown={handleAiResizeMouseDown}
-              />
-              <BrowserAiPanel
-                activeAgent={effectiveActiveAgent}
-                tabs={tabs}
-                currentUrl={session?.url || navUrl}
-                profileId={profileIdRef.current}
-                layout={isMobile ? "bottom" : "right"}
-                onClose={handleAiPanelClose}
-                browserRecording={browserRecording}
-                browserRecordingId={browserRecordingId}
-                browserLastRecordingId={browserLastRecordingId}
-                setBrowserRecording={setBrowserRecording}
-                setBrowserRecordingId={setBrowserRecordingId}
-                setBrowserLastRecordingId={setBrowserLastRecordingId}
-                skillName={skillName}
-                onSkillNameSet={setSkillName}
-                browserSessionActive={!!session}
-                browserStarting={creating}
-                onStartBrowser={() => void createSession()}
-              />
-            </div>
+            <BrowserAiPanel
+              tabs={tabs}
+              currentUrl={session?.url || navUrl}
+              profileId={profileIdRef.current}
+              placement={assistantPlacement}
+              placementLocked={isMobile}
+              hidden={!isVisible}
+              onPlacementChange={setAiPlacement}
+              onClose={handleAiPanelClose}
+              browserRecording={browserRecording}
+              browserRecordingId={browserRecordingId}
+              browserLastRecordingId={browserLastRecordingId}
+              setBrowserRecording={setBrowserRecording}
+              setBrowserRecordingId={setBrowserRecordingId}
+              setBrowserLastRecordingId={setBrowserLastRecordingId}
+              skillName={skillName}
+              onSkillNameSet={setSkillName}
+              browserSessionActive={!!session}
+              browserStarting={creating}
+              onStartBrowser={() => void createSession()}
+            />
           )}
         </div>
       </div>

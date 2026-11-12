@@ -1,6 +1,6 @@
-"""Fill in OpenSandbox filesystem helpers until octop-harness ships them.
+"""Compatibility filesystem helpers for older OpenSandbox backends.
 
-Pinned harness builds have ``execute`` but not ``mkdir_path``, ``delete_path``,
+Older harness builds have ``execute`` but not ``mkdir_path``, ``delete_path``,
 or ``move_path``, and no host mount. ``BackendWorkspace`` then raises
 ``BackendOperationNotSupportedError`` for bootstrap, skill removal, and rename.
 Each helper is attached only when the installed class does not already have it.
@@ -30,14 +30,14 @@ def install_opensandbox_fs() -> None:
         def mkdir_path(self: Any, path: str) -> None:
             _require(self, f"mkdir -p {shlex.quote(path)}", f"mkdir failed for {path!r}")
 
-        OpenSandbox.mkdir_path = mkdir_path  # type: ignore[attr-defined]
+        OpenSandbox.mkdir_path = mkdir_path  # type: ignore[method-assign]
 
     if not callable(getattr(OpenSandbox, "delete_path", None)):
 
         def delete_path(self: Any, path: str) -> None:
             _require(self, f"rm -rf {shlex.quote(path)}", f"delete failed for {path!r}")
 
-        OpenSandbox.delete_path = delete_path  # type: ignore[attr-defined]
+        OpenSandbox.delete_path = delete_path  # type: ignore[method-assign]
 
     if not callable(getattr(OpenSandbox, "move_path", None)):
 
@@ -46,4 +46,4 @@ def install_opensandbox_fs() -> None:
             command = f"mkdir -p {shlex.quote(parent)} && mv {shlex.quote(src)} {shlex.quote(dest)}"
             _require(self, command, f"move failed for {src!r} -> {dest!r}")
 
-        OpenSandbox.move_path = move_path  # type: ignore[attr-defined]
+        OpenSandbox.move_path = move_path  # type: ignore[method-assign]

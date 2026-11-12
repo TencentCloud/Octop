@@ -39,6 +39,12 @@ describe("isSharedExpertViewer", () => {
       false,
     );
   });
+
+  it("keeps workspace tools for the owning account even if is_owner is false", () => {
+    const owned = { is_shared: true, is_owner: false, user_id: 7 };
+    expect(isSharedExpertViewer(owned, { id: 7 })).toBe(false);
+    expect(isSharedExpertViewer(owned, { id: 8 })).toBe(true);
+  });
 });
 
 describe("chatSkillCatalogAgentId", () => {
