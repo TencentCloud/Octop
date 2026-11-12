@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from octop_harness.plugins import PluginRegistry
 
+from octop.infra.agents.plugins import installation
 from octop.infra.agents.plugins import manager as module
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.errors import ErrorCode, OctopError
@@ -181,3 +182,55 @@ def test_dependency_failure_keeps_old_files(
         manager.install_path(FIXTURE, force=True)
     assert PluginRegistry().get("echo-tool") is old
     assert (manager.plugins_dir / "echo-tool/plugin.yaml").is_file()
+
+
+async def test_prepare_reload_skips_broken_plugins_and_continues(
+    manager: PluginManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugins_dir = manager.plugins_dir
+    malformed = plugins_dir / "01-malformed"
+    malformed.mkdir(parents=True)
+    (malformed / "plugin.yaml").write_text("id: [invalid", encoding="utf-8")
+    failed = plugins_dir / "02-failed-dependencies"
+    shutil.copytree(FIXTURE, failed)
+    healthy = plugins_dir / "03-healthy"
+    shutil.copytree(FIXTURE, healthy)
+    prepared: list[Path] = []
+
+    def prepare_dependencies(path: Path) -> None:
+        prepared.append(path)
+        if path == failed:
+            raise RuntimeError("pip failed")
+
+    monkeypatch.setattr(module, "install_dependencies", prepare_dependencies)
+
+    await manager.prepare_reload()
+
+    assert prepared == [failed, healthy]
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    ["--index-url=https://example.org/simple", "invalid requirement !!!"],
+)
+def test_plugin_manifest_requirements_must_be_pep508(
+    manager: PluginManager,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    requirement: str,
+) -> None:
+    source = tmp_path / "with-invalid-requirement"
+    shutil.copytree(FIXTURE, source)
+    manifest = source / "plugin.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + f'\nrequires:\n  - "{requirement}"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        installation.subprocess,
+        "run",
+        lambda *args, **kwargs: pytest.fail("pip must not run"),
+    )
+
+    with pytest.raises(ValueError, match="invalid plugin requirement"):
+        installation.install_dependencies(source)

@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 
 from octop_harness.plugins import PluginManifest
+from packaging.requirements import InvalidRequirement, Requirement
 
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_EXTRACTED_BYTES = 256 * 1024 * 1024
@@ -40,7 +41,16 @@ def install_dependencies(source: Path) -> None:
     if requirements.is_file():
         commands.append(["-r", str(requirements)])
     if manifest.requires:
-        commands.append(list(manifest.requires))
+        validated: list[str] = []
+        for requirement in manifest.requires:
+            if requirement.lstrip().startswith("-"):
+                raise ValueError(f"invalid plugin requirement: {requirement!r}")
+            try:
+                Requirement(requirement)
+            except InvalidRequirement as exc:
+                raise ValueError(f"invalid plugin requirement: {requirement!r}") from exc
+            validated.append(requirement)
+        commands.append(validated)
     uv = shutil.which("uv")
     installer = (
         [uv, "pip", "install", "--python", sys.executable]

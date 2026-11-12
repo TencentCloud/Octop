@@ -318,9 +318,17 @@ class PluginManager:
         def prepare() -> None:
             enabled = self.global_enabled_map()
             for directory in discover_plugin_dirs(self._plugins_dir):
-                manifest = PluginManifest.load(directory / "plugin.yaml")
-                if enabled.get(manifest.id, True):
-                    install_dependencies(directory)
+                try:
+                    manifest = PluginManifest.load(directory / "plugin.yaml")
+                    if enabled.get(manifest.id, True):
+                        install_dependencies(directory)
+                except Exception as exc:
+                    logger.error(
+                        "failed to prepare plugin reload from %s: %s",
+                        directory,
+                        exc,
+                        exc_info=True,
+                    )
 
         await asyncio.get_running_loop().run_in_executor(None, prepare)
 
@@ -798,21 +806,36 @@ class PluginManager:
             extract_to.mkdir()
             try:
                 with zipfile.ZipFile(archive) as zf:
-                    if (
-                        sum(info.file_size for info in zf.infolist()) > MAX_EXTRACTED_BYTES
-                        or len(zf.infolist()) > 10000
-                    ):
+                    members = zf.infolist()
+                    if len(members) > 10000:
                         raise OctopError(
                             ErrorCode.PLUGIN_INVALID_ARCHIVE, "plugin archive expands beyond limits"
                         )
-                    for member in zf.namelist():
-                        target = (extract_to / member).resolve()
-                        if not target.is_relative_to(extract_to.resolve()):
+                    root = extract_to.resolve()
+                    targets: list[tuple[zipfile.ZipInfo, Path]] = []
+                    for member in members:
+                        target = (root / member.filename).resolve()
+                        if not target.is_relative_to(root):
                             raise OctopError(
                                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                                 "zip path traversal detected",
                             )
-                    zf.extractall(extract_to)
+                        targets.append((member, target))
+                    extracted_size = 0
+                    for member, target in targets:
+                        if member.is_dir():
+                            target.mkdir(parents=True, exist_ok=True)
+                            continue
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        with zf.open(member) as source, target.open("wb") as output:
+                            while chunk := source.read(64 * 1024):
+                                extracted_size += len(chunk)
+                                if extracted_size > MAX_EXTRACTED_BYTES:
+                                    raise OctopError(
+                                        ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                                        "plugin archive expands beyond limits",
+                                    )
+                                output.write(chunk)
             except OctopError:
                 raise
             except zipfile.BadZipFile as exc:

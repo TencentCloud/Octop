@@ -43,6 +43,7 @@ dependencies = [
     "python-docx>=1.2.0",
     "python-pptx>=1.0",
     "pypinyin>=0.53",
+    "packaging>=24",
     "openpyxl>=3.1",
     "xlrd>=2.0.1",
     "ldap3>=2.9.1",
