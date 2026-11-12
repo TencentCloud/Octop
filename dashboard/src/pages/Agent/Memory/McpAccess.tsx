@@ -53,7 +53,7 @@ const UNRESTRICTED_EXPERT = "__unrestricted__";
 
 /** Public setup guide for the clients this tab issues tokens to. */
 const MCP_SETUP_DOCS_URL =
-  "https://github.com/TencentCloud/Octop/blob/develop/docs/memory-mcp.md";
+  "https://github.com/TencentCloud/octop-memory/blob/main/plugins/harness/AI-SETUP.md";
 
 interface CreateFormValues {
   name: string;
@@ -207,6 +207,14 @@ export default function McpAccess() {
 
   const buildInstallScript = (plaintext: string) =>
     `curl -fsSL https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.sh | sh -s -- --url ${origin}/mcp/memory/ --token ${plaintext}`;
+
+  const buildAiPrompt = (plaintext: string) =>
+    [
+      "请按 https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/AI-SETUP.md 完成 octop-memory 终端接入。",
+      `OCTOP_URL=${origin}/mcp/memory/`,
+      `OCTOP_TOKEN=${plaintext}`,
+      "安装后按文档里的验证步骤检查召回与上报，并把结果告诉我。",
+    ].join("\n");
 
   const buildInstallPowerShell = (plaintext: string) =>
     `irm https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.ps1 -OutFile install.ps1; .\\install.ps1 -Url ${origin}/mcp/memory/ -Token ${plaintext}`;
@@ -889,6 +897,29 @@ export default function McpAccess() {
                         onClick={() =>
                           void copySetupCommand(
                             buildInstallPowerShell(created.plaintext),
+                          )
+                        }
+                      >
+                        {t("memory.mcp.copyCommand", "复制命令")}
+                      </Button>
+                    </Space.Compact>
+                  ),
+                },
+                {
+                  key: "ai",
+                  label: t("memory.mcp.aiInstall", "交给 AI"),
+                  children: (
+                    <Space.Compact style={{ width: "100%" }}>
+                      <Input.TextArea
+                        readOnly
+                        autoSize={{ minRows: 4, maxRows: 8 }}
+                        value={buildAiPrompt(created.plaintext)}
+                        style={{ fontFamily: "monospace", fontSize: 12 }}
+                      />
+                      <Button
+                        onClick={() =>
+                          void copySetupCommand(
+                            buildAiPrompt(created.plaintext),
                           )
                         }
                       >
