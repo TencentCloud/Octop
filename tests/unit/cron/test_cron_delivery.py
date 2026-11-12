@@ -421,3 +421,187 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     assert titled is not None
     assert titled.title == "喝水提醒"
     db.close()
+
+
+def _agent_manager_for_model_tests(**overrides: object) -> MagicMock:
+    """AgentManager mock wired for _build_agent_request model-resolution tests."""
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.get_row = MagicMock(return_value=overrides.get("row"))
+    agent_manager.get_config = MagicMock(return_value={})
+    agent_manager.providers.is_model_ref_usable = MagicMock(return_value=True)
+    agent_manager.providers.resolve_explicit_default_model = MagicMock(return_value=None)
+    agent_manager.resolve_fallback_model_ref = MagicMock(return_value=None)
+    return agent_manager
+
+
+@pytest.mark.asyncio
+async def test_agent_unusable_pinned_model_falls_back_to_auto() -> None:
+    """A pinned ref whose provider was disabled must not reach the harness (#2610)."""
+    session = _session(channel_type="feishu")
+    captured: dict[str, dict] = {}
+
+    async def _stream(_aid: str, _request: dict):
+        captured["request"] = _request
+        yield {"type": "token", "content": "done"}
+
+    agent_manager = _agent_manager_for_model_tests()
+    agent_manager.providers.is_model_ref_usable = MagicMock(return_value=False)
+    agent_manager.stream = _stream
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(
+        _command(task_type="agent", prompt="run", model="Dead/dead-model")
+    )
+
+    request = captured["request"]
+    assert "model" not in request
+    assert request["configurable"]["octop_auto_route"] is True
+
+
+@pytest.mark.asyncio
+async def test_agent_unusable_pinned_model_uses_fallback_ref() -> None:
+    """When the pinned ref dies, the healthy fallback ref is used (#2610)."""
+    session = _session(channel_type="feishu")
+    captured: dict[str, dict] = {}
+
+    async def _stream(_aid: str, _request: dict):
+        captured["request"] = _request
+        yield {"type": "token", "content": "done"}
+
+    agent_manager = _agent_manager_for_model_tests()
+    agent_manager.providers.is_model_ref_usable = MagicMock(return_value=False)
+    agent_manager.resolve_fallback_model_ref = MagicMock(return_value="B/model-b")
+    agent_manager.stream = _stream
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(
+        _command(task_type="agent", prompt="run", model="Dead/dead-model")
+    )
+
+    request = captured["request"]
+    assert request["model"] == "B/model-b"
+    assert "octop_auto_route" not in request.get("configurable", {})
+
+
+@pytest.mark.asyncio
+async def test_agent_usable_pinned_model_passes_through() -> None:
+    """A still-usable pinned ref is forwarded unchanged, without AUTO routing."""
+    session = _session(channel_type="feishu")
+    captured: dict[str, dict] = {}
+
+    async def _stream(_aid: str, _request: dict):
+        captured["request"] = _request
+        yield {"type": "token", "content": "done"}
+
+    agent_manager = _agent_manager_for_model_tests()
+    agent_manager.stream = _stream
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(
+        _command(task_type="agent", prompt="run", model="B/model-b")
+    )
+
+    request = captured["request"]
+    assert request["model"] == "B/model-b"
+    assert "octop_auto_route" not in request.get("configurable", {})
+
+
+@pytest.mark.asyncio
+async def test_agent_unpinned_job_resolves_explicit_default() -> None:
+    """An unpinned job re-resolves the agent default each run instead of the snapshot (#2610)."""
+    session = _session(channel_type="feishu")
+    captured: dict[str, dict] = {}
+
+    async def _stream(_aid: str, _request: dict):
+        captured["request"] = _request
+        yield {"type": "token", "content": "done"}
+
+    row = MagicMock()
+    row.default_model = "A/model-a"
+    agent_manager = _agent_manager_for_model_tests(row=row)
+    agent_manager.providers.resolve_explicit_default_model = MagicMock(
+        return_value="A/model-a"
+    )
+    agent_manager.stream = _stream
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    request = captured["request"]
+    assert request["model"] == "A/model-a"
+    assert "octop_auto_route" not in request.get("configurable", {})
+
+
+@pytest.mark.asyncio
+async def test_agent_stale_explicit_default_falls_back() -> None:
+    """A stale agent default is dropped and the healthy fallback is used (#2610)."""
+    session = _session(channel_type="feishu")
+    captured: dict[str, dict] = {}
+
+    async def _stream(_aid: str, _request: dict):
+        captured["request"] = _request
+        yield {"type": "token", "content": "done"}
+
+    row = MagicMock()
+    row.default_model = "A/stale"
+    agent_manager = _agent_manager_for_model_tests(row=row)
+    agent_manager.providers.resolve_explicit_default_model = MagicMock(
+        return_value="A/stale"
+    )
+    agent_manager.providers.is_model_ref_usable = MagicMock(return_value=False)
+    agent_manager.resolve_fallback_model_ref = MagicMock(return_value="B/good")
+    agent_manager.stream = _stream
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    request = captured["request"]
+    assert request["model"] == "B/good"
+    assert "octop_auto_route" not in request.get("configurable", {})

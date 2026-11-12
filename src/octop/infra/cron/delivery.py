@@ -238,11 +238,12 @@ class CronDeliveryService:
 
         row = self._agent_manager.get_row(command.agent_id)
         default_model = (row.default_model if row is not None else None) or None
+        model_ref = self._resolve_cron_model_ref(command, row)
         composer = build_composer_context(
             mcp_servers=shown_servers or None,
             skills=None,
             target_agent_ids=None,
-            model_ref=command.model,
+            model_ref=model_ref,
             default_model=default_model,
         )
         message_kwargs = {COMPOSER_CTX_KEY: composer} if composer else None
@@ -253,13 +254,54 @@ class CronDeliveryService:
             session_key=command.session_key,
             source=session.channel_type,
             text=command.prompt,
-            model=command.model,
+            model=model_ref,
+            auto_route=model_ref is None,
             message_kwargs=message_kwargs,
         )
         if servers:
             request["mcp_servers"] = servers
         self._attach_turn_knowledge_config(request, command, session)
         return request
+
+    def _resolve_cron_model_ref(self, command: CronDeliveryCommand, row: Any) -> str | None:
+        """Resolve the per-run model the same way the chat path does (#2610).
+
+        Chat re-resolves the model ref every turn and falls back when the
+        pinned ref has become unusable (provider disabled, renamed or removed);
+        cron used to hand ``command.model`` straight to the harness and relied
+        on the config snapshot baked at agent build time, so a stale ref failed
+        every run with ``Unknown provider`` and an unpinned job kept using the
+        stale snapshot forever. Drop unusable refs, then try the agent's
+        explicit default, then the healthy fallback. ``None`` means AUTO.
+        """
+        providers = self._agent_manager.providers
+        model_ref = command.model
+        if model_ref and not providers.is_model_ref_usable(model_ref):
+            logger.warning(
+                "cron %s model %r is no longer usable; falling back",
+                command.cron_id,
+                model_ref,
+            )
+            model_ref = None
+        if not model_ref and row is not None:
+            resolved = providers.resolve_explicit_default_model(
+                row,
+                self._agent_manager.get_config(command.agent_id),
+            )
+            if isinstance(resolved, str) and resolved.strip():
+                model_ref = resolved.strip()
+        if model_ref and not providers.is_model_ref_usable(model_ref):
+            logger.warning(
+                "cron %s default model %r is no longer usable; falling back",
+                command.cron_id,
+                model_ref,
+            )
+            model_ref = None
+        if not model_ref:
+            fallback = self._agent_manager.resolve_fallback_model_ref()
+            if isinstance(fallback, str) and fallback.strip():
+                model_ref = fallback.strip()
+        return model_ref
 
     def _attach_turn_knowledge_config(
         self,
