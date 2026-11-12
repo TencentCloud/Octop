@@ -299,7 +299,7 @@ def test_gc_orphans_reports_then_deletes(tmp_path: Path) -> None:
         _seed_checkpoint(db_path, "thr_live", b"live")
         _seed_checkpoint(db_path, "thr_orphan", b"orphan-bytes")
 
-        reported = gc_orphan_checkpoints(services, agent_id="ag1", apply=False)
+        reported = gc_orphan_checkpoints(services, agent_id="ag1", apply=False).orphans
         assert [item.thread_id for item in reported] == ["thr_orphan"]
         assert reported[0].nbytes == len(b"orphan-bytes")
         assert _checkpoint_count(db_path, "thr_orphan") == 1
@@ -400,3 +400,19 @@ def test_compact_rebuilds_sqlite_after_delete(tmp_path: Path) -> None:
         is True
     )
     assert sqlite_freelist_bytes(db_path) == 0
+
+
+def test_describe_sweep_mentions_postgres_leftovers_and_skipped_databases() -> None:
+    from octop.infra.agents.memory.thread_cleanup import describe_sweep
+
+    base = {"namespaces": 0, "threads": 2, "directories": 0}
+    assert describe_sweep(base, "en").count("\n") == 0
+
+    text = describe_sweep(
+        {**base, "postgres_kept": {"threads": 3, "namespaces": 1}, "skipped_databases": 2},
+        "en",
+    )
+    lines = text.splitlines()
+    assert len(lines) == 3
+    assert "3 checkpoint threads" in lines[1]
+    assert "2 external PostgreSQL" in lines[2]

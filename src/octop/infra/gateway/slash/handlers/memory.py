@@ -36,13 +36,9 @@ def _status_line(state: dict[str, Any], locale: str) -> str:
     report = state.get("report")
     sweep = state.get("sweep")
     if phase == "done" and isinstance(sweep, dict):
-        line += "\n" + full_tr(
-            "memory_slim.swept",
-            locale,
-            namespaces=sweep.get("namespaces", 0),
-            threads=sweep.get("threads", 0),
-            directories=sweep.get("directories", 0),
-        )
+        from octop.infra.agents.memory.thread_cleanup import describe_sweep  # noqa: PLC0415
+
+        line += "\n" + describe_sweep(sweep, locale)
     if phase == "done" and report and report.get("backend") == "postgres":
         line += "\n" + full_tr(
             "memory_slim.postgres_result",
