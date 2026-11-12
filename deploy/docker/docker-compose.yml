@@ -1,21 +1,32 @@
 # =============================================================================
-# Octop — Docker Compose（国内镜像）
+# Octop — Docker Compose
 #
-# 不在本地构建。官方 GHCR（ghcr.io/tencentcloud/octop）拉取失败时用本文件，
-# 镜像来自南京大学 GHCR 源：ghcr.nju.edu.cn/tencentcloud/octop:latest
+# From the repository root:
+#   docker compose -f deploy/docker/docker-compose.yml up -d
+#   OCTOP_PORT=9090 docker compose -f deploy/docker/docker-compose.yml up -d
+#   OCTOP_DEFAULT_PASSWORD=<your-strong-password> docker compose -f deploy/docker/docker-compose.yml up -d
 #
-# 用法（在仓库根目录执行）:
-#   docker compose -f docker/docker-compose.cn.yml up -d
-#   OCTOP_PORT=9090 docker compose -f docker/docker-compose.cn.yml up -d
-#   OCTOP_DEFAULT_PASSWORD=<your-strong-password> docker compose -f docker/docker-compose.cn.yml up -d
+# Optional deploy/docker/.env (Compose interpolation only), for example:
+#   OCTOP_PORT=9090
+#   OCTOP_DEFAULT_PASSWORD=<your-strong-password>
+#   OCTOP_ADMIN_USERNAME=admin
+#   OCTOP_DATABASE_DRIVER=postgresql
+#   OCTOP_DATABASE_URL=postgresql://octop:octop@host.docker.internal:5432/octop
 #
-# 环境变量与 docker-compose.yml 相同。docker/.env 仅用于 Compose 插值；
-# 变量必须列在下方 environment 才会进入容器。
+# A key in deploy/docker/.env reaches the container only when listed under
+# environment below. The same keys can also live in ~/.octop/env on the
+# mounted data directory.
+# The password must be at least 8 characters and contain both letters and
+# digits. If it is unset or rejected, no admin is created and the setup
+# wizard starts (unlock password in /data/.octop/octop-login.txt).
 # =============================================================================
 
 services:
   octop:
-    image: ghcr.nju.edu.cn/tencentcloud/octop:latest
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: octop:latest
     container_name: octop
     restart: unless-stopped
     ulimits:

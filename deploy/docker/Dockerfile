@@ -6,22 +6,22 @@
 # 阶段 2: Python 运行时 + 预构建前端
 #
 # 用法（在仓库根目录执行，构建上下文为根目录）:
-#   docker build -f docker/Dockerfile -t octop:latest .
+#   docker build -f deploy/docker/Dockerfile -t octop:latest .
 #   docker run -d -p 8088:8088 --shm-size=1g -v octop-data:/data/.octop -e HOME=/data octop:latest
 #
 # --shm-size=1g 是启用远程桌面所必需的。Docker 默认 /dev/shm 只有 64MB，Xvnc 会起不来。
 # compose 文件里已经写了 shm_size: 1gb。
 #
-# 国内加速（可选，需 BuildKit，docker/docker_build.sh 默认已开启）:
+# 国内加速（可选，需 BuildKit，deploy/docker/docker_build.sh 默认已开启）:
 #   PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
 #   PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
 #   NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
 #   APT_MIRROR=mirrors.cloud.tencent.com \
-#   bash docker/docker_build.sh
+#   bash deploy/docker/docker_build.sh
 #
 # 或直接传 build-arg:
 #   docker build \
-#     -f docker/Dockerfile \
+#     -f deploy/docker/Dockerfile \
 #     --build-arg PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
 #     --build-arg PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
 #     --build-arg NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
@@ -30,7 +30,7 @@
 #     -t octop:latest .
 #
 # 或使用 Compose:
-#   docker compose -f docker/docker-compose.yml up -d
+#   docker compose -f deploy/docker/docker-compose.yml up -d
 #
 # 默认 OCTOP_IMAGE_VARIANT=full：虚拟桌面、系统浏览器、本地向量和 OCR 都在镜像里，
 # 桌面不会启动，用户在控制台确认后才启用。桌面安装已经带上 Chromium，不再另下
@@ -150,8 +150,8 @@ COPY src/ ./src/
 COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 
 COPY .env.example ./
-COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
+COPY deploy/docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY deploy/docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/bake-desktop.sh
 
 # pynput 在 import 时会连接 X。full 的无头构建只确认包已安装，不加载后端。

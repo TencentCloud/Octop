@@ -579,11 +579,14 @@ class UserManager:
         workspace_root_dir: Any = UNSET,
         token_quota: Any = UNSET,
         max_agents: Any = UNSET,
+        allowed_backend_types: Any = UNSET,
     ) -> None:
         from octop.infra.users.resource_policy import (
+            POLICY_ALLOWED_BACKEND_TYPES,
             POLICY_MAX_AGENTS,
             POLICY_TOKEN_QUOTA,
             POLICY_WORKSPACE_ROOT_DIR,
+            normalize_allowed_backend_types,
             normalize_max_agents,
             normalize_token_quota,
             normalize_workspace_root_dir,
@@ -596,6 +599,7 @@ class UserManager:
         root_arg: Any = UNSET
         quota_arg: Any = UNSET
         max_agents_arg: Any = UNSET
+        backend_types_arg: Any = UNSET
         if workspace_root_dir is not UNSET:
             root_arg = normalize_workspace_root_dir(workspace_root_dir)
             updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
@@ -605,6 +609,9 @@ class UserManager:
         if max_agents is not UNSET:
             max_agents_arg = normalize_max_agents(max_agents)
             updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
+        if allowed_backend_types is not UNSET:
+            backend_types_arg = normalize_allowed_backend_types(allowed_backend_types)
+            updates[POLICY_ALLOWED_BACKEND_TYPES] = backend_types_arg
         if not updates:
             return
         self._services.user_policy_repo.merge(row.id, updates)
@@ -628,6 +635,13 @@ class UserManager:
                 action="user.set_max_agents",
                 target=username,
                 payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
+        if allowed_backend_types is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_allowed_backend_types",
+                target=username,
+                payload=backend_types_arg or "",
             )
 
     async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
