@@ -174,6 +174,21 @@ class TeamManager:
         uid = _octop_user_id(call.user_id)
         group = self._is_group_dispatch(call)
         extra = self._member_runtime(call)
+        callee_mcp = list(self._agent_manager.default_mcp_servers(call.to_agent_id) or [])
+        if callee_mcp:
+            try:
+                await self._agent_manager.prepare_chat_mcp(
+                    call.to_agent_id,
+                    callee_mcp,
+                    connector_user_id=uid,
+                )
+            except Exception:
+                logger.warning(
+                    "failed to load callee MCP servers for peer session agent=%s",
+                    call.to_agent_id,
+                    exc_info=True,
+                )
+            extra = {**(extra or {}), "mcp_servers": list(callee_mcp)}
         question = ""
         dispatch_message = None
         if group:
