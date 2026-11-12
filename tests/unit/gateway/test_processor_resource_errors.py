@@ -56,7 +56,7 @@ async def test_auth_exception_is_displayed_as_failure_and_kept_out_of_checkpoint
         assert events[-1].type == "completed"
     assert failures == [stream_error_message(AUTH, "zh")]
     processor._agent_manager.append_thread_messages.assert_not_called()
-    assert appended  # The product archive retains the failed turn for display.
+    assert appended  # The v1 projection retains the failed turn for display.
 
 
 def test_stream_error_preserves_resource_error_code() -> None:
@@ -164,6 +164,35 @@ async def test_terminal_error_is_saved_before_delivery_even_if_consumer_closes(e
     finally:
         await events.aclose()
     assert len(appended) == 1  # Closing must not append a duplicate error turn.
+
+
+def _duration_ms(items: list[Any]) -> int | None:
+    for item in items:
+        wire = json.loads(item.message_json)
+        data = wire.get("data") if isinstance(wire, dict) else None
+        extra = data.get("additional_kwargs") if isinstance(data, dict) else None
+        if isinstance(extra, dict) and isinstance(extra.get("turn_duration_ms"), int):
+            return int(extra["turn_duration_ms"])
+    return None
+
+
+@pytest.mark.asyncio
+async def test_im_turn_records_duration_before_history_is_stored() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "partial answer"}
+
+    processor, msg, appended = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    msg.channel_id = "feishu-test"
+    msg.channel_type = "feishu"
+    events = [event async for event in processor(msg)]
+
+    assert events[-1].type == "completed"
+    assert appended
+    duration = _duration_ms(appended[0])
+    assert duration is not None
+    assert duration >= 0
 
 
 @pytest.mark.asyncio

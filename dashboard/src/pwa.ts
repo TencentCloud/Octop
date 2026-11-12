@@ -12,3 +12,9 @@ export async function applyUpdate(): Promise<void> {
   const { applyUpdate: apply } = await import("./sw-register");
   await apply();
 }
+
+/** Whether a newer frontend is already waiting. Survives a missed event. */
+export async function hasPendingAppUpdate(): Promise<boolean> {
+  const { hasPendingAppUpdate: pending } = await import("./sw-register");
+  return pending();
+}

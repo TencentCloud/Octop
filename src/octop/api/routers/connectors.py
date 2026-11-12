@@ -31,6 +31,7 @@ from octop.infra.connectors.catalog import (
 from octop.infra.connectors.custom_mcp import (
     CUSTOM_MCP_KIND,
     is_custom_mcp_kind,
+    oauth_client_from_spec,
     oauth_configured,
     parse_synthetic_instance_id,
     redact_servers_for_api,
@@ -205,7 +206,10 @@ def _oauth_callback_html(
     return HTMLResponse(f"<html><body>{escape(message)}</body></html>", status_code=status_code)
 
 
-def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: str) -> str:
+def _resolve_custom_mcp_oauth_target(
+    svc: ConnectorService, user_id: int, server_name: str
+) -> tuple[str, dict[str, Any]]:
+    """MCP URL and saved OAuth client (``{}`` when none) of a custom server."""
     saved = svc.get_custom_servers(user_id)
     raw = saved.get(server_name)
     if not isinstance(raw, dict):
@@ -221,7 +225,7 @@ def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: st
     mcp_url = str(raw.get("url") or "").strip()
     if not mcp_url:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "server url is required")
-    return mcp_url
+    return mcp_url, oauth_client_from_spec(raw)
 
 
 async def _begin_oauth_flow(
@@ -255,6 +259,7 @@ async def _begin_oauth_flow(
         )
 
     mcp_url: str | None = None
+    oauth_client: dict[str, Any] | None = None
     if target_type == "custom_mcp":
         server_name = str(target.get("server_name") or "").strip()
         if not server_name:
@@ -262,7 +267,9 @@ async def _begin_oauth_flow(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
                 "custom_mcp target requires server_name",
             )
-        mcp_url = _resolve_custom_mcp_url(_connector_service(server), user.id, server_name)
+        mcp_url, oauth_client = _resolve_custom_mcp_oauth_target(
+            _connector_service(server), user.id, server_name
+        )
 
     try:
         authorize_url, verifier, ctx = await start_oauth_for_target(
@@ -271,6 +278,7 @@ async def _begin_oauth_flow(
             state=state,
             settings_repo=server.services.settings_repo,
             mcp_url=mcp_url,
+            oauth_client=oauth_client,
         )
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
@@ -538,7 +546,12 @@ def _schedule_connector_reload(
 
 
 def _can_manage_connector(inst: Any, user: Any) -> bool:
-    return bool(inst.user_id == user.id or user.role == "admin")
+    """Only the owning user may view credentials or change the instance.
+
+    Sharing lets other users (including admins) select the connector. It does
+    not grant edit, delete, enable, or credential access.
+    """
+    return bool(inst.user_id == user.id)
 
 
 def _assert_can_manage_connector(inst: Any, user: Any) -> None:
@@ -628,7 +641,7 @@ async def list_instances(
         item["owner_display_name"] = (
             owner.display_name or owner.username if owner is not None else None
         )
-        item["can_manage"] = owner_id == user.id or user.role == "admin"
+        item["can_manage"] = owner_id == user.id
         instance_id = str(item.get("instance_id") or "")
         if instance_id and not instance_id.startswith("custom:"):
             item.update(
@@ -1122,7 +1135,7 @@ async def test_instance(
     creds = await svc.ensure_fresh_credentials(instance_id, inst.kind)
     if not creds:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
-    if inst.kind == "agently-cli":
+    if inst.kind in {"agently-cli", "ragflow"}:
         creds["_locale"] = resolve_request_locale(request)
 
     try:
@@ -1163,7 +1176,7 @@ async def test_credentials(
             str(exc),
             details={"reason": str(exc)},
         ) from exc
-    if body.kind == "agently-cli":
+    if body.kind in {"agently-cli", "ragflow"}:
         cred_payload["_locale"] = resolve_request_locale(request)
     try:
         return await probe_connector(
@@ -1582,6 +1595,8 @@ async def oauth_callback(
             tokens["oauth_client_id"] = ctx["client_id"]
         if ctx.get("client_secret"):
             tokens["oauth_client_secret"] = ctx["client_secret"]
+        if ctx.get("token_endpoint"):
+            tokens["oauth_token_endpoint"] = ctx["token_endpoint"]
         delete_oauth_ctx(server.services.settings_repo, row.state_id)
     except Exception as exc:
         logger.exception("oauth callback failed for %s", row.kind)

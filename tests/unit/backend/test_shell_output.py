@@ -78,8 +78,11 @@ def test_install_is_idempotent_and_leaves_stdlib() -> None:
     first = local_shell.subprocess
     install_shell_output_decoding()
     assert local_shell.subprocess is first
-    assert isinstance(first, _ShellSubprocess)
-    assert isinstance(bwrap_shell.subprocess, _ShellSubprocess)
+    # Harness 1.0.5 decodes inside execute() and exposes decode_child_output.
+    # Octop must leave the stdlib subprocess module in place.
+    assert hasattr(local_shell, "decode_child_output")
+    assert first is subprocess
+    assert bwrap_shell.subprocess is subprocess
     assert subprocess.Popen is not first.run
     assert local_shell.subprocess.TimeoutExpired is subprocess.TimeoutExpired
     assert local_shell.subprocess.DEVNULL is subprocess.DEVNULL
@@ -126,16 +129,13 @@ def test_execute_decodes_utf8_and_gbk(tmp_path: Path) -> None:
 
 def test_bwrap_module_run_uses_the_same_decoder() -> None:
     import octop_harness.backends.bwrap_shell as bwrap_shell
+    import octop_harness.backends.local_shell as local_shell
 
     install_shell_output_decoding()
-    result = bwrap_shell.subprocess.run(
-        [sys.executable, "-c", "import sys; sys.stdout.buffer.write(bytes([0x81, 0x40]))"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0
-    assert result.stdout == "丂"
+    # Production execute() captures bytes and decodes them; it no longer
+    # relies on subprocess text mode.
+    assert bwrap_shell.decode_child_output is local_shell.decode_child_output
+    assert bwrap_shell.decode_child_output(_GBK_ONLY) == "丂"
 
 
 def test_skips_install_when_harness_already_decodes(monkeypatch) -> None:

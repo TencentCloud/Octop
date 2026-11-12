@@ -16,9 +16,10 @@ def test_load_provider_presets_integration() -> None:
 
     deepseek = next(p for p in presets if p["id"] == "deepseek")
     deepseek_ids = {m["id"] for m in deepseek["models"]}
-    assert "deepseek-v4-flash" in deepseek_ids
+    # Harness 1.0.5 renamed the flash catalog id; v4-pro keeps its name.
+    assert "deepseek-flash" in deepseek_ids
     assert "deepseek-v4-pro" in deepseek_ids
-    flash = next(m for m in deepseek["models"] if m["id"] == "deepseek-v4-flash")
+    flash = next(m for m in deepseek["models"] if m["id"] == "deepseek-flash")
     assert flash["reasoning_config"]["adapter"] == "thinking"
 
     token_plan = next(p for p in presets if p["id"] == "tencent-token-plan")
@@ -65,7 +66,7 @@ def test_load_provider_presets_integration() -> None:
     # Harness owns the catalog ids and token limits. Octop only overlays reasoning.
     hai_models = {m["id"]: m for m in hai["models"]}
     assert hai_models["DeepSeek-V4-Pro"]["reasoning_config"]["adapter"] == "thinking"
-    assert hai_models["DeepSeek-V4-Flash"]["reasoning_config"]["adapter"] == "thinking"
+    assert hai_models["deepseek-flash"]["reasoning_config"]["adapter"] == "thinking"
     assert hai_models["DeepSeek-V3.1-Terminus-W4AFP8"]["reasoning_config"]["adapter"] == "thinking"
     assert hai_models["Kimi-K2.5"]["reasoning_config"]["adapter"] == "thinking"
     assert hai_models["MiniMax-M2.7"]["reasoning_config"]["adapter"] == "status_only"

@@ -7,8 +7,8 @@ import ipaddress
 import json
 import logging
 from contextlib import suppress
-from typing import Any
-from urllib.parse import urljoin, urlparse, urlsplit
+from typing import Any, NoReturn
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit
 
 import httpx
 import websockets
@@ -62,10 +62,104 @@ def _handshake_http_status(exc: BaseException) -> int | None:
     return status if isinstance(status, int) else None
 
 
+def _close_frame(exc: BaseException) -> Any:
+    return getattr(exc, "rcvd", None) or getattr(exc, "sent", None)
+
+
 def _close_code(exc: BaseException) -> int | None:
-    rcvd = getattr(exc, "rcvd", None)
-    code = getattr(rcvd, "code", None)
+    frame = _close_frame(exc)
+    code = getattr(frame, "code", None)
     return code if isinstance(code, int) else None
+
+
+def _close_reason(exc: BaseException) -> str:
+    frame = _close_frame(exc)
+    reason = getattr(frame, "reason", None)
+    if isinstance(reason, bytes):
+        reason = reason.decode("utf-8", errors="replace")
+    return str(reason or "").strip()
+
+
+_DIAL_ERROR_PREFIX = "octop:apiErrors."
+# The peer will reject these the same way on every retry. Fail the dial at once
+# and keep the readable error; do not spend the auto-reconnect budget on them.
+_PERMANENT_DIAL_CODES = frozenset(
+    {
+        ErrorCode.BRIDGE_SELF_CONNECT,
+        ErrorCode.BRIDGE_PEER_FORBIDDEN,
+        ErrorCode.BRIDGE_PEER_CONNECTION_OWNED,
+        ErrorCode.BRIDGE_CONNECTION_LIMIT,
+        ErrorCode.BRIDGE_AUTH_FAILED,
+    }
+)
+
+
+def bridge_failure_from_dial(exc: BaseException) -> OctopError:
+    """Map a peer WebSocket close into a user-facing bridge error.
+
+    The raw ``websockets`` text (``received 4003 (private use) ...``) is not
+    something to show in the dashboard.
+    """
+    reason = _close_reason(exc).lower()
+    code = _close_code(exc)
+    if code == 4004 or "self connect" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_SELF_CONNECT,
+            "cannot link this Octop instance to itself",
+        )
+    if code == 4003 and "permission" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_PEER_FORBIDDEN,
+            "peer account lacks cloud collab permission",
+        )
+    if code == 4003 and "owned by another" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_PEER_CONNECTION_OWNED,
+            "connection owned by another user on the peer",
+        )
+    if code == 4008 or "connection limit" in reason:
+        return OctopError(
+            ErrorCode.BRIDGE_CONNECTION_LIMIT,
+            f"at most {MAX_CONNECTIONS_PER_USER} cloud collab connections",
+            details={"limit": MAX_CONNECTIONS_PER_USER},
+        )
+    if code == 4001:
+        return OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "peer rejected credentials")
+    return OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, _annotate_bridge_dial_error(exc))
+
+
+def dial_error_note(exc: BaseException) -> str:
+    """Persist a bridge dial failure. Known cases use an ``octop:`` i18n key.
+
+    Interpolation values (for example the connection ``limit``) ride in the
+    query so the dashboard and the API toast can format the same sentence.
+    """
+    failure = bridge_failure_from_dial(exc)
+    if failure.code is not ErrorCode.BRIDGE_PEER_UNREACHABLE:
+        note = f"{_DIAL_ERROR_PREFIX}{failure.code.value}"
+        if failure.details:
+            note = f"{note}?{urlencode(failure.details)}"
+        return note
+    reason = _close_reason(exc)
+    if reason:
+        return reason
+    return _annotate_bridge_dial_error(exc)
+
+
+def error_from_dial_note(note: str | None) -> OctopError | None:
+    text = (note or "").strip()
+    if not text.startswith(_DIAL_ERROR_PREFIX):
+        return None
+    body = text[len(_DIAL_ERROR_PREFIX) :]
+    name, _, query = body.partition("?")
+    try:
+        code = ErrorCode(name)
+    except ValueError:
+        return None
+    details: dict[str, Any] = {}
+    for key, value in parse_qsl(query, keep_blank_values=False):
+        details[key] = int(value) if key == "limit" and value.isdigit() else value
+    return OctopError(code, name, details=details)
 
 
 def _should_refresh_peer_token(exc: BaseException) -> bool:
@@ -307,6 +401,18 @@ class BridgeManager:
 
     def get_owned(self, connection_id: str, owner_user_id: int) -> BridgeConnectionRow:
         row = self._repo.get_for_owner(connection_id, owner_user_id)
+        if row is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return row
+
+    def get_usable(self, connection_id: str, user_id: int) -> BridgeConnectionRow:
+        """Owner, or a user the link was shared with.
+
+        Management (connect, edit, delete) stays on ``get_owned``. Chat and
+        read tunnels use this so a shared recipient is not told the link is
+        missing.
+        """
+        row = self._repo.get_visible(connection_id, user_id)
         if row is None:
             raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
         return row
@@ -649,15 +755,26 @@ class BridgeManager:
                 self._reconnect_failures[connection_id] = 0
                 return self._repo.get(connection_id) or row
             if task.done():
-                exc = task.exception() if not task.cancelled() else None
-                msg = str(exc) if exc else "bridge connect failed"
-                latest = self._repo.get(connection_id)
-                if latest is not None and latest.status != "error":
-                    self._repo.update_status(connection_id, status="error", last_error=msg[:500])
-                raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, msg)
+                self._raise_dial_failure(connection_id)
             await asyncio.sleep(0.1)
-        self._repo.update_status(connection_id, status="error", last_error="bridge connect timeout")
-        raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, "bridge connect timeout")
+        self._raise_dial_failure(connection_id, fallback="bridge connect timeout")
+
+    def _raise_dial_failure(
+        self, connection_id: str, *, fallback: str = "bridge connect failed"
+    ) -> NoReturn:
+        latest = self._repo.get(connection_id)
+        note = latest.last_error if latest is not None else None
+        known = error_from_dial_note(note)
+        if known is not None:
+            if latest is not None and latest.status != "error":
+                self._repo.update_status(
+                    connection_id, status="error", last_error=(note or "")[:500]
+                )
+            raise known
+        detail = (note or fallback)[:500]
+        if latest is not None and latest.status != "error":
+            self._repo.update_status(connection_id, status="error", last_error=detail)
+        raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, detail)
 
     async def disconnect(self, connection_id: str) -> None:
         self._user_stopped.add(connection_id)
@@ -876,7 +993,17 @@ class BridgeManager:
                     )
                     continue
                 retried_auth = False
-                detail = _annotate_bridge_dial_error(exc)
+                detail = dial_error_note(exc)
+                if bridge_failure_from_dial(exc).code in _PERMANENT_DIAL_CODES:
+                    if self._repo.get(connection_id) is not None:
+                        self._repo.update_status(
+                            connection_id, status="error", last_error=detail[:500]
+                        )
+                    # Leave auto-reconnect enabled, but stop this supervisor so a
+                    # rejected login does not wait out the backoff or overwrite
+                    # the readable error with the English disable line.
+                    self._user_stopped.add(connection_id)
+                    return
                 failures = self._reconnect_failures.get(connection_id, 0) + 1
                 self._reconnect_failures[connection_id] = failures
                 if self._repo.get(connection_id) is not None:
@@ -977,12 +1104,17 @@ class BridgeManager:
             # Dial the peer URL directly. The bearer header survives proxies
             # that strip the query string; peers that only read ``token``
             # still see the query.
+            #
+            # Library keepalive is off. A 20s protocol ping_timeout closes the
+            # socket when a busy peer (demo.octop.chat) is late to pong, and
+            # the supervisor immediately redials, so the link flaps. NAT / L7
+            # idle timers are reset by BridgeSession application pings instead.
             async with websockets.connect(
                 url,
                 open_timeout=20,
                 max_size=BRIDGE_WS_MAX_BYTES,
-                ping_interval=20,
-                ping_timeout=20,
+                ping_interval=None,
+                ping_timeout=None,
                 proxy=None,
                 additional_headers={"Authorization": f"Bearer {token}"},
             ) as ws:
@@ -1116,6 +1248,13 @@ class BridgeManager:
             return
 
         existing = self._repo.get(connection_id)
+        # An outbound row (we stored the peer password) only exists on the
+        # instance that allocated this connection id. A hello for that id means
+        # the dial reached this same Octop — often because the typed URL does
+        # not match the advertised address, so the earlier self-check missed it.
+        if existing is not None and bool(existing.credential_blob):
+            await websocket.close(code=4004, reason="self connect")
+            return
         if existing is not None and int(existing.owner_user_id) != int(user.id):
             await websocket.close(code=4003, reason="connection owned by another user")
             return
@@ -1260,9 +1399,21 @@ class BridgeManager:
         headers: dict[str, str] | None = None,
         body: bytes | None = None,
     ) -> httpx.Response:
-        from octop.infra.bridge.tunnel_policy import is_tunnel_path_allowed
+        from octop.infra.bridge.tunnel_policy import (  # noqa: PLC0415
+            is_tunnel_path_allowed,
+            shared_viewer_may_tunnel,
+        )
 
-        self.get_owned(connection_id, owner_user_id)
+        row = self.get_usable(connection_id, owner_user_id)
+        # The peer runs this hop as the connection owner. A shared recipient
+        # may chat and read, not edit / start / reload / delete the expert.
+        if int(row.owner_user_id) != int(owner_user_id) and not shared_viewer_may_tunnel(
+            method, path
+        ):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "shared cloud collab users cannot manage this expert",
+            )
         # Fail fast with a user-facing "unsupported on remote" code before the hop.
         if not is_tunnel_path_allowed(method, path):
             raise OctopError(
@@ -1296,6 +1447,13 @@ class BridgeManager:
             raise self._bridge_link_error(exc) from exc
         if str(result.get("type") or "") == "tunnel.error":
             code_raw = str(result.get("code") or "").strip()
+            logger.warning(
+                "bridge peer tunnel rejected connection=%s method=%s path=%s code=%s",
+                connection_id,
+                method,
+                path,
+                code_raw or "unknown",
+            )
             if code_raw == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED.value:
                 raise OctopError(
                     ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
@@ -1381,12 +1539,16 @@ class BridgeManager:
             mapped["bridge"] = True
             mapped["bridge_inbound"] = _is_inbound(row)
             # scope=mine also includes experts shared by other users. Keep the
-            # peer account's ownership so those rows are not offered for delete.
-            # Peers that omit the field predate this flag; treat them as owned.
-            mapped["is_owner"] = bool(item["is_owner"]) if "is_owner" in item else True
+            # peer account's ownership so mutation controls are shown only for
+            # peer-owned rows. Older peers may omit this field; fail closed so
+            # the UI does not offer an action that the peer will reject.
+            mapped["is_owner"] = item.get("is_owner") is True
             mapped["is_shared"] = bool(item.get("is_shared"))
-            # Shadow experts are chat-ready while the bridge link is live.
-            mapped["state"] = "running"
+            # Keep the peer runtime state. A stopped expert must not look chat-ready
+            # just because the bridge link itself is up.
+            raw_state = item.get("state")
+            state = raw_state.strip() if isinstance(raw_state, str) else ""
+            mapped["state"] = state or "stopped"
             # Keep bundled /experts/avatars and CDN URLs; proxy uploaded avatars.
             mapped["icon_url"] = rewrite_remote_icon_url(
                 str(mapped.get("icon_url") or mapped.get("icon") or "").strip() or None,
@@ -2114,7 +2276,7 @@ class BridgeManager:
         """Send turn.start to peer and forward turn.chunk frames to ``on_frame``."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -2191,7 +2353,7 @@ class BridgeManager:
         tid = (thread_id or "").strip()
         if not tid:
             return
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -2254,7 +2416,7 @@ class BridgeManager:
         """One-shot peer control (cancel / steer_remove) with chunk forwarding."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         if FEATURE_TURN_CONTROL not in sess.peer_features:
             await on_frame(
@@ -2493,7 +2655,7 @@ class BridgeManager:
         """Relay dashboard browser WS traffic to the peer harness."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_browser_waiter(request_id)

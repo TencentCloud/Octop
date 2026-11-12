@@ -1,5 +1,8 @@
 import { App, Switch, Tooltip, Typography } from "antd";
-import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
 
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -79,13 +82,19 @@ export function ConnectorInstanceCard({
     >
       <div className={styles.typeCardBody}>
         <div className={styles.typeCardHeader}>
-          <div className={styles.typeCardIconLarge}>
-            <ConnectorLogo
-              kind={instance.kind}
-              icon={catalogEntry?.icon}
-              size={40}
-            />
-          </div>
+          <SharedAvatarMark
+            shared={instance.shared}
+            owned={isOwner}
+            ownerName={ownerLabel}
+          >
+            <div className={styles.typeCardIconLarge}>
+              <ConnectorLogo
+                kind={instance.kind}
+                icon={catalogEntry?.icon}
+                size={40}
+              />
+            </div>
+          </SharedAvatarMark>
           <div className={styles.typeCardTitleCol}>
             <Typography.Text
               className={styles.typeCardTitle}
@@ -94,8 +103,8 @@ export function ConnectorInstanceCard({
               {instance.display_name}
             </Typography.Text>
             <SharedResourceBadge
-              shared={instance.shared}
-              owned={isOwner}
+              shared={instance.shared && isOwner}
+              owned
               ownerName={ownerLabel}
             />
           </div>

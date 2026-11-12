@@ -72,6 +72,34 @@ def _stamp_locked_manifest(data: bytes, package_id: str) -> bytes:
     return (f"---\n{stamp}---\n\n{text}").encode()
 
 
+def _package_has_skill(store: Any, package_id: str, slug: str) -> bool:
+    """True when the package source contains a live skill.
+
+    Real stores expose ``has_skill`` (local or PostgreSQL). Older fakes only
+    implement ``package_skills_dir``.
+    """
+    has_skill = getattr(store, "has_skill", None)
+    if callable(has_skill):
+        return bool(has_skill(package_id, slug))
+    skill_md = store.package_skills_dir(package_id) / slug / "SKILL.md"
+    is_file = getattr(skill_md, "is_file", None)
+    if not callable(is_file):
+        return False
+    return bool(is_file())
+
+
+def _read_package_skill(store: Any, package_id: str, slug: str) -> list[tuple[str, bytes]]:
+    read_files = getattr(store, "read_skill_files", None)
+    if callable(read_files) and callable(getattr(store, "has_skill", None)):
+        if not store.has_skill(package_id, slug):
+            raise SkillTransferNotFound(slug)
+        return list(read_files(package_id, slug))
+    skill_dir = store.package_skills_dir(package_id) / slug
+    if not (skill_dir / "SKILL.md").is_file():
+        raise SkillTransferNotFound(slug)
+    return read_skill_directory(skill_dir)
+
+
 def _is_live_manifest(content: str | None) -> bool:
     if content is None:
         return False
@@ -164,10 +192,7 @@ async def copy_package_skills_to_workspace(
     stamp_locked = str(copy_policy).strip().lower() == "lock"
     sources: dict[str, list[tuple[str, bytes]]] = {}
     for slug in selected:
-        skill_dir = store.package_skills_dir(package_id) / slug
-        if not (skill_dir / "SKILL.md").is_file():
-            raise SkillTransferNotFound(slug)
-        files = read_skill_directory(skill_dir)
+        files = _read_package_skill(store, package_id, slug)
         if stamp_locked:
             files = [
                 (name, _stamp_locked_manifest(data, package_id) if name == "SKILL.md" else data)
@@ -215,8 +240,7 @@ async def copy_workspace_skill_to_package(
     """Copy a workspace skill into a writable global package."""
     safe_slug = validate_skill_slug(slug)
     files = await read_workspace_skill_files(workspace, safe_slug)
-    destination = store.package_skills_dir(package_id) / safe_slug / "SKILL.md"
-    if destination.is_file() and not overwrite:
+    if _package_has_skill(store, package_id, safe_slug) and not overwrite:
         raise SkillTransferConflict(safe_slug)
     store.write_skill(package_id, safe_slug, files)
     return safe_slug

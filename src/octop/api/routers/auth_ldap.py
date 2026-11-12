@@ -163,7 +163,7 @@ async def ldap_status(server: Any = Depends(get_server)) -> LdapStatusResponse:
     response_model=LdapConfigResponse,
 )
 async def get_ldap_config(
-    _: Any = Depends(require_permission("sso")), server: Any = Depends(get_server)
+    _: Any = Depends(require_permission("sso_ldap")), server: Any = Depends(get_server)
 ) -> LdapConfigResponse:
     """Return LDAP settings. The bind password is never included."""
     return LdapConfigResponse.model_validate(_service(server).get_config_for_admin())
@@ -176,7 +176,7 @@ async def get_ldap_config(
 )
 async def put_ldap_config(
     body: LdapConfigBody,
-    user: User = Depends(require_permission("sso")),
+    user: User = Depends(require_permission("sso_ldap")),
     server: Any = Depends(get_server),
 ) -> LdapConfigResponse:
     """Create or update LDAP settings. The bind password is write-only.
@@ -200,7 +200,7 @@ async def put_ldap_config(
 )
 async def test_ldap_config(
     request: Request,
-    _: Any = Depends(require_permission("sso")),
+    _: Any = Depends(require_permission("sso_ldap")),
     server: Any = Depends(get_server),
 ) -> LdapTestResponse:
     """Bind with the stored service account and probe the configured user base DN."""

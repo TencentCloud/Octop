@@ -101,6 +101,21 @@
   box-sizing: border-box;
 }
 
+/* Only the full-height history rail owns a window-top search row. Embedded
+   minimal navigation and mobile overlays keep their existing spacing. */
+@media (min-width: 768px) {
+  .sidebar > .sessionList {
+    padding-top: 0;
+
+    > .sessionHeaderRow {
+      box-sizing: border-box;
+      height: var(--fn-chat-chrome-height, 58px);
+      margin: 0 0 0 -12px;
+      padding: 0 12px;
+    }
+  }
+}
+
 /* Minimal layout: SessionList hosted inside the app nav records pane. */
 .sidebarNavEmbedded {
   display: flex;
@@ -207,9 +222,16 @@
   color: var(--fn-text-tertiary);
 }
 
-.minimalAgentAvatar {
+.minimalAgentIconSlot .minimalAgentAvatarHost {
   position: absolute;
   inset: 0;
+  display: flex;
+  transition: opacity var(--fn-transition-fast);
+}
+
+.minimalAgentAvatar {
+  width: 100%;
+  height: 100%;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
@@ -223,7 +245,7 @@
 }
 
 .minimalAgentNewChatBtn,
-.minimalAgentPinBtn {
+.minimalAgentMoreBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -246,35 +268,15 @@
   }
 }
 
-.agentPinBtn.agentPinBtnActive,
-.minimalAgentPinBtn.agentPinBtnActive,
-.agentCardProfile:hover .agentPinBtn.agentPinBtnActive,
-.agentCardProfile:focus-within .agentPinBtn.agentPinBtnActive,
-.agentRow:hover .agentPinBtn.agentPinBtnActive,
-.agentRow:focus-within .agentPinBtn.agentPinBtnActive,
-.minimalAgentHeader:hover .minimalAgentPinBtn.agentPinBtnActive,
-.minimalAgentHeader:focus-within .minimalAgentPinBtn.agentPinBtnActive {
-  opacity: 0.7;
-  pointer-events: auto;
-  color: var(--fn-text-tertiary);
-  background: transparent;
-}
-
-.agentPinBtn.agentPinBtnActive:hover,
-.minimalAgentPinBtn.agentPinBtnActive:hover {
-  color: var(--fn-text-tertiary);
-  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
-}
-
 .minimalAgentHeader:hover,
 .minimalAgentHeader:focus-within {
-  .minimalAgentAvatar {
+  .minimalAgentAvatarHost {
     opacity: 0;
   }
 
   .minimalAgentChevronBtn,
   .minimalAgentNewChatBtn,
-  .minimalAgentPinBtn {
+  .minimalAgentMoreBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -282,13 +284,13 @@
 
 /* Touch devices never hover — keep both controls reachable. */
 @media (hover: none) {
-  .minimalAgentAvatar {
+  .minimalAgentAvatarHost {
     opacity: 0;
   }
 
   .minimalAgentChevronBtn,
   .minimalAgentNewChatBtn,
-  .minimalAgentPinBtn {
+  .minimalAgentMoreBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -395,6 +397,20 @@
   position: relative;
   flex-shrink: 0;
   margin: 0 12px 10px 0;
+}
+
+/* The search field owns the header row now that the rail folds from its seam. */
+.sessionHeaderRow {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0 12px 10px 0;
+
+  .sessionSearchWrap {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
 }
 
 .sessionScopeTabs {
@@ -883,7 +899,8 @@
   }
 
   /* Same gutter as processSummaryRow / left inset — do not use a different
-     gap that would shift only the answer bubble. */
+     gap that would shift only the answer bubble. The answer itself spans
+     from the avatar's left edge in chatMessages.partial.less. */
   .assistantBubble {
     column-gap: var(--chat-msg-gutter);
     row-gap: 0;

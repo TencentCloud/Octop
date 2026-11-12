@@ -36,7 +36,7 @@ def test_schema_version_includes_user_groups(repos: RepoBundle) -> None:
             row["name"]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 24
+    assert version == 25
     assert {"user_group", "user_group_member", "resource_group_grant"}.issubset(names)
 
 
@@ -487,6 +487,14 @@ def test_bridge_list_visible_respects_shared_and_grants(repos: RepoBundle) -> No
     assert private.connection_id not in outsider_ids
     assert open_link.connection_id in outsider_ids
     assert group_link.connection_id not in outsider_ids
+
+    repo = repos.bridge_connection_repo
+    assert repo.get_visible(open_link.connection_id, member) is not None
+    assert repo.get_visible(group_link.connection_id, member) is not None
+    assert repo.get_visible(private.connection_id, member) is None
+    assert repo.get_visible(group_link.connection_id, outsider) is None
+    assert repo.get_visible(private.connection_id, owner) is not None
+    assert repo.get_visible("missing", member) is None
 
 
 def test_shared_expert_list_respects_group_grants(repos: RepoBundle) -> None:

@@ -1,5 +1,6 @@
 import {
   EXPERT_AVATAR_PRESETS,
+  canonicalExpertPresetId,
   expertPresetSrc,
   ResourceAvatarPicker,
   splitExpertAvatarUrl,
@@ -15,7 +16,7 @@ interface ExpertAvatarPickerProps {
   color?: string | null;
   disabled?: boolean;
   onPick: (file: File) => void | Promise<void>;
-  /** Select a bundled ``/experts/avatars/{id}.svg`` (null = clear to Lucide). */
+  /** Select a bundled ``/experts/avatars/{id}.svg`` (null = the default portrait). */
   onSelectPreset?: (presetId: string | null) => void | Promise<void>;
   onRemove?: () => void | Promise<void>;
 }
@@ -30,8 +31,8 @@ export default function ExpertAvatarPicker({
   onRemove,
 }: ExpertAvatarPickerProps) {
   const { imageUrl, presetId: rawPresetId } = splitExpertAvatarUrl(iconUrl);
-  // First grid tile is the Lucide fallback; treat bundled ``default.svg`` the same.
-  const presetId = rawPresetId === "default" ? null : rawPresetId;
+  // First grid tile is ``default.svg``. Duplicate drawings share that tile.
+  const presetId = canonicalExpertPresetId(rawPresetId);
 
   return (
     <ResourceAvatarPicker
@@ -45,9 +46,7 @@ export default function ExpertAvatarPicker({
       renderPreview={({ displayUrl, presetId: selectedPreset, hasPhoto }) => {
         const previewUrl = hasPhoto
           ? displayUrl
-          : selectedPreset && selectedPreset !== "default"
-          ? expertPresetSrc(selectedPreset)
-          : null;
+          : expertPresetSrc(selectedPreset || "default");
         return (
           <ExpertAgentAvatar
             iconUrl={previewUrl}
@@ -56,19 +55,6 @@ export default function ExpertAvatarPicker({
             size={56}
           />
         );
-      }}
-      renderPreset={({ preset, index }) => {
-        // Default tile must match the large preview (Lucide ``icon_name``).
-        if (index === 0) {
-          return (
-            <ExpertAgentAvatar iconName={iconName} color={color} size={36} />
-          );
-        }
-        if (preset.src) {
-          return <img src={preset.src} alt="" />;
-        }
-        const PresetIcon = preset.Icon;
-        return PresetIcon ? <PresetIcon size={22} /> : null;
       }}
     />
   );

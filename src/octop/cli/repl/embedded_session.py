@@ -21,7 +21,9 @@ async def embedded_runtime() -> AsyncIterator[OctopServer]:
     async with _lock:
         if _server is None:
             _server = OctopServer()
-            await _server.start()
+            # CLI commands must not take over channels or cron schedules owned
+            # by a long-running ``octop run``. ``run_now`` still claims its one job.
+            await _server.start(serve_background=False)
         _refs += 1
         server = _server
 

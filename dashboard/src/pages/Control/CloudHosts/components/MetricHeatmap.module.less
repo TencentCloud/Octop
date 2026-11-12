@@ -1,0 +1,90 @@
+.wrap {
+  --sc-heat-0: #eef2f6;
+  --sc-heat-1: #d9f0e4;
+  --sc-heat-2: #fee6ce;
+  --sc-heat-3: #f3a06a;
+  --sc-heat-4: #df5665;
+  --sc-mono: var(
+    --fn-font-mono,
+    ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace
+  );
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+:global(html[data-theme="dark"]) .wrap {
+  --sc-heat-0: #1f1f23;
+  --sc-heat-1: #43230f;
+  --sc-heat-2: #7c3a12;
+  --sc-heat-3: #c2410c;
+  --sc-heat-4: #ff9f0a;
+}
+
+/* 格子宽度由组件按容器实测宽度算好后内联给定，这里只负责换行与对齐 */
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  width: 100%;
+}
+
+.cell {
+  display: block;
+  flex: 0 0 auto;
+  height: 19px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.cell:hover {
+  z-index: 1;
+  transform: scaleY(1.12);
+}
+
+.axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -4px;
+  font-family: var(--sc-mono);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.45;
+}
+
+.cellActive {
+  box-shadow: 0 0 0 2px #1677ff;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.legendCell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+}
+
+.legendLabel {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.empty {
+  padding: 20px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
+}

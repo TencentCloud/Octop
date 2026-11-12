@@ -233,14 +233,16 @@ async def resume_hitl(
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
     """Resume a paused human-in-the-loop tool approval and stream subsequent chunks."""
-    assert_agent_access(server, agent_id, user)
+    from octop.api.routers.chat.history import _require_thread  # noqa: PLC0415
+
+    thread_row = _require_thread(server, agent_id, body.thread_id, user, None)
     processor = server.app_runtime.gateway.processor
     hitl_coordinator = processor.hitl_coordinator
     requested_id = (body.pending_id or "").strip()
     pending = hitl_coordinator.store.resolve_pending_for_thread(
         body.thread_id,
         agent_id=agent_id,
-        user_id=user.id,
+        user_id=None if thread_row.contributed else user.id,
         pending_id=requested_id or None,
     )
     if requested_id and pending is None:
@@ -268,7 +270,7 @@ async def resume_hitl(
         if reason is not None:
             raise HTTPException(status_code=400, detail=reason)
 
-    if body.hitl_policy is not None:
+    if body.hitl_policy is not None and thread_row.user_id == user.id:
         hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
 
     async def gen() -> AsyncIterator[str]:

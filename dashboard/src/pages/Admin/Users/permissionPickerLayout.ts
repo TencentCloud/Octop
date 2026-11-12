@@ -28,6 +28,8 @@ const NAV_PERMISSION_CHIPS: readonly {
     inline: true,
     permissions: [
       "skills",
+      "skill_builtin",
+      "skill_market",
       "subagents",
       "tools",
       "agent_plugins",
@@ -39,7 +41,7 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "connectors",
     labelKey: "nav.connectors",
-    permissions: ["connectors"],
+    permissions: ["connector_enabled", "connector_builtin", "connector_custom"],
   },
   {
     key: "skill-packages",
@@ -69,7 +71,16 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "admin-users",
     labelKey: "nav.adminUsers",
-    permissions: ["users", "sso"],
+    permissions: [
+      "users",
+      "user_roles",
+      "user_groups",
+      "sso_feishu",
+      "sso_wecom",
+      "sso_dingtalk",
+      "sso_oidc",
+      "sso_ldap",
+    ],
   },
   {
     key: "models",
@@ -78,8 +89,10 @@ const NAV_PERMISSION_CHIPS: readonly {
       "providers",
       "ollama_models",
       "onnx_models",
-      "search",
+      "model_generation",
       "voice",
+      "model_decision",
+      "search",
     ],
   },
   {
@@ -90,12 +103,19 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "admin-plugins",
     labelKey: "nav.adminPlugins",
-    permissions: ["plugins"],
+    permissions: ["plugins", "plugin_market"],
   },
   {
     key: "admin-security",
     labelKey: "nav.security",
-    permissions: ["security", "admin_console"],
+    permissions: [
+      "security_hitl",
+      "security_filesystem",
+      "security_pii",
+      "security_tool_guard",
+      "security_skill_scan",
+      "admin_console",
+    ],
   },
   {
     key: "admin-advanced",

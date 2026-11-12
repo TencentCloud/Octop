@@ -24,6 +24,8 @@ export interface TokenChunk {
   team_live?: boolean;
   /** Host wrap-up after members finish — start a new bubble, do not continue dispatch. */
   team_wrapup?: boolean;
+  /** Server turn. Chunks from another turn must not join this bubble. */
+  turn_id?: string;
 }
 
 export interface ReasoningChunk {
@@ -31,6 +33,8 @@ export interface ReasoningChunk {
   content: string;
   /** Team-room speaker when this reasoning was fanned in from another agent. */
   agent_id?: string;
+  /** Server turn. A new id starts a new thinking block. */
+  turn_id?: string;
 }
 
 export interface ToolCallChunk {
@@ -97,6 +101,8 @@ export interface DoneChunk {
   hitl_paused?: boolean;
   conversation_mode?: "ask" | "plan" | "craft";
   pending_plan_path?: string | null;
+  /** Server wall time for this turn, milliseconds. */
+  duration_ms?: number;
 }
 
 export interface ErrorChunk {
@@ -193,12 +199,14 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         team_snapshot: obj.team_snapshot === true,
         team_live: obj.team_live === true,
         team_wrapup: obj.team_wrapup === true,
+        turn_id: optionalTurnId(obj),
       };
     case "reasoning":
       return {
         type: "reasoning",
         content: typeof obj.content === "string" ? obj.content : "",
         agent_id: agentId,
+        turn_id: optionalTurnId(obj),
       };
     case "usage":
       return {
@@ -265,6 +273,12 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
             : obj.pending_plan_path === null
             ? null
             : undefined,
+        duration_ms:
+          typeof obj.duration_ms === "number" &&
+          Number.isFinite(obj.duration_ms) &&
+          obj.duration_ms >= 0
+            ? obj.duration_ms
+            : undefined,
       };
     case "error":
       return {
@@ -327,6 +341,13 @@ export function streamSpeakerId(
 ): string | undefined {
   if (!chunk || typeof chunk !== "object") return undefined;
   return optionalAgentId(chunk as Record<string, unknown>);
+}
+
+function optionalTurnId(obj: Record<string, unknown>): string | undefined {
+  const raw = obj.turn_id;
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  return value || undefined;
 }
 
 function optionalAgentId(obj: Record<string, unknown>): string | undefined {

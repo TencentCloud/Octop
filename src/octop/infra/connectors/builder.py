@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from octop.config import OctopConfig
+from octop.i18n import tr
 from octop.infra.connectors.catalog import (
     ConnectorCatalogEntry,
     get_catalog_entry,
@@ -54,6 +55,39 @@ def normalize_weknora_base_url(raw: str) -> str:
     if not path.endswith("/api/v1"):
         path = f"{path}/api/v1"
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def normalize_ragflow_base_url(raw: str) -> str:
+    """Accept a RAGFlow service URL or its public `/api/v1` root."""
+    url = validate_mcp_http_url(raw)
+    parsed = urlsplit(url)
+    if (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(tr("ragflow.invalid_base_url"))
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/api/v1"):
+        path = f"{path}/api/v1"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def normalize_ragflow_dataset_ids(raw: Any) -> list[str]:
+    """Normalize the dashboard's comma-separated IDs or an API string list."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        values = raw.split(",")
+    elif isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+        values = raw
+    else:
+        raise ValueError(tr("ragflow.invalid_dataset_ids"))
+    ids = [item.strip() for item in values if item.strip()]
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]+", item) for item in ids):
+        raise ValueError(tr("ragflow.invalid_dataset_ids"))
+    return list(dict.fromkeys(ids))
 
 
 def mcp_server_name(kind: str, instance_id: str) -> str:
@@ -478,6 +512,16 @@ def validate_create_credentials(
             return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
         if entry.kind == "obsidian-cli":
             return _obsidian_cli_credentials(credentials)
+        if entry.kind == "ragflow":
+            api_key = str(credentials.get("api_key") or "").strip()
+            if not api_key or any(char in api_key for char in "\r\n\x00"):
+                raise ValueError(tr("ragflow.api_key_required"))
+            return {
+                "base_url": normalize_ragflow_base_url(str(credentials.get("base_url") or "")),
+                "api_key": api_key,
+                "dataset_ids": normalize_ragflow_dataset_ids(credentials.get("dataset_ids")),
+                "internal_token": new_internal_token(),
+            }
         if entry.kind == "dingtalk-cli":
             client_id = str(credentials.get("client_id") or "").strip()
             client_secret = str(credentials.get("client_secret") or "").strip()

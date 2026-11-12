@@ -97,9 +97,16 @@ async def test_post_remote_browser_handoff() -> None:
 
 
 @pytest.mark.asyncio
+def _owned_row(*, owner_user_id: int) -> MagicMock:
+    row = MagicMock()
+    row.owner_user_id = owner_user_id
+    return row
+
+
+@pytest.mark.asyncio
 async def test_tunnel_http_denies_disallowed_path() -> None:
     mgr = _mgr()
-    mgr.get_owned = MagicMock(return_value=MagicMock())  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=_owned_row(owner_user_id=1))  # type: ignore[method-assign]
     with pytest.raises(OctopError) as exc:
         await mgr.tunnel_http(
             connection_id="cid1",
@@ -108,6 +115,49 @@ async def test_tunnel_http_denies_disallowed_path() -> None:
             path="/api/agents/main/skill-packages",
         )
     assert exc.value.code == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED
+
+
+@pytest.mark.asyncio
+async def test_tunnel_http_shared_viewer_may_read_and_chat() -> None:
+    mgr = _mgr()
+    mgr.get_usable = MagicMock(return_value=_owned_row(owner_user_id=9))  # type: ignore[method-assign]
+    with pytest.raises(OctopError) as read_exc:
+        await mgr.tunnel_http(
+            connection_id="cid1",
+            owner_user_id=2,
+            method="GET",
+            path="/api/agents/01ABC",
+        )
+    assert read_exc.value.code == ErrorCode.BRIDGE_NOT_CONNECTED
+    with pytest.raises(OctopError) as chat_exc:
+        await mgr.tunnel_http(
+            connection_id="cid1",
+            owner_user_id=2,
+            method="POST",
+            path="/api/agents/01ABC/threads",
+        )
+    assert chat_exc.value.code == ErrorCode.BRIDGE_NOT_CONNECTED
+
+
+@pytest.mark.asyncio
+async def test_tunnel_http_shared_viewer_cannot_manage_expert() -> None:
+    mgr = _mgr()
+    mgr.get_usable = MagicMock(return_value=_owned_row(owner_user_id=9))  # type: ignore[method-assign]
+    for method, path in (
+        ("POST", "/api/agents/01ABC/reload"),
+        ("POST", "/api/agents/01ABC/start"),
+        ("POST", "/api/agents/01ABC/stop"),
+        ("PATCH", "/api/agents/01ABC"),
+        ("DELETE", "/api/agents/01ABC"),
+    ):
+        with pytest.raises(OctopError) as exc:
+            await mgr.tunnel_http(
+                connection_id="cid1",
+                owner_user_id=2,
+                method=method,
+                path=path,
+            )
+        assert exc.value.code == ErrorCode.FORBIDDEN
 
 
 @pytest.mark.asyncio

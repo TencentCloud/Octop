@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from octop.api.routers.connectors import _connector_service
 from octop.infra.connectors.custom_mcp import CUSTOM_MCP_KIND
 from octop.infra.connectors.oauth.registry import save_oauth_ctx
 from octop.infra.utils.ulid import new_ulid
@@ -285,6 +286,45 @@ async def test_shared_connector_is_visible_but_not_manageable_by_other_user(env)
         json={"display_name": "不能修改"},
     )
     assert patched.status_code == 403
+
+
+async def test_admin_cannot_edit_another_users_shared_connector(env):
+    c, _, admin_auth, _ = env
+    owner_auth = await create_user(c, admin_auth, username="connector_owner")
+    created = await c.post(
+        "/api/connector-instances",
+        headers=owner_auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "所有者的文档",
+            "credentials": {"token": "owner-token"},
+            "shared": True,
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+
+    listed = await c.get("/api/connector-instances", headers=admin_auth)
+    assert listed.status_code == 200
+    shared = next(row for row in listed.json() if row["instance_id"] == instance_id)
+    assert shared["can_manage"] is False
+
+    denied = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=admin_auth,
+        json={"display_name": "管理员不能改"},
+    )
+    assert denied.status_code == 403
+    hidden = await c.get(f"/api/connector-instances/{instance_id}", headers=admin_auth)
+    assert hidden.status_code == 403
+
+    renamed = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=owner_auth,
+        json={"display_name": "所有者可以改"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["display_name"] == "所有者可以改"
 
 
 async def test_chat_accepts_user_instance_mcp(env):
@@ -653,6 +693,39 @@ async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
     assert shared["mcp_server_name"].startswith("custom__")
     assert shared["mcp_server_name"].endswith("__linear")
 
+    denied = await c.patch(
+        f"/api/connector-instances/{shared['instance_id']}",
+        headers=user_auth,
+        json={"status": "disabled"},
+    )
+    assert denied.status_code == 403
+
+
+async def test_private_custom_mcp_is_hidden_from_other_users(env):
+    c, _, admin_auth, _ = env
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=admin_auth,
+        json={
+            "servers": {
+                "private": {
+                    "transport": "streamable_http",
+                    "url": "https://private.example.com/mcp",
+                    "display_name": "仅自己的 MCP",
+                }
+            }
+        },
+    )
+    assert put.status_code == 200
+
+    user_auth = await create_user(c, admin_auth, username="custom_private_reader")
+    listed = await c.get("/api/connector-instances", headers=user_auth)
+    assert listed.status_code == 200
+    assert all(row.get("display_name") != "仅自己的 MCP" for row in listed.json())
+    names = await c.get("/api/connectors/custom-mcp", headers=user_auth)
+    assert names.status_code == 200
+    assert names.json()["servers"] == {}
+
 
 async def test_custom_mcp_oauth_callback_applies_tokens(env):
     c, srv, auth, _ = env
@@ -772,6 +845,98 @@ async def test_custom_mcp_oauth_start_unified(env):
     call_kwargs = mocked_start.await_args.kwargs
     assert call_kwargs["target"] == {"type": "custom_mcp", "server_name": "oauth-srv"}
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
+
+
+async def test_custom_mcp_oauth_client_is_saved_redacted_and_used(env):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    server = {
+        "transport": "streamable_http",
+        "url": "https://mcp.example.com/mcp",
+        "oauth_client": {
+            "client_id": "cid",
+            "client_secret": "shh",
+            "authorization_endpoint": "https://auth.example.com/authorize",
+            "token_endpoint": "https://auth.example.com/token",
+        },
+    }
+    put = await c.put(
+        "/api/connectors/custom-mcp", headers=auth, json={"servers": {"manual": server}}
+    )
+    assert put.status_code == 200
+    preview = put.json()["servers"]["manual"]["oauth_client"]
+    assert preview["has_client_secret"] is True
+    assert "client_secret" not in preview
+
+    # Saving what the dashboard got back must not lose the secret.
+    again = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={"servers": put.json()["servers"]},
+    )
+    assert again.status_code == 200
+
+    mocked_start = AsyncMock(
+        return_value=("https://auth.example.com/authorize?state=x", "verifier", {})
+    )
+    with (
+        patch("octop.api.routers.connectors._is_public_http_uri", return_value=False),
+        patch("octop.api.routers.connectors.start_oauth_for_target", mocked_start),
+    ):
+        r = await c.post(
+            "/api/connectors/oauth/start",
+            headers=auth,
+            json={"target": {"type": "custom_mcp", "server_name": "manual"}},
+        )
+    assert r.status_code == 200
+    assert mocked_start.await_args.kwargs["oauth_client"] == server["oauth_client"]
+
+    oauth_state = "manual-client-state"
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=oauth_state,
+        user_id=user_id,
+        kind=CUSTOM_MCP_KIND,
+        code_verifier="verifier123",
+        redirect_after="/connectors",
+    )
+    save_oauth_ctx(
+        srv.services.settings_repo,
+        state_id,
+        {
+            "flow": "custom_mcp",
+            "kind": CUSTOM_MCP_KIND,
+            "server_name": "manual",
+            "issuer": "https://auth.example.com",
+            "resource": None,
+            "client_id": "cid",
+            "client_secret": "shh",
+            "token_endpoint": "https://auth.example.com/token",
+            "redirect_uri": "http://testserver/api/connectors/oauth/callback",
+            "metadata": {
+                "authorization_endpoint": "https://auth.example.com/authorize",
+                "token_endpoint": "https://auth.example.com/token",
+            },
+        },
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        return_value={"access_token": "tok", "refresh_token": "r", "expires_at": 9_999_999_999},
+    ):
+        callback = await c.get(
+            f"/api/connectors/oauth/callback?code=authcode&state={oauth_state}",
+            follow_redirects=False,
+        )
+    assert callback.status_code == 200
+
+    stored = _connector_service(srv).get_custom_servers(user_id)["manual"]
+    assert stored["oauth"]["oauth_client_id"] == "cid"
+    assert stored["oauth"]["oauth_token_endpoint"] == "https://auth.example.com/token"
+    listed = await c.get("/api/connectors/custom-mcp", headers=auth)
+    assert listed.json()["servers"]["manual"]["oauth"]["configured"] is True
+    assert "shh" not in listed.text
 
 
 @pytest.mark.parametrize("oauth", [False, True])

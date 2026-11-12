@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   loadAppearanceOnBoot,
   readStoredAppearance,
+  userAppearanceStorageKey,
   writeStoredAppearance,
 } from "./appearanceStorage";
 import {
@@ -14,6 +15,9 @@ import {
 afterEach(() => {
   localStorage.removeItem(THEME_STORAGE_KEY);
   localStorage.removeItem(LEGACY_PALETTE_STORAGE_KEY);
+  localStorage.removeItem(userAppearanceStorageKey(1));
+  localStorage.removeItem(userAppearanceStorageKey(2));
+  localStorage.removeItem(userAppearanceStorageKey(3));
 });
 
 describe("appearanceStorage", () => {
@@ -114,5 +118,33 @@ describe("appearanceStorage", () => {
     );
     expect(readStoredAppearance().preference).toBe("system");
     expect(readStoredAppearance().palette).toBe(DEFAULT_PALETTE);
+  });
+
+  it("keeps each user's palette separate from the shared boot key", () => {
+    writeStoredAppearance(
+      {
+        preference: "dark",
+        palette: "violet",
+        customColor: DEFAULT_CUSTOM_COLOR,
+      },
+      1,
+    );
+    writeStoredAppearance(
+      {
+        preference: "light",
+        palette: "indigo",
+        customColor: DEFAULT_CUSTOM_COLOR,
+      },
+      2,
+    );
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      JSON.stringify({ preference: "dark", palette: "tech" }),
+    );
+
+    expect(readStoredAppearance(1).palette).toBe("violet");
+    expect(readStoredAppearance(2).palette).toBe("indigo");
+    expect(readStoredAppearance(3).palette).toBe(DEFAULT_PALETTE);
+    expect(readStoredAppearance().palette).toBe("tech");
   });
 });

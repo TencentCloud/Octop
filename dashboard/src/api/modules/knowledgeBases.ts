@@ -320,6 +320,13 @@ export const knowledgeBasesApi = {
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
     ),
 
+  listDocumentChunks: (id: string, documentId: string) =>
+    request<{
+      id: string;
+      filename: string;
+      chunks: { ordinal: number; text: string }[];
+    }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
+
   /** Authenticated original-file bytes (download or preview). */
   fetchDocumentFile: (
     id: string,
@@ -345,6 +352,16 @@ export const knowledgeBasesApi = {
       {
         method: "POST",
         body: JSON.stringify({ new_name: newName }),
+      },
+    ),
+
+  /** Move a file or folder into another folder of the same base ("" is the root). */
+  moveDocument: (id: string, documentId: string, targetFolder: string) =>
+    request<KnowledgeDocument>(
+      `/knowledge-bases/${id}/documents/${documentId}/move`,
+      {
+        method: "POST",
+        body: JSON.stringify({ target_folder: targetFolder }),
       },
     ),
 };
