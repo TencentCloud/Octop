@@ -47,6 +47,7 @@ import {
   FilePlus,
   FileUp,
   Folder,
+  FolderInput,
   FolderPlus,
   LayoutGrid,
   List as ListIcon,
@@ -77,6 +78,7 @@ import {
   knowledgeBasesApi,
   type KnowledgeBase,
   type KnowledgeCapability,
+  type KnowledgeRerankOptions,
   type KnowledgeDocument,
   type KnowledgeOnnxModel,
 } from "../../api/modules/knowledgeBases";
@@ -123,14 +125,17 @@ import skillStyles from "../Agent/Skills/index.module.less";
 import { KnowledgeBaseAvatar } from "./knowledgeIcons";
 import {
   buildKnowledgeFileTree,
+  buildKnowledgeMoveTree,
   isDirectKnowledgeChild,
   joinKnowledgePath,
   KNOWLEDGE_DOC_TREE_ROOT,
   knowledgeBasename,
   knowledgeBreadcrumb,
   knowledgeFileNameParts,
+  knowledgeMoveKey,
   shouldOpenKnowledgeFolder,
   type KnowledgeFileTreeNode,
+  type KnowledgeMoveTreeNode,
 } from "./knowledgeFolder";
 import { resolveKnowledgeDeepLink } from "./knowledgeDeepLink";
 import {
@@ -226,6 +231,7 @@ function formatKnowledgeOwner(
 const FOLDER_ICON_COLOR = "#d97706";
 
 type DocTreeNode = TreeDataNode & { path: string; isDir: boolean };
+type MoveTreeNode = TreeDataNode & { kbId: string; path: string };
 
 function DocumentFormatIcon({
   filename,
@@ -307,6 +313,17 @@ export default function KnowledgeBasesPage() {
     null,
   );
   const [renameName, setRenameName] = useState("");
+  const [moveTarget, setMoveTarget] = useState<KnowledgeDocument | null>(null);
+  const [moveDestination, setMoveDestination] = useState<{
+    kbId: string;
+    path: string;
+  } | null>(null);
+  /** Documents of the other writable bases, loaded when the move dialog opens. */
+  const [moveDocsByBase, setMoveDocsByBase] = useState<
+    Record<string, KnowledgeDocument[]>
+  >({});
+  const [moveLoading, setMoveLoading] = useState(false);
+  const [moving, setMoving] = useState(false);
   const [capability, setCapability] = useState<KnowledgeCapability | null>(
     null,
   );
@@ -356,6 +373,12 @@ export default function KnowledgeBasesPage() {
       provider_name: string;
       models: { id: string; name: string }[];
     }[]
+  >([]);
+  const [rerankEnabledDraft, setRerankEnabledDraft] = useState(false);
+  const [rerankProviderId, setRerankProviderId] = useState<string>();
+  const [rerankModel, setRerankModel] = useState<string>();
+  const [rerankProviders, setRerankProviders] = useState<
+    KnowledgeRerankOptions["providers"]
   >([]);
   const [onnxExpanded, setOnnxExpanded] = useState(false);
   const [onnxExpanding, setOnnxExpanding] = useState(false);
@@ -791,6 +814,67 @@ export default function KnowledgeBasesPage() {
     return [root];
   }, [documents, t]);
 
+  /** Bases the user can write to, in list order: the places an entry can move to. */
+  const moveBases = useMemo(
+    () => bases.filter((base) => canManageKnowledgeBase(base, user)),
+    [bases, user],
+  );
+
+  /** Every writable base with its folders; where `moveTarget` cannot go is greyed out. */
+  const moveTree = useMemo(() => {
+    if (!moveTarget || !selected) return [];
+    return buildKnowledgeMoveTree(
+      moveBases,
+      { ...moveDocsByBase, [selected.id]: documents },
+      moveTarget,
+      selected.id,
+    );
+  }, [documents, moveBases, moveDocsByBase, moveTarget, selected]);
+
+  const moveTreeData = useMemo(() => {
+    const iconFor = (node: KnowledgeMoveTreeNode) => {
+      const base = node.path
+        ? null
+        : moveBases.find((row) => row.id === node.kbId);
+      return base ? (
+        <KnowledgeBaseAvatar
+          iconUrl={base.icon_url}
+          iconName={base.icon_name}
+          size={14}
+        />
+      ) : (
+        <Folder size={13} className={styles.docTreeFolderIcon} aria-hidden />
+      );
+    };
+    const toAntd = (node: KnowledgeMoveTreeNode): MoveTreeNode => ({
+      key: node.key,
+      kbId: node.kbId,
+      path: node.path,
+      disabled: node.disabled,
+      title: (
+        <span className={styles.docTreeNode}>
+          {iconFor(node)}
+          <span className={styles.docTreeName} title={node.name}>
+            {node.name}
+          </span>
+        </span>
+      ),
+      children: node.children.length ? node.children.map(toAntd) : undefined,
+    });
+    return moveTree.map(toAntd);
+  }, [moveBases, moveTree]);
+
+  /** Open the current base fully; other bases show just their name until expanded. */
+  const moveExpandedKeys = useMemo(() => {
+    const keys: string[] = [];
+    const walk = (node: KnowledgeMoveTreeNode) => {
+      keys.push(node.key);
+      node.children.forEach(walk);
+    };
+    moveTree.filter((node) => node.kbId === selected?.id).forEach(walk);
+    return keys;
+  }, [moveTree, selected?.id]);
+
   const loadBases = useCallback(async () => {
     try {
       const rows = await knowledgeBasesApi.list();
@@ -815,6 +899,9 @@ export default function KnowledgeBasesPage() {
       setOcrBackend(nextCapability.ocr?.backend ?? "onnx");
       setOcrModel(nextCapability.ocr?.model || "rapidocr");
       setOcrProviderId(nextCapability.ocr?.provider_id || undefined);
+      setRerankEnabledDraft(Boolean(nextCapability.rerank?.enabled));
+      setRerankProviderId(nextCapability.rerank?.provider_id || undefined);
+      setRerankModel(nextCapability.rerank?.model || undefined);
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
@@ -859,6 +946,15 @@ export default function KnowledgeBasesPage() {
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
       return undefined;
+    }
+  }, [t]);
+
+  const loadRerankOptions = useCallback(async () => {
+    try {
+      const options = await knowledgeBasesApi.getRerankOptions();
+      setRerankProviders(options.providers);
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
   }, [t]);
 
@@ -1282,6 +1378,9 @@ export default function KnowledgeBasesPage() {
     ) {
       return;
     }
+    if (rerankEnabledDraft && (!rerankProviderId || !rerankModel)) {
+      return;
+    }
     if (
       featureBackend === "onnx" &&
       !catalog.find((model) => model.id === featureModel)?.downloaded
@@ -1323,6 +1422,9 @@ export default function KnowledgeBasesPage() {
         ocr_backend: ocrBackend,
         ocr_model: ocrBackend === "remote" ? ocrModel : "rapidocr",
         ocr_provider_id: ocrBackend === "remote" ? ocrProviderId : "",
+        rerank_enabled: rerankEnabledDraft,
+        rerank_provider_id: rerankProviderId ?? "",
+        rerank_model: rerankModel ?? "",
       });
       setCapability(next);
       setFeatureModalOpen(false);
@@ -1349,6 +1451,9 @@ export default function KnowledgeBasesPage() {
     setOcrBackend(capability?.ocr?.backend ?? "onnx");
     setOcrModel(capability?.ocr?.model || "rapidocr");
     setOcrProviderId(capability?.ocr?.provider_id || undefined);
+    setRerankEnabledDraft(Boolean(capability?.rerank?.enabled));
+    setRerankProviderId(capability?.rerank?.provider_id || undefined);
+    setRerankModel(capability?.rerank?.model || undefined);
     setFeatureModalOpen(true);
     void (async () => {
       const options = await loadEmbeddingOptions(false);
@@ -1361,6 +1466,7 @@ export default function KnowledgeBasesPage() {
       }
     })();
     void loadOcrOptions();
+    void loadRerankOptions();
     void knowledgeBasesApi.getOnnxDownloadStatus().then((state) => {
       if (state.status === "downloading" || state.status === "loading") {
         const modelId = state.model_name;
@@ -1621,6 +1727,55 @@ export default function KnowledgeBasesPage() {
           t,
         ),
       );
+    }
+  };
+
+  const openMoveEntry = async (document: KnowledgeDocument) => {
+    setMoveTarget(document);
+    setMoveDestination(null);
+    const others = moveBases.filter((base) => base.id !== selected?.id);
+    if (!others.length) {
+      setMoveDocsByBase({});
+      return;
+    }
+    setMoveLoading(true);
+    const loaded = await Promise.allSettled(
+      others.map((base) => knowledgeBasesApi.listDocuments(base.id)),
+    );
+    const byBase: Record<string, KnowledgeDocument[]> = {};
+    loaded.forEach((result, index) => {
+      if (result.status === "fulfilled")
+        byBase[others[index].id] = result.value;
+    });
+    setMoveDocsByBase(byBase);
+    setMoveLoading(false);
+  };
+
+  const moveEntry = async () => {
+    if (!selected || !moveTarget || moveDestination === null) return;
+    setMoving(true);
+    try {
+      await knowledgeBasesApi.moveDocument(
+        selected.id,
+        moveTarget.id,
+        moveDestination.path,
+        moveDestination.kbId,
+      );
+      setMoveTarget(null);
+      await loadDetail(selected.id);
+      const destBase = bases.find((base) => base.id === moveDestination.kbId);
+      if (destBase && destBase.id !== selected.id) {
+        await loadBases();
+        message.success(
+          t("knowledgeBases.moveSuccessTo", { name: destBase.name }),
+        );
+      } else {
+        message.success(t("knowledgeBases.moveSuccess"));
+      }
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("knowledgeBases.moveFailed"), t));
+    } finally {
+      setMoving(false);
     }
   };
 
@@ -2032,6 +2187,18 @@ export default function KnowledgeBasesPage() {
                 />
               </Tooltip>
             ) : null}
+            <Tooltip title={t("knowledgeBases.moveEntry")}>
+              <Button
+                type="text"
+                size="small"
+                icon={<FolderInput size={14} />}
+                aria-label={t("knowledgeBases.moveEntry")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void openMoveEntry(document);
+                }}
+              />
+            </Tooltip>
             <Popconfirm
               title={
                 document.is_dir
@@ -2597,7 +2764,9 @@ export default function KnowledgeBasesPage() {
                     </div>
                   </div>
                   <div className={styles.docsPathRow}>
-                    <span className={skillStyles.gridCount}>
+                    <span
+                      className={cx(skillStyles.gridCount, styles.docsCount)}
+                    >
                       {documentCap === null
                         ? t("knowledgeBases.documentCount", {
                             count: fileCount,
@@ -2863,16 +3032,24 @@ export default function KnowledgeBasesPage() {
                                             },
                                           )}`}
                                     </div>
+                                    {document.is_dir ? null : (
+                                      <div
+                                        className={styles.docCardMeta}
+                                        title={formatServerDateTime(
+                                          document.updated_at,
+                                          timeZone,
+                                        )}
+                                      >
+                                        {formatServerDateTime(
+                                          document.updated_at,
+                                          timeZone,
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-                                  <span
-                                    data-kb-doc-actions=""
-                                    onClick={(event) => event.stopPropagation()}
-                                  >
-                                    {renderDocumentActions(document)}
-                                  </span>
                                 </div>
-                                {document.is_dir ? null : (
-                                  <div className={styles.docCardFooter}>
+                                <div className={styles.docCardFooter}>
+                                  {document.is_dir ? null : (
                                     <Tooltip
                                       title={
                                         document.error_message ||
@@ -2892,20 +3069,15 @@ export default function KnowledgeBasesPage() {
                                         )}
                                       </Tag>
                                     </Tooltip>
-                                    <span
-                                      className={styles.docUpdatedAt}
-                                      title={formatServerDateTime(
-                                        document.updated_at,
-                                        timeZone,
-                                      )}
-                                    >
-                                      {formatServerDateTime(
-                                        document.updated_at,
-                                        timeZone,
-                                      )}
-                                    </span>
-                                  </div>
-                                )}
+                                  )}
+                                  <span
+                                    className={styles.docCardFooterActions}
+                                    data-kb-doc-actions=""
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    {renderDocumentActions(document)}
+                                  </span>
+                                </div>
                               </div>
                             );
                           })}
@@ -3472,6 +3644,53 @@ export default function KnowledgeBasesPage() {
         />
       </Modal>
 
+      <Modal
+        title={t("knowledgeBases.moveTitle", {
+          name: moveTarget
+            ? knowledgeBasename(moveTarget.path || moveTarget.filename)
+            : "",
+        })}
+        open={moveTarget !== null}
+        onCancel={() => setMoveTarget(null)}
+        onOk={() => void moveEntry()}
+        okText={t("knowledgeBases.moveConfirm")}
+        okButtonProps={{ disabled: moveDestination === null }}
+        confirmLoading={moving}
+        cancelText={t("common.cancel")}
+        destroyOnHidden
+      >
+        <p className={styles.moveHint}>{t("knowledgeBases.moveHint")}</p>
+        <div className={styles.moveTree}>
+          {moveLoading ? (
+            <div className={styles.centered}>
+              <Spin />
+            </div>
+          ) : (
+            <Tree
+              blockNode
+              defaultExpandedKeys={moveExpandedKeys}
+              treeData={moveTreeData}
+              selectedKeys={
+                moveDestination === null
+                  ? []
+                  : [
+                      knowledgeMoveKey(
+                        moveDestination.kbId,
+                        moveDestination.path,
+                      ),
+                    ]
+              }
+              onSelect={(_keys, info) => {
+                const node = info.node as MoveTreeNode;
+                setMoveDestination(
+                  info.selected ? { kbId: node.kbId, path: node.path } : null,
+                );
+              }}
+            />
+          )}
+        </div>
+      </Modal>
+
       <TextDocumentEditorModal
         open={textEditorOpen}
         mode={textEditorMode}
@@ -3717,6 +3936,8 @@ export default function KnowledgeBasesPage() {
                     (ocrEnabledDraft &&
                       ocrBackend === "remote" &&
                       (!ocrProviderId || !ocrModel)) ||
+                    (rerankEnabledDraft &&
+                      (!rerankProviderId || !rerankModel)) ||
                     (featureBackend === "onnx" &&
                       !catalog.find((model) => model.id === featureModel)
                         ?.downloaded) ||
@@ -4042,6 +4263,58 @@ export default function KnowledgeBasesPage() {
                         />
                       </>
                     )}
+                  </div>
+                ) : null}
+              </div>
+              <div className={styles.ocrSettings}>
+                <div className={styles.formOptionRow}>
+                  <div className={styles.formOptionCopy}>
+                    <span className={styles.switchLabel}>
+                      {t("knowledgeBases.rerankTitle")}
+                    </span>
+                    <span className={styles.formOptionHint}>
+                      {t("knowledgeBases.rerankDescription")}
+                    </span>
+                  </div>
+                  <Switch
+                    size="small"
+                    checked={rerankEnabledDraft}
+                    onChange={setRerankEnabledDraft}
+                  />
+                </div>
+                {rerankEnabledDraft ? (
+                  <div className={styles.featureFields}>
+                    <Select
+                      value={rerankProviderId}
+                      onChange={(id) => {
+                        setRerankProviderId(id);
+                        setRerankModel(undefined);
+                      }}
+                      placeholder={t("knowledgeBases.selectProvider")}
+                      options={rerankProviders.map((provider) => ({
+                        value: provider.provider_id,
+                        label: provider.provider_name,
+                      }))}
+                      notFoundContent={t("knowledgeBases.rerankNoProviders")}
+                    />
+                    <Select
+                      value={rerankModel}
+                      onChange={setRerankModel}
+                      placeholder={t("knowledgeBases.rerankSelectModel")}
+                      options={(
+                        rerankProviders.find(
+                          (provider) =>
+                            provider.provider_id === rerankProviderId,
+                        )?.models ?? []
+                      ).map((model) => ({
+                        value: model.id,
+                        label: model.name,
+                      }))}
+                      disabled={!rerankProviderId}
+                    />
+                    <span className={styles.formOptionHint}>
+                      {t("knowledgeBases.rerankFallbackHint")}
+                    </span>
                   </div>
                 ) : null}
               </div>
