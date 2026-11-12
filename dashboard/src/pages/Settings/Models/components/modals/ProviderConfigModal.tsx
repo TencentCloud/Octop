@@ -657,17 +657,18 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    const savedModel = (provider.model ?? "").trim();
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
       api_key: undefined,
-      model: currentDefaultModel,
       note: provider.note ?? "",
       stream_usage: provider.stream_usage !== false,
     });
+    // undefined is skipped by setFieldsValue, so an empty default has to be
+    // reset or the previous provider's model stays selected.
+    if (savedModel) form.setFieldValue("model", savedModel);
+    else form.resetFields(["model"]);
     setDraftModels(
       (provider.models ?? []).map((m) => ({
         ...m,
@@ -695,29 +696,37 @@ export function ProviderConfigModal({
         payload.api_key = values.api_key.trim();
       if ((values.note ?? "") !== (provider.note ?? ""))
         payload.note = values.note?.trim() || null;
+      const embeddingLane = provider.purpose === "embedding" || isOnnx;
       if (
         !isOnnx &&
+        !embeddingLane &&
         provider.kind === "openai" &&
         Boolean(values.stream_usage) !== (provider.stream_usage !== false)
       ) {
         payload.stream_usage = Boolean(values.stream_usage);
       }
       // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
-      if ((values.model ?? "") !== existingDefault)
+      const existingDefault = (provider.model ?? "").trim();
+      if ((values.model ?? "").trim() !== existingDefault)
         payload.model = values.model?.trim() || null;
 
+      const modelsForSave =
+        embeddingLane && !isOnnx
+          ? draftModels.map((m) => ({
+              ...m,
+              embedding: true,
+              task: "embedding",
+            }))
+          : draftModels;
       const modelsChanged =
         JSON.stringify(
           (provider.models ?? []).map((m) => ({
             ...m,
             enabled: m.enabled !== false,
           })),
-        ) !== JSON.stringify(draftModels);
+        ) !== JSON.stringify(modelsForSave);
       if (modelsChanged) {
-        payload.models = draftModels;
+        payload.models = modelsForSave;
       }
 
       if (Object.keys(payload).length === 0) {
@@ -824,9 +833,13 @@ export function ProviderConfigModal({
         return;
       }
 
-      const embedding = isEmbeddingModel(
-        draftModels.find((m) => m.id === modelId),
-      );
+      const embedding =
+        provider.purpose === "embedding" ||
+        isOnnx ||
+        isEmbeddingModel(draftModels.find((m) => m.id === modelId));
+      const apiMode = draftModels.find((m) => m.id === modelId)?.api_mode;
+      const apiFallback = draftModels.find((m) => m.id === modelId)
+        ?.api_fallback;
       const result =
         useDraft || !hasApiKey
           ? await testProviderDraft({
@@ -835,28 +848,41 @@ export function ProviderConfigModal({
               api_key: draftApiKey || provider.api_key || undefined,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
+              api_mode: apiMode,
+              api_fallback: apiFallback,
               embedding,
             })
           : await request<{
               ok: boolean;
               latency_ms?: number;
               error?: string;
+              fallback_used?: boolean;
+              api_mode_used?: ProviderModel["api_mode"];
             }>(`${apiPrefix}/${provider.id}/test`, {
               method: "POST",
-              body: JSON.stringify({ model_id: modelId, embedding }),
+              body: JSON.stringify({
+                model_id: modelId,
+                api_mode: apiMode,
+                api_fallback: apiFallback,
+                embedding,
+              }),
             });
 
       if (result.ok) {
-        const latency =
-          result.latency_ms != null
-            ? t("models.testConnectionLatency", { time: result.latency_ms })
-            : "";
-        message.success(
-          t("models.testConnectionSuccess", {
-            name: provider.name,
-            latency,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          const latency =
+            result.latency_ms != null
+              ? t("models.testConnectionLatency", { time: result.latency_ms })
+              : "";
+          message.success(
+            t("models.testConnectionSuccess", {
+              name: provider.name,
+              latency,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testConnectionFailed", {
@@ -974,12 +1000,31 @@ export function ProviderConfigModal({
     }
   };
 
+  const savedDefaultModel = (provider.model ?? "").trim();
+  const defaultModelOptions = useMemo(() => {
+    const source =
+      isOllama || isOnnx
+        ? draftModels.filter((m) => downloadedIds.includes(m.id))
+        : draftModels;
+    const options = source.map((m) => ({
+      value: m.id,
+      label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
+    }));
+    if (
+      savedDefaultModel &&
+      !options.some((option) => option.value === savedDefaultModel)
+    ) {
+      options.unshift({ value: savedDefaultModel, label: savedDefaultModel });
+    }
+    return options;
+  }, [draftModels, downloadedIds, isOllama, isOnnx, savedDefaultModel]);
+
   return (
     <Drawer
       title={t("models.configureProviderTitle", { name: provider.name })}
       open={open}
       onClose={onClose}
-      width={600}
+      width={640}
       placement="right"
       destroyOnHidden
       footer={
@@ -1060,13 +1105,7 @@ export function ProviderConfigModal({
                   ? t("models.defaultModelDownloadedOnly")
                   : t("models.defaultModelPlaceholder")
               }
-              options={(isOllama || isOnnx
-                ? draftModels.filter((m) => downloadedIds.includes(m.id))
-                : draftModels
-              ).map((m) => ({
-                value: m.id,
-                label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
-              }))}
+              options={defaultModelOptions}
               notFoundContent={
                 isOllama || isOnnx
                   ? t("models.defaultModelNeedDownload")
@@ -1116,6 +1155,9 @@ export function ProviderConfigModal({
         models={draftModels}
         onModelsChange={handleModelsChange}
         apiPrefix={apiPrefix}
+        forcePurpose={
+          provider.purpose === "embedding" || isOnnx ? "embedding" : undefined
+        }
         localDownload={
           isOllama || isOnnx
             ? {

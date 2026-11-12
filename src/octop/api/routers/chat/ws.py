@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -21,15 +22,21 @@ from octop.api.routers.chat.turn import (
     prepare_dashboard_turn,
     turn_has_content,
 )
+from octop.infra.agents.teams.team_manager import subscribe_with_member_catchup
 from octop.infra.bridge.ids import parse_bridge_agent_id
 from octop.infra.errors import OctopError
 from octop.infra.gateway.steer import SteerAdmitOk, SteerAdmitReject, SteerCoordinator
 from octop.infra.gateway.steer.types import preview_text
+from octop.infra.gateway.threads import thread_visible_to
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _ws_thread_visible(row: Any, agent_id: str, user_id: int) -> bool:
+    return row is not None and row.agent_id == agent_id and thread_visible_to(row, user_id)
 
 
 @router.websocket("/agents/{agent_id}/chat/ws")
@@ -106,12 +113,21 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "subscribe requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
+                if not _ws_thread_visible(row, agent_id, user.id):
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
                     continue
-                hub.subscribe(thread_id, connection_id)
+
+                def _subscribe(tid: str = thread_id, cid: str = connection_id) -> None:
+                    hub.subscribe(tid, cid)
+
+                await subscribe_with_member_catchup(
+                    gateway,
+                    thread_id,
+                    subscribe=_subscribe,
+                    send=send_frame,
+                )
                 await send_frame(
                     {
                         "type": "turn_status",
@@ -142,7 +158,7 @@ async def dashboard_chat_ws(
                     await send_frame({"type": "error", "message": "cancel requires thread_id"})
                     continue
                 row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
+                if not _ws_thread_visible(row, agent_id, user.id):
                     await send_frame(
                         {"type": "error", "message": f"thread {thread_id!r} not found"},
                     )
@@ -201,6 +217,39 @@ async def dashboard_chat_ws(
                 await send_frame({"type": "done"})
                 continue
 
+            # Subscribe before any further await: steer admission (and any
+            # concurrently running turn on this thread) pushes frames the
+            # moment control yields, and push_to_thread drops frames for
+            # connections that are not subscribed yet.
+            hub.subscribe(prepared_early.thread_id, connection_id)
+
+            thread_row = gateway.thread_registry.get_thread(prepared_early.thread_id)
+            if gateway.steer.blocks_other_sender(prepared_early.thread_id, user.id) and bool(
+                getattr(thread_row, "contributed", False)
+            ):
+                active = gateway.steer.get_state(prepared_early.thread_id)
+                await send_frame(
+                    {
+                        "type": "turn.busy",
+                        "thread_id": prepared_early.thread_id,
+                        "reason": "shared_turn_busy",
+                        "message_id": _ws_client_message_id(frame),
+                        "client_pending_id": frame.client_pending_id,
+                        "active_turn_id": active.turn_id if active is not None else None,
+                    }
+                )
+                continue
+
+            hitl_paused = _thread_hitl_paused(gateway, prepared_early.thread_id, agent_id)
+            if not hitl_paused:
+                # A turn parked at an HITL interrupt leaves ``phase='hitl_paused'``
+                # behind so follow-ups queue behind the approval. If the approval
+                # was resolved elsewhere (another tab / reload) or never reached
+                # this client, every new message would be rejected as a steer and
+                # the chat deadlocks. No pending request → drop the stale park so
+                # this message starts a fresh turn instead.
+                _clear_stale_hitl_park(gateway, prepared_early.thread_id)
+
             steered = await _maybe_admit_steer(
                 text=(turn.text or "").strip() or _plain_text_from_turn(turn),
                 thread_id=prepared_early.thread_id,
@@ -210,7 +259,7 @@ async def dashboard_chat_ws(
                 steer=gateway.steer,
                 hub=hub,
                 send_frame=send_frame,
-                hitl_paused=_thread_hitl_paused(gateway, prepared_early.thread_id, agent_id),
+                hitl_paused=hitl_paused,
                 content_blocks=_steer_blocks_from_turn(turn),
             )
             if steered:
@@ -229,7 +278,6 @@ async def dashboard_chat_ws(
                 ws_connection_id=connection_id,
                 user_is_admin=bool(getattr(user, "is_admin", False)),
             )
-            hub.subscribe(prepared_early.thread_id, connection_id)
             channel_manager.enqueue(WS_CHANNEL_ID, inbound)
 
     except WebSocketDisconnect:
@@ -262,7 +310,7 @@ async def _bridge_chat_ws(
         await websocket.close(code=1011, reason="bridge not ready")
         return
     try:
-        mgr.get_owned(ref.connection_id, user.id)
+        mgr.get_usable(ref.connection_id, user.id)
         mgr.require_session(ref.connection_id)
     except OctopError as exc:
         await websocket.close(code=1011, reason=str(exc.code.value))
@@ -276,6 +324,133 @@ async def _bridge_chat_ws(
         await websocket.send_text(
             json.dumps(frame, ensure_ascii=False, default=json_chunk_default),
         )
+
+    listen_task: asyncio.Task[None] | None = None
+    listen_thread_id = ""
+    turn_tasks: set[asyncio.Task[None]] = set()
+    host_turn_task: asyncio.Task[None] | None = None
+    host_turn_ended = False
+    last_thread_id = ""
+
+    async def stop_listen() -> None:
+        nonlocal listen_task
+        task = listen_task
+        listen_task = None
+        if task is None or task.done():
+            return
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
+
+    def start_listen(thread_id: str) -> None:
+        nonlocal listen_task, listen_thread_id
+        tid = (thread_id or "").strip()
+        if not tid:
+            return
+        prev = listen_task
+        if prev is not None and not prev.done():
+            prev.cancel()
+
+        async def _run() -> None:
+            try:
+                await mgr.relay_user_listen(
+                    connection_id=ref.connection_id,
+                    owner_user_id=user.id,
+                    remote_agent_id=ref.remote_agent_id,
+                    thread_id=tid,
+                    on_frame=send_frame,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("bridge chat listen failed")
+
+        listen_thread_id = tid
+        listen_task = asyncio.create_task(_run(), name=f"bridge-listen-{tid}")
+        if prev is not None and not prev.done():
+
+            async def _await_prev() -> None:
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await prev
+
+            asyncio.create_task(_await_prev(), name="bridge-listen-cancel")
+
+    def ensure_listen(thread_id: str) -> None:
+        tid = (thread_id or "").strip()
+        if not tid:
+            return
+        if listen_task is not None and not listen_task.done() and listen_thread_id == tid:
+            return
+        start_listen(tid)
+
+    async def run_turn(turn_payload: dict[str, Any], *, is_host: bool) -> None:
+        nonlocal last_thread_id, host_turn_ended
+        resolved_thread_id = str(turn_payload.get("thread_id") or "").strip()
+
+        async def capture(frame: dict[str, Any]) -> None:
+            nonlocal resolved_thread_id, host_turn_ended
+            kind = str(frame.get("type") or "")
+            if kind == "thread":
+                tid = str(frame.get("thread_id") or "").strip()
+                if tid:
+                    resolved_thread_id = tid
+            if is_host and kind == "turn.ended":
+                host_turn_ended = True
+            # Keep forwarding after host ``turn.ended``. Member tokens use
+            # this same subscriber; handing the room to a second listen
+            # drops them.
+            await send_frame(frame)
+
+        try:
+            await mgr.relay_user_turn(
+                connection_id=ref.connection_id,
+                owner_user_id=user.id,
+                remote_agent_id=ref.remote_agent_id,
+                turn_payload=turn_payload,
+                on_frame=capture,
+            )
+        except asyncio.CancelledError:
+            raise
+        except OctopError as exc:
+            await send_frame({"type": "error", "message": str(exc)})
+            await send_frame({"type": "done"})
+        except Exception:
+            logger.exception("bridge chat relay failed")
+            await send_frame({"type": "error", "message": "bridge turn failed"})
+            await send_frame({"type": "done"})
+        else:
+            # Peer closed the turn (older peer). Re-attach so a late member
+            # flush still has a room socket.
+            if is_host:
+                ensure_listen(resolved_thread_id or last_thread_id)
+        finally:
+            if resolved_thread_id:
+                last_thread_id = resolved_thread_id
+
+    def spawn_turn(turn_payload: dict[str, Any], *, is_host: bool) -> asyncio.Task[None]:
+        task = asyncio.create_task(
+            run_turn(turn_payload, is_host=is_host),
+            name="bridge-chat-turn",
+        )
+        turn_tasks.add(task)
+
+        def _cleanup(done: asyncio.Task[None]) -> None:
+            turn_tasks.discard(done)
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                done.exception()
+
+        task.add_done_callback(_cleanup)
+        return task
+
+    async def release_held_host() -> None:
+        nonlocal host_turn_task
+        task = host_turn_task
+        if task is None or task.done() or not host_turn_ended:
+            return
+        host_turn_task = None
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await task
 
     try:
         while websocket.application_state == WebSocketState.CONNECTED:
@@ -291,18 +466,47 @@ async def _bridge_chat_ws(
                 await send_frame({"type": "pong"})
                 continue
             if msg_type == "subscribe":
-                # History/live resume stays on the peer; acknowledge without local hub.
                 thread_id = str(payload.get("thread_id") or "").strip()
-                await send_frame(
-                    {
-                        "type": "turn_status",
-                        "thread_id": thread_id,
-                        "active": False,
-                    }
-                )
+                last_thread_id = thread_id or last_thread_id
+                if host_turn_task is not None and not host_turn_task.done() and not host_turn_ended:
+                    continue
+                await release_held_host()
+                await stop_listen()
+                start_listen(thread_id)
                 continue
             if msg_type == "cancel":
-                await send_frame({"type": "error", "message": "cancel not supported on bridge yet"})
+                thread_id = str(payload.get("thread_id") or last_thread_id).strip()
+                if not thread_id:
+                    await send_frame({"type": "error", "message": "cancel requires thread_id"})
+                    continue
+                try:
+                    await mgr.relay_turn_cancel(
+                        connection_id=ref.connection_id,
+                        owner_user_id=user.id,
+                        remote_agent_id=ref.remote_agent_id,
+                        thread_id=thread_id,
+                        on_frame=send_frame,
+                    )
+                except OctopError as exc:
+                    await send_frame({"type": "error", "message": str(exc)})
+                except Exception:
+                    logger.exception("bridge chat cancel failed")
+                    await send_frame({"type": "error", "message": "bridge cancel failed"})
+                continue
+            if msg_type == "steer_remove":
+                try:
+                    await mgr.relay_turn_steer_remove(
+                        connection_id=ref.connection_id,
+                        owner_user_id=user.id,
+                        remote_agent_id=ref.remote_agent_id,
+                        payload=payload,
+                        on_frame=send_frame,
+                    )
+                except OctopError as exc:
+                    await send_frame({"type": "error", "message": str(exc)})
+                except Exception:
+                    logger.exception("bridge chat steer_remove failed")
+                    await send_frame({"type": "error", "message": "bridge steer_remove failed"})
                 continue
             if msg_type != "user_turn":
                 await send_frame({"type": "error", "message": f"unknown message type: {msg_type}"})
@@ -320,24 +524,29 @@ async def _bridge_chat_ws(
                 continue
             turn_payload = frame.model_dump(exclude_none=True)
             turn_payload.pop("type", None)
-            try:
-                await mgr.relay_user_turn(
-                    connection_id=ref.connection_id,
-                    owner_user_id=user.id,
-                    remote_agent_id=ref.remote_agent_id,
-                    turn_payload=turn_payload,
-                    on_frame=send_frame,
-                )
-            except OctopError as exc:
-                await send_frame({"type": "error", "message": str(exc)})
-                await send_frame({"type": "done"})
-            except Exception:
-                logger.exception("bridge chat relay failed")
-                await send_frame({"type": "error", "message": "bridge turn failed"})
-                await send_frame({"type": "done"})
+            last_thread_id = str(turn.thread_id or last_thread_id).strip()
+            if host_turn_task is not None and not host_turn_task.done():
+                if host_turn_ended:
+                    await release_held_host()
+                else:
+                    spawn_turn(turn_payload, is_host=False)
+                    continue
+            # One room pipe: the turn subscriber stays up after host
+            # ``turn.ended`` and forwards member frames. A second listen
+            # would duplicate the host stream.
+            await stop_listen()
+            host_turn_ended = False
+            host_turn_task = spawn_turn(turn_payload, is_host=True)
     except WebSocketDisconnect:
         pass
     finally:
+        await stop_listen()
+        pending = list(turn_tasks)
+        for task in pending:
+            task.cancel()
+        for task in pending:
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
         if websocket.application_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close()
@@ -395,6 +604,38 @@ def _plain_text_from_turn(turn: Any) -> str:
     if isinstance(content, str):
         return content.strip()
     return ""
+
+
+def _clear_stale_hitl_park(gateway: Any, thread_id: str) -> None:
+    """Drop a leftover ``hitl_paused`` steer park when no approval is pending.
+
+    Kept separate from ``_thread_hitl_paused`` so the probe stays read-only and
+    the mutation is obvious at the call site.
+    """
+    steer = getattr(gateway, "steer", None)
+    get_state = getattr(steer, "get_state", None)
+    if steer is None or not callable(get_state):
+        return
+    try:
+        state = get_state(thread_id)
+    except Exception:
+        logger.exception("hitl park probe failed thread=%s", thread_id)
+        return
+    if state is None or getattr(state, "phase", None) != "hitl_paused":
+        return
+    try:
+        steer.discard(thread_id, reason="hitl_paused")
+        logger.info("cleared stale hitl park thread=%s", thread_id)
+    except Exception:
+        logger.exception("failed to clear stale hitl park thread=%s", thread_id)
+
+
+def _ws_client_message_id(frame: UserTurnWsFrame) -> str | None:
+    for item in frame.messages or []:
+        raw = item.get("id") if isinstance(item, dict) else None
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
 
 
 def _thread_hitl_paused(gateway: Any, thread_id: str, agent_id: str) -> bool:
@@ -543,7 +784,7 @@ async def _handle_steer_remove(
         )
         return
     row = gateway.thread_registry.get_thread(thread_id)
-    if row is None or row.agent_id != agent_id or row.user_id != user_id:
+    if not _ws_thread_visible(row, agent_id, user_id):
         await send_frame(
             {
                 "type": "steer.ack",

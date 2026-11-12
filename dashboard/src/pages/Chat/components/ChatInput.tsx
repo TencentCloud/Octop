@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { App } from "antd";
+import cx from "classnames";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import {
@@ -18,7 +19,7 @@ import {
 import { useKeepInVisualViewport } from "../../../hooks/useKeepInVisualViewport";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
-import { agentChatApi } from "../../../api/modules/agentChat";
+import { textAssistApi } from "../../../api/modules/textAssist";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -113,6 +114,8 @@ interface ChatInputProps {
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
   hitlPolicy?: HitlSessionPolicy;
   onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
+  /** Shared conversation: model, reasoning, mode, and approval stay with the owner. */
+  lockThreadSettings?: boolean;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -175,6 +178,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onConversationModeChange,
       hitlPolicy,
       onHitlPolicyChange,
+      lockThreadSettings = false,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -481,6 +485,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       mentionItems,
       filesLoading,
       filesError,
+      filesTruncated,
       runSlashCommand,
       matchSlashCommand,
       handleMentionSelect,
@@ -805,7 +810,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       setPolishing(true);
       try {
-        const result = await agentChatApi.polish(agentId, draft, selectedModel);
+        const modelOverride = resolveTurnModelRef(selectedModel, defaultModel);
+        const result = await textAssistApi.assist({
+          kind: "chat.prompt",
+          text: draft,
+          agent_id: agentId,
+          // Omit model for automatic routing; pass only an explicit picker choice.
+          ...(modelOverride ? { default_model: modelOverride } : {}),
+        });
         const polished = stripThinkingTags(result.text?.trim() ?? "");
         if (!polished) {
           antMessage.error(t("chat.polish.emptyResult"));
@@ -835,6 +847,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       holdSend,
       disabled,
       selectedModel,
+      defaultModel,
       t,
     ]);
 
@@ -849,7 +862,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         id="octop-chat-file-drop"
         data-file-drop-target=""
         data-octop-chat-drop="1"
-        className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
+        className={cx(styles.chatInput, showDrop && styles.dropActive)}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -874,6 +887,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             uploading={uploading}
             selectedConnectors={selectedConnectors}
             selectedModel={selectedModel}
+            availableModels={availableModels}
             availableConnectors={availableConnectors}
             availableKnowledgeBases={availableKnowledgeBases}
             onRemoveAttachment={removeAttachment}
@@ -948,6 +962,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               subagents={availableSubagents}
               filesLoading={filesLoading}
               filesError={filesError}
+              filesTruncated={filesTruncated}
               activeIndex={mentionMenuIndex}
               onSelect={handleMentionSelect}
               onHover={setMentionMenuIndex}
@@ -1018,6 +1033,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onConversationModeChange={onConversationModeChange}
             hitlPolicy={hitlPolicy}
             onHitlPolicyChange={onHitlPolicyChange}
+            lockThreadSettings={lockThreadSettings}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}

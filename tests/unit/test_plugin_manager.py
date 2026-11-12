@@ -105,15 +105,9 @@ def test_install_url_rejects_non_zip(tmp_path: Path, monkeypatch: pytest.MonkeyP
     config_path.write_text("{}", encoding="utf-8")
     mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
 
-    def fake_retrieve(
-        url: str, filename: str | Path, *args: Any, **kwargs: Any
-    ) -> tuple[str, None]:
-        Path(filename).write_text("<!DOCTYPE html><html>blob page</html>", encoding="utf-8")
-        return (str(filename), None)
-
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager.download",
-        fake_retrieve,
+        "octop.infra.agents.plugins.installation.urllib.request.urlopen",
+        lambda *args, **kwargs: io.BytesIO(b"<!DOCTYPE html><html>blob page</html>"),
     )
     with pytest.raises(OctopError) as excinfo:
         mgr.install_url("https://example.com/not-a-plugin.zip")
@@ -132,15 +126,25 @@ def test_install_url_accepts_valid_zip(tmp_path: Path, monkeypatch: pytest.Monke
             if path.is_file():
                 zf.write(path, arcname=f"echo-tool/{path.relative_to(_FIXTURE).as_posix()}")
 
-    def fake_retrieve(
-        url: str, filename: str | Path, *args: Any, **kwargs: Any
-    ) -> tuple[str, None]:
-        Path(filename).write_bytes(buf.getvalue())
-        return (str(filename), None)
+    class FakeResponse:
+        headers: dict[str, str] = {}
+
+        def __init__(self) -> None:
+            self._payload = buf.getvalue()
+
+        def __enter__(self) -> FakeResponse:
+            return self
+
+        def __exit__(self, *args: Any) -> None:
+            pass
+
+        def read(self, size: int) -> bytes:
+            chunk, self._payload = self._payload[:size], self._payload[size:]
+            return chunk
 
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager.download",
-        fake_retrieve,
+        "octop.infra.agents.plugins.installation.urllib.request.urlopen",
+        lambda *args, **kwargs: FakeResponse(),
     )
     loaded = mgr.install_url("https://example.com/echo-tool.zip", force=True)
     assert loaded.manifest.id == "echo-tool"
@@ -156,6 +160,48 @@ def test_install_archive_accepts_local_zip(tmp_path: Path) -> None:
     assert loaded.manifest.id == "echo-tool"
     items = mgr.list_installed()
     assert any(i.get("id") == "echo-tool" for i in items)
+
+
+def test_install_archive_rejects_too_many_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    archive = tmp_path / "many.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("plugin.yaml", "id: echo-tool\nversion: 1.0.0\nname: Echo\nkind: tool\n")
+        zf.writestr("extra.txt", "x")
+    monkeypatch.setattr("octop.infra.agents.plugins.manager._MAX_PLUGIN_ZIP_ENTRIES", 1)
+    with pytest.raises(OctopError, match="too many entries"):
+        mgr.install_archive(archive)
+
+
+def test_install_archive_rejects_path_traversal(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    archive = tmp_path / "traversal.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("../escape.txt", "x")
+    with pytest.raises(OctopError, match="path traversal"):
+        mgr.install_archive(archive)
+
+
+def test_install_url_rejects_download_over_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+
+    monkeypatch.setattr("octop.infra.agents.plugins.manager._MAX_PLUGIN_ARCHIVE_BYTES", 4)
+    monkeypatch.setattr(
+        "octop.infra.agents.plugins.manager.urllib.request.urlopen",
+        lambda *args, **kwargs: io.BytesIO(b"x" * 8),
+    )
+    with pytest.raises(OctopError, match="download exceeds"):
+        mgr.install_url("https://example.com/plugin.zip")
 
 
 def test_install_archive_rejects_non_zip(tmp_path: Path) -> None:

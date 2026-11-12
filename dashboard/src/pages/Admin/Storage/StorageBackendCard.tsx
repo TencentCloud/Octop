@@ -16,6 +16,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../api/request";
 import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
 import {
@@ -176,9 +177,7 @@ export function StorageBackendCard({
   return (
     <>
       <div
-        className={`${styles.backendCard} ${
-          isNew ? styles.backendCardNew : ""
-        }`}
+        className={cx(styles.backendCard, isNew && styles.backendCardNew)}
         style={
           {
             opacity: backend.enabled ? 1 : 0.65,

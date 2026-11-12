@@ -1,5 +1,10 @@
 import { readErrorBody, responseError } from "./responseError";
 import { getApiUrl } from "./config";
+import {
+  isLocalDesktopUser,
+  registerDeviceSession,
+  renewDesktopSession,
+} from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
@@ -303,6 +308,9 @@ function buildAuthHeaders(path: string): Record<string, string> {
 
 let _redirectingToLogin = false;
 
+/** 401 codes that mean this Octop session is no longer valid. */
+const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
  * requests report an expired session.
@@ -331,11 +339,32 @@ function handleUnauthorized(): void {
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().
  */
+async function errorCodeOf(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { code?: string };
+    };
+    const code = body?.error?.code;
+    return typeof code === "string" && code.trim() ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function throwIfUnauthorized(
   path: string,
   response: Response,
 ): Promise<void> {
   if (response.status !== 401 || path.startsWith("/auth/")) {
+    return;
+  }
+  const code = await errorCodeOf(response);
+  // Business 401s (peer login, etc.) are not a dead local session.
+  if (
+    code &&
+    !SESSION_UNAUTHORIZED_CODES.has(code) &&
+    !path.startsWith("/setup/")
+  ) {
     return;
   }
   clearAuthToken();
@@ -356,6 +385,43 @@ async function throwIfUnauthorized(
   throw new Error(message);
 }
 
+/**
+ * Retry a 401 once with a JWT minted by the desktop shell.
+ *
+ * A desktop user has no password to type, so an expired session used to be a
+ * dead end. The shell holds a device credential and can issue a new token; on
+ * the web this returns null immediately and the caller falls through to the
+ * ordinary login redirect.
+ */
+async function retryWithDesktopSession(
+  path: string,
+  url: string,
+  options: RequestInit,
+  response: Response,
+): Promise<Response | null> {
+  if (response.status !== 401) return null;
+  // A rejected login is a credential problem, not an expired session.
+  if (path.startsWith("/auth/login") || path.startsWith("/auth/device/")) {
+    return null;
+  }
+  // Business 401s (peer login, setup guards) would only be retried in vain.
+  const code = await errorCodeOf(response);
+  if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
+  const current = getAuthToken();
+  // A password account's expired token must land on the login page. Only the
+  // desktop local user is renewed in place.
+  if (current && !isLocalDesktopUser(current)) return null;
+  const issued = await renewDesktopSession();
+  if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
+    return null;
+  }
+  setAuthToken(issued.access_token, !isSessionOnlyAuth());
+  return fetch(url, {
+    ...options,
+    headers: buildHeaders(path, options.headers),
+  });
+}
+
 export async function request<T = unknown>(
   path: string,
   options: RequestInit = {},
@@ -366,10 +432,13 @@ export async function request<T = unknown>(
 
   const headers = buildHeaders(path, options.headers);
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   });
+
+  const retried = await retryWithDesktopSession(path, url, options, response);
+  if (retried) response = retried;
 
   if (await check503ForSetupRequired(path, response)) {
     throw new SetupRequiredError();
@@ -377,6 +446,9 @@ export async function request<T = unknown>(
 
   await throwIfUnauthorized(path, response);
   applyRenewedAccessToken(response);
+  // Desktop: bind the shell's device credential the first chance we get, so the
+  // next cold start can renew instead of landing on /login.
+  if (response.ok) void registerDeviceSession(getAuthToken());
 
   if (!response.ok) {
     if (response.status === 403 && isAgentScopedPath(path)) {

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.users.groups import RESOURCE_CONNECTOR, group_visibility_sql
 
 
 @dataclass(frozen=True)
@@ -28,7 +30,6 @@ class ConnectorRow:
 
     @classmethod
     def from_row(cls, r: DbRow) -> ConnectorRow:
-        blob = r["credential_blob"]
         return cls(
             id=r["id"],
             instance_id=r["instance_id"],
@@ -38,7 +39,7 @@ class ConnectorRow:
             status=r["status"],
             shared=bool(r["shared"]),
             mcp_server_name=r["mcp_server_name"],
-            credential_blob=bytes(blob) if blob is not None else None,
+            credential_blob=_coerce_credential_blob(r["credential_blob"]),
             credential_expires_at=r["credential_expires_at"],
             credential_rotated_at=r["credential_rotated_at"],
             config_json=r["config_json"],
@@ -49,6 +50,20 @@ class ConnectorRow:
     @property
     def has_credentials(self) -> bool:
         return bool(self.credential_blob)
+
+
+def _coerce_credential_blob(blob: Any) -> bytes | None:
+    """Normalize a credential value read from SQLite or PostgreSQL.
+
+    A pre-1.0.3 custom-MCP save bound a ``str``. SQLite kept it as TEXT, and
+    ``bytes(str)`` then failed every connector read. Fernet tokens are ASCII,
+    so UTF-8 is the same conversion as ``CAST(x AS BLOB)``.
+    """
+    if blob is None:
+        return None
+    if isinstance(blob, str):
+        return blob.encode("utf-8")
+    return bytes(blob)
 
 
 @dataclass(frozen=True)
@@ -127,6 +142,13 @@ class ConnectorRepo:
             ).fetchone()
         return ConnectorRow.from_row(r) if r else None
 
+    def list_all(self) -> list[ConnectorRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM connectors ORDER BY display_name, instance_id"
+            ).fetchall()
+        return map_rows(rows, ConnectorRow)
+
     def list_by_user(self, user_id: int) -> list[ConnectorRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
@@ -136,14 +158,22 @@ class ConnectorRepo:
         return map_rows(rows, ConnectorRow)
 
     def list_visible(self, user_id: int) -> list[ConnectorRow]:
+        """Owned instances plus shared ones that pass the per-instance group layer."""
         with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_CONNECTOR, "c.instance_id")
             rows = conn.execute(
-                "SELECT * FROM connectors "
-                "WHERE user_id = ? OR shared = 1 "
-                "ORDER BY display_name, instance_id",
-                (user_id,),
+                "SELECT c.* FROM connectors c "
+                "WHERE (c.user_id = ? OR c.shared = 1) "
+                f"AND (c.user_id = ? OR {clause}) "
+                "ORDER BY c.display_name, c.instance_id",
+                (user_id, user_id, user_id),
             ).fetchall()
         return map_rows(rows, ConnectorRow)
+
+    def connector_feature_allows(self, user_id: int) -> bool:
+        """Deprecated feature-wide gate. Always True; visibility is per instance."""
+        del user_id
+        return True
 
     def list_by_kind(self, kind: str) -> list[ConnectorRow]:
         with self._db.connect() as conn:

@@ -1071,6 +1071,69 @@ async def test_stream_team_peer_relays_tokens_to_room(processor_env: dict) -> No
 
 
 @pytest.mark.asyncio
+async def test_live_member_catchup_replays_partial_then_clears(
+    processor_env: dict,
+) -> None:
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "token", "content": "hello "}
+        started.set()
+        await release.wait()
+        yield {"type": "token", "content": "doc"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[])
+    processor._agent_manager.get_agent.return_value = harness
+
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    caught: list[dict[str, object]] = []
+
+    async def send(frame: dict[str, object]) -> None:
+        caught.append(frame)
+
+    await processor.teams.deliver_live_member_catchup(
+        "thr_parent",
+        subscribe=lambda: None,
+        send=send,
+    )
+    assert caught == [
+        {
+            "type": "token",
+            "content": "hello ",
+            "agent_id": "child",
+            "agent": "child",
+            "team_snapshot": True,
+            "team_live": True,
+            "thread_id": "thr_parent",
+        }
+    ]
+    release.set()
+    await asyncio.wait_for(task, timeout=2)
+    caught.clear()
+    await processor.teams.deliver_live_member_catchup(
+        "thr_parent",
+        subscribe=lambda: gateway.ws_hub.subscribe("thr_parent", "late"),
+        send=send,
+    )
+    assert caught == []
+
+
+@pytest.mark.asyncio
 async def test_stream_team_peer_relays_tokens_to_member_and_room(
     processor_env: dict,
 ) -> None:

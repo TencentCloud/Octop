@@ -34,6 +34,12 @@ def _bootstrap() -> Path:
 
     # Process .pth files (required for pywin32 layout).
     site.addsitedir(str(packages))
+    # Python subprocesses do not inherit additions to the parent's sys.path.
+    pythonpath = os.environ.get("PYTHONPATH", "")
+    if str(packages) not in pythonpath.split(os.pathsep):
+        os.environ["PYTHONPATH"] = (
+            str(packages) + os.pathsep + pythonpath if pythonpath else str(packages)
+        )
 
     if sys.platform == "win32":
         dll_dir = packages / "pywin32_system32"

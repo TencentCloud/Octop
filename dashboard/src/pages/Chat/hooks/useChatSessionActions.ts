@@ -14,7 +14,7 @@ interface UseChatSessionActionsParams {
   setSidebarOpen: (open: boolean) => void;
   setSelectedModel: (model: string | null) => void;
   setHasBrowserTool: (value: boolean) => void;
-  deleteSession: (id: string, compact: boolean) => Promise<boolean>;
+  deleteSession: (id: string, compact: boolean) => Promise<boolean | null>;
   clearMessages: () => void;
   resetNavForAgentSwitch: () => void;
   markInitialNavDone: (agentId: string) => void;
@@ -135,7 +135,7 @@ export function useChatSessionActions({
   const handleDeleteSession = useCallback(
     async (id: string, compact: boolean) => {
       const deleted = await deleteSession(id, compact);
-      if (!deleted) return false;
+      if (deleted !== true) return deleted;
       const agent = resolvedAgentId;
       if (id === activeThreadId && agent) {
         const remaining = sessions.filter((s) => s.id !== id);

@@ -16,6 +16,8 @@ import { message } from "@/utils/antdMessage";
 import { Activity } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
+import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
 import {
   clearFormDraft,
   loadFormDraft,
@@ -65,6 +67,8 @@ export function StorageBackendDrawer({
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
+  const [visibility, setVisibility] = useState<ResourceVisibilityMode>("all");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [form] = Form.useForm<StorageForm>();
   const isEdit = editing !== undefined;
   const draftScope = editing
@@ -82,6 +86,8 @@ export function StorageBackendDrawer({
   useEffect(() => {
     if (open) {
       if (editing) {
+        setVisibility(editing.visibility === "groups" ? "groups" : "all");
+        setGroupIds(editing.group_ids ?? []);
         setActiveKind(editing.kind);
         let cfg: Record<string, unknown> = {};
         try {
@@ -112,6 +118,8 @@ export function StorageBackendDrawer({
           username: typeof cfg.username === "string" ? cfg.username : "",
         });
       } else {
+        setVisibility("all");
+        setGroupIds([]);
         const kind = presetKind ?? "cos";
         setActiveKind(kind);
         form.resetFields();
@@ -139,6 +147,10 @@ export function StorageBackendDrawer({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      if (visibility === "groups" && groupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       setSaving(true);
 
       const body: Record<string, unknown> = {
@@ -148,6 +160,8 @@ export function StorageBackendDrawer({
         endpoint: values.endpoint?.trim() || null,
         config_json: values.config_json?.trim() || null,
         note: values.note?.trim() || null,
+        visibility: visibility === "groups" ? "groups" : "all",
+        group_ids: visibility === "groups" ? groupIds : [],
       };
       if (values.access_key?.trim()) body.access_key = values.access_key.trim();
       if (values.secret_key?.trim()) body.secret_key = values.secret_key.trim();
@@ -632,6 +646,20 @@ export function StorageBackendDrawer({
         <Form.Item name="note" label={t("storage.noteLabel")}>
           <Input.TextArea rows={2} />
         </Form.Item>
+
+        <ResourceVisibilityCollapse
+          allowOwner={false}
+          visibility={visibility === "groups" ? "groups" : "all"}
+          groupIds={groupIds}
+          hint={t("resourceVisibility.groupAccessHint")}
+          defaultOpen={visibility === "groups"}
+          onChange={(next) => {
+            const nextVisibility =
+              next.visibility === "groups" ? "groups" : "all";
+            setVisibility(nextVisibility);
+            setGroupIds(nextVisibility === "groups" ? next.groupIds : []);
+          }}
+        />
       </Form>
 
       {activeKind === "docker" ? <DockerEnvFooter /> : null}

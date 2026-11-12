@@ -1,54 +1,102 @@
 import { useTranslation } from "react-i18next";
-import { MessageSquarePlus, Pin } from "lucide-react";
+import { Dropdown } from "antd";
+import type { MenuProps } from "antd";
+import {
+  Eye,
+  EyeOff,
+  MessageSquarePlus,
+  MoreVertical,
+  Pencil,
+  Pin,
+  PinOff,
+} from "lucide-react";
 import styles from "../index.module.less";
 
-function ExpertPinButton({
-  pinned,
-  className,
-  onToggle,
-}: {
-  pinned: boolean;
-  className: string;
-  onToggle: () => void;
-}) {
+/** Small pin shown on a pinned expert row. The action itself stays in the menu. */
+export function ExpertPinMark({ pinned }: { pinned: boolean }) {
   const { t } = useTranslation();
-  const label = pinned ? t("chat.expertUnpin") : t("chat.expertPin");
+  if (!pinned) return null;
   return (
-    <button
-      type="button"
-      className={`${className} ${pinned ? styles.agentPinBtnActive : ""}`}
-      aria-label={label}
-      aria-pressed={pinned}
-      title={label}
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-    >
+    <span className={styles.sessionRowPinIndicator} title={t("chat.expertPin")}>
       <Pin size={12} strokeWidth={2} aria-hidden />
-    </button>
+    </span>
   );
 }
 
-/** Pin control to the right of the new-chat button on an expert nav row. */
+/** New-chat button plus a more menu for pin and hide on an expert nav row. */
 export default function ExpertNavActions({
   variant,
   pinned,
   onTogglePin,
   onNewChat,
+  onEdit,
+  editingTeam = false,
+  onHide,
+  onUnhide,
 }: {
   variant: "classic" | "minimal";
   pinned: boolean;
   onTogglePin: () => void;
   onNewChat: () => void;
+  onEdit?: () => void;
+  /** Team hosts use the team editor; solo experts use the expert editor. */
+  editingTeam?: boolean;
+  onHide?: () => void;
+  onUnhide?: () => void;
 }) {
   const { t } = useTranslation();
-  const pinClass =
-    variant === "minimal" ? styles.minimalAgentPinBtn : styles.agentPinBtn;
+  const moreClass =
+    variant === "minimal" ? styles.minimalAgentMoreBtn : styles.agentMoreBtn;
   const newChatClass =
     variant === "minimal"
       ? styles.minimalAgentNewChatBtn
       : styles.agentNewChatBtn;
+  const items: NonNullable<MenuProps["items"]> = [
+    {
+      key: "pin",
+      icon: pinned ? <PinOff size={14} /> : <Pin size={14} />,
+      label: pinned ? t("chat.expertUnpin") : t("chat.expertPin"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onTogglePin();
+      },
+    },
+  ];
+  if (onEdit) {
+    items.push({
+      key: "edit",
+      icon: <Pencil size={14} />,
+      label: editingTeam
+        ? t("experts.teams.editTitle")
+        : t("experts.editExpert", "编辑专家"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onEdit();
+      },
+    });
+  }
+  if (onHide) {
+    items.push({
+      key: "hide",
+      icon: <EyeOff size={14} />,
+      label: t("chat.expertHide"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onHide();
+      },
+    });
+  }
+  if (onUnhide) {
+    items.push({
+      key: "unhide",
+      icon: <Eye size={14} />,
+      label: t("chat.expertUnhide"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onUnhide();
+      },
+    });
+  }
   return (
     <span
       className={styles.expertNavActions}
@@ -66,11 +114,17 @@ export default function ExpertNavActions({
       >
         <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
       </button>
-      <ExpertPinButton
-        pinned={pinned}
-        className={pinClass}
-        onToggle={onTogglePin}
-      />
+      <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
+        <button
+          type="button"
+          className={moreClass}
+          aria-label={t("common.more")}
+          aria-haspopup="menu"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreVertical size={14} strokeWidth={2} aria-hidden />
+        </button>
+      </Dropdown>
     </span>
   );
 }

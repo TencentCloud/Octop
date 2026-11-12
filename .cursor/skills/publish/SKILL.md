@@ -199,18 +199,7 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
    grep -n '__version__' src/octop/__init__.py
    # `__version__ = "X.Y.Z"` → `"A.B.C"`
    ```
-4. 飞牛 FnOS 两个 manifest 的 `version=`（仓库源文件与 pyproject 保持同一 PEP 440 字符串。`scripts/build-fpk.sh` 打包时会改写成商店可比版本，例如 `1.0.2b8` → `1.0.208`，不要把源文件改成这个编码）：
-   ```bash
-   grep -n '^version=' fnos/docker/manifest fnos/native/manifest
-   # `version=X.Y.Z` → `version=A.B.C`（两个文件都要改，仍是 PEP 440）
-   ```
-5. 飞牛 Docker compose 镜像标签（与本包版本相同，供 FPK 拉取 GHCR）：
-   ```bash
-   grep -n 'ghcr.io/tencentcloud/octop:' fnos/docker/app/docker/docker-compose.yaml
-   # `ghcr.io/tencentcloud/octop:X.Y.Z` → `:A.B.C`
-   # 不得改成 `:latest`（测试禁止 latest）
-   ```
-6. `uv.lock` 里可编辑包 `octop` 的版本（漏改会导致 lock 与 pyproject 不一致）：
+4. `uv.lock` 里可编辑包 `octop` 的版本（漏改会导致 lock 与 pyproject 不一致）：
    ```bash
    grep -n -A2 'name = "octop"' uv.lock | head -5
    # 将该包的 `version = "X.Y.Z"` 改为 `"A.B.C"`
@@ -232,6 +221,8 @@ git grep -n --fixed-strings "X.Y.Z"
 | `CHANGELOG.md` 已发布章节（`## [X.Y.Z]` 及正文） | **保留**，不要改历史 |
 | 测试夹具里拿旧号做比较（如 `1.0.2b4` vs `1.0.2b5`、解析示例） | **保留** |
 | workflow / 注释里的示例旧号（如 `0.9.28`） | **保留**（不是当前钉死） |
+| `fnos/README.md` 版本号映射里的示例 | **保留** |
+| `fnos/docker/manifest`、`fnos/native/manifest` 的 `version`，以及 `fnos/docker/app/docker/docker-compose.yaml` 的 `image` | **保留**占位 `0.0.0`。`scripts/build-fpk.sh` 从 `pyproject.toml` 写入商店版本和镜像标签 |
 
 提交前再扫必改清单，必须已经没有旧号：
 
@@ -239,8 +230,6 @@ git grep -n --fixed-strings "X.Y.Z"
 git grep -n --fixed-strings "X.Y.Z" -- \
   pyproject.toml src/octop/__init__.py \
   README.md README_CN.md \
-  fnos/docker/manifest fnos/native/manifest \
-  fnos/docker/app/docker/docker-compose.yaml \
   uv.lock
 ```
 
@@ -366,6 +355,6 @@ git checkout {original_branch}
 - 发版后删除 `release/*`；`main → develop` 由 `sync-main-to-develop.yml` 自动同步（失败时再手动补）
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
-- 把旧版本号 `X.Y.Z` 换成 `A.B.C`：`pyproject.toml`、`__version__`、多语言 README 徽标、`fnos/*/manifest`、`fnos/docker/app/docker/docker-compose.yaml` 镜像标签、`uv.lock` 的 octop 包版本；提交前 `git grep` 必改清单确认无旧号
+- 把旧版本号 `X.Y.Z` 换成 `A.B.C`：`pyproject.toml`、`__version__`、多语言 README 徽标、`uv.lock` 的 octop 包版本；提交前 `git grep` 必改清单确认无旧号。`fnos/docker/manifest`、`fnos/native/manifest` 的 `version` 和 `fnos/docker/app/docker/docker-compose.yaml` 的 `image` 保持占位 `0.0.0`，不要改
 - 勿改 CHANGELOG 历史章节、测试夹具里的旧版本比较、workflow 示例号
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果

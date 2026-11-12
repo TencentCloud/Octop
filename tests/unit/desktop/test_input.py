@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from octop.infra.desktop.input import InputInjector
+from octop.infra.control.desktop.input import InputInjector
 
 
 def _force_linux(monkeypatch) -> None:
     # InputInjector decides xdotool via is_linux_virtual_display (capture.sys.platform).
-    monkeypatch.setattr("octop.infra.desktop.capture.sys.platform", "linux")
+    monkeypatch.setattr("octop.infra.control.desktop.capture.sys.platform", "linux")
 
 
 def test_virtual_display_uses_xdotool_for_click(monkeypatch) -> None:
@@ -20,8 +20,10 @@ def test_virtual_display_uses_xdotool_for_click(monkeypatch) -> None:
         calls.append(args)
         return True
 
-    monkeypatch.setattr("octop.infra.desktop.input.shutil.which", lambda name: "/usr/bin/xdotool")
-    monkeypatch.setattr("octop.infra.desktop.input._run_xdotool", fake_run)
+    monkeypatch.setattr(
+        "octop.infra.control.desktop.input.shutil.which", lambda name: "/usr/bin/xdotool"
+    )
+    monkeypatch.setattr("octop.infra.control.desktop.input._run_xdotool", fake_run)
 
     inj = InputInjector(display=":99")
     inj.click(120, 340, button="left")
@@ -45,8 +47,10 @@ def test_physical_display_uses_pynput_for_click(monkeypatch) -> None:
 
 def test_virtual_display_does_not_init_pynput_on_click(monkeypatch) -> None:
     _force_linux(monkeypatch)
-    monkeypatch.setattr("octop.infra.desktop.input.shutil.which", lambda name: "/usr/bin/xdotool")
-    monkeypatch.setattr("octop.infra.desktop.input._run_xdotool", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        "octop.infra.control.desktop.input.shutil.which", lambda name: "/usr/bin/xdotool"
+    )
+    monkeypatch.setattr("octop.infra.control.desktop.input._run_xdotool", lambda *_a, **_k: True)
 
     inj = InputInjector(display=":99")
     controllers = MagicMock(side_effect=AssertionError("pynput should not be used"))

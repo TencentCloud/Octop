@@ -46,7 +46,7 @@ def peer_turn_relay_finished(frame_type: str) -> bool:
 
 class PreparedPeerTurnLike(Protocol):
     thread_id: str
-    inbound: Any
+    inbound: Any  # ``None`` when the turn was admitted as a mid-turn steer.
 
 
 class PeerTurnRunner(Protocol):

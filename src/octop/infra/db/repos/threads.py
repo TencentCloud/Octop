@@ -47,6 +47,7 @@ class ThreadRow:
     conversation_mode: str | None = None
     pending_plan_path: str | None = None
     hitl_policy: str | None = None
+    contributed: bool = False
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -66,6 +67,10 @@ class ThreadRow:
             hitl_policy = r["hitl_policy"]
         except (KeyError, IndexError):
             hitl_policy = None
+        try:
+            contributed = bool(r["contributed"])
+        except (KeyError, IndexError):
+            contributed = False
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -84,6 +89,7 @@ class ThreadRow:
             conversation_mode=str(conversation_mode) if conversation_mode else None,
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
             hitl_policy=str(hitl_policy) if hitl_policy else None,
+            contributed=contributed,
         )
 
 
@@ -208,6 +214,22 @@ class ThreadRepo:
             ).fetchall()
         return [(str(row["agent_id"]), str(row["thread_id"])) for row in rows]
 
+    def latest_user_activity(self, agent_id: str) -> int | None:
+        """Latest thread touch for ``agent_id``, ignoring empty threads.
+
+        ``last_active`` of 0 means the thread has no turns yet. Proactive care
+        uses this as the idle clock; the scheduler separately ignores a touch
+        that is only our own care push.
+        """
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(last_active) FROM threads WHERE agent_id = ? AND last_active > 0",
+                (agent_id,),
+            ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return int(row[0])
+
     def list_by_agent(self, *, agent_id: str, limit: int = 50) -> list[ThreadRow]:
         # last_active=0 is "no turns yet" (has_messages sentinel). Fall back to
         # created_at so brand-new empty threads sort to the top of the sidebar
@@ -234,6 +256,26 @@ class ThreadRepo:
                 (agent_id, user_id, limit),
             ).fetchall()
         return map_rows(rows, ThreadRow)
+
+    def list_visible(self, *, agent_id: str, user_id: int, limit: int = 50) -> list[ThreadRow]:
+        """Own threads plus conversations contributed to this shared expert."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE agent_id = ? "
+                "AND (user_id = ? OR contributed = 1) "
+                "ORDER BY pinned DESC, "
+                "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
+                "thread_id DESC LIMIT ?",
+                (agent_id, user_id, limit),
+            ).fetchall()
+        return map_rows(rows, ThreadRow)
+
+    def set_contributed(self, thread_id: str, contributed: bool) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET contributed = ? WHERE thread_id = ?",
+                (bool_int(contributed), thread_id),
+            )
 
     def list_by_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         with self._db.connect() as conn:

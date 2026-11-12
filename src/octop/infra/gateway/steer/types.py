@@ -78,6 +78,8 @@ class PendingSteer:
 class TurnSteerState:
     turn_id: str
     phase: TurnPhase = "streaming_text"
+    # Dashboard user who started this turn. Shared sessions reject other senders.
+    user_id: int | None = None
     queue: list[PendingSteer] = field(default_factory=list)
     continuation_count: int = 0
     # client_pending_id -> pending_id while queued; drained remembers message_id

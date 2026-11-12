@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
     from octop.infra.gateway.threads import ThreadRegistry
+    from octop.infra.gateway.ws.ws_hub import WebSocketHub
     from octop.infra.utils.paths import PathLayout
 
 
@@ -41,6 +42,7 @@ class SlashCtx:
     """Dashboard composer / turn ``metadata.model`` (``provider/model``), if any."""
     model_ref: str | None = None
     default_timezone: str = "Asia/Shanghai"
+    ws_hub: WebSocketHub | None = None
 
 
 def lang_of(ctx: SlashCtx) -> Locale:
@@ -166,4 +168,5 @@ def build_slash_ctx(
         server_started_at=server_started_at or (meta.started_at if meta else None),
         model_ref=model_ref,
         default_timezone=timezone,
+        ws_hub=gateway.ws_hub if gateway is not None else None,
     )

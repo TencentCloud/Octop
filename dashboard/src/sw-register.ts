@@ -1,3 +1,5 @@
+import { publicUrl } from "./utils/publicUrl";
+
 /**
  * Service Worker registration and lifecycle management.
  *
@@ -8,15 +10,34 @@
  *     when the user clicks the banner → `applyUpdate()`.
  *
  * Dev:
- *   - Do not register. Clear any leftover production SW on the same origin
- *     so Vite HMR and an old worker do not fight over navigations.
+ *   - Drop any leftover production worker (it caches assets and fights HMR).
+ *   - Register `notify-sw.js` only. It has no fetch handler, so Vite keeps
+ *     serving the app, and Chrome can still show background notifications.
  */
 
 let pendingRegistration: ServiceWorkerRegistration | null = null;
+let notifyRegistration: ServiceWorkerRegistration | null = null;
 let applyingUpdate = false;
+
+/** Registration already active, so a background tab can notify without waiting. */
+export function peekSystemNotifyRegistration(): ServiceWorkerRegistration | null {
+  return notifyRegistration;
+}
+
+function trackNotifyRegistration(): void {
+  if (!("serviceWorker" in navigator)) return;
+  void navigator.serviceWorker.ready.then((registration) => {
+    notifyRegistration = registration;
+  });
+}
 
 function notifyUpdateReady(): void {
   window.dispatchEvent(new CustomEvent("pwa:update-ready"));
+}
+
+/** True when a newer worker is waiting and the page is still on the old one. */
+export function hasPendingAppUpdate(): boolean {
+  return pendingRegistration?.waiting != null;
 }
 
 async function unregisterAllServiceWorkers(): Promise<void> {
@@ -64,10 +85,14 @@ export async function applyUpdate(): Promise<void> {
 
 /** Production registration. Exported for unit tests (vitest always sets DEV). */
 export async function registerProductionSW(): Promise<void> {
-  const registration = await navigator.serviceWorker.register("/sw.js", {
-    scope: "/",
-    updateViaCache: "none",
-  });
+  const scope = import.meta.env.BASE_URL || "/";
+  const registration = await navigator.serviceWorker.register(
+    publicUrl("sw.js"),
+    {
+      scope,
+      updateViaCache: "none",
+    },
+  );
 
   // Intentionally no controllerchange → location.reload() listener.
   // Chrome and Safari both pick up new assets via applyUpdate() instead.
@@ -117,6 +142,16 @@ export async function registerProductionSW(): Promise<void> {
   };
   document.addEventListener("visibilitychange", onVisible);
   window.addEventListener("pageshow", onVisible);
+  trackNotifyRegistration();
+}
+
+async function registerNotifySW(): Promise<void> {
+  const scope = import.meta.env.BASE_URL || "/";
+  await navigator.serviceWorker.register(publicUrl("notify-sw.js"), {
+    scope,
+    updateViaCache: "none",
+  });
+  trackNotifyRegistration();
 }
 
 export async function registerSW(): Promise<void> {
@@ -127,6 +162,11 @@ export async function registerSW(): Promise<void> {
       await unregisterAllServiceWorkers();
     } catch (err) {
       console.warn("[SW] Dev cleanup failed:", err);
+    }
+    try {
+      await registerNotifySW();
+    } catch (err) {
+      console.error("[SW] Notification worker failed:", err);
     }
     return;
   }

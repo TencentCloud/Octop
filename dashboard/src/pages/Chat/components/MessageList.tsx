@@ -12,6 +12,7 @@ import {
 import { Spin, Button } from "antd";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
 import type { ChatMessage } from "../hooks/useChat";
 import type { ComposerTagLookups } from "./UserMessageComposerTags";
@@ -68,9 +69,7 @@ const VirtuosoList = forwardRef<HTMLDivElement, VirtuosoListProps>(
         ref={ref}
         {...props}
         style={style}
-        className={[styles.messageListInner, className]
-          .filter(Boolean)
-          .join(" ")}
+        className={cx(styles.messageListInner, className)}
       >
         {children}
       </div>
@@ -157,6 +156,7 @@ function renderMessageGroup(
     ctx.onOpenBrowser && groupIndex === ctx.lastBrowserGroupIndex
       ? ctx.onOpenBrowser
       : undefined;
+  const afterLatestUser = groupIndex > ctx.lastUserGroupIndex;
   const isTurnInProgress = isLiveAssistantTurn({
     isStreaming: Boolean(ctx.isStreaming),
     groupIndex,
@@ -179,6 +179,7 @@ function renderMessageGroup(
             messages={[msg]}
             agentId={ctx.agentId}
             isTurnInProgress={isTurnInProgress}
+            afterLatestUser={afterLatestUser}
             liveSpeakers={ctx.liveSpeakers}
             onRegenerate={ctx.onRegenerate}
             onDisableStreamUsage={ctx.onDisableStreamUsage}
@@ -235,6 +236,7 @@ function renderMessageGroup(
         messages={group.messages}
         agentId={ctx.agentId}
         isTurnInProgress={isTurnInProgress}
+        afterLatestUser={afterLatestUser}
         liveSpeakers={ctx.liveSpeakers}
         onRegenerate={ctx.onRegenerate}
         onDisableStreamUsage={ctx.onDisableStreamUsage}
@@ -412,6 +414,7 @@ export default function MessageList(props: MessageListProps) {
     historyRefreshing,
     loading,
     isStreaming,
+    liveSpeakerCount: liveSpeakers.length,
     onRefreshHistory,
     hasMessages: messages.length > 0,
     sessionKey: stableSessionKey,
@@ -420,6 +423,7 @@ export default function MessageList(props: MessageListProps) {
     historyRefreshing,
     loading,
     isStreaming,
+    liveSpeakerCount: liveSpeakers.length,
     onRefreshHistory,
     hasMessages: messages.length > 0,
     sessionKey: stableSessionKey,
@@ -429,12 +433,20 @@ export default function MessageList(props: MessageListProps) {
   const requestRefreshMessages = useCallback(() => {
     const s = refreshStateRef.current;
     const now = Date.now();
+    const snap = chatStore.getSnapshot(s.sessionKey);
     if (
       s.historyRefreshing ||
       s.loading ||
       shouldBlockHistoryRefresh({
-        isStreaming: Boolean(s.isStreaming),
+        isStreaming: Boolean(snap.isStreaming || s.isStreaming),
         hasLiveSocket: chatStore.hasLiveSocket(s.sessionKey),
+        liveSpeakerCount: Math.max(
+          snap.liveSpeakers.length,
+          s.liveSpeakerCount,
+        ),
+        hasStreamingMessage: snap.messages.some(
+          (message) => message.status === "streaming",
+        ),
       }) ||
       !s.onRefreshHistory ||
       !s.hasMessages ||

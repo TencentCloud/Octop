@@ -8,10 +8,12 @@
  *  1. Preset providers (from /providers/presets) — shows configured ones via
  *     ProviderCard, unconfigured ones as "click to set up" cards.
  *  2. Custom providers — any configured provider whose name doesn't match a preset.
+ *  3. Embedding tab — ONNX + purpose=embedding providers (scheme A).
  */
 import { useMemo, useState } from "react";
 import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
 import {
+  Boxes,
   Images,
   MessageSquareText,
   Mic2,
@@ -26,6 +28,7 @@ import PageShell from "../../../layouts/PageShell";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { useProviders, type ProviderRow } from "./useProviders";
+import { isEmbeddingProvider } from "./useProviders";
 import {
   groupPresets,
   isLocalPreset,
@@ -42,32 +45,44 @@ import {
   PresetProviderCard,
   ProviderCard,
 } from "./components";
+import { EmbeddingSettingsPanel } from "./components/EmbeddingSettingsPanel";
 import styles from "./index.module.less";
 import { MediaGenerationSettingsPanel } from "../MediaGeneration";
 import { VoiceSettingsPanel } from "../Voice";
 import { SearchSettingsPanel } from "../SearchConfig";
 import { DecisionSettingsPanel } from "./components/DecisionSettingsPanel";
 
-type ModelCategory = "chat" | "generation" | "voice" | "search" | "decision";
+type ModelCategory =
+  | "chat"
+  | "embedding"
+  | "generation"
+  | "voice"
+  | "search"
+  | "decision";
 
 function resolveModelCategory(
   requestedTab: string | null,
   canChat: boolean,
-  canProviders: boolean,
+  canEmbedding: boolean,
+  canGeneration: boolean,
   canVoice: boolean,
   canSearch: boolean,
+  canDecision: boolean,
 ): ModelCategory {
-  if (requestedTab === "generation" && canProviders) return "generation";
-  if (requestedTab === "decision" && canProviders) return "decision";
+  if (requestedTab === "embedding" && canEmbedding) return "embedding";
+  if (requestedTab === "generation" && canGeneration) return "generation";
+  if (requestedTab === "decision" && canDecision) return "decision";
   if (requestedTab === "voice" && canVoice) return "voice";
   if (requestedTab === "search" && canSearch) return "search";
   if ((requestedTab === "chat" || requestedTab === null) && canChat) {
     return "chat";
   }
   if (canChat) return "chat";
+  if (canEmbedding) return "embedding";
+  if (canGeneration) return "generation";
   if (canVoice) return "voice";
+  if (canDecision) return "decision";
   if (canSearch) return "search";
-  if (canProviders) return "generation";
   return "chat";
 }
 
@@ -79,9 +94,12 @@ export default function ModelsPage() {
   const canProviders = userCan(user, "providers");
   const canOllama = userCan(user, "ollama_models");
   const canOnnx = userCan(user, "onnx_models");
+  const canGeneration = userCan(user, "model_generation");
+  const canDecision = userCan(user, "model_decision");
   const canVoice = userCan(user, "voice");
   const canSearch = userCan(user, "search");
-  const canChat = canProviders || canOllama || canOnnx;
+  const canChat = canProviders || canOllama;
+  const canEmbedding = canProviders || canOnnx;
   const {
     providers,
     presets,
@@ -99,13 +117,16 @@ export default function ModelsPage() {
   const modelCategory = resolveModelCategory(
     searchParams.get("tab"),
     canChat,
-    canProviders,
+    canEmbedding,
+    canGeneration,
     canVoice,
     canSearch,
+    canDecision,
   );
   const setModelCategory = (next: string) => {
     const updated = new URLSearchParams(searchParams);
     if (
+      next === "embedding" ||
       next === "generation" ||
       next === "voice" ||
       next === "search" ||
@@ -123,7 +144,12 @@ export default function ModelsPage() {
   } = useMemo(
     () =>
       partitionCloudPresets(
-        presets.filter((p) => !isLocalPreset(p)),
+        presets.filter(
+          (p) =>
+            !isLocalPreset(p) &&
+            p.purpose !== "embedding" &&
+            p.provider_variant !== "embedding",
+        ),
         providers,
       ),
     [presets, providers],
@@ -133,16 +159,17 @@ export default function ModelsPage() {
       groupPresets(
         presets.filter((p) => {
           if (!isLocalPreset(p)) return false;
-          if (p.id === "onnx") return canOnnx;
+          // ONNX lives on the embedding tab.
+          if (p.id === "onnx") return false;
           if (p.id === "ollama") return canOllama;
-          return canOllama || canOnnx;
+          return canOllama;
         }),
       ),
-    [presets, canOllama, canOnnx],
+    [presets, canOllama],
   );
   const showCloudTab = canProviders;
   const showLocalTab =
-    (canOllama || canOnnx) &&
+    canOllama &&
     (localPresets.grouped.length > 0 || localPresets.ungrouped.length > 0);
   const showPresetSection = showCloudTab || showLocalTab;
 
@@ -232,10 +259,10 @@ export default function ModelsPage() {
     );
   };
 
-  // Custom providers: configured rows not already shown under a preset card
+  // Custom chat providers only — embedding-only rows live on the embedding tab.
   const customProviders = useMemo<ProviderRow[]>(() => {
     return providers
-      .filter((p) => !isPresetProvider(p, presets))
+      .filter((p) => !isPresetProvider(p, presets) && !isEmbeddingProvider(p))
       .sort((a, b) => {
         if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
         return a.id - b.id;
@@ -249,7 +276,7 @@ export default function ModelsPage() {
       title={t("pageShell.models.title")}
       subtitle={t("pageShell.models.subtitle")}
       actions={
-        modelCategory === "chat" ? (
+        modelCategory === "chat" || modelCategory === "embedding" ? (
           <Space>
             <Button
               icon={<RefreshCw size={14} />}
@@ -278,7 +305,20 @@ export default function ModelsPage() {
                 },
               ]
             : []),
-          ...(canProviders
+          ...(canEmbedding
+            ? [
+                {
+                  key: "embedding",
+                  label: (
+                    <Space className={styles.modelTabLabel} size={6}>
+                      <Boxes size={15} />
+                      {t("models.embeddingModelsTab")}
+                    </Space>
+                  ),
+                },
+              ]
+            : []),
+          ...(canGeneration
             ? [
                 {
                   key: "generation",
@@ -304,7 +344,7 @@ export default function ModelsPage() {
                 },
               ]
             : []),
-          ...(canProviders
+          ...(canDecision
             ? [
                 {
                   key: "decision",
@@ -349,6 +389,20 @@ export default function ModelsPage() {
             )?.api_key
           }
         />
+      ) : modelCategory === "embedding" ? (
+        loading ? (
+          <LoadingState message={t("models.loadingProviders")} />
+        ) : error ? (
+          <LoadingState message={error} error onRetry={() => void fetchAll()} />
+        ) : (
+          <EmbeddingSettingsPanel
+            providers={providers}
+            presets={presets}
+            canProviders={canProviders}
+            canOnnx={canOnnx}
+            onSaved={fetchAll}
+          />
+        )
       ) : loading ? (
         <LoadingState message={t("models.loadingProviders")} />
       ) : error ? (

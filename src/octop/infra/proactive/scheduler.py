@@ -1,13 +1,13 @@
-"""ProactiveCareScheduler — proactive care push random scheduler.
+"""ProactiveCareScheduler — when to send a proactive care message.
 
-Core idea: after each push completes, immediately schedule the next push time at
-random. Push times are randomly distributed within the user-configured active
-hours, rather than triggered at a fixed moment.
+Spacing still comes from a random gap in ``[min_interval_hours, max_interval_hours]``.
+The moment itself follows the same gates as finnie's proactivity check:
 
-Random scheduling algorithm:
-    next_push_time = now + random(min_interval_hours, max_interval_hours)
-    if next_push_time is outside [active_hours_start, active_hours_end]:
-        -> shift to the next day's active_hours_start + random(0, 120min) offset
+- stay inside the configured care window, including a window that crosses midnight
+- if the sampled instant misses the window, wait until that window next opens
+- do not speak while the agent is in a user-visible turn
+- do not speak until the conversation has been quiet for ``_IDLE_HOURS``
+- a care push of our own does not count as the user coming back
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+from collections.abc import Callable
 from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -23,9 +24,11 @@ if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRepo
     from octop.infra.db.repos.care_push import CarePushRepo
     from octop.infra.db.repos.proactive_care_config import (
+        ProactiveCareConfig,
         ProactiveCareConfigRepo,
     )
     from octop.infra.db.repos.sessions import SessionRepo
+    from octop.infra.db.repos.threads import ThreadRepo
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.users.preferences import get_timezone_from_preferences_json
@@ -34,11 +37,89 @@ _UTC_TZ_NAME = "UTC"
 
 logger = logging.getLogger(__name__)
 
+# Finnie waits ``idle_hours`` (default 4) after the last user turn. A care we
+# just sent must not restart that clock.
+_IDLE_HOURS = 4.0
+_PUSH_ACTIVITY_SLACK = timedelta(minutes=5)
+_BUSY_RETRY = timedelta(minutes=15)
+# Smear only the "window just opened" wake so agents don't all fire on the minute.
+_OPEN_JITTER_MINUTES = 15
+
 
 def _parse_hhmm(hhmm: str) -> time:
     """Parse an HH:MM time string."""
     h, m = hhmm.split(":")
     return time(int(h), int(m))
+
+
+def _clock_in_window(current: time, start: time, end: time) -> bool:
+    """Return whether ``current`` sits in ``[start, end)``.
+
+    A window whose end is earlier than its start crosses midnight: 22:00–08:00
+    covers the evening and the following morning, and excludes 08:00 itself.
+    """
+    if start == end:
+        return False
+    if start < end:
+        return start <= current < end
+    return current >= start or current < end
+
+
+def _floor_minute(moment: datetime) -> datetime:
+    return moment.replace(second=0, microsecond=0)
+
+
+def _window_containing_or_next(
+    local: datetime,
+    start_t: time,
+    end_t: time,
+) -> tuple[datetime, datetime]:
+    """Return ``[start, end)`` for the window that contains ``local``, or the next one."""
+    tz = local.tzinfo
+    day = local.date()
+    if start_t < end_t:
+        start = datetime.combine(day, start_t, tzinfo=tz)
+        end = datetime.combine(day, end_t, tzinfo=tz)
+        if local >= end:
+            start += timedelta(days=1)
+            end += timedelta(days=1)
+        return start, end
+
+    start_today = datetime.combine(day, start_t, tzinfo=tz)
+    end_today = datetime.combine(day, end_t, tzinfo=tz)
+    if local < end_today:
+        return start_today - timedelta(days=1), end_today
+    if local >= start_today:
+        return start_today, end_today + timedelta(days=1)
+    return start_today, end_today + timedelta(days=1)
+
+
+def next_window_opening(
+    not_before: datetime,
+    *,
+    active_hours_start: str,
+    active_hours_end: str,
+    timezone_name: str = _UTC_TZ_NAME,
+) -> datetime:
+    """Earliest legal moment at or after ``not_before``, with a short open jitter.
+
+    Used when a deferred care (user still chatting, or we woke outside hours)
+    should go out as soon as the window allows, rather than being re-rolled
+    across the whole day.
+    """
+    timezone = _resolve_timezone(timezone_name)
+    local = _floor_minute(not_before.astimezone(timezone))
+    start_t = _parse_hhmm(active_hours_start)
+    end_t = _parse_hhmm(active_hours_end)
+    if _clock_in_window(local.time(), start_t, end_t):
+        return local.astimezone(UTC)
+
+    start, end = _window_containing_or_next(local, start_t, end_t)
+    span = int((end - start).total_seconds() // 60)
+    jitter_cap = min(_OPEN_JITTER_MINUTES, max(span - 1, 0))
+    jitter = random.randint(0, jitter_cap) if jitter_cap else 0
+    jitter = max(0, min(jitter, jitter_cap))
+    return (start + timedelta(minutes=jitter)).astimezone(UTC)
 
 
 def compute_next_trigger(
@@ -52,11 +133,10 @@ def compute_next_trigger(
 ) -> datetime:
     """Compute the next trigger time.
 
-    Algorithm:
-    1. Pick a random interval within [min_interval_hours, max_interval_hours].
-    2. Compute candidate time = now + random interval.
-    3. If the candidate falls within active hours, return it directly.
-    4. Otherwise shift to the next active-hours start + random(0, 120min).
+    Draw a gap in ``[min_interval_hours, max_interval_hours]``. If that instant
+    is inside care hours, use it. If it misses, move it to the next opening of
+    the care window. A short jitter keeps every agent from firing on the same
+    minute, and it stays inside the window.
 
     Args:
         now: Current time (UTC).
@@ -64,48 +144,27 @@ def compute_next_trigger(
         active_hours_end: Active-hours end (HH:MM).
         min_interval_hours: Minimum interval (hours).
         max_interval_hours: Maximum interval (hours).
-        timezone_name: IANA timezone used for active-window check.
+        timezone_name: IANA timezone used for the care-window check.
 
     Returns:
         The next trigger time (UTC).
     """
-    timezone = _resolve_timezone(timezone_name)
-
-    # Compute the random candidate using the configured local clock,
-    # then convert the result back to UTC for sleeping.
-    local_now = now.astimezone(timezone)
-
-    # Pick a random interval (minute precision)
+    local_now = now.astimezone(_resolve_timezone(timezone_name))
     interval_minutes = random.randint(
         min_interval_hours * 60,
         max_interval_hours * 60,
     )
-    candidate = local_now + timedelta(minutes=interval_minutes)
-
+    candidate = _floor_minute(local_now + timedelta(minutes=interval_minutes))
     start_t = _parse_hhmm(active_hours_start)
     end_t = _parse_hhmm(active_hours_end)
-
-    candidate_t = candidate.time().replace(second=0, microsecond=0)
-
-    if start_t <= candidate_t < end_t:
+    if _clock_in_window(candidate.time(), start_t, end_t):
         return candidate.astimezone(UTC)
-
-    # Outside active hours -> shift to next active-hours start + random(0, 120min)
-    random_offset_minutes = random.randint(0, 120)
-
-    # Find the start of the next active-hours window
-    # First try today's active_hours_start
-    today = candidate.date()
-    today_start = datetime.combine(today, start_t, tzinfo=timezone)
-    if today_start > candidate:
-        # Today's active hours have not started yet; use today's
-        next_start = today_start
-    else:
-        # Today's active hours have already passed; use tomorrow's
-        tomorrow = today + timedelta(days=1)
-        next_start = datetime.combine(tomorrow, start_t, tzinfo=timezone)
-
-    return (next_start + timedelta(minutes=random_offset_minutes)).astimezone(UTC)
+    return next_window_opening(
+        candidate,
+        active_hours_start=active_hours_start,
+        active_hours_end=active_hours_end,
+        timezone_name=timezone_name,
+    )
 
 
 def is_in_active_hours(
@@ -116,11 +175,87 @@ def is_in_active_hours(
     timezone_name: str = _UTC_TZ_NAME,
 ) -> bool:
     """Check whether the current time is within the active hours."""
-    now = now.astimezone(_resolve_timezone(timezone_name))
-    start_t = _parse_hhmm(active_hours_start)
-    end_t = _parse_hhmm(active_hours_end)
-    current_t = now.time().replace(second=0, microsecond=0)
-    return start_t <= current_t < end_t
+    local = now.astimezone(_resolve_timezone(timezone_name))
+    current_t = local.time().replace(second=0, microsecond=0)
+    return _clock_in_window(
+        current_t,
+        _parse_hhmm(active_hours_start),
+        _parse_hhmm(active_hours_end),
+    )
+
+
+def idle_ready_at(
+    *,
+    now: datetime,
+    last_active_at: int | None,
+    last_push_at: int | None,
+    idle_hours: float = _IDLE_HOURS,
+) -> datetime | None:
+    """Return when the user will have been quiet long enough, or None if they already are.
+
+    ``last_active_at`` is the latest thread touch. A touch within
+    ``_PUSH_ACTIVITY_SLACK`` of our own care push is the push itself, not the
+    user coming back, and does not restart the idle clock.
+    """
+    if not last_active_at or last_active_at <= 0:
+        return None
+    if last_push_at is not None:
+        slack = int(_PUSH_ACTIVITY_SLACK.total_seconds())
+        if last_active_at <= last_push_at + slack:
+            return None
+    quiet_at = datetime.fromtimestamp(last_active_at, tz=UTC) + timedelta(hours=idle_hours)
+    if quiet_at <= now:
+        return None
+    return quiet_at
+
+
+class TimingDecision:
+    """Whether to send now, or the UTC instant to reconsider."""
+
+    __slots__ = ("retry_at", "send")
+
+    def __init__(self, *, send: bool, retry_at: datetime | None = None) -> None:
+        self.send = send
+        self.retry_at = retry_at
+
+
+def decide_send_timing(
+    *,
+    now: datetime,
+    active_hours_start: str,
+    active_hours_end: str,
+    timezone_name: str = _UTC_TZ_NAME,
+    last_active_at: int | None = None,
+    last_push_at: int | None = None,
+    agent_busy: bool = False,
+    idle_hours: float = _IDLE_HOURS,
+) -> TimingDecision:
+    """Apply finnie's send gates once a scheduled wake actually arrives.
+
+    Outside the care window, wait until it opens. Inside it, yield to an
+    in-progress turn and to a conversation that has not been quiet for
+    ``idle_hours``. A deferral does not draw a new min/max gap.
+    """
+    hours = {
+        "active_hours_start": active_hours_start,
+        "active_hours_end": active_hours_end,
+        "timezone_name": timezone_name,
+    }
+    if not is_in_active_hours(now, **hours):
+        return TimingDecision(send=False, retry_at=next_window_opening(now, **hours))
+    if agent_busy:
+        return TimingDecision(send=False, retry_at=now + _BUSY_RETRY)
+    quiet_at = idle_ready_at(
+        now=now,
+        last_active_at=last_active_at,
+        last_push_at=last_push_at,
+        idle_hours=idle_hours,
+    )
+    if quiet_at is None:
+        return TimingDecision(send=True)
+    if is_in_active_hours(quiet_at, **hours):
+        return TimingDecision(send=False, retry_at=quiet_at)
+    return TimingDecision(send=False, retry_at=next_window_opening(quiet_at, **hours))
 
 
 def _resolve_timezone(timezone_name: str) -> ZoneInfo:
@@ -150,6 +285,9 @@ class ProactiveCareScheduler:
         session_repo: SessionRepo,
         agent_repo: AgentRepo | None = None,
         user_repo: UserRepo | None = None,
+        thread_repo: ThreadRepo | None = None,
+        care_push_repo: CarePushRepo | None = None,
+        is_agent_busy: Callable[[str], bool] | None = None,
         default_timezone: str = _UTC_TZ_NAME,
     ) -> None:
         self._care_service = care_service
@@ -157,6 +295,9 @@ class ProactiveCareScheduler:
         self._session_repo = session_repo
         self._agent_repo = agent_repo
         self._user_repo = user_repo
+        self._thread_repo = thread_repo
+        self._care_push_repo = care_push_repo
+        self._is_agent_busy = is_agent_busy
         self._default_timezone = default_timezone
         # agent_id -> asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -168,10 +309,14 @@ class ProactiveCareScheduler:
         config_repo: ProactiveCareConfigRepo,
         session_repo: SessionRepo,
         care_push_repo: CarePushRepo,
+        thread_repo: ThreadRepo | None = None,
     ) -> None:
         """Point scheduler/care persistence at a rebound control-plane pool."""
         self._config_repo = config_repo
         self._session_repo = session_repo
+        self._care_push_repo = care_push_repo
+        if thread_repo is not None:
+            self._thread_repo = thread_repo
         self._care_service.replace_care_push_repo(care_push_repo)
 
     async def start_all(self) -> None:
@@ -277,6 +422,9 @@ class ProactiveCareScheduler:
         After each push completes, immediately compute the next trigger time and wait.
         """
         logger.info("ProactiveCareScheduler: agent=%s scheduler loop started", agent_id)
+        # None means "draw a fresh min/max gap". A datetime means "reconsider then",
+        # which is how idle and busy defers avoid burning another full interval.
+        hold_until: datetime | None = None
         while True:
             cfg = self._config_repo.get(agent_id)
             if not cfg.enabled:
@@ -289,41 +437,42 @@ class ProactiveCareScheduler:
             now = datetime.now(UTC)
             timezone_name = self._resolve_tz_for_agent(agent_id)
 
-            # Compute the next trigger time
-            next_trigger = compute_next_trigger(
-                now=now,
-                active_hours_start=cfg.active_hours_start,
-                active_hours_end=cfg.active_hours_end,
-                min_interval_hours=cfg.min_interval_hours,
-                max_interval_hours=cfg.max_interval_hours,
-                timezone_name=timezone_name,
-            )
-
-            wait_seconds = (next_trigger - now).total_seconds()
-            logger.info(
-                "ProactiveCareScheduler: agent=%s next push at %s (waiting %.0f s)",
-                agent_id,
-                next_trigger.astimezone(_resolve_timezone(timezone_name)).strftime(
-                    "%Y-%m-%d %H:%M %Z"
-                ),
-                wait_seconds,
-            )
-
-            # Wait until the next trigger time
-            # Anti-busy-loop guard: if the interval is too short (< 60s), force a 60s wait to avoid CPU spinning
-            _MIN_SLEEP_SECONDS = 60
-            if wait_seconds < _MIN_SLEEP_SECONDS:
-                logger.warning(
-                    "ProactiveCareScheduler: agent=%s computed wait too short (%.0f s), "
-                    "forcing %d s wait; check min_interval_hours config",
-                    agent_id,
-                    wait_seconds,
-                    _MIN_SLEEP_SECONDS,
+            if hold_until is None:
+                hold_until = compute_next_trigger(
+                    now=now,
+                    active_hours_start=cfg.active_hours_start,
+                    active_hours_end=cfg.active_hours_end,
+                    min_interval_hours=cfg.min_interval_hours,
+                    max_interval_hours=cfg.max_interval_hours,
+                    timezone_name=timezone_name,
                 )
-                wait_seconds = _MIN_SLEEP_SECONDS
-            await asyncio.sleep(wait_seconds)
+                wait_seconds = (hold_until - now).total_seconds()
+                # Anti-busy-loop guard for a gap that collapsed below a minute.
+                _MIN_SLEEP_SECONDS = 60
+                if wait_seconds < _MIN_SLEEP_SECONDS:
+                    logger.warning(
+                        "ProactiveCareScheduler: agent=%s computed wait too short (%.0f s), "
+                        "forcing %d s wait; check min_interval_hours config",
+                        agent_id,
+                        wait_seconds,
+                        _MIN_SLEEP_SECONDS,
+                    )
+                    hold_until = now + timedelta(seconds=_MIN_SLEEP_SECONDS)
+                    wait_seconds = _MIN_SLEEP_SECONDS
+            else:
+                wait_seconds = (hold_until - now).total_seconds()
 
-            # Re-check the enabled state (the agent may have been disabled during the wait)
+            if wait_seconds > 0:
+                logger.info(
+                    "ProactiveCareScheduler: agent=%s next check at %s (waiting %.0f s)",
+                    agent_id,
+                    hold_until.astimezone(_resolve_timezone(timezone_name)).strftime(
+                        "%Y-%m-%d %H:%M %Z"
+                    ),
+                    wait_seconds,
+                )
+                await asyncio.sleep(wait_seconds)
+
             cfg = self._config_repo.get(agent_id)
             if not cfg.enabled:
                 logger.info(
@@ -332,38 +481,46 @@ class ProactiveCareScheduler:
                 )
                 return
 
-            # Check whether the current time is within active hours
             now = datetime.now(UTC)
-            if not is_in_active_hours(
-                now,
-                active_hours_start=cfg.active_hours_start,
-                active_hours_end=cfg.active_hours_end,
-                timezone_name=timezone_name,
-            ):
+            decision = self._timing_decision(agent_id, cfg, timezone_name, now)
+            if not decision.send:
+                hold_until = decision.retry_at
+                if hold_until is None or hold_until <= now:
+                    hold_until = now + timedelta(seconds=60)
                 logger.info(
-                    "ProactiveCareScheduler: agent=%s current time outside active hours, skipping this push",
+                    "ProactiveCareScheduler: agent=%s not a good moment, next check at %s",
                     agent_id,
+                    hold_until.isoformat() if hold_until is not None else "unset",
                 )
-                continue  # go straight to the next loop iteration and recompute the next trigger
+                continue
 
-            # Get the agent's active session
             sessions = self._session_repo.list_by_agent(agent_id, limit=10)
             if not sessions:
                 logger.info(
                     "ProactiveCareScheduler: agent=%s has no active session, skipping this push",
                     agent_id,
                 )
+                hold_until = None
                 continue
 
-            # Prefer an IM session (non-empty channel_id), otherwise pick the most recently active session
+            # Prefer an IM session (non-empty channel_id), otherwise the most recently active one.
             target_session = next(
                 (s for s in sessions if s.channel_id),
                 sessions[0],
             )
 
-            # Perform the push
+            def can_send(
+                bound_cfg: ProactiveCareConfig = cfg,
+                bound_tz: str = timezone_name,
+            ) -> bool:
+                return self._moment_is_good(agent_id, bound_cfg, bound_tz)
+
             try:
-                await self._care_service.run(agent_id, target_session.session_key)
+                await self._care_service.run(
+                    agent_id,
+                    target_session.session_key,
+                    can_send=can_send,
+                )
             except Exception as exc:
                 logger.error(
                     "ProactiveCareScheduler: agent=%s push error: %s",
@@ -371,7 +528,71 @@ class ProactiveCareScheduler:
                     exc,
                     exc_info=exc,
                 )
-            # Regardless of success or failure, continue to the next scheduling round
+            hold_until = None
+
+    def _timing_decision(
+        self,
+        agent_id: str,
+        cfg: ProactiveCareConfig,
+        timezone_name: str,
+        now: datetime,
+    ) -> TimingDecision:
+        return decide_send_timing(
+            now=now,
+            active_hours_start=cfg.active_hours_start,
+            active_hours_end=cfg.active_hours_end,
+            timezone_name=timezone_name,
+            last_active_at=self._latest_activity(agent_id),
+            last_push_at=self._latest_push(agent_id),
+            agent_busy=self._agent_is_busy(agent_id),
+        )
+
+    def _moment_is_good(
+        self,
+        agent_id: str,
+        cfg: ProactiveCareConfig,
+        timezone_name: str,
+    ) -> bool:
+        return self._timing_decision(agent_id, cfg, timezone_name, datetime.now(UTC)).send
+
+    def _latest_activity(self, agent_id: str) -> int | None:
+        if self._thread_repo is None:
+            return None
+        try:
+            return self._thread_repo.latest_user_activity(agent_id)
+        except Exception:
+            logger.warning(
+                "ProactiveCareScheduler: agent=%s failed to read last activity",
+                agent_id,
+                exc_info=True,
+            )
+            return None
+
+    def _latest_push(self, agent_id: str) -> int | None:
+        if self._care_push_repo is None:
+            return None
+        try:
+            return self._care_push_repo.latest_pushed_at(agent_id)
+        except Exception:
+            logger.warning(
+                "ProactiveCareScheduler: agent=%s failed to read last care push",
+                agent_id,
+                exc_info=True,
+            )
+            return None
+
+    def _agent_is_busy(self, agent_id: str) -> bool:
+        if self._is_agent_busy is None:
+            return False
+        try:
+            return self._is_agent_busy(agent_id) is True
+        except Exception:
+            logger.warning(
+                "ProactiveCareScheduler: agent=%s failed to read busy state",
+                agent_id,
+                exc_info=True,
+            )
+            return False
 
     def _resolve_tz_for_agent(self, agent_id: str) -> str:
         if self._agent_repo is None or self._user_repo is None:

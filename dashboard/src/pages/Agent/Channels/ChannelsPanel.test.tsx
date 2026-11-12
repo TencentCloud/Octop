@@ -162,6 +162,46 @@ describe("<ChannelsPanel /> create-flow default", () => {
     });
   });
 
+  it("renders QQ credentials before the group chat policy", async () => {
+    const row = {
+      id: "qq-channel-1",
+      kind: "qq",
+      name: "qq",
+      enabled: true,
+    };
+    api.mockImplementation(async (url) => {
+      if (url.endsWith("/qq-channel-1")) {
+        return {
+          ...row,
+          config: { app_id: "1905353226", secret: "test-secret" },
+        };
+      }
+      return [row];
+    });
+
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+
+    const channelType = await screen.findByText("channels.channelType");
+    const channelId = screen.getByText("Channel ID");
+    const appId = screen.getByText("App ID");
+    const appSecret = screen.getByText("App Secret");
+    const displaySettings = screen.getByText("channels.channelSettings");
+    const groupPolicy = screen.getByText("channels.qqGroupPolicyTitle");
+    const expectBefore = (first: Element, second: Element) => {
+      expect(
+        first.compareDocumentPosition(second) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    };
+
+    expectBefore(channelType, channelId);
+    expectBefore(channelId, appId);
+    expectBefore(appId, appSecret);
+    expectBefore(appSecret, displaySettings);
+    expectBefore(displaySettings, groupPolicy);
+  });
+
   async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
     // Telegram is collapsed behind "更多通道" until expanded.

@@ -198,35 +198,39 @@ class CronDeliveryService:
     ) -> dict[str, Any]:
         from octop.infra.agents.teams import is_team_agent
 
-        if is_team_agent(self._agent_manager.get_row(command.agent_id)):
+        row = self._agent_manager.get_row(command.agent_id)
+        if is_team_agent(row):
+            requested: list[str] = []
             servers: list[str] = []
+            shown_servers: list[str] = []
         else:
-            servers = [name.strip() for name in command.mcp_servers if name.strip()]
+            owner_raw = getattr(row, "user_id", None) if row is not None else None
+            owner_id = owner_raw if isinstance(owner_raw, int) else None
+            picked = [name.strip() for name in command.mcp_servers if name.strip()]
             extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
-            if servers:
-                servers = (
-                    self._agent_manager.merge_turn_mcp_servers(
-                        session.user_id,
-                        servers,
-                        apply_defaults=False,
-                        extra_defaults=extra_defaults,
-                    )
-                    or []
+            requested = (
+                self._agent_manager.merge_turn_mcp_servers(
+                    session.user_id,
+                    picked or None,
+                    apply_defaults=not picked,
+                    extra_defaults=extra_defaults,
+                    agent_owner_id=owner_id,
                 )
-            else:
-                servers = (
-                    self._agent_manager.merge_turn_mcp_servers(
-                        session.user_id,
-                        None,
-                        apply_defaults=True,
-                        extra_defaults=extra_defaults,
-                    )
-                    or []
+                or []
+            )
+            servers = requested
+            shown_servers = requested
+            if owner_id is not None and owner_id != session.user_id and requested:
+                servers = self._agent_manager.align_mcp_names_to_harness(
+                    owner_id, session.user_id, requested
                 )
-        if servers:
+                shown_servers = self._agent_manager.mcp_names_for_chips(
+                    owner_id, session.user_id, requested, servers
+                )
+        if requested:
             failed = await self._agent_manager.prepare_chat_mcp(
                 command.agent_id,
-                servers,
+                requested,
                 connector_user_id=session.user_id,
             )
             if failed:
@@ -235,7 +239,7 @@ class CronDeliveryService:
         row = self._agent_manager.get_row(command.agent_id)
         default_model = (row.default_model if row is not None else None) or None
         composer = build_composer_context(
-            mcp_servers=servers or None,
+            mcp_servers=shown_servers or None,
             skills=None,
             target_agent_ids=None,
             model_ref=command.model,

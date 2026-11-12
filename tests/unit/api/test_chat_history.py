@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from langchain_core.messages import HumanMessage
+from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.api.routers.chat import history as history_mod
 from octop.api.routers.chat.serialize import (
@@ -25,7 +27,9 @@ from octop.infra.db.repos.thread_messages import (
     ThreadProjectionSummary,
 )
 from octop.infra.db.repos.threads import ThreadRow
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import thread_row_has_messages
+from octop.infra.gateway.ws import WS_CHANNEL_ID, WebSocketChannel, WebSocketHub
 
 
 def test_clamp_history_limit() -> None:
@@ -205,8 +209,9 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
         ),
     ]
     thread_registry = MagicMock()
-    thread_registry.list_threads.return_value = rows
+    thread_registry.list_visible_threads.return_value = rows
     thread_registry.get_bound_thread_id.return_value = None
+    thread_registry.unread_counts_for_threads.return_value = {"thr_used": 3}
 
     server = MagicMock()
     agent_row = MagicMock(user_id=1)
@@ -231,6 +236,8 @@ async def test_list_threads_derives_has_messages_from_db() -> None:
     assert out[1]["has_messages"] is True
     assert out[1]["turn_active"] is True
     assert out[1]["awaiting_user"] is False
+    assert out[0]["unread_count"] == 0
+    assert out[1]["unread_count"] == 3
 
 
 @pytest.mark.asyncio
@@ -425,3 +432,202 @@ async def test_load_checkpoint_messages_paginates_with_aget_history() -> None:
     assert more1 is True
     assert [m.content for m in page2] == [f"m{i}" for i in range(0, 10)]
     assert more2 is False
+
+
+def _delete_server(hub: WebSocketHub) -> tuple[MagicMock, MagicMock]:
+    server = MagicMock()
+    agent_row = MagicMock()
+    agent_row.user_id = 1
+    agent_row.is_shared = 0
+    server.app_runtime.agent_registry.get_row.return_value = agent_row
+    thread = MagicMock()
+    thread.agent_id = "agt_1"
+    thread.user_id = 1
+    server.app_runtime.gateway.thread_registry.get_thread.return_value = thread
+    server.app_runtime.gateway.ws_hub = hub
+    server.app_runtime.agent_registry.delete_thread_checkpoint = AsyncMock()
+    server.app_runtime.trajectory_service = None
+    user = MagicMock()
+    user.id = 1
+    user.is_admin = False
+    return server, user
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_rejects_active_turn() -> None:
+    hub = WebSocketHub()
+    hub.mark_turn_active("thr_1")
+    server, user = _delete_server(hub)
+
+    with pytest.raises(OctopError) as raised:
+        await history_mod.delete_thread("agt_1", "thr_1", compact=None, user=user, server=server)
+
+    assert raised.value.code is ErrorCode.THREAD_TURN_ACTIVE
+    assert raised.value.status == 409
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_not_awaited()
+    server.app_runtime.gateway.thread_registry.delete_thread.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_without_compact_returns_204_when_idle() -> None:
+    hub = WebSocketHub()
+    server, user = _delete_server(hub)
+
+    response = await history_mod.delete_thread(
+        "agt_1", "thr_1", compact=None, user=user, server=server
+    )
+
+    assert response.status_code == 204
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
+        "agt_1", "thr_1"
+    )
+    server.app_runtime.gateway.thread_registry.delete_thread.assert_called_once_with("thr_1")
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_compact_false_does_not_vacuum() -> None:
+    hub = WebSocketHub()
+    server, user = _delete_server(hub)
+
+    response = await history_mod.delete_thread(
+        "agt_1", "thr_1", compact=False, user=user, server=server
+    )
+
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"compacted": False, "scheduled": False}
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
+        "agt_1", "thr_1", reclaim=False
+    )
+    server.app_runtime.gateway.thread_registry.delete_thread.assert_called_once_with("thr_1")
+    server.app_runtime.agent_registry.schedule_store_reclaim.assert_not_called()
+    server.app_runtime.agent_registry.compact_agent_database.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_turn_exception_clears_flag_so_delete_is_not_stuck() -> None:
+    hub = WebSocketHub()
+
+    class _Boom:
+        async def iter_turn_chunks(self, _msg: InboundMessage):
+            yield {"type": "token", "content": "partial"}
+            raise RuntimeError("boom")
+
+    channel = WebSocketChannel(_Boom(), hub=hub)  # type: ignore[arg-type]
+
+    async def _capture(_frame: dict[str, Any]) -> None:
+        return None
+
+    hub.register("conn-1", _capture)
+    message = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agt_1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="hi")],
+        metadata={"ws_connection_id": "conn-1", "session_key": "sk", "thread_id": "thr_1"},
+    )
+    await channel.handle_inbound(message)
+    assert hub.is_turn_active("thr_1") is False
+
+    server, user = _delete_server(hub)
+    response = await history_mod.delete_thread(
+        "agt_1", "thr_1", compact=None, user=user, server=server
+    )
+    assert response.status_code == 204
+    server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
+        "agt_1", "thr_1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_non_owner_cannot_change_shared_thread_settings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers.chat.models import RenameThreadBody
+
+    monkeypatch.setattr(history_mod, "require_agent_row", lambda *_a, **_k: MagicMock())
+    server = MagicMock()
+    server.app_runtime.gateway.thread_registry.get_thread.return_value = MagicMock(
+        agent_id="agt_1",
+        user_id=1,
+        contributed=True,
+    )
+    body = RenameThreadBody(model_ref="prov/model")
+
+    with pytest.raises(OctopError) as exc:
+        await history_mod.patch_thread(
+            "agt_1",
+            "thr",
+            body,
+            user=MagicMock(id=2, is_admin=False),
+            server=server,
+        )
+
+    assert exc.value.code == ErrorCode.FORBIDDEN
+
+
+def test_history_authors_keep_the_sender() -> None:
+    class _User:
+        def __init__(self, username: str, display_name: str, avatar_icon: str | None) -> None:
+            self.username = username
+            self.display_name = display_name
+            self.avatar_icon = avatar_icon
+
+    users = {
+        1: _User("ada", "Ada", None),
+        2: _User("bob", "Bob", "doctor"),
+    }
+    server = MagicMock()
+    server.services.user_repo.get.side_effect = users.get
+    server.services.avatars.return_value.url.return_value = "/api/users/x/avatar?v=1"
+    messages: list[dict[str, Any]] = [
+        {"role": "user", "content": "old"},
+        {"role": "user", "content": "new", "author_user_id": 2},
+        {"role": "assistant", "content": "ok"},
+    ]
+
+    history_mod._attach_message_authors(server, messages, owner_user_id=1)
+
+    assert messages[0]["author"]["username"] == "ada"
+    assert messages[1]["author"]["username"] == "bob"
+    assert messages[1]["author"]["avatar_icon"] == "doctor"
+    assert "author" not in messages[2]
+
+
+@pytest.mark.asyncio
+async def test_shared_thread_hitl_resume_skips_user_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers.chat import routes as routes_mod
+    from octop.api.routers.chat.models import HitlResumeBody
+
+    row = MagicMock(contributed=True, user_id=1)
+    monkeypatch.setattr(history_mod, "_require_thread", lambda *_a, **_k: row)
+    server = MagicMock()
+    store = server.app_runtime.gateway.processor.hitl_coordinator.store
+    store.resolve_pending_for_thread.return_value = None
+    body = HitlResumeBody(
+        thread_id="thr",
+        decisions=[{"type": "approve"}],
+        pending_id="pend",
+    )
+
+    await routes_mod.resume_hitl(
+        "agt_1",
+        body,
+        MagicMock(),
+        user=MagicMock(id=2),
+        server=server,
+    )
+
+    assert store.resolve_pending_for_thread.call_args.kwargs["user_id"] is None
+
+    row.contributed = False
+    await routes_mod.resume_hitl(
+        "agt_1",
+        body,
+        MagicMock(),
+        user=MagicMock(id=2),
+        server=server,
+    )
+    assert store.resolve_pending_for_thread.call_args.kwargs["user_id"] == 2

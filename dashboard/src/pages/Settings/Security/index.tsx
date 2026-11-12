@@ -27,7 +27,11 @@ import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
 import styles from "./index.module.less";
 import ForbiddenPage from "../../../components/ForbiddenPage";
 import { useGatedSearchTabs } from "../../../hooks/useGatedSearchTabs";
-import { SECURITY_TAB_PERMISSIONS, userCan } from "../../../utils/permissions";
+import {
+  SECURITY_TAB_PERMISSIONS,
+  userCan,
+  userCanAny,
+} from "../../../utils/permissions";
 
 const { Text } = Typography;
 const { confirm } = Modal;
@@ -148,46 +152,63 @@ export default function SecuritySettingsPage() {
     }
   }, [form, t]);
 
+  const canPolicy = userCanAny(user, [
+    SECURITY_TAB_PERMISSIONS.hitl,
+    SECURITY_TAB_PERMISSIONS.filesystem,
+    SECURITY_TAB_PERMISSIONS.pii,
+    SECURITY_TAB_PERMISSIONS.tool_guard,
+    SECURITY_TAB_PERMISSIONS.skill_scan,
+  ]);
+
   useEffect(() => {
-    if (userCan(user, "security")) {
+    if (canPolicy) {
       void fetchPolicy();
       return;
     }
     setLoading(false);
-  }, [fetchPolicy, user]);
+  }, [canPolicy, fetchPolicy]);
 
   const handleSave = async () => {
     try {
       await form.validateFields();
       const values = form.getFieldsValue(true);
       setSaving(true);
-      const body: Partial<SecurityPolicy> = {
-        hitl: {
+      const body: Partial<SecurityPolicy> = {};
+      if (userCan(user, SECURITY_TAB_PERMISSIONS.hitl)) {
+        body.hitl = {
           enabled: values.hitl_enabled ?? policy?.hitl.enabled ?? false,
           tools: (values.hitl_tools as string[] | undefined) ?? [],
           allowed_decisions: policy?.hitl.allowed_decisions ?? [
             "approve",
             "reject",
           ],
-        },
-        filesystem: {
+        };
+      }
+      if (userCan(user, SECURITY_TAB_PERMISSIONS.filesystem)) {
+        body.filesystem = {
           enabled: values.fs_enabled ?? policy?.filesystem.enabled ?? true,
           rules: textToRules(values.fs_paths as string | undefined),
-        },
-        pii: {
+        };
+      }
+      if (userCan(user, SECURITY_TAB_PERMISSIONS.pii)) {
+        body.pii = {
           enabled: values.pii_enabled ?? policy?.pii.enabled ?? true,
           strategy: values.pii_strategy ?? policy?.pii.strategy ?? "mask",
           surfaces: policy?.pii.surfaces ?? ["input", "output", "tool_results"],
-        },
-        skill_scan: {
+        };
+      }
+      if (userCan(user, SECURITY_TAB_PERMISSIONS.skill_scan)) {
+        body.skill_scan = {
           mode: values.skill_scan_mode ?? policy?.skill_scan.mode ?? "warn",
-        },
-        tool_guard: {
+        };
+      }
+      if (userCan(user, SECURITY_TAB_PERMISSIONS.tool_guard)) {
+        body.tool_guard = {
           enabled:
             values.tool_guard_enabled ?? policy?.tool_guard?.enabled ?? true,
           mode: values.tool_guard_mode ?? policy?.tool_guard?.mode ?? "warn",
-        },
-      };
+        };
+      }
       const saved = await securityApi.savePolicy(body);
       setPolicy(saved);
       message.success(t("security.saved"));

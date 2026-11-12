@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.bridge.tunnel_policy import is_tunnel_path_allowed
+from octop.infra.bridge.tunnel_policy import is_tunnel_path_allowed, shared_viewer_may_tunnel
 
 
 def test_allows_agent_list_get() -> None:
@@ -32,11 +32,17 @@ def test_allows_composer_readonly_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/providers/active-model")
     assert is_tunnel_path_allowed("GET", "/api/knowledge-bases")
     assert is_tunnel_path_allowed("GET", "/api/knowledge-bases/capability")
+    assert is_tunnel_path_allowed("GET", "/api/settings/hitl")
+    assert not is_tunnel_path_allowed("PUT", "/api/settings/hitl")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/status")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/subagents")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/tool-settings")
     assert is_tunnel_path_allowed("PATCH", "/api/agents/01ABC/tool-settings/shell")
     assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/reload")
+    assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/start")
+    assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/stop")
+    assert is_tunnel_path_allowed("POST", "/api/agents/bridge:cid:01ABC/start")
+    assert is_tunnel_path_allowed("POST", "/api/agents/bridge:cid:01ABC/stop")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/acp")
     assert is_tunnel_path_allowed("PUT", "/api/agents/01ABC/acp/tool")
     assert not is_tunnel_path_allowed("GET", "/api/agents/01ABC/history-migration/status")
@@ -77,6 +83,22 @@ def test_allows_experts_non_agent_paths() -> None:
     assert not is_tunnel_path_allowed("POST", "/api/cron/settings")
     assert not is_tunnel_path_allowed("POST", "/api/connector-instances")
     assert not is_tunnel_path_allowed("GET", "/api/connector-instances/inst1")
+
+
+def test_shared_viewer_may_chat_but_not_manage() -> None:
+    assert shared_viewer_may_tunnel("GET", "/api/agents/01ABC")
+    assert shared_viewer_may_tunnel("GET", "/api/agents/01ABC/threads/t1/history")
+    assert shared_viewer_may_tunnel("POST", "/api/agents/01ABC/upload")
+    assert shared_viewer_may_tunnel("POST", "/api/agents/bridge:cid:01ABC/threads")
+    assert shared_viewer_may_tunnel("PATCH", "/api/agents/01ABC/threads/t1")
+    assert shared_viewer_may_tunnel("DELETE", "/api/agents/01ABC/threads/t1")
+    assert not shared_viewer_may_tunnel("POST", "/api/agents/01ABC/reload")
+    assert not shared_viewer_may_tunnel("POST", "/api/agents/01ABC/start")
+    assert not shared_viewer_may_tunnel("POST", "/api/agents/01ABC/stop")
+    assert not shared_viewer_may_tunnel("PATCH", "/api/agents/01ABC")
+    assert not shared_viewer_may_tunnel("DELETE", "/api/agents/01ABC")
+    assert not shared_viewer_may_tunnel("PUT", "/api/agents/01ABC/workspace/file")
+    assert not shared_viewer_may_tunnel("PATCH", "/api/plugins/agents/01ABC/tools")
 
 
 def test_denies_management_and_auth_paths() -> None:

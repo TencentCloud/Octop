@@ -55,6 +55,36 @@ describe("401 handling", () => {
     expect(replace).toHaveBeenCalledWith("/login");
   });
 
+  it("keeps the local session when a 401 is a peer credential error", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "BRIDGE_AUTH_FAILED",
+                message: "peer rejected credentials",
+                details: {},
+              },
+            }),
+            {
+              status: 401,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        ),
+      ),
+    );
+
+    await expect(
+      mod.request("/bridge/probe", { method: "POST" }),
+    ).rejects.toThrow(/BRIDGE_AUTH_FAILED/);
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(mod.getAuthToken()).toBe("expired-token");
+  });
+
   it("redirects only once when several requests fail concurrently", async () => {
     const listener = vi.fn((event: Event) => event.preventDefault());
     window.addEventListener(mod.UNAUTHORIZED_EVENT, listener);

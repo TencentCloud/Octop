@@ -20,16 +20,4 @@ export const agentChatApi = {
     request<ChatWelcomeResponse>(
       `/agents/${encodeURIComponent(agentId)}/chat/welcome`,
     ),
-
-  polish: (agentId: string, text: string, defaultModel?: string | null) =>
-    request<{ text: string }>(
-      `/agents/${encodeURIComponent(agentId)}/chat/polish`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          text,
-          ...(defaultModel ? { default_model: defaultModel } : {}),
-        }),
-      },
-    ),
 };

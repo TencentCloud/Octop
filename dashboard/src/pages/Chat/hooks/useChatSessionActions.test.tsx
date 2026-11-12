@@ -58,6 +58,57 @@ function renderActions() {
   );
 }
 
+describe("handleDeleteSession", () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("stays on the thread when delete is refused because a turn is active", async () => {
+    const deleteSession = vi.fn().mockResolvedValue(null);
+    const { result } = renderHook(
+      () =>
+        useChatSessionActions({
+          resolvedAgentId: "agent-a",
+          activeThreadId: THREAD,
+          sessions: [
+            {
+              id: THREAD,
+              name: "Live",
+              threadId: THREAD,
+              updatedAt: null,
+              channelType: "dashboard",
+            },
+            {
+              id: "thr_other",
+              name: "Other",
+              threadId: "thr_other",
+              updatedAt: null,
+              channelType: "dashboard",
+            },
+          ],
+          isMobile: false,
+          setActiveAgent: vi.fn(),
+          setSidebarOpen: vi.fn(),
+          setSelectedModel: vi.fn(),
+          setHasBrowserTool: vi.fn(),
+          deleteSession,
+          clearMessages: vi.fn(),
+          resetNavForAgentSwitch: vi.fn(),
+          markInitialNavDone: vi.fn(),
+        }),
+      { wrapper },
+    );
+
+    let deleted: boolean | null | undefined;
+    await act(async () => {
+      deleted = await result.current.handleDeleteSession(THREAD, false);
+    });
+
+    expect(deleted).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("navigateToAgent", () => {
   afterEach(() => {
     removeSession(THREAD);

@@ -196,7 +196,8 @@ export function JobDrawer({
               (i) =>
                 i.kind === "agently-cli" &&
                 i.status === "active" &&
-                i.has_credentials,
+                i.has_credentials &&
+                i.usable !== false,
             )
             .map((i) => ({
               value: i.instance_id,
@@ -205,7 +206,12 @@ export function JobDrawer({
         );
         setConnectorOptions(
           (instances || [])
-            .filter((i) => i.status === "active" && i.has_credentials)
+            .filter(
+              (i) =>
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
             .map((i) => ({
               value: i.mcp_server_name,
               label: i.display_name?.trim()

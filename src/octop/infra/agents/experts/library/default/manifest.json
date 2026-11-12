@@ -28,5 +28,103 @@
       "Every Sunday at 20:00, recap what got done this week and outline next week's plan",
       "Every day at 22:00, remind me to pick the three things to handle tomorrow — start today and keep running"
     ]
-  }
+  },
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "开始一项任务",
+        "en": "Start a task"
+      },
+      "description": {
+        "zh": "说清目标，直接开始做",
+        "en": "State the goal and start now"
+      },
+      "prompt": {
+        "zh": "请帮我完成下面这项任务。先看工作区里已有的材料，缺的信息再问我：\n\n",
+        "en": "Help me complete this task. Check the workspace first, and ask only for what is still missing:\n\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "zap"
+    },
+    {
+      "title": {
+        "zh": "先制定计划",
+        "en": "Make a plan"
+      },
+      "description": {
+        "zh": "先拆步骤、材料和交付物",
+        "en": "Break down steps and deliverables"
+      },
+      "prompt": {
+        "zh": "请先不要动手改文件。根据下面的目标写一份计划：步骤、需要的材料、完成标准。目标是：\n\n",
+        "en": "Don't change files yet. Write a plan for this goal: steps, materials, and what done looks like.\n\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "分析当前情况",
+        "en": "Analyze the situation"
+      },
+      "description": {
+        "zh": "梳理问题、风险和优先级",
+        "en": "Review issues, risks, and priorities"
+      },
+      "prompt": {
+        "zh": "请根据下面的情况，列出问题、风险和优先处理顺序，不要编造我没提供的事实：\n\n",
+        "en": "From the situation below, list the issues, risks, and what to handle first. Don't invent facts I didn't provide:\n\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "直接产出结果",
+        "en": "Produce a result"
+      },
+      "description": {
+        "zh": "按要求给出可直接使用的成品",
+        "en": "Generate a ready-to-use deliverable"
+      },
+      "prompt": {
+        "zh": "请直接给出可使用的结果，结论放前面。我的要求和材料是：\n\n",
+        "en": "Produce a ready-to-use result, with the conclusion first. My request and materials are:\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "优化已有内容",
+        "en": "Refine a draft"
+      },
+      "description": {
+        "zh": "按反馈改一版，保留原意",
+        "en": "Revise a draft without changing the intent"
+      },
+      "prompt": {
+        "zh": "请优化下面的内容：先说你会改什么，再给出改后的全文。原文是：\n\n",
+        "en": "Refine the draft below: say what you will change, then give the full revised text.\n\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "pen-tool"
+    },
+    {
+      "title": {
+        "zh": "记住这个偏好",
+        "en": "Remember a preference"
+      },
+      "description": {
+        "zh": "把规矩记下来，下次直接用",
+        "en": "Save a rule and use it next time"
+      },
+      "prompt": {
+        "zh": "请记住这个偏好，之后同类任务直接照做，不要再问一遍：\n\n",
+        "en": "Remember this preference and apply it next time without asking again:\n\n"
+      },
+      "color": "#fdf4e7",
+      "icon_name": "heart"
+    }
+  ]
 }

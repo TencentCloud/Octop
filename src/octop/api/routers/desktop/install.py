@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from octop.api.deps import require_permission
-from octop.infra.desktop.setup import install_desktop_stream
+from octop.infra.control.desktop.setup import install_desktop_stream
 from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
 

@@ -13,9 +13,10 @@ import {
 import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionShareMark from "./SessionShareMark";
 import TeamChatBadge from "./TeamChatBadge";
+import RemoteExpertHint from "./RemoteExpertHint";
 import styles from "../index.module.less";
-import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
 import { isImeComposing } from "../../../utils/ime";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
@@ -25,10 +26,18 @@ interface ChatTitleBarProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
-  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
+  onDelete: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   isTeam?: boolean;
+  agent?: {
+    bridge?: boolean | null;
+    bridge_connection_name?: string | null;
+    bridge_connection_icon?: string | null;
+  } | null;
 }
 
 export default function ChatTitleBar({
@@ -41,6 +50,7 @@ export default function ChatTitleBar({
   forkDisabled,
   forkDisabledHint,
   isTeam = false,
+  agent = null,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
   const [collapseThinking, setCollapseThinking] = useCollapseThinking(isTeam);
@@ -108,9 +118,9 @@ export default function ChatTitleBar({
         icon: <Trash2 size={14} />,
         danger: true,
         onClick: () => {
-          confirmDeleteConversation(t, (compact) => {
-            void onDelete(session.id, compact);
-          });
+          confirmDeleteConversation(t, (compact) =>
+            onDelete(session.id, compact),
+          );
         },
       },
     ],
@@ -128,10 +138,8 @@ export default function ChatTitleBar({
     ],
   );
 
-  const [moreOpen, setMoreOpen] = useState(false);
-
   return (
-    <div className={`${styles.chatTitleBar} ${DESKTOP_DRAG_REGION_CLASS}`}>
+    <div className={styles.chatTitleBar}>
       <div className={styles.chatTitleLeft}>
         <SessionChannelIcon
           channelType={session.channelType}
@@ -159,7 +167,12 @@ export default function ChatTitleBar({
             <h1 className={styles.chatTitleText} title={title}>
               {title}
             </h1>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
             <TeamChatBadge show={isTeam} />
+            <RemoteExpertHint agent={agent} />
             {session.pinned ? (
               <Pin
                 size={13}
@@ -168,33 +181,37 @@ export default function ChatTitleBar({
                 aria-hidden
               />
             ) : null}
-            <button
-              type="button"
-              className={styles.chatTitleEditBtn}
-              onClick={() => setIsEditing(true)}
-              aria-label={t("common.edit")}
-              title={t("common.edit")}
-            >
-              <Pencil size={14} strokeWidth={2} aria-hidden />
-            </button>
-            <Dropdown
-              menu={{ items: menuItems }}
-              trigger={["click"]}
-              placement="bottomLeft"
-              onOpenChange={setMoreOpen}
-            >
-              <button
-                type="button"
-                className={`${styles.chatTitleEditBtn} ${
-                  moreOpen ? styles.chatTitleHoverShown : ""
-                }`}
-                aria-label={t("common.more", "更多")}
-              >
-                <MoreVertical size={14} strokeWidth={2} aria-hidden />
-              </button>
-            </Dropdown>
           </div>
         )}
+      </div>
+      <div className={styles.chatTitleActions}>
+        <button
+          type="button"
+          className={styles.chatTitleEditBtn}
+          onClick={() => setIsEditing(true)}
+          onPointerDown={(event) => {
+            // 避免失焦解除禁用后，同一次点击又重新打开编辑。
+            if (isEditing) event.preventDefault();
+          }}
+          disabled={isEditing}
+          aria-label={t("common.edit")}
+          title={t("common.edit")}
+        >
+          <Pencil size={14} strokeWidth={2} aria-hidden />
+        </button>
+        <Dropdown
+          menu={{ items: menuItems }}
+          trigger={["click"]}
+          placement="bottomRight"
+        >
+          <button
+            type="button"
+            className={styles.chatTitleEditBtn}
+            aria-label={t("common.more", "更多")}
+          >
+            <MoreVertical size={14} strokeWidth={2} aria-hidden />
+          </button>
+        </Dropdown>
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ export const TEAM_AVATAR_URL = "/experts/avatars/team-host.svg";
 
 /** True when this agent is a team host (group chat), not a solo expert. */
 export function isTeamAgent(
-  agent: { kind?: string } | null | undefined,
+  agent: { kind?: string | null } | null | undefined,
 ): boolean {
   return agent?.kind === "team";
 }

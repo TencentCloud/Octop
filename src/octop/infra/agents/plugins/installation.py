@@ -18,17 +18,18 @@ DOWNLOAD_TIMEOUT = 15
 DOWNLOAD_BUDGET = 120
 
 
-def download(url: str, archive: Path) -> None:
+def download(url: str, archive: Path, *, max_bytes: int | None = None) -> None:
     deadline = time.monotonic() + DOWNLOAD_BUDGET
+    limit = min(MAX_ARCHIVE_BYTES, max_bytes) if max_bytes is not None else MAX_ARCHIVE_BYTES
     with (
         urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response,  # noqa: S310
         archive.open("wb") as output,
     ):
         size = 0
-        while chunk := response.read1(64 * 1024):
+        while chunk := response.read(64 * 1024):
             size += len(chunk)
-            if size > MAX_ARCHIVE_BYTES:
-                raise ValueError("plugin archive exceeds 64 MiB")
+            if size > limit:
+                raise ValueError(f"plugin download exceeds {limit} bytes")
             if time.monotonic() > deadline:
                 raise TimeoutError("plugin download exceeded total time budget")
             output.write(chunk)

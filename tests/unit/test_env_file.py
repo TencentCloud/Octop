@@ -83,6 +83,7 @@ def test_overlay_stdio_mcp_configs_applies_to_stdio_only() -> None:
 
 def test_search_env_changed_detects_tavily() -> None:
     assert search_env_changed({}, {"TAVILY_API_KEY": "x"}) is True
+    assert search_env_changed({}, {"DEEPSEEK_API_KEY": "x"}) is True
     assert search_env_changed({"FOO": "1"}, {"FOO": "2"}) is False
 
 
@@ -121,6 +122,16 @@ def test_multiline_value_survives_roundtrip() -> None:
         "PEM_KEY": "-----BEGIN KEY-----\nMIIB\n-----END KEY-----",
         "CRLF": "line1\nline2",
     }
+
+
+def test_unclosed_quote_does_not_swallow_following_assignments() -> None:
+    text = 'BROKEN="no-close\nNEXT=1\nOK=2\n'
+
+    parsed = parse_env_text(text)
+
+    assert parsed["NEXT"] == "1"
+    assert parsed["OK"] == "2"
+    assert "NEXT" not in parsed["BROKEN"]
 
 
 def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> None:

@@ -1,4 +1,4 @@
-import { iconForName } from "../Experts/components/iconForName";
+import { ExpertIcon } from "../Experts/components/iconForName";
 
 export function PackageIcon({
   iconUrl,
@@ -13,8 +13,12 @@ export function PackageIcon({
   className?: string;
   imageClassName?: string;
 }) {
-  if (iconUrl) {
-    return <img src={iconUrl} alt="" className={imageClassName ?? className} />;
-  }
-  return iconForName(iconName, size);
+  return (
+    <ExpertIcon
+      iconUrl={iconUrl}
+      iconName={iconName}
+      size={size}
+      className={imageClassName ?? className}
+    />
+  );
 }
