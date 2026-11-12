@@ -40,6 +40,7 @@ from octop.infra.connectors.default_open import (
     build_instance_config_json,
     read_default_open,
 )
+from octop.infra.connectors.extensions import get_connector_extension
 from octop.infra.connectors.gateway.cli_dirs import cleanup_creds_cli_dirs
 from octop.infra.connectors.gateway.cli_install import (
     cli_install_status,
@@ -429,6 +430,9 @@ async def _prepare_credentials(
     if entry is None:
         raise ValueError(f"unknown connector kind: {kind}")
     cred_payload = dict(credentials)
+    extension = get_connector_extension(kind)
+    if extension is not None:
+        cred_payload = await extension.prepare_credentials(cred_payload)
     if entry.auth_kind == "auth_code" and cred_payload.get("code"):
         code = str(cred_payload.pop("code")).strip()
         extra = {
@@ -1183,8 +1187,7 @@ async def test_instance(
     creds = await svc.ensure_fresh_credentials(instance_id, inst.kind)
     if not creds:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
-    if inst.kind in {"agently-cli", "ragflow"}:
-        creds["_locale"] = resolve_request_locale(request)
+    creds["_locale"] = resolve_request_locale(request)
 
     try:
         return await probe_connector(
@@ -1224,8 +1227,7 @@ async def test_credentials(
             str(exc),
             details={"reason": str(exc)},
         ) from exc
-    if body.kind in {"agently-cli", "ragflow"}:
-        cred_payload["_locale"] = resolve_request_locale(request)
+    cred_payload["_locale"] = resolve_request_locale(request)
     try:
         return await probe_connector(
             entry,
@@ -1236,6 +1238,27 @@ async def test_credentials(
     except Exception as exc:
         logger.exception("connector credential test failed for %s", body.kind)
         return {"ok": False, "error": str(exc)}
+
+
+class OpenDesignLocalStatus(BaseModel):
+    installed: bool = Field(description="Whether OpenDesign is installed on the Octop host.")
+    state: Literal["ready", "missing", "stopped", "multiple"] = Field(
+        description="Read-only discovery state; launch credentials are never included."
+    )
+
+
+@router.get(
+    "/connectors/open-design/local-status",
+    summary="Detect the local OpenDesign application and MCP registration",
+    response_model=OpenDesignLocalStatus,
+)
+async def open_design_local_status(user: Any = Depends(current_user)) -> dict[str, Any]:
+    """Read-only host discovery. Launch credentials are never returned to the browser."""
+    from octop.infra.connectors.open_design_local import detect_local_open_design
+
+    del user
+    status, _credentials = await asyncio.to_thread(detect_local_open_design)
+    return status
 
 
 @router.get(

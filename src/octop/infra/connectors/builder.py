@@ -18,6 +18,7 @@ from octop.infra.connectors.catalog import (
     uses_internal_http_mcp,
 )
 from octop.infra.connectors.custom_mcp import validate_mcp_http_url
+from octop.infra.connectors.extensions import get_connector_extension
 from octop.infra.connectors.mail_servers import resolve_mail_servers
 from octop.infra.utils.ulid import new_ulid
 
@@ -147,6 +148,9 @@ def _build_stdio_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> di
     Built-in stdio connectors are bundled like remote/gateway ones, but instead of
     an HTTP URL the harness spawns a subprocess and speaks MCP over stdio.
     """
+    extension = get_connector_extension(entry.kind)
+    if extension is not None:
+        return extension.connection_spec(creds)
     if entry.kind == "yuque-mcp":
         token = str(
             creds.get("token") or creds.get("api_key") or creds.get("personal_token") or ""
@@ -321,6 +325,10 @@ def validate_create_credentials(
         raise ValueError(f"unknown connector kind: {kind}")
     if entry.phase != "available":
         raise ValueError(f"connector {kind} is not available yet")
+
+    extension = get_connector_extension(kind)
+    if extension is not None:
+        return extension.normalize_credentials(credentials)
 
     out: dict[str, Any] = {}  # pre-declare to avoid mypy no-redef errors
 
@@ -642,15 +650,16 @@ def build_mcp_server_configs_for_user(
         )
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         try:
-            if is_inprocess_gateway(entry):
+            if is_inprocess_gateway(entry) or entry.mcp_mode == "stdio":
                 # Name-only placeholder: harness skips specs without ``transport``;
-                # tools are injected in-process in AgentManager._post_start_agent.
+                # gateway tools load after startup; stdio tools load when selected.
                 configs[inst.mcp_server_name] = {}
                 if log:
                     logger.info(
-                        "  register %s (%s) mcp_mode=gateway (in-process, no HTTP preload)",
+                        "  register %s (%s) mcp_mode=%s (host-owned tool assembly)",
                         inst.mcp_server_name,
                         inst.kind,
+                        entry.mcp_mode,
                     )
                 continue
             configs[inst.mcp_server_name] = build_http_mcp_spec(
@@ -778,3 +787,13 @@ def inject_missing_gateway_tools(
         agent_id,
         ima_names,
     )
+
+
+def create_stdio_runtime(kind: str, service: Any, repos: Any) -> Any:
+    """Use the standard stdio session owner, with connector-specific tool behavior."""
+    extension = get_connector_extension(kind)
+    if extension is not None:
+        return extension.create_stdio_runtime(service, repos)
+    from octop.infra.connectors.stdio import StdioRuntime
+
+    return StdioRuntime(service, repos)
