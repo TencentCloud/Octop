@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isNetworkFetchError } from "./networkError";
+import { isCatalogNetworkError, isNetworkFetchError } from "./networkError";
 
 describe("isNetworkFetchError", () => {
   afterEach(() => {
@@ -21,5 +21,27 @@ describe("isNetworkFetchError", () => {
     expect(
       isNetworkFetchError(new Error("Request failed with status 503")),
     ).toBe(false);
+  });
+});
+
+describe("isCatalogNetworkError", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("treats a catalog network code as a network problem", () => {
+    vi.stubGlobal("navigator", { onLine: true });
+    const error = new Error(
+      '502 - {"error":{"code":"NETWORK_ERROR","message":"network"}}',
+    );
+    expect(isCatalogNetworkError(error, "NETWORK_ERROR")).toBe(true);
+  });
+
+  it("leaves a marketplace outage as a market problem", () => {
+    vi.stubGlobal("navigator", { onLine: true });
+    const error = new Error(
+      '502 - {"error":{"code":"PLUGIN_MARKET_FAILED","message":"down"}}',
+    );
+    expect(isCatalogNetworkError(error, "NETWORK_ERROR")).toBe(false);
   });
 });

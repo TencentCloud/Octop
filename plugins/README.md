@@ -6,10 +6,8 @@ Sample plugins for Octop / octop-harness `kind` values, plus a **dual
 frontend + backend** demo that renders tool results in chat.
 Layout inspired by [octop-toolkit](https://github.com/veenyi/octop-plugins/tree/main/octop-toolkit).
 
-Product plugins shipped with the wheel live in
-`src/octop/infra/agents/plugins/bundled/`. `octop init` and `octop run`
-copy missing ones into `~/.octop/plugins/` and set them **globally off**
-in `config.json`. Uninstalled ids are not re-copied.
+Product plugins are installed from the plugin market. The wheel no longer
+ships that catalog.
 
 ## Demos
 

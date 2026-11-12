@@ -1,7 +1,7 @@
-"""Upgrade already-installed bundled plugins from the in-tree catalog.
+"""Upgrade already-installed plugins from the in-tree catalog.
 
-New plugins are installed via the marketplace (copy today; remote ZIP later),
-not by seed. Seed only refreshes local copies when the catalog version is newer.
+The in-tree catalog is empty. New plugins install from the remote market ZIP.
+Seed only refreshes a local copy when a catalog version is newer.
 """
 
 from __future__ import annotations
@@ -65,8 +65,7 @@ def seed_bundled_plugins(
     """Upgrade already-installed bundled plugins when the catalog version is newer.
 
     New plugins are **not** auto-copied. Install them from the plugin marketplace
-    (``PluginManager.install_from_market``), which copies from the in-tree
-    catalog today and will fetch remote ZIPs later.
+    (``PluginManager.install_from_market``), which fetches a remote ZIP.
 
     Existing dest dirs are overwritten only when the bundled ``plugin.yaml``
     version is newer (enabled flag is preserved). Does not write config when

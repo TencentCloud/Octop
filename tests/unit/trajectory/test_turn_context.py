@@ -21,7 +21,10 @@ def test_build_turn_start_includes_system_and_memory_skills_mcp() -> None:
     chunks = build_turn_start_chunks(
         include_system=True,
         system_prompt="You are Octop.\nBe helpful.",
-        workspace_files=["AGENTS.md", "USER.md"],
+        workspace_files=[
+            ("AGENTS.md", "# 效率专家\n按这个干活。"),
+            ("USER.md", "名字：小卡拉米2号"),
+        ],
         skills=["bash", "read"],
         mcp_servers=["github"],
     )
@@ -33,8 +36,9 @@ def test_build_turn_start_includes_system_and_memory_skills_mcp() -> None:
     assert len(str(chunks[0]["content_sha256"])) == 64
     assert chunks[1]["source"] == "memory"
     assert chunks[1]["label"] == "AGENTS.md"
-    assert "content" not in chunks[1]
+    assert chunks[1]["content"] == "# 效率专家\n按这个干活。"
     assert chunks[2]["label"] == "USER.md"
+    assert chunks[2]["content"] == "名字：小卡拉米2号"
     assert chunks[3]["source"] == "skills"
     assert "bash" in chunks[3]["content"]
     assert chunks[4]["source"] == "mcp"
@@ -59,13 +63,14 @@ def test_build_turn_start_skips_empty_system_prompt() -> None:
     chunks = build_turn_start_chunks(
         include_system=True,
         system_prompt="  ",
-        workspace_files=["SOUL.md"],
+        workspace_files=[("SOUL.md", "")],
         skills=None,
         mcp_servers=None,
     )
     assert [c["type"] for c in chunks] == ["context"]
     assert chunks[0]["label"] == "SOUL.md"
     assert chunks[0]["source"] == "memory"
+    assert "content" not in chunks[0]
 
 
 def test_build_turn_start_emits_explicit_empty_skills_allowlist() -> None:

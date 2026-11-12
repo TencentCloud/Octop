@@ -67,6 +67,31 @@
   transition: background var(--fn-transition-fast);
 }
 
+.chatRailExpandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 6px 6px 6px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  appearance: none;
+  background: none;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  }
+}
+
 .navItemMain {
   display: flex;
   align-items: center;
@@ -81,29 +106,6 @@
   cursor: pointer;
   text-align: left;
   transition: color var(--fn-transition-fast);
-}
-
-.chatRailExpandBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin: 6px 6px 6px 0;
-  border: none;
-  border-radius: var(--fn-radius-md);
-  background: transparent;
-  color: var(--fn-text-tertiary);
-  cursor: pointer;
-  transition:
-    background var(--fn-transition-fast),
-    color var(--fn-transition-fast);
-
-  &:hover {
-    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
-    color: var(--fn-text-primary);
-  }
 }
 
 .navUpdateBadge {
@@ -214,11 +216,13 @@
   width: 40px;
   height: 40px;
   border: none;
-  border-radius: var(--fn-radius-md);
+  border-radius: 10px;
   background: transparent;
   color: var(--fn-text-tertiary);
   cursor: pointer;
-  transition: all var(--fn-transition-fast);
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
 
   &:hover {
     background: var(--fn-sidebar-item-hover);
@@ -242,5 +246,126 @@
 
   &[hidden] {
     display: none !important;
+  }
+}
+
+/* ---------- Rail header ---------- */
+/* Keeps the rail above the history rail so the header controls are never
+   painted over by the neighbouring column. */
+.navRailHost {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 0;
+  z-index: 3;
+}
+
+/* Width is set inline (it animates), so the reduced-motion opt-out has to
+   outrank inline styles — hence `!important` inside the media query. */
+.navRail {
+  @media (prefers-reduced-motion: reduce) {
+    transition: none !important;
+  }
+}
+
+/* Collapsed icons sit on the traffic-light center line. A fixed tile, not a
+   full-bleed stripe, so the active state stays clear of the seam. */
+.collapsedNav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0 8px;
+}
+
+.collapsedNavBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover);
+    color: var(--fn-text-primary);
+  }
+}
+
+.collapsedNavBtnActive,
+.collapsedNavBtnActive:hover {
+  background: var(--fn-sidebar-item-active-bg);
+  color: var(--fn-sidebar-item-active-text);
+}
+
+.collapsedNavBadge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* The collapsed icon list is only as wide as the traffic lights. A 5px
+   scrollbar would steal that width, so it stays hidden while still scrolling. */
+.navScrollCollapsed {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
+/* macOS only: room above the brand for the traffic lights (shell y = 8).
+   Windows keeps its menu in the caption row above the shell, so the logo
+   has no blank spacer. Shorter than the 58px title row. */
+.navChrome {
+  position: relative;
+  flex: 0 0 36px;
+  height: 36px;
+  box-sizing: border-box;
+}
+
+/* logo_mark.svg's circle sits left of the view box. Nudge it onto the
+   traffic-light center line; the expanded wordmark stays put. */
+.brandMarkCollapsed {
+  transform: translateX(2px);
+}
+
+/* Version badges shrink before the wordmark does. */
+.brandMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  flex-shrink: 1;
+}
+
+/* Mobile drawer slides in from the left; same opt-out as the rail. */
+.mobileDrawer {
+  @media (prefers-reduced-motion: reduce) {
+    transition: none !important;
   }
 }

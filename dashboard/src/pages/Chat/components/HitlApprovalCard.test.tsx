@@ -38,15 +38,17 @@ describe("HitlApprovalCard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     expect(onDecision).toHaveBeenCalledWith([{ type: "approve" }]);
 
-    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
-    fireEvent.click(await screen.findByText("Allow this tool for this chat"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Allow for this chat" }),
+    );
     expect(onDecision).toHaveBeenCalledWith([{ type: "approve" }], {
       mode: "allow_tools",
       tools: ["execute"],
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
-    fireEvent.click(await screen.findByText("Allow all for this chat"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Allow all tools in this chat" }),
+    );
     expect(onDecision).toHaveBeenCalledWith([{ type: "approve" }], {
       mode: "allow_all",
     });
@@ -69,9 +71,8 @@ describe("HitlApprovalCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Allow" }));
     expect(
-      await screen.findByText("Allow these tools for this chat"),
+      screen.getByTitle("Allow these tools for this chat"),
     ).toBeInTheDocument();
   });
 

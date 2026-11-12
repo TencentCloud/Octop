@@ -88,6 +88,18 @@ it("reports lost status without silently unblocking and recovers on the next suc
   unmount();
 });
 
+it("does not poll status when disabled", async () => {
+  const { result, unmount } = renderHook(() =>
+    useMemoryMaintenance("shared", false),
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(request).not.toHaveBeenCalled();
+  expect(result.current.visible).toBe(false);
+  unmount();
+});
+
 it("does not turn legacy completion into a persistent manual-maintenance result", async () => {
   vi.mocked(request).mockResolvedValue({
     memory_maintenance: { phase: "done" },
