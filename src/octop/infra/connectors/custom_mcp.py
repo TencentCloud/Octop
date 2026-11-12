@@ -252,7 +252,7 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         if str(oauth.get("access_token") or "").strip():
             spec[_OAUTH_KEY] = dict(oauth)
         elif oauth.get("required") is True:
-            spec[_OAUTH_KEY] = {"required": True}
+            spec[_OAUTH_KEY] = _required_marker(oauth)
 
     return spec
 
@@ -312,10 +312,16 @@ def oauth_required(spec: dict[str, Any]) -> bool:
     return oauth.get("required") is True
 
 
+def _required_marker(oauth: dict[str, Any]) -> dict[str, Any]:
+    """The stored "authorize first" marker, keeping whether a token had lapsed."""
+    return {"required": True, **({"expired": True} if oauth.get("expired") is True else {})}
+
+
 def mark_oauth_reauth_required(spec: dict[str, Any]) -> dict[str, Any]:
     """Drop stale OAuth tokens and flag the dashboard to prompt re-authorization."""
     out = {k: v for k, v in spec.items() if k != _OAUTH_KEY}
-    out[_OAUTH_KEY] = {"required": True}
+    # ``expired`` tells "authorize again" apart from "never authorized".
+    out[_OAUTH_KEY] = {"required": True, "expired": True}
     return out
 
 
@@ -424,7 +430,7 @@ def merge_preserved_oauth(
             if isinstance(old_oauth, dict) and str(old_oauth.get("access_token") or "").strip():
                 spec[_OAUTH_KEY] = {"required": True} if client_changed else dict(old_oauth)
             elif isinstance(old_oauth, dict) and old_oauth.get("required") is True:
-                spec[_OAUTH_KEY] = {"required": True}
+                spec[_OAUTH_KEY] = _required_marker(old_oauth)
         out[name] = spec
     return out
 

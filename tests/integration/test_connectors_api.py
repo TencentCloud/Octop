@@ -1060,7 +1060,7 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
         state_id=state_id,
         state=state_id,
         user_id=user_id,
-        kind="notion",
+        kind="custom-mcp",
         code_verifier="verifier",
         redirect_after="/connectors",
     )
@@ -1076,3 +1076,94 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
     assert response.status_code == 400
     assert payload not in response.text
     assert escape(payload) in response.text
+
+
+@pytest.mark.parametrize(
+    ("error", "status"), [("access_denied", "cancelled"), ("server_error", "error")]
+)
+async def test_a_cancelled_or_refused_authorization_is_reported_to_the_opener(env, error, status):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state="opaque-state",
+        user_id=user_id,
+        kind="custom-mcp",
+        code_verifier="verifier",
+        redirect_after="/chat/agent-1?x=1",
+    )
+
+    response = await c.get(
+        "/api/connectors/oauth/callback", params={"error": error, "state": "opaque-state"}
+    )
+
+    assert response.status_code == 400
+    assert f'"status": "{status}"' in response.text
+    assignment = re.search(r"window.location.href = (.*);", response.text)
+    assert assignment is not None
+    target = urlsplit(json.loads(assignment.group(1)))
+    assert target.path == "/chat/agent-1"
+    assert parse_qs(target.query) == {
+        "x": ["1"],
+        "oauth_state": [state_id],
+        "oauth_error": [status],
+    }
+    # The state is used up, and the outcome is waiting for a page that polls.
+    assert srv.services.repos.connector_repo.consume_oauth_state("opaque-state") is None
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 200
+    assert pending.json()["status"] == status
+    assert pending.json()["tokens"] == {}
+
+
+async def test_a_cancelled_catalog_authorization_keeps_the_plain_callback_page(env):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state="catalog-state",
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+
+    response = await c.get(
+        "/api/connectors/oauth/callback",
+        params={"error": "access_denied", "state": "catalog-state"},
+    )
+
+    assert response.status_code == 400
+    assert "octop:connector-oauth" not in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 404
+
+
+async def test_a_failed_token_exchange_is_reported_as_an_error(env):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="custom-mcp",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        side_effect=ValueError("invalid_grant"),
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback", params={"code": "c", "state": state_id}
+        )
+
+    assert response.status_code == 400
+    assert '"status": "error"' in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.json()["status"] == "error"
+    assert "invalid_grant" in pending.json()["message"]
