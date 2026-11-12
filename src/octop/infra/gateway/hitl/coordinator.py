@@ -25,6 +25,11 @@ from octop.infra.gateway.hitl.format import (
 )
 from octop.infra.gateway.hitl.phrases import ApprovalUtterance
 from octop.infra.gateway.hitl.store import HitlPendingRecord, HitlPendingStore
+from octop.infra.gateway.hitl.structured_form import (
+    STRUCTURED_FORM_TOOL_NAME,
+    validate_structured_form_request,
+    validate_structured_form_response,
+)
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.gateway.slash.ctx import ensure_thread_id
 from octop.infra.gateway.slash.formatting import markdown_bullets
@@ -247,14 +252,22 @@ def decision_rejection_reason(
             allowed_by_action[name] = {str(item) for item in allowed}
     for action, decision in zip(actions, decisions, strict=True):
         allowed = allowed_by_action.get(str(action.get("name")))
-        if not allowed:
-            continue
         kind = str(decision.get("type"))
-        if kind not in allowed:
+        if allowed and kind not in allowed:
             return (
                 f"decision '{kind}' is not allowed for tool "
                 f"'{action.get('name')}' (allowed: {', '.join(sorted(allowed))})"
             )
+        if action.get("name") == STRUCTURED_FORM_TOOL_NAME:
+            request_error = validate_structured_form_request(action.get("args"))
+            if request_error:
+                return request_error
+            if kind == "respond":
+                response_error = validate_structured_form_response(
+                    action.get("args"), decision.get("message")
+                )
+                if response_error:
+                    return response_error
     return None
 
 
