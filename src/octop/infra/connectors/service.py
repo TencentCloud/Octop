@@ -11,6 +11,12 @@ from weakref import WeakKeyDictionary
 
 from octop.config import OctopConfig
 from octop.infra.connectors import qcc
+from octop.infra.connectors.auth_status import (
+    AUTH_EXPIRED,
+    AUTH_OK,
+    NEEDS_AUTH,
+    custom_auth_status,
+)
 from octop.infra.connectors.builder import build_http_mcp_spec, mcp_server_name, new_internal_token
 from octop.infra.connectors.catalog import get_catalog_entry, uses_internal_http_mcp
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
@@ -21,12 +27,14 @@ from octop.infra.connectors.custom_mcp import (
     enabled_harness_configs,
     expand_custom_instances,
     extract_servers,
+    harness_spec_for_server,
     is_custom_mcp_kind,
     mark_oauth_reauth_required,
     merge_preserved_oauth,
     oauth_configured,
     oauth_tokens_from_spec,
     redact_servers_for_api,
+    server_display_name,
     server_enabled,
     set_oauth_required_in_spec,
     shared_mcp_server_name,
@@ -468,6 +476,7 @@ class ConnectorService:
         out: list[dict[str, Any]] = []
         visible = self._repo.list_visible(user_id)
         custom_row = self._repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
+        custom_specs: dict[str, dict[str, Any]] = {}
         for inst in visible:
             if is_custom_mcp_kind(inst.kind):
                 continue
@@ -489,29 +498,87 @@ class ConnectorService:
                 }
             )
         if custom_row is not None and custom_row.has_credentials:
-            out.extend(
-                expand_custom_instances(
-                    parent=custom_row,
-                    servers=extract_servers(self.decrypt(custom_row.instance_id)),
-                )
-            )
+            own = extract_servers(self.decrypt(custom_row.instance_id))
+            custom_specs.update(own)
+            out.extend(expand_custom_instances(parent=custom_row, servers=own))
         # Per-server ``shared`` lives in the encrypted bag, not on the parent row.
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
-            out.extend(
-                expand_custom_instances(
-                    parent=parent,
-                    servers=extract_servers(self.decrypt(parent.instance_id)),
-                    shared_view=True,
-                )
+            servers = extract_servers(self.decrypt(parent.instance_id))
+            custom_specs.update(
+                {
+                    shared_mcp_server_name(parent.instance_id, name): spec
+                    for name, spec in servers.items()
+                    if isinstance(spec, dict)
+                }
             )
+            out.extend(expand_custom_instances(parent=parent, servers=servers, shared_view=True))
         for item in out:
+            spec = custom_specs.get(str(item.get("mcp_server_name") or ""))
+            if is_custom_mcp_kind(str(item.get("kind") or "")) and isinstance(spec, dict):
+                status = custom_auth_status(spec)
+                if status:
+                    item["auth_status"] = status
             item.setdefault("owner_user_id", user_id)
             item.setdefault("shared", False)
             # list_visible already applied the per-instance group layer.
             item["usable"] = True
         return out
+
+    async def auth_blocked_servers(
+        self, user_id: int, server_names: list[str], *, probe: bool = True
+    ) -> list[dict[str, Any]]:
+        """Which custom MCP servers in *server_names* need the user to authorize.
+
+        Called after MCP tools could not be loaded. A stored token whose status
+        still looks fine is probed once: a 401/403 from the MCP server means it
+        was revoked, and the server is marked so the dashboard prompts too.
+        """
+        wanted = set(server_names)
+        blocked: list[dict[str, Any]] = []
+        own = self.get_custom_servers(user_id)
+        candidates: list[tuple[str, int, str, dict[str, Any]]] = [
+            (name, user_id, name, spec)
+            for name, spec in own.items()
+            if name in wanted and isinstance(spec, dict)
+        ]
+        for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
+            if parent.user_id == user_id or not parent.has_credentials:
+                continue
+            for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
+                shown = shared_mcp_server_name(parent.instance_id, name)
+                if shown in wanted and isinstance(spec, dict) and spec.get("shared") is True:
+                    candidates.append((shown, parent.user_id, name, spec))
+        for shown, owner_id, name, spec in candidates:
+            status = custom_auth_status(spec)
+            if (
+                status == AUTH_OK
+                and probe
+                and str(spec.get("transport") or "") in ("streamable_http", "http")
+            ):
+                harness = harness_spec_for_server(spec)
+                if await _token_rejected(
+                    str(harness.get("url") or ""),
+                    dict(harness.get("headers") or {}),
+                    kind=CUSTOM_MCP_KIND,
+                ):
+                    servers = dict(self.get_custom_servers(owner_id))
+                    if isinstance(servers.get(name), dict):
+                        servers[name] = mark_oauth_reauth_required(dict(servers[name]))
+                        self._save_custom_servers(owner_id, servers)
+                    status = AUTH_EXPIRED
+            if status in NEEDS_AUTH:
+                blocked.append(
+                    {
+                        "server": shown,
+                        "display_name": server_display_name(name, spec),
+                        "auth_status": status,
+                        "can_authorize": owner_id == user_id,
+                        "target": {"type": "custom_mcp", "server_name": name},
+                    }
+                )
+        return blocked
 
     def shared_custom_harness_aliases(self, owner_user_id: int) -> dict[str, str]:
         """Map a viewer's collision-safe name to the owner's harness server name.
@@ -928,3 +995,19 @@ class ConnectorService:
         creds["cli_config_key"] = cli_key
         self.encrypt_and_store(instance_id=instance_id, payload=creds)
         return {**result, "cli_config_key": cli_key, "default_as": "user"}
+
+
+async def _token_rejected(url: str, headers: dict[str, str], *, kind: str) -> bool:
+    """True only when the MCP server answers 401/403; anything else is not an auth problem."""
+    if not url:
+        return False
+    from octop.infra.connectors.probe import probe_streamable_http_mcp
+
+    try:
+        result = await asyncio.wait_for(
+            probe_streamable_http_mcp(url, headers, kind=kind), timeout=30
+        )
+    except Exception:
+        logger.warning("auth probe failed for %s", kind, exc_info=True)
+        return False
+    return result.get("error_type") == "auth"

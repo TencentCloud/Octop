@@ -2945,6 +2945,37 @@ async def test_prepare_chat_mcp_reports_failure_in_caller_name(
     assert "notes" in missing
 
 
+async def test_prepare_chat_mcp_stops_at_a_connector_that_lost_authorization(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = _seed_user(manager, "mcp-reauth")
+    svc = manager._connector_svc
+    svc.put_custom_servers(
+        user_id,
+        {"wiki": {"transport": "streamable_http", "url": "https://wiki.example.com/mcp"}},
+    )
+    servers = dict(svc.get_custom_servers(user_id))
+    servers["wiki"] = {**servers["wiki"], "oauth": {"required": True, "expired": True}}
+    svc._save_custom_servers(user_id, servers)
+    agent_id = manager._repos.agent_repo.create(agent_id="REAUTH", user_id=user_id, name="a")
+    agent = MagicMock()
+    # The tools are still cached on the agent from before the token lapsed.
+    agent._mcp_tool_name_set = frozenset({"wiki_search"})
+    agent._mcp_attached_user = {"wiki": user_id}
+    agent.config.mcp_server_configs = {}
+    load = AsyncMock()
+    monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
+    monkeypatch.setattr(manager, "_get_or_load_mcp_tools", load)
+
+    missing = await manager.prepare_chat_mcp(agent_id, ["wiki"], connector_user_id=user_id)
+
+    assert missing == ["wiki"]
+    load.assert_not_awaited()
+    blocked = await manager.connector_auth_blocked(user_id, missing)
+    assert [(b["server"], b["auth_status"]) for b in blocked] == [("wiki", "expired")]
+
+
 def test_prepare_stream_request_maps_max_iters_to_recursion_limit(
     manager: AgentManager,
     monkeypatch: pytest.MonkeyPatch,
