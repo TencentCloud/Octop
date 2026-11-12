@@ -30,7 +30,17 @@ vi.mock("../context/LayoutModeContext", () => ({
 
 vi.mock("../api/modules/auth", () => ({
   authApi: {
-    me: () => Promise.resolve({ id: 1, username: "ada" }),
+    me: () => Promise.resolve({ id: 1, username: "ada", has_password: true }),
+    mfaStatus: () =>
+      Promise.resolve({
+        totp_verified: false,
+        passkeys: [],
+        recovery_remaining: 0,
+        is_last_factor: false,
+        can_enroll: true,
+        has_password: true,
+        sso_linked: false,
+      }),
     getOauthStatus: () => Promise.resolve({ providers: [] }),
     updateProfile: vi.fn(),
     logout: vi.fn(),
@@ -97,29 +107,24 @@ describe("AvatarDropdown personal settings", () => {
     expect(screen.getByTestId("avatar-picker")).toBeInTheDocument();
   });
 
-  it("opens settings and password as right drawers", async () => {
+  it("opens account security with the password form in one drawer", async () => {
     const view = userEvent.setup();
     render(<AvatarDropdown user={user} placement="sidebar" />);
 
     await view.click(screen.getByRole("button", { name: /Ada/ }));
-    await view.click(screen.getByRole("button", { name: "account.settings" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(document.querySelector(".ant-drawer-right")).toBeTruthy();
-    expect(document.querySelector(".ant-modal")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "account.changePassword" }),
+    ).not.toBeInTheDocument();
+    await view.click(screen.getByRole("button", { name: "account.security" }));
 
-    await view.click(screen.getByRole("button", { name: /close/i }));
-    await view.click(screen.getByRole("button", { name: /Ada/ }));
-    await view.click(
+    expect(
+      await screen.findByText("account.currentPassword"),
+    ).toBeInTheDocument();
+    expect(
       screen.getByRole("button", { name: "account.changePassword" }),
-    );
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(document.querySelector(".ant-drawer-right")).toBeTruthy();
-    expect(document.querySelector(".ant-modal")).toBeNull();
-
-    const cancel = screen.getByRole("button", { name: "common.cancel" });
-    const submit = screen.getByRole("button", {
-      name: "account.changePassword",
-    });
-    expect(cancel.closest(".ant-drawer-footer")).toContainElement(submit);
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector(".ant-drawer-right, .octop-drawer-right"),
+    ).toBeTruthy();
   });
 });

@@ -151,6 +151,7 @@ async def discover_oauth_from_mcp_url(
 
         {
           "available": bool,
+          "client_required": bool,  # only when the AS lacks dynamic registration
           "issuer": str | None,
           "resource": str | None,
           "metadata": dict | None,  # AS metadata when available
@@ -199,16 +200,20 @@ async def _discover_oauth_from_mcp_url_uncached(url: str) -> dict[str, Any]:
     except Exception as exc:
         return {"available": False, "error": str(exc), "issuer": issuer, "resource": resource}
 
+    scopes_raw = metadata.get("scopes_supported")
+    scopes = [str(s) for s in scopes_raw if s] if isinstance(scopes_raw, list) else None
     if not metadata.get("registration_endpoint"):
+        # Usable only with a pre-registered client (``oauth_client`` on the server).
         return {
             "available": False,
+            "client_required": True,
             "error": "authorization server does not support dynamic client registration",
             "issuer": issuer,
             "resource": resource,
+            "metadata": metadata,
+            "scopes_supported": scopes,
         }
 
-    scopes_raw = metadata.get("scopes_supported")
-    scopes = [str(s) for s in scopes_raw if s] if isinstance(scopes_raw, list) else None
     return {
         "available": True,
         "issuer": issuer,

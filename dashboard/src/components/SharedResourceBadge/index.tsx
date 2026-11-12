@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Share2 } from "lucide-react";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "./SharedResourceBadge.module.less";
 
 type Props = {
@@ -31,13 +32,11 @@ export function SharedResourceBadge({
     : t("sharedResource.shared", "已共享");
   return (
     <span
-      className={[
+      className={cx(
         styles.badge,
         incoming ? styles.incoming : styles.outgoing,
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
       title={label}
     >
       <Share2 size={11} aria-hidden />
@@ -71,7 +70,7 @@ export function SharedAvatarMark({
       defaultValue: "来自 {{name}}",
     });
   return (
-    <span className={[styles.avatarHost, className].filter(Boolean).join(" ")}>
+    <span className={cx(styles.avatarHost, className)}>
       {children}
       {incoming ? (
         <Tooltip title={tip} mouseEnterDelay={0.3}>

@@ -13,8 +13,10 @@ try:
 except ImportError:  # pragma: no cover - optional PostgreSQL driver
     pg_errors = None  # type: ignore[assignment]
 
+from octop.infra.db.file_store import SKILL_PACKAGE_FILES, open_postgres_files
 from octop.infra.db.repos.skill_packages import SkillPackageRepo, SkillPackageRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.skills.blob_mirror import SkillPackageBlobMirror
 from octop.infra.skills.presentation import apply_skill_presentation
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
@@ -66,11 +68,30 @@ def _allocate_package_id(repo: SkillPackageRepo) -> str:
 
 
 class SkillPackageStore:
-    """Persist skill package contents below a host-local root."""
+    """Persist skill package contents below a host-local root.
 
-    def __init__(self, *, repo: SkillPackageRepo, root: Path) -> None:
+    When ``database`` is PostgreSQL, file bytes are stored in
+    ``public.skill_package_files`` and mirrored onto ``root`` for callers
+    that still need a directory. SQLite leaves the directory as the only copy.
+    """
+
+    def __init__(self, *, repo: SkillPackageRepo, root: Path, database: Any = None) -> None:
         self.repo = repo
         self.root = root
+        self._blobs: SkillPackageBlobMirror | None = None
+        if database is not None and getattr(database, "is_postgresql", False):
+            self._blobs = SkillPackageBlobMirror(
+                open_postgres_files(database, schema="public", table=SKILL_PACKAGE_FILES),
+                root,
+            )
+
+    def _hydrate_package(self, pack_id: str) -> None:
+        if self._blobs is not None:
+            self._blobs.hydrate(pack_id)
+
+    def _persist_package(self, pack_id: str) -> None:
+        if self._blobs is not None:
+            self._blobs.persist(pack_id)
 
     def create(
         self,
@@ -96,9 +117,11 @@ class SkillPackageStore:
             allow_download=allow_download,
         )
         self.package_skills_dir(row.id).mkdir(parents=True, exist_ok=True)
+        self._persist_package(row.id)
         return row
 
     def package_skills_dir(self, pack_id: str) -> Path:
+        self._hydrate_package(pack_id)
         return self.root / pack_id / "skills"
 
     def list_skill_summaries(
@@ -182,6 +205,7 @@ class SkillPackageStore:
                 continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)
+        self._persist_package(pack_id)
         self._update_skill_count(pack_id)
 
     def write_skill_manifest(self, pack_id: str, slug: str, content: str) -> None:
@@ -199,6 +223,7 @@ class SkillPackageStore:
         if not manifest.is_file():
             raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
         manifest.write_bytes(payload)
+        self._persist_package(pack_id)
 
     def _safe_slug(self, slug: str) -> str:
         try:
@@ -309,11 +334,27 @@ class SkillPackageStore:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
         skill_dir = self.package_skills_dir(pack_id) / safe_slug
         shutil.rmtree(skill_dir, ignore_errors=True)
+        self._persist_package(pack_id)
         self._update_skill_count(pack_id)
 
     def delete_package(self, pack_id: str) -> None:
         self.repo.delete(pack_id)
         shutil.rmtree(self.root / pack_id, ignore_errors=True)
+        if self._blobs is not None:
+            self._blobs.drop(pack_id)
+
+    def has_skill(self, pack_id: str, slug: str) -> bool:
+        try:
+            safe_slug = validate_skill_slug(slug)
+        except SkillPackageError:
+            return False
+        return (self.package_skills_dir(pack_id) / safe_slug / "SKILL.md").is_file()
+
+    def read_skill_files(self, pack_id: str, slug: str) -> list[tuple[str, bytes]]:
+        """Read one skill from the package source (local disk or PostgreSQL)."""
+        from octop.infra.skills.skill_packages import read_skill_directory
+
+        return read_skill_directory(self._skill_dir(pack_id, slug))
 
     def assert_can_mutate(self, row: SkillPackageRow, user: User) -> None:
         if self.can_mutate(row, user):

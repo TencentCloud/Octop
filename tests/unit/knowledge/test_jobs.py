@@ -116,6 +116,30 @@ def test_process_document_indexes_chunks_and_marks_ready(
     assert KnowledgeIndex(kb.id).search([1.0, 0.0], 1)[0].doc_id == doc.id
 
 
+def test_process_document_skips_a_document_moved_to_another_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    repo = KnowledgeRepo(pool)
+    owner_id = UserRepo(pool).create(username="owner", password_hash="h", role="user")
+    old = repo.create_base(owner_user_id=owner_id, name="Old")
+    new = repo.create_base(owner_user_id=owner_id, name="New")
+    doc = repo.create_document(
+        kb_id=old.id, filename="notes.md", content_type="text/markdown", byte_size=5
+    )
+    repo.move_to_base(doc, target_kb_id=new.id, target_folder="", max_documents=0)
+    services = SimpleNamespace(knowledge_repo=repo, settings_repo=SettingsRepo(pool))
+    monkeypatch.setattr(jobs, "assert_knowledge_usable", lambda *_args: None)
+
+    jobs.process_document(services, old.id, doc.id)
+
+    moved = repo.get_document(doc.id)
+    assert moved is not None
+    assert (moved.kb_id, moved.status) == (new.id, "pending")
+
+
 def test_process_document_indexes_ocr_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
     pool = SqlitePool(tmp_path / "octop.db")
