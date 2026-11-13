@@ -99,3 +99,13 @@ def tmp_octop_home(_isolated_user_home: Path) -> Iterator[Path]:
     octop = _isolated_user_home / ".octop"
     octop.mkdir(exist_ok=True)
     yield octop
+
+
+@pytest.fixture(autouse=True)
+def _disable_office_runtime_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Server tests must not download external runtime dependencies."""
+
+    async def _skip(_paths: object) -> None:
+        pass
+
+    monkeypatch.setattr("octop.infra.server.ensure_office_preview_runtime", _skip)

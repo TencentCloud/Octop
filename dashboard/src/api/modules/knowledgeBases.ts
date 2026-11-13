@@ -4,6 +4,10 @@ import {
   requestBlob,
   requestUpload,
 } from "../request";
+import {
+  fetchOfficePdf,
+  type OfficePdfPreview,
+} from "../../utils/officePreview";
 
 export interface KnowledgeLimits {
   max_bases_per_owner: number;
@@ -348,6 +352,19 @@ export const knowledgeBasesApi = {
       filename: string;
       chunks: { ordinal: number; text: string }[];
     }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
+
+  /** Authenticated Office → PDF preview of the original file. */
+  fetchOfficePreview: (
+    id: string,
+    documentId: string,
+    onProgress?: (loaded: number, total: number) => void,
+    signal?: AbortSignal,
+  ): Promise<OfficePdfPreview> =>
+    fetchOfficePdf(
+      `/knowledge-bases/${id}/documents/${documentId}/office-preview`,
+      onProgress,
+      signal,
+    ),
 
   /** Authenticated original-file bytes (download or preview). */
   fetchDocumentFile: (

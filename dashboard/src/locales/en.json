@@ -270,7 +270,14 @@
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
-    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "OFFICE_PREVIEW_UNAVAILABLE": "The Office preview engine is not installed or failed to start. You can still download the original file.",
+    "OFFICE_PREVIEW_UNSUPPORTED": "This file type cannot be converted for preview.",
+    "OFFICE_PREVIEW_TOO_LARGE": "This document is too large to convert for preview.",
+    "OFFICE_PREVIEW_QUEUE_FULL": "Too many Office preview conversions are in progress. Try again shortly.",
+    "OFFICE_PREVIEW_TIMEOUT": "Office preview conversion timed out.",
+    "OFFICE_PREVIEW_CORRUPT": "This document could not be converted. It may be damaged or password-protected.",
+    "OFFICE_PREVIEW_FAILED": "Office preview conversion failed."
   },
   "nav": {
     "chat": "Conversation",
@@ -2101,6 +2108,12 @@
     "mediaLoadFailed": "Could not load preview",
     "retryPreview": "Retry",
     "docPreviewUnsupported": "Online preview is not available for this document — please download it",
+    "officeLayoutPreview": "Print layout preview",
+    "officeGridView": "Sheet view",
+    "excelUnsupportedPreview": "Some charts, images, shapes or conditional formatting are omitted from this preview.",
+    "excelMissingFormulaResults": "Some formulas have no saved result. Open the workbook in Excel to recalculate.",
+    "officeMissingFonts": "Some fonts were substituted in this preview",
+    "previewConvertingDocument": "Converting document…",
     "excelPreviewTruncated": "Preview shows the first {{rows}} rows and {{cols}} columns — download for the full sheet",
     "excelDownloadFull": "Download full file",
     "pdfPageCount": "{{count}} pages",

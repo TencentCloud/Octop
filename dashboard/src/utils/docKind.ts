@@ -42,3 +42,20 @@ export function getEditableDocLanguage(path: string): string | null {
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   return EDITABLE_DOCS[ext] ?? null;
 }
+
+export function isXlsmFilename(path: string): boolean {
+  return (path.split(".").pop()?.toLowerCase() ?? "") === "xlsm";
+}
+
+/** Office types converted by the optional LibreOffice Kit preview (not XLSM / PDF). */
+export function canConvertOfficeToPdf(path: string): boolean {
+  if (isXlsmFilename(path)) return false;
+  const kind = getDocKind(path);
+  return (
+    kind === "word" ||
+    kind === "excel" ||
+    kind === "pptx" ||
+    kind === "ppt" ||
+    kind === "doc"
+  );
+}

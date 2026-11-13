@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import suppress
 from dataclasses import asdict
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
+from octop.api.common.office_preview import office_preview_pdf_response
 from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import DEFAULT_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB, upload_mb_to_bytes
@@ -60,6 +62,7 @@ from octop.infra.knowledge.service import (
     MAX_DOCUMENT_BYTES,
     KnowledgeService,
 )
+from octop.infra.office_preview.read import file_size_if_present, read_path_capped
 from octop.infra.server import OctopServer
 from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, GroupAccess
 from octop.infra.users.identity import User
@@ -1075,6 +1078,47 @@ async def download_document_file(
         path=path,
         media_type=content_type or "application/octet-stream",
         headers={"Content-Disposition": content_disposition(filename, disposition=disposition)},
+    )
+
+
+@router.get(
+    "/{kb_id}/documents/{doc_id}/office-preview",
+    summary="Convert a knowledge document to PDF for preview",
+    description=(
+        "Authorized read of the original file, then LibreOffice Kit conversion. "
+        "Only documents that still have an original are converted."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def office_preview_document(
+    kb_id: str,
+    doc_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> Response:
+    locale = resolve_request_locale(request)
+    try:
+        path, filename, _content_type = _knowledge_service(server).resolve_document_file(
+            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(exc, locale=locale, server=server) from exc
+
+    async def _load() -> bytes:
+        try:
+            return await asyncio.to_thread(read_path_capped, path)
+        except FileNotFoundError as exc:
+            raise OctopError.localized(ErrorCode.KNOWLEDGE_NOT_FOUND, locale) from exc
+
+    return await office_preview_pdf_response(
+        request=request,
+        filename=filename,
+        cache_scope=f"kb:{user.id}:{kb_id}",
+        source_id=doc_id,
+        load_bytes=_load,
+        known_size=file_size_if_present(path),
     )
 
 

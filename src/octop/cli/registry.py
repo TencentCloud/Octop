@@ -35,6 +35,11 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "bridge": (".commands.bridge", "bridge", "Manage remote Octop bridge peers."),
     "acp": (".commands.acp", "acp_cmd", "Run Octop agent as ACP server (stdio)."),
     "plugin": (".commands.plugin", "plugin", "Install and manage plugins."),
+    "office-preview": (
+        ".commands.office_preview",
+        "office_preview",
+        "Install and probe Office-to-PDF preview (LibreOffice Kit).",
+    ),
     "cloud": (".commands.cloud", "cloud", "Tencent Cloud credential bridge (tccli import)."),
     "migrate": (
         ".commands.migrate",

@@ -1,0 +1,11 @@
+{
+  "name": "octop-office-preview-helper",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@deepseek-ai/libreoffice-kit": "0.2.3"
+  }
+}

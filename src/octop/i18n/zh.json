@@ -558,7 +558,14 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "OFFICE_PREVIEW_UNAVAILABLE": "Office 预览引擎未安装或启动失败，仍可下载原件。",
+    "OFFICE_PREVIEW_UNSUPPORTED": "此文件类型不支持转换预览。",
+    "OFFICE_PREVIEW_TOO_LARGE": "文档过大，无法转换预览。",
+    "OFFICE_PREVIEW_QUEUE_FULL": "当前转换任务过多，请稍后再试。",
+    "OFFICE_PREVIEW_TIMEOUT": "Office 预览转换超时。",
+    "OFFICE_PREVIEW_CORRUPT": "无法转换此文档（可能已损坏或受密码保护）。",
+    "OFFICE_PREVIEW_FAILED": "Office 预览转换失败。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

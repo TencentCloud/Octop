@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
 from octop.api.common.content_disposition import content_disposition
+from octop.api.common.office_preview import office_preview_pdf_response
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.backend.adapter import row_to_backend_spec, storage_spec_previewable
 from octop.infra.errors import ErrorCode, OctopError
@@ -385,6 +386,60 @@ async def download_storage_backend_file(
         content=data,
         media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
+    )
+
+
+@admin_router.get(
+    "/{backend_id}/office-preview",
+    summary="Convert a storage-backend file to PDF for preview",
+    description=(
+        "Uses the same admin browse permission and path constraints as download. "
+        "Does not go through an agent workspace."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def office_preview_storage_backend_file(
+    backend_id: int,
+    request: Request,
+    path: str = Query(..., min_length=1),
+    user: Any = Depends(require_permission("storage_backends")),
+    server: Any = Depends(get_server),
+) -> Response:
+    row = server.services.storage_backend_repo.get(backend_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backend.browse import (
+        StorageBrowseError,
+        storage_backend_file_size,
+    )
+    from octop.infra.backend.browse import (
+        download_storage_backend_file as _download_file,
+    )
+    from octop.infra.office_preview.limits import MAX_INPUT_BYTES
+    from octop.infra.office_preview.read import too_large_error
+
+    filename = path.replace("\\", "/").rsplit("/", 1)[-1] or "document"
+    known_size = await storage_backend_file_size(row, path)
+
+    async def _load() -> bytes:
+        try:
+            data = await _download_file(row, path, preview=True)
+        except FileNotFoundError as exc:
+            raise OctopError(ErrorCode.NOT_FOUND, str(exc)) from exc
+        except (StorageBrowseError, ValueError) as exc:
+            raise _storage_browse_octop_error(exc) from exc
+        if len(data) > MAX_INPUT_BYTES:
+            raise too_large_error()
+        return data
+
+    return await office_preview_pdf_response(
+        request=request,
+        filename=filename,
+        cache_scope=f"storage:{user.id}:{backend_id}",
+        source_id=path,
+        load_bytes=_load,
+        known_size=known_size,
     )
 
 

@@ -31,6 +31,7 @@ from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
+from octop.infra.office_preview.bootstrap import ensure_office_preview_runtime
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.setup import password_file as _wizard_pw
@@ -329,6 +330,7 @@ class OctopServer:
         self._started_at: int | None = None
         self.instance_id = uuid.uuid4().hex
         self._serve_background = True
+        self._office_preview_install_task: asyncio.Task[None] | None = None
         self._sso_service: SsoService | None = None
         self._ldap_service: LdapAuthService | None = None
         self._ldap_bind_throttle: LdapBindThrottle | None = None
@@ -446,6 +448,7 @@ class OctopServer:
                     "Cannot migrate history v2 without its original control-plane database"
                 )
             self._started = True
+            self._start_office_preview_install()
             self._emit_wizard_password(user_count=0)
             logger.info("control-plane database deferred until setup wizard chooses a backend")
             return
@@ -459,6 +462,7 @@ class OctopServer:
         self._ensure_jwt_secret()
         await self._boot_runtime(config)
         self._started = True
+        self._start_office_preview_install()
         assert self.user_manager is not None
         self._emit_wizard_password(user_count=self.user_manager.count())
 
@@ -785,9 +789,20 @@ class OctopServer:
                 file_path,
             )
 
+    def _start_office_preview_install(self) -> None:
+        if self._serve_background:
+            self._office_preview_install_task = asyncio.create_task(
+                ensure_office_preview_runtime(self.paths), name="office-preview-install"
+            )
+
     async def stop(self) -> None:
         if not self._started:
             return
+        if self._office_preview_install_task is not None:
+            self._office_preview_install_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._office_preview_install_task
+            self._office_preview_install_task = None
         try:
             from octop.infra.connectors.gateway import agently_auth
 

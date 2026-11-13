@@ -37,14 +37,15 @@
 # 默认 OCTOP_IMAGE_VARIANT=full：虚拟桌面、系统浏览器、本地向量和 OCR 都在镜像里，
 # 桌面不会启动，用户在控制台确认后才启用。桌面安装已经带上 Chromium，不再另下
 # Playwright 浏览器。lite 去掉这些重依赖，镜像更小，发布标签是 :<version>-lite。
-# 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
+# 运行时带 Node.js 22（node / npm / npx），供依赖 Node 的技能使用。
+# Office 预览（LibreOffice Kit）需要 Node >= 22.19，默认不预装引擎；未安装时回退旧查看器。
 # Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘、约 2 GB 内存。
 # =============================================================================
 
 # ---------------------------------------------------------------------------
 # 阶段 1 — 前端构建
 # ---------------------------------------------------------------------------
-FROM node:20-slim AS frontend-builder
+FROM node:22-slim AS frontend-builder
 
 ARG NPM_REGISTRY=
 # Vite 生产打包在 rendering chunks 时峰值接近 2GB。2048 会在 GC 压力下以
@@ -55,6 +56,7 @@ ARG NODE_MAX_OLD_SPACE_SIZE=4096
 WORKDIR /build/dashboard
 
 COPY dashboard/package.json dashboard/package-lock.json ./
+COPY dashboard/patches ./patches
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     set -eu; \
     if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi; \
@@ -111,7 +113,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
-# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 20。
+# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 22。
 # Docker 拷贝会展开软链接，因此 npm / npx 在这里按原路径重建。
 COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules

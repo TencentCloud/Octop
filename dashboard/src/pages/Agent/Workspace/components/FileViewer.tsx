@@ -38,6 +38,8 @@ interface FileViewerProps {
   fromWorkspace?: boolean;
   /** Authenticated blob URL for media/docs (storage browse uses this). */
   fetchUrl?: string;
+  /** Authorized Office → PDF conversion URL (storage / skill-package sources). */
+  officePreviewUrl?: string;
   /** When true, text files render with the Monaco editor. */
   editMode: boolean;
   /** Current text content (for text/preview modes). */
@@ -56,6 +58,7 @@ export default function FileViewer({
   path,
   fromWorkspace = true,
   fetchUrl,
+  officePreviewUrl,
   editMode,
   value,
   onChange,
@@ -94,6 +97,7 @@ export default function FileViewer({
         kind={docKind}
         fromWorkspace={fromWorkspace}
         fetchUrl={fetchUrl}
+        officePreviewUrl={officePreviewUrl}
       />
     );
   }

@@ -482,11 +482,16 @@ export async function request<T = unknown>(
  * and reports ``(loaded, total)`` in bytes — used by the PDF preview's
  * download progress bar.
  */
-export async function requestBlob(
+export interface BlobResponse {
+  blob: Blob;
+  headers: Headers;
+}
+
+export async function requestBlobMeta(
   path: string,
   options: RequestInit = {},
   onProgress?: (loaded: number, total: number) => void,
-): Promise<Blob> {
+): Promise<BlobResponse> {
   assertNotSetupLocked(path);
 
   const url = getApiUrl(path);
@@ -526,10 +531,19 @@ export async function requestBlob(
         onProgress(loaded, total);
       }
     }
-    return new Blob(chunks);
+    return { blob: new Blob(chunks), headers: response.headers };
   }
 
-  return response.blob();
+  return { blob: await response.blob(), headers: response.headers };
+}
+
+export async function requestBlob(
+  path: string,
+  options: RequestInit = {},
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Blob> {
+  const { blob } = await requestBlobMeta(path, options, onProgress);
+  return blob;
 }
 
 /**

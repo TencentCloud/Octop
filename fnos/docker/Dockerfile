@@ -15,7 +15,7 @@
 # 数据卷里的设置和索引却还在。
 # 另外用 bake-desktop.sh 装入虚拟桌面和系统 Chromium，但不启动。
 # 桌面组件已包含浏览器，不再另下 Playwright Chromium。
-# 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
+# 运行时带 Node.js 22（node / npm / npx），供依赖 Node 的技能使用。
 # 飞牛 Docker 版安装包不构建本文件，而是拉取由 deploy/docker/Dockerfile 打出的镜像；
 # 两份 Dockerfile 的 Node 运行时保持一致。
 # Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘。
@@ -27,7 +27,7 @@
 # ---------------------------------------------------------------------------
 # 阶段 1 — 前端构建（React / TypeScript → src/octop/dashboard）
 # ---------------------------------------------------------------------------
-FROM node:20-slim AS frontend-builder
+FROM node:22-slim AS frontend-builder
 
 # 与 docker/Dockerfile 相同：2048 在 Vite chunk 渲染时会触顶 abort（退出码 134）。
 ARG NODE_MAX_OLD_SPACE_SIZE=4096
@@ -85,7 +85,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
-# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 20。
+# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 22。
 # Docker 拷贝会展开软链接，因此 npm / npx 在这里按原路径重建。
 COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
 COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules

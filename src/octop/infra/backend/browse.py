@@ -284,6 +284,28 @@ async def read_storage_backend_text(row: BackendRow, path: str) -> str:
     return _coerce_preview_text(text)
 
 
+async def storage_backend_file_size(row: BackendRow, path: str) -> int | None:
+    """Best-effort size from a parent listing; ``None`` when the backend omits it."""
+    path = normalize_browse_path(path)
+    if path == "/":
+        return None
+    parent = path.rsplit("/", 1)[0] or "/"
+    try:
+        entries = await list_storage_backend_tree(row, parent)
+    except (FileNotFoundError, StorageBrowseError, ValueError):
+        return None
+    target = path.rstrip("/")
+    for entry in entries:
+        entry_path = str(entry.get("path") or "").rstrip("/")
+        if entry_path != target:
+            continue
+        size = entry.get("size")
+        if isinstance(size, int) and not isinstance(size, bool) and size >= 0:
+            return size
+        return None
+    return None
+
+
 async def list_storage_backend_tree(row: BackendRow, path: str = "/") -> list[dict[str, Any]]:
     """Single-level listing under *path*; returns JSON-friendly file info dicts.
 
