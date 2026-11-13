@@ -156,8 +156,10 @@ jobs:
           provenance: false
           sbom: false
           platforms: ${{ matrix.platform }}
+          # NODE_MAX_OLD_SPACE_SIZE：Vite chunk 渲染峰值约 2GB，2048 会偶发退出码 134。
           build-args: |
             OCTOP_IMAGE_VARIANT=${{ matrix.variant }}
+            NODE_MAX_OLD_SPACE_SIZE=4096
           tags: |
             octop:ci-${{ matrix.variant }}
             ${{ steps.meta.outputs.tags }}

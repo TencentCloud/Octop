@@ -29,7 +29,8 @@
 # ---------------------------------------------------------------------------
 FROM node:20-slim AS frontend-builder
 
-ARG NODE_MAX_OLD_SPACE_SIZE=2048
+# 与 docker/Dockerfile 相同：2048 在 Vite chunk 渲染时会触顶 abort（退出码 134）。
+ARG NODE_MAX_OLD_SPACE_SIZE=4096
 ARG NPM_REGISTRY=
 WORKDIR /build/dashboard
 
