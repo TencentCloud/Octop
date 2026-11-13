@@ -1,17 +1,12 @@
-# Replicas share one PostgreSQL control plane.
-# Browser sessions stick via the Ingress cookie. Do not add Service
-# sessionAffinity: ClientIP, or every user behind one Ingress Pod lands
-# on a single Octop replica.
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: octop
+  name: {{ include "octop.fullname" . }}
   labels:
-    app.kubernetes.io/name: octop
+    {{- include "octop.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicaCount }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -19,13 +14,11 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app.kubernetes.io/name: octop
-      app.kubernetes.io/component: server
+      {{- include "octop.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: octop
-        app.kubernetes.io/component: server
+        {{- include "octop.selectorLabels" . | nindent 8 }}
     spec:
       terminationGracePeriodSeconds: 60
       affinity:
@@ -35,27 +28,23 @@ spec:
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    app.kubernetes.io/name: octop
-                    app.kubernetes.io/component: server
+                    {{- include "octop.selectorLabels" . | nindent 20 }}
                 topologyKey: kubernetes.io/hostname
       initContainers:
         - name: wait-for-postgres
-          image: pgvector/pgvector:pg16
-          imagePullPolicy: IfNotPresent
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
           command:
             - sh
             - -c
-            - until pg_isready -h octop-pgvector -p 5432; do sleep 2; done
+            - until pg_isready -h {{ include "octop.database.host" . | quote }} -p {{ .Values.database.port | quote }}; do sleep 2; done
       containers:
         - name: octop
-          # :latest is the lite image. Local embeddings, OCR, and the virtual
-          # desktop need :<version>-full plus about 1Gi of shm. Desktop stays off.
-
-          image: ghcr.io/tencentcloud/octop:latest
-          imagePullPolicy: IfNotPresent
+          image: {{ include "octop.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: 8088
+              containerPort: {{ .Values.service.port }}
           env:
             - name: HOME
               value: /data
@@ -64,47 +53,42 @@ spec:
             - name: OCTOP_BIND_HOST
               value: 0.0.0.0
             - name: OCTOP_PORT
-              value: "8088"
+              value: {{ .Values.service.port | quote }}
             - name: OCTOP_DATABASE_DRIVER
               value: postgresql
             - name: OCTOP_DATABASE_HOST
-              value: octop-pgvector
+              value: {{ include "octop.database.host" . | quote }}
             - name: OCTOP_DATABASE_PORT
-              value: "5432"
+              value: {{ .Values.database.port | quote }}
             - name: OCTOP_DATABASE_NAME
               valueFrom:
                 secretKeyRef:
-                  name: octop-pg
+                  name: {{ .Values.secrets.database }}
                   key: database
             - name: OCTOP_DATABASE_USER
               valueFrom:
                 secretKeyRef:
-                  name: octop-pg
+                  name: {{ .Values.secrets.database }}
                   key: user
             - name: OCTOP_DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: octop-pg
+                  name: {{ .Values.secrets.database }}
                   key: password
-            # The entrypoint reads OCTOP_DEFAULT_PASSWORD and runs octop init
-            # only when that password passes policy.
-
             - name: OCTOP_DEFAULT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: octop-admin
+                  name: {{ .Values.secrets.admin }}
                   key: password
             - name: OCTOP_ADMIN_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: octop-admin
+                  name: {{ .Values.secrets.admin }}
                   key: username
             - name: OCTOP_DEFAULT_TIMEZONE
-              value: Asia/Shanghai
-            # Keep this in sync with the Ingress host.
-
+              value: {{ .Values.config.timezone | quote }}
             - name: OCTOP_CORS_ORIGINS
-              value: https://octop.example.com
+              value: {{ include "octop.corsOrigins" . | quote }}
           startupProbe:
             httpGet:
               path: /api/health
@@ -126,20 +110,20 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           resources:
-            requests:
-              cpu: 500m
-              memory: 1Gi
-            limits:
-              cpu: "2"
-              memory: 4Gi
+            {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
             - name: home
               mountPath: /data/.octop
+            {{- if .Values.shm.enabled }}
+            - name: shm
+              mountPath: /dev/shm
+            {{- end }}
       volumes:
-        # Per-Pod runtime directory. Control plane, skill packages, and
-        # knowledge bases live in PostgreSQL. Do not switch this to
-        # ReadWriteMany: local SQLite such as the Feishu dedup file is not
-        # safe for concurrent writers.
-
         - name: home
           emptyDir: {}
+        {{- if .Values.shm.enabled }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shm.sizeLimit }}
+        {{- end }}

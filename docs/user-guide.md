@@ -135,7 +135,7 @@ docker run -d \
 
 > 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
 
-共用 PostgreSQL、多副本的 Kubernetes 部署见 [deploy/k8s/README_CN.md](../deploy/k8s/README_CN.md)。
+多副本怎么工作、虚拟机和 Kubernetes 怎么装，见 [cluster_CN.md](cluster_CN.md)。Kubernetes 的安装参数见 [deploy/helm/octop/README_CN.md](../deploy/helm/octop/README_CN.md)。
 
 ---
 

@@ -41,6 +41,33 @@ jobs:
       - name: Test
         run: make test
 
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.3
+
+      - name: Lint and render
+        run: |
+          set -euo pipefail
+          helm lint deploy/helm/octop
+          helm template octop deploy/helm/octop -n octop >/dev/null
+          helm template octop deploy/helm/octop -n octop \
+            -f deploy/helm/octop/values.example.yaml >/dev/null
+          helm template octop deploy/helm/octop -n octop \
+            --set postgresql.enabled=false \
+            --set database.host=pg.example.com >/dev/null
+          if helm template octop deploy/helm/octop -n octop --set postgresql.enabled=false >/dev/null 2>/tmp/helm-err; then
+            echo "expected a missing database.host to fail"
+            exit 1
+          fi
+
   test-windows:
     name: Windows / Python 3.12
     runs-on: windows-latest

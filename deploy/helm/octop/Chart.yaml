@@ -1,0 +1,7 @@
+apiVersion: v2
+name: octop
+description: Octop with shared PostgreSQL, sticky replicas, and single-active cron and channels
+type: application
+version: 0.1.0
+appVersion: "1.0.3b5"
+kubeVersion: ">=1.25.0-0"
