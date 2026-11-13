@@ -87,13 +87,16 @@ class AgentPatchBody(AgentRuntimeFields):
     mcp_servers: list[str] | None = None
 
 
-def _attach_unread_counts(
+def _attach_viewer_stats(
     server: Any, user_id: int, payloads: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
+    """Unread totals and this viewer's latest chat time, one query each."""
     agent_ids = [p["agent_id"] for p in payloads]
     totals = server.services.session_repo.unread_totals_by_agent(user_id, agent_ids)
+    activity = server.services.thread_repo.latest_activity_by_agent(user_id, agent_ids)
     for payload in payloads:
         payload["unread_count"] = totals.get(payload["agent_id"], 0)
+        payload["last_active"] = activity.get(payload["agent_id"])
     return payloads
 
 
@@ -270,6 +273,11 @@ async def list_agents(
     Default ``scope=mine`` returns agents owned by the authenticated user plus
     agents other users have explicitly shared.
     Holders of the ``users`` permission (and admins) may pass ``scope=all``.
+
+    Each row includes ``unread_count`` and ``last_active`` for the caller.
+    ``last_active`` is the newest ``threads.last_active`` on that user's own
+    threads (empty threads are omitted, so a never-chatted agent is ``null``).
+    A shared expert does not inherit another user's activity.
     """
     if scope == "all" and not user_has_permission(user, "users"):
         raise OctopError(
@@ -298,7 +306,7 @@ async def list_agents(
             )
             for r in rows
         ]
-        return _attach_unread_counts(server, user.id, payloads)
+        return _attach_viewer_stats(server, user.id, payloads)
 
     owned = registry.list_agents(user.id)
     shared = server.services.agent_repo.list_shared(
@@ -313,7 +321,7 @@ async def list_agents(
         owner = server.services.user_repo.get(row.user_id)
         if owner is not None:
             shared_owner_username_by_id[row.user_id] = owner.username
-    return _attach_unread_counts(
+    return _attach_viewer_stats(
         server,
         user.id,
         [
