@@ -87,8 +87,11 @@
 
 .mascot {
   width: 112px;
-  height: 112px;
+  height: auto;
+  aspect-ratio: 352 / 320;
   object-fit: contain;
+  // The peek artwork has empty pixels under the character.
+  margin-bottom: -16px;
   user-select: none;
   animation:
     pop 0.5s @ease-pop both,
