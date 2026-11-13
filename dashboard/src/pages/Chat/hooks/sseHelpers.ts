@@ -218,6 +218,13 @@ export interface SessionStreamState {
   historyHydrated: boolean;
   /** Server-side messages changed outside this client — refetch on next load. */
   historyStale: boolean;
+  /**
+   * True when the freshly-hydrated history page reports a still-running
+   * server turn (`turn_active`); the next live token chunks belong to that
+   * new turn and must open a new bubble instead of re-opening the last
+   * `done` historical assistant (issue TencentCloud/Octop#2616).
+   */
+  recoveringTurnAfterHydration?: boolean;
   listeners: Set<() => void>;
   /** Cached snapshot reference (updated on every notify). */
   _snapshot: SessionSnapshot;
