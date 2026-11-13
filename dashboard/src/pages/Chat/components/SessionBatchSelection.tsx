@@ -12,6 +12,7 @@ import styles from "./SessionBatchSelection.module.less";
 
 export interface SessionSelection {
   selectedIds: ReadonlySet<string>;
+  selectableIds: ReadonlySet<string>;
   disabled: boolean;
   toggle: (id: string) => void;
 }
@@ -38,8 +39,9 @@ export default function SessionBatchSelection({
   const [selected, setSelected] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const inFlight = useRef(false);
+  // Pending threads and conversations other users shared on this expert stay out.
   const selectableIds = sessions
-    .filter((s) => !isPendingThread(s.id))
+    .filter((s) => !isPendingThread(s.id) && s.owned !== false)
     .map((s) => s.id);
   const selectedIds = new Set(
     selected.filter((id) => selectableIds.includes(id)),
@@ -94,6 +96,7 @@ export default function SessionBatchSelection({
   const selection: SessionSelection | undefined = selecting
     ? {
         selectedIds,
+        selectableIds: new Set(selectableIds),
         disabled: deleting,
         toggle: (id) => {
           if (inFlight.current || !selectableIds.includes(id)) return;

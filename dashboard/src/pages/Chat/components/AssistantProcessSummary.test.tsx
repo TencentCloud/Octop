@@ -108,8 +108,37 @@ describe("thinking display preference", () => {
       answerMessage: null,
     };
     render(<AssistantProcessSummary split={split} isStreaming />);
+    const label = screen.getByText(/整理结果中|Organizing results/);
+    expect(label.nextElementSibling).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("drops the organizing hint once the answer text is visible", () => {
+    const message: ChatMessage = {
+      id: "tool-done",
+      role: "assistant",
+      content: "",
+      status: "done",
+      timestamp: Date.now(),
+      toolData: { name: "read_file", arguments: "{}", output: "ok" },
+    };
+    const split: AssistantTurnSplit = {
+      tools: [message],
+      thinkings: [],
+      processSteps: [{ kind: "tool", message }],
+      answerMessage: {
+        id: "answer",
+        role: "assistant",
+        content: "共有 47 条。",
+        status: "done",
+        timestamp: Date.now(),
+      },
+    };
+    render(<AssistantProcessSummary split={split} isStreaming />);
     expect(
-      screen.getByText(/整理结果中|Organizing results/),
+      screen.queryByText(/整理结果中|Organizing results/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/已调用 1 次工具|Called 1 tools/),
     ).toBeInTheDocument();
   });
 

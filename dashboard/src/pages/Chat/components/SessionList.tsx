@@ -10,10 +10,12 @@ import {
   Pin,
   PinOff,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import cx from "classnames";
-import { isPendingThread, type Session } from "../hooks/useSessions";
+import { type Session } from "../hooks/useSessions";
+import { saveSessionShared } from "../utils/shareSession";
 import SessionBatchSelection, {
   type BatchDeleteSessions,
   type SessionSelection,
@@ -29,10 +31,12 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
-import SharedExpertHint from "./SharedExpertHint";
+import SharedExpertHint, { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
@@ -49,26 +53,18 @@ import {
   type ChatNavScope,
 } from "../utils/chatNavScope";
 import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import AgentUnreadBadge from "./AgentUnreadBadge";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
+import ChatEditExpertDrawer, {
+  canEditExpertFromChat,
+} from "./ChatEditExpertDrawer";
 import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
 import styles from "../index.module.less";
-
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
+import { openAgentUnread } from "../utils/openUnreadSession";
 
 interface SessionItemProps {
   session: Session;
@@ -82,6 +78,8 @@ interface SessionItemProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onContribute: (id: string, contributed: boolean) => void;
+  shareable: boolean;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   selection?: SessionSelection;
@@ -96,6 +94,8 @@ const SessionItem = memo(function SessionItem({
   onRename,
   onPin,
   onFork,
+  onContribute,
+  shareable,
   forkDisabled,
   forkDisabledHint,
   selection,
@@ -130,52 +130,70 @@ const SessionItem = memo(function SessionItem({
   const itemForkHint = !session.hasActivity
     ? t("chat.forkNoAssistant")
     : forkDisabledHint;
+  const owned = session.owned !== false;
 
-  const menuItems: MenuProps["items"] = [
-    {
-      key: "pin",
-      label: session.pinned
-        ? t("chat.unpin", "取消置顶")
-        : t("chat.pin", "置顶"),
-      icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onPin(session.id, !session.pinned);
-      },
-    },
-    {
-      key: "fork",
-      label: t("chat.fork", "分叉"),
-      icon: <GitFork size={14} />,
-      disabled: itemForkDisabled,
-      title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onFork(session.id);
-      },
-    },
-    {
-      key: "rename",
-      label: t("common.rename"),
-      icon: <Pencil size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        setIsEditing(true);
-      },
-    },
-    {
-      key: "delete",
-      label: t("common.delete", "Delete"),
-      icon: <Trash2 size={14} />,
-      danger: true,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) =>
-          onDelete(session.id, compact),
-        );
-      },
-    },
-  ];
+  const menuItems: MenuProps["items"] = owned
+    ? [
+        ...(shareable
+          ? [
+              {
+                key: "contribute",
+                label: session.contributed
+                  ? t("chat.uncontribute", "取消共享")
+                  : t("chat.contribute", "共享会话"),
+                icon: <Share2 size={14} />,
+                onClick: (event: { domEvent: { stopPropagation(): void } }) => {
+                  event.domEvent.stopPropagation();
+                  onContribute(session.id, !session.contributed);
+                },
+              },
+            ]
+          : []),
+        {
+          key: "pin",
+          label: session.pinned
+            ? t("chat.unpin", "取消置顶")
+            : t("chat.pin", "置顶"),
+          icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onPin(session.id, !session.pinned);
+          },
+        },
+        {
+          key: "fork",
+          label: t("chat.fork", "分叉"),
+          icon: <GitFork size={14} />,
+          disabled: itemForkDisabled,
+          title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onFork(session.id);
+          },
+        },
+        {
+          key: "rename",
+          label: t("common.rename"),
+          icon: <Pencil size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            setIsEditing(true);
+          },
+        },
+        {
+          key: "delete",
+          label: t("common.delete", "Delete"),
+          icon: <Trash2 size={14} />,
+          danger: true,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            confirmDeleteConversation(t, (compact) =>
+              onDelete(session.id, compact),
+            );
+          },
+        },
+      ]
+    : [];
 
   return (
     <div
@@ -198,7 +216,9 @@ const SessionItem = memo(function SessionItem({
         <Checkbox
           aria-label={t("chat.selectSession", { name: session.name })}
           checked={selection.selectedIds.has(session.id)}
-          disabled={selection.disabled || isPendingThread(session.id)}
+          disabled={
+            selection.disabled || !selection.selectableIds.has(session.id)
+          }
           onClick={(e) => e.stopPropagation()}
           onChange={() => selection.toggle(session.id)}
         />
@@ -233,7 +253,13 @@ const SessionItem = memo(function SessionItem({
         />
       ) : (
         <>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -242,7 +268,7 @@ const SessionItem = memo(function SessionItem({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          {!selection && (
+          {!selection && menuItems && menuItems.length > 0 ? (
             <Dropdown
               menu={{ items: menuItems }}
               trigger={["click"]}
@@ -257,7 +283,7 @@ const SessionItem = memo(function SessionItem({
                 <MoreHorizontal size={15} />
               </button>
             </Dropdown>
-          )}
+          ) : null}
         </>
       )}
     </div>
@@ -283,12 +309,14 @@ interface AgentCardProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  onContribute: (id: string, contributed: boolean) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
   onHide?: () => void;
   onUnhide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onEdit?: () => void;
   liveWorkingIds: ReadonlySet<string>;
 }
 
@@ -308,12 +336,14 @@ function ActiveAgentCard({
   onRename,
   onPin,
   onFork,
+  onContribute,
   activeForkDisabled,
   activeForkDisabledHint,
   onHide,
   onUnhide,
   pinned = false,
   onTogglePin,
+  onEdit,
   liveWorkingIds,
 }: AgentCardProps) {
   const { t } = useTranslation();
@@ -372,11 +402,17 @@ function ActiveAgentCard({
                 name={agent.name}
                 className={styles.agentCardName}
               />
+              <ExpertOwnerShareFlag agent={agent} />
               <ExpertPinMark pinned={pinned} />
               <TeamChatBadge agent={agent} compact />
               <RemoteExpertHint agent={agent} compact />
             </div>
-            <AgentUnreadBadge count={agent.unread_count ?? 0} />
+            <AgentUnreadBadge
+              count={agent.unread_count ?? 0}
+              onOpen={() => {
+                void openAgentUnread(agent.agent_id, sessions, onSelect);
+              }}
+            />
             {onTogglePin ? (
               <ExpertNavActions
                 variant="classic"
@@ -385,6 +421,8 @@ function ActiveAgentCard({
                 onNewChat={() => onNewChat(agent.agent_id)}
                 onHide={onHide}
                 onUnhide={onUnhide}
+                onEdit={onEdit}
+                editingTeam={isTeamAgent(agent)}
               />
             ) : null}
           </div>
@@ -432,6 +470,8 @@ function ActiveAgentCard({
                     onDelete={onDelete}
                     onRename={onRename}
                     onPin={onPin}
+                    onContribute={onContribute}
+                    shareable={Boolean(agent.is_shared)}
                     onFork={(id) => onFork(id, agent.agent_id)}
                     forkDisabled={
                       activeId === s.id ? activeForkDisabled : undefined
@@ -470,6 +510,8 @@ interface AgentRowProps {
   onUnhide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onEdit?: () => void;
+  onOpenUnread: () => void;
 }
 
 function InactiveAgentRow({
@@ -480,6 +522,8 @@ function InactiveAgentRow({
   onUnhide,
   pinned = false,
   onTogglePin,
+  onEdit,
+  onOpenUnread,
 }: AgentRowProps) {
   const accent = agent.color || "#6366f1";
 
@@ -515,11 +559,15 @@ function InactiveAgentRow({
               name={agent.name}
               className={styles.agentRowName}
             />
+            <ExpertOwnerShareFlag agent={agent} />
             <ExpertPinMark pinned={pinned} />
             <TeamChatBadge agent={agent} compact />
             <RemoteExpertHint agent={agent} compact />
           </div>
-          <AgentUnreadBadge count={agent.unread_count ?? 0} />
+          <AgentUnreadBadge
+            count={agent.unread_count ?? 0}
+            onOpen={onOpenUnread}
+          />
           {onNewChat && onTogglePin ? (
             <ExpertNavActions
               variant="classic"
@@ -528,6 +576,8 @@ function InactiveAgentRow({
               onNewChat={onNewChat}
               onHide={onHide}
               onUnhide={onUnhide}
+              onEdit={onEdit}
+              editingTeam={isTeamAgent(agent)}
             />
           ) : null}
         </div>
@@ -539,6 +589,12 @@ function InactiveAgentRow({
 
 interface SessionListProps {
   agents: OctopAgent[];
+  /**
+   * Experts the user owns that are not chat-ready (stopped, failed, still
+   * starting). The rail lists only agents that can chat, so without this count
+   * "no agents here" cannot tell "you have none" from "none are running".
+   */
+  unreadyExperts?: number;
   sessions: Session[];
   activeId: string | null;
   activeAgentId: string | null;
@@ -563,6 +619,7 @@ interface SessionListProps {
 
 export default function SessionList({
   agents,
+  unreadyExperts = 0,
   sessions,
   activeId,
   activeAgentId,
@@ -586,6 +643,7 @@ export default function SessionList({
   const liveWorkingIds = useSessionWorkIds();
   const [searchQuery, setSearchQuery] = useState("");
   const [showingHidden, setShowingHidden] = useState(false);
+  const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [navScope, setNavScope] = useState<ChatNavScope>(() =>
     initialChatNavScope(
       agents.find((agent) => agent.agent_id === activeAgentId),
@@ -714,6 +772,35 @@ export default function SessionList({
     },
     [catalog],
   );
+  const contributeSession = useCallback(
+    (agentId: string, id: string, contributed: boolean) => {
+      void saveSessionShared(
+        agentId,
+        id,
+        contributed,
+        () => {
+          catalog.patch(agentId, (prev) =>
+            prev.map((session) =>
+              session.id === id ? { ...session, contributed } : session,
+            ),
+          );
+        },
+        t("chat.shareFailed", "没能改共享状态，请再试一次"),
+      );
+    },
+    [catalog, t],
+  );
+
+  /**
+   * The rail only lists experts that can chat right now, so "no agents here"
+   * has two very different causes: the user has none, or the ones they have
+   * are stopped / waiting on a model. Only the first one should be answered
+   * with "create your first expert".
+   */
+  const emptyAgentsCopy =
+    unreadyExperts > 0
+      ? { text: t("chat.noChattableAgentsHint"), action: t("chat.goToExperts") }
+      : { text: t("chat.noAgentsHint"), action: t("chat.createExpert") };
 
   const renderAgentRow = (agent: OctopAgent, hiddenRow: boolean) => {
     const isActive = agent.agent_id === activeAgentId;
@@ -757,6 +844,9 @@ export default function SessionList({
               ? onPin
               : (id, pinned) => pinOther(agent.agent_id, id, pinned)
           }
+          onContribute={(id, contributed) =>
+            contributeSession(agent.agent_id, id, contributed)
+          }
           onFork={onFork}
           activeForkDisabled={activeForkDisabled}
           activeForkDisabledHint={activeForkDisabledHint}
@@ -768,6 +858,9 @@ export default function SessionList({
           onUnhide={hiddenRow ? () => unhide(agent.agent_id) : undefined}
           pinned={isPinned(agent.agent_id)}
           onTogglePin={() => togglePin(agent.agent_id)}
+          onEdit={
+            canEditExpertFromChat(agent) ? () => setEditAgent(agent) : undefined
+          }
           liveWorkingIds={liveWorkingIds}
         />
       );
@@ -784,27 +877,43 @@ export default function SessionList({
         onUnhide={hiddenRow ? () => unhide(agent.agent_id) : undefined}
         pinned={isPinned(agent.agent_id)}
         onTogglePin={() => togglePin(agent.agent_id)}
+        onEdit={
+          canEditExpertFromChat(agent) ? () => setEditAgent(agent) : undefined
+        }
+        onOpenUnread={() => {
+          void openAgentUnread(
+            agent.agent_id,
+            sessionsFor(agent.agent_id),
+            onSelect,
+          );
+        }}
       />
     );
   };
 
   return (
     <div className={styles.sessionList}>
+      <ChatEditExpertDrawer
+        agent={editAgent}
+        onClose={() => setEditAgent(null)}
+      />
       {agents.length > 0 ? (
-        <div className={styles.sessionSearchWrap}>
-          <Search
-            size={14}
-            className={styles.sessionSearchIcon}
-            strokeWidth={2}
-          />
-          <input
-            type="search"
-            className={styles.sessionSearchInput}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t("chat.searchSessions", "搜索会话")}
-            aria-label={t("chat.searchSessions", "搜索会话")}
-          />
+        <div className={styles.sessionHeaderRow}>
+          <div className={styles.sessionSearchWrap} data-octop-no-drag>
+            <Search
+              size={14}
+              className={styles.sessionSearchIcon}
+              strokeWidth={2}
+            />
+            <input
+              type="search"
+              className={styles.sessionSearchInput}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("chat.searchSessions", "搜索会话")}
+              aria-label={t("chat.searchSessions", "搜索会话")}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -815,14 +924,14 @@ export default function SessionList({
       {agents.length === 0 ? (
         <div className={styles.sessionEmptyAgents}>
           <p className={styles.sessionEmptyAgentsText}>
-            {t("chat.noAgentsHint")}
+            {emptyAgentsCopy.text}
           </p>
           <button
             type="button"
             className={styles.sessionEmptyAgentsLink}
             onClick={() => navigate("/experts")}
           >
-            {t("chat.createExpert")}
+            {emptyAgentsCopy.action}
           </button>
         </div>
       ) : (

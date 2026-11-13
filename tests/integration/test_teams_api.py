@@ -57,3 +57,38 @@ async def test_patch_team_icon_url_persists_sample_portrait(env):
     assert listed.status_code == 200, listed.text
     row = next(item for item in listed.json() if item["agent_id"] == team_id)
     assert row["icon_url"] == _CIRCLE
+
+
+async def test_team_workspace_dir_on_host_root(env):
+    c, srv, auth = env
+    assert srv.app_runtime is not None
+    alpha = await _expert(c, auth, "alpha-ws")
+    beta = await _expert(c, auth, "beta-ws")
+    home = srv.app_runtime.agent_registry.paths.root
+    picked = home / "team-picked-ws"
+    created = await c.post(
+        "/api/teams",
+        headers=auth,
+        json={
+            "name": "squad-ws",
+            "member_ids": [alpha, beta],
+            "config": {
+                "backend": {"type": "filesystem", "virtual_mode": True, "root_dir": "/"},
+                "workspace_dir": str(picked),
+            },
+        },
+    )
+    assert created.status_code == 200, created.text
+    team_id = created.json()["agent_id"]
+    detail = (await c.get(f"/api/agents/{team_id}", headers=auth)).json()
+    assert detail["config"]["workspace_dir"] == str(picked)
+    assert picked.is_dir()
+
+    patched = await c.patch(
+        f"/api/teams/{team_id}",
+        headers=auth,
+        json={"name": "squad-ws", "config": {"workspace_dir": str(home / "team-moved-ws")}},
+    )
+    assert patched.status_code == 200, patched.text
+    again = (await c.get(f"/api/agents/{team_id}", headers=auth)).json()
+    assert again["config"]["workspace_dir"] == str(picked)

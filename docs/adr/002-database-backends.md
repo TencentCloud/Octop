@@ -53,7 +53,7 @@ Workspace content files (SOUL, skills, inbound, JSONL) remain files via `Backend
 |---------|--------|----------|
 | Control-plane tables / indexes | Octop migrate | `migrations/NNN_*.sql` and `NNN_*.pg.sql` |
 | Connection / session settings | Pool connect | SQLite: `PRAGMA` in `SqlitePool`; PG: defaults (FK on) — **not** in migrations |
-| Instance extensions (`vector`, …) | Ops / docker | `docker/postgres/init-vector.sql` via `initdb.d`, or DBA on managed PG |
+| Instance extensions (`vector`, …) | Ops / docker | `deploy/docker/postgres/init-vector.sql` via `initdb.d`, or DBA on managed PG |
 | Agent memory DDL | octop-memory | Runtime `_init_schema` per `agent_*` schema |
 
 **Hard rule:** Octop control-plane `*.pg.sql` must **not** run `CREATE EXTENSION`. Many managed Postgres roles cannot create extensions; the control plane also does not need `vector` (plain types only). octop-memory today uses built-in `tsvector`, not pgvector. Keep `CREATE EXTENSION vector` in docker/ops for optional future embedding use.

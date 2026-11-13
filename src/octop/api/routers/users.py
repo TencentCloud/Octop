@@ -16,10 +16,10 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import (
     PERMISSIONS,
-    effective_permissions,
     expand_permission_grants,
 )
 from octop.infra.users.resource_policy import (
+    normalize_allowed_backend_types,
     normalize_max_agents,
     normalize_token_quota,
     normalize_workspace_root_dir,
@@ -54,6 +54,10 @@ class UserCreateBody(BaseModel):
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
+    allowed_backend_types: list[str] | None = Field(
+        default=None,
+        description="Backend types this user may select. null means unrestricted.",
+    )
     create_default_expert: bool = Field(
         default=False,
         description="When true, create one expert from expert_template_id in this request.",
@@ -79,6 +83,10 @@ class UserPatchBody(BaseModel):
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
+    allowed_backend_types: list[str] | None = Field(
+        default=None,
+        description="Backend types this user may select. null means unrestricted.",
+    )
 
 
 class ResetPasswordBody(BaseModel):
@@ -209,9 +217,11 @@ def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str,
     linger after a switch (including to admin, which has no resource limits).
     """
     from octop.infra.users.resource_policy import (
+        POLICY_ALLOWED_BACKEND_TYPES,
         POLICY_MAX_AGENTS,
         POLICY_TOKEN_QUOTA,
         POLICY_WORKSPACE_ROOT_DIR,
+        allowed_backend_types_of,
         max_agents_of,
         token_quota_of,
     )
@@ -221,6 +231,9 @@ def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str,
         "workspace_root_dir": by_name.get(POLICY_WORKSPACE_ROOT_DIR),
         "token_quota": token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
         "max_agents": max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
+        "allowed_backend_types": allowed_backend_types_of(
+            by_name.get(POLICY_ALLOWED_BACKEND_TYPES)
+        ),
     }
 
 
@@ -243,6 +256,8 @@ def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, 
         policy_kwargs["token_quota"] = body.token_quota
     if "max_agents" in body.model_fields_set:
         policy_kwargs["max_agents"] = body.max_agents
+    if "allowed_backend_types" in body.model_fields_set:
+        policy_kwargs["allowed_backend_types"] = body.allowed_backend_types
     return policy_kwargs
 
 
@@ -369,6 +384,8 @@ async def create_user(
         normalize_token_quota(policy_kwargs["token_quota"])
     if "max_agents" in policy_kwargs:
         normalize_max_agents(policy_kwargs["max_agents"])
+    if "allowed_backend_types" in policy_kwargs:
+        normalize_allowed_backend_types(policy_kwargs["allowed_backend_types"])
     role_name = (
         _clean_role_name(body.role_name) if "role_name" in body.model_fields_set else template_name
     )
@@ -688,11 +705,10 @@ async def upload_user_avatar(
 @router.get("/{user_id}/avatar")
 async def get_user_avatar(
     user_id: int,
-    actor: Any = Depends(current_user),
+    _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> Any:
-    if actor.id != user_id and "users" not in effective_permissions(actor):
-        raise OctopError(ErrorCode.FORBIDDEN, "not allowed to read this avatar")
+    """Portrait for any signed-in user. Shared conversations show each sender."""
     from octop.infra.users.profile_avatar import avatar_response
 
     if server.user_manager.get_row(user_id) is None:

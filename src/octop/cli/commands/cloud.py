@@ -2,8 +2,9 @@
 
 Why this exists
 ---------------
-The Workbench keeps an encrypted per-user Tencent Cloud login
-(``~/.octop/secrets/cloud/``) while the ops expert's skill drives ``tccli``
+The Workbench keeps a per-user Tencent Cloud login (local files on SQLite,
+the shared ``secrets`` table on PostgreSQL) while the ops expert's skill
+drives ``tccli``
 off ``~/.tccli/<profile>.credential``. Authorizing in one place used to leave
 the other side stale — the user saw "I just authorized, why is it expired
 again?". ``import-tccli`` closes the loop in the tccli → Octop direction
@@ -29,21 +30,16 @@ def cloud() -> None:
 
 def _first_admin_id() -> int | None:
     """First admin user id, so an unattended import (agent → Workbench) has an owner."""
-    import sqlite3
+    from octop.cli.support.db import open_cli_services
 
-    from octop.infra.utils.paths import PathLayout
-
-    db = PathLayout.from_env().root / "octop.db"
-    if not db.is_file():
-        return None
     try:
-        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as con:
-            row = con.execute(
-                "SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1"
-            ).fetchone()
-    except sqlite3.Error:
+        with open_cli_services() as services:
+            admins = [row for row in services.user_repo.list() if row.role == "admin"]
+    except Exception:  # noqa: BLE001 - CLI fallback must not raise
         return None
-    return int(row[0]) if row else None
+    if not admins:
+        return None
+    return int(min(admins, key=lambda row: int(row.id)).id)
 
 
 def _one_line(credential: Any) -> str:
@@ -70,11 +66,12 @@ def import_tccli(profile: str, as_user: str | None, as_json: bool, quiet: bool) 
     import time
 
     from octop.cli.support.acting import resolve_cli_acting_user_id
+    from octop.cli.support.db import open_cli_services
     from octop.infra.cloud.tencent import (
         CRED_REFRESH_SAFE_S,
-        CloudCredentialStore,
         CloudError,
         credential_from_tccli,
+        open_cloud_credential_store,
         refresh_credential,
     )
     from octop.infra.utils.paths import PathLayout
@@ -106,8 +103,14 @@ def import_tccli(profile: str, as_user: str | None, as_json: bool, quiet: bool) 
             raise SystemExit(f"error: {exc}") from exc
         uid = fallback
 
-    store = CloudCredentialStore(PathLayout.from_env().root)
-    store.save(uid, credential)
+    paths = PathLayout.from_env()
+    with open_cli_services() as services:
+        store = open_cloud_credential_store(
+            paths.root,
+            services.config,
+            services.repos.secret_repo,
+        )
+        store.save(uid, credential)
 
     payload = {
         "user_id": uid,

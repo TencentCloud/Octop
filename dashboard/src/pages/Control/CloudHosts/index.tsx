@@ -18,6 +18,7 @@ import {
 } from "antd";
 import {
   ExternalLink,
+  Info,
   KeyRound,
   LogIn,
   PanelLeftClose,
@@ -972,6 +973,12 @@ export default function CloudHostsPage({
                 detail: t("cloud.emptyGuideStepImportDetail"),
               },
             ]}
+            notice={
+              <p className={styles.providerHint}>
+                <Info size={14} strokeWidth={2} />
+                <span>{t("cloud.tencentOnlyHint")}</span>
+              </p>
+            }
             primaryAction={{
               label: t("cloud.authorize"),
               onClick: () => setAuthOpen(true),

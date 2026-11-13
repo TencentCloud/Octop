@@ -13,6 +13,7 @@ from octop.infra.connectors.oauth.mcp import (
     exchange_authorization_code,
     fetch_authorization_metadata,
     issuer_for_kind,
+    manual_client_metadata,
     mcp_oauth_kinds,
     refresh_access_token,
     register_dynamic_client,
@@ -135,9 +136,13 @@ async def _start_mcp_oauth_from_discovery(
     server_name: str | None = None,
     mcp_url: str | None = None,
     scope: str | None = None,
+    client: dict[str, Any] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     verifier, challenge = new_pkce_pair()
-    reg = await register_dynamic_client(metadata, issuer=issuer, redirect_uri=redirect_uri)
+    # A pre-registered client skips dynamic registration.
+    reg = client or await register_dynamic_client(
+        metadata, issuer=issuer, redirect_uri=redirect_uri
+    )
     client_id = str(reg["client_id"])
     client_secret = str(reg.get("client_secret") or "") or None
     url = build_authorize_url(
@@ -199,6 +204,7 @@ async def start_oauth_for_target(
     state: str,
     settings_repo: Any,
     mcp_url: str | None = None,
+    oauth_client: dict[str, Any] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Unified OAuth start for catalog connectors and custom MCP servers."""
     target_type = str(target.get("type") or "").strip()
@@ -224,6 +230,7 @@ async def start_oauth_for_target(
             mcp_url=url,
             redirect_uri=redirect_uri,
             state=state,
+            oauth_client=oauth_client,
         )
     raise ValueError(f"unsupported oauth target type: {target_type!r}")
 
@@ -252,10 +259,42 @@ async def start_custom_mcp_oauth(
     redirect_uri: str,
     state: str,
     discovery: dict[str, Any] | None = None,
+    oauth_client: dict[str, Any] | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Start OAuth for a user-defined MCP server (issuer discovered from MCP URL)."""
+    """Start OAuth for a user-defined MCP server (issuer discovered from MCP URL).
+
+    ``oauth_client`` is the server's saved pre-registered client. It replaces
+    dynamic registration, and its explicit endpoints replace discovery.
+    """
+    client = oauth_client if oauth_client and oauth_client.get("client_id") else None
+    if client and client.get("token_endpoint"):
+        manual_issuer, manual_metadata = await manual_client_metadata(
+            authorization_endpoint=str(client["authorization_endpoint"]),
+            token_endpoint=str(client["token_endpoint"]),
+        )
+        url, verifier, ctx = await _start_mcp_oauth_from_discovery(
+            flow="custom_mcp",
+            kind=CUSTOM_MCP_KIND,
+            redirect_uri=redirect_uri,
+            state=state,
+            issuer=manual_issuer,
+            resource=None,
+            metadata=manual_metadata,
+            server_name=server_name,
+            mcp_url=mcp_url,
+            scope=str(client.get("scope") or "") or None,
+            client=client,
+        )
+        # Nothing to rediscover at refresh time: remember where tokens come from.
+        ctx["token_endpoint"] = manual_metadata["token_endpoint"]
+        return url, verifier, ctx
     found = discovery if discovery is not None else await discover_oauth_from_mcp_url(mcp_url)
-    if not found.get("available"):
+    if not found.get("available") and not (client and found.get("client_required")):
+        if client:
+            raise ValueError(
+                "OAuth endpoints could not be discovered for this MCP URL; "
+                "set oauth_client.authorization_endpoint and token_endpoint"
+            )
         raise ValueError(str(found.get("error") or "OAuth not available for this MCP URL"))
     issuer = str(found["issuer"])
     resource = str(found.get("resource") or "").strip() or None
@@ -268,6 +307,8 @@ async def start_custom_mcp_oauth(
         if isinstance(scopes_raw, list) and scopes_raw
         else None
     )
+    if client and client.get("scope"):
+        scope = str(client["scope"])
     return await _start_mcp_oauth_from_discovery(
         flow="custom_mcp",
         kind=CUSTOM_MCP_KIND,
@@ -279,6 +320,7 @@ async def start_custom_mcp_oauth(
         server_name=server_name,
         mcp_url=mcp_url,
         scope=scope,
+        client=client,
     )
 
 
@@ -288,7 +330,12 @@ async def refresh_custom_mcp_oauth(oauth: dict[str, Any]) -> dict[str, Any]:
     client_id = str(oauth.get("oauth_client_id") or "").strip()
     if not refresh or not issuer or not client_id:
         return oauth
-    metadata = await fetch_authorization_metadata(issuer)
+    token_endpoint = str(oauth.get("oauth_token_endpoint") or "").strip()
+    metadata = (
+        {"token_endpoint": token_endpoint}
+        if token_endpoint
+        else await fetch_authorization_metadata(issuer)
+    )
     client_secret_raw = oauth.get("oauth_client_secret")
     secret = str(client_secret_raw) if client_secret_raw else None
     resource = str(oauth.get("oauth_resource") or "").strip() or None

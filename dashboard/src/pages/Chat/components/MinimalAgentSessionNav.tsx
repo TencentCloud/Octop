@@ -11,6 +11,7 @@ import {
   Pin,
   PinOff,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import cx from "classnames";
@@ -23,12 +24,9 @@ import {
 } from "../utils/deleteConversation";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { isImeComposing } from "../../../utils/ime";
-import {
-  isPendingThread,
-  sortSessions,
-  toSession,
-  type Session,
-} from "../hooks/useSessions";
+import { sortSessions, toSession, type Session } from "../hooks/useSessions";
+import { openAgentUnread } from "../utils/openUnreadSession";
+import { saveSessionShared } from "../utils/shareSession";
 import SessionBatchSelection, {
   type BatchDeleteSessions,
   type SessionSelection,
@@ -46,6 +44,7 @@ import {
   matchesChatNavScope,
   type ChatNavScope,
 } from "../utils/chatNavScope";
+import AgentUnreadBadge from "./AgentUnreadBadge";
 import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
 import {
   expertVisibleInNavSearch,
@@ -55,12 +54,17 @@ import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
-import SharedExpertHint from "./SharedExpertHint";
+import SharedExpertHint, { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
+import ChatEditExpertDrawer, {
+  canEditExpertFromChat,
+} from "./ChatEditExpertDrawer";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -131,19 +135,6 @@ interface MinimalAgentSessionNavProps {
   activeForkDisabledHint?: string;
 }
 
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
-
 const PreviewSessionRow = memo(function PreviewSessionRow({
   session,
   isActive,
@@ -153,6 +144,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onRename,
   onPin,
   onFork,
+  onContribute,
+  shareable,
   forkDisabled,
   forkDisabledHint,
   selection,
@@ -168,6 +161,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onContribute: (id: string, contributed: boolean) => void;
+  shareable: boolean;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   selection?: SessionSelection;
@@ -202,52 +197,70 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   const itemForkHint = !session.hasActivity
     ? t("chat.forkNoAssistant")
     : forkDisabledHint;
+  const owned = session.owned !== false;
 
-  const menuItems: MenuProps["items"] = [
-    {
-      key: "pin",
-      label: session.pinned
-        ? t("chat.unpin", "取消置顶")
-        : t("chat.pin", "置顶"),
-      icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onPin(session.id, !session.pinned);
-      },
-    },
-    {
-      key: "fork",
-      label: t("chat.fork", "分叉"),
-      icon: <GitFork size={14} />,
-      disabled: itemForkDisabled,
-      title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onFork(session.id);
-      },
-    },
-    {
-      key: "rename",
-      label: t("common.rename"),
-      icon: <Pencil size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        setIsEditing(true);
-      },
-    },
-    {
-      key: "delete",
-      label: t("common.delete", "Delete"),
-      icon: <Trash2 size={14} />,
-      danger: true,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) =>
-          onDelete(session.id, compact),
-        );
-      },
-    },
-  ];
+  const menuItems: MenuProps["items"] = owned
+    ? [
+        ...(shareable
+          ? [
+              {
+                key: "contribute",
+                label: session.contributed
+                  ? t("chat.uncontribute", "取消共享")
+                  : t("chat.contribute", "共享会话"),
+                icon: <Share2 size={14} />,
+                onClick: (event: { domEvent: { stopPropagation(): void } }) => {
+                  event.domEvent.stopPropagation();
+                  onContribute(session.id, !session.contributed);
+                },
+              },
+            ]
+          : []),
+        {
+          key: "pin",
+          label: session.pinned
+            ? t("chat.unpin", "取消置顶")
+            : t("chat.pin", "置顶"),
+          icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onPin(session.id, !session.pinned);
+          },
+        },
+        {
+          key: "fork",
+          label: t("chat.fork", "分叉"),
+          icon: <GitFork size={14} />,
+          disabled: itemForkDisabled,
+          title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onFork(session.id);
+          },
+        },
+        {
+          key: "rename",
+          label: t("common.rename"),
+          icon: <Pencil size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            setIsEditing(true);
+          },
+        },
+        {
+          key: "delete",
+          label: t("common.delete", "Delete"),
+          icon: <Trash2 size={14} />,
+          danger: true,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            confirmDeleteConversation(t, (compact) =>
+              onDelete(session.id, compact),
+            );
+          },
+        },
+      ]
+    : [];
 
   return (
     <div
@@ -271,7 +284,9 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
         <Checkbox
           aria-label={t("chat.selectSession", { name: session.name })}
           checked={selection.selectedIds.has(session.id)}
-          disabled={selection.disabled || isPendingThread(session.id)}
+          disabled={
+            selection.disabled || !selection.selectableIds.has(session.id)
+          }
           onClick={(e) => e.stopPropagation()}
           onChange={() => selection.toggle(session.id)}
         />
@@ -298,7 +313,13 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           <span className={styles.sessionRowLead}>
             <SessionWorkStatusIcon status={workStatus} />
           </span>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -307,7 +328,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          {!selection && (
+          {!selection && menuItems && menuItems.length > 0 ? (
             <Dropdown
               menu={{ items: menuItems }}
               trigger={["click"]}
@@ -322,7 +343,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
                 <MoreHorizontal size={15} />
               </button>
             </Dropdown>
-          )}
+          ) : null}
         </>
       )}
     </div>
@@ -374,6 +395,7 @@ export default function MinimalAgentSessionNav({
   );
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [showingHidden, setShowingHidden] = useState(false);
   const [navScope, setNavScope] = useState<ChatNavScope>(() =>
     initialChatNavScope(
@@ -695,6 +717,25 @@ export default function MinimalAgentSessionNav({
     [activeAgentId, onPinActive, patchLocal],
   );
 
+  const handleContribute = useCallback(
+    (agentId: string, sessionId: string, contributed: boolean) => {
+      void saveSessionShared(
+        agentId,
+        sessionId,
+        contributed,
+        () => {
+          patchLocal(agentId, (prev) =>
+            prev.map((session) =>
+              session.id === sessionId ? { ...session, contributed } : session,
+            ),
+          );
+        },
+        t("chat.shareFailed", "没能改共享状态，请再试一次"),
+      );
+    },
+    [patchLocal, t],
+  );
+
   if (agents.length === 0) {
     return (
       <div className={styles.sessionEmptyAgents}>
@@ -714,6 +755,10 @@ export default function MinimalAgentSessionNav({
 
   return (
     <div className={cx(styles.sessionList, styles.minimalAgentNav)}>
+      <ChatEditExpertDrawer
+        agent={editAgent}
+        onClose={() => setEditAgent(null)}
+      />
       <div className={styles.sessionSearchWrap}>
         <Search
           size={14}
@@ -830,17 +875,29 @@ export default function MinimalAgentSessionNav({
                     name={agent.name}
                     className={styles.minimalAgentName}
                   />
+                  <ExpertOwnerShareFlag agent={agent} />
                   <ExpertPinMark pinned={isPinned(agent.agent_id)} />
                   <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
                 </span>
-                <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
+              <AgentUnreadBadge
+                count={agent.unread_count ?? 0}
+                onOpen={() => {
+                  void openAgentUnread(agent.agent_id, list, onSelect);
+                }}
+              />
               <ExpertNavActions
                 variant="minimal"
                 pinned={isPinned(agent.agent_id)}
                 onTogglePin={() => togglePin(agent.agent_id)}
                 onNewChat={() => onNewChat(agent.agent_id)}
+                onEdit={
+                  canEditExpertFromChat(agent)
+                    ? () => setEditAgent(agent)
+                    : undefined
+                }
+                editingTeam={isTeamAgent(agent)}
                 onHide={
                   canHide(agent) &&
                   !hiddenAgents.some((row) => row.agent_id === agent.agent_id)
@@ -897,6 +954,10 @@ export default function MinimalAgentSessionNav({
                             onPin={(id, pinned) =>
                               handlePin(agent.agent_id, id, pinned)
                             }
+                            onContribute={(id, contributed) =>
+                              handleContribute(agent.agent_id, id, contributed)
+                            }
+                            shareable={Boolean(agent.is_shared)}
                             onFork={(id) => onFork(id, agent.agent_id)}
                             forkDisabled={
                               session.id === activeId

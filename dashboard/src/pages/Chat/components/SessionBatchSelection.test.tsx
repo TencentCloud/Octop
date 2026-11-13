@@ -35,6 +35,12 @@ vi.mock("../../../api/modules/octopThreads", async (importOriginal) => ({
     delete: (...args: unknown[]) => deleteMock(...args),
   },
 }));
+// The expert drawers pull in react-pdf (needs DOMMatrix) and an import cycle
+// that stalls the test runner; selection does not use them.
+vi.mock("./ChatEditExpertDrawer", () => ({
+  default: () => null,
+  canEditExpertFromChat: () => false,
+}));
 vi.mock("../../../utils/confirmModal", () => ({ showConfirmModal: vi.fn() }));
 vi.mock("../../../utils/antdMessage", () => ({
   message: { success: vi.fn(), error: vi.fn() },
@@ -77,8 +83,14 @@ function agent(id: number): OctopAgent {
   };
 }
 const agents = [agent(1), agent(2)];
-function row(id: string) {
-  return { thread_id: id, title: id, last_active: 1, has_messages: true };
+function row(id: string, owned = true) {
+  return {
+    thread_id: id,
+    title: id,
+    last_active: 1,
+    has_messages: true,
+    owned,
+  };
 }
 let rows: Record<string, ReturnType<typeof row>[]>;
 
@@ -200,6 +212,32 @@ describe.each([
     expect(screen.getByText("Gamma")).toBeInTheDocument();
     expect(rows["agent-2"]).toHaveLength(1);
     expect(message.success).toHaveBeenCalledWith("Deleted 2 conversations");
+  });
+
+  it("leaves conversations other users shared out of the selection", async () => {
+    rows["agent-1"][1] = row("Beta", false);
+    await startSelecting();
+    const beta = screen.getByRole("checkbox", {
+      name: "Select conversation Beta",
+    });
+    expect(beta).toBeDisabled();
+    await userEvent.click(screen.getByText("Beta"));
+    expect(beta).not.toBeChecked();
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: "Select listed conversations" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Delete (2)" }));
+    await act(async () => {
+      await confirmation().onOk?.();
+    });
+    expect(deleteMock.mock.calls).toHaveLength(2);
+    expect(deleteMock.mock.calls).toEqual(
+      expect.arrayContaining([
+        ["agent-1", "Alpha", false],
+        ["agent-1", "Gamma", false],
+      ]),
+    );
+    expect(screen.getByText("Beta")).toBeInTheDocument();
   });
 
   it("preserves work status indicators while selecting conversations", async () => {

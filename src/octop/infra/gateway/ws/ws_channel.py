@@ -25,7 +25,10 @@ from octop.infra.gateway.media.attachment_hints import (
     inbound_attachments_from_parts,
     is_vision_attachment,
 )
-from octop.infra.gateway.process.message_keys import INBOUND_ATTACHMENTS_KEY
+from octop.infra.gateway.process.message_keys import (
+    INBOUND_ATTACHMENTS_KEY,
+    resolve_user_id_for_message,
+)
 from octop.infra.gateway.steer import DiscardBundle, DrainBundle, SteerCoordinator
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws.ws_hub import WebSocketHub
@@ -156,7 +159,11 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push_to_thread(thread_id, {"type": "done"})
             return
 
-        turn_id, started_seq, replaced = self._steer.begin_turn(thread_id)
+        starter = resolve_user_id_for_message(message, agent_owner_id=None)
+        turn_id, started_seq, replaced = self._steer.begin_turn(
+            thread_id,
+            user_id=starter if starter > 0 else None,
+        )
         if replaced is not None:
             await _push_discarded(self._hub, thread_id, replaced)
         self._steer.remember_context(
@@ -175,6 +182,10 @@ class WebSocketChannel(BaseChannel):
                     "phase": "streaming_text",
                     "thread_id": thread_id,
                 },
+            )
+            await self._hub.push_to_thread(
+                thread_id,
+                _turn_user_frame(message, thread_id, processor),
             )
             current = message
             while True:
@@ -212,7 +223,10 @@ class WebSocketChannel(BaseChannel):
                     # flaky client disconnect can stop generation mid-node and leave
                     # an incomplete checkpoint.
                     try:
-                        await self._hub.push_to_thread(thread_id, chunk)
+                        payload = (
+                            _with_turn_id(chunk, turn_id) if isinstance(chunk, dict) else chunk
+                        )
+                        await self._hub.push_to_thread(thread_id, payload)
                     except Exception:
                         logger.exception(
                             "websocket push failed thread=%s (turn continues)",
@@ -300,9 +314,15 @@ class WebSocketChannel(BaseChannel):
             try:
                 await self._hub.push_to_thread(
                     thread_id,
-                    {"type": "error", "message": format_stream_error(exc, locale)},
+                    _with_turn_id(
+                        {"type": "error", "message": format_stream_error(exc, locale)},
+                        turn_id,
+                    ),
                 )
-                await self._hub.push_to_thread(thread_id, {"type": "done"})
+                await self._hub.push_to_thread(
+                    thread_id,
+                    _with_turn_id({"type": "done"}, turn_id),
+                )
             except Exception:
                 logger.exception("websocket failed to deliver error frame thread=%s", thread_id)
         finally:
@@ -389,6 +409,55 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push_to_thread(thread_id, frame)
         else:
             await self._hub.push(conn_id, frame)
+
+
+def _with_turn_id(frame: dict[str, Any], turn_id: str) -> dict[str, Any]:
+    """Keep each streamed chunk tied to its turn so clients do not merge replies."""
+    if not turn_id or frame.get("turn_id"):
+        return frame
+    return {**frame, "turn_id": turn_id}
+
+
+def _turn_user_frame(message: InboundMessage, thread_id: str, processor: Any) -> dict[str, Any]:
+    """Question bubble for every subscriber, including someone who did not send it."""
+    meta = message.metadata if isinstance(message.metadata, dict) else {}
+    frame: dict[str, Any] = {
+        "type": "user",
+        "content": message.text or "",
+        "thread_id": thread_id,
+    }
+    message_id = meta.get("client_message_id")
+    if isinstance(message_id, str) and message_id.strip():
+        frame["message_id"] = message_id.strip()
+    user_id = resolve_user_id_for_message(message, agent_owner_id=None)
+    if user_id > 0:
+        author: dict[str, Any] = {
+            "user_id": user_id,
+            "display_name": "",
+            "username": "",
+            "avatar_icon": None,
+            "avatar_url": f"/api/users/{user_id}/avatar",
+        }
+        repo = getattr(processor, "_user_repo", None)
+        get = getattr(repo, "get", None)
+        if callable(get):
+            row = get(user_id)
+            username = getattr(row, "username", None)
+            if isinstance(username, str):
+                author["username"] = username
+            display_name = getattr(row, "display_name", None)
+            if isinstance(display_name, str):
+                author["display_name"] = display_name
+            icon = getattr(row, "avatar_icon", None)
+            if isinstance(icon, str) and icon.strip():
+                author["avatar_icon"] = icon.strip()
+        frame["author"] = author
+    attachments = meta.get(INBOUND_ATTACHMENTS_KEY)
+    if not isinstance(attachments, list) or not attachments:
+        attachments = inbound_attachments_from_parts(message.content)
+    if attachments:
+        frame["attachments"] = attachments
+    return frame
 
 
 def _push_discarded_frame(thread_id: str, bundle: DiscardBundle) -> dict[str, Any]:

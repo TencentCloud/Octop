@@ -30,6 +30,8 @@ interface StreamSetupGuideProps {
   secondaryAction?: SetupGuideAction;
   /** Optional third action (e.g. uninstall) rendered after the main pair. */
   extraAction?: SetupGuideAction;
+  /** Callout rendered immediately above the action buttons. */
+  notice?: ReactNode;
   className?: string;
   /** Widen the card for longer explanatory copy. */
   wide?: boolean;
@@ -73,6 +75,7 @@ export default function StreamSetupGuide({
   primaryAction,
   secondaryAction,
   extraAction,
+  notice,
   className,
   wide,
   plain,
@@ -108,6 +111,7 @@ export default function StreamSetupGuide({
             ))}
           </ol>
         ) : null}
+        {notice ? <div className={styles.notice}>{notice}</div> : null}
         {hasActions ? (
           <div className={styles.actions}>
             {primaryAction ? <ActionButton action={primaryAction} /> : null}
