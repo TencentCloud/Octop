@@ -231,6 +231,15 @@ PERMISSIONS: dict[str, PermissionDef] = {
         page_zh="用户",
         page_en="Users",
     ),
+    "sso_external": _p(
+        "sso_external",
+        "admin",
+        "外部系统登录",
+        "External login",
+        page="users",
+        page_zh="用户",
+        page_en="Users",
+    ),
     "providers": _p(
         "providers",
         "admin",
@@ -450,7 +459,14 @@ ASSIGNABLE_PERMISSION_KEYS: set[str] = {key for key, perm in PERMISSIONS.items()
 # Retired umbrellas. Holding the parent grants every tab; holding any tab
 # still satisfies routes that check the parent (``connectors``).
 LEGACY_GRANTS: dict[str, tuple[str, ...]] = {
-    "sso": ("sso_feishu", "sso_wecom", "sso_dingtalk", "sso_oidc", "sso_ldap"),
+    "sso": (
+        "sso_feishu",
+        "sso_wecom",
+        "sso_dingtalk",
+        "sso_oidc",
+        "sso_ldap",
+        "sso_external",
+    ),
     "security": (
         "security_hitl",
         "security_filesystem",

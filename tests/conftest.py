@@ -22,6 +22,7 @@ _SLOW_TEST_MODULES = frozenset(
         "tests/unit/agents/test_agent_manager.py",
         "tests/unit/agents/test_agent_registry.py",
         "tests/unit/api/test_jwt_auth_middleware.py",
+        "tests/unit/api/test_auth_external.py",
         "tests/unit/api/test_openapi_meta.py",
         "tests/unit/api/test_exception_handlers.py",
     },
