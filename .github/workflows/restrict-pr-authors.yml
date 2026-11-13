@@ -1,0 +1,249 @@
+name: Restrict pull request authors
+
+# Temporary gate for who may open a pull request, plus the branch rule that
+# feature and fix changes target develop. main only accepts release/* and
+# hotfix/* pull requests opened from this repository.
+# Forks cannot drop this check because pull_request_target runs the workflow
+# from the base branch. Do not checkout the pull request head.
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to check, for example 2620 or #2620"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: restrict-pr-authors-${{ github.event.pull_request.number || inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  restrict-authors:
+    name: Restrict authors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Close pull requests from untrusted authors
+        uses: actions/github-script@v7
+        env:
+          PR_AUTHOR_ALLOWLIST: ${{ vars.PR_AUTHOR_ALLOWLIST }}
+          PR_AUTHOR_GUARD: ${{ vars.PR_AUTHOR_GUARD }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const trustedAssociations = new Set([
+              "OWNER",
+              "COLLABORATOR",
+              "CONTRIBUTOR"
+            ]);
+            const writePermissions = new Set(["admin", "maintain", "write"]);
+
+            function guardDisabled() {
+              const guard = String(process.env.PR_AUTHOR_GUARD || "").trim().toLowerCase();
+              return ["off", "false", "0", "disabled", "no"].includes(guard);
+            }
+
+            function addLogins(target, text) {
+              for (const line of String(text || "").split(/\r?\n/)) {
+                const withoutComment = line.split("#")[0];
+                for (const part of withoutComment.split(/[,\s]+/)) {
+                  const login = part.trim().replace(/^@/, "").toLowerCase();
+                  if (login) target.add(login);
+                }
+              }
+            }
+
+            async function loadAllowlist(baseRef) {
+              const allowed = new Set();
+              addLogins(allowed, process.env.PR_AUTHOR_ALLOWLIST || "");
+              try {
+                const response = await github.rest.repos.getContent({
+                  owner,
+                  repo,
+                  path: ".github/pr-author-allowlist.txt",
+                  ref: baseRef
+                });
+                const body = response.data;
+                if (!body || Array.isArray(body) || body.encoding !== "base64" || !body.content) {
+                  core.warning("Allowlist path is not a single file. Ignoring it.");
+                } else {
+                  addLogins(allowed, Buffer.from(body.content, "base64").toString("utf8"));
+                }
+              } catch (error) {
+                if (error.status !== 404) {
+                  core.warning(`Failed to read allowlist: ${error.message}`);
+                }
+              }
+              return allowed;
+            }
+
+            async function hasExplicitWriteAccess(username) {
+              try {
+                const response = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner,
+                  repo,
+                  username
+                });
+                const permission = response.data.permission || "none";
+                core.info(`Repository permission: ${permission}`);
+                return writePermissions.has(permission);
+              } catch (error) {
+                core.warning(`Failed to read repository permission: ${error.message}`);
+                return false;
+              }
+            }
+
+            async function hasMergedPullRequest(username) {
+              try {
+                const response = await github.rest.search.issuesAndPullRequests({
+                  q: `repo:${owner}/${repo} is:pr is:merged author:${username}`,
+                  per_page: 1
+                });
+                return response.data.total_count > 0;
+              } catch (error) {
+                core.warning(`Failed to search merged pull requests: ${error.message}`);
+                return false;
+              }
+            }
+
+            function isRepoReleaseToMain(pullRequest) {
+              const baseRef = pullRequest.base && pullRequest.base.ref;
+              const headRef = (pullRequest.head && pullRequest.head.ref) || "";
+              const headRepo = pullRequest.head && pullRequest.head.repo && pullRequest.head.repo.full_name;
+              if (baseRef !== "main" || headRepo !== `${owner}/${repo}`) return false;
+              return headRef.startsWith("release/") || headRef.startsWith("hotfix/");
+            }
+
+            async function closeForWrongBase(pullRequest) {
+              const commentBody = [
+                "请把这个变更重新提交到 `develop`。功能修改和问题修复都要指向 `develop`，不要直接指向 `main`。",
+                "",
+                "Please open this change against `develop` instead of `main`."
+              ].join("\n");
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pullRequest.number,
+                body: commentBody
+              });
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pullRequest.number,
+                state: "closed"
+              });
+              core.info(`Closed pull request #${pullRequest.number} because its base is main.`);
+            }
+
+            async function closeUntrusted(pullRequest, author) {
+              const commentBody = [
+                "This pull request was closed by a temporary author restriction.",
+                "",
+                "Pull requests may only be opened by:",
+                "- users who already have a merged pull request in this repository",
+                "- users with admin, maintain, or write access",
+                "- users listed in `.github/pr-author-allowlist.txt` or the `PR_AUTHOR_ALLOWLIST` repository variable",
+                "",
+                "Ask a maintainer to add your GitHub login to that allowlist, then reopen the pull request.",
+                "",
+                "---",
+                "",
+                "此 Pull Request 已被临时的作者限制自动关闭。",
+                "",
+                "当前仅允许以下用户创建 PR：",
+                "- 已有 Pull Request 被合入本仓库的贡献者",
+                "- 拥有 admin、maintain 或 write 权限的用户",
+                "- 写在 `.github/pr-author-allowlist.txt` 或仓库变量 `PR_AUTHOR_ALLOWLIST` 中的用户",
+                "",
+                "如需在首次合入前贡献，请联系维护者把 GitHub 用户名加入允许名单，然后再重新打开这个 PR。",
+                "",
+                "维护者可将仓库变量 `PR_AUTHOR_GUARD` 设为 `off` 以关闭此限制。"
+              ].join("\n");
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: pullRequest.number,
+                body: commentBody
+              });
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pullRequest.number,
+                state: "closed"
+              });
+              core.info(`Closed pull request #${pullRequest.number} from ${author || "(unknown)"}.`);
+            }
+
+            if (guardDisabled()) {
+              core.info("PR author guard is disabled via PR_AUTHOR_GUARD.");
+              return;
+            }
+
+            let pullRequest = context.payload.pull_request;
+            if (context.eventName === "workflow_dispatch") {
+              const raw = String(process.env.PR_NUMBER || context.payload.inputs?.pr_number || "").trim();
+              const pullNumber = Number(raw.replace(/^#/, ""));
+              if (!Number.isInteger(pullNumber) || pullNumber <= 0) {
+                core.setFailed(`Invalid pr_number: "${raw}"`);
+                return;
+              }
+              const response = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: pullNumber
+              });
+              pullRequest = response.data;
+            }
+
+            if (!pullRequest) {
+              core.setFailed("Missing pull request payload.");
+              return;
+            }
+            if (pullRequest.state === "closed") {
+              core.info(`Pull request #${pullRequest.number} is already closed.`);
+              return;
+            }
+            if (pullRequest.base && pullRequest.base.ref === "main" && !isRepoReleaseToMain(pullRequest)) {
+              await closeForWrongBase(pullRequest);
+              return;
+            }
+
+            const author = pullRequest.user && pullRequest.user.login ? pullRequest.user.login : "";
+            const authorType = pullRequest.user && pullRequest.user.type ? pullRequest.user.type : "";
+            const association = pullRequest.author_association || "NONE";
+            core.info(
+              `PR #${pullRequest.number} author=${author || "(unknown)"} type=${authorType || "(unknown)"} association=${association}`
+            );
+
+            if (author && (authorType === "Bot" || author.toLowerCase().endsWith("[bot]"))) {
+              core.info("Author is a bot. Allowing.");
+              return;
+            }
+            if (author && trustedAssociations.has(association)) {
+              core.info(`Trusted author association: ${association}. Allowing.`);
+              return;
+            }
+
+            const allowlist = await loadAllowlist(pullRequest.base.ref);
+            if (author && allowlist.has(author.toLowerCase())) {
+              core.info("Author is on the allowlist. Allowing.");
+              return;
+            }
+            if (author && await hasExplicitWriteAccess(author)) {
+              core.info("Author has explicit write access. Allowing.");
+              return;
+            }
+            if (author && association === "MEMBER" && await hasMergedPullRequest(author)) {
+              core.info("Organization member has a merged pull request. Allowing.");
+              return;
+            }
+
+            await closeUntrusted(pullRequest, author);

@@ -49,6 +49,11 @@ from octop.infra.knowledge.ocr import (
     set_ocr_settings,
     validate_ocr_settings,
 )
+from octop.infra.knowledge.rerank import (
+    get_rerank_capability,
+    rerank_models,
+    set_rerank_settings,
+)
 from octop.infra.knowledge.service import (
     MAX_BASES_PER_OWNER,
     MAX_DOCS_PER_KB,
@@ -62,6 +67,12 @@ from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter(prefix="/knowledge-bases")
 logger = logging.getLogger(__name__)
+
+
+def _kb_avatars(server: OctopServer) -> Any:
+    assert server.services is not None
+    return server.services.avatars("knowledge_base")
+
 
 _TEXT_DOC_MAX_LENGTH = upload_mb_to_bytes(MAX_MAX_UPLOAD_MB)
 
@@ -81,6 +92,12 @@ class FeatureBody(BaseModel):
     ocr_backend: str | None = Field(default=None, pattern="^(onnx|remote)$")
     ocr_model: str | None = None
     ocr_provider_id: str | None = None
+    rerank_enabled: bool | None = Field(
+        default=None,
+        description="Whether retrieved chunks are reordered by a rerank model.",
+    )
+    rerank_provider_id: str | None = None
+    rerank_model: str | None = None
 
 
 class OnnxDownloadBody(BaseModel):
@@ -146,18 +163,45 @@ class RenameDocumentBody(BaseModel):
     new_name: str = Field(min_length=1, max_length=255, description="New document or folder name.")
 
 
+class MoveDocumentBody(BaseModel):
+    target_folder: str = Field(
+        default="",
+        max_length=1024,
+        description="Path of the destination folder; empty for the root.",
+    )
+    target_kb_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Knowledge base to move into; omit for the same base. The caller must be able "
+            "to write to both."
+        ),
+    )
+
+
 def _knowledge_service(server: OctopServer) -> KnowledgeService:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "knowledge services are not initialized")
     return KnowledgeService(server.services)
 
 
-def _row_payload(row: Any, *, has_original: bool | None = None) -> dict[str, Any]:
+def _row_payload(
+    row: Any,
+    *,
+    has_original: bool | None = None,
+    server: OctopServer | None = None,
+) -> dict[str, Any]:
     payload = asdict(row)
     payload["document_id"] = row.id
     if has_original is None:
         if getattr(row, "is_dir", False):
             has_original = False
+        elif server is not None:
+            checker = getattr(_knowledge_service(server), "document_has_original", None)
+            if callable(checker):
+                has_original = checker(row)
+            else:
+                has_original = document_path(row.kb_id, row.id, row.filename).is_file()
         else:
             has_original = document_path(row.kb_id, row.id, row.filename).is_file()
     payload["has_original"] = bool(has_original)
@@ -197,7 +241,7 @@ def _display_kb_icon_url(server: OctopServer, row: Any) -> str:
     text = str(getattr(row, "icon_url", "") or "").strip()
     api = _kb_avatar_api_path(row.id)
     if text.split("?", 1)[0] == api:
-        return profile_avatar_url(server.paths.knowledge_base_avatars_dir, row.id, api) or api
+        return profile_avatar_url(_kb_avatars(server), row.id, api) or api
     return text
 
 
@@ -282,6 +326,8 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
+    if "knowledge rerank" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_RERANK_NOT_READY, locale)
     if "knowledge ocr" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
     if "unique constraint" in text or "duplicate key" in text or "already exists" in text:
@@ -342,6 +388,9 @@ def _capability_payload(server: OctopServer) -> dict[str, Any]:
     assert server.services is not None
     payload = get_capability(server.services.settings_repo.get, server.services.provider_repo)
     payload["ocr"] = get_ocr_capability(
+        server.services.settings_repo.get, server.services.provider_repo
+    )
+    payload["rerank"] = get_rerank_capability(
         server.services.settings_repo.get, server.services.provider_repo
     )
     payload["limits"] = {
@@ -427,6 +476,23 @@ async def ocr_options(
     }
 
 
+@router.get("/rerank-options", summary="List providers that offer a rerank model")
+async def rerank_options(
+    server: OctopServer = Depends(get_server),
+    _admin: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    """Enabled providers with at least one rerank model, for the knowledge settings."""
+    assert server.services is not None
+    providers = []
+    for provider in server.services.provider_repo.list_all():
+        models = rerank_models(provider) if provider.enabled else []
+        if models:
+            providers.append(
+                {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
+            )
+    return {"providers": providers}
+
+
 @router.put("/feature", summary="Enable or disable knowledge bases")
 async def put_feature(
     body: FeatureBody,
@@ -466,6 +532,15 @@ async def put_feature(
                 exc, locale=resolve_request_locale(request), server=server
             ) from exc
     try:
+        # First, so an unusable rerank choice is refused before anything is saved.
+        if body.rerank_enabled is not None:
+            set_rerank_settings(
+                server.services.settings_repo.set,
+                enabled=body.rerank_enabled,
+                provider_id=body.rerank_provider_id,
+                model=body.rerank_model,
+                provider_repo=server.services.provider_repo,
+            )
         set_feature_enabled(
             server.services.settings_repo.get,
             server.services.settings_repo.set,
@@ -709,7 +784,7 @@ async def delete_base(
         )
         from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
 
-        delete_profile_avatar(server.paths.knowledge_base_avatars_dir, kb_id)
+        delete_profile_avatar(_kb_avatars(server), kb_id)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -734,7 +809,7 @@ async def upload_kb_avatar(
             kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
         write_profile_avatar(
-            server.paths.knowledge_base_avatars_dir,
+            _kb_avatars(server),
             kb_id,
             await file.read(),
         )
@@ -747,7 +822,7 @@ async def upload_kb_avatar(
         )
         display = (
             profile_avatar_url(
-                server.paths.knowledge_base_avatars_dir,
+                _kb_avatars(server),
                 kb_id,
                 icon_url,
             )
@@ -773,7 +848,7 @@ async def get_kb_avatar(
         _knowledge_service(server).get_readable_base(
             kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
-        return avatar_response(server.paths.knowledge_base_avatars_dir, kb_id)
+        return avatar_response(_kb_avatars(server), kb_id)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -797,7 +872,7 @@ async def delete_kb_avatar(
         _knowledge_service(server).require_owner(
             kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
         )
-        delete_profile_avatar(server.paths.knowledge_base_avatars_dir, kb_id)
+        delete_profile_avatar(_kb_avatars(server), kb_id)
         _knowledge_service(server).update_base(
             kb_id,
             actor_user_id=user.id,
@@ -823,7 +898,7 @@ async def list_documents(
 ) -> list[dict[str, Any]]:
     try:
         return [
-            _row_payload(document)
+            _row_payload(document, server=server)
             for document in _knowledge_service(server).list_documents(
                 kb_id, actor_user_id=user.id, is_admin=_is_admin(user), prefix=prefix
             )
@@ -850,7 +925,7 @@ async def create_folder(
         folder = _knowledge_service(server).create_folder(
             kb_id, actor_user_id=user.id, path=body.path, is_admin=_is_admin(user)
         )
-        return _row_payload(folder)
+        return _row_payload(folder, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -883,7 +958,7 @@ async def create_text_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, document.id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
@@ -924,9 +999,30 @@ async def upload_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, document.id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
+
+
+@router.get(
+    "/{kb_id}/documents/{doc_id}/chunks",
+    summary="List indexed slices for one document",
+)
+async def list_document_chunks(
+    kb_id: str,
+    doc_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    try:
+        return _knowledge_service(server).list_document_chunks(
+            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.get(
@@ -1027,7 +1123,7 @@ async def update_text_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, doc_id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
@@ -1052,7 +1148,44 @@ async def rename_document(
             new_name=body.new_name.strip(),
             is_admin=_is_admin(user),
         )
-        return _row_payload(document)
+        return _row_payload(document, server=server)
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.post(
+    "/{kb_id}/documents/{doc_id}/move",
+    summary="Move a document or folder into another folder or knowledge base",
+)
+async def move_document(
+    kb_id: str,
+    doc_id: str,
+    body: MoveDocumentBody,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, Any]:
+    """Move a file or folder; a folder takes its contents along.
+
+    Within one base nothing is reindexed. Into another base, originals and chunks
+    move along; files without reusable chunks are indexed again in the target.
+    """
+    try:
+        service = _knowledge_service(server)
+        document = service.move_document(
+            kb_id,
+            doc_id,
+            actor_user_id=user.id,
+            target_folder=body.target_folder,
+            is_admin=_is_admin(user),
+            target_kb_id=body.target_kb_id,
+        )
+        if document.kb_id != kb_id and server.services is not None:
+            for pending_id in service.pending_file_ids(document):
+                enqueue_index_document(server.services, document.kb_id, pending_id)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -1099,7 +1232,7 @@ async def reindex_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, doc_id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server

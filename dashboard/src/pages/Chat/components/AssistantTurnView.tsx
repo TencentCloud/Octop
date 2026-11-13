@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ChevronRight, FilePen, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
 import type { ChatMessage } from "../hooks/useChat";
 import {
@@ -29,6 +30,7 @@ import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowledgeCitations";
 import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
 import { messageSpeakerId } from "../utils/messageGrouping";
+import { isAssistantProcessLive } from "./liveAssistantTurn";
 import styles from "../index.module.less";
 
 interface AssistantTurnViewProps {
@@ -37,6 +39,8 @@ interface AssistantTurnViewProps {
   isStreaming?: boolean;
   /** True while this assistant turn is still being generated (incl. between tool calls). */
   isTurnInProgress?: boolean;
+  /** This group sits after the latest user message, even if the session flag is idle. */
+  afterLatestUser?: boolean;
   /**
    * Speakers still generating in the session store (survives tool gaps after
    * the composer unlocks). Empty string = unlabeled host.
@@ -60,8 +64,9 @@ interface AssistantTurnViewProps {
 
 function hasProcessContent(
   split: ReturnType<typeof splitAssistantTurn>,
+  deferLoneDecision = false,
 ): boolean {
-  return turnHasVisibleProcess(split);
+  return turnHasVisibleProcess(split, { deferLoneDecision });
 }
 
 function TurnErrorBubbles({
@@ -134,6 +139,7 @@ export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
   isTurnInProgress = false,
+  afterLatestUser = false,
   liveSpeakers = [],
   onRegenerate,
   onDisableStreamUsage,
@@ -158,7 +164,12 @@ export default function AssistantTurnView({
 
   const speakerLive = turnHasLiveSpeaker(messages, liveSpeakers);
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
-  const turnStreaming = isTurnInProgress || hasStreamingMsg || speakerLive;
+  const turnStreaming = isAssistantProcessLive({
+    isTurnInProgress,
+    afterLatestUser,
+    hasStreamingMessage: hasStreamingMsg,
+    speakerLive,
+  });
 
   const hitlLayout = useMemo(
     () => layoutAssistantTurnHitl(messages),
@@ -224,16 +235,25 @@ export default function AssistantTurnView({
       (m) => m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
     );
 
+  // A decision stamp often lands before the first tool. Showing it on its
+  // own, then folding it in, flashes a one-line row. Hold that row until the
+  // reply has tools or the turn settles.
+  const deferLoneDecision = turnStreaming && !hasPendingHitl;
   const firstProcessSegmentIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => hasProcessContent(split));
+    : segmentProcess.findIndex(({ split }) =>
+        hasProcessContent(split, deferLoneDecision),
+      );
   const firstSummaryIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => turnHasProcessSummary(split));
+    : segmentProcess.findIndex(({ split }) =>
+        turnHasProcessSummary(split, { deferLoneDecision }),
+      );
   const showTrailingProcess =
-    !compactProcess && hasProcessContent(trailingSplit);
+    !compactProcess && hasProcessContent(trailingSplit, deferLoneDecision);
   const trailingHasSummary =
-    !compactProcess && turnHasProcessSummary(trailingSplit);
+    !compactProcess &&
+    turnHasProcessSummary(trailingSplit, { deferLoneDecision });
   const anyProcessShown = firstProcessSegmentIdx >= 0 || showTrailingProcess;
 
   const todoPanel =
@@ -338,9 +358,10 @@ export default function AssistantTurnView({
         <div className={styles.turnInset}>
           <button
             type="button"
-            className={`${styles.openBrowserPrompt} ${
-              turnStreaming ? styles.openBrowserPromptActive : ""
-            }`}
+            className={cx(
+              styles.openBrowserPrompt,
+              turnStreaming && styles.openBrowserPromptActive,
+            )}
             onClick={onOpenBrowser}
             aria-label={t("chat.openBrowser")}
           >
@@ -363,9 +384,10 @@ export default function AssistantTurnView({
         <div className={styles.turnInset}>
           <button
             type="button"
-            className={`${styles.openBrowserPrompt} ${
-              turnStreaming ? styles.openBrowserPromptActive : ""
-            }`}
+            className={cx(
+              styles.openBrowserPrompt,
+              turnStreaming && styles.openBrowserPromptActive,
+            )}
             onClick={onEditFile}
             aria-label={t("chat.editFileCard", {
               count: Math.max(turnFileCount, 1),
@@ -399,7 +421,8 @@ export default function AssistantTurnView({
     <div className={styles.assistantTurn}>
       {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
       {segmentProcess.map(({ split, hitl }, idx) => {
-        const showProcess = !compactProcess && hasProcessContent(split);
+        const showProcess =
+          !compactProcess && hasProcessContent(split, deferLoneDecision);
         // Freeze process spinner while a pending approval card is open.
         const processStreaming =
           turnStreaming &&

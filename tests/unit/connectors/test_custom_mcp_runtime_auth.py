@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from octop.config import OctopConfig
+from octop.infra.connectors.auth_status import custom_auth_status
 from octop.infra.connectors.custom_mcp import CUSTOM_MCP_KIND, shared_mcp_server_name
 from octop.infra.connectors.mcp_tool_cache import fingerprint_mcp_spec
 from octop.infra.connectors.oauth.mcp import OAuthRefreshRejected
@@ -127,6 +128,7 @@ async def test_only_401_refreshes_and_retries_once(grant, monkeypatch, status):
             "configured": False,
             "required": True,
         }
+        assert custom_auth_status(svc.get_custom_servers(uid)["oa"]) == "expired"
     else:
         assert len(seen) == 1
         refresh.assert_not_awaited()
@@ -218,6 +220,7 @@ async def test_refresh_failure_marks_reauth_only_when_grant_unusable(grant, monk
             assert exc.value.code == ErrorCode.CONNECTOR_INVALID_CREDENTIALS
             assert seen == []
             assert svc.get_custom_servers_for_api(uid)["oa"]["oauth"]["required"] is True
+            assert custom_auth_status(svc.get_custom_servers(uid)["oa"]) == "expired"
         else:
             assert (await client.post(MCP_URL)).status_code == 200
             assert seen == ["Bearer old-access"]
@@ -251,6 +254,7 @@ async def test_expired_grant_requires_reauth_and_same_connection_recovers(
             "configured": False,
             "required": True,
         }
+        assert custom_auth_status(svc.get_custom_servers(uid)["oa"]) == "expired"
         authorize(svc, uid, token="reauthorized")
         assert (await client.post(MCP_URL)).status_code == 200
     assert seen == ["Bearer reauthorized"]

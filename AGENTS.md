@@ -12,6 +12,7 @@ Navigation guide for AI coding agents working in this repository.
 - When multiple interpretations exist, list them and let the user choose — do not pick silently.
 - Suggest simpler approaches when they exist; push back when appropriate.
 - Stop when blocked; name exactly what is unclear.
+- Name the owning repository before editing (see [Runtime libraries](#runtime-libraries)).
 
 ### Simplicity first
 
@@ -38,6 +39,20 @@ Navigation guide for AI coding agents working in this repository.
 One Python wheel: FastAPI backend + React dashboard + Click CLI.
 No external queue. No required services beyond an LLM provider.
 
+### Runtime libraries
+
+Octop hosts four libraries. Put the change in the library that owns the behavior. This repo only wires users, the control-plane database, HTTP, CLI, dashboard, and cron.
+
+| Change | Repository |
+|--------|------------|
+| Agent loop, tools, skills, backends, middleware; turn wiring for memory and `browser_use` | [octop-harness](https://github.com/TencentCloud/octop-harness) |
+| IM platform protocol, media upload, group activation | [octop-gateway](https://github.com/TencentCloud/octop-gateway) |
+| Memory capture, recall, ranking, schema, storage | [octop-memory](https://github.com/TencentCloud/octop-memory) |
+| Chrome CDP, profiles, DOM, `browser_tool` | [octop-browser](https://github.com/TencentCloud/octop-browser) |
+| Users, auth, threads, cron, experts, dashboard | this repo |
+
+Do not copy that behavior into `src/octop/`. Follow the library's `AGENTS.md`. When the library releases, bump its pin in `pyproject.toml`.
+
 ## 3. Tech stack
 
 | Layer | Technology |
@@ -46,8 +61,10 @@ No external queue. No required services beyond an LLM provider.
 | Web framework | FastAPI + uvicorn |
 | Async runtime | asyncio (no threads except `run_in_executor`) |
 | Database | SQLite via sync `sqlite3` (WAL) **or** PostgreSQL via `psycopg` / `psycopg_pool` |
-| LLM runtime | `octop-harness` (LangGraph) |
-| Gateway | `octop-gateway` |
+| Agent runtime | `octop-harness` |
+| IM channels | `octop-gateway` |
+| Memory | `octop-memory` |
+| Browser | `octop-browser` |
 | Frontend | React 18 + TypeScript + Vite |
 | Package manager | uv — always `uv run pytest`, never bare `pytest` |
 | API docs UI | Scalar (`scalar-fastapi`) at `/api/docs` |
@@ -73,7 +90,7 @@ tests/                        pytest (`unit/`, `integration/`)
 
 ## 5. Module boundaries
 
-**Rule of thumb:** dependencies flow **inward** — transport layers call domain; domain never calls HTTP/CLI. Within `infra/`, leaf modules (`utils/`, `db/repos/`, `errors.py`) stay free of higher-level orchestration.
+**Rule of thumb:** dependencies flow **inward** — transport layers call domain; domain never calls HTTP/CLI. Within `infra/`, leaf modules (`utils/`, `db/repos/`, `errors.py`) stay free of higher-level orchestration. Library behavior stays in that library (see [Runtime libraries](#runtime-libraries)).
 
 ### Layer overview
 
@@ -140,7 +157,7 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 | `api/openapi_meta.py` | Scalar tags, API intro text | route handlers |
 | `api/errors.py` | Map `OctopError` → HTTP status + JSON | new error semantics (add to `infra/errors.py`) |
 | `api/routers/` | One resource per module; Pydantic request/response models | persistence, harness calls — delegate to `infra/` |
-| `api/routers/browser/` | Browser session/stream/harness HTTP surface | Playwright logic (stays in harness or helpers here only as glue) |
+| `api/routers/browser/` | Browser session/stream HTTP surface | CDP, profiles, and DOM stay in `octop-browser`; this router is glue |
 
 ### `cli/` layout
 
@@ -337,6 +354,7 @@ User-facing datetime display and cron/scheduling defaults MUST use the server ti
 
 Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
+- Do not reimplement `octop-harness`, `octop-gateway`, `octop-memory`, or `octop-browser` under `src/octop/` (see [Runtime libraries](#runtime-libraries)).
 - Do not import legacy top-level modules — use current paths:
   - `octop.agents.*` → `octop.infra.agents.*`
   - `octop.channels.*` → `octop.infra.gateway.*`
@@ -381,7 +399,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 
 ## 10. Change workflow
 
-1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)).
+1. **Clarify scope** — read relevant code/docs; confirm assumptions and ambiguities with the user (see [§1](#1-collaboration-principles)). If the behavior belongs to a runtime library, change that repo (see [Runtime libraries](#runtime-libraries)).
 2. **Hooks** — if this clone has not run `make install-hooks` yet, do it before committing (see [§6](#6-run-commands)). Pre-commit must stay green (`make all` + dashboard build).
 3. **Minimal implementation** — change only task-related files; dashboard source is in `dashboard/`, build output in `src/octop/dashboard/` (run `make build-frontend` after UI changes).
 4. **Verify** — backend/ship bar: `make all` (`format-all` + `lint` + `typecheck` + `test`). After `dashboard/` changes, also run `cd dashboard && npx tsc -b` (and `npm run lint` when appropriate). After API route changes, glance at `/api/docs` for readable summaries and schemas. After i18n JSON changes, run `uv run pytest tests/unit/i18n -q`. Treat Windows CI as part of the bar: follow [§7 Cross-platform tests](#7-key-patterns).

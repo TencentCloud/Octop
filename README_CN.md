@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b1-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b5-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -191,19 +191,19 @@ Octop 支持两个方向的 ACP 集成：
 **macOS / Linux** — 一键安装（推荐）：
 
 ```bash
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash
 ```
 
 **Windows（PowerShell）**：
 
 ```powershell
-irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex
+irm https://download.octop.cloud/octop/scripts/install.ps1 | iex
 ```
 
 **Windows（cmd）** — 下载后运行，或从已克隆的仓库执行：
 
 ```bat
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.bat -o install.bat
+curl -fsSL https://download.octop.cloud/octop/scripts/install.bat -o install.bat
 install.bat
 ```
 
@@ -219,7 +219,7 @@ source ~/.bashrc  # Bash
 
 ```bash
 # 下载 Playwright Chromium 用于浏览器自动化（若系统已有 Chrome / Chromium 则会跳过）
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash -s -- --extras browser
 ```
 
 完整安装选项见 [scripts/README.md](scripts/README.md)（`--version`、`--from-source`、`--mirror` 及 Windows 参数）。
@@ -231,7 +231,9 @@ curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install
 | Windows | `Octop-desktop-windows-amd64-<version>.exe`（64 位）/ `Octop-desktop-windows-arm64-<version>.exe`（ARM64）— NSIS 安装程序 |
 | macOS | `Octop-desktop-darwin-arm64-<version>.dmg`（Apple 芯片）/ `Octop-desktop-darwin-amd64-<version>.dmg`（Intel） |
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
-| 飞牛 NAS（FnOS） | `Octop-fnos-docker-<version>.fpk`（推荐，尤其是 ARM；amd64/arm64 镜像）/ `Octop-fnos-native-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
+| 飞牛 NAS（FnOS） | `Octop-fnos-docker-lite-<version>.fpk`（精简镜像）/ `Octop-fnos-docker-<version>.fpk`（完整版：桌面、OCR、本地向量）/ `Octop-fnos-native-amd64-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
+
+桌面安装包只带 `browser`。桌面控制、OCR 和本地向量留在 Docker 镜像标签 `:<version>-full`。
 
 桌面客户端说明见 [desktop/README.md](desktop/README.md)，飞牛打包指南见 [fnos/README.md](fnos/README.md)。
 
@@ -278,13 +280,13 @@ octop service start
 
 ```bash
 # 构建并启动
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # 官方 GHCR 拉取失败时用国内源（不本地构建）
-docker compose -f docker/docker-compose.cn.yml up -d
+docker compose -f deploy/docker/docker-compose.cn.yml up -d
 
 # 或手动构建
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -294,6 +296,8 @@ docker run -d \
 ```
 
 打开 `http://localhost:8088`。`OCTOP_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.octop/octop-login.txt`）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
+
+共用 PostgreSQL、多副本的 Kubernetes 清单在 [deploy/k8s/README_CN.md](deploy/k8s/README_CN.md)。
 
 > **密码策略：** 至少 8 位，且同时包含字母和数字。
 
@@ -336,7 +340,7 @@ docker run -d \
   - [参与贡献](#-参与贡献)
   - [更新日志](#-更新日志)
   - [相关项目](#-相关项目)
-  - [客户企业微信群](#-客户企业微信群)
+  - [社区](#-社区)
   - [许可证](#-许可证)
 
 ## 📦 安装方式
@@ -348,7 +352,7 @@ docker run -d \
 | 本地脚本 | macOS / Linux | `bash scripts/install.sh` |
 | 本地脚本 | Windows | `scripts\install.bat` 或 `install.ps1` |
 | PyPI | 全平台 | `pip install octop`（可选 extras 如 `local-embedding`） |
-| Docker | 全平台 | `docker/docker-compose.yml`；国内镜像 `docker/docker-compose.cn.yml` |
+| Docker | 全平台 | `deploy/docker/docker-compose.yml`；国内镜像 `deploy/docker/docker-compose.cn.yml` |
 
 所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
 
@@ -426,6 +430,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop skills` | 按 Agent 启用/禁用 Skill |
 | `octop plugin` | 安装并管理第三方插件 |
 | `octop backup` | 导出 / 恢复备份 |
+| `octop migrate` | 把 OpenClaw 或 Hermes Agent 的配置迁移到一个专家 |
 | `octop clean` | 清理 CLI 状态或清空 `~/.octop/` |
 | `octop memory list` | 列出可参与记忆维护的运行中 Agent；不改动数据库。 |
 | `octop memory slim [--agent ID]` | 通过运行中的宿主备份并精简 SQLite 记忆；使用指定 Agent 或按提示选择。在终端与控制台显示进度。[详情](docs/memory-slim.md) |
@@ -477,7 +482,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 控制面也可改用 PostgreSQL（`config.json` → `database`，或 `OCTOP_DATABASE_*` / 首次设置向导）。控制面为 PostgreSQL 时，Agent 记忆**默认复用同一 DSN**（per-agent schema）；若需继续用文件记忆，在 agent 配置里设 `"memory": { "backend": { "type": "sqlite" } }`。详见 [docs/configuration.md](docs/configuration.md) 与 [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md)。
 
-环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。
+环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。访问不了公网时，可按 [docs/private-market.md](docs/private-market.md) 在内网自建插件市场和专家市场，按 [docs/skill-market.md](docs/skill-market.md) 自建技能市场（`SKILL_MARKET_ORIGIN`）。
 
 ## 🏗️ 架构
 
@@ -513,7 +518,7 @@ src/octop/
 
 dashboard/     前端源码（Vite）— 在此编辑，运行 make build-frontend
 
-docker/        Docker Compose、入口脚本、构建与部署脚本
+deploy/        Docker（deploy/docker）与 Kubernetes（deploy/k8s）
 tests/         unit/ + integration/
 ```
 
@@ -569,7 +574,17 @@ cd dashboard && npx tsc -b
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
 
-## 💬 客户企业微信群
+## 💬 社区
+
+### 微信
+
+微信搜一搜「腾讯Octop」，或扫码：
+
+<p align="center">
+  <img src="docs/assets/wechat-octop.png" alt="微信搜一搜腾讯Octop" width="480" />
+</p>
+
+### 客户企业微信群
 
 如需加入客户企业微信服务群，请扫码：
 

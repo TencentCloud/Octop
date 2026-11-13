@@ -386,7 +386,7 @@ async def test_create_user_bootstraps_selected_expert(env):
     assert owned[0]["template_name"] == "general-assistant"
 
 
-async def test_create_user_rejects_unknown_expert_template(env):
+async def test_create_user_keeps_user_when_expert_template_missing(env):
     c, _srv, auth = env
     created = await c.post(
         "/api/users",
@@ -399,6 +399,135 @@ async def test_create_user_rejects_unknown_expert_template(env):
             "expert_template_id": "not-a-real-template",
         },
     )
-    assert created.status_code == 404, created.text
+    assert created.status_code == 201, created.text
     listed = await c.get("/api/users", headers=auth)
-    assert all(item["username"] != "no_expert" for item in listed.json())
+    assert any(item["username"] == "no_expert" for item in listed.json())
+    agents = await c.get("/api/agents", headers=auth, params={"scope": "all"})
+    owned = [row for row in agents.json() if row["user_id"] == created.json()["id"]]
+    assert owned == []
+
+
+async def test_allowed_backend_types_limit_expert_create(env):
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={
+            "user_role_name": "沙箱",
+            "permissions": ["browser"],
+            "policies": [
+                {"name": "allowed_backend_types", "value": "docker,opensandbox,filesystem"},
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["allowed_backend_types"] == ["filesystem", "docker", "opensandbox"]
+    assert created.json()["policies"] == [
+        {"name": "allowed_backend_types", "value": "filesystem,docker,opensandbox"},
+    ]
+
+    unknown = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={
+            "user_role_name": "坏类型",
+            "permissions": ["browser"],
+            "policies": [{"name": "allowed_backend_types", "value": "docker,nope"}],
+        },
+    )
+    assert unknown.status_code == 400, unknown.text
+
+    user = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "boxed",
+            "password": TEST_PASSWORD,
+            "role": created.json()["user_role_id"],
+            "create_default_expert": False,
+        },
+    )
+    assert user.status_code == 201, user.text
+    assert user.json()["allowed_backend_types"] == ["filesystem", "docker", "opensandbox"]
+
+    token = await login(c, username="boxed", password=TEST_PASSWORD)
+    me = await c.get("/api/auth/me", headers=bearer(token))
+    assert me.status_code == 200, me.text
+    assert me.json()["allowed_backend_types"] == ["filesystem", "docker", "opensandbox"]
+    user_auth = bearer(token)
+
+    denied = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "host",
+            "config": {"backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True}},
+        },
+    )
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "BACKEND_TYPE_NOT_ALLOWED"
+
+    omitted = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={"name": "omitted", "config": {}},
+    )
+    assert omitted.status_code == 403, omitted.text
+    assert omitted.json()["error"]["code"] == "BACKEND_TYPE_NOT_ALLOWED"
+
+    created_agent = await c.post(
+        "/api/agents",
+        headers=user_auth,
+        json={
+            "name": "files",
+            "config": {"backend": {"type": "filesystem", "root_dir": "/", "virtual_mode": True}},
+        },
+    )
+    assert created_agent.status_code == 201, created_agent.text
+    agent_id = created_agent.json()["agent_id"]
+
+    kept = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=user_auth,
+        json={
+            "name": "files-renamed",
+            "config": {"backend": {"type": "filesystem", "root_dir": "/", "virtual_mode": True}},
+        },
+    )
+    assert kept.status_code == 200, kept.text
+
+    tightened = await c.patch(
+        f"/api/users/{user.json()['id']}",
+        headers=auth,
+        json={"allowed_backend_types": ["docker"]},
+    )
+    assert tightened.status_code == 200, tightened.text
+    assert tightened.json()["allowed_backend_types"] == ["docker"]
+
+    still_kept = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=user_auth,
+        json={
+            "name": "files-kept",
+            "config": {"backend": {"type": "filesystem", "root_dir": "/", "virtual_mode": True}},
+        },
+    )
+    assert still_kept.status_code == 200, still_kept.text
+
+    switched = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=user_auth,
+        json={
+            "config": {"backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True}},
+        },
+    )
+    assert switched.status_code == 403, switched.text
+    assert switched.json()["error"]["code"] == "BACKEND_TYPE_NOT_ALLOWED"
+
+    cleared = await c.patch(
+        f"/api/users/{user.json()['id']}",
+        headers=auth,
+        json={"role": "user"},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["allowed_backend_types"] is None

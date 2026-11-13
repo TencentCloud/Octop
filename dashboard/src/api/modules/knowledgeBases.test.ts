@@ -99,4 +99,23 @@ describe("knowledgeBasesApi", () => {
       onProgress,
     );
   });
+
+  it("sends the target base only when the move leaves the current one", () => {
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "archive");
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "archive", "kb-1");
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "售后", "kb-2");
+
+    const bodies = request.mock.calls.map(([, init]) =>
+      JSON.parse((init as { body: string }).body),
+    );
+    expect(request).toHaveBeenCalledWith(
+      "/knowledge-bases/kb-1/documents/doc-1/move",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(bodies).toEqual([
+      { target_folder: "archive" },
+      { target_folder: "archive" },
+      { target_folder: "售后", target_kb_id: "kb-2" },
+    ]);
+  });
 });

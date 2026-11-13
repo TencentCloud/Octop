@@ -13,19 +13,16 @@ from typing import Any
 import pytest
 
 
-async def test_list_experts_returns_bundled_library(env: Any) -> None:
+async def test_list_experts_hides_blank_template(env: Any) -> None:
     c, _srv, auth = env
     r = await c.get("/api/experts", headers=auth)
     assert r.status_code == 200
     rows = r.json()
     ids = {row["id"] for row in rows}
-    # The bundled library lists ``general-assistant``; ``default`` is hidden from the list API.
-    assert "general-assistant" in ids
-    assert len(rows) >= 1
-    sample = next(r for r in rows if r["id"] == "general-assistant")
-    assert "label" in sample and "zh" in sample["label"] and "en" in sample["label"]
-    assert sample["task_examples"]["zh"]
-    assert len(sample["task_examples"]["zh"]) == 3
+    # Product templates live in the expert market. The blank ``default`` scaffold
+    # stays on disk for one-click create, and the list API hides it.
+    assert "default" not in ids
+    assert "general-assistant" not in ids
 
 
 async def test_get_expert_includes_prompt_files(env: Any) -> None:
@@ -365,7 +362,7 @@ async def test_get_expert_includes_file_contents(env: Any) -> None:
 
 async def test_get_expert_file_contents_limited_to_preview_paths(env: Any) -> None:
     c, _srv, auth = env
-    r = await c.get("/api/experts/stock-assistant", headers=auth)
+    r = await c.get("/api/experts/general-assistant", headers=auth)
     assert r.status_code == 200
     body = r.json()
     names = {item["name"] for item in body["file_contents"]}
@@ -410,12 +407,32 @@ async def test_create_from_expert_default_name_uses_expert_label(env: Any) -> No
     """Omitting ``name`` should use the expert template's localized label."""
     c, _srv, auth = env
     r = await c.post(
-        "/api/agents/from-expert/ops-engineer",
+        "/api/agents/from-expert/default",
         headers={**auth, "Accept-Language": "zh"},
         json={},
     )
     assert r.status_code == 201, r.text
-    assert r.json()["name"] == "Ops · 运维工程师"
+    assert r.json()["name"] == "通用专家"
+
+
+async def test_create_from_expert_without_name_reuses_existing(env: Any) -> None:
+    """Unnamed create is the ensure path used by the cloud console."""
+    c, _srv, auth = env
+    first = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={},
+    )
+    assert first.status_code == 201, first.text
+
+    second = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={},
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["agent_id"] == first.json()["agent_id"]
+    assert second.json()["reused"] is True
 
 
 async def test_create_from_expert_stores_backend(env: Any) -> None:
@@ -545,3 +562,56 @@ async def test_patch_agent_composer_defaults(env: Any) -> None:
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["knowledge_base_ids"] == []
     assert cleared.json()["mcp_servers"] == []
+
+
+async def test_from_expert_workspace_dir_follows_storage_root(env: Any) -> None:
+    """Host-root local backends keep a chosen workspace; scoped roots ignore it."""
+    c, srv, auth = env
+    assert srv.app_runtime is not None
+    home = srv.app_runtime.agent_registry.paths.root
+    picked = home / "picked-ws"
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "host-ws-bot",
+            "backend": {"type": "local_shell", "virtual_mode": True, "root_dir": "/"},
+            "workspace_dir": str(picked),
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    detail = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert detail["config"]["workspace_dir"] == str(picked)
+    assert picked.is_dir()
+
+    jail = home / "jail"
+    jail.mkdir()
+    outside = home / "outside-ws"
+    scoped = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "scoped-ws-bot",
+            "backend": {
+                "type": "filesystem",
+                "virtual_mode": True,
+                "root_dir": str(jail),
+            },
+            "workspace_dir": str(outside),
+        },
+    )
+    assert scoped.status_code == 201, scoped.text
+    scoped_id = scoped.json()["agent_id"]
+    scoped_detail = (await c.get(f"/api/agents/{scoped_id}", headers=auth)).json()
+    assert scoped_detail["config"]["workspace_dir"] == f"/.octop/workspaces/{scoped_id}"
+    assert not outside.exists()
+
+    patched = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"config": {**detail["config"], "workspace_dir": str(home / "moved-ws")}},
+    )
+    assert patched.status_code == 200, patched.text
+    again = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert again["config"]["workspace_dir"] == str(picked)

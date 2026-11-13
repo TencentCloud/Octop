@@ -5,6 +5,7 @@ import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { FlaskConical, Sparkles, Check } from "lucide-react";
+import cx from "classnames";
 import api from "../../../../api";
 import type { MBTIType } from "../../../../api/types";
 import { useAgent } from "../../../../context/AgentContext";
@@ -33,7 +34,7 @@ function DimensionBar({
 
   return (
     <div className={styles.dimRow}>
-      <span className={`${styles.dimLabel} ${isLeft ? styles.dimActive : ""}`}>
+      <span className={cx(styles.dimLabel, isLeft && styles.dimActive)}>
         {leftLabel}
       </span>
       <div className={styles.dimTrack}>
@@ -50,7 +51,7 @@ function DimensionBar({
           style={{ left: `${position}%`, background: color }}
         />
       </div>
-      <span className={`${styles.dimLabel} ${!isLeft ? styles.dimActive : ""}`}>
+      <span className={cx(styles.dimLabel, !isLeft && styles.dimActive)}>
         {rightLabel}
       </span>
       <span className={styles.dimPct}>{pct}%</span>
@@ -494,9 +495,11 @@ export default function MBTISelector({
                 return (
                   <div
                     key={code}
-                    className={`${styles.typeCard} ${
-                      isSelected ? styles.typeCardSelected : ""
-                    } ${isCurrent ? styles.typeCardCurrent : ""}`}
+                    className={cx(
+                      styles.typeCard,
+                      isSelected && styles.typeCardSelected,
+                      isCurrent && styles.typeCardCurrent,
+                    )}
                     style={
                       { "--card-color": type.color } as React.CSSProperties
                     }

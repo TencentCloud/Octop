@@ -11,6 +11,12 @@ from weakref import WeakKeyDictionary
 
 from octop.config import OctopConfig
 from octop.infra.connectors import qcc
+from octop.infra.connectors.auth_status import (
+    AUTH_EXPIRED,
+    AUTH_OK,
+    NEEDS_AUTH,
+    custom_auth_status,
+)
 from octop.infra.connectors.builder import build_http_mcp_spec, mcp_server_name, new_internal_token
 from octop.infra.connectors.catalog import get_catalog_entry, uses_internal_http_mcp
 from octop.infra.connectors.crypto import decrypt_credentials, encrypt_credentials
@@ -22,10 +28,12 @@ from octop.infra.connectors.custom_mcp import (
     extract_servers,
     harness_spec_for_server,
     is_custom_mcp_kind,
+    mark_oauth_reauth_required,
     merge_preserved_oauth,
     oauth_configured,
     oauth_tokens_from_spec,
     redact_servers_for_api,
+    server_display_name,
     server_enabled,
     set_oauth_required_in_spec,
     shared_mcp_server_name,
@@ -386,10 +394,17 @@ class ConnectorService:
         servers[server_name] = {**current, "oauth": oauth}
         return dict(self._save_custom_servers(user_id, servers)[server_name])
 
+    def _mark_custom_server_lapsed(
+        self, user_id: int, server_name: str, previous: dict[str, Any]
+    ) -> dict[str, Any]:
+        # Same marker as the pre-turn check, so the grant reads as expired, not never authorized.
+        lapsed = mark_oauth_reauth_required(previous)["oauth"]
+        return self._store_custom_server_oauth(user_id, server_name, previous, lapsed)
+
     def reject_custom_server_token(self, user_id: int, server_name: str, token: str) -> None:
         spec = self.get_custom_servers(user_id).get(server_name, {})
         if oauth_tokens_from_spec(spec).get("access_token") == token:
-            self._store_custom_server_oauth(user_id, server_name, spec, {"required": True})
+            self._mark_custom_server_lapsed(user_id, server_name, spec)
 
     async def ensure_fresh_custom_server(
         self, user_id: int, server_name: str, *, rejected_token: str | None = None
@@ -414,9 +429,7 @@ class ConnectorService:
             refresh = str(oauth.get("refresh_token") or "").strip()
             if not refresh or not oauth.get("oauth_client_id") or not oauth.get("oauth_issuer"):
                 if expired or force:
-                    return self._store_custom_server_oauth(
-                        user_id, server_name, raw, {"required": True}
-                    )
+                    return self._mark_custom_server_lapsed(user_id, server_name, raw)
                 return raw
             try:
                 refreshed = await refresh_custom_mcp_oauth(oauth)
@@ -431,9 +444,7 @@ class ConnectorService:
                     or force
                     or isinstance(exc, OAuthRefreshRejected)
                 ):
-                    return self._store_custom_server_oauth(
-                        user_id, server_name, raw, {"required": True}
-                    )
+                    return self._mark_custom_server_lapsed(user_id, server_name, raw)
                 return dict(self.get_custom_servers(user_id).get(server_name, {}))
             return self._store_custom_server_oauth(user_id, server_name, raw, refreshed)
 
@@ -504,6 +515,7 @@ class ConnectorService:
         out: list[dict[str, Any]] = []
         visible = self._repo.list_visible(user_id)
         custom_row = self._repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
+        custom_specs: dict[str, dict[str, Any]] = {}
         for inst in visible:
             if is_custom_mcp_kind(inst.kind):
                 continue
@@ -525,28 +537,188 @@ class ConnectorService:
                 }
             )
         if custom_row is not None and custom_row.has_credentials:
-            out.extend(
-                expand_custom_instances(
-                    parent=custom_row,
-                    servers=extract_servers(self.decrypt(custom_row.instance_id)),
-                )
-            )
+            own = extract_servers(self.decrypt(custom_row.instance_id))
+            custom_specs.update(own)
+            out.extend(expand_custom_instances(parent=custom_row, servers=own))
         # Per-server ``shared`` lives in the encrypted bag, not on the parent row.
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
-            out.extend(
-                expand_custom_instances(
-                    parent=parent,
-                    servers=extract_servers(self.decrypt(parent.instance_id)),
-                    shared_view=True,
-                )
+            servers = extract_servers(self.decrypt(parent.instance_id))
+            custom_specs.update(
+                {
+                    shared_mcp_server_name(parent.instance_id, name): spec
+                    for name, spec in servers.items()
+                    if isinstance(spec, dict)
+                }
             )
+            out.extend(expand_custom_instances(parent=parent, servers=servers, shared_view=True))
         for item in out:
+            spec = custom_specs.get(str(item.get("mcp_server_name") or ""))
+            if is_custom_mcp_kind(str(item.get("kind") or "")) and isinstance(spec, dict):
+                status = custom_auth_status(spec)
+                if status:
+                    item["auth_status"] = status
             item.setdefault("owner_user_id", user_id)
             item.setdefault("shared", False)
             # list_visible already applied the per-instance group layer.
             item["usable"] = True
+        return out
+
+    async def auth_blocked_servers(
+        self, user_id: int, server_names: list[str], *, probe: bool = True
+    ) -> list[dict[str, Any]]:
+        """Which custom MCP servers in *server_names* need the user to authorize.
+
+        Called after MCP tools could not be loaded. A stored token whose status
+        still looks fine is probed once: a 401/403 from the MCP server means it
+        was revoked, and the server is marked so the dashboard prompts too.
+        """
+        wanted = set(server_names)
+        blocked: list[dict[str, Any]] = []
+        own = self.get_custom_servers(user_id)
+        candidates: list[tuple[str, int, str, dict[str, Any]]] = [
+            (name, user_id, name, spec)
+            for name, spec in own.items()
+            if name in wanted and isinstance(spec, dict)
+        ]
+        for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
+            if parent.user_id == user_id or not parent.has_credentials:
+                continue
+            for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
+                shown = shared_mcp_server_name(parent.instance_id, name)
+                if shown in wanted and isinstance(spec, dict) and spec.get("shared") is True:
+                    candidates.append((shown, parent.user_id, name, spec))
+        for shown, owner_id, name, spec in candidates:
+            status = custom_auth_status(spec)
+            if (
+                status == AUTH_OK
+                and probe
+                and str(spec.get("transport") or "") in ("streamable_http", "http")
+            ):
+                harness = harness_spec_for_server(spec)
+                if await _token_rejected(
+                    str(harness.get("url") or ""),
+                    dict(harness.get("headers") or {}),
+                    kind=CUSTOM_MCP_KIND,
+                ):
+                    servers = dict(self.get_custom_servers(owner_id))
+                    if isinstance(servers.get(name), dict):
+                        servers[name] = mark_oauth_reauth_required(dict(servers[name]))
+                        self._save_custom_servers(owner_id, servers)
+                    status = AUTH_EXPIRED
+            if status in NEEDS_AUTH:
+                blocked.append(
+                    {
+                        "server": shown,
+                        "display_name": server_display_name(name, spec),
+                        "auth_status": status,
+                        "can_authorize": owner_id == user_id,
+                        "target": {"type": "custom_mcp", "server_name": name},
+                    }
+                )
+        return blocked
+
+    def shared_custom_harness_aliases(self, owner_user_id: int) -> dict[str, str]:
+        """Map a viewer's collision-safe name to the owner's harness server name.
+
+        The owner's custom server is registered as ``doris``. Everyone else
+        addresses the same shared server as ``custom__{instance}__doris``.
+        A shared expert's harness only knows the short name.
+        """
+        if not self._repo.connector_feature_allows(owner_user_id):
+            return {}
+        parent = self._repo.get_by_user_kind(owner_user_id, CUSTOM_MCP_KIND)
+        if parent is None or not parent.has_credentials:
+            return {}
+        aliases: dict[str, str] = {}
+        for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
+            if (
+                not isinstance(spec, dict)
+                or spec.get("shared") is not True
+                or not server_enabled(spec)
+            ):
+                continue
+            aliases[shared_mcp_server_name(parent.instance_id, name)] = name
+        return aliases
+
+    def align_mcp_names_to_harness(
+        self,
+        *,
+        owner_user_id: int | None,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Rewrite viewer-facing shared custom names onto the agent's harness.
+
+        Other names are left unchanged. The owner already speaks harness names.
+        """
+        if owner_user_id is None or owner_user_id == viewer_user_id or not names:
+            return list(names)
+        aliases = self.shared_custom_harness_aliases(owner_user_id)
+        if not aliases:
+            return list(names)
+        out: list[str] = []
+        for name in names:
+            mapped = aliases.get(name, name)
+            if mapped not in out:
+                out.append(mapped)
+        return out
+
+    def present_mcp_names_for_viewer(
+        self,
+        *,
+        owner_user_id: int | None,
+        viewer_user_id: int,
+        names: list[str],
+    ) -> list[str]:
+        """Show a non-owner the catalog names they can actually select.
+
+        Owner short names of shared custom servers become the collision-safe
+        name. Servers the viewer cannot use are omitted.
+        """
+        if owner_user_id is None or owner_user_id == viewer_user_id:
+            return list(names)
+        aliases = self.shared_custom_harness_aliases(owner_user_id)
+        reverse: dict[str, str] = {}
+        for long_name, short_name in aliases.items():
+            reverse.setdefault(short_name, long_name)
+        allowed = set(self.list_active_mcp_server_names(viewer_user_id))
+        out: list[str] = []
+        for name in names:
+            shown = reverse.get(name, name)
+            if shown in allowed and shown not in out:
+                out.append(shown)
+        return out
+
+    def mcp_names_for_chips(
+        self,
+        *,
+        owner_user_id: int | None,
+        viewer_user_id: int,
+        requested: list[str],
+        harness_names: list[str],
+    ) -> list[str]:
+        """Catalog names for the servers that will actually run this turn.
+
+        A viewer's own server keeps its short name. The owner's shared server
+        shows the collision-safe name when that is what was selected. Selecting
+        both collapses to the shared server, so only that chip is returned.
+        """
+        if owner_user_id is None or owner_user_id == viewer_user_id:
+            return list(requested)
+        aliases = self.shared_custom_harness_aliases(owner_user_id)
+        short_to_long = {short: long for long, short in aliases.items()}
+        active = set(harness_names)
+        out: list[str] = []
+        for name in requested:
+            mapped = aliases.get(name, name)
+            if mapped not in active:
+                continue
+            shared_label = short_to_long.get(mapped)
+            shown = shared_label if shared_label is not None and shared_label in requested else name
+            if shown not in out:
+                out.append(shown)
         return out
 
     def list_active_mcp_server_names(self, user_id: int) -> list[str]:
@@ -596,6 +768,7 @@ class ConnectorService:
         *,
         apply_defaults: bool | None = None,
         extra_defaults: list[str] | None = None,
+        agent_owner_id: int | None = None,
     ) -> list[str] | None:
         """Resolve turn MCP servers vs the user's default_open set.
 
@@ -604,13 +777,30 @@ class ConnectorService:
         defaults when the job has no picks; explicit Cron picks win as-is.
         ``extra_defaults`` (expert composer picks) are unioned with default_open
         when defaults apply, but only names still available to *user_id*.
+
+        When ``agent_owner_id`` is another user, an expert pick stored under the
+        owner's short custom-MCP name is returned as the viewer's catalog name
+        (``custom__...``) when that server is shared. Callers translate to the
+        harness short name only when building the model request.
         """
+        aliases: dict[str, str] = {}
+        if agent_owner_id is not None and agent_owner_id != user_id:
+            aliases = self.shared_custom_harness_aliases(agent_owner_id)
         defaults = list(self.list_default_open_mcp_server_names(user_id))
         if extra_defaults:
             allowed = set(self.list_active_mcp_server_names(user_id))
+            short_to_long = {short: long for long, short in aliases.items()}
             for name in extra_defaults:
                 text = str(name).strip()
-                if text and text in allowed and text not in defaults:
+                if not text:
+                    continue
+                viewer_name = short_to_long.get(text)
+                # The viewer's own server can share the short name. Keep the
+                # shared server under its catalog name instead of skipping it.
+                if viewer_name is not None and viewer_name in allowed:
+                    if viewer_name not in defaults:
+                        defaults.append(viewer_name)
+                elif text in allowed and text not in defaults:
                     defaults.append(text)
         return merge_mcp_servers_with_defaults(
             explicit,
@@ -871,3 +1061,19 @@ class ConnectorService:
         creds["cli_config_key"] = cli_key
         self.encrypt_and_store(instance_id=instance_id, payload=creds)
         return {**result, "cli_config_key": cli_key, "default_as": "user"}
+
+
+async def _token_rejected(url: str, headers: dict[str, str], *, kind: str) -> bool:
+    """True only when the MCP server answers 401/403; anything else is not an auth problem."""
+    if not url:
+        return False
+    from octop.infra.connectors.probe import probe_streamable_http_mcp
+
+    try:
+        result = await asyncio.wait_for(
+            probe_streamable_http_mcp(url, headers, kind=kind), timeout=30
+        )
+    except Exception:
+        logger.warning("auth probe failed for %s", kind, exc_info=True)
+        return False
+    return result.get("error_type") == "auth"

@@ -421,3 +421,58 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     assert titled is not None
     assert titled.title == "喝水提醒"
     db.close()
+
+
+@pytest.mark.asyncio
+async def test_telegram_cron_reloads_topic_routing_from_persisted_session(tmp_path: Path) -> None:
+    from octop_gateway.models import ChannelSubject, InboundMessage
+
+    from octop.infra.gateway.gateway import Gateway
+    from octop.infra.gateway.process.message_keys import (
+        sanitize_im_metadata,
+        session_key_from_message,
+    )
+
+    db, _ = _seed_dashboard_thread(tmp_path, thread_id="dashboard-thread")
+    sessions = SessionRepo(db)
+    registry = ThreadRegistry(session_repo=sessions, thread_repo=ThreadRepo(db))
+    inbound = InboundMessage(
+        channel_type="telegram",
+        channel_id="telegram-bot",
+        content=[],
+        channel_subject=ChannelSubject(subject_id="-100123", chat_type="group"),
+        metadata={
+            "chat_id": "-100123",
+            "chat_type": "group",
+            "message_thread_id": 42,
+            "topic_isolation": True,
+            "message_id": 999,
+        },
+    )
+    key = session_key_from_message(inbound, agent_id="a1")
+    await registry.get_or_create_by_key(
+        session_key=key,
+        agent_id="a1",
+        user_id=1,
+        channel_type="telegram",
+        channel_channel_id="telegram-bot",
+        channel_metadata=sanitize_im_metadata(inbound),
+    )
+    # Cron can create a fresh thread; routing must survive the reset and DB reload.
+    await registry.reset_by_session_key(key)
+    session = SessionRepo(db).get(key)
+    assert session is not None
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session.return_value = session
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    service = CronDeliveryService(gateway=gateway, agent_manager=MagicMock(), repos=MagicMock())
+    await service.deliver(_command(session_key=key))
+    delivered_session = gateway.push_session_text.call_args.args[0]
+    subject = Gateway._resolve_push_subject(gateway, delivered_session)
+    assert subject.metadata["chat_id"] == "-100123"
+    assert subject.metadata["message_thread_id"] == 42
+    assert subject.metadata["channel_id"] == "telegram-bot"
+    assert "message_id" not in subject.metadata
+    db.close()

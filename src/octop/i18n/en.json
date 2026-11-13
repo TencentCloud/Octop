@@ -56,13 +56,17 @@
       "card_title": "⚠️ Tool approval required",
       "card_intro": "The agent wants to run the following tool(s):",
       "action_line": "{index}. **{name}**",
-      "card_footer": "Reply with `/approve` to allow, or `/reject [reason]` to deny.",
+      "card_footer": "Reply \"approve\" to allow once, \"allow this tool\" to allow that tool for this chat, \"allow all\" to allow later approvals in this chat, \"reject\" to deny, or \"ask again\" to require approval every time. `/approve` and `/reject` also work.",
       "card_pending_id": "Approval ID: `{pending_id}` (valid for 30 minutes)",
       "none_pending": "No pending tool approval for this conversation.",
       "invalid_pending_id": "No pending approval with ID `{pending_id}`. Use `/pending` to list or `/approve` without an ID for the latest.",
       "not_owner": "Only the user who started this turn can approve or reject.",
       "expired": "This approval request has expired. Send a new message to retry.",
       "approved_ack": "Approved. Continuing…",
+      "approved_tool_ack": "Approved. This tool will not ask again in this chat.",
+      "approved_all_ack": "Approved. Later tool approvals in this chat will be allowed automatically. Questions still ask.",
+      "reset_ack": "Approval is required again for every tool.",
+      "reset_pending_ack": "Approval is required again for every tool. This one still needs approve or reject.",
       "rejected_ack": "Rejected. Continuing…",
       "followup_pending": "Another tool is waiting for your approval.",
       "resume_failed": "Failed to resume after approval: {error}",
@@ -392,10 +396,11 @@
     "AUTH_FAILED": "Authentication failed.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
-    "DATABASE_NOT_EMPTY": "The target database already has users. Use an empty database, or log in with the existing admin.",
+    "DATABASE_NOT_EMPTY": "The target database already has users. On PostgreSQL, confirm to keep the existing accounts. On SQLite, choose an empty database.",
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
+    "BACKUP_CLIENT_MISSING": "PostgreSQL backup needs {tool}, which is not installed. Install the PostgreSQL client tools where Octop runs, then try again.",
     "FORBIDDEN": "Permission denied.",
     "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
@@ -416,6 +421,7 @@
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
+    "THREAD_CONTRIBUTE_REQUIRES_SHARE": "Only a shared expert can share a conversation with other users.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
@@ -433,17 +439,19 @@
     "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
     "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "Installed octop-gateway does not support these Telegram options. Install a compatible Gateway build before saving.",
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
     "CONNECTOR_NOT_FOUND": "Connector not found.",
     "CONNECTOR_NAME_TAKEN": "This connector name is already in use. Please choose another.",
     "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "Octop is currently being accessed over public HTTP, but MCP OAuth callbacks require HTTPS. Use HTTPS, or access Octop locally through localhost or 127.0.0.1.",
     "CONNECTOR_MCP_URL_INVALID": "Invalid MCP server URL: {reason}",
-    "CONNECTOR_MCP_HTTPS_REQUIRED": "Public MCP server URLs must use HTTPS. Local and LAN addresses may use HTTP.",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "\"{host}\" is treated as a public address and must use HTTPS. HTTP is only allowed for loopback, private IPs, and hostnames such as localhost, .local, .internal, or *.docker.internal.",
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
     "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {servers}",
+    "CONNECTOR_AUTH_REQUIRED": "Connector(s) need authorization before use: {servers}",
     "BRIDGE_NOT_FOUND": "Cloud collab connection not found.",
     "BRIDGE_AUTH_FAILED": "Peer Octop rejected the credentials. Check the address, username, and password — or use Probe to verify the account first.",
     "BRIDGE_PEER_UNREACHABLE": "Could not reach the peer Octop instance. Confirm the URL is reachable, credentials are correct, and the peer has cloud collab support (needs /api/bridge/ws). If the peer is behind NAT, initiate the link from the side that can reach the other.",
@@ -455,7 +463,10 @@
     "BRIDGE_CONNECTION_LIMIT": "At most {limit} cloud collab connections per user. Delete one to add another.",
     "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
+    "BRIDGE_PEER_FORBIDDEN": "The account you signed in with on the peer does not have Cloud collab permission. This is not limited to admins — grant that account Cloud collab on the peer, or sign in with an account that already has it.",
+    "BRIDGE_PEER_CONNECTION_OWNED": "The peer already registered this cloud collab link to another user, so this account cannot take it over. Ask that user to delete it, or sign in with the same peer account. If the address actually points at this Octop, use the peer's real address instead.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "CRON_ALREADY_RUNNING": "This task is already running on another instance.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
     "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",
@@ -486,12 +497,16 @@
     "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
     "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
+    "LDAP_NOT_CONFIGURED": "Save LDAP settings before creating a directory account.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
+    "NETWORK_ERROR": "Network error. Check your connection and try again.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect.",
+    "BROWSER_NOT_ENABLED": "The browser is installed but not enabled. Confirm it on the Remote Browser page.",
     "PLUGIN_INVALID_ARCHIVE": "The download is not a valid plugin ZIP. Use a direct .zip download URL (on GitHub use raw.githubusercontent.com or the “Download” / “raw” link, not the /blob/ page).",
     "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
+    "PLUGIN_MARKET_FAILED": "Plugin market is temporarily unavailable. Please try again later.",
     "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed.",
     "KNOWLEDGE_FEATURE_DISABLED": "Knowledge bases are disabled by the administrator.",
     "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "The knowledge-base embedding components were installed but cannot be loaded by this process yet. Restart the server for them to take effect.",
@@ -504,6 +519,10 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
+    "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
+    "KNOWLEDGE_RERANK_NOT_READY": "The selected rerank model is not available. Choose an enabled provider that offers a rerank model.",
+    "KNOWLEDGE_MOVE_BUSY": "Some of these documents are still being indexed. Move them to another knowledge base once indexing finishes.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -521,6 +540,7 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({used}/{quota}).",
+    "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {types}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
     "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
@@ -532,7 +552,14 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "MFA_INVALID": "Authentication challenge failed. Try again.",
+    "MFA_LOCKED": "Too many MFA attempts. Try again later.",
+    "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
+    "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
+    "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -637,6 +664,7 @@
     "agent_list": "List experts",
     "ask_agent": "Ask expert",
     "call_agent": "Call expert",
+    "call_deferred_tool": "Call on demand",
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
@@ -689,7 +717,8 @@
     "runtime": {
       "disabled": "Channel disabled",
       "unregistered": "Not registered",
-      "error": "Connection failed"
+      "error": "Connection failed",
+      "other_instance": "Managed by another instance"
     },
     "probe": {
       "incomplete": "Incomplete credentials: missing {fields}",
@@ -714,6 +743,21 @@
       "discord_connection_failed": "Discord connection failed. Check the network, proxy and bot configuration.",
       "discord_disconnected": "Discord is disconnected or reconnecting.",
       "discord_proxy_auth_invalid": "Proxy authentication must use user:password."
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "This card has expired. Please ask again.",
+        "question_index_changed": "The question has changed. Please use the new card.",
+        "user_mismatch": "This card does not belong to the current session.",
+        "owner_changed": "This card does not belong to the current session.",
+        "model_unavailable": "This model is no longer available. Please choose again.",
+        "thread_rebound": "The conversation has changed. Please try again.",
+        "default": "The action did not take effect. Please try again."
+      },
+      "quote": {
+        "header": "[Quoted message]",
+        "current": "[Current message]"
+      }
     }
   },
   "threads": {
@@ -751,6 +795,7 @@
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
     "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
+    "model_not_authorized": "This API key is not authorized to use model {model}. Grant access for this model on the Tencent Cloud API Key page, or switch to a model this key can use under Admin → Model Management.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
@@ -1009,6 +1054,10 @@
         "prompt": {
           "system": "You are a prompt editor, not an assistant that answers questions.\nThe user message is a DRAFT PROMPT they will later send to another AI. Your only job is to rewrite that draft so another AI can understand it more clearly — improve clarity, specificity, structure, and actionable detail.\nHard rules:\n- Do NOT answer the draft, solve the task, or provide the requested content.\n- Do NOT add explanations, greetings, or meta commentary.\n- Preserve the user's original intent and language (e.g. keep Chinese if the draft is Chinese).\n- Output ONLY the rewritten prompt text — no preamble, labels, quotes, thinking blocks, or XML tags.",
           "user": "Rewrite the following draft prompt. Do not answer it.\n\n---\n{text}\n---"
+        },
+        "thread_title": {
+          "system": "You write a short conversation title for a chat thread.\nHard rules:\n- Output ONLY the title text. No quotes, labels, markdown, or commentary.\n- Use the same language as the user's message.\n- Summarize the intent in a few words. Do not answer the message.\n- Stay within 20 Chinese characters or 8 English words, and never exceed 40 characters.",
+          "user": "Write a conversation title for this first message.\n\n---\n{text}\n---"
         }
       },
       "expert": {
@@ -1110,5 +1159,69 @@
         }
       }
     }
+  },
+  "ragflow": {
+    "invalid_base_url": "RAGFlow service URL must not contain credentials, a query string, or a fragment.",
+    "invalid_dataset_ids": "RAGFlow dataset IDs must be a comma-separated string or a list of IDs containing only letters, digits, underscores, and hyphens.",
+    "api_key_required": "A valid RAGFlow API Key is required.",
+    "http_error": "RAGFlow request failed: HTTP {status}.",
+    "network_error": "Unable to reach RAGFlow. Check the service URL and network connection.",
+    "invalid_response": "RAGFlow returned an invalid API response.",
+    "api_error": "RAGFlow request failed: {reason}",
+    "query_required": "A search query is required.",
+    "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
+    "invalid_id": "A valid {field} is required.",
+    "unknown_tool": "Unknown RAGFlow tool: {name}"
+  },
+  "migrate": {
+    "not_found": "No {source} installation was found. Pass its directory with --from.",
+    "nothing": "Nothing to migrate was found in {home}.",
+    "title": "{source} ({home}) → expert {agent}",
+    "column": {
+      "section": "Section",
+      "item": "Item",
+      "status": "Status",
+      "note": "Note"
+    },
+    "section": {
+      "models": "Models",
+      "files": "Workspace files",
+      "skills": "Skills",
+      "mcp": "MCP servers",
+      "channels": "Channels"
+    },
+    "status": {
+      "migrated": "migrated",
+      "would_migrate": "would migrate",
+      "skipped": "skipped",
+      "failed": "failed"
+    },
+    "reason": {
+      "exists": "already exists",
+      "no_api_key": "no API key found; add it in Model settings",
+      "default_model": "the default model",
+      "default_model_set": "the default model is already {detail}",
+      "channel_disabled": "left disabled; stop the old bot, then enable it",
+      "invalid_name": "not a valid skill name",
+      "too_large": "larger than 20 MB",
+      "name_reserved": "the name is used by a built-in connector",
+      "invalid": "{detail}"
+    },
+    "note": {
+      "config_missing": "Config file not found: {path}",
+      "config_unreadable": "Could not read {path}: {error}",
+      "include_missing": "Included config file not found: {path}",
+      "provider_unsupported": "Provider {name} ({api}) has no Octop equivalent and was not migrated.",
+      "provider_key_missing": "No API key was found for provider {name}; add the provider in Model settings.",
+      "mcp_sse_unsupported": "MCP server {name} uses the SSE transport, which custom MCP does not support.",
+      "channel_unsupported": "Channel {name} is not available in Octop.",
+      "channel_credentials_missing": "Channel account {name} has no readable credentials.",
+      "extra_agents": "Other agents are not migrated ({count} found); only the default workspace is read.",
+      "cron_not_migrated": "Scheduled jobs are not migrated ({count} found); recreate them with `octop cron create`."
+    },
+    "summary": "{migrated} migrated, {skipped} skipped, {failed} failed.",
+    "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
+    "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
+    "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
   }
 }

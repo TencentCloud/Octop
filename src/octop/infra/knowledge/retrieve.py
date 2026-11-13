@@ -11,7 +11,9 @@ from octop.i18n import tr
 from octop.infra.knowledge.citations import append_citations_marker, citations_from_ranked
 from octop.infra.knowledge.embed import embed_knowledge_texts
 from octop.infra.knowledge.gate import assert_knowledge_usable
-from octop.infra.knowledge.index import Hit, KnowledgeIndex
+from octop.infra.knowledge.index import Hit
+from octop.infra.knowledge.plane import open_knowledge_index
+from octop.infra.knowledge.rerank import candidate_count, get_rerank_capability, rerank_scores
 
 DEFAULT_RETRIEVAL_K = 8
 DEFAULT_CONTEXT_CHAR_BUDGET = 6000
@@ -81,6 +83,11 @@ def _retrieve_context_sync(
         )
     visible_by_id = {base.id: base for base in visible}
     selected_ids = _unique_ids(knowledge_base_ids)
+    rerank = get_rerank_capability(
+        services.settings_repo.get, getattr(services, "provider_repo", None)
+    )["usable"]
+    # A reranker needs more than ``k`` candidates to be worth asking.
+    fetch_k = candidate_count(k) if rerank else k
 
     ranked: list[tuple[Any, Hit, Any]] = []
     for kb_id in selected_ids:
@@ -92,13 +99,30 @@ def _retrieve_context_sync(
             for document in services.knowledge_repo.list_documents(kb_id)
             if document.status == "ready" and not document.is_dir
         }
-        for hit in KnowledgeIndex(kb_id).search(query_vectors[0], k=k):
+        for hit in open_knowledge_index(services, kb_id).search(query_vectors[0], k=fetch_k):
             document = ready_documents.get(hit.doc_id)
             if document is not None:
                 ranked.append((base, hit, document))
 
     ranked.sort(key=lambda item: item[1].score, reverse=True)
+    if rerank:
+        ranked = _rerank(services, (query or "").strip(), ranked[:fetch_k])
     return _format_context(ranked[:k], char_budget=char_budget, locale=locale)
+
+
+def _rerank(
+    services: Any, query: str, ranked: list[tuple[Any, Hit, Any]]
+) -> list[tuple[Any, Hit, Any]]:
+    """Reorder candidates by reranker relevance; keep the vector order if it fails."""
+    try:
+        scores = rerank_scores(services, query, [hit.text for _, hit, _ in ranked])
+    except Exception:
+        logger.warning("knowledge rerank failed; using vector order", exc_info=True)
+        return ranked
+    if scores is None:
+        return ranked
+    order = sorted(range(len(ranked)), key=lambda index: scores[index], reverse=True)
+    return [ranked[index] for index in order]
 
 
 def _unique_ids(ids: Sequence[str]) -> list[str]:
@@ -109,6 +133,7 @@ def _format_context(
     ranked: Sequence[tuple[Any, Hit, Any]], *, char_budget: int, locale: str
 ) -> str:
     sections: list[str] = []
+    included: list[tuple[Any, Hit, Any]] = []
     remaining = char_budget
     for base, hit, document in ranked:
         citation = tr(
@@ -125,8 +150,9 @@ def _format_context(
             continue
         section = f"{citation}{text}"
         sections.append(section)
+        included.append((base, hit, document))
         remaining -= len(section)
     if not sections:
         return ""
     body = tr("knowledge.retrieval.preamble", locale) + "\n\n" + "\n\n".join(sections)
-    return append_citations_marker(body, citations_from_ranked(ranked))
+    return append_citations_marker(body, citations_from_ranked(included))
