@@ -299,6 +299,8 @@ an optional display label; when omitted, the server derives one from
 | `PATCH`  | `/providers/{id}` | owner | body subset → updated row |
 | `DELETE` | `/providers/{id}` | owner | `204` (refuses if any agent references it) |
 | `POST`   | `/providers/{id}/test` | user | `{ok, latency_ms?, error?}` (one-token ping with 10 s timeout) |
+| `GET`    | `/admin/providers/magpie/discovery` | providers | Local Magpie hello on the Octop host. `{available, base_url, version}`. Misses stay `available: false` and omit the upstream body. No URL parameter. |
+| `POST`   | `/admin/providers/fetch-models` | providers | OpenAI-compatible `GET /models` for a draft. Magpie responses keep model ids and optional capability fields. |
 | `POST`   | `/admin/providers` | admin | same body as user POST; row has `user_id = NULL` |
 | `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
 | `DELETE` | `/admin/providers/{id}` | admin | `204` |

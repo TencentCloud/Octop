@@ -55,6 +55,43 @@ _MODEL_NOT_FOUND_MARKERS = (
     "does not exist",
     "no such model",
 )
+_TRANSPORT_TYPE_NAMES = frozenset(
+    {
+        "APIConnectionError",
+        "APITimeoutError",
+        "ConnectError",
+        "ConnectTimeout",
+        "ReadTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+        "NetworkError",
+        "RemoteProtocolError",
+    }
+)
+
+
+def _exception_chain(exc: BaseException) -> list[BaseException]:
+    seen: set[int] = set()
+    chain: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(current)
+        nxt = current.__cause__
+        if nxt is None and not current.__suppress_context__:
+            nxt = current.__context__
+        current = nxt
+    return chain
+
+
+def _is_transport_failure(exc: BaseException) -> bool:
+    """True for httpx/OpenAI connection wrappers, not only builtin ConnectionError."""
+    for item in _exception_chain(exc):
+        if isinstance(item, TimeoutError | ConnectionError):
+            return True
+        if type(item).__name__ in _TRANSPORT_TYPE_NAMES:
+            return True
+    return False
 
 
 def classify_model_failure(exc: Exception) -> FailureDecision:
@@ -79,7 +116,7 @@ def classify_model_failure(exc: Exception) -> FailureDecision:
             classified.rsplit(".", 1)[-1],
             FailureScope.MODEL,
         )
-    if isinstance(exc, TimeoutError | ConnectionError):
+    if isinstance(exc, TimeoutError | ConnectionError) or _is_transport_failure(exc):
         return FailureDecision(True, type(exc).__name__.lower(), FailureScope.MODEL)
     return FailureDecision(False, "request_error", FailureScope.NONE)
 
