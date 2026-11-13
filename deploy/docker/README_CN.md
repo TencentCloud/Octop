@@ -14,6 +14,7 @@
 | `docker-compose.yml` | 本地开发 / 自托管一键启动 |
 | `docker-compose.cn.yml` | 同一套服务，拉取 `ghcr.nju.edu.cn/tencentcloud/octop:latest`（不本地构建） |
 | `docker-compose.postgres.yml` | 仅 PostgreSQL（+ pgvector）开发/测试库；扩展在 `postgres/init-vector.sql` |
+| `docker-compose.cluster.yml` | 实验用：一台 PostgreSQL 加两个数据目录分开的 Octop |
 | `postgres/init-vector.sql` | 实例级 `CREATE EXTENSION vector`（initdb.d；**不**进 Octop 迁移） |
 | `docker-entrypoint.sh` | 容器入口：首次初始化数据库并启动服务 |
 
@@ -24,7 +25,7 @@
 在仓库根目录执行：
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 
 访问 `http://localhost:8088`。设置了合格的 `OCTOP_DEFAULT_PASSWORD`（≥8 位且同时包含字母和数字）时，首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置，或密码被策略拒绝（过短、缺字母/数字、常见弱密码）时，**不**自动建账号，打开页面走设置向导；向导口令在 `/data/.octop/octop-login.txt`（`credential.txt` 里也有说明）。在向导里自行设置管理员密码。
@@ -34,7 +35,7 @@ Compose 将多 agent 服务的文件描述符限制设为 65535。服务启动�
 **方式二：构建脚本**
 
 ```bash
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   --name octop \
   --ulimit nofile=65535:65535 \
@@ -55,7 +56,7 @@ PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
 PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
 NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
 APT_MIRROR=mirrors.cloud.tencent.com \
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 ```
 
 ### 常用环境变量
@@ -71,7 +72,7 @@ bash docker/docker_build.sh
 | `OPENAI_API_KEY` | — | OpenAI 兼容 API Key |
 | `DASHSCOPE_API_KEY` | — | 阿里云通义千问 API Key |
 
-Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
+Compose 可在 `deploy/docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
 
 ### Node.js
 
@@ -94,6 +95,10 @@ Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 C
 - `docker run` 示例使用命名卷 `octop-data`
 - 首次启动：`OCTOP_DEFAULT_PASSWORD` 合格则执行 `octop init` 并写入 `credential.txt`；未设置或不合格则不建管理员，向导口令写入 `/data/.octop/octop-login.txt`，打开页面完成设置（容器不会因弱密码退出）。
 
+### Kubernetes
+
+多副本、共用 PostgreSQL（含 pgvector）和统一入口的清单在 [../k8s/README_CN.md](../k8s/README_CN.md)。
+
 ### 健康检查
 
 镜像内置 `HEALTHCHECK`，探测 `GET /api/health`：
@@ -107,6 +112,6 @@ curl http://localhost:8088/api/health
 ```bash
 docker logs -f octop
 docker exec -it octop octop --version
-docker compose -f docker/docker-compose.yml down
-docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f deploy/docker/docker-compose.yml down
+docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```

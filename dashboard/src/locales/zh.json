@@ -151,6 +151,7 @@
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "当前安装的 octop-gateway 不支持这些 Telegram 选项。请先安装兼容的 Gateway 构建再保存。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",
@@ -251,6 +252,7 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
+    "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{{types}}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
     "CONFIG_FILE_CORRUPT": "无法更新 {{path}}：该文件不是合法 JSON（{{detail}}）。请修正语法后重试；现有配置未被改动。",
@@ -1212,11 +1214,12 @@
       "degraded": "未能安装 bubblewrap（{{detail}}）。配置已保存；execute 将使用普通本地 shell（无目录狱）。"
     },
     "backendPlaceholder": "选择存储后端类型",
+    "backendAllowedEmpty": "已允许 {{types}}，但还没有可用的存储连接。请先在存储后端中创建对应类型的连接。",
     "backendModes": {
-      "localShell": "本地完整环境（文件系统+指令执行）",
+      "localShell": "本地完整环境",
       "localShellDesc": "可读写文件并执行 Shell 指令，权限范围最大。",
       "localShellWarning": "⚠️ 此模式可访问主机完整环境，请仅在信任的场景下使用。",
-      "filesystem": "本地文件系统（不能执行指令）",
+      "filesystem": "本地文件系统",
       "filesystemDesc": "仅在专家的工作区目录内读写文件，不能执行 Shell 指令。",
       "state": "会话状态（不实际操作文件和执行指令）",
       "stateDesc": "进程内临时状态存储，不读写真实文件、不执行指令，重启后数据不保留。",
@@ -2670,6 +2673,32 @@
     "label_agentchat": "AgentChat",
     "label_xiaoyi": "小艺",
     "label_mqtt": "MQTT",
+    "telegram_group_activation": "群聊触发方式",
+    "telegram_allowed_user_ids": "允许的用户 ID",
+    "telegram_allowed_chat_ids": "允许的聊天 ID",
+    "telegram_allow_unaddressed_commands": "允许无机器人后缀的命令",
+    "telegram_topic_isolation": "按话题隔离会话",
+    "telegram_reply_to_message": "引用原消息回复",
+    "telegram_edited_messages": "处理编辑后的消息",
+    "telegram_streaming_mode": "Telegram 流式模式",
+    "telegram_status_reactions": "状态表情回应",
+    "telegram_disable_notification": "静默发送",
+    "telegram_protect_content": "保护发送内容",
+    "telegram_link_preview": "链接预览",
+    "telegram_command_menu": "注册命令菜单",
+    "telegram_albums": "聚合相册",
+    "telegram_audio_as_voice": "将音频作为语音发送",
+    "telegram_group_activationHelp": "默认值与 Gateway 一致：接收所有群消息和未指定机器人的命令。可选择提及或回复以限制触发。Telegram 隐私模式也会影响机器人能收到的消息。",
+    "telegram_topic_isolationHelp": "切换隔离方式会使用独立会话，已有历史保留在原会话。",
+    "telegramSetupHelp": "这些选项需要兼容的 Gateway 版本，保存时会拒绝不支持的选项。单选问题和 /models 支持原生按钮，模型列表支持分页。多选问题使用文字回答。不支持切换 Agent；请为每个 Agent 配置独立渠道。",
+    "telegramInvalidChatIds": "请输入以逗号或空白分隔的整数聊天 ID，支持负数群 ID。",
+    "telegram_option_always": "所有消息",
+    "telegram_option_mention": "仅 @",
+    "telegram_option_mention_or_reply": "@ 或回复",
+    "telegram_option_off": "关闭",
+    "telegram_option_auto": "自动",
+    "telegram_option_edit": "编辑消息",
+    "telegram_option_draft": "私聊草稿",
     "label_telegram": "Telegram",
     "intro_agentchat": "通过 AgentChat 协议接入专家，适合内部联调，无需外部凭据。",
     "loading": "正在加载频道...",
@@ -4325,6 +4354,61 @@
     "disableFailed": "关闭失败，请检查密码是否正确",
     "logout": "退出登录"
   },
+  "onboarding": {
+    "skip": "跳过",
+    "back": "上一步",
+    "next": "下一步",
+    "start": "开始导览",
+    "later": "稍后再说",
+    "finish": "完成",
+    "progress": "第 {{current}} 步，共 {{total}} 步",
+    "keyboardHint": "← → 切换，Esc 退出",
+    "intro": {
+      "title": "欢迎使用 Octop",
+      "body": "跟着导览打开下面这些页面。随时可以退出，之后从左下角头像菜单的「新手引导」再看一遍。",
+      "duration": "共 {{count}} 步，约 1 分钟"
+    },
+    "done": {
+      "title": "导览完成",
+      "body": "核心功能都认识了。想再看一遍，点左下角头像，选「新手引导」。",
+      "chat": "开始对话",
+      "experts": "创建第一个专家"
+    },
+    "steps": {
+      "chat": {
+        "title": "对话",
+        "body": "这里是和专家聊天的地方。每位专家都是独立的 AI 助手，有自己的人设、工具和记忆，聊天记录按会话保存。",
+        "tip": "左侧会话列表可以随时切回之前的对话。"
+      },
+      "experts": {
+        "title": "专家",
+        "body": "用场景模板一键创建专家，模板预置了身份、人设和系统提示词；也可以从零开始配置。",
+        "tip": "新建专家后，回到「对话」页就能和它聊天。"
+      },
+      "models": {
+        "title": "模型配置",
+        "body": "专家要接入大模型才能工作。在这里添加模型服务商（OpenAI 兼容接口、Ollama 本地模型等），并选好默认模型。",
+        "tip": "至少启用一个模型，专家才能回复。",
+        "bodyMember": "模型服务由管理员统一接入，你可以直接使用他们开放的模型。",
+        "tipMember": "对话时在输入框的模型选择器里切换模型。"
+      },
+      "channels": {
+        "title": "通道",
+        "body": "把专家接入飞书、企业微信、钉钉、Telegram 等聊天工具，在平时用的聊天软件里直接和专家对话。",
+        "tip": "部分平台支持扫码一键创建机器人。"
+      },
+      "knowledgeBases": {
+        "title": "知识库",
+        "body": "上传文档建立知识库，专家在对话中可以检索并引用其中的内容。",
+        "tip": "知识库可以共享给同一实例的其他用户。"
+      },
+      "skillPackages": {
+        "title": "技能包",
+        "body": "技能包把一组技能打包成可复用的能力，创建或导入后挂载到专家上，专家就能使用这些技能。",
+        "tip": "一个技能包可以同时挂载到多位专家。"
+      }
+    }
+  },
   "account": {
     "myAccount": "我的账户",
     "settings": "个人设置",
@@ -4336,6 +4420,7 @@
     "themeLight": "浅色",
     "themeDark": "深色",
     "helpFeedback": "帮助与反馈",
+    "onboarding": "新手引导",
     "helpBuilding": "正在建设中",
     "projectUrl": "项目地址",
     "checkUpdates": "检查更新",
@@ -5853,7 +5938,7 @@
     "kindObs": "华为云 OBS",
     "kindTos": "火山引擎 TOS",
     "kindFilesystem": "本地文件系统",
-    "kindShell": "本地 Shell",
+    "kindShell": "本地完整环境",
     "kindPostgres": "PostgreSQL",
     "kindDocker": "Docker 沙箱",
     "kindOpensandbox": "OpenSandbox",
@@ -6379,6 +6464,9 @@
     "policyTokenQuotaPreview": "约 {{millions}} 百万 tokens（{{exact}}）",
     "policyMaxAgents": "专家数量上限",
     "policyMaxAgentsHint": "该用户可创建的专家数量（不含团队）。关闭表示不限制。",
+    "policyAllowedBackendTypes": "可用后端类型",
+    "policyAllowedBackendTypesHint": "限制该用户创建专家时可以选择的后端类型，包括内置后端和已配置存储的类型。关闭表示不额外限制。",
+    "policyAllowedBackendTypesRequired": "请至少选择一种后端类型",
     "policyMaxAgentsRequired": "请输入专家数量上限",
     "policyMaxAgentsPlaceholder": "例如 5",
     "modalEditTitle": "编辑用户 {{username}}",
