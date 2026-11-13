@@ -4365,7 +4365,7 @@
     "keyboardHint": "← → to move, Esc to exit",
     "intro": {
       "title": "Welcome to Octop",
-      "body": "Octop is a self-hosted AI assistant platform. The tour opens each of the pages below and shows what it is for. Leave any time, and replay it later from Getting started in your account menu.",
+      "body": "Follow the tour through the pages below. Leave any time, and replay it later from Getting started in your account menu.",
       "duration": "{{count}} steps, about a minute"
     },
     "done": {
