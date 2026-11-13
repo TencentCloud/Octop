@@ -27,7 +27,7 @@ import {
   Typography,
 } from "antd";
 import type { TableColumnsType } from "antd";
-import { KeyRound, Plus } from "lucide-react";
+import { KeyRound, Plus, Terminal, Trash2, UserRoundCog } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -555,13 +555,14 @@ export default function McpAccess() {
     {
       title: t("memory.mcp.columnActions", "操作"),
       key: "actions",
-      width: 220,
+      width: 276,
       render: (_: unknown, token) => (
         <Space size={4} wrap>
           <Button
             type="link"
             size="small"
             aria-label={t("memory.mcp.command", "接入配置")}
+            icon={<Terminal size={14} />}
             disabled={!!token.revoked_at}
             onClick={() => handleCommandClick(token)}
             style={ACTION_TEXT_STYLE}
@@ -572,6 +573,7 @@ export default function McpAccess() {
             type="link"
             size="small"
             aria-label={t("memory.mcp.switchExpert", "切换专家")}
+            icon={<UserRoundCog size={14} />}
             disabled={!!token.revoked_at}
             onClick={() => openSwitchExpert(token)}
             style={ACTION_TEXT_STYLE}
@@ -595,6 +597,7 @@ export default function McpAccess() {
               type="link"
               size="small"
               aria-label={t("memory.mcp.revoke", "撤销")}
+              icon={<Trash2 size={14} />}
               loading={revokingId === token.token_id}
               disabled={!!token.revoked_at}
               style={ACTION_TEXT_STYLE}
@@ -668,6 +671,7 @@ export default function McpAccess() {
           dataSource={tokens}
           pagination={false}
           expandable={{ expandedRowRender: renderClients, columnWidth: 48 }}
+          scroll={{ x: 1120 }}
           locale={{
             emptyText: (
               <Empty
