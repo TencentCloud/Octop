@@ -163,6 +163,57 @@ class TeamManager:
 
     # -- ask_agent session (member page) -------------------------------------
 
+    async def _member_turn_mcp(self, agent_id: str, uid: int | None) -> list[str] | None:
+        """Resolve and preload the member expert's connectors for one peer turn.
+
+        Peer requests are built by the harness without MCP fields, so
+        ``ChatRequest.mcp_servers`` stays ``None`` and the MCP middleware
+        strips every connector tool from the member turn — connectors that
+        work on the expert's own 1:1 chat silently stop working in the team
+        (issue #2615). Mirror the direct-chat resolution with the chatting
+        user as connector scope; failures degrade to a tool-less turn the
+        same way a flaky IM connector does.
+        """
+        if uid is None:
+            return None
+        from octop.infra.agents.teams import is_team_agent
+
+        row = self._agent_manager.get_row(agent_id)
+        if row is None or is_team_agent(row):
+            return None
+        extra_defaults = self._agent_manager.default_mcp_servers(agent_id)
+        merged = self._agent_manager.merge_turn_mcp_servers(
+            uid,
+            None,
+            apply_defaults=True,
+            extra_defaults=extra_defaults,
+        )
+        if not merged:
+            return None
+        try:
+            failed = await self._agent_manager.prepare_chat_mcp(
+                agent_id,
+                merged,
+                connector_user_id=uid,
+            )
+        except Exception:
+            logger.warning(
+                "member turn MCP prepare crashed agent=%s uid=%s",
+                agent_id,
+                uid,
+                exc_info=True,
+            )
+            return None
+        if failed:
+            logger.warning(
+                "member turn MCP load failed agent=%s uid=%s servers=%s",
+                agent_id,
+                uid,
+                ", ".join(failed),
+            )
+            return None
+        return merged
+
     async def prepare_peer_session(self, call: PeerCall) -> PeerSession | None:
         """Open the member thread and stash the host's rewritten assignment."""
         thread_id = (
@@ -174,6 +225,14 @@ class TeamManager:
         uid = _octop_user_id(call.user_id)
         group = self._is_group_dispatch(call)
         extra = self._member_runtime(call)
+        servers = await self._member_turn_mcp(call.to_agent_id, uid)
+        if not servers:
+            if extra is None:
+                extra = None
+        else:
+            if extra is None:
+                extra = {}
+            extra["mcp_servers"] = list(servers)
         question = ""
         dispatch_message = None
         if group:

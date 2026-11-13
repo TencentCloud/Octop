@@ -2341,3 +2341,89 @@ def test_stamp_stream_speaker_sets_agent_alias() -> None:
     )
     assert member["agent_id"] == "doctor"
     assert member["agent"] == "doctor"
+
+
+@pytest.mark.asyncio
+async def test_prepare_peer_session_stamps_member_connectors(processor_env: dict) -> None:
+    """Issue #2615: a member expert's configured connectors ride the peer turn.
+
+    The harness builds peer ChatRequests without MCP fields, so without this
+    stamp the MCP middleware strips every connector tool in team rooms even
+    when the same expert can use it on their own 1:1 chat.
+    """
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    parent_sk = processor_env["parent_sk"]
+    am = processor._agent_manager
+    am.default_mcp_servers = MagicMock(return_value=["weather"])
+    am.merge_turn_mcp_servers = MagicMock(return_value=["weather", "docs"])
+    am.prepare_chat_mcp = AsyncMock(return_value=[])  # nothing failed to load
+
+    prepared = await processor.prepare_peer_session(
+        PeerCall(
+            from_agent_id="parent",
+            to_agent_id="child",
+            user_id=1,
+            message="hello",
+            source_thread_id="thr_parent",
+            source_session_key=str(parent_sk),
+        )
+    )
+    assert prepared is not None
+    assert prepared.configurable.get("mcp_servers") == ["weather", "docs"]
+    am.prepare_chat_mcp.assert_awaited_once_with("child", ["weather", "docs"], connector_user_id=1)
+
+
+@pytest.mark.asyncio
+async def test_prepare_peer_session_skips_connectors_for_team_callee(processor_env: dict) -> None:
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    parent_sk = processor_env["parent_sk"]
+    am = processor._agent_manager
+    am.default_mcp_servers = MagicMock(return_value=["weather"])
+    am.merge_turn_mcp_servers = MagicMock(return_value=["weather"])
+    am.prepare_chat_mcp = AsyncMock(return_value=[])  # unused short-circuit
+
+    prepared = await processor.prepare_peer_session(
+        PeerCall(
+            from_agent_id="parent",
+            to_agent_id="other-team",
+            user_id=1,
+            message="hello",
+            source_thread_id=None,
+            source_session_key=str(parent_sk),
+        )
+    )
+    assert prepared is not None
+    has_mcp = bool(prepared.configurable and prepared.configurable.get("mcp_servers"))
+    assert not has_mcp
+    am.prepare_chat_mcp.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prepare_peer_session_connector_load_failure_degrades_to_none(
+    processor_env: dict,
+) -> None:
+    from octop_harness.teams.util import PeerCall
+
+    processor = processor_env["processor"]
+    parent_sk = processor_env["parent_sk"]
+    am = processor._agent_manager
+    am.default_mcp_servers = MagicMock(return_value=["weather"])
+    am.merge_turn_mcp_servers = MagicMock(return_value=["weather"])
+    am.prepare_chat_mcp = AsyncMock(return_value=["weather"])  # failed to load
+
+    prepared = await processor.prepare_peer_session(
+        PeerCall(
+            from_agent_id="parent",
+            to_agent_id="child",
+            user_id=1,
+            message="hello",
+            source_thread_id="thr_parent",
+            source_session_key=str(parent_sk),
+        )
+    )
+    assert prepared is not None
+    assert prepared.configurable is None or "mcp_servers" not in (prepared.configurable or {})
