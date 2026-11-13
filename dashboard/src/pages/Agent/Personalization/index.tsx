@@ -241,10 +241,10 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "memory"}
           >
             {isMobile ? (
-              <MemoryPanel agentId={activeAgentId} fill={false} showMcpTab />
+              <MemoryPanel agentId={activeAgentId} fill={false} />
             ) : (
               <div className={pageShellStyles.fillChild}>
-                <MemoryPanel agentId={activeAgentId} fill showMcpTab />
+                <MemoryPanel agentId={activeAgentId} fill />
               </div>
             )}
           </div>

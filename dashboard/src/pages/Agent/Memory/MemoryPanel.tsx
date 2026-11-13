@@ -10,7 +10,6 @@ import {
   Bell,
   Heart,
   Inbox,
-  KeyRound,
   LayoutDashboard,
   MessageSquare,
   Network,
@@ -34,7 +33,6 @@ import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
 import StrongMemory from "./StrongMemory";
-import McpAccess from "./McpAccess";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import styles from "./index.module.less";
@@ -126,12 +124,6 @@ const TABS: TabDef[] = [
     icon: Bell,
   },
   {
-    key: "mcp",
-    labelKey: "memory.tabs.mcp",
-    fallback: "终端接入",
-    icon: KeyRound,
-  },
-  {
     key: "settings",
     labelKey: "memory.tabs.settings",
     fallback: "设置",
@@ -144,13 +136,11 @@ export interface MemoryPanelProps {
   /** Stretch tabs to fill parent height (desktop PageShell / drawer). */
   fill?: boolean;
   /** Show the user-level "MCP access" tab (personal memory page only). */
-  showMcpTab?: boolean;
 }
 
 export default function MemoryPanel({
   agentId,
   fill = true,
-  showMcpTab = false,
 }: MemoryPanelProps) {
   const { t } = useTranslation();
 
@@ -236,7 +226,7 @@ export default function MemoryPanel({
       </div>
     );
 
-    return TABS.filter((tab) => showMcpTab || tab.key !== "mcp").map((tab) => {
+    return TABS.map((tab) => {
       const showBadge = tab.showPendingBadge && pendingCount > 0;
       const label = (
         <TabLabel icon={tab.icon}>
@@ -318,22 +308,11 @@ export default function MemoryPanel({
         case "settings":
           children = <MemorySettings agentId={agentId} />;
           break;
-        case "mcp":
-          children = <McpAccess />;
-          break;
       }
 
       return { key: tab.key, label, children };
     });
-  }, [
-    agentId,
-    expandEntityId,
-    expandKey,
-    libraryView,
-    pendingCount,
-    showMcpTab,
-    t,
-  ]);
+  }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t]);
 
   if (!agentId) {
     return (

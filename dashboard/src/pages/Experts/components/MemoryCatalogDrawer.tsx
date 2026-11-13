@@ -37,7 +37,7 @@ export default function MemoryCatalogDrawer({
           overflow: "hidden",
         }}
       >
-        <MemoryPanel agentId={agentId || null} fill={!isMobile} showMcpTab />
+        <MemoryPanel agentId={agentId || null} fill={!isMobile} />
       </div>
     </CatalogDrawer>
   );

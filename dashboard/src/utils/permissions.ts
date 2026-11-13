@@ -99,6 +99,7 @@ export const NAV_PERMISSIONS = {
   experts: PERM.experts,
   tasks: PERM.tasks,
   "token-usage": PERM.tokenUsage,
+  tokens: PERM.memory,
   personalization: PERM.personalization,
   channels: PERM.channels,
   connectors: PERM.connectors,
@@ -233,6 +234,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   }
   if (pathname.startsWith("/admin/")) {
     return "admin";
+  }
+  if (pathname === "/tokens" || pathname.startsWith("/tokens/")) {
+    return PERM.memory;
   }
   if (pathname === "/channels" || pathname.startsWith("/channels/")) {
     return PERM.channels;

@@ -266,6 +266,7 @@
     "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
   },
   "nav": {
+    "tokens": "终端接入",
     "chat": "对话",
     "common": "常用",
     "control": "控制",

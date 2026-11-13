@@ -266,6 +266,7 @@
     "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
   },
   "nav": {
+    "tokens": "Terminal access",
     "chat": "Conversation",
     "common": "Common",
     "control": "Control",
