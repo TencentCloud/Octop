@@ -4532,7 +4532,7 @@
       "clientsUpdated": "已更新接入端设置",
       "clientsUpdateFailed": "更新接入端设置失败，请重试",
       "docsLink": "接入说明",
-      "command": "接入命令",
+      "command": "接入配置",
       "commandTitle": "重新生成接入命令",
       "commandMissingWarning": "Token 明文只在创建时显示一次，当前无法还原配置。重新生成会立即作废旧 Token，需要同步更新已配置的客户端。",
       "commandRegenerate": "重新生成并复制",

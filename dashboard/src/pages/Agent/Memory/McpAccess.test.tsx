@@ -360,7 +360,7 @@ describe("<McpAccess />", () => {
 
     // The second row (claude@laptop) is the one with a cached plaintext.
     const commandButtons = await screen.findAllByRole("button", {
-      name: /接入命令/,
+      name: /接入配置/,
     });
     await user.click(commandButtons[1]);
 
@@ -386,7 +386,7 @@ describe("<McpAccess />", () => {
     render(<McpAccess />);
     await screen.findByText("codex@macbook");
 
-    await user.click(screen.getByRole("button", { name: /接入命令/ }));
+    await user.click(screen.getByRole("button", { name: /接入配置/ }));
     expect(
       await screen.findByText(/明文只在创建时显示一次/),
     ).toBeInTheDocument();
@@ -423,6 +423,6 @@ describe("<McpAccess />", () => {
     render(<McpAccess />);
 
     expect(await screen.findByText("已撤销")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /接入命令/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /接入配置/ })).toBeDisabled();
   });
 });
