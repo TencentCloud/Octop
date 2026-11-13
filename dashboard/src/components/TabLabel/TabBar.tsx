@@ -1,5 +1,5 @@
+import { Tabs } from "antd";
 import { useTranslation } from "react-i18next";
-import cx from "classnames";
 import TabLabel, { type TabIcon } from "./index";
 import styles from "./index.module.less";
 
@@ -54,5 +54,14 @@ export default function TabBar<T extends string>({
         );
       })}
     </div>
+    <Tabs
+      className={styles.tabBar}
+      activeKey={activeKey}
+      onChange={(key) => onChange(key as T)}
+      items={tabs.map((tab) => ({
+        key: tab.key,
+        label: <TabLabel icon={tab.icon}>{t(tab.labelKey)}</TabLabel>,
+      }))}
+    />
   );
 }

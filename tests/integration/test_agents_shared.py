@@ -37,6 +37,12 @@ async def test_shared_agent_appears_for_other_user(env) -> None:
     assert response.status_code == 200, response.text
     assert response.json()["is_shared"] is True
 
+    response = await client.get("/api/agents", headers=owner_auth)
+    assert response.status_code == 200
+    owned = {row["agent_id"]: row for row in response.json()}
+    assert owned[agent_id]["is_shared"] is True
+    assert owned[agent_id]["is_owner"] is True
+
     response = await client.get("/api/agents", headers=peer_auth)
     assert response.status_code == 200
     agents = {row["agent_id"]: row for row in response.json()}

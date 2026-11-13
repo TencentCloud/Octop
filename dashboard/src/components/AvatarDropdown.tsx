@@ -24,13 +24,16 @@ import {
   KeyRound,
   ShieldCheck,
   SlidersHorizontal,
+  Compass,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { authApi } from "../api/modules/auth";
 import { preferencesApi } from "../api/modules/preferences";
+import { holdDesktopLocalAutoLogin } from "../api/desktopSession";
 import { clearAuthToken } from "../api/request";
+import { isDesktopShell } from "../utils/desktopBridge";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { apiErrorMessage } from "../utils/apiError";
 import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
@@ -83,6 +86,8 @@ interface AvatarDropdownProps {
   onBeforeOpenSettings?: () => void;
   /** Opens the sidebar layout editor. Omitted when that editor is unavailable. */
   onCustomizeNav?: () => void;
+  /** Reopens the welcome guide. Omitted when the guide is not mounted. */
+  onOpenOnboarding?: () => void;
 }
 
 export default function AvatarDropdown({
@@ -92,6 +97,7 @@ export default function AvatarDropdown({
   compact = false,
   onBeforeOpenSettings,
   onCustomizeNav,
+  onOpenOnboarding,
 }: AvatarDropdownProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -110,11 +116,14 @@ export default function AvatarDropdown({
 
   const handleLogout = useCallback(async () => {
     setMenuOpen(false);
+    if (isDesktopShell() && user?.username === "local") {
+      holdDesktopLocalAutoLogin();
+    }
     await authApi.logout();
     clearAuthToken();
     await applyGuestLocale();
     navigate("/login", { replace: true });
-  }, [navigate]);
+  }, [navigate, user?.username]);
 
   const handleSaveProfile = async (values: { display_name: string }) => {
     setSaving(true);
@@ -240,6 +249,12 @@ export default function AvatarDropdown({
     deferOpen(() => onCustomizeNav?.());
   };
 
+  const openOnboarding = () => {
+    setMenuOpen(false);
+    onBeforeOpenSettings?.();
+    deferOpen(() => onOpenOnboarding?.());
+  };
+
   const closeSettings = () => setSettingsOpen(false);
 
   useEffect(() => {
@@ -328,6 +343,17 @@ export default function AvatarDropdown({
         <CircleHelp size={16} strokeWidth={1.8} />
         <span>{t("account.helpFeedback")}</span>
       </a>
+
+      {onOpenOnboarding ? (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={openOnboarding}
+        >
+          <Compass size={16} strokeWidth={1.8} />
+          <span>{t("account.onboarding")}</span>
+        </button>
+      ) : null}
 
       <a
         className={styles.menuItem}

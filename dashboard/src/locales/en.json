@@ -1,10 +1,17 @@
 {
   "app": {
-    "pageTitle": "Octop - An intelligent partner that understands you, helps you, and grows with you"
+    "pageTitle": "Octop"
   },
   "layout": {
     "collapsePanel": "Collapse panel",
-    "expandPanel": "Expand panel"
+    "expandPanel": "Expand panel",
+    "collapseNav": "Collapse navigation rail",
+    "expandNav": "Expand navigation rail",
+    "windowControls": "Window controls",
+    "windowMinimize": "Minimize",
+    "windowMaximize": "Maximize",
+    "windowRestore": "Restore",
+    "windowClose": "Close"
   },
   "sharedResource": {
     "shared": "Shared",
@@ -17,12 +24,6 @@
     "cloud": "Cloud",
     "shared": "Shared",
     "empty": "Nothing matches the current filters"
-  },
-  "desktopChrome": {
-    "group": "Window controls",
-    "minimize": "Minimize",
-    "maximize": "Maximize",
-    "close": "Close"
   },
   "avatarPicker": {
     "presets": {
@@ -150,6 +151,7 @@
     "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
     "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "Installed octop-gateway does not support these Telegram options. Install a compatible Gateway build before saving.",
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
     "CONNECTOR_NOT_FOUND": "Connector not found.",
     "CONNECTOR_NAME_TAKEN": "This connector name is already in use. Please choose another.",
@@ -161,6 +163,7 @@
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
     "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {{servers}}",
+    "CONNECTOR_AUTH_REQUIRED": "Connector(s) need authorization before use: {{servers}}",
     "BRIDGE_NOT_FOUND": "Cloud collab connection not found.",
     "BRIDGE_AUTH_FAILED": "Peer Octop rejected the credentials. Check the address, username, and password — or use Probe to verify the account first.",
     "BRIDGE_PEER_UNREACHABLE": "Could not reach the peer Octop instance. Confirm the URL is reachable, credentials are correct, and the peer has cloud collab support (needs /api/bridge/ws). If the peer is behind NAT, initiate the link from the side that can reach the other.",
@@ -228,6 +231,10 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
+    "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
+    "KNOWLEDGE_RERANK_NOT_READY": "The selected rerank model is not available. Choose an enabled provider that offers a rerank model.",
+    "KNOWLEDGE_MOVE_BUSY": "Some of these documents are still being indexed. Move them to another knowledge base once indexing finishes.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -245,6 +252,7 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({{used}}/{{quota}}).",
+    "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {{types}}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
     "CONFIG_FILE_CORRUPT": "Cannot update {{path}}: the file is not valid JSON ({{detail}}). Fix the syntax and retry — no settings were changed.",
@@ -576,6 +584,13 @@
     "renameFile": "Rename file",
     "renameFileSuccess": "File renamed",
     "renameFileFailed": "Failed to rename file",
+    "moveEntry": "Move to…",
+    "moveTitle": "Move “{{name}}”",
+    "moveHint": "Choose a knowledge base or one of its folders. A folder moves together with its contents; moving to another knowledge base takes the original files and their index along.",
+    "moveConfirm": "Move",
+    "moveSuccess": "Moved",
+    "moveSuccessTo": "Moved to “{{name}}”",
+    "moveFailed": "Failed to move",
     "filenamePlaceholder": "File name",
     "pathBreadcrumb": "Path",
     "deleteFolderConfirm": "Delete this folder and everything inside it?",
@@ -661,6 +676,11 @@
     "ocrSelectModel": "Select an image-capable model",
     "ocrNoProviders": "No online provider has an image-capable model",
     "ocrNoModels": "This provider has no image-capable model",
+    "rerankTitle": "Rerank retrieved passages",
+    "rerankDescription": "Vector search fetches a wider set of candidate passages, then a rerank model orders them by relevance to the question and only the best ones are kept.",
+    "rerankSelectModel": "Select a rerank model",
+    "rerankNoProviders": "No provider offers a rerank model. Add one in Model Management first",
+    "rerankFallbackHint": "If the rerank request fails, retrieval falls back to the vector order.",
     "enable": "Enable",
     "featureEnabled": "Knowledge bases enabled",
     "featureDisabled": "Knowledge bases disabled",
@@ -1169,6 +1189,9 @@
     "backendRootDirJailHint": "Saving to a non-root directory enables a sandbox and confines the AI filesystem to that folder. External ACP runners can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
     "backendRootDirPathLimitHint": "Saving to a non-root directory limits the AI’s file access to that folder, but this host provides no OS-level sandbox — the AI process still runs with the service account’s own permissions. External ACP runners can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
     "backendRootDirImmutableHint": "Cannot be changed after creation.",
+    "workspaceDir": "Workspace directory",
+    "workspaceDirDesc": "Filled with this expert's server default directory. You can choose another one.",
+    "workspaceDirImmutableHint": "Cannot be changed after creation.",
     "rootDirListFailed": "Could not list subdirectories. Check permissions or choose another path.",
     "rootDirMkdir": "New folder",
     "rootDirRename": "Rename folder",
@@ -1190,6 +1213,7 @@
       "degraded": "Could not install bubblewrap ({{detail}}). Config was saved; execute will use the normal local shell (no directory jail)."
     },
     "backendPlaceholder": "Select a backend type",
+    "backendAllowedEmpty": "Allowed: {{types}}. No storage connection of those types exists yet. Create one under Storage backends first.",
     "backendPathMappings": "Path Mappings (optional)",
     "addPathMapping": "Add path mapping",
     "advancedOptions": "Advanced options",
@@ -1200,10 +1224,10 @@
     "maxTokens": "Max output tokens (max_tokens)",
     "maxTokensTooltip": "Maximum output tokens per reply",
     "backendModes": {
-      "localShell": "Full local environment (filesystem + shell)",
+      "localShell": "Full local environment",
       "localShellDesc": "Read/write files and run shell commands with the broadest host access.",
       "localShellWarning": "⚠️ This mode can access the full host environment — use only in trusted scenarios.",
-      "filesystem": "Local filesystem (no shell commands)",
+      "filesystem": "Local filesystem",
       "filesystemDesc": "Read and write only inside the agent workspace directory; cannot run shell commands.",
       "state": "Session state (no file or command access)",
       "stateDesc": "In-process ephemeral storage only; no real file I/O or command execution. Data is lost on restart.",
@@ -1343,7 +1367,9 @@
   },
   "agent_errors": {
     "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
+    "no_models_configured_short": "No model configured",
     "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
+    "model_ref_unavailable_short": "Default model unavailable",
     "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."
   },
   "stream_errors": {
@@ -1486,6 +1512,9 @@
     "forkDisabledWhileBusy": "Wait for the current reply or approval to finish",
     "forkNoAssistant": "No AI reply to fork from yet",
     "retry": "Retry",
+    "connectorAuthAskOwner": "Authorization for “{{name}}” expired. Ask its owner to authorize it again",
+    "connectorAuthDone": "“{{name}}” is authorized. Sending again",
+    "connectorAuthorize": "Authorize “{{name}}” and retry",
     "like": "Helpful",
     "dislike": "Not helpful",
     "selectModel": "Model",
@@ -1528,6 +1557,7 @@
     "processRunningTools": "Calling tools",
     "processThinkingLive": "Thinking",
     "send": "Send",
+    "sharedTurnBusy": "The previous reply has not finished yet.",
     "stop": "Stop",
     "composerHint": "Enter to send / Shift+Enter for a new line",
     "steer": {
@@ -1581,6 +1611,7 @@
     "disableStreamUsageFailed": "Could not turn this off automatically. In model settings, disable “Show live token count in chat”.",
     "noAgentsTitle": "No experts yet",
     "noAgentsHint": "Pick a template from the Expert List to create your first AI expert.",
+    "noChattableAgentsHint": "None of your experts can chat right now — enable one, or finish its model setup.",
     "createExpert": "Create an expert",
     "pickAgent": "Select an Agent first",
     "bootstrapKickoff": "Hi — let's get started",
@@ -1601,7 +1632,6 @@
     "contribute": "Share conversation",
     "uncontribute": "Stop sharing",
     "sharedSession": "Shared",
-    "sharedSessionBanner": "This conversation is shared. Anyone who can open this expert can read it and continue.",
     "threadSettingsOwnerOnly": "Only the conversation owner can change the model and approval settings",
     "shareFailed": "Couldn't change sharing. Try again.",
     "deleteSessionConfirm": "Delete this conversation? This cannot be undone.",
@@ -2643,6 +2673,32 @@
     "label_agentchat": "AgentChat",
     "label_xiaoyi": "XiaoYi",
     "label_mqtt": "MQTT",
+    "telegram_group_activation": "Group activation",
+    "telegram_allowed_user_ids": "Allowed user IDs",
+    "telegram_allowed_chat_ids": "Allowed chat IDs",
+    "telegram_allow_unaddressed_commands": "Allow commands without bot suffix",
+    "telegram_topic_isolation": "Isolate topic sessions",
+    "telegram_reply_to_message": "Quote source message",
+    "telegram_edited_messages": "Process edited messages",
+    "telegram_streaming_mode": "Telegram streaming mode",
+    "telegram_status_reactions": "Status reactions",
+    "telegram_disable_notification": "Silent delivery",
+    "telegram_protect_content": "Protect sent content",
+    "telegram_link_preview": "Link previews",
+    "telegram_command_menu": "Register command menu",
+    "telegram_albums": "Aggregate albums",
+    "telegram_audio_as_voice": "Send audio as voice",
+    "telegram_group_activationHelp": "Defaults match Gateway: all group messages and unaddressed commands are accepted. Choose mentions or replies to restrict activation. Telegram privacy mode also controls which updates reach the bot.",
+    "telegram_topic_isolationHelp": "Changing isolation starts separate sessions; existing history stays in its original session.",
+    "telegramSetupHelp": "These options require a compatible Gateway build; unsupported options are rejected when saving. Single-choice questions and /models offer native buttons, with pagination for model lists. Multi-select answers use text. Agent switching is not supported; configure a separate channel for each agent.",
+    "telegramInvalidChatIds": "Enter integer chat IDs separated by commas or whitespace; negative group IDs are supported.",
+    "telegram_option_always": "All messages",
+    "telegram_option_mention": "Mentions only",
+    "telegram_option_mention_or_reply": "Mentions or replies",
+    "telegram_option_off": "Off",
+    "telegram_option_auto": "Automatic",
+    "telegram_option_edit": "Edit message",
+    "telegram_option_draft": "Private chat draft",
     "label_telegram": "Telegram",
     "intro_agentchat": "Connect via the AgentChat protocol for internal debugging — no external credentials required.",
     "loading": "Loading channels...",
@@ -2885,6 +2941,7 @@
     "allExperts": "All experts",
     "allUsers": "All users",
     "ioBreakdown": "Input / Output",
+    "userBreakdown": "By user",
     "expertBreakdown": "By expert",
     "modelBreakdown": "By model",
     "ioBarChart": "Input vs output",
@@ -3960,6 +4017,9 @@
       "latestVersion": "Latest Version",
       "checkButton": "Check for Updates",
       "upgradeButton": "Upgrade Now",
+      "later": "Later",
+      "shellConfirmTitle": "New version {{version}}",
+      "shellConfirmBody": "You are on {{current}}. The upgrade downloads an installer, then quits so the installer can replace the client. Your database, workspace, and settings are kept.",
       "checking": "Checking...",
       "upgrading": "Upgrading...",
       "alreadyLatest": "You are on the latest version.",
@@ -3991,6 +4051,7 @@
       "restartTimeout": "Restart timed out. Run manually: octop service restart",
       "restartFailed": "Restart request failed. Check the service and try again.",
       "releaseNotes": "Release Notes",
+      "shellManaged": "The desktop client is updated by its shell, which detects, downloads and installs the shell, frontend and bundled Python runtime as one release.",
       "updateModalTitle": "New Version Available",
       "guideTitle": "Update by install method",
       "guideIntro": "If the one-click upgrade on the left is unavailable, pick the commands for your install method. Restart after upgrading; data stays in ~/.octop (or OCTOP_HOME).",
@@ -4293,6 +4354,61 @@
     "disableFailed": "Failed to disable, please check your password",
     "logout": "Log out"
   },
+  "onboarding": {
+    "skip": "Skip",
+    "back": "Back",
+    "next": "Next",
+    "start": "Start the tour",
+    "later": "Maybe later",
+    "finish": "Finish",
+    "progress": "Step {{current}} of {{total}}",
+    "keyboardHint": "← → to move, Esc to exit",
+    "intro": {
+      "title": "Welcome to Octop",
+      "body": "Octop is a self-hosted AI assistant platform. The tour opens each of the pages below and shows what it is for. Leave any time, and replay it later from Getting started in your account menu.",
+      "duration": "{{count}} steps, about a minute"
+    },
+    "done": {
+      "title": "You're all set",
+      "body": "You've seen the main building blocks. To replay the tour, open your account menu and choose Getting started.",
+      "chat": "Start chatting",
+      "experts": "Create your first expert"
+    },
+    "steps": {
+      "chat": {
+        "title": "Conversation",
+        "body": "This is where you chat with experts. Each expert is its own AI assistant with a persona, tools and memory, and every thread is saved.",
+        "tip": "Use the thread list on the left to jump back into earlier conversations."
+      },
+      "experts": {
+        "title": "Experts",
+        "body": "Create an expert in one click from a scenario template with its identity, persona and system prompt ready, or set one up from scratch.",
+        "tip": "Once it exists, chat with it from the Conversation page."
+      },
+      "models": {
+        "title": "Model Configuration",
+        "body": "Experts need a language model to work. Add model providers here (OpenAI-compatible APIs, local Ollama models and more) and pick a default model.",
+        "tip": "Enable at least one model so experts can reply.",
+        "bodyMember": "Your administrator connects the model providers, so you can use the models they made available.",
+        "tipMember": "Switch models from the model picker in the chat input."
+      },
+      "channels": {
+        "title": "Channels",
+        "body": "Connect experts to Feishu, WeCom, DingTalk, Telegram and other messaging apps, so you can talk to them where you already chat.",
+        "tip": "Some platforms let you create the bot by scanning a QR code."
+      },
+      "knowledgeBases": {
+        "title": "Knowledge Bases",
+        "body": "Upload documents to build a knowledge base that experts can search and cite in conversations.",
+        "tip": "You can share a knowledge base with other users on this instance."
+      },
+      "skillPackages": {
+        "title": "Skill Packages",
+        "body": "Skill packages bundle skills into reusable capabilities. Create or import one and mount it on an expert to use those skills.",
+        "tip": "One skill package can be mounted on several experts."
+      }
+    }
+  },
   "account": {
     "myAccount": "My Account",
     "settings": "Personal Settings",
@@ -4304,6 +4420,7 @@
     "themeLight": "Light",
     "themeDark": "Dark",
     "helpFeedback": "Help & Feedback",
+    "onboarding": "Getting started",
     "helpBuilding": "Under construction",
     "projectUrl": "Project",
     "checkUpdates": "Check for Updates",
@@ -4993,8 +5110,13 @@
       "sharedCheckpointHint": "Multiple memory namespaces or experts share this file. Session checkpoints cannot be safely attributed, so only the current expert’s memory counts are shown. File maintenance is disabled.",
       "checkpointCountHint": "Checkpoints restore sessions and are not message counts. Session IDs are deduplicated to count distinct sessions. Shared content blocks store deduplicated payloads; full-text indexes are not counted again.",
       "checkpointRetention": "Checkpoint retention",
-      "checkpointRetentionValue": "Newest {{keep}}, age limit {{days}}. One backup is written before deletion.",
+      "checkpointRetentionValue": "Newest {{keep}}, age limit {{days}}.",
       "checkpointRetentionNoDays": "none",
+      "checkpointBackup": "Checkpoint backup",
+      "checkpointBackup_first": "Back up once before the first cleanup, {{retention}}",
+      "checkpointBackup_always": "Back up before every cleanup, {{retention}}",
+      "checkpointBackupKeepDays": "keep for {{days}} days",
+      "checkpointBackupNeverExpires": "keep indefinitely",
       "vacuumRecommended": "Deleting old checkpoints does not shrink the file. Reclaimable space is large; run VACUUM on this SQLite file when the agent is idle.",
       "comparisonHint": "Snapshots belong to this maintenance run. Deduplication preserves history and valid memories, so row counts may remain unchanged and shared blocks may increase. Background writes may affect counts. Backups consume separate space and are excluded from reclaimed bytes.",
       "deleteBackup": "Delete backup",
@@ -5700,7 +5822,8 @@
       "submitFailed": "Could not create administrator.",
       "continue": "Continue",
       "alreadyCreated": "Administrator \"{{username}}\" has been created.",
-      "intro": "Create the first administrator account."
+      "intro": "Create the first administrator account.",
+      "introNoPassword": "Name the account on this device. No password is needed."
     },
     "model": {
       "intro": "Configure one model provider so the assistant can reply. You can skip this step and configure it later.",
@@ -5815,7 +5938,7 @@
     "kindObs": "Huawei OBS",
     "kindTos": "Volcengine TOS",
     "kindFilesystem": "Local Filesystem",
-    "kindShell": "Local Shell",
+    "kindShell": "Full local environment",
     "kindPostgres": "PostgreSQL",
     "kindDocker": "Docker Sandbox",
     "kindOpensandbox": "OpenSandbox",
@@ -5976,6 +6099,9 @@
     "password": "Password",
     "remember": "Remember me",
     "submit": "Sign in",
+    "createLocalAccount": "Create a local account",
+    "signInLocalAccount": "Sign in to local account",
+    "localSignInFailed": "Could not sign in to the local account",
     "forgotPassword": "Forgot password?",
     "forgotPasswordTitle": "Reset password",
     "forgotPasswordHelp": "Ask an administrator to reset it under Users. If you manage this host, run the command below on the machine where Octop is installed, using the same OS account that runs the service.",
@@ -6339,6 +6465,9 @@
     "policyTokenQuotaPreview": "About {{millions}} million tokens ({{exact}})",
     "policyMaxAgents": "Expert limit",
     "policyMaxAgentsHint": "How many experts this user may create (teams excluded). Off means no limit.",
+    "policyAllowedBackendTypes": "Allowed backend types",
+    "policyAllowedBackendTypesHint": "Limits which backend types this user can choose when creating an expert, including built-in backends and configured storage kinds. Off means no extra limit.",
+    "policyAllowedBackendTypesRequired": "Select at least one backend type",
     "policyMaxAgentsRequired": "Enter an expert limit",
     "policyMaxAgentsPlaceholder": "e.g. 5",
     "modalEditTitle": "Edit user {{username}}",
@@ -6717,6 +6846,17 @@
       "oauthConfigured": "OAuth authorization completed",
       "oauthAuthorizeHint": "One-click OAuth saves your config first, then opens sign-in; we verify the connection again afterward.",
       "oauthBeforeEnable": "Complete OAuth authorization before enabling this server",
+      "oauthClientTitle": "OAuth app credentials (optional)",
+      "oauthClientHint": "When the authorization server cannot register clients automatically, enter the OAuth app you created on that platform, and register this callback URL in the app:",
+      "oauthClientSecretSaved": "Saved. Leave empty to keep it",
+      "oauthClientSecretPlaceholder": "Leave empty for public clients",
+      "oauthScopePlaceholder": "Empty uses the scopes the server advertises; separate several with spaces",
+      "oauthAuthorizationEndpoint": "Authorization endpoint",
+      "oauthTokenEndpoint": "Token endpoint",
+      "oauthEndpointsHint": "Leave both endpoints empty to discover them from the MCP URL. Fill them in only when the server publishes no discovery metadata.",
+      "probeNeedsOAuthClient": "This MCP's authorization server cannot register clients automatically",
+      "oauthClientRequiredHint": "Enter a Client ID under OAuth app credentials, then choose Save and authorize.",
+      "saveAndAuthorize": "Save and authorize",
       "enable": "Enable connector",
       "enableHint": "When off, agents will not load tools from this MCP.",
       "defaultOpen": "Selected by default in chat",
@@ -6922,6 +7062,8 @@
     "lexiangCompanyFromPlaceholder": "Copy from the Lexiang credentials page",
     "manualTokenDoc": "Token docs (manual)",
     "oauthTimedOut": "Authorization timed out; try one-click auth again",
+    "oauthCancelled": "Authorization cancelled",
+    "authorizing": "Waiting for authorization…",
     "openAuthorizePage": "Open authorization page",
     "pasteMcpUrl": "Paste MCP URL",
     "probeNeedSecretAfterConfigChange": "Connection changed — re-enter the secret before probing",
@@ -7376,7 +7518,8 @@
     "MFA_LOCKED": "Too many MFA attempts. Try again later.",
     "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
-    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup."
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
+    "details": "Technical details"
   },
   "adminProviders": {
     "title": "Providers",

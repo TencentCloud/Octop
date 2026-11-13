@@ -1104,12 +1104,17 @@ class BridgeManager:
             # Dial the peer URL directly. The bearer header survives proxies
             # that strip the query string; peers that only read ``token``
             # still see the query.
+            #
+            # Library keepalive is off. A 20s protocol ping_timeout closes the
+            # socket when a busy peer (demo.octop.chat) is late to pong, and
+            # the supervisor immediately redials, so the link flaps. NAT / L7
+            # idle timers are reset by BridgeSession application pings instead.
             async with websockets.connect(
                 url,
                 open_timeout=20,
                 max_size=BRIDGE_WS_MAX_BYTES,
-                ping_interval=20,
-                ping_timeout=20,
+                ping_interval=None,
+                ping_timeout=None,
                 proxy=None,
                 additional_headers={"Authorization": f"Bearer {token}"},
             ) as ws:

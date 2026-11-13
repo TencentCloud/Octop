@@ -27,10 +27,12 @@ import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
-import SharedExpertHint from "./SharedExpertHint";
+import SharedExpertHint, { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
@@ -233,15 +235,13 @@ const SessionItem = memo(function SessionItem({
         />
       ) : (
         <>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
-          {session.contributed ? (
-            <span
-              className={styles.sessionRowPinIndicator}
-              title={t("chat.sharedSession", "已共享")}
-            >
-              <Share2 size={12} strokeWidth={2} />
-            </span>
-          ) : null}
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -382,6 +382,7 @@ function ActiveAgentCard({
                 name={agent.name}
                 className={styles.agentCardName}
               />
+              <ExpertOwnerShareFlag agent={agent} />
               <ExpertPinMark pinned={pinned} />
               <TeamChatBadge agent={agent} compact />
               <RemoteExpertHint agent={agent} compact />
@@ -401,6 +402,7 @@ function ActiveAgentCard({
                 onHide={onHide}
                 onUnhide={onUnhide}
                 onEdit={onEdit}
+                editingTeam={isTeamAgent(agent)}
               />
             ) : null}
           </div>
@@ -526,6 +528,7 @@ function InactiveAgentRow({
               name={agent.name}
               className={styles.agentRowName}
             />
+            <ExpertOwnerShareFlag agent={agent} />
             <ExpertPinMark pinned={pinned} />
             <TeamChatBadge agent={agent} compact />
             <RemoteExpertHint agent={agent} compact />
@@ -543,6 +546,7 @@ function InactiveAgentRow({
               onHide={onHide}
               onUnhide={onUnhide}
               onEdit={onEdit}
+              editingTeam={isTeamAgent(agent)}
             />
           ) : null}
         </div>
@@ -554,6 +558,12 @@ function InactiveAgentRow({
 
 interface SessionListProps {
   agents: OctopAgent[];
+  /**
+   * Experts the user owns that are not chat-ready (stopped, failed, still
+   * starting). The rail lists only agents that can chat, so without this count
+   * "no agents here" cannot tell "you have none" from "none are running".
+   */
+  unreadyExperts?: number;
   sessions: Session[];
   activeId: string | null;
   activeAgentId: string | null;
@@ -577,6 +587,7 @@ interface SessionListProps {
 
 export default function SessionList({
   agents,
+  unreadyExperts = 0,
   sessions,
   activeId,
   activeAgentId,
@@ -733,6 +744,17 @@ export default function SessionList({
     [catalog, t],
   );
 
+  /**
+   * The rail only lists experts that can chat right now, so "no agents here"
+   * has two very different causes: the user has none, or the ones they have
+   * are stopped / waiting on a model. Only the first one should be answered
+   * with "create your first expert".
+   */
+  const emptyAgentsCopy =
+    unreadyExperts > 0
+      ? { text: t("chat.noChattableAgentsHint"), action: t("chat.goToExperts") }
+      : { text: t("chat.noAgentsHint"), action: t("chat.createExpert") };
+
   const renderAgentRow = (agent: OctopAgent, hiddenRow: boolean) => {
     const isActive = agent.agent_id === activeAgentId;
     const hits = searching
@@ -828,20 +850,22 @@ export default function SessionList({
         onClose={() => setEditAgent(null)}
       />
       {agents.length > 0 ? (
-        <div className={styles.sessionSearchWrap}>
-          <Search
-            size={14}
-            className={styles.sessionSearchIcon}
-            strokeWidth={2}
-          />
-          <input
-            type="search"
-            className={styles.sessionSearchInput}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t("chat.searchSessions", "搜索会话")}
-            aria-label={t("chat.searchSessions", "搜索会话")}
-          />
+        <div className={styles.sessionHeaderRow}>
+          <div className={styles.sessionSearchWrap} data-octop-no-drag>
+            <Search
+              size={14}
+              className={styles.sessionSearchIcon}
+              strokeWidth={2}
+            />
+            <input
+              type="search"
+              className={styles.sessionSearchInput}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("chat.searchSessions", "搜索会话")}
+              aria-label={t("chat.searchSessions", "搜索会话")}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -852,14 +876,14 @@ export default function SessionList({
       {agents.length === 0 ? (
         <div className={styles.sessionEmptyAgents}>
           <p className={styles.sessionEmptyAgentsText}>
-            {t("chat.noAgentsHint")}
+            {emptyAgentsCopy.text}
           </p>
           <button
             type="button"
             className={styles.sessionEmptyAgentsLink}
             onClick={() => navigate("/experts")}
           >
-            {t("chat.createExpert")}
+            {emptyAgentsCopy.action}
           </button>
         </div>
       ) : (

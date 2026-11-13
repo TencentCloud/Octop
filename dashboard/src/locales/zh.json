@@ -1,10 +1,17 @@
 {
   "app": {
-    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
+    "pageTitle": "Octop"
   },
   "layout": {
     "collapsePanel": "收起面板",
-    "expandPanel": "展开面板"
+    "expandPanel": "展开面板",
+    "collapseNav": "收起导航栏",
+    "expandNav": "展开导航栏",
+    "windowControls": "窗口控制",
+    "windowMinimize": "最小化",
+    "windowMaximize": "最大化",
+    "windowRestore": "还原",
+    "windowClose": "关闭"
   },
   "sharedResource": {
     "shared": "已共享",
@@ -17,12 +24,6 @@
     "cloud": "云端",
     "shared": "共享",
     "empty": "没有符合当前筛选的结果"
-  },
-  "desktopChrome": {
-    "group": "窗口控制",
-    "minimize": "最小化",
-    "maximize": "最大化",
-    "close": "关闭"
   },
   "avatarPicker": {
     "presets": {
@@ -150,6 +151,7 @@
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "当前安装的 octop-gateway 不支持这些 Telegram 选项。请先安装兼容的 Gateway 构建再保存。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",
@@ -161,6 +163,7 @@
     "CONNECTOR_NOT_BOUND": "连接器未绑定到此专家。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
     "CONNECTOR_MCP_LOAD_FAILED": "无法加载 MCP 工具：{{servers}}",
+    "CONNECTOR_AUTH_REQUIRED": "以下连接器需要授权后才能使用：{{servers}}",
     "BRIDGE_NOT_FOUND": "未找到云端协同连接。",
     "BRIDGE_AUTH_FAILED": "对端 Octop 拒绝了登录凭证。请核对地址、用户名和密码；也可先点「探测」验证账号是否可用。",
     "BRIDGE_PEER_UNREACHABLE": "无法连接对端 Octop 实例。请确认：地址可访问、账号密码正确，且对端已升级到支持云端协同的版本（需开放 /api/bridge/ws）。若对端在内网，需由可达的一侧主动发起连接。",
@@ -228,6 +231,10 @@
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
+    "KNOWLEDGE_MOVE_INVALID": "不能把文件夹移动到它自身或其子文件夹中。",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "目标文件夹中已有同名项目。",
+    "KNOWLEDGE_RERANK_NOT_READY": "所选的重排序模型不可用，请选择已启用且提供重排序模型的供应商。",
+    "KNOWLEDGE_MOVE_BUSY": "其中有文档正在建立索引，完成后再移动到其他知识库。",
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
     "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
     "INVITE_INVALID": "邀请码无效。",
@@ -245,6 +252,7 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{{used}}/{{quota}}）。",
+    "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{{types}}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
     "CONFIG_FILE_CORRUPT": "无法更新 {{path}}：该文件不是合法 JSON（{{detail}}）。请修正语法后重试；现有配置未被改动。",
@@ -576,6 +584,13 @@
     "renameFile": "重命名文件",
     "renameFileSuccess": "文件已重命名",
     "renameFileFailed": "重命名文件失败",
+    "moveEntry": "移动到…",
+    "moveTitle": "移动「{{name}}」",
+    "moveHint": "选择目标知识库或其中的文件夹。文件夹会连同其中的内容一起移动，移到其他知识库时原文件和索引也会一起带过去。",
+    "moveConfirm": "移动",
+    "moveSuccess": "已移动",
+    "moveSuccessTo": "已移动到「{{name}}」",
+    "moveFailed": "移动失败",
     "filenamePlaceholder": "文件名",
     "pathBreadcrumb": "路径导航",
     "deleteFolderConfirm": "删除此文件夹及其内部文档？",
@@ -661,6 +676,11 @@
     "ocrSelectModel": "选择支持图片输入的模型",
     "ocrNoProviders": "暂无支持图片输入的在线模型提供商",
     "ocrNoModels": "该提供商没有支持图片输入的模型",
+    "rerankTitle": "检索重排序（Rerank）",
+    "rerankDescription": "向量检索先多取一批候选片段，再由重排序模型按与问题的相关度重新排序，只保留最相关的几条。",
+    "rerankSelectModel": "选择重排序模型",
+    "rerankNoProviders": "没有提供重排序模型的供应商，请先在模型管理中添加",
+    "rerankFallbackHint": "重排序请求失败时会自动沿用向量检索的顺序，不影响回答。",
     "enable": "启用",
     "featureEnabled": "知识库已启用",
     "featureDisabled": "知识库已停用",
@@ -1170,6 +1190,9 @@
     "backendRootDirJailHint": "保存至非根目录时，会启用沙箱环境并将 AI 文件系统限制在该目录内。此配置下无法调用外部 ACP Runner；通过 IDE / octop acp 接入不受影响。",
     "backendRootDirPathLimitHint": "保存至非根目录时，会将 AI 的文件访问限制在该目录内；但当前系统未提供操作系统级沙箱，AI 进程仍以服务账号自身的权限运行。此配置下无法调用外部 ACP Runner；通过 IDE / octop acp 接入不受影响。",
     "backendRootDirImmutableHint": "创建后不可更改。",
+    "workspaceDir": "工作区目录",
+    "workspaceDirDesc": "已填入系统为这位专家分配的默认目录，也可以改成其他目录。",
+    "workspaceDirImmutableHint": "创建后不可更改。",
     "rootDirListFailed": "无法列出子目录，请检查权限或选择其他路径。",
     "rootDirMkdir": "新建文件夹",
     "rootDirRename": "重命名文件夹",
@@ -1191,11 +1214,12 @@
       "degraded": "未能安装 bubblewrap（{{detail}}）。配置已保存；execute 将使用普通本地 shell（无目录狱）。"
     },
     "backendPlaceholder": "选择存储后端类型",
+    "backendAllowedEmpty": "已允许 {{types}}，但还没有可用的存储连接。请先在存储后端中创建对应类型的连接。",
     "backendModes": {
-      "localShell": "本地完整环境（文件系统+指令执行）",
+      "localShell": "本地完整环境",
       "localShellDesc": "可读写文件并执行 Shell 指令，权限范围最大。",
       "localShellWarning": "⚠️ 此模式可访问主机完整环境，请仅在信任的场景下使用。",
-      "filesystem": "本地文件系统（不能执行指令）",
+      "filesystem": "本地文件系统",
       "filesystemDesc": "仅在专家的工作区目录内读写文件，不能执行 Shell 指令。",
       "state": "会话状态（不实际操作文件和执行指令）",
       "stateDesc": "进程内临时状态存储，不读写真实文件、不执行指令，重启后数据不保留。",
@@ -1343,7 +1367,9 @@
   },
   "agent_errors": {
     "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
+    "no_models_configured_short": "未配置可用模型",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
+    "model_ref_unavailable_short": "默认模型不可用",
     "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"
   },
   "stream_errors": {
@@ -1486,6 +1512,9 @@
     "forkDisabledWhileBusy": "请等待当前回复或审批完成后再分叉",
     "forkNoAssistant": "当前对话还没有可分叉的 AI 回复",
     "retry": "重试",
+    "connectorAuthAskOwner": "「{{name}}」的授权已失效，请联系它的所有者重新授权",
+    "connectorAuthDone": "「{{name}}」已授权，正在重新发送",
+    "connectorAuthorize": "授权「{{name}}」并重试",
     "like": "有帮助",
     "dislike": "没帮助",
     "selectModel": "模型",
@@ -1528,6 +1557,7 @@
     "processRunningTools": "正在调用工具",
     "processThinkingLive": "深度思考中",
     "send": "发送",
+    "sharedTurnBusy": "上一次对话尚未结束。",
     "stop": "停止",
     "composerHint": "Enter 发送 / Shift+Enter 换行",
     "steer": {
@@ -1581,6 +1611,7 @@
     "disableStreamUsageFailed": "无法自动关闭，请到模型设置里关掉「聊天里显示实时 Token」。",
     "noAgentsTitle": "还没有专家",
     "noAgentsHint": "从专家列表选择模板，快速创建你的第一个 AI 专家。",
+    "noChattableAgentsHint": "你的专家暂时都不能对话，请先启用，或完成它的模型配置。",
     "createExpert": "去创建专家",
     "pickAgent": "请先选择一个专家",
     "bootstrapKickoff": "你好，我们开始吧",
@@ -1601,7 +1632,6 @@
     "contribute": "共享会话",
     "uncontribute": "取消共享",
     "sharedSession": "已共享",
-    "sharedSessionBanner": "这条会话已共享。能打开这个专家的人都能看到，并可以继续问。",
     "threadSettingsOwnerOnly": "只有会话创建人可以改模型和审批设置",
     "shareFailed": "没能改共享状态，请再试一次",
     "deleteSessionConfirm": "确定删除这段会话吗？删除后无法恢复。",
@@ -2643,6 +2673,32 @@
     "label_agentchat": "AgentChat",
     "label_xiaoyi": "小艺",
     "label_mqtt": "MQTT",
+    "telegram_group_activation": "群聊触发方式",
+    "telegram_allowed_user_ids": "允许的用户 ID",
+    "telegram_allowed_chat_ids": "允许的聊天 ID",
+    "telegram_allow_unaddressed_commands": "允许无机器人后缀的命令",
+    "telegram_topic_isolation": "按话题隔离会话",
+    "telegram_reply_to_message": "引用原消息回复",
+    "telegram_edited_messages": "处理编辑后的消息",
+    "telegram_streaming_mode": "Telegram 流式模式",
+    "telegram_status_reactions": "状态表情回应",
+    "telegram_disable_notification": "静默发送",
+    "telegram_protect_content": "保护发送内容",
+    "telegram_link_preview": "链接预览",
+    "telegram_command_menu": "注册命令菜单",
+    "telegram_albums": "聚合相册",
+    "telegram_audio_as_voice": "将音频作为语音发送",
+    "telegram_group_activationHelp": "默认值与 Gateway 一致：接收所有群消息和未指定机器人的命令。可选择提及或回复以限制触发。Telegram 隐私模式也会影响机器人能收到的消息。",
+    "telegram_topic_isolationHelp": "切换隔离方式会使用独立会话，已有历史保留在原会话。",
+    "telegramSetupHelp": "这些选项需要兼容的 Gateway 版本，保存时会拒绝不支持的选项。单选问题和 /models 支持原生按钮，模型列表支持分页。多选问题使用文字回答。不支持切换 Agent；请为每个 Agent 配置独立渠道。",
+    "telegramInvalidChatIds": "请输入以逗号或空白分隔的整数聊天 ID，支持负数群 ID。",
+    "telegram_option_always": "所有消息",
+    "telegram_option_mention": "仅 @",
+    "telegram_option_mention_or_reply": "@ 或回复",
+    "telegram_option_off": "关闭",
+    "telegram_option_auto": "自动",
+    "telegram_option_edit": "编辑消息",
+    "telegram_option_draft": "私聊草稿",
     "label_telegram": "Telegram",
     "intro_agentchat": "通过 AgentChat 协议接入专家，适合内部联调，无需外部凭据。",
     "loading": "正在加载频道...",
@@ -2885,6 +2941,7 @@
     "allExperts": "全部专家",
     "allUsers": "全部用户",
     "ioBreakdown": "输入 / 输出",
+    "userBreakdown": "用户分布",
     "expertBreakdown": "专家分布",
     "modelBreakdown": "模型分布",
     "ioBarChart": "输入输出对比",
@@ -3960,6 +4017,9 @@
       "latestVersion": "最新版本",
       "checkButton": "检查更新",
       "upgradeButton": "立即升级",
+      "later": "稍后",
+      "shellConfirmTitle": "发现新版本 {{version}}",
+      "shellConfirmBody": "当前版本 {{current}}。升级会下载安装包，然后退出并由安装程序替换客户端；数据库、工作区和配置都会保留。",
       "checking": "正在检查...",
       "upgrading": "正在升级...",
       "alreadyLatest": "已是最新版本。",
@@ -3991,6 +4051,7 @@
       "restartTimeout": "重启超时，请手动执行：octop service restart",
       "restartFailed": "重启请求失败，请检查服务状态后重试",
       "releaseNotes": "更新说明",
+      "shellManaged": "桌面客户端的更新由壳统一检测、下载并安装：壳、前端界面与内置 Python 运行时随同一版本一起发布。",
       "updateModalTitle": "发现新版本",
       "guideTitle": "按安装方式更新",
       "guideIntro": "若不能使用左侧一键升级，请按你的安装方式选择下方命令。升级后请重启服务；配置与数据默认保留在 ~/.octop（或 OCTOP_HOME）。",
@@ -4293,6 +4354,61 @@
     "disableFailed": "关闭失败，请检查密码是否正确",
     "logout": "退出登录"
   },
+  "onboarding": {
+    "skip": "跳过",
+    "back": "上一步",
+    "next": "下一步",
+    "start": "开始导览",
+    "later": "稍后再说",
+    "finish": "完成",
+    "progress": "第 {{current}} 步，共 {{total}} 步",
+    "keyboardHint": "← → 切换，Esc 退出",
+    "intro": {
+      "title": "欢迎使用 Octop",
+      "body": "Octop 是可以私有部署的 AI 助手平台。跟着导览逐个打开下面这些页面，了解每一块是做什么的；随时可以退出，之后也能从左下角头像菜单里的「新手引导」再看一遍。",
+      "duration": "共 {{count}} 步，约 1 分钟"
+    },
+    "done": {
+      "title": "导览完成",
+      "body": "核心功能都认识了。想再看一遍，点左下角头像，选「新手引导」。",
+      "chat": "开始对话",
+      "experts": "创建第一个专家"
+    },
+    "steps": {
+      "chat": {
+        "title": "对话",
+        "body": "这里是和专家聊天的地方。每位专家都是独立的 AI 助手，有自己的人设、工具和记忆，聊天记录按会话保存。",
+        "tip": "左侧会话列表可以随时切回之前的对话。"
+      },
+      "experts": {
+        "title": "专家",
+        "body": "用场景模板一键创建专家，模板预置了身份、人设和系统提示词；也可以从零开始配置。",
+        "tip": "新建专家后，回到「对话」页就能和它聊天。"
+      },
+      "models": {
+        "title": "模型配置",
+        "body": "专家要接入大模型才能工作。在这里添加模型服务商（OpenAI 兼容接口、Ollama 本地模型等），并选好默认模型。",
+        "tip": "至少启用一个模型，专家才能回复。",
+        "bodyMember": "模型服务由管理员统一接入，你可以直接使用他们开放的模型。",
+        "tipMember": "对话时在输入框的模型选择器里切换模型。"
+      },
+      "channels": {
+        "title": "通道",
+        "body": "把专家接入飞书、企业微信、钉钉、Telegram 等聊天工具，在平时用的聊天软件里直接和专家对话。",
+        "tip": "部分平台支持扫码一键创建机器人。"
+      },
+      "knowledgeBases": {
+        "title": "知识库",
+        "body": "上传文档建立知识库，专家在对话中可以检索并引用其中的内容。",
+        "tip": "知识库可以共享给同一实例的其他用户。"
+      },
+      "skillPackages": {
+        "title": "技能包",
+        "body": "技能包把一组技能打包成可复用的能力，创建或导入后挂载到专家上，专家就能使用这些技能。",
+        "tip": "一个技能包可以同时挂载到多位专家。"
+      }
+    }
+  },
   "account": {
     "myAccount": "我的账户",
     "settings": "个人设置",
@@ -4304,6 +4420,7 @@
     "themeLight": "浅色",
     "themeDark": "深色",
     "helpFeedback": "帮助与反馈",
+    "onboarding": "新手引导",
     "helpBuilding": "正在建设中",
     "projectUrl": "项目地址",
     "checkUpdates": "检查更新",
@@ -4993,8 +5110,13 @@
       "sharedCheckpointHint": "当前文件由多个记忆命名空间或专家共享，无法安全归属会话检查点，仅展示当前专家的记忆分类条数。文件级维护已禁用。",
       "checkpointCountHint": "检查点用于恢复会话，不等于消息条数；独立会话数按检查点中的会话 ID 去重。共享内容块用于去重存储，全文索引不重复计数。",
       "checkpointRetention": "检查点保留",
-      "checkpointRetentionValue": "最近 {{keep}} 份，天数 {{days}}。删除前会先备份一份。",
+      "checkpointRetentionValue": "最近 {{keep}} 份，天数 {{days}}。",
       "checkpointRetentionNoDays": "不限",
+      "checkpointBackup": "检查点备份",
+      "checkpointBackup_first": "首次清理前备份一次，{{retention}}",
+      "checkpointBackup_always": "每次清理前备份，{{retention}}",
+      "checkpointBackupKeepDays": "保留 {{days}} 天",
+      "checkpointBackupNeverExpires": "永久保留",
       "vacuumRecommended": "删除旧检查点后文件不会马上变小。可回收空间已经不小，建议在空闲时对这个 SQLite 文件执行 VACUUM。",
       "comparisonHint": "前后快照仅对应本次维护。去重维护保留会话历史和有效记忆，因此条数可能不变，共享内容块可能增加。后台写入也可能影响统计；备份单独占用空间，未计入释放量。",
       "deleteBackup": "删除备份",
@@ -5700,7 +5822,8 @@
       "submitFailed": "无法创建管理员。",
       "continue": "继续",
       "alreadyCreated": "管理员「{{username}}」已创建。",
-      "intro": "创建第一个管理员账户。"
+      "intro": "创建第一个管理员账户。",
+      "introNoPassword": "为这台设备上的账户命名，无需设置密码。"
     },
     "model": {
       "intro": "配置一个模型提供商，助手就可以回应你了。你也可以跳过本步，稍后在「模型」页配置。",
@@ -5815,7 +5938,7 @@
     "kindObs": "华为云 OBS",
     "kindTos": "火山引擎 TOS",
     "kindFilesystem": "本地文件系统",
-    "kindShell": "本地 Shell",
+    "kindShell": "本地完整环境",
     "kindPostgres": "PostgreSQL",
     "kindDocker": "Docker 沙箱",
     "kindOpensandbox": "OpenSandbox",
@@ -5976,6 +6099,9 @@
     "password": "密码",
     "remember": "记住登录状态",
     "submit": "登录",
+    "createLocalAccount": "新建本机账户",
+    "signInLocalAccount": "登录本地账户",
+    "localSignInFailed": "无法登录本地账户",
     "forgotPassword": "忘记密码？",
     "forgotPasswordTitle": "重置密码",
     "forgotPasswordHelp": "请联系管理员在「用户」页重置。若你维护本机，在安装了 Octop 的电脑上，用运行服务的同一账户执行：",
@@ -6339,6 +6465,9 @@
     "policyTokenQuotaPreview": "约 {{millions}} 百万 tokens（{{exact}}）",
     "policyMaxAgents": "专家数量上限",
     "policyMaxAgentsHint": "该用户可创建的专家数量（不含团队）。关闭表示不限制。",
+    "policyAllowedBackendTypes": "可用后端类型",
+    "policyAllowedBackendTypesHint": "限制该用户创建专家时可以选择的后端类型，包括内置后端和已配置存储的类型。关闭表示不额外限制。",
+    "policyAllowedBackendTypesRequired": "请至少选择一种后端类型",
     "policyMaxAgentsRequired": "请输入专家数量上限",
     "policyMaxAgentsPlaceholder": "例如 5",
     "modalEditTitle": "编辑用户 {{username}}",
@@ -6717,6 +6846,17 @@
       "oauthConfigured": "已完成 OAuth 授权",
       "oauthAuthorizeHint": "点击「一键授权」将先保存配置再打开登录页；完成后我们会自动再次验证连接。",
       "oauthBeforeEnable": "请先完成 OAuth 授权后再启用",
+      "oauthClientTitle": "OAuth 应用凭证（可选）",
+      "oauthClientHint": "授权服务器不支持自动注册客户端时，填写你在对方平台创建的 OAuth 应用，并把下面的回调地址登记到该应用：",
+      "oauthClientSecretSaved": "已保存，留空则不修改",
+      "oauthClientSecretPlaceholder": "公开客户端可留空",
+      "oauthScopePlaceholder": "留空则使用服务器声明的范围，多个用空格分隔",
+      "oauthAuthorizationEndpoint": "授权端点",
+      "oauthTokenEndpoint": "令牌端点",
+      "oauthEndpointsHint": "两个端点都留空时从 MCP 地址自动发现；服务器不提供发现信息时再填写。",
+      "probeNeedsOAuthClient": "此 MCP 的授权服务器不支持自动注册客户端",
+      "oauthClientRequiredHint": "请在「OAuth 应用凭证」中填写 Client ID，然后点击「保存并授权」。",
+      "saveAndAuthorize": "保存并授权",
       "enable": "启用连接器",
       "enableHint": "关闭后专家不会加载此 MCP 的工具。",
       "defaultOpen": "对话默认选中",
@@ -6922,6 +7062,8 @@
     "lexiangCompanyFromPlaceholder": "从乐享凭证页复制",
     "manualTokenDoc": "手动获取 Token 文档",
     "oauthTimedOut": "授权超时，请重试一键授权",
+    "oauthCancelled": "已取消授权",
+    "authorizing": "正在等待授权…",
     "openAuthorizePage": "打开授权页",
     "pasteMcpUrl": "粘贴 MCP 地址",
     "probeNeedSecretAfterConfigChange": "连接配置已修改，请重新填写密钥后再探测",
@@ -7376,7 +7518,8 @@
     "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
     "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
-    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。"
+    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
+    "details": "技术详情"
   },
   "adminProviders": {
     "title": "供应商",

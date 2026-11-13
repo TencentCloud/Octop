@@ -31,13 +31,6 @@
   right: -8px;
 }
 
-/* The open rail is click-through so the resize handle stays reachable.
-   Reveal the collapse button from the sidebar hover instead. */
-.sidebarWrapper:hover .chatRailEdgeOpen button {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .chatRailEdgeClosed {
   /* Align with MainLayout nav RailEdgeControl (edgeEnd: right -8px / width 16px). */
   left: -8px !important;
@@ -106,6 +99,21 @@
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
+}
+
+/* Only the full-height history rail owns a window-top search row. Embedded
+   minimal navigation and mobile overlays keep their existing spacing. */
+@media (min-width: 768px) {
+  .sidebar > .sessionList {
+    padding-top: 0;
+
+    > .sessionHeaderRow {
+      box-sizing: border-box;
+      height: var(--fn-chat-chrome-height, 58px);
+      margin: 0 0 0 -12px;
+      padding: 0 12px;
+    }
+  }
 }
 
 /* Minimal layout: SessionList hosted inside the app nav records pane. */
@@ -389,6 +397,20 @@
   position: relative;
   flex-shrink: 0;
   margin: 0 12px 10px 0;
+}
+
+/* The search field owns the header row now that the rail folds from its seam. */
+.sessionHeaderRow {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0 12px 10px 0;
+
+  .sessionSearchWrap {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
 }
 
 .sessionScopeTabs {
