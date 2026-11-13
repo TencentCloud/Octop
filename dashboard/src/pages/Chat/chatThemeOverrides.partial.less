@@ -140,8 +140,21 @@
     margin: 0 4px 8px;
   }
 
-  .sessionScopeTabs {
+  .sessionScopeRow {
     margin: 0 4px 8px;
+  }
+
+  .sessionCreateRow {
+    margin: 0 4px 8px;
+
+    .sessionScopeCreate {
+      margin: 0;
+    }
+  }
+
+  .sessionSearchInput {
+    height: 30px;
+    border-radius: 8px;
   }
 }
 
@@ -164,28 +177,25 @@
   }
 }
 
-/* Expert icon and the collapse chevron share one cell: hover swaps them. */
+/* Disclosure mark in front of each expert. Collapsed reads as >. */
 .minimalAgentIconSlot {
-  position: relative;
   width: 22px;
   height: 22px;
   flex-shrink: 0;
 }
 
 .minimalAgentChevronBtn {
-  position: absolute;
-  inset: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: none;
   border-radius: 6px;
   background: transparent;
   color: var(--fn-text-tertiary);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
 
   &:hover {
     color: var(--fn-text-secondary);
@@ -194,7 +204,6 @@
 
 .minimalAgentChevron {
   transition: transform 0.15s ease;
-  opacity: 0.7;
 }
 
 .minimalAgentChevronOpen {
@@ -220,24 +229,6 @@
 .minimalAgentFolderIcon {
   flex-shrink: 0;
   color: var(--fn-text-tertiary);
-}
-
-.minimalAgentIconSlot .minimalAgentAvatarHost {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  transition: opacity var(--fn-transition-fast);
-}
-
-.minimalAgentAvatar {
-  width: 100%;
-  height: 100%;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  transition: opacity var(--fn-transition-fast);
 }
 
 .minimalAgentHeader .expertNavActions {
@@ -270,11 +261,6 @@
 
 .minimalAgentHeader:hover,
 .minimalAgentHeader:focus-within {
-  .minimalAgentAvatarHost {
-    opacity: 0;
-  }
-
-  .minimalAgentChevronBtn,
   .minimalAgentNewChatBtn,
   .minimalAgentMoreBtn {
     opacity: 1;
@@ -282,13 +268,8 @@
   }
 }
 
-/* Touch devices never hover — keep both controls reachable. */
+/* Touch devices never hover — keep the row actions reachable. */
 @media (hover: none) {
-  .minimalAgentAvatarHost {
-    opacity: 0;
-  }
-
-  .minimalAgentChevronBtn,
   .minimalAgentNewChatBtn,
   .minimalAgentMoreBtn {
     opacity: 1;
@@ -410,6 +391,86 @@
     flex: 1;
     min-width: 0;
     margin: 0;
+  }
+}
+
+.sessionScopeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin: 0 12px 10px 0;
+
+  .sessionScopeTabs {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
+}
+
+.expertSortBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.04));
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.sessionCreateRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin: 0 12px 10px 0;
+
+  .sessionScopeCreate {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+  }
+}
+
+.sessionScopeCreate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 30px;
+  margin: 0 12px 10px 0;
+  padding: 0 10px;
+  border: 1px solid var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  border-radius: 8px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.04));
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-primary);
+    border-color: var(--fn-color-brand);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
   }
 }
 

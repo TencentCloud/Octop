@@ -10,7 +10,7 @@ import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import ContextChip from "./ContextChip";
 import {
-  modelRefLabel,
+  modelNameLabel,
   type ModelPickerOption,
 } from "../../../utils/modelOptions";
 import styles from "../index.module.less";
@@ -265,7 +265,7 @@ export default function ChatInputPreviewBar({
         <ContextChip
           variant="model"
           icon={<Cpu size={12} strokeWidth={2.2} aria-hidden />}
-          label={modelRefLabel(selectedModelValue, availableModels)}
+          label={modelNameLabel(selectedModelValue, availableModels)}
           onRemove={() => onModelChange?.(null)}
         />
       )}

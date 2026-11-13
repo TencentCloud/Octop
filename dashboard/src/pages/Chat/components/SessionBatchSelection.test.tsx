@@ -47,6 +47,8 @@ vi.mock("../../../utils/antdMessage", () => ({
 }));
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
+    // The chat nav drawers read the UI language.
+    i18n: { language: "en" },
     t: (key: string, options?: Record<string, unknown> | string) => {
       const value = key
         .split(".")

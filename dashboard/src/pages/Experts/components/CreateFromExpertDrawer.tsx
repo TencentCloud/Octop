@@ -685,7 +685,7 @@ export default function CreateFromExpertDrawer({
     <Drawer
       open={open}
       title={title}
-      width={640}
+      width={600}
       onClose={onClose}
       destroyOnHidden
       footer={
