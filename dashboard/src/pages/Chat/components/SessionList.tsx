@@ -34,6 +34,7 @@ import RemoteExpertHint from "./RemoteExpertHint";
 import TeamChatBadge from "./TeamChatBadge";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
+import { useExpertSort } from "../hooks/useExpertSort";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -48,7 +49,12 @@ import {
   matchesChatNavScope,
   type ChatNavScope,
 } from "../utils/chatNavScope";
-import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import ChatNavScopeTabs, {
+  ChatNavCreateButton,
+  ChatNavScopeEmpty,
+} from "./ChatNavScopeTabs";
+import { useChatNavDrawers } from "./ChatNavDrawers";
+import ExpertSortMenu from "./ExpertSortMenu";
 import AgentUnreadBadge from "./AgentUnreadBadge";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
@@ -619,21 +625,23 @@ export default function SessionList({
   const { filterVisible, pickHidden, hide, unhide, canHide } =
     useHiddenSharedExperts();
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
+  const { mode: sortMode, setMode: setSortMode } = useExpertSort();
+  const navCreate = useChatNavDrawers();
 
   const hiddenAgents = useMemo(
     () =>
-      sortExpertsByPin(pickHidden(agents), pinnedIds).filter((agent) =>
-        matchesChatNavScope(agent, navScope),
+      sortExpertsByPin(pickHidden(agents), pinnedIds, sortMode).filter(
+        (agent) => matchesChatNavScope(agent, navScope),
       ),
-    [agents, pickHidden, pinnedIds, navScope],
+    [agents, pickHidden, pinnedIds, navScope, sortMode],
   );
 
   const sortedAgents = useMemo(() => {
     const visible = filterVisible(agents);
-    return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
+    return sortExpertsByPin(visible, pinnedIds, sortMode).filter((agent) =>
       matchesChatNavScope(agent, navScope),
     );
-  }, [agents, filterVisible, pinnedIds, navScope]);
+  }, [agents, filterVisible, pinnedIds, navScope, sortMode]);
 
   const expandedAgentId = useMemo(() => {
     const activeInScope = sortedAgents.some(
@@ -750,11 +758,6 @@ export default function SessionList({
    * are stopped / waiting on a model. Only the first one should be answered
    * with "create your first expert".
    */
-  const emptyAgentsCopy =
-    unreadyExperts > 0
-      ? { text: t("chat.noChattableAgentsHint"), action: t("chat.goToExperts") }
-      : { text: t("chat.noAgentsHint"), action: t("chat.createExpert") };
-
   const renderAgentRow = (agent: OctopAgent, hiddenRow: boolean) => {
     const isActive = agent.agent_id === activeAgentId;
     const hits = searching
@@ -869,51 +872,63 @@ export default function SessionList({
         </div>
       ) : null}
 
-      {agents.length > 0 ? (
+      <div className={styles.sessionScopeRow}>
         <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
-      ) : null}
+      </div>
+      <div className={styles.sessionCreateRow}>
+        <ChatNavCreateButton
+          scope={navScope}
+          onCreate={() => navCreate.open(navScope)}
+        />
+        <ExpertSortMenu mode={sortMode} onChange={setSortMode} />
+      </div>
+      {navCreate.drawers}
 
-      {agents.length === 0 ? (
-        <div className={styles.sessionEmptyAgents}>
-          <p className={styles.sessionEmptyAgentsText}>
-            {emptyAgentsCopy.text}
-          </p>
-          <button
-            type="button"
-            className={styles.sessionEmptyAgentsLink}
-            onClick={() => navigate("/experts")}
-          >
-            {emptyAgentsCopy.action}
-          </button>
-        </div>
-      ) : (
-        <div className={styles.sessionItems}>
-          {listedAgents.length === 0 &&
-          (searching || catalog.loading || hiddenAgents.length === 0) ? (
-            searching || catalog.loading ? (
-              <div className={styles.agentCardSessionsEmpty}>
-                {catalog.loading
-                  ? t("common.loading")
-                  : t("chat.noSearchResults", "没有匹配的会话")}
-              </div>
-            ) : (
-              <ChatNavScopeEmpty scope={navScope} />
-            )
+      <div className={styles.sessionItems}>
+        {listedAgents.length === 0 &&
+        (searching || catalog.loading || hiddenAgents.length === 0) ? (
+          searching || catalog.loading ? (
+            <div className={styles.agentCardSessionsEmpty}>
+              {catalog.loading
+                ? t("common.loading")
+                : t("chat.noSearchResults", "没有匹配的会话")}
+            </div>
+          ) : navScope === "experts" && unreadyExperts > 0 ? (
+            <div className={styles.sessionEmptyAgents}>
+              <p className={styles.sessionEmptyAgentsTitle}>
+                {t("chat.noAgentsTitle")}
+              </p>
+              <p className={styles.sessionEmptyAgentsText}>
+                {t("chat.noChattableAgentsHint")}
+              </p>
+              <button
+                type="button"
+                className={styles.sessionEmptyAgentsLink}
+                onClick={() => navigate("/experts")}
+              >
+                {t("chat.goToExperts")}
+              </button>
+            </div>
           ) : (
-            listedAgents.map((agent) => renderAgentRow(agent, false))
-          )}
-          {hiddenAgents.length > 0 ? (
-            <>
-              <HiddenExpertsToggle
-                expanded={showingHidden}
-                count={hiddenAgents.length}
-                onToggle={() => setShowingHidden((open) => !open)}
-              />
-              {listedHiddenAgents.map((agent) => renderAgentRow(agent, true))}
-            </>
-          ) : null}
-        </div>
-      )}
+            <ChatNavScopeEmpty
+              scope={navScope}
+              onCreate={() => navCreate.open(navScope)}
+            />
+          )
+        ) : (
+          listedAgents.map((agent) => renderAgentRow(agent, false))
+        )}
+        {hiddenAgents.length > 0 ? (
+          <>
+            <HiddenExpertsToggle
+              expanded={showingHidden}
+              count={hiddenAgents.length}
+              onToggle={() => setShowingHidden((open) => !open)}
+            />
+            {listedHiddenAgents.map((agent) => renderAgentRow(agent, true))}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
