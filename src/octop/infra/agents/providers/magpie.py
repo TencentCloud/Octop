@@ -111,6 +111,7 @@ def is_magpie_default_base_url(base_url: Any) -> bool:
         return False
     try:
         parsed = urlsplit(str(base_url).strip())
+        port = parsed.port if parsed.port is not None else 80
     except ValueError:
         return False
     if parsed.scheme.lower() != MAGPIE_DEFAULT_SCHEME:
@@ -118,7 +119,6 @@ def is_magpie_default_base_url(base_url: Any) -> bool:
     host = (parsed.hostname or "").lower()
     if host != MAGPIE_DEFAULT_HOST:
         return False
-    port = parsed.port if parsed.port is not None else 80
     if port != MAGPIE_DEFAULT_PORT:
         return False
     path = (parsed.path or "").rstrip("/") or "/"

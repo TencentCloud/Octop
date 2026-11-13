@@ -1008,16 +1008,8 @@ export function ProviderConfigModal({
           okText: t("common.confirm"),
           cancelText: t("common.cancel"),
           onOk: async () => {
-            const body = magpieRefreshBody({
-              models: plan.models,
-              savedBaseUrl: provider.base_url,
-              draftBaseUrl: (
-                form.getFieldValue("base_url") as string | undefined
-              )?.trim(),
-              draftApiKey: (
-                form.getFieldValue("api_key") as string | undefined
-              )?.trim(),
-            });
+            // Keep the catalog tied to the connection used for its fetch.
+            const body = refreshBody;
             await request(`${apiPrefix}/${provider.id}`, {
               method: "PATCH",
               body: JSON.stringify(body),

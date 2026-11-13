@@ -45,6 +45,8 @@ def test_preset_is_empty_openai_catalog() -> None:
         ("http://127.0.0.1:3425/v1/extra", False),
         ("http://127.0.0.1/v1", False),
         ("http://magpie.example/v1", False),
+        ("http://127.0.0.1:invalid/v1", False),
+        ("http://127.0.0.1:65536/v1", False),
     ],
 )
 def test_default_base_url_matches_scheme_host_port_and_path(base_url: str, expected: bool) -> None:
