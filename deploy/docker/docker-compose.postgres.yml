@@ -2,8 +2,8 @@
 # Local PostgreSQL (+ pgvector) for Octop dual-backend development / tests
 #
 # From repo root:
-#   docker compose -f docker/docker-compose.postgres.yml up -d
-#   docker compose -f docker/docker-compose.postgres.yml down
+#   docker compose -f deploy/docker/docker-compose.postgres.yml up -d
+#   docker compose -f deploy/docker/docker-compose.postgres.yml down
 #
 # Connection (default):
 #   postgresql://octop:octop@127.0.0.1:5432/octop

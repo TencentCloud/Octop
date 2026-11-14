@@ -26,7 +26,7 @@
     .line {
       width: 2px;
       background: var(--fn-color-brand);
-      opacity: 0.32;
+      opacity: 0.22;
     }
   }
 }
@@ -71,6 +71,16 @@
   left: -6px;
 }
 
+/* Divider only: the fold control lives in the rail header, not on this line. */
+.edgeLineOnly {
+  pointer-events: none;
+
+  &::before,
+  &::after {
+    display: none;
+  }
+}
+
 .line {
   position: absolute;
   top: 0;
@@ -79,7 +89,7 @@
   width: 1px;
   transform: translateX(-50%);
   background: var(--fn-chat-divider, var(--fn-border-primary));
-  opacity: 1;
+  opacity: 0.45;
   transition:
     width 0.15s ease,
     background 0.15s ease,
@@ -101,7 +111,7 @@
   border: 1px solid var(--fn-border-secondary);
   border-radius: 8px;
   background: var(--fn-bg-elevated, var(--fn-bg-secondary));
-  color: var(--fn-text-secondary);
+  color: var(--fn-text-tertiary);
   box-shadow: 0 1px 4px
     color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   cursor: pointer;
@@ -135,7 +145,6 @@
   pointer-events: auto;
 }
 
-/* Two pills on one shared divider: keep a gap so they do not overlap. */
 .btnBefore {
   transform: translate(calc(-100% - 3px), -50%);
 }

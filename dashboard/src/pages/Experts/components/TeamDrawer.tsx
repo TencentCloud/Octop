@@ -21,6 +21,7 @@ import {
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   buildModelSelectOptions,
@@ -33,6 +34,7 @@ import ExpertAgentAvatar from "../../Chat/components/ExpertAgentAvatar";
 import {
   buildBackendSpec,
   DEFAULT_BACKEND,
+  defaultCreateBackendChoice,
   ensureBubblewrapAfterProbe,
   ensureBwrapMessage,
   ensureBwrapToastKind,
@@ -88,6 +90,8 @@ export default function TeamDrawer({
   onIconUrlChange,
 }: TeamDrawerProps) {
   const { t } = useTranslation();
+  const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
+  const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
   const [form] = Form.useForm<TeamFormValues>();
   const { models, modelsLoading, backends, backendsLoading } =
     useAgentFormResources(open);
@@ -191,7 +195,7 @@ export default function TeamDrawer({
       default_model: MODEL_AUTO_VALUE,
       welcome_message: t("experts.teams.welcomeDefault"),
       member_ids: [],
-      backend_choice: DEFAULT_BACKEND,
+      backend_choice: createBackendChoice,
       composite_default: DEFAULT_BACKEND,
       root_dir: undefined,
       workspace_dir: "",
@@ -201,7 +205,7 @@ export default function TeamDrawer({
     setIconUrl(TEAM_AVATAR_URL);
     setAvatarFile(null);
     setRosterExtras([]);
-  }, [form, mode, open, t, team]);
+  }, [createBackendChoice, form, mode, open, t, team]);
 
   useEffect(() => {
     if (!open) return;

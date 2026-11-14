@@ -35,6 +35,8 @@ interface RailEdgeControlProps {
    */
   onResizeStart?: (event: PointerEvent<HTMLDivElement>) => void;
   resizeLabel?: string;
+  /** Keep the divider line without the hover toggle (nav fold lives elsewhere). */
+  showToggle?: boolean;
 }
 
 /**
@@ -53,6 +55,7 @@ export default function RailEdgeControl({
   placement = "center",
   onResizeStart,
   resizeLabel,
+  showToggle = true,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -67,6 +70,7 @@ export default function RailEdgeControl({
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
         expanded ? null : styles.edgeCollapsed,
+        showToggle ? null : styles.edgeLineOnly,
         className,
       ]
         .filter(Boolean)
@@ -82,27 +86,29 @@ export default function RailEdgeControl({
           aria-label={resizeLabel ?? t("chat.resizeSidebar", "调整侧栏宽度")}
         />
       ) : null}
-      <button
-        type="button"
-        className={`${styles.btn} ${
-          placement === "before"
-            ? styles.btnBefore
-            : placement === "after"
-            ? styles.btnAfter
-            : ""
-        }`}
-        onClick={onToggle}
-        aria-label={ariaLabel}
-        aria-expanded={expanded}
-        aria-keyshortcuts={shortcut}
-        title={hint ?? ariaLabel}
-      >
-        {expanded ? (
-          <ChevronLeft size={14} strokeWidth={2} aria-hidden />
-        ) : (
-          <ChevronRight size={14} strokeWidth={2} aria-hidden />
-        )}
-      </button>
+      {showToggle ? (
+        <button
+          type="button"
+          className={`${styles.btn} ${
+            placement === "before"
+              ? styles.btnBefore
+              : placement === "after"
+              ? styles.btnAfter
+              : ""
+          }`}
+          onClick={onToggle}
+          aria-label={ariaLabel}
+          aria-expanded={expanded}
+          aria-keyshortcuts={shortcut}
+          title={hint ?? ariaLabel}
+        >
+          {expanded ? (
+            <ChevronLeft size={14} strokeWidth={1.6} aria-hidden />
+          ) : (
+            <ChevronRight size={14} strokeWidth={1.6} aria-hidden />
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }

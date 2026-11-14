@@ -3,23 +3,23 @@
 # 构建 Octop Docker 镜像
 #
 # 用法:
-#   bash docker/docker_build.sh [镜像标签] [额外 docker build 参数...]
+#   bash deploy/docker/docker_build.sh [镜像标签] [额外 docker build 参数...]
 #
 # 示例:
-#   bash docker/docker_build.sh
-#   bash docker/docker_build.sh myreg/octop:v1
-#   bash docker/docker_build.sh octop:dev --no-cache
+#   bash deploy/docker/docker_build.sh
+#   bash deploy/docker/docker_build.sh myreg/octop:v1
+#   bash deploy/docker/docker_build.sh octop:dev --no-cache
 #
 # 国内加速（可选，需 BuildKit，本脚本默认已开启）:
 #   PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
 #   PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
 #   NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
 #   APT_MIRROR=mirrors.cloud.tencent.com \
-#   bash docker/docker_build.sh
+#   bash deploy/docker/docker_build.sh
 # =============================================================================
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 IMAGE_TAG="${1:-octop:latest}"
@@ -53,7 +53,7 @@ echo ""
 
 docker build \
     -t "$IMAGE_TAG" \
-    -f "${REPO_ROOT}/docker/Dockerfile" \
+    -f "${REPO_ROOT}/deploy/docker/Dockerfile" \
     "${BUILD_ARGS[@]}" \
     "$@" \
     "$REPO_ROOT"
@@ -65,4 +65,4 @@ echo "启动示例:"
 echo "  docker run -d -p 8088:8088 -v octop-data:/data/.octop -e HOME=/data ${IMAGE_TAG}"
 echo ""
 echo "或使用 Compose:"
-echo "  docker compose -f docker/docker-compose.yml up -d"
+echo "  docker compose -f deploy/docker/docker-compose.yml up -d"
