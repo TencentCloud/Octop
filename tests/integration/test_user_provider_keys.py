@@ -83,6 +83,23 @@ async def test_user_key_required_follows_missing_global_key(env) -> None:
     assert row["user_key_required"] is True
 
 
+async def test_explicitly_keyless_provider_is_not_required(env) -> None:
+    c, srv, _admin_auth, alice_auth = env
+
+    provider = srv.services.provider_repo.get_by_name("openai")
+    assert provider is not None
+    srv.services.provider_repo.update(
+        provider.id,
+        api_key=None,
+        extra_json='{"keyless": true}',
+    )
+
+    r = await c.get("/api/me/provider-keys", headers=alice_auth)
+    row = next(item for item in r.json() if item["provider_name"] == "openai")
+    assert row["keyless"] is True
+    assert row["user_key_required"] is False
+
+
 async def test_admin_revoke_clears_global_key(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
     """PATCH ``{"api_key": null}`` must actually clear the stored global key.
 

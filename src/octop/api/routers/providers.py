@@ -25,7 +25,10 @@ from octop.infra.agents.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
-from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.model_flags import (
+    is_keyless_provider_row,
+    is_local_runtime_provider,
+)
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
     fetch_openai_compatible_models,
@@ -65,6 +68,7 @@ class ProviderCreateBody(BaseModel):
     purpose: Literal["chat", "embedding"] | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
+    keyless: bool | None = None
 
 
 class ProviderPatchBody(BaseModel):
@@ -77,6 +81,7 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    keyless: bool | None = None
     # Model id used by "test connection". Null clears a previously saved choice.
     model: str | None = None
 
@@ -92,6 +97,7 @@ _PROVIDER_REHYDRATE_FIELDS = frozenset(
         "purpose",
         "models",
         "enabled",
+        "keyless",
     }
 )
 
@@ -160,6 +166,25 @@ def _blank_to_none(value: str | None) -> str | None:
     return stripped or None
 
 
+def _merge_keyless_extra(extra_json: str | None, keyless: bool | None) -> str | None:
+    """Set/clear ``{"keyless": true}`` inside the provider ``extra_json`` blob."""
+    if keyless is None:
+        return extra_json
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            extra = parsed
+    if keyless:
+        extra["keyless"] = True
+    else:
+        extra.pop("keyless", None)
+    return json.dumps(extra) if extra else None
+
+
 def _provider_patch_updates(
     body: ProviderPatchBody,
     *,
@@ -189,6 +214,7 @@ def _provider_patch_updates(
         or "stream_usage" in fields
         or "purpose" in fields
         or "model" in fields
+        or "keyless" in fields
     ):
         base = body.extra_json if "extra_json" in fields else current_extra_json
         if "stream_usage" in fields:
@@ -197,6 +223,8 @@ def _provider_patch_updates(
             base = merge_provider_purpose_extra(base, body.purpose)
         if "model" in fields:
             base = merge_default_model_extra(base, body.model)
+        if "keyless" in fields:
+            base = _merge_keyless_extra(base, body.keyless)
         updates["extra_json"] = base
     if "models" in fields:
         models = body.models
@@ -294,6 +322,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "keyless": is_keyless_provider_row(r),
         "model": _saved_default_model(extra),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
         "purpose": resolve_provider_purpose(
@@ -399,6 +428,7 @@ async def admin_create_provider(
     models_json = _json.dumps(models) if models is not None else None
     extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
     extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
+    extra_json = _merge_keyless_extra(extra_json, body.keyless)
     if server.services.provider_repo.get_by_name(body.name) is not None:
         raise OctopError(
             ErrorCode.PROVIDER_NAME_TAKEN,

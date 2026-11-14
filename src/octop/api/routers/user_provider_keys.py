@@ -13,7 +13,10 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.model_flags import (
+    is_keyless_provider_row,
+    is_local_runtime_provider,
+)
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
@@ -29,6 +32,10 @@ class ProviderKeyStatus(BaseModel):
         default=False,
         description="Provider has no global key — a personal key is required to use it",
     )
+    keyless: bool = Field(
+        default=False,
+        description="Provider is explicitly marked as needing no API key",
+    )
 
 
 class ProviderKeyBody(BaseModel):
@@ -41,11 +48,13 @@ class ProviderKeyBody(BaseModel):
 
 
 def _status(row: Any, *, has_own_key: bool, updated_at: int | None) -> ProviderKeyStatus:
+    keyless = is_keyless_provider_row(row)
     return ProviderKeyStatus(
         provider_name=row.name,
         has_own_key=has_own_key,
         updated_at=updated_at,
-        user_key_required=not (row.api_key or "").strip(),
+        user_key_required=not (row.api_key or "").strip() and not keyless,
+        keyless=keyless,
     )
 
 

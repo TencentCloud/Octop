@@ -115,6 +115,8 @@ export function ModelKeysPanel() {
               </Text>
               {row.has_own_key ? (
                 <Tag color="green">{t("models.myKeysHasOwn")}</Tag>
+              ) : row.keyless ? (
+                <Tag>{t("models.myKeysKeyless")}</Tag>
               ) : row.user_key_required ? (
                 <Tag color="orange">{t("models.myKeysRequiredTag")}</Tag>
               ) : (

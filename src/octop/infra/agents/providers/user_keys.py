@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from octop.infra.agents.providers.model_flags import is_keyless_provider_row
 from octop.infra.errors import ErrorCode, OctopError
 
 
@@ -22,9 +23,8 @@ def resolve_api_key_override(
     """The personal key for this turn's provider, or ``None`` for the global key.
 
     Raises :class:`OctopError` (``PROVIDER_KEY_REQUIRED``) when the provider has
-    no global key and the user has no personal one — such a provider demands a
-    personal key. Non-user callers (``user_id <= 0``) always fall back to the
-    global key.
+    no global key, no personal key, and is not explicitly marked as keyless.
+    Non-user callers (``user_id <= 0``) always fall back to the global key.
     """
     if user_id <= 0 or not model_ref:
         return None
@@ -35,9 +35,11 @@ def resolve_api_key_override(
     key: str | None = user_provider_key_repo.get_key(user_id, provider_name)
     if key:
         return key
-    if not (getattr(row, "api_key", None) or "").strip():
-        raise OctopError(
-            ErrorCode.PROVIDER_KEY_REQUIRED,
-            "this provider requires a personal API key",
-        )
-    return None
+    if (getattr(row, "api_key", None) or "").strip():
+        return None
+    if is_keyless_provider_row(row):
+        return None
+    raise OctopError(
+        ErrorCode.PROVIDER_KEY_REQUIRED,
+        "this provider requires a personal API key",
+    )

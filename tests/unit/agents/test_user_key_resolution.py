@@ -12,8 +12,12 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.process.harness_request import build_harness_request
 
 
-def _row(name: str = "gw", api_key: str | None = "sk-global") -> SimpleNamespace:
-    return SimpleNamespace(name=name, api_key=api_key)
+def _row(
+    name: str = "gw",
+    api_key: str | None = "sk-global",
+    extra_json: str | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(name=name, api_key=api_key, extra_json=extra_json)
 
 
 class _ProviderRepo:
@@ -70,6 +74,11 @@ def test_keyless_provider_without_key_raises() -> None:
 def test_keyless_provider_with_key_returns_key() -> None:
     row = _row(api_key=None)
     assert _resolve(row=row, keys={(7, "gw"): "sk-personal"}) == "sk-personal"
+
+
+def test_explicitly_keyless_provider_returns_none() -> None:
+    row = _row(api_key=None, extra_json='{"keyless": true}')
+    assert _resolve(row=row) is None
 
 
 def test_system_callers_never_raise() -> None:

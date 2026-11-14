@@ -5,6 +5,7 @@ export interface ProviderKeyStatus {
   has_own_key: boolean;
   updated_at: number | null;
   user_key_required: boolean;
+  keyless: boolean;
 }
 
 export const userProviderKeysApi = {
