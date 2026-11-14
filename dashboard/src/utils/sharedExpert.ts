@@ -7,13 +7,24 @@ export interface SharedExpertAccess {
   user_id?: number | null;
 }
 
-/** Owner or admin. Matches ``assert_agent_owner`` on ``GET /agents/{id}/status``. */
-export function canReadAgentRuntimeStatus(
+/**
+ * Owner or admin. Matches ``assert_agent_owner``: admins may mutate and
+ * read runtime status for experts they do not own.
+ */
+export function canManageExpert(
   agent: SharedExpertAccess,
   user: { role?: string } | null | undefined,
 ): boolean {
   if (user?.role === "admin") return true;
   return agent.is_owner !== false;
+}
+
+/** Owner or admin. Matches ``assert_agent_owner`` on ``GET /agents/{id}/status``. */
+export function canReadAgentRuntimeStatus(
+  agent: SharedExpertAccess,
+  user: { role?: string } | null | undefined,
+): boolean {
+  return canManageExpert(agent, user);
 }
 
 function sameUserId(

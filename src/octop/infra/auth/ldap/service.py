@@ -215,6 +215,7 @@ class LdapAuthService:
         # privileges on an existing account.
         refreshed = self._services.user_repo.get(account.id) or account
         user = self._cached_or_row(refreshed)
+        self._services.user_repo.touch_last_login(user.id)
         self._services.audit_repo.write(
             actor=user.username, action="auth.ldap_login", target=user.username
         )
@@ -277,6 +278,7 @@ class LdapAuthService:
             concurrent = self._services.user_repo.get_by_sso(row.id, identity.subject)
             if concurrent is None:
                 raise
+            self._services.user_repo.touch_last_login(concurrent.id)
             return self._cached_or_row(concurrent)
         if policies:
             self._services.user_policy_repo.merge(uid, dict(policies))
@@ -291,6 +293,7 @@ class LdapAuthService:
             permissions=list(permissions),
         )
         self._user_manager.register_cached_user(user)
+        self._services.user_repo.touch_last_login(uid)
         self._services.audit_repo.write(
             actor=username,
             action="user.ldap_create",

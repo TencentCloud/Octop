@@ -37,7 +37,12 @@ from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
-from octop.infra.gateway.media.tool_media import tool_name_base
+from octop.infra.gateway.media.tool_media import (
+    media_events_from_tool_result,
+    note_live_tool_call,
+    select_turn_tool_results,
+    tool_name_base,
+)
 from octop.infra.history.projection import (
     live_message_inputs,
     message_inputs,
@@ -398,6 +403,8 @@ class TeamManager:
         saw_tool_call = False
         decision_payload: dict[str, Any] | None = None
         emitted_tool_error_ids: set[str] = set()
+        live_tool_call_ids: set[str] = set()
+        emitted_media_ids: set[str] = set()
         hold_room = self._defer_member_wall(speaker_id, member_tid, room_thread_id)
         host_id = self._room_agent_id(room_thread_id) if hold_room else ""
         room_open = True
@@ -479,6 +486,7 @@ class TeamManager:
                     kind = str(chunk.get("type") or "")
                     if kind == "tool_call_chunk":
                         saw_tool_call = True
+                        note_live_tool_call(chunk, live_tool_call_ids)
                     elif kind == "tool_result":
                         log_failed_tool_results(
                             chunk,
@@ -486,6 +494,13 @@ class TeamManager:
                             thread_id=member_tid or room_thread_id,
                             seen=emitted_tool_error_ids,
                             live=saw_tool_call,
+                        )
+                        await self._push_turn_tool_media(
+                            chunk,
+                            speaker_id=speaker_id,
+                            room_thread_id=room_thread_id,
+                            live_tool_call_ids=live_tool_call_ids,
+                            emitted_media_ids=emitted_media_ids,
                         )
                     if kind == "token":
                         piece = str(chunk.get("content") or "")
@@ -1434,6 +1449,65 @@ class TeamManager:
             session.to_channel_subject(),
             text,
         )
+
+    async def _push_turn_tool_media(
+        self,
+        chunk: dict[str, Any],
+        *,
+        speaker_id: str,
+        room_thread_id: str,
+        live_tool_call_ids: set[str],
+        emitted_media_ids: set[str],
+    ) -> None:
+        """Send this turn's delivery-tool files to IM sessions on the room.
+
+        The room WebSocket still receives the raw ``tool_result``. Bytes come
+        from the speaker workspace (the member, or the host during wrap-up),
+        and the subject is the session that bound the channel to this room.
+        """
+        if self._gateway is None or not room_thread_id:
+            return
+        sessions = self._thread_registry.im_sessions_for_thread(room_thread_id)
+        if not sessions:
+            return
+        from octop.infra.gateway.process.agent_resolve import (  # noqa: PLC0415
+            harness_workspace_for_agent,
+        )
+
+        workspace = harness_workspace_for_agent(self._agent_manager, speaker_id)
+        if workspace is None:
+            logger.warning(
+                "team media skipped; workspace unavailable speaker=%s room=%s",
+                speaker_id,
+                room_thread_id,
+            )
+            return
+        selected = select_turn_tool_results(chunk, live_tool_call_ids, emitted_media_ids)
+        if selected is None:
+            return
+        async for event in media_events_from_tool_result(selected, workspace=workspace):
+            parts = event.content
+            if not parts:
+                continue
+            for session in sessions:
+                channel_id = session.channel_id
+                if not channel_id:
+                    continue
+                try:
+                    await self._gateway.push_content(
+                        session.channel_type,
+                        channel_id,
+                        session.to_channel_subject(),
+                        parts,
+                    )
+                except Exception:
+                    logger.warning(
+                        "failed to push team media to channel thread=%s speaker=%s channel=%s",
+                        room_thread_id,
+                        speaker_id,
+                        channel_id,
+                        exc_info=True,
+                    )
 
     async def _push_room_to_channels(
         self,
@@ -2447,21 +2521,27 @@ def wire_host_dispatch(
         pair = take_prompt(agent_id, getattr(req, "thread_id", None))
         if not pair:
             return req
-        from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_core.messages import HumanMessage
+
+        from octop.infra.agents.middleware.team_dispatch import (
+            CONFIG_KEY as BRIEFING_KEY,
+        )
 
         question, dispatch = pair
-        messages: list[Any] = []
         if dispatch and dispatch != question:
-            messages.append(SystemMessage(content=dispatch))
+            # Briefing belongs on the leading system prompt. A SystemMessage in
+            # the turn input lands mid-thread on the next dispatch, and strict
+            # providers reject it. TeamDispatchBriefingMiddleware appends it.
+            configurable = dict(getattr(req, "configurable", None) or {})
+            configurable[BRIEFING_KEY] = dispatch
+            req.configurable = configurable
         if question:
-            messages.append(
+            req.messages = [
                 HumanMessage(
                     content=question,
                     id=f"team-peer:{getattr(req, 'thread_id', None)}:{new_ulid()}:human",
                 )
-            )
-        if messages:
-            req.messages = messages
+            ]
         return req
 
     harness_team._enrich_request = enrich

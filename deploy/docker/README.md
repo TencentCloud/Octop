@@ -100,7 +100,7 @@ image to receive these dependencies; restarting an older image is insufficient.
 
 ### Kubernetes
 
-Manifests for multiple replicas, a shared PostgreSQL (with pgvector), and one external entrypoint are in [../k8s/README.md](../k8s/README.md).
+The Helm chart for multiple replicas, a shared PostgreSQL (with pgvector), and one external entrypoint is in [../helm/octop/README.md](../helm/octop/README.md).
 
 ### Health check
 

@@ -544,6 +544,7 @@
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
     "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
+    "APP_CONFIG_INVALID": "Invalid configuration: {detail}.",
     "TEAM_NOT_FOUND": "Team not found.",
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
