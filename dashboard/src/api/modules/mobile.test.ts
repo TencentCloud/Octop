@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../request", () => ({
   request: vi.fn(),
+  requestStream: async (path: string, options: RequestInit) => {
+    const response = await fetch(`/api${path}`, options);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return { body: response.body, contentType: "text/event-stream" };
+  },
   getAuthToken: () => "test-token",
 }));
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import i18n from "../i18n";
 import { probeHealth } from "../api/probeHealth";
 import { updateApi } from "../api/modules/update";
+import { ApiResponseError } from "../api/responseError";
 import { bustServiceWorkerAndReload } from "../utils/reloadOnStaleChunk";
 
 import { message } from "@/utils/antdMessage";
@@ -28,6 +29,9 @@ function shouldPollAfterRestartError(err: unknown): boolean {
   if (!(err instanceof Error)) {
     return false;
   }
+  if (err instanceof ApiResponseError) {
+    return [502, 503, 504].includes(err.status);
+  }
   const msg = err.message;
   if (!msg.startsWith("Request failed:")) {
     return true;
@@ -35,6 +39,8 @@ function shouldPollAfterRestartError(err: unknown): boolean {
   const status = Number(/Request failed: (\d+)/.exec(msg)?.[1] ?? 0);
   return status === 502 || status === 503 || status === 504;
 }
+
+export { shouldPollAfterRestartError };
 
 export function hasProcessRestarted(
   baselineStartedAt: number | undefined,

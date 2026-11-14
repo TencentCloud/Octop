@@ -8,6 +8,11 @@ from octop.infra.market import clear_market_cache
 
 
 @pytest.fixture(autouse=True)
+def _no_network_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("octop.infra.agents.plugins.manager.install_dependencies", lambda _: None)
+
+
+@pytest.fixture(autouse=True)
 def _empty_portal(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
     clear_market_cache()

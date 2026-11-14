@@ -2612,6 +2612,7 @@ dependencies = [
     { name = "octop-harness", extra = ["all"] },
     { name = "octop-memory" },
     { name = "openpyxl" },
+    { name = "packaging" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "psycopg", extra = ["binary"] },
