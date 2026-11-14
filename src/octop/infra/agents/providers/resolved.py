@@ -24,15 +24,16 @@ def _provider_extra(provider: Any) -> dict[str, Any] | None:
 
 
 def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
-    """Return chat-eligible enabled models for providers with credentials.
+    """Return chat-eligible enabled models across enabled providers.
 
-    Embedding-only models (``embedding: true`` / ``task: embedding`` / ONNX
-    local) and entire ``purpose=embedding`` providers are excluded so they
-    never appear in chat pickers or auto-route.
+    No credential gate: keyless endpoints are valid and BYOK providers
+    authenticate per call. Embedding-only models (``embedding: true`` /
+    ``task: embedding`` / ONNX local) and entire ``purpose=embedding``
+    providers are excluded so they never appear in chat pickers or auto-route.
     """
     resolved: list[dict[str, Any]] = []
     for provider in providers:
-        if not provider.enabled or not provider.api_key:
+        if not provider.enabled:
             continue
         provider_name = str(getattr(provider, "name", "") or "")
         provider_api_key = str(getattr(provider, "api_key", "") or "") or None

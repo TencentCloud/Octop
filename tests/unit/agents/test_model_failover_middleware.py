@@ -32,7 +32,7 @@ async def test_auto_route_switches_after_retry_exhaustion(monkeypatch) -> None:
     health = ModelHealthRegistry(clock=lambda: 100.0)
     middleware = SafeModelFailoverMiddleware(
         health=health,
-        candidates=lambda _current, _vision: [AutoRouteCandidate("p/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("p/b", 100_000)],
         model_for_ref=models.__getitem__,
         max_retries=1,
         initial_delay=0,
@@ -74,7 +74,7 @@ async def test_error_policy_raises_after_all_routes_exhaust_retries(
     health = ModelHealthRegistry(clock=lambda: 100.0)
     middleware = SafeModelFailoverMiddleware(
         health=health,
-        candidates=lambda _current, _vision: [AutoRouteCandidate("p/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("p/b", 100_000)],
         model_for_ref=models.__getitem__,
         max_retries=1,
         initial_delay=0,
@@ -107,7 +107,7 @@ async def test_explicit_route_retries_but_does_not_switch(monkeypatch) -> None:
     health = ModelHealthRegistry(clock=lambda: 100.0)
     middleware = SafeModelFailoverMiddleware(
         health=health,
-        candidates=lambda _current, _vision: [AutoRouteCandidate("p/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("p/b", 100_000)],
         model_for_ref=models.__getitem__,
         max_retries=1,
         initial_delay=0,
@@ -135,7 +135,7 @@ def test_terminal_failure_uses_observability_callback(monkeypatch) -> None:
     on_failure = MagicMock(return_value="tracked failure")
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [],
+        candidates=lambda _current, _vision, _user_id: [],
         model_for_ref=lambda _ref: model,
         max_retries=0,
         initial_delay=0,
@@ -167,7 +167,7 @@ async def test_failover_skips_model_with_smaller_context(monkeypatch) -> None:
     }
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [
+        candidates=lambda _current, _vision, _user_id: [
             AutoRouteCandidate("p/small", 1_000),
             AutoRouteCandidate("p/large", 100_000),
         ],
@@ -204,7 +204,7 @@ async def test_failover_respects_agent_context_cap(monkeypatch) -> None:
     models = {"p/a": _model("p/a", 100_000), "p/b": _model("p/b", 100_000)}
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [AutoRouteCandidate("p/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("p/b", 100_000)],
         model_for_ref=models.__getitem__,
         max_retries=0,
         initial_delay=0,
@@ -240,7 +240,7 @@ async def test_failover_does_not_retry_unknown_invalid_request(monkeypatch) -> N
     model = _model("p/a", 100_000)
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [AutoRouteCandidate("p/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("p/b", 100_000)],
         model_for_ref=lambda _ref: _model("p/b", 100_000),
         max_retries=0,
         initial_delay=0,
@@ -272,7 +272,7 @@ async def test_provider_failure_skips_sibling_model(monkeypatch) -> None:
     configurable = {"model": "p/a", "octop_auto_route": True}
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [
+        candidates=lambda _current, _vision, _user_id: [
             AutoRouteCandidate("p/b", 100_000),
             AutoRouteCandidate("q/c", 100_000),
         ],

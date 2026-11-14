@@ -293,16 +293,100 @@ def test_build_harness_configs_skips_disabled(store: ProviderStore) -> None:
     assert [p.id for p in providers] == ["enabled"]
 
 
-def test_build_harness_configs_skips_missing_credentials(store: ProviderStore) -> None:
+def test_build_harness_configs_skips_incomplete_rows(store: ProviderStore) -> None:
     store._provider_repo.create(name="no-url", kind="openai", api_key="sk-test")
     store._provider_repo.create(
-        name="no-key",
+        name="no-models",
         kind="openai",
         base_url="https://api.example.com/v1",
     )
 
     assert store.build_harness_configs() == []
     assert store.has_usable_providers() is False
+
+
+def test_keyless_provider_is_usable(store: ProviderStore) -> None:
+    """Keyless endpoints are valid for manual selection; BYOK providers authenticate per call."""
+    store._provider_repo.create(
+        name="bare",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        models_json=json.dumps([{"id": "m1", "name": "m1"}]),
+    )
+    assert store.has_usable_providers() is True
+    assert [row.name for row in store.iter_usable_rows()] == ["bare"]
+    assert store.is_model_ref_usable("bare/m1") is True
+
+
+class _UserKeyRepo:
+    def __init__(self, keys: dict[tuple[int, str], str] | None = None) -> None:
+        self._keys = dict(keys or {})
+
+    def get_key(self, user_id: int, provider_name: str) -> str | None:
+        return self._keys.get((user_id, provider_name))
+
+
+def test_keyless_provider_is_auto_routable(store: ProviderStore) -> None:
+    """An explicitly keyless provider joins AUTO without any key."""
+    store._provider_repo.create(
+        name="bare",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        extra_json='{"keyless": true}',
+        models_json=json.dumps([{"id": "vision", "name": "vision", "input": ["text", "image"]}]),
+    )
+    store._provider_repo.create(
+        name="keyed",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "text", "name": "text", "input": ["text"]}]),
+    )
+
+    assert {row.name for row in store.iter_usable_rows()} == {"bare", "keyed"}
+    assert store.is_model_ref_usable("bare/vision") is True
+    assert store.is_model_ref_auto_usable("bare/vision") is True
+    assert store.is_model_ref_auto_usable("keyed/text") is True
+
+    assert {row.name for row in store.iter_auto_route_rows()} == {"bare", "keyed"}
+    assert {
+        candidate.ref for candidate in store.list_auto_route_candidates(needs_multimodal=False)
+    } == {"bare/vision", "keyed/text"}
+    assert {
+        candidate.ref for candidate in store.list_auto_route_candidates(needs_multimodal=True)
+    } == {"bare/vision"}
+    assert store.resolve_first_model_ref() in {"bare/vision", "keyed/text"}
+    assert store.resolve_multimodal_model_ref() == "bare/vision"
+    assert (
+        store.resolve_model_for_multimodal_turn("bare/vision", needs_multimodal=True)
+        == "bare/vision"
+    )
+
+
+def test_byok_provider_is_auto_routable_only_with_a_user_key(
+    store: ProviderStore,
+) -> None:
+    """A no-global-key provider joins AUTO only for users who stored a key."""
+    store._provider_repo.create(
+        name="byok",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        models_json=json.dumps([{"id": "m1", "name": "m1"}]),
+    )
+
+    assert store.list_auto_route_candidates(needs_multimodal=False) == []
+    assert store.is_model_ref_auto_usable("byok/m1") is False
+
+    keyed_store = ProviderStore(
+        provider_repo=store._provider_repo,
+        user_provider_key_repo=_UserKeyRepo({(7, "byok"): "sk-user"}),
+    )
+    assert [
+        candidate.ref
+        for candidate in keyed_store.list_auto_route_candidates(needs_multimodal=False, user_id=7)
+    ] == ["byok/m1"]
+    assert keyed_store.is_model_ref_auto_usable("byok/m1", user_id=7) is True
+    assert keyed_store.is_model_ref_auto_usable("byok/m1", user_id=8) is False
 
 
 def test_has_usable_providers_requires_enabled_model(store: ProviderStore) -> None:

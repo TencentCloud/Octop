@@ -593,6 +593,7 @@ class AgentManager:
         self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
+            user_provider_key_repo=getattr(repos, "user_provider_key_repo", None),
         )
         self._host_models = HostModelFactory()
         self._model_health = ModelHealthRegistry()
@@ -633,7 +634,10 @@ class AgentManager:
         self._tool_guard_rules = ToolGuardRulesStore(
             paths=self._paths, settings=repos.settings_repo
         )
-        self._providers = ProviderStore(provider_repo=repos.provider_repo)
+        self._providers = ProviderStore(
+            provider_repo=repos.provider_repo,
+            user_provider_key_repo=getattr(repos, "user_provider_key_repo", None),
+        )
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
             secret_repo=repos.secret_repo,
@@ -2112,28 +2116,32 @@ class AgentManager:
         if self._harness_manager is not None:
             self._harness_manager.clear_thread_model(agent_id, thread_id)
 
-    def _resolve_configured_fallback_model_ref(self) -> str | None:
+    def _resolve_configured_fallback_model_ref(self, user_id: int = 0) -> str | None:
         """Return the configured fallback without applying runtime health."""
         name, model_id = self._repos.settings_repo.get_active_model()
         if name and model_id:
             ref = f"{name}/{model_id}"
-            if self._providers.is_model_ref_usable(ref):
+            if self._providers.is_model_ref_auto_usable(ref, user_id=user_id):
                 return ref
-        return self._providers.resolve_first_model_ref()
+        return self._providers.resolve_first_model_ref(user_id=user_id)
 
-    def resolve_fallback_model_ref(self) -> str | None:
+    def resolve_fallback_model_ref(self, user_id: int = 0) -> str | None:
         """Return the first healthy model for an automatic route."""
-        configured = self._resolve_configured_fallback_model_ref()
+        configured = self._resolve_configured_fallback_model_ref(user_id)
         if configured and self._model_health.is_routable(configured):
             return configured
-        for candidate in self._providers.list_auto_route_candidates(needs_multimodal=False):
+        for candidate in self._providers.list_auto_route_candidates(
+            needs_multimodal=False, user_id=user_id
+        ):
             if self._model_health.is_routable(candidate.ref):
                 return candidate.ref
         return None
 
-    def is_auto_route_model_available(self, ref: str) -> bool:
-        """Return whether a usable model can start an automatic route now."""
-        return self._providers.is_model_ref_usable(ref) and self._model_health.is_routable(ref)
+    def is_auto_route_model_available(self, ref: str, user_id: int = 0) -> bool:
+        """Return whether an auto-routable model can start a route now."""
+        return self._providers.is_model_ref_auto_usable(
+            ref, user_id=user_id
+        ) and self._model_health.is_routable(ref)
 
     # ------------------------------------------------------------------
     # Hot-reload — rebuild harness agents after config / provider changes
@@ -4597,9 +4605,9 @@ class AgentManager:
 
                 retry_middleware: Any = SafeModelFailoverMiddleware(
                     health=self._model_health,
-                    candidates=lambda _current_ref, needs_multimodal: (
+                    candidates=lambda _current_ref, needs_multimodal, user_id: (
                         self._providers.list_auto_route_candidates(
-                            needs_multimodal=needs_multimodal
+                            needs_multimodal=needs_multimodal, user_id=user_id
                         )
                     ),
                     model_for_ref=get_chat_model,
