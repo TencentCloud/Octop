@@ -42,12 +42,23 @@ from octop.infra.knowledge.gate import (
     get_capability,
     set_feature_enabled,
 )
+from octop.infra.knowledge.graph import enqueue_base_graph
+from octop.infra.knowledge.graph_extract import (
+    get_graph_capability,
+    graph_models,
+    set_graph_settings,
+)
 from octop.infra.knowledge.jobs import enqueue_index_document, reindex_all_documents
 from octop.infra.knowledge.ocr import (
     ensure_ocr_deps_async,
     get_ocr_capability,
     set_ocr_settings,
     validate_ocr_settings,
+)
+from octop.infra.knowledge.rerank import (
+    get_rerank_capability,
+    rerank_models,
+    set_rerank_settings,
 )
 from octop.infra.knowledge.service import (
     MAX_BASES_PER_OWNER,
@@ -87,6 +98,96 @@ class FeatureBody(BaseModel):
     ocr_backend: str | None = Field(default=None, pattern="^(onnx|remote)$")
     ocr_model: str | None = None
     ocr_provider_id: str | None = None
+    rerank_enabled: bool | None = Field(
+        default=None,
+        description="Whether retrieved chunks are reordered by a rerank model.",
+    )
+    rerank_provider_id: str | None = None
+    rerank_model: str | None = None
+    graph_enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Whether knowledge graphs can be built and used in retrieval. "
+            "Enabling requires `graph_provider_id` and `graph_model`."
+        ),
+    )
+    graph_provider_id: str | None = Field(
+        default=None, description="Provider whose chat model extracts entities and relations."
+    )
+    graph_model: str | None = Field(default=None, description="Chat model ID used for extraction.")
+
+
+class GraphStats(BaseModel):
+    built: bool = Field(description="Whether a graph was built for this knowledge base.")
+    entities: int
+    relations: int
+    documents_total: int = Field(description="Indexed documents in the knowledge base.")
+    documents_ready: int = Field(description="Documents whose passages are in the graph.")
+    documents_partial: int = Field(
+        description="Ready documents where some passages could not be extracted."
+    )
+    documents_pending: int = Field(description="Documents queued or being extracted.")
+    documents_failed: int
+
+
+class GraphNode(BaseModel):
+    id: str = Field(description="Normalized entity name; pass it as `name` to the entity route.")
+    name: str
+    type: str
+    mentions: int = Field(description="Number of passages that mention the entity.")
+    degree: int = Field(description="Number of returned edges touching the entity.")
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    labels: list[str] = Field(description="Up to three relation names between the two entities.")
+    weight: float
+
+
+class GraphResponse(BaseModel):
+    stats: GraphStats
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
+class GraphEntityRef(BaseModel):
+    id: str
+    name: str
+
+
+class GraphEntity(BaseModel):
+    id: str
+    name: str
+    type: str
+    description: str
+    mentions: int
+
+
+class GraphEntityRelation(BaseModel):
+    source: GraphEntityRef
+    target: GraphEntityRef
+    label: str
+    description: str
+    weight: float
+
+
+class GraphPassage(BaseModel):
+    doc_id: str
+    filename: str
+    path: str
+    ordinal: int
+    text: str
+
+
+class GraphEntityResponse(BaseModel):
+    entity: GraphEntity
+    relations: list[GraphEntityRelation]
+    passages: list[GraphPassage]
+
+
+class GraphBuildResponse(BaseModel):
+    enqueued: int = Field(description="Documents queued for extraction.")
 
 
 class OnnxDownloadBody(BaseModel):
@@ -156,7 +257,15 @@ class MoveDocumentBody(BaseModel):
     target_folder: str = Field(
         default="",
         max_length=1024,
-        description="Path of the destination folder in the same knowledge base; empty for root.",
+        description="Path of the destination folder; empty for the root.",
+    )
+    target_kb_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "Knowledge base to move into; omit for the same base. The caller must be able "
+            "to write to both."
+        ),
     )
 
 
@@ -272,6 +381,8 @@ def _map_knowledge_error(
     if isinstance(exc, PermissionError):
         return OctopError.localized(ErrorCode.KNOWLEDGE_FORBIDDEN, locale)
     text = str(exc).lower()
+    if "knowledge graph" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_GRAPH_NOT_READY, locale)
     if isinstance(exc, RuntimeError):
         if "disabled" in text:
             return OctopError.localized(ErrorCode.KNOWLEDGE_FEATURE_DISABLED, locale)
@@ -307,6 +418,8 @@ def _map_knowledge_error(
         return OctopError.localized(ErrorCode.KNOWLEDGE_BASE_LIMIT, locale)
     if "unsupported knowledge document content type" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_UNSUPPORTED_TYPE, locale)
+    if "knowledge rerank" in text:
+        return OctopError.localized(ErrorCode.KNOWLEDGE_RERANK_NOT_READY, locale)
     if "knowledge ocr" in text:
         return OctopError.localized(ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED, locale)
     if "unique constraint" in text or "duplicate key" in text or "already exists" in text:
@@ -367,6 +480,12 @@ def _capability_payload(server: OctopServer) -> dict[str, Any]:
     assert server.services is not None
     payload = get_capability(server.services.settings_repo.get, server.services.provider_repo)
     payload["ocr"] = get_ocr_capability(
+        server.services.settings_repo.get, server.services.provider_repo
+    )
+    payload["rerank"] = get_rerank_capability(
+        server.services.settings_repo.get, server.services.provider_repo
+    )
+    payload["graph"] = get_graph_capability(
         server.services.settings_repo.get, server.services.provider_repo
     )
     payload["limits"] = {
@@ -452,6 +571,39 @@ async def ocr_options(
     }
 
 
+@router.get("/rerank-options", summary="List providers that offer a rerank model")
+async def rerank_options(
+    server: OctopServer = Depends(get_server),
+    _admin: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    """Enabled providers with at least one rerank model, for the knowledge settings."""
+    assert server.services is not None
+    providers = []
+    for provider in server.services.provider_repo.list_all():
+        models = rerank_models(provider) if provider.enabled else []
+        if models:
+            providers.append(
+                {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
+            )
+    return {"providers": providers}
+
+
+@router.get("/graph-options", summary="List chat models usable for knowledge-graph extraction")
+async def graph_options(
+    server: OctopServer = Depends(get_server),
+    _admin: User = Depends(require_permission("knowledge_settings")),
+) -> dict[str, Any]:
+    assert server.services is not None
+    remote = []
+    for provider in server.services.provider_repo.list_all():
+        models = graph_models(provider)
+        if models:
+            remote.append(
+                {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
+            )
+    return {"remote": remote}
+
+
 @router.put("/feature", summary="Enable or disable knowledge bases")
 async def put_feature(
     body: FeatureBody,
@@ -491,6 +643,23 @@ async def put_feature(
                 exc, locale=resolve_request_locale(request), server=server
             ) from exc
     try:
+        # First, so an unusable rerank choice is refused before anything is saved.
+        if body.rerank_enabled is not None:
+            set_rerank_settings(
+                server.services.settings_repo.set,
+                enabled=body.rerank_enabled,
+                provider_id=body.rerank_provider_id,
+                model=body.rerank_model,
+                provider_repo=server.services.provider_repo,
+            )
+        if body.graph_enabled is not None:
+            set_graph_settings(
+                server.services.settings_repo.set,
+                enabled=body.graph_enabled,
+                provider_id=body.graph_provider_id,
+                model=body.graph_model,
+                provider_repo=server.services.provider_repo,
+            )
         set_feature_enabled(
             server.services.settings_repo.get,
             server.services.settings_repo.set,
@@ -1107,7 +1276,7 @@ async def rename_document(
 
 @router.post(
     "/{kb_id}/documents/{doc_id}/move",
-    summary="Move a document or folder into another folder",
+    summary="Move a document or folder into another folder or knowledge base",
 )
 async def move_document(
     kb_id: str,
@@ -1117,15 +1286,24 @@ async def move_document(
     server: OctopServer = Depends(get_server),
     user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
-    """Move within one knowledge base. A folder takes its contents along; nothing is reindexed."""
+    """Move a file or folder; a folder takes its contents along.
+
+    Within one base nothing is reindexed. Into another base, originals and chunks
+    move along; files without reusable chunks are indexed again in the target.
+    """
     try:
-        document = _knowledge_service(server).move_document(
+        service = _knowledge_service(server)
+        document = service.move_document(
             kb_id,
             doc_id,
             actor_user_id=user.id,
             target_folder=body.target_folder,
             is_admin=_is_admin(user),
+            target_kb_id=body.target_kb_id,
         )
+        if document.kb_id != kb_id and server.services is not None:
+            for pending_id in service.pending_file_ids(document):
+                enqueue_index_document(server.services, document.kb_id, pending_id)
         return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
@@ -1205,6 +1383,109 @@ async def reindex_base(
             )
             enqueue_index_document(server.services, kb_id, document.id)
         return {"enqueued": len(documents)}
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.get(
+    "/{kb_id}/graph",
+    response_model=GraphResponse,
+    summary="Get a knowledge base's entity graph",
+    description=(
+        "Returns build statistics plus the most-mentioned entities and the relations "
+        "between them. `stats.built` is false until the graph is built once."
+    ),
+)
+async def get_graph(
+    kb_id: str,
+    request: Request,
+    limit: int = Query(default=80, ge=1, le=300, description="Maximum entities to return."),
+    q: str = Query(
+        default="", max_length=80, description="Only entities whose name contains this."
+    ),
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    try:
+        return _knowledge_service(server).get_graph(
+            kb_id, actor_user_id=user.id, is_admin=_is_admin(user), limit=limit, search=q
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.get(
+    "/{kb_id}/graph/entity",
+    response_model=GraphEntityResponse,
+    summary="Get one graph entity with its relations and source passages",
+)
+async def get_graph_entity(
+    kb_id: str,
+    request: Request,
+    name: str = Query(min_length=1, max_length=200, description="Entity name or node id."),
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    try:
+        return _knowledge_service(server).get_graph_entity(
+            kb_id, name, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.post(
+    "/{kb_id}/graph/build",
+    response_model=GraphBuildResponse,
+    summary="Build or rebuild a knowledge base's entity graph",
+    description=(
+        "Queues entity and relation extraction for every indexed document, using the "
+        "chat model chosen in knowledge settings. Extraction runs in the background and "
+        "sends each passage to that model. Once built, documents indexed later are "
+        "added automatically."
+    ),
+)
+async def build_graph(
+    kb_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, int]:
+    try:
+        _require_usable(server, request)
+        doc_ids = _knowledge_service(server).graph_build_targets(
+            kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+        assert server.services is not None
+        return {"enqueued": enqueue_base_graph(server.services, kb_id, doc_ids)}
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.delete(
+    "/{kb_id}/graph",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a knowledge base's entity graph",
+    description="Documents and their vector index are untouched; later uploads are not extracted.",
+)
+async def delete_graph(
+    kb_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> None:
+    try:
+        _knowledge_service(server).clear_graph(
+            kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server

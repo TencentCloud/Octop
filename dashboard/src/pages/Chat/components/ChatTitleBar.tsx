@@ -10,14 +10,13 @@ import {
   Trash2,
   GitFork,
 } from "lucide-react";
-import cx from "classnames";
 import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionShareMark from "./SessionShareMark";
 import TeamChatBadge from "./TeamChatBadge";
 import RemoteExpertHint from "./RemoteExpertHint";
 import styles from "../index.module.less";
-import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
 import { isImeComposing } from "../../../utils/ime";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
@@ -139,10 +138,8 @@ export default function ChatTitleBar({
     ],
   );
 
-  const [moreOpen, setMoreOpen] = useState(false);
-
   return (
-    <div className={cx(styles.chatTitleBar, DESKTOP_DRAG_REGION_CLASS)}>
+    <div className={styles.chatTitleBar}>
       <div className={styles.chatTitleLeft}>
         <SessionChannelIcon
           channelType={session.channelType}
@@ -170,6 +167,10 @@ export default function ChatTitleBar({
             <h1 className={styles.chatTitleText} title={title}>
               {title}
             </h1>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
             <TeamChatBadge show={isTeam} />
             <RemoteExpertHint agent={agent} />
             {session.pinned ? (
@@ -180,34 +181,37 @@ export default function ChatTitleBar({
                 aria-hidden
               />
             ) : null}
-            <button
-              type="button"
-              className={styles.chatTitleEditBtn}
-              onClick={() => setIsEditing(true)}
-              aria-label={t("common.edit")}
-              title={t("common.edit")}
-            >
-              <Pencil size={14} strokeWidth={2} aria-hidden />
-            </button>
-            <Dropdown
-              menu={{ items: menuItems }}
-              trigger={["click"]}
-              placement="bottomLeft"
-              onOpenChange={setMoreOpen}
-            >
-              <button
-                type="button"
-                className={cx(
-                  styles.chatTitleEditBtn,
-                  moreOpen && styles.chatTitleHoverShown,
-                )}
-                aria-label={t("common.more", "更多")}
-              >
-                <MoreVertical size={14} strokeWidth={2} aria-hidden />
-              </button>
-            </Dropdown>
           </div>
         )}
+      </div>
+      <div className={styles.chatTitleActions}>
+        <button
+          type="button"
+          className={styles.chatTitleEditBtn}
+          onClick={() => setIsEditing(true)}
+          onPointerDown={(event) => {
+            // 避免失焦解除禁用后，同一次点击又重新打开编辑。
+            if (isEditing) event.preventDefault();
+          }}
+          disabled={isEditing}
+          aria-label={t("common.edit")}
+          title={t("common.edit")}
+        >
+          <Pencil size={14} strokeWidth={2} aria-hidden />
+        </button>
+        <Dropdown
+          menu={{ items: menuItems }}
+          trigger={["click"]}
+          placement="bottomRight"
+        >
+          <button
+            type="button"
+            className={styles.chatTitleEditBtn}
+            aria-label={t("common.more", "更多")}
+          >
+            <MoreVertical size={14} strokeWidth={2} aria-hidden />
+          </button>
+        </Dropdown>
       </div>
     </div>
   );

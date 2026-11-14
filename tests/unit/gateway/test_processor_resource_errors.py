@@ -56,7 +56,7 @@ async def test_auth_exception_is_displayed_as_failure_and_kept_out_of_checkpoint
         assert events[-1].type == "completed"
     assert failures == [stream_error_message(AUTH, "zh")]
     processor._agent_manager.append_thread_messages.assert_not_called()
-    assert appended  # The product archive retains the failed turn for display.
+    assert appended  # The v1 projection retains the failed turn for display.
 
 
 def test_stream_error_preserves_resource_error_code() -> None:
@@ -85,6 +85,7 @@ async def test_mcp_load_failure_keeps_servers_and_code() -> None:
     processor._agent_manager.default_mcp_servers = MagicMock(return_value=None)
     processor._agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["github"])
     processor._agent_manager.prepare_chat_mcp = AsyncMock(return_value=["github"])
+    processor._agent_manager.connector_auth_blocked = AsyncMock(return_value=[])
 
     with pytest.raises(OctopError) as exc_info:
         await processor._resolve_turn_mcp_servers(

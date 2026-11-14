@@ -1720,6 +1720,44 @@
   min-width: 0;
 }
 
+.moreConfig {
+  margin-top: 4px;
+}
+
+.moreConfigToggle {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 8px 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.moreConfigLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.moreConfigIcon,
+.moreConfigIconOpen {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.moreConfigIconOpen {
+  transform: rotate(180deg);
+}
+
 /* Section toggles in the create/edit drawers. Headers only — expanded bodies stay as-is. */
 .drawerCollapse {
   width: 100%;

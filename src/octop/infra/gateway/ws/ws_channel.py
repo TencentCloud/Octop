@@ -159,7 +159,11 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push_to_thread(thread_id, {"type": "done"})
             return
 
-        turn_id, started_seq, replaced = self._steer.begin_turn(thread_id)
+        starter = resolve_user_id_for_message(message, agent_owner_id=None)
+        turn_id, started_seq, replaced = self._steer.begin_turn(
+            thread_id,
+            user_id=starter if starter > 0 else None,
+        )
         if replaced is not None:
             await _push_discarded(self._hub, thread_id, replaced)
         self._steer.remember_context(
@@ -219,7 +223,10 @@ class WebSocketChannel(BaseChannel):
                     # flaky client disconnect can stop generation mid-node and leave
                     # an incomplete checkpoint.
                     try:
-                        await self._hub.push_to_thread(thread_id, chunk)
+                        payload = (
+                            _with_turn_id(chunk, turn_id) if isinstance(chunk, dict) else chunk
+                        )
+                        await self._hub.push_to_thread(thread_id, payload)
                     except Exception:
                         logger.exception(
                             "websocket push failed thread=%s (turn continues)",
@@ -306,11 +313,14 @@ class WebSocketChannel(BaseChannel):
             )
             try:
                 error_message, error_code = stream_error(exc, locale)
-                frame: dict[str, object] = {"type": "error", "message": error_message}
+                frame: dict[str, Any] = {"type": "error", "message": error_message}
                 if error_code:
                     frame["error_code"] = error_code
-                await self._hub.push_to_thread(thread_id, frame)
-                await self._hub.push_to_thread(thread_id, {"type": "done"})
+                await self._hub.push_to_thread(thread_id, _with_turn_id(frame, turn_id))
+                await self._hub.push_to_thread(
+                    thread_id,
+                    _with_turn_id({"type": "done"}, turn_id),
+                )
             except Exception:
                 logger.exception("websocket failed to deliver error frame thread=%s", thread_id)
         finally:
@@ -397,6 +407,13 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push_to_thread(thread_id, frame)
         else:
             await self._hub.push(conn_id, frame)
+
+
+def _with_turn_id(frame: dict[str, Any], turn_id: str) -> dict[str, Any]:
+    """Keep each streamed chunk tied to its turn so clients do not merge replies."""
+    if not turn_id or frame.get("turn_id"):
+        return frame
+    return {**frame, "turn_id": turn_id}
 
 
 def _turn_user_frame(message: InboundMessage, thread_id: str, processor: Any) -> dict[str, Any]:

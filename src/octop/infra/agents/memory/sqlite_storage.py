@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 import time
 from contextlib import closing
+from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 MEMORY_TABLES = (
     "raw_events",
@@ -25,6 +29,8 @@ MEMORY_TABLES = (
 CHECKPOINT_TABLES = ("checkpoints", "writes", "hm_checkpoint_blobs")
 COUNT_BUDGET_SECONDS = 5.0
 _VACUUM_RECOMMEND_BYTES = 32 * 1024 * 1024
+_BACKUP_MODE_ENV = "OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE"
+_BACKUP_KEEP_DAYS_ENV = "OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS"
 
 
 def _env_flag(name: str, default: bool) -> bool:
@@ -47,6 +53,40 @@ def _optional_positive_int(name: str) -> int | None:
     return value if value > 0 else None
 
 
+@lru_cache(maxsize=32)
+def _parse_backup_mode(value: str) -> Literal["first", "always", "off"]:
+    if value in {"", "first"}:
+        return "first"
+    if value in {"always", "1", "true", "on", "yes"}:
+        return "always"
+    if value in {"0", "false", "off", "no"}:
+        return "off"
+    logger.warning("invalid %s=%r; using first", _BACKUP_MODE_ENV, value)
+    return "first"
+
+
+@lru_cache(maxsize=32)
+def _parse_backup_keep_days(value: str) -> int:
+    if not value:
+        return 7
+    try:
+        days = int(value)
+        if days >= 0:
+            return days
+    except ValueError:
+        pass
+    logger.warning("invalid %s=%r; using 7", _BACKUP_KEEP_DAYS_ENV, value)
+    return 7
+
+
+def _checkpoint_backup_policy_from_env() -> tuple[Literal["first", "always", "off"], int]:
+    # Match Harness maintenance while remaining compatible with older Harness wheels.
+    return (
+        _parse_backup_mode(os.environ.get(_BACKUP_MODE_ENV, "").strip().lower()),
+        _parse_backup_keep_days(os.environ.get(_BACKUP_KEEP_DAYS_ENV, "").strip()),
+    )
+
+
 def _checkpoint_policy(reclaimable_bytes: int) -> dict[str, Any]:
     """Retention window shown on the storage page.
 
@@ -60,11 +100,13 @@ def _checkpoint_policy(reclaimable_bytes: int) -> dict[str, Any]:
         keep_days = None
     elif "OCTOP_CHECKPOINT_KEEP_LAST" not in os.environ:
         keep_last = 20
+    backup_mode, backup_keep_days = _checkpoint_backup_policy_from_env()
     return {
         "checkpoint_retention_enabled": keep_last is not None or keep_days is not None,
         "checkpoint_keep_last": keep_last,
         "checkpoint_keep_days": keep_days,
-        "checkpoint_backup_before_prune": _env_flag("OCTOP_CHECKPOINT_BACKUP_BEFORE_PRUNE", True),
+        "checkpoint_backup_before_prune": backup_mode,
+        "checkpoint_backup_keep_days": backup_keep_days,
         "checkpoint_vacuum_recommended": reclaimable_bytes >= _VACUUM_RECOMMEND_BYTES,
     }
 

@@ -84,6 +84,7 @@ from octop.infra.skills.workspace_catalog import (
     repair_workspace_skill_manifests,
 )
 from octop.infra.utils.locale import Locale, resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
@@ -848,6 +849,8 @@ class AgentManager:
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_backend_types_disallowed,
+                raise_if_workspace_dir_outside_user_root,
             )
 
             if spec.user_id is not None:
@@ -869,7 +872,19 @@ class AgentManager:
                     spec.user_id,
                     config.get("backend"),
                 )
+                raise_if_workspace_dir_outside_user_root(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
+                )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    require_present=True,
+                )
                 self._assert_model_ref(spec.user_id, spec.default_model)
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
@@ -1058,10 +1073,10 @@ class AgentManager:
         layout, so a value a client invents is dropped.
 
         ``pin_workspace_dir`` additionally pins ``workspace_dir`` to the stored value. User-facing
-        updates need it — rewriting the directory silently relocates the agent's workspace, so a
-        scoped or container agent would resolve to the classic layout and lose sight of its
-        skills, sessions and generated files. Internal persists do not: the resolver and the
-        create path must still be able to write it.
+        updates need it — rewriting the directory relocates the agent's workspace, so a scoped or
+        container agent would resolve to the classic layout and lose sight of its skills, sessions
+        and generated files. The directory is chosen at create and stays fixed. Internal persists
+        do not pin: the resolver and the create path must still be able to write it.
         """
         out = dict(cfg)
         row = self._repos.agent_repo.get(agent_id)
@@ -1110,6 +1125,7 @@ class AgentManager:
                     effective_workspace_root_dir,
                     persisted_workspace_within_root,
                     raise_if_backend_outside_user_root,
+                    raise_if_backend_types_disallowed,
                 )
 
                 allowed_root = effective_workspace_root_dir(
@@ -1134,6 +1150,13 @@ class AgentManager:
                 self._assert_named_storage_backends(
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                )
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    previous=parse_config_json(owner_row.config_json).get("backend"),
                 )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
@@ -2019,8 +2042,12 @@ class AgentManager:
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
             ):
-                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                    yield chunk
+                chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -2059,10 +2086,12 @@ class AgentManager:
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
             ):
-                async for chunk in self._harness_manager.resume_hitl(
-                    agent_id, thread_id, decisions
-                ):
-                    yield chunk
+                chunk_stream = self._harness_manager.resume_hitl(agent_id, thread_id, decisions)
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -2532,8 +2561,43 @@ class AgentManager:
         custom_configs: dict[str, Any] = {}
         load_user: dict[str, int] = {}
         if uid is not None:
+            # Renew OAuth tokens that are about to expire, and flag the ones that
+            # cannot be renewed, before building the specs the tools load from.
+            for token_owner in {i for i in (uid, owner_id) if i is not None}:
+                try:
+                    await self._connector_svc.ensure_fresh_custom_servers(token_owner)
+                except Exception:
+                    logger.warning(
+                        "prepare_chat_mcp agent=%s: custom MCP token refresh failed",
+                        agent_id,
+                        exc_info=True,
+                    )
             custom_configs = self._connector_svc.custom_harness_configs(uid)
             load_user = dict.fromkeys(custom_configs, uid)
+        # Tools stay cached on the agent after the first load, so a token that
+        # lapsed since then is only caught by checking the stored status.
+        awaiting_auth: set[str] = set()
+        if uid is not None:
+            try:
+                awaiting_auth = {
+                    str(item["server"])
+                    for item in await self._connector_svc.auth_blocked_servers(
+                        uid, requested, probe=False
+                    )
+                }
+            except Exception:
+                logger.warning(
+                    "prepare_chat_mcp agent=%s: connector auth check failed",
+                    agent_id,
+                    exc_info=True,
+                )
+        if awaiting_auth:
+            logger.info(
+                "prepare_chat_mcp agent=%s: waiting for authorization %s",
+                agent_id,
+                sorted(awaiting_auth),
+            )
+            return sorted(awaiting_auth)
         if aliases and uid is not None and owner_id is not None:
             # Load the owner's spec when the turn asked for the shared server.
             # A viewer's own server with the same short name stays theirs unless
@@ -2733,6 +2797,16 @@ class AgentManager:
                 for name in still_missing
             ]
         return still_missing
+
+    async def connector_auth_blocked(
+        self, user_id: int, server_names: list[str]
+    ) -> list[dict[str, Any]]:
+        """Of the MCP servers that failed to load, the ones waiting for authorization."""
+        try:
+            return await self._connector_svc.auth_blocked_servers(user_id, server_names)
+        except Exception:
+            logger.warning("connector auth check failed for user=%s", user_id, exc_info=True)
+            return []
 
     async def _attach_gateway_tools(
         self,
@@ -3164,6 +3238,13 @@ class AgentManager:
             resource_key=ref,
             is_owner=False,
         )
+
+    def _named_storage_kind(self, name: str) -> str | None:
+        row = self._repos.storage_backend_repo.get_by_name(name)
+        if row is None:
+            return None
+        kind = (row.kind or "").strip().lower()
+        return kind or None
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs
@@ -4293,6 +4374,7 @@ class AgentManager:
         )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.agents.middleware.team_dispatch import TeamDispatchBriefingMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
@@ -4314,6 +4396,7 @@ class AgentManager:
                 usage_repo=self._repos.usage_repo,
             ),
             ReasoningRequestMiddleware(),
+            TeamDispatchBriefingMiddleware(),
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),

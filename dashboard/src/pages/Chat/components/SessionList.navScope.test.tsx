@@ -1,7 +1,22 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, vi } from "vitest";
+
+vi.mock("../../Experts/components/EditAgentDrawer", () => ({
+  default: () => null,
+}));
+vi.mock("../../Experts/components/TeamDrawer", () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="team-drawer" /> : null,
+}));
+vi.mock("../../Experts/components/CreateFromExpertDrawer", () => ({
+  default: () => null,
+}));
+vi.mock("../../Settings/AdvancedSettings/BridgeSettings", () => ({
+  default: ({ createOnly }: { createOnly?: boolean }) =>
+    createOnly ? <div role="dialog" aria-label="cloud-drawer" /> : null,
+}));
 import type { OctopAgent } from "../../../context/AgentContext";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
@@ -111,16 +126,6 @@ describe("MinimalAgentSessionNav nav scopes", () => {
     expect(screen.queryByText("本地团队")).not.toBeInTheDocument();
   });
 });
-
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <div>
-      {location.pathname}
-      {location.search}
-    </div>
-  );
-}
 
 describe("SessionList nav scopes", () => {
   beforeEach(() => {
@@ -270,41 +275,45 @@ describe("SessionList nav scopes", () => {
     expect(screen.queryByText("本地团队")).not.toBeInTheDocument();
   });
 
-  it("links an empty team or cloud tab to the create page", async () => {
+  it("opens a drawer for an empty team or cloud tab", async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/chat"]}>
-        <Routes>
-          <Route
-            path="/chat"
-            element={
-              <SessionList
-                agents={[agent({ agent_id: "local-expert", name: "本地专家" })]}
-                sessions={[]}
-                activeId={null}
-                activeAgentId="local-expert"
-                hasMore={false}
-                loadingMore={false}
-                onLoadMore={() => undefined}
-                onFetchAllSessions={() => undefined}
-                onSelect={() => undefined}
-                onAgentSelect={() => undefined}
-                onNewChat={() => undefined}
-                onDelete={() => undefined}
-                onRename={() => undefined}
-                onPin={() => undefined}
-                onFork={() => undefined}
-              />
-            }
-          />
-          <Route path="/experts" element={<LocationProbe />} />
-          <Route path="/bridge" element={<LocationProbe />} />
-        </Routes>
+        <SessionList
+          agents={[agent({ agent_id: "local-expert", name: "本地专家" })]}
+          sessions={[]}
+          activeId={null}
+          activeAgentId="local-expert"
+          hasMore={false}
+          loadingMore={false}
+          onLoadMore={() => undefined}
+          onFetchAllSessions={() => undefined}
+          onSelect={() => undefined}
+          onAgentSelect={() => undefined}
+          onNewChat={() => undefined}
+          onDelete={() => undefined}
+          onRename={() => undefined}
+          onPin={() => undefined}
+          onFork={() => undefined}
+        />
       </MemoryRouter>,
     );
 
     await user.click(screen.getByRole("tab", { name: "团队" }));
+    expect(screen.getByText("还没有团队")).toBeInTheDocument();
+    expect(
+      screen.getByText("把几个专家组成团队，一起处理同一件事。"),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "创建第一个团队" }));
-    expect(screen.getByText("/experts?tab=teams")).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "team-drawer" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "云端" }));
+    expect(screen.getByText("还没有云端协同")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "添加云端" }));
+    expect(
+      screen.getByRole("dialog", { name: "cloud-drawer" }),
+    ).toBeInTheDocument();
   });
 });

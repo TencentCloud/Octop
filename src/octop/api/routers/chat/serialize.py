@@ -488,11 +488,6 @@ async def _backfill_thread_projection(
     user: Any,
 ) -> None:
     """Decode one legacy checkpoint off-request and atomically publish it."""
-    from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
-
-    archive = getattr(server.app_runtime, "history_archive", None)
-    if isinstance(archive, HistoryArchive):
-        raise ValueError("History backfill is disabled while versioned history is in use")
     repo = server.services.thread_message_repo
     registry = server.app_runtime.agent_registry
     reserve = getattr(registry, "try_begin_history_backfill", None)

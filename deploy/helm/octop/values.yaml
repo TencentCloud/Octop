@@ -1,0 +1,90 @@
+# Recommended install name is "octop" in the namespace "octop":
+#   helm upgrade --install octop deploy/helm/octop -n octop --create-namespace
+#
+# Create these Secrets first. The chart does not render passwords.
+#   octop-admin  username, password     console login; used only on first init
+#   octop-pg     user, password, database   PostgreSQL login, not the console password
+#   octop-tls    TLS secret when ingress.tls.enabled (default)
+# See README_CN.md "要准备什么" for the full list.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/tencentcloud/octop
+  # Empty uses Chart.appVersion. Set a published release tag. The lite image
+  # has no virtual desktop, local embeddings, or OCR; those need a "-full" tag.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# /dev/shm for the full image. Leave this off for the lite image.
+shm:
+  enabled: false
+  sizeLimit: 1Gi
+
+config:
+  timezone: Asia/Shanghai
+  # Empty becomes https://<ingress.host>.
+  corsOrigins: ""
+
+secrets:
+  database: octop-pg
+  admin: octop-admin
+
+service:
+  port: 8088
+
+ingress:
+  enabled: true
+  className: nginx
+  host: octop.example.com
+  tls:
+    enabled: true
+    secretName: octop-tls
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/affinity-mode: persistent
+    nginx.ingress.kubernetes.io/session-cookie-name: OCTOP_AFFINITY
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: Lax
+    nginx.ingress.kubernetes.io/session-cookie-expires: "10800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"
+    nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "true"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+# Bundled pgvector. Set enabled to false and database.host for a managed database.
+# Managed databases must already allow CREATE EXTENSION vector.
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 20Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+database:
+  host: ""
+  port: 5432
+
+nameOverride: ""
+fullnameOverride: ""

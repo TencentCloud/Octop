@@ -34,6 +34,7 @@ import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessag
 import {
   mergeHistoryWithLocalTail,
   preferLocalTranscript,
+  restoreUnpersistedTurn,
   serverCaughtUp,
   retainedHistoryPrefix,
 } from "../utils/mergeHistoryTail";
@@ -871,7 +872,12 @@ function messagesWithInflightCache(
           ? { ...message, status: "done" as const }
           : message,
       );
-  return preferLocalTranscript(messages.length ? messages : loaded, tail);
+  const base = messages.length ? messages : loaded;
+  return restoreUnpersistedTurn(
+    preferLocalTranscript(base, tail),
+    tail,
+    turnActive,
+  );
 }
 
 function dropInflightCacheIfCaughtUp(

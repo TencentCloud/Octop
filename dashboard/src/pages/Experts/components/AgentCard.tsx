@@ -35,6 +35,7 @@ import {
   formatAgentState,
   isAgentChatReady,
   isAgentModelConfigError,
+  shortAgentError,
 } from "../../../utils/agentError";
 import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
@@ -45,6 +46,7 @@ import {
   SharedResourceBadge,
 } from "../../../components/SharedResourceBadge";
 import {
+  canManageExpert,
   canReadAgentRuntimeStatus,
   isSharedExpertViewer,
 } from "../../../utils/sharedExpert";
@@ -300,9 +302,11 @@ export const AgentCard = memo(function AgentCard({
   const accent = accentColor || "#6366f1";
   const meta = getStateMeta(localState);
   const friendlyError = formatAgentError(localError, t);
+  const cardError = shortAgentError(localError, t);
+  const modelConfigError = isAgentModelConfigError(localError);
   const chatReady = isAgentChatReady(localState);
   const sharedViewer = isSharedExpertViewer(agent);
-  const isOwner = agent.is_owner !== false;
+  const canManage = canManageExpert(agent, user);
   const deleteConfirm = expertDeleteConfirm(agent, t);
 
   return (
@@ -377,12 +381,12 @@ export const AgentCard = memo(function AgentCard({
               <BackendFlag config={agent.config} />
               <MbtiPersonaTag
                 value={agent.persona_mbti}
-                onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}
+                onClick={canManage ? () => setMbtiCatalogOpen(true) : undefined}
               />
             </div>
           </div>
 
-          {isOwner && (
+          {canManage && (
             <div className={styles.agentCard2HeaderActions}>
               <Switch
                 size="small"
@@ -408,12 +412,10 @@ export const AgentCard = memo(function AgentCard({
             >
               <div className={styles.agentCardError}>
                 <AlertCircle size={13} className={styles.agentCardErrorIcon} />
-                <span className={styles.agentCardErrorText}>
-                  {friendlyError}
-                </span>
+                <span className={styles.agentCardErrorText}>{cardError}</span>
               </div>
             </Tooltip>
-            {isAgentModelConfigError(localError) && (
+            {modelConfigError && (
               <button
                 type="button"
                 className={styles.agentCardErrorAction}
@@ -427,7 +429,7 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Footer actions */}
         <div className={styles.agentCard2Footer}>
-          {isOwner && (
+          {canManage && (
             <>
               <Tooltip
                 title={
@@ -525,7 +527,7 @@ export const AgentCard = memo(function AgentCard({
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : isOwner &&
+          ) : canManage &&
             (localState === "failed" ||
               localState === "stopped" ||
               localState === "created") ? (

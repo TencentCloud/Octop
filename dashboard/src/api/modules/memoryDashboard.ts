@@ -459,7 +459,8 @@ export interface MemoryStorageInspection {
   checkpoint_retention_enabled?: boolean | null;
   checkpoint_keep_last?: number | null;
   checkpoint_keep_days?: number | null;
-  checkpoint_backup_before_prune?: boolean | null;
+  checkpoint_backup_before_prune?: "first" | "always" | "off" | null;
+  checkpoint_backup_keep_days?: number | null;
   checkpoint_vacuum_recommended?: boolean | null;
   tables: {
     table: string;

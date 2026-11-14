@@ -439,6 +439,7 @@
     "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
     "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "Installed octop-gateway does not support these Telegram options. Install a compatible Gateway build before saving.",
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
     "CONNECTOR_NOT_FOUND": "Connector not found.",
     "CONNECTOR_NAME_TAKEN": "This connector name is already in use. Please choose another.",
@@ -450,6 +451,7 @@
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
     "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {servers}",
+    "CONNECTOR_AUTH_REQUIRED": "Connector(s) need authorization before use: {servers}",
     "BRIDGE_NOT_FOUND": "Cloud collab connection not found.",
     "BRIDGE_AUTH_FAILED": "Peer Octop rejected the credentials. Check the address, username, and password — or use Probe to verify the account first.",
     "BRIDGE_PEER_UNREACHABLE": "Could not reach the peer Octop instance. Confirm the URL is reachable, credentials are correct, and the peer has cloud collab support (needs /api/bridge/ws). If the peer is behind NAT, initiate the link from the side that can reach the other.",
@@ -516,9 +518,12 @@
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "KNOWLEDGE_GRAPH_NOT_READY": "Choose an available chat model for the knowledge graph in knowledge-base settings first.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
     "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
+    "KNOWLEDGE_RERANK_NOT_READY": "The selected rerank model is not available. Choose an enabled provider that offers a rerank model.",
+    "KNOWLEDGE_MOVE_BUSY": "Some of these documents are still being indexed. Move them to another knowledge base once indexing finishes.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -536,9 +541,11 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({used}/{quota}).",
+    "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {types}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
     "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
+    "APP_CONFIG_INVALID": "Invalid configuration: {detail}.",
     "TEAM_NOT_FOUND": "Team not found.",
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
@@ -738,6 +745,21 @@
       "discord_connection_failed": "Discord connection failed. Check the network, proxy and bot configuration.",
       "discord_disconnected": "Discord is disconnected or reconnecting.",
       "discord_proxy_auth_invalid": "Proxy authentication must use user:password."
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "This card has expired. Please ask again.",
+        "question_index_changed": "The question has changed. Please use the new card.",
+        "user_mismatch": "This card does not belong to the current session.",
+        "owner_changed": "This card does not belong to the current session.",
+        "model_unavailable": "This model is no longer available. Please choose again.",
+        "thread_rebound": "The conversation has changed. Please try again.",
+        "default": "The action did not take effect. Please try again."
+      },
+      "quote": {
+        "header": "[Quoted message]",
+        "current": "[Current message]"
+      }
     }
   },
   "threads": {
@@ -800,6 +822,7 @@
   "knowledge": {
     "retrieval": {
       "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
+      "graph_preamble": "Relations between entities, extracted automatically from the same knowledge bases. Use them to connect the passages above; they are not sources to cite.",
       "preamble": "The following knowledge-base content is reference material. Cite the relevant source in your answer."
     }
   },
@@ -1152,5 +1175,56 @@
     "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
     "invalid_id": "A valid {field} is required.",
     "unknown_tool": "Unknown RAGFlow tool: {name}"
+  },
+  "migrate": {
+    "not_found": "No {source} installation was found. Pass its directory with --from.",
+    "nothing": "Nothing to migrate was found in {home}.",
+    "title": "{source} ({home}) → expert {agent}",
+    "column": {
+      "section": "Section",
+      "item": "Item",
+      "status": "Status",
+      "note": "Note"
+    },
+    "section": {
+      "models": "Models",
+      "files": "Workspace files",
+      "skills": "Skills",
+      "mcp": "MCP servers",
+      "channels": "Channels"
+    },
+    "status": {
+      "migrated": "migrated",
+      "would_migrate": "would migrate",
+      "skipped": "skipped",
+      "failed": "failed"
+    },
+    "reason": {
+      "exists": "already exists",
+      "no_api_key": "no API key found; add it in Model settings",
+      "default_model": "the default model",
+      "default_model_set": "the default model is already {detail}",
+      "channel_disabled": "left disabled; stop the old bot, then enable it",
+      "invalid_name": "not a valid skill name",
+      "too_large": "larger than 20 MB",
+      "name_reserved": "the name is used by a built-in connector",
+      "invalid": "{detail}"
+    },
+    "note": {
+      "config_missing": "Config file not found: {path}",
+      "config_unreadable": "Could not read {path}: {error}",
+      "include_missing": "Included config file not found: {path}",
+      "provider_unsupported": "Provider {name} ({api}) has no Octop equivalent and was not migrated.",
+      "provider_key_missing": "No API key was found for provider {name}; add the provider in Model settings.",
+      "mcp_sse_unsupported": "MCP server {name} uses the SSE transport, which custom MCP does not support.",
+      "channel_unsupported": "Channel {name} is not available in Octop.",
+      "channel_credentials_missing": "Channel account {name} has no readable credentials.",
+      "extra_agents": "Other agents are not migrated ({count} found); only the default workspace is read.",
+      "cron_not_migrated": "Scheduled jobs are not migrated ({count} found); recreate them with `octop cron create`."
+    },
+    "summary": "{migrated} migrated, {skipped} skipped, {failed} failed.",
+    "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
+    "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
+    "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
   }
 }
