@@ -90,6 +90,26 @@ def test_fnos_store_version_sorts_above_stripped_betas(pep440: str, store: str) 
 
 
 @posix_only
+@pytest.mark.parametrize(
+    ("pep440", "store"),
+    [
+        # 前导零 patch 段被转换器自己的正则接受，就必须按十进制解释：
+        # bash 算术默认把 010 当八进制（=8），08 直接报
+        # "value too great for base" 中断 build-fpk.sh（set -euo pipefail）。
+        ("1.2.08", "1.2.900"),  # 与 1.2.8 同商店版本
+        ("1.2.08b3", "1.2.803"),  # 与 1.2.8b3 同商店版本
+        ("1.2.010", "1.2.1100"),  # 与 1.2.10 同商店版本，不是 1.2.900
+    ],
+)
+def test_fnos_store_version_reads_leading_zero_patch_as_decimal(
+    pep440: str, store: str
+) -> None:
+    script = REPO / "scripts" / "fnos" / "store_version.sh"
+    got = subprocess.check_output(["bash", str(script), pep440], text=True).strip()
+    assert got == store
+
+
+@posix_only
 def test_fnos_store_version_rejects_unencoded_prerelease() -> None:
     script = REPO / "scripts" / "fnos" / "store_version.sh"
     for raw in ("1.0.2a1", "1.0.2rc1", "1.0.2b0", "1.0.2b100", "1.0.2b8.dev0"):
