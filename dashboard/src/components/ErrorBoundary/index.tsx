@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import i18n from "../../i18n";
+import { publicUrl } from "../../utils/publicUrl";
 import {
   isChunkLoadError,
   tryReloadOnStaleChunk,
@@ -56,7 +57,7 @@ export default class GlobalErrorBoundary extends Component<Props, State> {
   };
 
   handleHome = () => {
-    window.location.href = "/chat";
+    window.location.href = publicUrl("/chat");
   };
 
   handleReload = () => {

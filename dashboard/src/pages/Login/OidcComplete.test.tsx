@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { readOidcCompleteParams, safeRedirect } from "./OidcComplete";
+import { readOidcCompleteParams } from "./OidcComplete";
+import { safeRedirect } from "../../utils/ssoPopup";
 
 describe("safeRedirect", () => {
   it.each([

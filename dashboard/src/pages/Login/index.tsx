@@ -34,6 +34,7 @@ import {
   isSsoPopupMessage,
   notifySsoOpener,
   openSsoPopup,
+  safeRedirect,
 } from "../../utils/ssoPopup";
 import {
   isConditionalMediationAvailable,
@@ -286,7 +287,7 @@ export default function LoginPage() {
       if (event.data.access_token) {
         setAuthToken(event.data.access_token, event.data.remember ?? true);
       }
-      window.location.replace(event.data.redirect || "/chat");
+      window.location.replace(publicUrl(safeRedirect(event.data.redirect)));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
