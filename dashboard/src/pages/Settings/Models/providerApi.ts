@@ -1,4 +1,5 @@
 import { request } from "../../../api/request";
+import type { ProviderModel } from "./useProviders";
 
 export interface TestProviderDraftParams {
   name: string;
@@ -50,6 +51,11 @@ export interface FetchProviderModelsParams {
 export interface FetchedProviderModel {
   id: string;
   name: string;
+  input?: string[];
+  context_window?: number;
+  max_tokens?: number;
+  reasoning?: boolean;
+  reasoning_config?: ProviderModel["reasoning_config"];
 }
 
 export interface FetchProviderModelsResult {

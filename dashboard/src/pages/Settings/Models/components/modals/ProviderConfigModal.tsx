@@ -34,6 +34,14 @@ import {
   watchOnnxDownload,
 } from "../../../../../api/modules/onnxDownloadWatcher";
 import { looksLikeOllamaProvider, isOnnxProviderRow } from "../../presetUtils";
+import {
+  isMagpieProvider,
+  magpieIntegrationExtra,
+  magpieRefreshBody,
+  magpieRefreshConnectionChanged,
+  magpieRefreshLeavesDirty,
+  planMagpieSync,
+} from "../../magpie";
 import { expandOllamaDownloadedIds } from "../../ollamaNames";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
@@ -101,6 +109,7 @@ export function ProviderConfigModal({
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
   const isOllama = looksLikeOllamaProvider(provider);
   const isOnnx = isOnnxProviderRow(provider);
+  const isMagpie = isMagpieProvider(provider);
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const [downloadingIds, setDownloadingIds] = useState<string[]>([]);
   const [onnxSizeById, setOnnxSizeById] = useState<Record<string, number>>({});
@@ -952,6 +961,7 @@ export function ProviderConfigModal({
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,
+        extra_json: isMagpie ? magpieIntegrationExtra() : undefined,
       });
       if (!result.ok) {
         message.error(
@@ -959,6 +969,77 @@ export function ProviderConfigModal({
             error: result.error ?? "unknown",
           }),
         );
+        return;
+      }
+      if (isMagpie) {
+        const plan = planMagpieSync(draftModels, result.models ?? []);
+        if (plan.added.length === 0 && plan.removed.length === 0) {
+          message.info(t("models.magpieRefreshUnchanged"));
+          return;
+        }
+        const refreshBody = magpieRefreshBody({
+          models: plan.models,
+          savedBaseUrl: provider.base_url,
+          draftBaseUrl,
+          draftApiKey,
+        });
+        const lines = [
+          plan.removed.length > 0 &&
+          plan.added.length === 0 &&
+          plan.models.length === 0
+            ? t("models.magpieRefreshRemoveAll")
+            : "",
+          plan.added.length > 0
+            ? t("models.magpieRefreshAdded", { models: plan.added.join(", ") })
+            : "",
+          plan.removed.length > 0
+            ? t("models.magpieRefreshRemoved", {
+                models: plan.removed.join(", "),
+              })
+            : "",
+          plan.removed.length > 0 ? t("models.magpieRefreshPins") : "",
+          magpieRefreshConnectionChanged(refreshBody)
+            ? t("models.magpieRefreshConnection")
+            : "",
+        ].filter(Boolean);
+        modal.confirm({
+          title: t("models.magpieRefreshTitle"),
+          content: lines.join("\n"),
+          okText: t("common.confirm"),
+          cancelText: t("common.cancel"),
+          onOk: async () => {
+            // Keep the catalog tied to the connection used for its fetch.
+            const body = refreshBody;
+            await request(`${apiPrefix}/${provider.id}`, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
+            setDraftModels(plan.models);
+            const current = form.getFieldsValue();
+            setFormDirty(
+              magpieRefreshLeavesDirty(
+                body,
+                {
+                  base_url: provider.base_url,
+                  note: provider.note,
+                  model: provider.model,
+                  kind: provider.kind,
+                  stream_usage: provider.stream_usage,
+                },
+                {
+                  base_url: current.base_url as string | undefined,
+                  api_key: current.api_key as string | undefined,
+                  note: current.note as string | undefined,
+                  model: current.model as string | undefined,
+                  kind: current.kind as string | undefined,
+                  stream_usage: current.stream_usage as boolean | undefined,
+                },
+              ),
+            );
+            message.success(t("models.magpieRefreshSaved"));
+            await onSaved();
+          },
+        });
         return;
       }
       const fetched = result.models ?? [];
@@ -1069,7 +1150,11 @@ export function ProviderConfigModal({
             <Form.Item
               name="base_url"
               label="Base URL"
-              extra={t("models.baseUrlExtra")}
+              extra={
+                isMagpie
+                  ? t("models.magpieAddressHint")
+                  : t("models.baseUrlExtra")
+              }
             >
               <Input placeholder="https://api.openai.com/v1" />
             </Form.Item>
@@ -1140,8 +1225,11 @@ export function ProviderConfigModal({
           onClick={() => void handleFetchModels()}
           style={{ marginLeft: 8 }}
         >
-          {t("models.fetchModels")}
+          {isMagpie ? t("models.magpieRefresh") : t("models.fetchModels")}
         </Button>
+        {isMagpie ? (
+          <div style={{ marginTop: 8 }}>{t("models.magpieFailoverNote")}</div>
+        ) : null}
         {!isOnnx && provider.kind === "openai" ? <TestStreamHint /> : null}
       </div>
 

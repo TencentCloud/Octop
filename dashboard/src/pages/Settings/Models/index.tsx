@@ -45,6 +45,10 @@ import {
   PresetProviderCard,
   ProviderCard,
 } from "./components";
+import {
+  MagpieDiscoveryCard,
+  useMagpieDiscovery,
+} from "./components/MagpieDiscoveryCard";
 import { EmbeddingSettingsPanel } from "./components/EmbeddingSettingsPanel";
 import styles from "./index.module.less";
 import { MediaGenerationSettingsPanel } from "../MediaGeneration";
@@ -110,6 +114,7 @@ export default function ModelsPage() {
     error,
     fetchAll,
   } = useProviders();
+  const magpieDiscovery = useMagpieDiscovery(canProviders);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
@@ -236,6 +241,13 @@ export default function ModelsPage() {
     }
     return (
       <>
+        <MagpieDiscoveryCard
+          discovery={magpieDiscovery.discovery}
+          scanning={magpieDiscovery.scanning}
+          providers={providers}
+          onRescan={magpieDiscovery.rescan}
+          onAdded={fetchAll}
+        />
         {(hasFeatured || showMoreProviders) && (
           <div className={styles.providerCards}>
             {renderPresetCards(cloudFeatured.grouped, cloudFeatured.ungrouped)}

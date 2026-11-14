@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, nullcontext, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -2041,6 +2041,7 @@ class AgentManager:
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+                self._turn_model_access_from_request(req),
             ):
                 chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
                 try:
@@ -2049,6 +2050,40 @@ class AgentManager:
                 finally:
                     await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
+
+    def _turn_model_access_from_request(self, request: dict[str, Any]) -> Any:
+        raw = request.get("user")
+        if isinstance(raw, bool) or not isinstance(raw, int | str):
+            return nullcontext()
+        try:
+            user_id = int(raw)
+        except ValueError:
+            return nullcontext()
+        return self._turn_model_access_for_user(user_id)
+
+    def _turn_model_access_for_thread(self, thread_id: str) -> Any:
+        repos = getattr(self, "_repos", None)
+        thread_repo = getattr(repos, "thread_repo", None) if repos is not None else None
+        if thread_repo is None:
+            return nullcontext()
+        row = thread_repo.get(thread_id)
+        user_id = row.user_id if row is not None else 0
+        return self._turn_model_access_for_user(user_id)
+
+    def _turn_model_access_for_user(self, user_id: int) -> Any:
+        from octop.infra.agents.providers.turn_access import turn_model_access
+
+        if user_id <= 0:
+            return nullcontext()
+        return turn_model_access(user_id, is_admin=self._user_is_admin(user_id))
+
+    def _auto_route_candidates(self, *, needs_multimodal: bool) -> list[Any]:
+        from octop.infra.agents.providers.turn_access import filter_auto_route_candidates
+
+        return filter_auto_route_candidates(
+            self._providers.list_auto_route_candidates(needs_multimodal=needs_multimodal),
+            repos=self._repos,
+        )
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
         """Non-streaming harness invocation (one-shot agent call)."""
@@ -2061,6 +2096,7 @@ class AgentManager:
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+                self._turn_model_access_from_request(req),
             ):
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
@@ -2085,6 +2121,7 @@ class AgentManager:
             with (
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
+                self._turn_model_access_for_thread(thread_id),
             ):
                 chunk_stream = self._harness_manager.resume_hitl(agent_id, thread_id, decisions)
                 try:
@@ -4595,10 +4632,8 @@ class AgentManager:
 
                 retry_middleware: Any = SafeModelFailoverMiddleware(
                     health=self._model_health,
-                    candidates=lambda _current_ref, needs_multimodal: (
-                        self._providers.list_auto_route_candidates(
-                            needs_multimodal=needs_multimodal
-                        )
+                    candidates=lambda _current_ref, needs_multimodal: self._auto_route_candidates(
+                        needs_multimodal=needs_multimodal
                     ),
                     model_for_ref=get_chat_model,
                     max_retries=applied.model_retry_max_retries,

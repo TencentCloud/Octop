@@ -347,6 +347,10 @@ def load_provider_presets() -> list[dict[str, Any]]:
             len(out),
         )
         out.insert(insert_at, onnx_preset)
+    if not any(p.get("id") == "magpie" for p in out):
+        from octop.infra.agents.providers.magpie import magpie_preset
+
+        out.insert(0, magpie_preset())
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
     for preset in out:

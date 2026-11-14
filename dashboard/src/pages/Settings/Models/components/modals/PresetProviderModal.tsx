@@ -18,6 +18,13 @@ import type {
 import { isEmbeddingModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import {
+  MAGPIE_LOCAL_API_KEY,
+  MAGPIE_PRESET_ID,
+  isMagpieDefaultBaseUrl,
+  magpieIntegrationExtra,
+  magpieModelFromCatalog,
+} from "../../magpie";
 import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
@@ -52,6 +59,9 @@ export function PresetProviderModal({
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
   const [form] = Form.useForm<PresetForm>();
   const isCodexOAuth = preset.auth_method === "codex_oauth";
+  const isMagpie =
+    preset.id === MAGPIE_PRESET_ID || preset.integration === "magpie";
+  const baseUrlValue = Form.useWatch("base_url", form) as string | undefined;
   const embeddingLane =
     preset.purpose === "embedding" || preset.provider_variant === "embedding";
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
@@ -115,9 +125,26 @@ export function PresetProviderModal({
         base_url: preset.base_url,
         kind: preset.protocol,
         stream_usage: preset.protocol === "openai",
+        ...(isMagpie
+          ? { api_key: preset.default_api_key || MAGPIE_LOCAL_API_KEY }
+          : {}),
       });
     }
-  }, [open, preset, form, t, embeddingLane]);
+  }, [open, preset, form, t, embeddingLane, isMagpie]);
+
+  useEffect(() => {
+    if (!open || !isMagpie) return;
+    const current = (form.getFieldValue("api_key") as string | undefined) || "";
+    if (isMagpieDefaultBaseUrl(baseUrlValue)) {
+      if (!current.trim()) {
+        form.setFieldValue("api_key", MAGPIE_LOCAL_API_KEY);
+      }
+      return;
+    }
+    if (current.trim() === MAGPIE_LOCAL_API_KEY) {
+      form.setFieldValue("api_key", "");
+    }
+  }, [open, isMagpie, baseUrlValue, form]);
 
   const handleFetchModels = async () => {
     if (isCodexOAuth) return;
@@ -134,6 +161,7 @@ export function PresetProviderModal({
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
         name: preset.id,
+        extra_json: isMagpie ? magpieIntegrationExtra() : undefined,
       });
       if (!result.ok) {
         message.error(
@@ -160,16 +188,19 @@ export function PresetProviderModal({
       const existingIds = new Set(draftModels.map((m) => m.id));
       const missing: ProviderModel[] = fetched
         .filter((m) => !existingIds.has(m.id))
-        .map((m) => ({
-          id: m.id,
-          name: m.name || m.id,
-          enabled: false,
-          input: ["text"],
-          thinking: null,
-          ...(embeddingLane
-            ? { embedding: true as const, task: "embedding" as const }
-            : {}),
-        }));
+        .map((m) => {
+          if (isMagpie) return magpieModelFromCatalog(m);
+          return {
+            id: m.id,
+            name: m.name || m.id,
+            enabled: false,
+            input: ["text"],
+            thinking: null,
+            ...(embeddingLane
+              ? { embedding: true as const, task: "embedding" as const }
+              : {}),
+          };
+        });
       if (missing.length === 0) {
         message.info(t("models.fetchModelsNoNew"));
         return;
@@ -265,6 +296,10 @@ export function PresetProviderModal({
     if (isCodexOAuth) return;
     try {
       const values = await form.validateFields();
+      if (isMagpie && draftModels.length === 0) {
+        message.warning(t("models.magpieNoModels"));
+        return;
+      }
       setSaving(true);
 
       const models = embeddingLane
@@ -283,6 +318,7 @@ export function PresetProviderModal({
           api_key: values.api_key?.trim() || null,
           models,
           purpose: embeddingLane ? "embedding" : "chat",
+          ...(isMagpie ? { extra_json: magpieIntegrationExtra() } : {}),
           ...(preset.protocol === "openai" && !embeddingLane
             ? { stream_usage: values.stream_usage !== false }
             : {}),
@@ -301,7 +337,10 @@ export function PresetProviderModal({
       if (err && typeof err === "object" && "errorFields" in err) return;
       const msg =
         err instanceof Error ? err.message : t("models.createFailedSimple");
-      if (typeof msg === "string" && msg.includes("UNIQUE")) {
+      if (
+        typeof msg === "string" &&
+        (msg.includes("UNIQUE") || msg.includes("PROVIDER_NAME_TAKEN"))
+      ) {
         message.error(t("models.presetNameExists"));
       } else {
         message.error(msg);
@@ -369,7 +408,11 @@ export function PresetProviderModal({
             <Form.Item
               name="base_url"
               label="Base URL"
-              extra={t("models.baseUrlExtra")}
+              extra={
+                isMagpie
+                  ? t("models.magpieAddressHint")
+                  : t("models.baseUrlExtra")
+              }
             >
               <Input placeholder={preset.base_url || "https://..."} />
             </Form.Item>
@@ -377,6 +420,11 @@ export function PresetProviderModal({
             <Form.Item
               name="api_key"
               label="API Key"
+              extra={
+                isMagpie && !isMagpieDefaultBaseUrl(baseUrlValue)
+                  ? t("models.magpieRemoteKey")
+                  : undefined
+              }
               rules={[
                 {
                   required: true,
