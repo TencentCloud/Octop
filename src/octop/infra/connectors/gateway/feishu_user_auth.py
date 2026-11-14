@@ -29,7 +29,7 @@ def start_user_device_login(
     recommend: bool = False,
 ) -> dict[str, Any]:
     """Begin device-code login; return verification_url + device_code (non-blocking)."""
-    binary, env = _prepare(config_dir, app_id=app_id, app_secret=app_secret, default_as="bot")
+    binary, env = _prepare(config_dir, app_id=app_id, app_secret=app_secret, default_as="user")
     argv = [binary, "auth", "login", "--no-wait", "--json"]
     if recommend:
         argv.append("--recommend")
@@ -77,7 +77,7 @@ def complete_user_device_login(
     code = str(device_code or "").strip()
     if not code:
         raise ValueError("device_code is required")
-    binary, env = _prepare(config_dir, app_id=app_id, app_secret=app_secret, default_as="bot")
+    binary, env = _prepare(config_dir, app_id=app_id, app_secret=app_secret, default_as="user")
     run_cli(
         [binary, "auth", "login", "--device-code", code, "--json"],
         env=env,

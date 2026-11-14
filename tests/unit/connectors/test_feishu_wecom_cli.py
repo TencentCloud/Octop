@@ -24,6 +24,22 @@ def test_catalog_entries_registered() -> None:
     assert wecom is not None and wecom.mcp_mode == "gateway"
 
 
+def test_feishu_base_schema_requires_args_object() -> None:
+    base = next(tool for tool in feishu_cli.TOOLS if tool["name"] == "base")
+    assert base["inputSchema"]["required"] == ["method", "args"]
+    assert base["inputSchema"]["properties"]["args"]["type"] == "object"
+
+
+def test_feishu_base_shortcut_preserves_hyphenated_flags() -> None:
+    argv = feishu_cli._build_argv(  # noqa: SLF001
+        "lark-cli",
+        "base",
+        "+table-list",
+        {"base-token": "base_x"},
+    )
+    assert argv[-2:] == ["--base-token", "base_x"]
+
+
 def test_validate_feishu_and_wecom_credentials() -> None:
     feishu = validate_create_credentials(
         "feishu-cli",
