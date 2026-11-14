@@ -971,6 +971,34 @@ async def test_boot_reuses_process_log_instead_of_dated_harness_files(
 
 
 @pytest.mark.asyncio
+async def test_boot_continues_after_agent_disappears_from_snapshot(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _seed_test_provider(manager)
+    repo = manager._repos.agent_repo
+    for agent_id in ("boot-deleted", "boot-survivor"):
+        repo.create(
+            agent_id=agent_id, user_id=None, name=agent_id, config_json=json.dumps(_MEMORY_OFF)
+        )
+    list_all = repo.list_all
+
+    def list_then_delete(*, include_disabled: bool = True) -> list[AgentRow]:
+        rows = list_all(include_disabled=include_disabled)
+        if not include_disabled:
+            repo.delete("boot-deleted")
+        return sorted(rows, key=lambda row: row.agent_id)
+
+    monkeypatch.setattr(repo, "list_all", list_then_delete)
+    try:
+        await manager.boot()
+        assert manager.get_row("boot-deleted") is None
+        assert manager._octop_harness_or_none("boot-deleted") is None
+        assert manager.get_agent("boot-survivor") is not None
+    finally:
+        await manager.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_shutdown_drains_sqlite_worker_before_returning(manager: AgentManager) -> None:
     """Real checkpoint cleanup must finish before the caller can close its loop."""
     _seed_test_provider(manager)
