@@ -762,6 +762,11 @@
     }
   },
   "threads": {
+    "gc_kept_postgres": "Kept {threads} orphan checkpoint threads of {agent} ({bytes} bytes): PostgreSQL checkpoints are reported only, not deleted.",
+    "gc_kept_external": "Did not scan {agent}: its memory is in an external PostgreSQL database.",
+    "gc_none": "No deletable orphan checkpoints.",
+    "gc_would_delete": "Would delete {count} orphan threads, {bytes} bytes.",
+    "gc_deleted": "Deleted {count} orphan threads, {bytes} bytes.",
     "fork_title_suffix": " (fork)",
     "fork_default_title": "Forked chat"
   },
@@ -934,6 +939,8 @@
     }
   },
   "memory_slim": {
+    "postgres_kept": "PostgreSQL leftovers are counted only, not deleted: {threads} checkpoint threads with no conversation, {namespaces} memory namespaces with no agent.",
+    "skipped_databases": "Skipped {count} external PostgreSQL memory databases: they may be shared with other installs.",
     "waiting": "Waiting for the current task to finish…",
     "backing_up": "Backing up memory…",
     "sweeping": "Removing leftovers from deleted agents and conversations…",

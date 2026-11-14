@@ -762,6 +762,11 @@
     }
   },
   "threads": {
+    "gc_kept_postgres": "保留了 {agent} 的 {threads} 个孤儿检查点会话（{bytes} 字节）：PostgreSQL 上的检查点只报告、不删除。",
+    "gc_kept_external": "没有扫描 {agent}：它的记忆在外部 PostgreSQL 库里。",
+    "gc_none": "没有可删除的孤儿检查点。",
+    "gc_would_delete": "将删除 {count} 个孤儿会话，共 {bytes} 字节。",
+    "gc_deleted": "已删除 {count} 个孤儿会话，共 {bytes} 字节。",
     "fork_title_suffix": "（分叉）",
     "fork_default_title": "分叉对话"
   },
@@ -934,6 +939,8 @@
     }
   },
   "memory_slim": {
+    "postgres_kept": "PostgreSQL 上的残留只统计、不删除：没有对应会话的检查点会话 {threads} 个，没有对应专家的记忆命名空间 {namespaces} 个。",
+    "skipped_databases": "跳过了 {count} 个外部 PostgreSQL 记忆库：它们可能和其他安装共用。",
     "waiting": "等待当前任务结束…",
     "backing_up": "正在备份记忆库…",
     "sweeping": "正在清理已删除专家和会话的残留…",

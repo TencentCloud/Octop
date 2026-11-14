@@ -62,6 +62,9 @@ _NAMESPACE_TABLES = (
 # the namespace. ``harness_memory`` is the pre-rename shared schema.
 _SHARED_MEMORY_SCHEMAS = frozenset({"octop_memory", "harness_memory", "public"})
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Schema octop_memory's Postgres pool puts first on ``search_path``. Its
+# checkpoint tables land in the first of these that exists at setup.
+_MEMORY_SCHEMA = "octop_memory"
 
 
 @dataclass(frozen=True)
@@ -69,6 +72,28 @@ class OrphanCheckpoint:
     agent_id: str
     thread_id: str
     nbytes: int
+
+
+@dataclass(frozen=True)
+class SkippedCheckpoints:
+    """Orphans of ``agent_id`` that were reported but not deleted.
+
+    ``reason`` is ``postgres_report_only`` (checkpoint tables are shared by
+    every agent and host on the DSN and record no owner, so nothing there is
+    deleted) or ``external_database`` (the agent's Postgres store is not the
+    control-plane database; it is not scanned and ``threads`` is ``None``).
+    """
+
+    agent_id: str
+    reason: str
+    threads: int | None
+    nbytes: int
+
+
+@dataclass(frozen=True)
+class OrphanScan:
+    orphans: list[OrphanCheckpoint]
+    skipped: list[SkippedCheckpoints]
 
 
 def workspace_for_agent_row(row: Any, *, paths: Any) -> Path:
@@ -244,7 +269,12 @@ def checkpoint_thread_bytes(
     octop_config: OctopConfig,
     workspace_dir: Path,
 ) -> dict[str, int]:
-    """``thread_id -> checkpoint payload bytes`` currently stored for the agent."""
+    """``thread_id -> checkpoint payload bytes`` currently stored for the agent.
+
+    Postgres stores every agent's checkpoints in shared tables, so rows are
+    attributed by the ``agent_id`` Octop writes into checkpoint metadata.
+    The Postgres query is read-only and does not open ``Memory``.
+    """
     _ns, backend, backend_config, sqlite_path = _memory_location(
         agent_id=agent_id,
         cfg=cfg,
@@ -255,33 +285,50 @@ def checkpoint_thread_bytes(
         if sqlite_path is None or not sqlite_path.is_file():
             return {}
         return _sqlite_thread_bytes(sqlite_path)
-    memory = _open_memory(_ns, backend, backend_config)
-    try:
-        return _postgres_thread_bytes(memory)
-    finally:
-        close_memory(memory)
+    return _postgres_thread_bytes(str((backend_config or {}).get("dsn") or ""), agent_id)
 
 
-def gc_orphan_checkpoints(
-    services: Any, *, agent_id: str | None, apply: bool
-) -> list[OrphanCheckpoint]:
+def gc_orphan_checkpoints(services: Any, *, agent_id: str | None, apply: bool) -> OrphanScan:
     """Checkpoints whose thread row is already gone.
 
-    ``apply=False`` only reports them. ``apply=True`` deletes each one
-    through :func:`delete_stored_thread`.
+    ``apply=False`` only reports them. ``apply=True`` deletes SQLite orphans
+    through :func:`delete_stored_thread`. Postgres orphans are never deleted:
+    the control-plane database is counted read-only and other databases are
+    not scanned. Both are reported in ``skipped``.
     """
     rows = services.agent_repo.list_all(include_disabled=True)
     if agent_id is not None:
         rows = [row for row in rows if row.agent_id == agent_id]
+    config = services.config
+    control_dsn = config.database.postgresql_conninfo() if config.database.is_postgresql else None
+    live_threads: set[str] | None = None
     found: list[OrphanCheckpoint] = []
+    skipped: list[SkippedCheckpoints] = []
     for row in rows:
         cfg = agent_config_from_row(row)
         workspace = workspace_for_agent_row(row, paths=services.paths)
-        usage = checkpoint_thread_bytes(
+        _ns, backend, backend_config, _path = _memory_location(
             agent_id=row.agent_id,
             cfg=cfg,
-            octop_config=services.config,
+            octop_config=config,
             workspace_dir=workspace,
+        )
+        if backend == "postgres":
+            dsn = str((backend_config or {}).get("dsn") or "")
+            if dsn != control_dsn:
+                skipped.append(SkippedCheckpoints(row.agent_id, "external_database", None, 0))
+                continue
+            if live_threads is None:
+                live_threads = _all_live_threads(services)
+            usage = _postgres_thread_bytes(dsn, row.agent_id)
+            kept = [nbytes for tid, nbytes in usage.items() if tid not in live_threads]
+            if kept:
+                skipped.append(
+                    SkippedCheckpoints(row.agent_id, "postgres_report_only", len(kept), sum(kept))
+                )
+            continue
+        usage = checkpoint_thread_bytes(
+            agent_id=row.agent_id, cfg=cfg, octop_config=config, workspace_dir=workspace
         )
         known = services.thread_repo.list_ids_for_agent(row.agent_id)
         orphans = [
@@ -295,11 +342,19 @@ def gc_orphan_checkpoints(
                     agent_id=row.agent_id,
                     thread_id=orphan.thread_id,
                     cfg=cfg,
-                    octop_config=services.config,
+                    octop_config=config,
                     workspace_dir=workspace,
                 )
         found.extend(orphans)
-    return found
+    return OrphanScan(orphans=found, skipped=skipped)
+
+
+def _all_live_threads(services: Any) -> set[str]:
+    """Thread ids of every agent: a Postgres thread may be listed under any of them."""
+    live: set[str] = set()
+    for row in services.agent_repo.list_all(include_disabled=True):
+        live |= services.thread_repo.list_ids_for_agent(row.agent_id)
+    return live
 
 
 def close_memory(memory: Any) -> None:
@@ -687,30 +742,35 @@ def _sqlite_thread_bytes(path: Path) -> dict[str, int]:
     return {str(thread_id): int(nbytes or 0) for thread_id, nbytes in rows}
 
 
-def _postgres_thread_bytes(memory: Any) -> dict[str, int]:
-    memory._ensure_checkpointer()
-    saver = memory._checkpointer
-    cursor = getattr(saver, "_cursor", None)
-    if cursor is None:
-        return {}
-    try:
-        with cursor() as cur:
-            cur.execute(
-                "SELECT thread_id, COALESCE(SUM(pg_column_size(checkpoint)), 0) AS nbytes "
-                "FROM checkpoints GROUP BY thread_id"
-            )
-            rows = cur.fetchall()
-    except Exception as exc:
-        if _store_has_no_checkpoints(exc):
+def _connect_read_only(dsn: str) -> Any:
+    import psycopg
+
+    conn = psycopg.connect(dsn)
+    conn.read_only = True
+    return conn
+
+
+def _postgres_checkpoints_table(cur: Any) -> str | None:
+    """Schema-qualified ``checkpoints`` table as octop_memory's saver resolves it."""
+    for schema in (_MEMORY_SCHEMA, "public"):
+        cur.execute("SELECT to_regclass(%s)", (f"{schema}.checkpoints",))
+        found = cur.fetchone()
+        if found is not None and found[0] is not None:
+            return f"{schema}.checkpoints"
+    return None
+
+
+def _postgres_thread_bytes(dsn: str, agent_id: str) -> dict[str, int]:
+    with _connect_read_only(dsn) as conn, conn.cursor() as cur:
+        table = _postgres_checkpoints_table(cur)
+        if table is None:
             return {}
-        raise
-    out: dict[str, int] = {}
-    for row in rows:
-        if isinstance(row, dict):
-            out[str(row["thread_id"])] = int(row["nbytes"] or 0)
-        else:
-            out[str(row[0])] = int(row[1] or 0)
-    return out
+        cur.execute(
+            "SELECT thread_id, COALESCE(SUM(pg_column_size(checkpoint)), 0) "
+            f"FROM {table} WHERE metadata->>'agent_id' = %s GROUP BY thread_id",
+            (agent_id,),
+        )
+        return {str(tid): int(nbytes or 0) for tid, nbytes in cur.fetchall()}
 
 
 def _store_has_no_checkpoints(exc: BaseException) -> bool:
@@ -735,14 +795,26 @@ def sweep_deleted_residuals(
     Safe to call from memory slim. Live agents and their current threads are
     kept. Directories under ``agents/`` and ``workspaces/`` whose names match
     no agent are only removed when ``remove_directories`` is true; otherwise
-    their paths are returned for a second confirmation. Postgres namespaces
-    and checkpoint rows are removed only from databases this instance uses.
+    their paths are returned for a second confirmation.
+
+    Postgres is only counted, never cleaned: checkpoint tables record no
+    owner and may be shared with other installs or hosts. The control-plane
+    database's leftovers are counted read-only in ``postgres_kept``; other
+    Postgres databases are not scanned and are counted in
+    ``skipped_databases``.
     """
     repos = getattr(agent_manager, "_repos", None)
     paths = getattr(agent_manager, "_paths", None)
     config = getattr(agent_manager, "_config", None)
     if repos is None or paths is None or config is None:
-        return {"namespaces": 0, "threads": 0, "directories": 0, "directory_paths": []}
+        return {
+            "namespaces": 0,
+            "threads": 0,
+            "directories": 0,
+            "directory_paths": [],
+            "postgres_kept": None,
+            "skipped_databases": 0,
+        }
     rows = repos.agent_repo.list_all(include_disabled=True)
     live_ids = {str(row.agent_id) for row in rows}
     live_namespaces = {memory_namespace(agent_id) for agent_id in live_ids}
@@ -751,13 +823,12 @@ def sweep_deleted_residuals(
         live_threads |= repos.thread_repo.list_ids_for_agent(agent_id)
 
     threads_removed = 0
-    namespaces_removed = 0
-    seen_dsn: set[str] = set()
+    postgres_kept: dict[str, int] | None = None
+    control_dsn: str | None = None
     if config.database.is_postgresql:
-        dsn = config.database.postgresql_conninfo()
-        seen_dsn.add(dsn)
-        threads_removed += _delete_postgres_orphan_checkpoints(dsn, live_threads)
-        namespaces_removed += _delete_postgres_orphan_namespaces(dsn, live_namespaces)
+        control_dsn = config.database.postgresql_conninfo()
+        postgres_kept = _count_postgres_residuals(control_dsn, live_threads, live_namespaces)
+    external: set[str] = set()
     for row in rows:
         cfg = agent_config_from_row(row)
         workspace = workspace_for_agent_row(row, paths=paths)
@@ -769,10 +840,8 @@ def sweep_deleted_residuals(
         )
         if backend == "postgres":
             dsn = str((backend_config or {}).get("dsn") or "")
-            if dsn and dsn not in seen_dsn:
-                seen_dsn.add(dsn)
-                threads_removed += _delete_postgres_orphan_checkpoints(dsn, live_threads)
-                namespaces_removed += _delete_postgres_orphan_namespaces(dsn, live_namespaces)
+            if dsn != control_dsn:
+                external.add(dsn)
             continue
         agent_threads = repos.thread_repo.list_ids_for_agent(row.agent_id)
         files = _sqlite_memory_files(
@@ -785,11 +854,41 @@ def sweep_deleted_residuals(
     directory_paths = [str(path) for path in list_deleted_agent_dirs(paths, live_ids)]
     directories_removed = _remove_deleted_agent_dirs(paths, live_ids) if remove_directories else 0
     return {
-        "namespaces": namespaces_removed,
+        "namespaces": 0,
         "threads": threads_removed,
         "directories": directories_removed,
         "directory_paths": directory_paths,
+        "postgres_kept": postgres_kept,
+        "skipped_databases": len(external),
     }
+
+
+def describe_sweep(sweep: dict[str, Any], locale: str) -> str:
+    """User-facing summary of :func:`sweep_deleted_residuals`, one line per fact."""
+    from octop.i18n import tr
+
+    lines = [
+        tr(
+            "memory_slim.swept",
+            locale,
+            namespaces=sweep.get("namespaces", 0),
+            threads=sweep.get("threads", 0),
+            directories=sweep.get("directories", 0),
+        )
+    ]
+    kept = sweep.get("postgres_kept")
+    if isinstance(kept, dict) and (kept.get("threads") or kept.get("namespaces")):
+        lines.append(
+            tr(
+                "memory_slim.postgres_kept",
+                locale,
+                threads=kept.get("threads", 0),
+                namespaces=kept.get("namespaces", 0),
+            )
+        )
+    if sweep.get("skipped_databases"):
+        lines.append(tr("memory_slim.skipped_databases", locale, count=sweep["skipped_databases"]))
+    return "\n".join(lines)
 
 
 def _delete_sqlite_orphan_checkpoints(path: Path, live_threads: set[str]) -> int:
@@ -824,85 +923,41 @@ def _delete_sqlite_orphan_checkpoints(path: Path, live_threads: set[str]) -> int
         conn.close()
 
 
-def _delete_postgres_orphan_checkpoints(dsn: str, live_threads: set[str]) -> int:
-    import psycopg
+def _count_postgres_residuals(
+    dsn: str, live_threads: set[str], live_namespaces: set[str]
+) -> dict[str, int]:
+    """Count, read-only, checkpoint threads and memory namespaces nothing here owns.
 
-    with psycopg.connect(dsn, autocommit=True) as conn, conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('public.checkpoints')")
-        found = cur.fetchone()
-        if found is None or found[0] is None:
-            return 0
-        if live_threads:
+    Only Octop-written checkpoints (``agent_id`` in metadata) and namespaces in
+    the current memory schema are counted. The pre-rename ``harness_memory``
+    schema is left alone until octop_memory migrates it.
+    """
+    with _connect_read_only(dsn) as conn, conn.cursor() as cur:
+        threads = 0
+        table = _postgres_checkpoints_table(cur)
+        if table is not None:
             cur.execute(
-                "SELECT DISTINCT thread_id FROM checkpoints WHERE NOT (thread_id = ANY(%s))",
+                f"SELECT COUNT(DISTINCT thread_id) FROM {table} "
+                "WHERE metadata->>'agent_id' IS NOT NULL AND NOT (thread_id = ANY(%s))",
                 (list(live_threads),),
             )
-        else:
-            cur.execute("SELECT DISTINCT thread_id FROM checkpoints")
-        orphan_ids = [str(row[0]) for row in cur.fetchall()]
-        if not orphan_ids:
-            return 0
-        for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
-            cur.execute("SELECT to_regclass(%s)", (f"public.{table}",))
             found = cur.fetchone()
-            if found is None or found[0] is None:
-                continue
-            cur.execute(
-                f"DELETE FROM public.{table} WHERE thread_id = ANY(%s)",
-                (orphan_ids,),
-            )
-        return len(orphan_ids)
-
-
-def _delete_postgres_orphan_namespaces(dsn: str, live_namespaces: set[str]) -> int:
-    import psycopg
-
-    removed = 0
-    with psycopg.connect(dsn, autocommit=True) as conn, conn.cursor() as cur:
+            threads = int(found[0]) if found else 0
         cur.execute(
-            """
-            SELECT table_schema, table_name
-            FROM information_schema.columns
-            WHERE column_name = 'namespace'
-              AND table_name = ANY(%s)
-              AND table_schema NOT IN ('pg_catalog', 'information_schema')
-            """,
-            (list(_NAMESPACE_TABLES),),
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = %s AND table_name = ANY(%s)",
+            (_MEMORY_SCHEMA, list(_NAMESPACE_TABLES)),
         )
-        targets = [(str(schema), str(table)) for schema, table in cur.fetchall()]
+        tables = [str(name) for (name,) in cur.fetchall() if _IDENT.fullmatch(str(name))]
         namespaces: set[str] = set()
-        for schema, table in targets:
-            if _IDENT.fullmatch(schema) is None or _IDENT.fullmatch(table) is None:
-                continue
+        for name in tables:
             cur.execute(
-                f"SELECT DISTINCT namespace FROM {_quote_ident(schema)}.{_quote_ident(table)} "
-                "WHERE namespace LIKE 'agent_%'"
+                f"SELECT DISTINCT namespace FROM {_MEMORY_SCHEMA}.{_quote_ident(name)} "
+                "WHERE namespace LIKE %s",
+                (r"agent\_%",),
             )
-            namespaces.update(str(row[0]) for row in cur.fetchall() if row[0])
-        stale = sorted(
-            ns for ns in namespaces if ns not in live_namespaces and _IDENT.fullmatch(ns)
-        )
-        if not stale:
-            return 0
-        for schema, table in targets:
-            if _IDENT.fullmatch(schema) is None or _IDENT.fullmatch(table) is None:
-                continue
-            cur.execute(
-                f"DELETE FROM {_quote_ident(schema)}.{_quote_ident(table)} WHERE namespace = ANY(%s)",
-                (stale,),
-            )
-        for namespace in stale:
-            for legacy in (namespace, f"{namespace[:56]}__old"):
-                if legacy in _SHARED_MEMORY_SCHEMAS or _IDENT.fullmatch(legacy) is None:
-                    continue
-                cur.execute(
-                    "SELECT 1 FROM information_schema.schemata WHERE schema_name = %s",
-                    (legacy,),
-                )
-                if cur.fetchone() is not None:
-                    cur.execute(f"DROP SCHEMA {_quote_ident(legacy)} CASCADE")
-        removed = len(stale)
-    return removed
+            namespaces.update(str(ns) for (ns,) in cur.fetchall() if ns)
+    return {"threads": threads, "namespaces": len(namespaces - live_namespaces)}
 
 
 def list_deleted_agent_dirs(paths: Any, live_ids: set[str]) -> list[Path]:
