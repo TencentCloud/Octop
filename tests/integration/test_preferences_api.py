@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.support.auth import create_user
+
 
 @pytest.mark.asyncio
 async def test_preferences_bookmarks_roundtrip(env) -> None:
@@ -116,3 +118,40 @@ async def test_preferences_sidebar_nav_roundtrip(env) -> None:
     r = await client.patch("/api/preferences", headers=auth, json={"sidebar_nav": None})
     assert r.status_code == 200
     assert r.json()["sidebar_nav"] is None
+
+
+@pytest.mark.asyncio
+async def test_preferences_onboarding_is_per_user(env) -> None:
+    client, _srv, admin = env
+    member = await create_user(client, admin, username="newcomer")
+
+    for auth in (admin, member):
+        r = await client.get("/api/preferences", headers=auth)
+        assert r.status_code == 200
+        assert r.json()["onboarding_completed"] is False
+
+    r = await client.patch("/api/preferences", headers=member, json={"onboarding_completed": True})
+    assert r.status_code == 200
+    assert r.json()["onboarding_completed"] is True
+
+    r = await client.get("/api/preferences", headers=member)
+    assert r.json()["onboarding_completed"] is True
+    r = await client.get("/api/preferences", headers=admin)
+    assert r.json()["onboarding_completed"] is False
+
+    r = await client.patch("/api/preferences", headers=member, json={"onboarding_completed": False})
+    assert r.status_code == 200
+    assert r.json()["onboarding_completed"] is False
+
+
+@pytest.mark.asyncio
+async def test_preferences_onboarding_keeps_other_preferences(env) -> None:
+    client, _srv, auth = env
+    r = await client.patch("/api/preferences", headers=auth, json={"timezone": "Asia/Shanghai"})
+    assert r.status_code == 200
+
+    r = await client.patch("/api/preferences", headers=auth, json={"onboarding_completed": True})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["onboarding_completed"] is True
+    assert body["timezone"] == "Asia/Shanghai"

@@ -126,7 +126,7 @@ does not set these headers itself.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, ...}]` |
+| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, last_active, ...}]` — `last_active` is this user's latest thread touch (unix seconds), or `null` |
 | `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201` |
 | `GET`    | `/agents/{id}` | owner | full agent row |
 | `PATCH`  | `/agents/{id}` | owner | body subset of create body |

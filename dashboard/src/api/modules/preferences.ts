@@ -30,6 +30,8 @@ export interface UserPreferences {
     { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
   >;
   sidebar_nav?: SidebarNavLayoutPref | null;
+  /** True once the user finished or skipped the welcome guide. */
+  onboarding_completed?: boolean;
 }
 
 export type PatchPreferencesBody = {
@@ -38,6 +40,7 @@ export type PatchPreferencesBody = {
   preferred_model?: string | null;
   model_reasoning?: UserPreferences["model_reasoning"];
   sidebar_nav?: SidebarNavLayoutPref | null;
+  onboarding_completed?: boolean;
 };
 
 export const preferencesApi = {

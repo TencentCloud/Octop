@@ -1,0 +1,129 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "octop.fullname" . }}
+  labels:
+    {{- include "octop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      {{- include "octop.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "octop.selectorLabels" . | nindent 8 }}
+    spec:
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "octop.selectorLabels" . | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - until pg_isready -h {{ include "octop.database.host" . | quote }} -p {{ .Values.database.port | quote }}; do sleep 2; done
+      containers:
+        - name: octop
+          image: {{ include "octop.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+          env:
+            - name: HOME
+              value: /data
+            - name: OCTOP_HOME
+              value: /data/.octop
+            - name: OCTOP_BIND_HOST
+              value: 0.0.0.0
+            - name: OCTOP_PORT
+              value: {{ .Values.service.port | quote }}
+            - name: OCTOP_DATABASE_DRIVER
+              value: postgresql
+            - name: OCTOP_DATABASE_HOST
+              value: {{ include "octop.database.host" . | quote }}
+            - name: OCTOP_DATABASE_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: OCTOP_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database }}
+                  key: database
+            - name: OCTOP_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database }}
+                  key: user
+            - name: OCTOP_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.database }}
+                  key: password
+            - name: OCTOP_DEFAULT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.admin }}
+                  key: password
+            - name: OCTOP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.admin }}
+                  key: username
+            - name: OCTOP_DEFAULT_TIMEZONE
+              value: {{ .Values.config.timezone | quote }}
+            - name: OCTOP_CORS_ORIGINS
+              value: {{ include "octop.corsOrigins" . | quote }}
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: home
+              mountPath: /data/.octop
+            {{- if .Values.shm.enabled }}
+            - name: shm
+              mountPath: /dev/shm
+            {{- end }}
+      volumes:
+        - name: home
+          emptyDir: {}
+        {{- if .Values.shm.enabled }}
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.shm.sizeLimit }}
+        {{- end }}

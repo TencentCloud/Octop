@@ -9,6 +9,19 @@ import {
 import type { ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../Experts/components/EditAgentDrawer", () => ({
+  default: () => null,
+}));
+vi.mock("../../Experts/components/TeamDrawer", () => ({
+  default: () => null,
+}));
+vi.mock("../../Experts/components/CreateFromExpertDrawer", () => ({
+  default: () => null,
+}));
+vi.mock("../../Settings/AdvancedSettings/BridgeSettings", () => ({
+  default: () => null,
+}));
 import {
   octopThreadsApi,
   type OctopThread,

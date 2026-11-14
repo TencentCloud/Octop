@@ -62,7 +62,8 @@
   --chat-turn-rail-gutter: 48px;
 
   .chatTitleBar {
-    padding-inline: var(--chat-turn-rail-gutter) var(--chat-column-pad-x, 24px);
+    padding-inline-start: var(--chat-turn-rail-gutter);
+    padding-inline-end: var(--chat-column-pad-x, 24px);
     padding-block: 0;
   }
 
@@ -103,8 +104,7 @@
   height: var(--fn-chat-chrome-height, 58px);
   min-height: var(--fn-chat-chrome-height, 58px);
   max-height: var(--fn-chat-chrome-height, 58px);
-  /* Match .chatInput gutters. Caption buttons sit on the menu row above,
-     so the pencil and more actions stay at this row's trailing edge. */
+  /* Match .chatInput gutters. Caption buttons sit on the menu row above. */
   --chat-title-pad-x: var(--chat-column-pad-x);
   padding: 0 var(--chat-title-pad-x);
   border-bottom: none;

@@ -55,7 +55,7 @@ CI can do it explicitly with `npx install-electron`.
 
 Node is pinned to **24** by `src/mise.toml`, overriding the repo-root pin of
 20. That override is scoped to this directory and nowhere else: the Dashboard,
-`docker/Dockerfile` (`node:20-slim`), `release.yml`, `fnos-build-fpk.yml`,
+`deploy/docker/Dockerfile` (`node:20-slim`), `release.yml`, `fnos-build-fpk.yml`,
 `octop-desktop.yml` and the server all stay on Node 20. The reason for the split
 is `pnpm test`, which uses `node --test --experimental-strip-types` and needs
 Node ≥22.6 (on Node 20 the runner dies with `bad option`), plus Node 20's April
