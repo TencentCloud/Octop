@@ -1066,6 +1066,7 @@
     "createFromTemplate": "+ 从此模板新建",
     "editExpert": "编辑专家",
     "basicInfo": "基本信息",
+    "moreConfig": "更多配置",
     "agentName": "名称",
     "agentDescription": "描述",
     "customIdLabel": "自定义 ID（可选）",
