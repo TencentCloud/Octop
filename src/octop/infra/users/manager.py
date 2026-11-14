@@ -518,6 +518,7 @@ class UserManager:
                 permissions=list(row.permissions),
             )
             self._users[row.username] = user
+        self._services.user_repo.touch_last_login(row.id)
         self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 

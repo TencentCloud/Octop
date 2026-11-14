@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, Query, Request
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server, require_permission
+from octop.api.deps import current_user, get_server, require_any_permission, require_permission
 from octop.api.routers.update_store import (
     UpgradeTaskStatus,
     cache_status,
@@ -451,7 +451,7 @@ def _restart_service_task(runtime: ServiceRuntime) -> None:
 async def restart_service_endpoint(
     background_tasks: BackgroundTasks,
     server: OctopServer = Depends(get_server),
-    _: Any = Depends(require_permission("update")),
+    _: Any = Depends(require_any_permission("update", "app_config")),
 ) -> dict[str, Any]:
     if desktop_shell_enabled():
         raise OctopError(ErrorCode.FORBIDDEN, _SHELL_UPDATE_FORBIDDEN)
