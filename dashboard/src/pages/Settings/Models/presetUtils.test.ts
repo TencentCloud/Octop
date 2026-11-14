@@ -5,6 +5,7 @@ import {
   isOllamaProviderRow,
   isOllamaRuntimeUrl,
   isOnnxProviderRow,
+  isOverseasPreset,
   looksLikeOllamaProvider,
 } from "./presetUtils";
 
@@ -114,3 +115,13 @@ describe("looksLikeOllamaProvider", () => {
     ).toBe(false);
   });
 });
+
+describe("isOverseasPreset", () => {
+  it("places the LLMTR preset with other overseas gateways", () => {
+    expect(isOverseasPreset({ id: "llmtr", name: "LLMTR" })).toBe(true);
+    expect(isOverseasPreset({ id: "openrouter", name: "OpenRouter" })).toBe(
+      true,
+    );
+  });
+});
+

@@ -95,6 +95,7 @@ export const PROVIDER_DOCS: Record<string, string> = {
   "tencent-token-plan": "https://hunyuan.cloud.tencent.com/#/app/subscription",
   "tencent-hai": "https://cloud.tencent.com/document/product/1721",
   openrouter: "https://openrouter.ai/docs/quickstart",
+  llmtr: "https://llmtr.com",
   mimo: "https://platform.xiaomimimo.com/",
   minimax: "https://platform.minimaxi.com/",
   volces: "https://www.volcengine.com/docs/82379/1399008",

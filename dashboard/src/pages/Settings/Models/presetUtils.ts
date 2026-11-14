@@ -145,6 +145,7 @@ const OVERSEAS_PRESET_IDS = new Set([
   "gemini",
   "groq",
   "openrouter",
+  "llmtr",
 ]);
 
 /** Brand groups that belong in the collapsed "more providers" section. */

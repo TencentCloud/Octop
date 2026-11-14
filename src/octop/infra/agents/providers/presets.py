@@ -349,6 +349,22 @@ def load_provider_presets() -> list[dict[str, Any]]:
         out.insert(insert_at, onnx_preset)
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
+    if not any(p.get("id") == "llmtr" for p in out):
+        # Named OpenAI-compatible gateway. Catalog models are left empty so
+        # the operator pins them in the Models UI; no built-in logo is shipped.
+        llmtr_preset = {
+            "id": "llmtr",
+            "name": "LLMTR",
+            "base_url": "https://llmtr.com/v1",
+            "protocol": "openai",
+            "api_key_prefix": "",
+            "models": [],
+        }
+        insert_at = next(
+            (i + 1 for i, preset in enumerate(out) if preset.get("id") == "openrouter"),
+            len(out),
+        )
+        out.insert(insert_at, llmtr_preset)
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:
