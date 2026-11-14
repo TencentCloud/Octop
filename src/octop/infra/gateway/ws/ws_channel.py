@@ -20,7 +20,7 @@ from octop_gateway.models import (
 )
 from octop_gateway.utils import close_event_stream
 
-from octop.i18n.domains.stream import format_stream_error
+from octop.infra.errors import stream_error
 from octop.infra.gateway.media.attachment_hints import (
     inbound_attachments_from_parts,
     is_vision_attachment,
@@ -312,13 +312,11 @@ class WebSocketChannel(BaseChannel):
                 metadata=err_meta,
             )
             try:
-                await self._hub.push_to_thread(
-                    thread_id,
-                    _with_turn_id(
-                        {"type": "error", "message": format_stream_error(exc, locale)},
-                        turn_id,
-                    ),
-                )
+                error_message, error_code = stream_error(exc, locale)
+                frame: dict[str, Any] = {"type": "error", "message": error_message}
+                if error_code:
+                    frame["error_code"] = error_code
+                await self._hub.push_to_thread(thread_id, _with_turn_id(frame, turn_id))
                 await self._hub.push_to_thread(
                     thread_id,
                     _with_turn_id({"type": "done"}, turn_id),

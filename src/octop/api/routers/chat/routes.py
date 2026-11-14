@@ -13,7 +13,6 @@ from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import HitlResumeBody, PolishBody
 from octop.api.routers.chat.sse import format_sse
-from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
     display_task_examples_for_agent,
@@ -25,6 +24,7 @@ from octop.infra.agents.experts.catalog import (
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
+from octop.infra.errors import stream_error
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
@@ -202,10 +202,11 @@ async def iter_dashboard_hitl_resume_sse(
         # leave the record looking like a successful approve/reject.
         if pending is not None:
             hitl_coordinator.store.mark_resolved(pending.pending_id, "expired")
-        yield format_sse(
-            "chunk",
-            {"type": "error", "message": format_stream_error(exc, locale)},
-        )
+        error_message, error_code = stream_error(exc, locale)
+        payload: dict[str, Any] = {"type": "error", "message": error_message}
+        if error_code:
+            payload["error_code"] = error_code
+        yield format_sse("chunk", payload)
 
 
 def _dashboard_hitl_stream_context(
