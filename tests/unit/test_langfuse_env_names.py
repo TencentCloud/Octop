@@ -1,6 +1,6 @@
 """Every Langfuse variable shipped to the container must have a reader.
 
-`.env.example` and `docker/docker-compose.yml` advertise the observability
+`.env.example` and `deploy/docker/docker-compose.yml` advertise the observability
 knobs to self-hosters. Octop itself keeps the enable switch in the settings
 table (`observability_langfuse_enabled`), while the credentials fall back to
 the Langfuse SDK's own environment variables — so a name neither side reads
@@ -16,7 +16,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENV_EXAMPLE = REPO_ROOT / ".env.example"
-COMPOSE = REPO_ROOT / "docker" / "docker-compose.yml"
+COMPOSE = REPO_ROOT / "deploy" / "docker" / "docker-compose.yml"
 
 
 def _shipped_langfuse_names() -> set[str]:

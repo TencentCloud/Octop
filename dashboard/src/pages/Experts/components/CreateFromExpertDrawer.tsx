@@ -47,6 +47,7 @@ import {
   type AgentRuntimeFormValues,
 } from "../../../utils/agentRuntimeConfig";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { pickLocale } from "../../../utils/localizedText";
 import {
   buildModelSelectOptions,
@@ -64,6 +65,7 @@ import { metaForFile } from "./iconForName";
 import {
   buildBackendSpec,
   DEFAULT_BACKEND,
+  defaultCreateBackendChoice,
   ensureBubblewrapAfterProbe,
   ensureBwrapMessage,
   ensureBwrapToastKind,
@@ -227,6 +229,8 @@ export default function CreateFromExpertDrawer({
   onCreated,
 }: CreateFromExpertDrawerProps) {
   const { t } = useTranslation();
+  const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
+  const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
   const [form] = Form.useForm<
     {
       name: string;
@@ -335,7 +339,7 @@ export default function CreateFromExpertDrawer({
       welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
       conversation_mode: DEFAULT_CONVERSATION_MODE,
-      backend_choice: DEFAULT_BACKEND,
+      backend_choice: createBackendChoice,
       composite_default: DEFAULT_BACKEND,
       workspace_dir: "",
       workspace_dir_auto: "",
@@ -390,7 +394,7 @@ export default function CreateFromExpertDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, source, sourceKey, lang, form]);
+  }, [open, source, sourceKey, lang, form, createBackendChoice]);
 
   useEffect(() => {
     if (!open) return;
@@ -681,7 +685,7 @@ export default function CreateFromExpertDrawer({
     <Drawer
       open={open}
       title={title}
-      width={640}
+      width={600}
       onClose={onClose}
       destroyOnHidden
       footer={
