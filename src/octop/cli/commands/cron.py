@@ -54,7 +54,21 @@ def list_jobs(agent_id: str | None, as_user: str | None) -> None:
 @click.option("--user", "as_user", default=None)
 @click.option("--trigger", required=True)
 @click.option("--prompt", required=True)
-@click.option("--fresh-thread", is_flag=True, default=False)
+@click.option(
+    "--fresh-thread",
+    is_flag=True,
+    default=False,
+    help="Start a new conversation on every run. Cannot be combined with --thread.",
+)
+@click.option(
+    "--thread",
+    "thread_id",
+    default=None,
+    help=(
+        "Pin the job to this historical conversation. "
+        "Omit to follow the latest conversation on the Dashboard channel."
+    ),
+)
 @click.option("--task-type", default="agent")
 def create_job(
     agent_id: str | None,
@@ -62,11 +76,14 @@ def create_job(
     trigger: str,
     prompt: str,
     fresh_thread: bool,
+    thread_id: str | None,
     task_type: str,
 ) -> None:
     """Create a cron job."""
     from octop.cli.support.offline_ops import create_cron_offline, resolve_cron_user_id
 
+    if fresh_thread and (thread_id or "").strip():
+        raise click.UsageError("--thread cannot be combined with --fresh-thread")
     aid = require_agent(agent_id)
     try:
         uid = resolve_cron_user_id(aid, as_user)
@@ -77,6 +94,7 @@ def create_job(
             prompt=prompt,
             fresh_thread=fresh_thread,
             task_type=task_type,
+            thread_id=thread_id,
         )
     except OctopError as exc:
         fail_octop(exc)

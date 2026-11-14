@@ -392,6 +392,53 @@ async def test_create_stores_fresh_thread(tmp_path: Path) -> None:
     assert bool(row.fresh_thread) is True
 
 
+@pytest.mark.asyncio
+async def test_create_pins_history_thread(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    channel_key = ThreadRegistry.dashboard_key(agent_id=aid, user_id=uid)
+    thread = MagicMock()
+    thread.agent_id = aid
+    thread.user_id = uid
+    thread.session_key = channel_key
+    gateway = _make_gateway()
+    gateway.thread_registry.get_thread = MagicMock(return_value=thread)
+    mgr = _make_manager(services, gateway=gateway)
+
+    row = await mgr.create(
+        cron_id=_cron_id(),
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:120",
+        prompt="work",
+        session_key="thread:thr_old",
+    )
+
+    assert row.session_key == "thread:thr_old"
+    gateway.thread_registry.get_or_create_by_key.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_create_rejects_missing_history_thread(tmp_path: Path) -> None:
+    from octop.infra.errors import OctopError  # noqa: PLC0415
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    gateway = _make_gateway()
+    gateway.thread_registry.get_thread = MagicMock(return_value=None)
+    mgr = _make_manager(services, gateway=gateway)
+
+    with pytest.raises(OctopError):
+        await mgr.create(
+            cron_id=_cron_id(),
+            agent_id=aid,
+            user_id=uid,
+            trigger="interval:120",
+            prompt="work",
+            session_key="thread:missing",
+        )
+
+
 # ---------------------------------------------------------------------------
 # get() / list_by_agent() / list_all()
 # ---------------------------------------------------------------------------
