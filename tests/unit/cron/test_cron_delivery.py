@@ -195,6 +195,43 @@ async def test_text_im_skips_checkpoint() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("channel_type", [ThreadRegistry.CHANNEL_DASHBOARD, "feishu"])
+async def test_text_silent_marker_skips_delivery(channel_type: str) -> None:
+    session = _session(channel_type=channel_type)
+    agent_manager = MagicMock()
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    gateway.thread_registry.reset_by_session_key = AsyncMock()
+    repos = MagicMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=repos)
+    await service.deliver(_command(prompt="  [SILENT]\n", fresh_thread=True))
+
+    gateway.thread_registry.reset_by_session_key.assert_not_awaited()
+    agent_manager.get_agent.assert_not_called()
+    repos.thread_message_repo.append_if_ready.assert_not_called()
+    gateway.push_session_text.assert_not_awaited()
+    gateway.notify_dashboard_push.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_text_marker_inside_message_is_delivered() -> None:
+    session = _session(channel_type="feishu")
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=MagicMock(), repos=MagicMock())
+    await service.deliver(_command(prompt="[SILENT] is the no-change marker"))
+
+    assert gateway.push_session_text.await_args.args[1] == "[SILENT] is the no-change marker"
+
+
+@pytest.mark.asyncio
 async def test_agent_hitl_does_not_push() -> None:
     session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
 
@@ -260,6 +297,133 @@ async def test_agent_empty_reply_does_not_push() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_silent_marker_after_thinking_skips_delivery() -> None:
+    session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "token", "content": "<think>nothing changed</think>  [SI"}
+        yield {"type": "token", "content": "LENT]\n"}
+        yield {"type": "usage", "usage": {"input_tokens": 8, "output_tokens": 2}}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    repos = MagicMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=repos)
+    await service.deliver(_command(task_type="agent", prompt="scan"))
+
+    gateway.push_session_text.assert_not_awaited()
+    gateway.notify_dashboard_push.assert_not_awaited()
+    projected = repos.thread_message_repo.append_if_ready.call_args.args[1]
+    assert any("[SILENT]" in item.message_json for item in projected)
+    assert repos.usage_repo.record.call_args.kwargs["source"] == "cron"
+    assert repos.usage_repo.record.call_args.kwargs["input_tokens"] == 8
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure_mode", [None, "checkpoint", "rebind"])
+async def test_silent_agent_fresh_thread_restores_binding_and_removes_empty_thread(
+    tmp_path: Path,
+    failure_mode: str | None,
+) -> None:
+    db, previous = _seed_dashboard_thread(tmp_path, thread_id="thr_previous")
+    registry = ThreadRegistry(session_repo=SessionRepo(db), thread_repo=ThreadRepo(db))
+    if failure_mode == "rebind":
+        registry.rebind = AsyncMock(side_effect=ValueError("previous thread was deleted"))
+    generated_threads: list[str] = []
+
+    async def _stream(_aid: str, request: dict):
+        generated_threads.append(request["thread_id"])
+        yield {"type": "token", "content": "[SILENT]"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    agent_manager.delete_thread_checkpoint = AsyncMock(
+        side_effect=RuntimeError("checkpoint cleanup failed")
+        if failure_mode == "checkpoint"
+        else None
+    )
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session.side_effect = lambda _aid, key: SessionRepo(db).get(key)
+    gateway.thread_registry = registry
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    repos = MagicMock()
+    repos.user_repo = UserRepo(db)
+    repos.thread_message_repo = ThreadMessageRepo(db)
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=repos)
+    command = _command(
+        task_type="agent",
+        prompt="scan",
+        session_key=previous.session_key,
+        fresh_thread=True,
+    )
+    if failure_mode:
+        with pytest.raises((RuntimeError, ValueError)):
+            await service.deliver(command)
+    else:
+        await service.deliver(command)
+
+    new_thread_id = generated_threads[0]
+    assert new_thread_id != previous.thread_id
+    if failure_mode:
+        # Keep the failed cleanup visible and bound so it can be retried.
+        assert SessionRepo(db).get(previous.session_key).thread_id == new_thread_id
+        assert ThreadRepo(db).get(new_thread_id) is not None
+    else:
+        assert SessionRepo(db).get(previous.session_key).thread_id == previous.thread_id
+        assert ThreadRepo(db).get(new_thread_id) is None
+    if failure_mode == "rebind":
+        agent_manager.delete_thread_checkpoint.assert_not_awaited()
+    else:
+        agent_manager.delete_thread_checkpoint.assert_awaited_once_with(
+            "a1", new_thread_id, reclaim=False
+        )
+    gateway.push_session_text.assert_not_awaited()
+    db.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("reply", ["OK", "[SILENT] urgent alert"])
+async def test_agent_non_marker_reply_is_delivered(reply: str) -> None:
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "token", "content": reply}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    await service.deliver(_command(task_type="agent", prompt="scan"))
+
+    assert gateway.push_session_text.await_args.args[1] == reply
+
+
+@pytest.mark.asyncio
 async def test_agent_strips_orphan_thinking_prefix() -> None:
     session = _session(channel_type="weixin")
 
@@ -289,7 +453,7 @@ async def test_agent_strips_orphan_thinking_prefix() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fresh_thread_resets_before_require_session() -> None:
+async def test_fresh_thread_validates_session_before_reset() -> None:
     session = _session(channel_type="feishu")
     order: list[str] = []
 
@@ -313,7 +477,7 @@ async def test_fresh_thread_resets_before_require_session() -> None:
         repos=MagicMock(),
     )
     await service.deliver(_command(fresh_thread=True, task_type="text"))
-    assert order == ["reset", "require"]
+    assert order == ["require", "reset", "require"]
 
 
 @pytest.mark.asyncio
