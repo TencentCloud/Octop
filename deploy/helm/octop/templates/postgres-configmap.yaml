@@ -1,0 +1,16 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "octop.fullname" . }}-pgvector-init
+  labels:
+    {{- include "octop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+data:
+  init-vector.sql: |
+    -- Instance-level init only (docker-entrypoint-initdb.d on first volume).
+    -- NOT part of Octop control-plane migrations (see ADR 002).
+    -- Same statement as deploy/docker/postgres/init-vector.sql.
+    -- Managed Postgres: enable via your provider / DBA if embeddings need pgvector.
+    CREATE EXTENSION IF NOT EXISTS vector;
+{{- end }}
