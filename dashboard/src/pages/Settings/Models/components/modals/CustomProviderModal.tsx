@@ -2,7 +2,7 @@
  * CustomProviderModal — create a new custom provider (right-side drawer).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Drawer, Form, Input, Select } from "antd";
+import { Button, Divider, Drawer, Form, Input, Select, Switch } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, Zap } from "lucide-react";
@@ -57,6 +57,7 @@ export function CustomProviderModal({
     api_key?: string;
     note?: string;
     stream_usage?: boolean;
+    keyless?: boolean;
   }>();
   const name = Form.useWatch("name", form) as string | undefined;
   const kind = Form.useWatch("kind", form) as string | undefined;
@@ -88,7 +89,11 @@ export function CustomProviderModal({
   useEffect(() => {
     if (open) {
       form.resetFields();
-      form.setFieldsValue({ kind: "openai", stream_usage: false });
+      form.setFieldsValue({
+        kind: "openai",
+        stream_usage: false,
+        keyless: false,
+      });
       setModels([]);
     }
   }, [open, form]);
@@ -225,6 +230,7 @@ export function CustomProviderModal({
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
           purpose: embeddingLane ? "embedding" : "chat",
+          keyless: values.keyless === true,
           ...((values.kind as string) === "openai" && !embeddingLane
             ? { stream_usage: values.stream_usage === true }
             : {}),
@@ -331,6 +337,15 @@ export function CustomProviderModal({
 
         <Form.Item name="api_key" label="API Key">
           <Input.Password placeholder="sk-..." visibilityToggle />
+        </Form.Item>
+
+        <Form.Item
+          name="keyless"
+          label={t("models.keylessLabel")}
+          extra={t("models.keylessHint")}
+          valuePropName="checked"
+        >
+          <Switch />
         </Form.Item>
 
         {kind === "openai" && (

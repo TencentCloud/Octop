@@ -70,3 +70,37 @@ class SecretRepo:
                 "UPDATE secrets SET v = ?, rotated_at = ? WHERE k = ?",
                 (new_value, now_ts(), k),
             )
+
+    def list_prefix(self, prefix: str) -> list[tuple[str, bytes, int, int | None]]:
+        """``(k, v, created_at, rotated_at)`` rows whose key starts with *prefix*.
+
+        Substring match, not ``LIKE`` — ``_`` / ``%`` in keys must not act as
+        wildcards (see the note in ``knowledge.py``).
+        """
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT k, v, created_at, rotated_at FROM secrets "
+                "WHERE substr(k, 1, ?) = ? ORDER BY k",
+                (len(prefix), prefix),
+            ).fetchall()
+        out: list[tuple[str, bytes, int, int | None]] = []
+        for r in rows:
+            rotated = r["rotated_at"]
+            out.append(
+                (
+                    str(r["k"]),
+                    bytes(r["v"]),
+                    int(r["created_at"]),
+                    int(rotated) if rotated is not None else None,
+                )
+            )
+        return out
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete every secret whose key starts with *prefix*; returns the count."""
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "DELETE FROM secrets WHERE substr(k, 1, ?) = ?",
+                (len(prefix), prefix),
+            )
+            return int(cur.rowcount or 0)

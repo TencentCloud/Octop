@@ -160,6 +160,8 @@ class _MessageEventSink(SlashSink):
 class _ResolvedModelRoute:
     model_ref: str | None
     automatic: bool
+    #: Personal provider key for this turn (bring-your-own-key); None = global key.
+    api_key_override: str | None = None
 
 
 class _ResolvedTurnMcp(NamedTuple):
@@ -814,7 +816,8 @@ class GlobalProcessor:
         )
         if resolved != model_ref:
             automatic = True
-        return _ResolvedModelRoute(resolved, automatic=automatic)
+        api_key_override = self._agent_manager.resolve_api_key_override(user_id, resolved)
+        return _ResolvedModelRoute(resolved, automatic=automatic, api_key_override=api_key_override)
 
     def _resolve_reasoning_overrides(
         self,
@@ -1049,6 +1052,7 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
+            api_key_override=model_route.api_key_override,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )
@@ -1720,6 +1724,7 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
+            api_key_override=model_route.api_key_override,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
             message_id=client_message_id if isinstance(client_message_id, str) else None,

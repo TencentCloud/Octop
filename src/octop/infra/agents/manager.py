@@ -3225,6 +3225,17 @@ class AgentManager:
             model_ref=model_ref,
         )
 
+    def resolve_api_key_override(self, user_id: int, model_ref: str | None) -> str | None:
+        """Personal provider key for this turn (bring-your-own-key policy aware)."""
+        from octop.infra.agents.providers.user_keys import resolve_api_key_override
+
+        return resolve_api_key_override(
+            user_id=user_id,
+            model_ref=model_ref,
+            provider_repo=self._repos.provider_repo,
+            user_provider_key_repo=self._repos.user_provider_key_repo,
+        )
+
     def _assert_model_ref(self, user_id: int, model_ref: str | None) -> None:
         from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess
 

@@ -18,6 +18,7 @@ import {
   Modal,
   Progress,
   Select,
+  Switch,
 } from "antd";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
@@ -64,6 +65,7 @@ interface ProviderConfigForm {
   note?: string;
   kind: string;
   stream_usage?: boolean;
+  keyless?: boolean;
 }
 
 interface ProviderConfigModalProps {
@@ -664,6 +666,7 @@ export function ProviderConfigModal({
       api_key: undefined,
       note: provider.note ?? "",
       stream_usage: provider.stream_usage !== false,
+      keyless: provider.keyless === true,
     });
     // undefined is skipped by setFieldsValue, so an empty default has to be
     // reset or the previous provider's model stays selected.
@@ -696,6 +699,9 @@ export function ProviderConfigModal({
         payload.api_key = values.api_key.trim();
       if ((values.note ?? "") !== (provider.note ?? ""))
         payload.note = values.note?.trim() || null;
+      if (Boolean(values.keyless) !== Boolean(provider.keyless)) {
+        payload.keyless = Boolean(values.keyless);
+      }
       const embeddingLane = provider.purpose === "embedding" || isOnnx;
       if (
         !isOnnx &&
@@ -1079,6 +1085,15 @@ export function ProviderConfigModal({
                 placeholder={apiKeyPlaceholder}
                 visibilityToggle
               />
+            </Form.Item>
+
+            <Form.Item
+              name="keyless"
+              label={t("models.keylessLabel")}
+              extra={t("models.keylessHint")}
+              valuePropName="checked"
+            >
+              <Switch />
             </Form.Item>
           </>
         )}

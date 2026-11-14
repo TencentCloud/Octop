@@ -421,6 +421,7 @@ def delete_provider_offline(provider_id: int, *, home: Path | None = None) -> No
                 f"provider {row.name!r} is referenced by {len(refs)} agent(s)",
             )
         svc.provider_repo.delete(provider_id)
+        svc.user_provider_key_repo.delete_for_provider(row.name)
 
 
 def load_provider_presets_offline() -> list[dict[str, Any]]:

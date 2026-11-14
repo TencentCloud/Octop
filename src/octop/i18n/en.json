@@ -431,6 +431,7 @@
     "PROVIDER_NOT_VISIBLE": "Provider is not visible.",
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
     "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
+    "PROVIDER_KEY_REQUIRED": "This provider requires a personal API key. Add yours in Settings → Model Keys in the sidebar, then try again.",
     "CODEX_OAUTH_START_FAILED": "Could not start ChatGPT sign-in. Check the server connection to auth.openai.com and try again.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "RESOURCE_NOT_ALLOWED": "You do not have access to this resource.",

@@ -9,11 +9,13 @@ from octop.infra.crypto.fernet import (
     PURPOSE_PROVIDER,
     PURPOSE_STORAGE,
     PURPOSE_VOICE,
+    decrypt_str,
+    encrypt_str,
     open_text,
     seal_text,
 )
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import UNSET
+from octop.infra.db.repos._base import UNSET, now_ts
 from octop.infra.db.repos.backends import BackendRepo, BackendRow
 from octop.infra.db.repos.providers import ProviderRepo, ProviderRow
 from octop.infra.db.repos.secrets import SecretRepo
@@ -161,3 +163,61 @@ class SealedBackendRepo:
 
     def _open_row(self, row: BackendRow) -> BackendRow:
         return replace(row, secret_key=open_text(self._secrets, PURPOSE_STORAGE, row.secret_key))
+
+
+class SealedUserProviderKeyRepo:
+    """Per-user provider keys as sealed ``secrets`` KV entries.
+
+    ``user_provider_key:{user_id}:{provider_name}`` maps to the Fernet
+    ciphertext of the personal key (``PURPOSE_PROVIDER``).
+    """
+
+    _KEY_PREFIX = "user_provider_key:"
+
+    def __init__(self, secrets: SecretRepo) -> None:
+        self._secrets = secrets
+
+    @classmethod
+    def _key(cls, user_id: int, provider_name: str) -> str:
+        return f"{cls._KEY_PREFIX}{user_id}:{provider_name}"
+
+    def set_key(self, user_id: int, provider_name: str, plain_key: str) -> int:
+        """Store the sealed key; returns its ``updated_at`` (unix seconds)."""
+        self._secrets.put(
+            self._key(user_id, provider_name),
+            encrypt_str(self._secrets, PURPOSE_PROVIDER, plain_key),
+        )
+        return now_ts()
+
+    def get_key(self, user_id: int, provider_name: str) -> str | None:
+        blob = self._secrets.get(self._key(user_id, provider_name))
+        if blob is None:
+            return None
+        return decrypt_str(self._secrets, PURPOSE_PROVIDER, blob)
+
+    def list_for_user(self, user_id: int) -> list[tuple[str, int]]:
+        """``(provider_name, updated_at)`` pairs — never the key material."""
+        prefix = f"{self._KEY_PREFIX}{user_id}:"
+        out: list[tuple[str, int]] = []
+        for k, _v, created_at, rotated_at in self._secrets.list_prefix(prefix):
+            out.append((k[len(prefix) :], rotated_at or created_at))
+        return out
+
+    def delete_key(self, user_id: int, provider_name: str) -> bool:
+        return self._secrets.delete(self._key(user_id, provider_name))
+
+    def delete_for_user(self, user_id: int) -> int:
+        """Drop every personal key this user stored (user-deletion cleanup)."""
+        return self._secrets.delete_prefix(f"{self._KEY_PREFIX}{user_id}:")
+
+    def delete_for_provider(self, provider_name: str) -> int:
+        """Drop every personal key stored for one provider (provider-deletion cleanup).
+
+        Keys are user-major, so this scans the prefix instead of using
+        ``delete_prefix``.
+        """
+        removed = 0
+        for k, _v, _created_at, _rotated_at in self._secrets.list_prefix(self._KEY_PREFIX):
+            if k[len(self._KEY_PREFIX) :].partition(":")[2] == provider_name:
+                removed += 1 if self._secrets.delete(k) else 0
+        return removed
