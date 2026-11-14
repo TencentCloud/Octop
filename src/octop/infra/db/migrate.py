@@ -1921,20 +1921,21 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
 
 
 def _repair_connector_text_credentials(db: DatabasePool) -> None:
-    """Cast TEXT ``connectors.credential_blob`` values back to BLOB.
-
-    Idempotent. PostgreSQL ``BYTEA`` cannot store the historical TEXT row, and
-    databases already at the current schema version must still be repaired, so
-    this stays out of the numbered migrations.
-    """
+    """Restore encrypted tokens written as TEXT by old SQLite custom-MCP code."""
     if db.dialect != "sqlite" or not _table_exists(db, "connectors"):
         return
     with db.transaction() as conn:
-        conn.execute(
-            "UPDATE connectors "
-            "SET credential_blob = CAST(credential_blob AS BLOB) "
+        rows = conn.execute(
+            "SELECT instance_id, credential_blob FROM connectors "
             "WHERE typeof(credential_blob) = 'text'"
-        )
+        ).fetchall()
+        for row in rows:
+            # SQL CAST uses the database encoding, which may be UTF-16. Tokens
+            # must retain their original UTF-8 bytes regardless of that setting.
+            conn.execute(
+                "UPDATE connectors SET credential_blob = ? WHERE instance_id = ?",
+                (row["credential_blob"].encode("utf-8"), row["instance_id"]),
+            )
 
 
 def _repair_legacy_schema(db: DatabasePool) -> None:

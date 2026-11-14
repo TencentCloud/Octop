@@ -57,7 +57,7 @@ def _coerce_credential_blob(blob: Any) -> bytes | None:
 
     A pre-1.0.3 custom-MCP save bound a ``str``. SQLite kept it as TEXT, and
     ``bytes(str)`` then failed every connector read. Fernet tokens are ASCII,
-    so UTF-8 is the same conversion as ``CAST(x AS BLOB)``.
+    so restore their UTF-8 bytes regardless of the SQLite database encoding.
     """
     if blob is None:
         return None
@@ -244,9 +244,12 @@ class ConnectorRepo:
         self,
         *,
         instance_id: str,
-        blob: bytes,
+        blob: bytes | bytearray | memoryview,
         expires_at: int | None = None,
     ) -> None:
+        if not isinstance(blob, (bytes, bytearray, memoryview)):
+            raise TypeError("credential blob must be bytes-like")
+        blob = bytes(blob)
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
