@@ -975,8 +975,13 @@ function BridgeConnectionCard({
 
 export default function BridgeSettingsPanel({
   asPage = false,
+  createOnly = false,
+  onDismiss,
 }: {
   asPage?: boolean;
+  /** Chat nav: only the add drawer, no jump to the bridge page. */
+  createOnly?: boolean;
+  onDismiss?: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -997,7 +1002,7 @@ export default function BridgeSettingsPanel({
   const [agentsByConn, setAgentsByConn] = useState<
     Record<string, BridgeRemoteAgent[]>
   >({});
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(createOnly);
   const [creating, setCreating] = useState(false);
   const [probing, setProbing] = useState(false);
   const [probeResult, setProbeResult] = useState<BridgeProbeResult | null>(
@@ -1045,6 +1050,17 @@ export default function BridgeSettingsPanel({
     setSearchParams(next, { replace: true });
   }, [createFromQuery, loading, rows.length, searchParams, setSearchParams, t]);
 
+  useEffect(() => {
+    if (!createOnly || loading) return;
+    if (rows.length < MAX_BRIDGE_CONNECTIONS) return;
+    message.warning(
+      t("advancedSettings.bridge.addDisabled", {
+        limit: MAX_BRIDGE_CONNECTIONS,
+      }),
+    );
+    onDismiss?.();
+  }, [createOnly, loading, onDismiss, rows.length, t]);
+
   const closeCreateDrawer = () => {
     setCreateOpen(false);
     setProbeResult(null);
@@ -1052,6 +1068,7 @@ export default function BridgeSettingsPanel({
     setCreateVisibility("owner");
     setCreateGroupIds([]);
     form.resetFields();
+    if (createOnly) onDismiss?.();
   };
 
   const openEditDrawer = useCallback(
@@ -1671,121 +1688,125 @@ export default function BridgeSettingsPanel({
 
   return (
     <>
-      {asPage ? (
-        <div className={styles.pageToolbar}>
-          <div className={styles.pageToolbarStart}>
-            <span className={styles.gridCount}>
-              {!loading && rows.length > 0
-                ? t("advancedSettings.bridge.totalConnections", {
-                    count: visibleRows.length,
-                  })
-                : null}
-            </span>
-            {audienceFilter}
-          </div>
-          <div className={styles.pageToolbarActions}>{headerActions}</div>
-        </div>
-      ) : (
-        <TabPanelHeader
-          icon={<Share2 size={18} strokeWidth={1.8} />}
-          title={t("advancedSettings.bridge.title")}
-          description={t("advancedSettings.bridge.description")}
-          actions={headerActions}
-        />
-      )}
-
-      {loading ? (
-        <div className={styles.loading}>
-          <Spin />
-        </div>
-      ) : rows.length === 0 ? (
-        <StreamSetupGuide
-          className={styles.emptyGuide}
-          wide
-          plain
-          icon={<OctopEmptyMascot />}
-          title={t("advancedSettings.bridge.emptyTitle")}
-          description={t("advancedSettings.bridge.emptyDesc")}
-          steps={[
-            {
-              label: t("advancedSettings.bridge.emptyGuideStepWhat"),
-              detail: t("advancedSettings.bridge.emptyGuideStepWhatDetail"),
-            },
-            {
-              label: t("advancedSettings.bridge.emptyGuideStepHow"),
-              detail: t("advancedSettings.bridge.emptyGuideStepHowDetail"),
-            },
-            {
-              label: t("advancedSettings.bridge.emptyGuideStepChat"),
-              detail: t("advancedSettings.bridge.emptyGuideStepChatDetail"),
-            },
-          ]}
-          primaryAction={{
-            label: t("advancedSettings.bridge.add"),
-            onClick: () => setCreateOpen(true),
-            icon: <Plus size={14} />,
-            disabled: atConnectionLimit,
-            title: atConnectionLimit
-              ? t("advancedSettings.bridge.addDisabled", {
-                  limit: MAX_BRIDGE_CONNECTIONS,
-                })
-              : undefined,
-          }}
-        />
-      ) : (
+      {!createOnly ? (
         <>
-          {!asPage ? (
-            <div className={styles.gridToolbar}>
-              <span className={styles.gridCount}>
-                {t("advancedSettings.bridge.totalConnections", {
-                  count: visibleRows.length,
-                })}
-              </span>
-              {audienceFilter}
-            </div>
-          ) : null}
-          {visibleRows.length === 0 ? (
-            <div className={styles.filterEmpty}>
-              {t("resourceAudience.empty")}
-            </div>
-          ) : showCardView ? (
-            <div className={styles.cardGrid}>
-              {visibleRows.map((row) => (
-                <BridgeConnectionCard
-                  key={row.connection_id}
-                  row={row}
-                  agents={agentsByConn[row.connection_id] || []}
-                  actions={actions}
-                  privacy={privacy}
-                />
-              ))}
+          {asPage ? (
+            <div className={styles.pageToolbar}>
+              <div className={styles.pageToolbarStart}>
+                <span className={styles.gridCount}>
+                  {!loading && rows.length > 0
+                    ? t("advancedSettings.bridge.totalConnections", {
+                        count: visibleRows.length,
+                      })
+                    : null}
+                </span>
+                {audienceFilter}
+              </div>
+              <div className={styles.pageToolbarActions}>{headerActions}</div>
             </div>
           ) : (
-            <div className={styles.tableWrap}>
-              <Table<BridgeConnection>
-                rowKey="connection_id"
-                size="middle"
-                pagination={false}
-                columns={columns}
-                dataSource={visibleRows}
-                scroll={{ x: 900 }}
-                expandable={{
-                  expandedRowRender: (row) => (
-                    <RemoteAgentsBlock
+            <TabPanelHeader
+              icon={<Share2 size={18} strokeWidth={1.8} />}
+              title={t("advancedSettings.bridge.title")}
+              description={t("advancedSettings.bridge.description")}
+              actions={headerActions}
+            />
+          )}
+
+          {loading ? (
+            <div className={styles.loading}>
+              <Spin />
+            </div>
+          ) : rows.length === 0 ? (
+            <StreamSetupGuide
+              className={styles.emptyGuide}
+              wide
+              plain
+              icon={<OctopEmptyMascot />}
+              title={t("advancedSettings.bridge.emptyTitle")}
+              description={t("advancedSettings.bridge.emptyDesc")}
+              steps={[
+                {
+                  label: t("advancedSettings.bridge.emptyGuideStepWhat"),
+                  detail: t("advancedSettings.bridge.emptyGuideStepWhatDetail"),
+                },
+                {
+                  label: t("advancedSettings.bridge.emptyGuideStepHow"),
+                  detail: t("advancedSettings.bridge.emptyGuideStepHowDetail"),
+                },
+                {
+                  label: t("advancedSettings.bridge.emptyGuideStepChat"),
+                  detail: t("advancedSettings.bridge.emptyGuideStepChatDetail"),
+                },
+              ]}
+              primaryAction={{
+                label: t("advancedSettings.bridge.add"),
+                onClick: () => setCreateOpen(true),
+                icon: <Plus size={14} />,
+                disabled: atConnectionLimit,
+                title: atConnectionLimit
+                  ? t("advancedSettings.bridge.addDisabled", {
+                      limit: MAX_BRIDGE_CONNECTIONS,
+                    })
+                  : undefined,
+              }}
+            />
+          ) : (
+            <>
+              {!asPage ? (
+                <div className={styles.gridToolbar}>
+                  <span className={styles.gridCount}>
+                    {t("advancedSettings.bridge.totalConnections", {
+                      count: visibleRows.length,
+                    })}
+                  </span>
+                  {audienceFilter}
+                </div>
+              ) : null}
+              {visibleRows.length === 0 ? (
+                <div className={styles.filterEmpty}>
+                  {t("resourceAudience.empty")}
+                </div>
+              ) : showCardView ? (
+                <div className={styles.cardGrid}>
+                  {visibleRows.map((row) => (
+                    <BridgeConnectionCard
+                      key={row.connection_id}
                       row={row}
                       agents={agentsByConn[row.connection_id] || []}
-                      onOpen={actions.onOpenAgent}
+                      actions={actions}
+                      privacy={privacy}
                     />
-                  ),
-                  rowExpandable: (row) =>
-                    row.status === "connected" ||
-                    (agentsByConn[row.connection_id] || []).length > 0,
-                }}
-              />
-            </div>
+                  ))}
+                </div>
+              ) : (
+                <div className={styles.tableWrap}>
+                  <Table<BridgeConnection>
+                    rowKey="connection_id"
+                    size="middle"
+                    pagination={false}
+                    columns={columns}
+                    dataSource={visibleRows}
+                    scroll={{ x: 900 }}
+                    expandable={{
+                      expandedRowRender: (row) => (
+                        <RemoteAgentsBlock
+                          row={row}
+                          agents={agentsByConn[row.connection_id] || []}
+                          onOpen={actions.onOpenAgent}
+                        />
+                      ),
+                      rowExpandable: (row) =>
+                        row.status === "connected" ||
+                        (agentsByConn[row.connection_id] || []).length > 0,
+                    }}
+                  />
+                </div>
+              )}
+            </>
           )}
         </>
-      )}
+      ) : null}
 
       <Drawer
         title={t("advancedSettings.bridge.add")}

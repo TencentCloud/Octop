@@ -7,7 +7,7 @@
 #     https://dl.google.com/android/repository/platform-tools-latest-linux.zip \
 #     && unzip -qo pt.zip -d /workspace/Octop/.tools
 #
-#   docker compose -f docker/docker-compose.mobile.yml up -d --build
+#   docker compose -f deploy/docker/docker-compose.mobile.yml up -d --build
 #
 # This file is standalone (not an overlay) because ``network_mode: host``
 # conflicts with published ``ports`` from the base compose file.
@@ -21,8 +21,8 @@
 services:
   octop:
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
     image: octop:latest
     container_name: octop
     restart: unless-stopped
