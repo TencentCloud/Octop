@@ -1,13 +1,12 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: octop
+  name: {{ include "octop.fullname" . }}
   labels:
-    app.kubernetes.io/name: octop
+    {{- include "octop.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
 spec:
   maxUnavailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: octop
-      app.kubernetes.io/component: server
+      {{- include "octop.selectorLabels" . | nindent 6 }}
