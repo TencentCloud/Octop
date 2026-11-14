@@ -244,3 +244,13 @@
 .backupPath {
   overflow-wrap: anywhere;
 }
+
+/* 接入端开关：固定占位宽度，避免在 grid 里被压缩或撑开列宽 */
+.clientSwitch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 44px;
+  max-width: 44px;
+  overflow: hidden;
+}

@@ -1,0 +1,29 @@
+-- Schema v26: user-level API tokens for the memory MCP server.
+--
+-- One row per client token. Only the SHA-256 hex digest is stored; the
+-- plaintext token is shown once at creation. NULL expert_ids means the token
+-- may use every expert its owner can access.
+--
+-- disabled_clients is a JSON array of client names ("codex", "cursor", …) the
+-- token refuses; NULL/empty allows every client. client_stats is a JSON object
+-- of {"<client>": {"first_seen": iso, "last_seen": iso, "count": n}} filled in
+-- from the X-Octop-Client header the client sends.
+
+CREATE TABLE IF NOT EXISTS memory_mcp_tokens (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_id         TEXT NOT NULL UNIQUE,
+  user_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name             TEXT NOT NULL,
+  expert_ids       TEXT,
+  disabled_clients TEXT,
+  client_stats     TEXT,
+  token_hash       TEXT NOT NULL UNIQUE,
+  token_hint       TEXT NOT NULL,
+  created_at       TEXT NOT NULL,
+  last_used_at     TEXT,
+  revoked_at       TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_mcp_tokens_user ON memory_mcp_tokens(user_id);
+
+UPDATE _schema_version SET version = 26;
