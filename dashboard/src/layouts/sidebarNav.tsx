@@ -77,6 +77,7 @@ export const SIDEBAR_NAV_KEYS = [
   "knowledge-bases",
   "bridge",
   "model-keys",
+  "keys",
   "workbench",
   "remote-desktop",
   "acp",
@@ -132,6 +133,7 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "knowledge-bases",
   "bridge",
   "model-keys",
+  "keys",
   "workbench",
   "remote-desktop",
   "acp",
@@ -237,12 +239,12 @@ export function buildNavSections(
       labelKey: "nav.bridge",
     });
   }
-  // Personal provider keys: self-service, every logged-in user manages their own.
+  // Self-service credentials: model + search keys share one page with tabs.
   settingsItems.push({
-    key: "model-keys",
-    path: "/model-keys",
+    key: "keys",
+    path: "/keys",
     icon: <KeyRound size={iconSize} strokeWidth={iconStroke} />,
-    labelKey: "nav.modelKeys",
+    labelKey: "nav.keys",
   });
   if (settingsItems.length > 0) {
     sections.push({

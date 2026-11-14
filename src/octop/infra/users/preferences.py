@@ -32,6 +32,7 @@ SIDEBAR_NAV_KEYS = frozenset(
         "knowledge-bases",
         "bridge",
         "model-keys",
+        "keys",
         "workbench",
         "remote-desktop",
         "acp",

@@ -350,7 +350,8 @@
     "saveFailed": "Could not save the navigation layout",
     "dragToReorder": "Drag to reorder",
     "chatHistory": "Session list",
-    "passkeys": "Passkeys"
+    "passkeys": "Passkeys",
+    "keys": "Keys"
   },
   "skillPackages": {
     "title": "Skill Packages",

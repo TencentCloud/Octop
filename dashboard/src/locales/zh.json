@@ -350,7 +350,8 @@
     "saveFailed": "没能保存导航布局",
     "dragToReorder": "拖动排序",
     "chatHistory": "会话列表",
-    "passkeys": "通行密钥"
+    "passkeys": "通行密钥",
+    "keys": "密钥"
   },
   "skillPackages": {
     "title": "技能包",
@@ -3542,7 +3543,7 @@
     "myKeysHint": "在这里为你个人配置供应商的 API Key：配置后，你的模型调用将以该 Key 发出（计费、限流、审计按人归属）；未配置时使用系统全局 Key。密钥仅保存在服务端，不会回显。",
     "myKeysEmpty": "暂无可配置的供应商",
     "myKeysInputPlaceholder": "粘贴你的 API Key",
-    "myKeysHasOwn": "已配置个人密钥",
+    "myKeysHasOwn": "已配置个人 Key",
     "myKeysUsingGlobal": "使用全局 Key",
     "myKeysRequiredTag": "需要个人 Key",
     "myKeysUpdated": "更新于 {{time}}",
