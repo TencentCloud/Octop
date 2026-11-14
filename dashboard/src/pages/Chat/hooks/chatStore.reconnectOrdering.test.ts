@@ -101,6 +101,35 @@ it("ignores late frames and close events from a replaced socket", async () => {
   ]);
 });
 
+it("seals a restored streaming bubble when the turn is already idle", async () => {
+  store.setMessages(session, [
+    {
+      id: "u",
+      role: "user",
+      content: "问题",
+      timestamp: 1,
+      turnId: "turn-a",
+    },
+    {
+      id: "a",
+      role: "assistant",
+      content: "半截",
+      status: "streaming",
+      timestamp: 2,
+      turnId: "turn-a",
+    },
+  ]);
+  const pending = store.attachThread(session, "agent", session);
+  await pending;
+  Socket.instances[0].frame({
+    type: "turn_status",
+    active: false,
+    thread_id: session,
+  });
+  expect(store.getSnapshot(session).messages[1]?.status).toBe("done");
+  expect(store.getSnapshot(session).isStreaming).toBe(false);
+});
+
 it("reconnects by subscribing without resending the user message", async () => {
   vi.useFakeTimers();
   const sent = store.sendTurn(

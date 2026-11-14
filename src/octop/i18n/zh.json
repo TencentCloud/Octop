@@ -544,6 +544,7 @@
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
     "CONFIG_FILE_CORRUPT": "无法更新 {path}：该文件不是合法 JSON（{detail}）。请修正语法后重试；现有配置未被改动。",
+    "APP_CONFIG_INVALID": "配置无效：{detail}。",
     "TEAM_NOT_FOUND": "未找到该团队。",
     "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
     "TEAM_MEMBER_INVALID": "所选专家无法加入本机团队。对端专家、其他团队或已删除的专家不能作为成员。",

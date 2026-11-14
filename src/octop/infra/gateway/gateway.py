@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from octop_gateway.channel import ChannelCredentialsError
 from octop_gateway.channels import ChannelKind
 from octop_gateway.manager import ChannelManager
-from octop_gateway.models import ChannelSubject, InboundMessage
+from octop_gateway.models import ChannelSubject, ContentPart, InboundMessage
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.lease import LEASE_SECONDS, RECONCILE_SECONDS
@@ -688,6 +688,25 @@ class Gateway:
         if not cleaned:
             return
         await manager.push_text(channel_id, subject, cleaned)
+
+    async def push_content(
+        self,
+        channel_type: str,
+        channel_id: str,
+        subject: ChannelSubject,
+        parts: list[ContentPart],
+    ) -> None:
+        """Proactively push files or images to an IM user via ChannelManager.
+
+        Team member turns finish outside the inbound reply loop, so media cannot
+        ride a ``MessageEvent``. ``channel_type`` matches :meth:`push_text`;
+        routing uses ``channel_id``.
+        """
+        del channel_type
+        if not parts:
+            return
+        manager = self._require_channel_manager()
+        await manager.push_content(channel_id, subject, parts)
 
     async def probe_channel(
         self, channel_id: str, *, locale: Locale = DEFAULT_LOCALE

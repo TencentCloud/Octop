@@ -1683,6 +1683,33 @@ def _ensure_thread_contributed_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
 
 
+_LOGIN_AUDIT_ACTIONS_SQL = (
+    "'auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login'"
+)
+
+
+def _ensure_user_last_login_schema(db: DatabasePool) -> None:
+    """``users.last_login_at`` (v25). Idempotent; fills blanks from login audit rows."""
+    if not _table_exists(db, "users"):
+        return
+    _ensure_column(db, "users", "last_login_at", "INTEGER")
+    if not _table_exists(db, "audit_log"):
+        return
+    actions = _LOGIN_AUDIT_ACTIONS_SQL
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE users SET last_login_at = ("
+            "SELECT MAX(ts) FROM audit_log "
+            "WHERE actor = users.username "
+            f"AND action IN ({actions})"
+            ") WHERE last_login_at IS NULL AND EXISTS ("
+            "SELECT 1 FROM audit_log "
+            "WHERE actor = users.username "
+            f"AND action IN ({actions})"
+            ")"
+        )
+
+
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:
     """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
     if not _table_exists(db, "users"):
@@ -2487,9 +2514,10 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_knowledge_base_icon_url_schema(db)
     _ensure_bridge_icon_url_schema(db)
     _ensure_bridge_shared_schema(db)
-    # Always repair: version may already be 25 while MFA tables or lease
-    # columns were never created.
+    # Always repair: version may already be 25 while MFA tables, lease
+    # columns, or last_login_at were never created.
     _ensure_user_mfa_schema(db)
+    _ensure_user_last_login_schema(db)
     _ensure_instance_lease_schema(db)
     _ensure_control_blobs_schema(db)
     _ensure_thread_contributed_schema(db)

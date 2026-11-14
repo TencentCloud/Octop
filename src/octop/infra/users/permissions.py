@@ -231,6 +231,15 @@ PERMISSIONS: dict[str, PermissionDef] = {
         page_zh="用户",
         page_en="Users",
     ),
+    "app_config": _p(
+        "app_config",
+        "admin",
+        "应用配置",
+        "App config",
+        page="advanced",
+        page_zh="应用设置",
+        page_en="App settings",
+    ),
     "providers": _p(
         "providers",
         "admin",

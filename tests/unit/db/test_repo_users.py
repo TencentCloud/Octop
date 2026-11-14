@@ -20,6 +20,27 @@ def repo(tmp_path: Path) -> UserRepo:
     return UserRepo(db)
 
 
+def test_last_login_backfill_from_audit_does_not_clobber(repo: UserRepo):
+    uid = repo.create(username="alice", password_hash="h", role="user")
+    created = repo.get(uid)
+    assert created is not None
+    assert created.last_login_at is None
+    with repo._db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO audit_log(ts, actor, action, target, payload) VALUES (?, ?, ?, ?, ?)",
+            (1_700_000_000, "alice", "auth.login", None, None),
+        )
+    run_migrations(repo._db)
+    filled = repo.get(uid)
+    assert filled is not None
+    assert filled.last_login_at == 1_700_000_000
+    repo.touch_last_login(uid, now=1_800_000_000)
+    run_migrations(repo._db)
+    kept = repo.get(uid)
+    assert kept is not None
+    assert kept.last_login_at == 1_800_000_000
+
+
 def test_create_and_get(repo: UserRepo):
     uid = repo.create(username="alice", password_hash="h", role="admin", display_name="Alice")
     row = repo.get(uid)

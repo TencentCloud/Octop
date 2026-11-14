@@ -1,11 +1,27 @@
 -- Schema v25: GitHub-style MFA (TOTP, WebAuthn/passkeys, recovery codes),
--- DB-backed auth challenges, and same-row cron/channel leases. SQLite applies
--- this through idempotent ensure helpers so a replay does not fail.
+-- DB-backed auth challenges, same-row cron/channel leases, and
+-- users.last_login_at. SQLite applies this through idempotent ensure helpers
+-- so a replay does not fail.
 
 ALTER TABLE users ADD COLUMN mfa_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN mfa_failed_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN mfa_locked_until INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN password_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN last_login_at INTEGER;
+
+-- Fill blanks from existing sign-in audit rows. Later logins update the column.
+UPDATE users
+SET last_login_at = (
+  SELECT MAX(ts) FROM audit_log
+  WHERE actor = users.username
+    AND action IN ('auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login')
+)
+WHERE last_login_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM audit_log
+    WHERE actor = users.username
+      AND action IN ('auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login')
+  );
 
 CREATE TABLE IF NOT EXISTS user_totp (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,

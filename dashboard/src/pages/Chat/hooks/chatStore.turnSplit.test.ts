@@ -6,6 +6,7 @@ import {
   onSharedTurnBusy,
   removeSession,
   sendTurn,
+  setMessages,
   setSessionTeamRoom,
   sharedTurnBlocksSender,
 } from "./chatStore";
@@ -34,6 +35,42 @@ it("keeps assistant replies from different turns in separate bubbles", () => {
   expect(assistants.map((message) => message.content)).toEqual([
     "first",
     "second",
+  ]);
+  expect(assistants.map((message) => message.turnId)).toEqual([
+    "turn-a",
+    "turn-b",
+  ]);
+});
+
+it("does not continue a restored bubble from another turn", () => {
+  setMessages(SESSION, [
+    {
+      id: "u",
+      role: "user",
+      content: "问题",
+      timestamp: 1,
+      turnId: "turn-a",
+    },
+    {
+      id: "a",
+      role: "assistant",
+      content: "半截",
+      status: "streaming",
+      timestamp: 2,
+      turnId: "turn-a",
+    },
+  ]);
+  ingestHarnessChunk(SESSION, {
+    type: "token",
+    content: "另一轮",
+    turn_id: "turn-b",
+  });
+  const assistants = getSnapshot(SESSION).messages.filter(
+    (message) => message.role === "assistant",
+  );
+  expect(assistants.map((message) => message.content)).toEqual([
+    "半截",
+    "另一轮",
   ]);
   expect(assistants.map((message) => message.turnId)).toEqual([
     "turn-a",

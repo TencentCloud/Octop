@@ -46,6 +46,7 @@ import {
   SharedResourceBadge,
 } from "../../../components/SharedResourceBadge";
 import {
+  canManageExpert,
   canReadAgentRuntimeStatus,
   isSharedExpertViewer,
 } from "../../../utils/sharedExpert";
@@ -305,7 +306,7 @@ export const AgentCard = memo(function AgentCard({
   const modelConfigError = isAgentModelConfigError(localError);
   const chatReady = isAgentChatReady(localState);
   const sharedViewer = isSharedExpertViewer(agent);
-  const isOwner = agent.is_owner !== false;
+  const canManage = canManageExpert(agent, user);
   const deleteConfirm = expertDeleteConfirm(agent, t);
 
   return (
@@ -380,12 +381,12 @@ export const AgentCard = memo(function AgentCard({
               <BackendFlag config={agent.config} />
               <MbtiPersonaTag
                 value={agent.persona_mbti}
-                onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}
+                onClick={canManage ? () => setMbtiCatalogOpen(true) : undefined}
               />
             </div>
           </div>
 
-          {isOwner && (
+          {canManage && (
             <div className={styles.agentCard2HeaderActions}>
               <Switch
                 size="small"
@@ -428,7 +429,7 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Footer actions */}
         <div className={styles.agentCard2Footer}>
-          {isOwner && (
+          {canManage && (
             <>
               <Tooltip
                 title={
@@ -526,7 +527,7 @@ export const AgentCard = memo(function AgentCard({
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : isOwner &&
+          ) : canManage &&
             (localState === "failed" ||
               localState === "stopped" ||
               localState === "created") ? (
