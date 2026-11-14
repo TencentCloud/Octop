@@ -1066,6 +1066,7 @@
     "createFromTemplate": "+ Create from this template",
     "editExpert": "Edit Expert",
     "basicInfo": "Basic Info",
+    "moreConfig": "More configuration",
     "agentName": "Name",
     "agentDescription": "Description",
     "customIdLabel": "Custom ID (optional)",
