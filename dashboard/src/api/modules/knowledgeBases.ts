@@ -36,6 +36,14 @@ export interface KnowledgeCapability {
       provider_ready: boolean;
     };
   };
+  /** Second-stage ranking of retrieved chunks; absent on servers without it. */
+  rerank?: {
+    enabled: boolean;
+    provider_id: string;
+    model: string;
+    ready: boolean;
+    usable: boolean;
+  };
   limits?: KnowledgeLimits;
 }
 
@@ -107,6 +115,14 @@ export interface KnowledgeOcrOptions {
   }[];
 }
 
+export interface KnowledgeRerankOptions {
+  providers: {
+    provider_id: string;
+    provider_name: string;
+    models: { id: string; name: string }[];
+  }[];
+}
+
 export interface KnowledgeOnnxDownloadState {
   status: "idle" | "downloading" | "loading" | "done" | "failed";
   progress: number;
@@ -136,6 +152,9 @@ export const knowledgeBasesApi = {
     ocr_backend?: "onnx" | "remote";
     ocr_model?: string;
     ocr_provider_id?: string;
+    rerank_enabled?: boolean;
+    rerank_provider_id?: string;
+    rerank_model?: string;
   }) =>
     request<KnowledgeCapability>("/knowledge-bases/feature", {
       method: "PUT",
@@ -155,6 +174,9 @@ export const knowledgeBasesApi = {
 
   getOcrOptions: () =>
     request<KnowledgeOcrOptions>("/knowledge-bases/ocr-options"),
+
+  getRerankOptions: () =>
+    request<KnowledgeRerankOptions>("/knowledge-bases/rerank-options"),
 
   downloadOnnx: (model: string) =>
     request<KnowledgeOnnxDownloadState>("/knowledge-bases/onnx-download", {
@@ -356,12 +378,21 @@ export const knowledgeBasesApi = {
     ),
 
   /** Move a file or folder into another folder of the same base ("" is the root). */
-  moveDocument: (id: string, documentId: string, targetFolder: string) =>
+  moveDocument: (
+    id: string,
+    documentId: string,
+    targetFolder: string,
+    targetKbId?: string,
+  ) =>
     request<KnowledgeDocument>(
       `/knowledge-bases/${id}/documents/${documentId}/move`,
       {
         method: "POST",
-        body: JSON.stringify({ target_folder: targetFolder }),
+        body: JSON.stringify(
+          targetKbId && targetKbId !== id
+            ? { target_folder: targetFolder, target_kb_id: targetKbId }
+            : { target_folder: targetFolder },
+        ),
       },
     ),
 };

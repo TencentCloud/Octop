@@ -21,6 +21,7 @@ from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agen
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results
 
 if TYPE_CHECKING:
@@ -208,7 +209,7 @@ async def _project_chunks(
                 if projection_state is not None:
                     projection_state.hitl_paused = True
                     projection_state.hitl_pending_id = record.pending_id
-                yield MessageEvent.text(card)
+                yield MessageEvent.text(card, metadata={"octop_hitl_pending_id": record.pending_id})
             return
 
         elif ctype == "state_update":
@@ -256,15 +257,17 @@ async def project_stream(
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
     thread_id = hitl_ctx.thread_id if hitl_ctx is not None else ""
-    async for ev in _project_chunks(
-        _with_session_auto_approve(
-            agent_manager.stream(agent_id, request),
-            agent_manager=agent_manager,
-            agent_id=agent_id,
-            thread_id=thread_id,
-            hitl_coordinator=hitl_coordinator,
-            user_id=hitl_ctx.user_id if hitl_ctx else None,
-        ),
+    source = agent_manager.stream(agent_id, request)
+    chunks = _with_session_auto_approve(
+        source,
+        agent_manager=agent_manager,
+        agent_id=agent_id,
+        thread_id=thread_id,
+        hitl_coordinator=hitl_coordinator,
+        user_id=hitl_ctx.user_id if hitl_ctx else None,
+    )
+    chunk_stream = _project_chunks(
+        chunks,
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,
@@ -273,8 +276,15 @@ async def project_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in chunk_stream:
+            yield ev
+    finally:
+        await close_event_stream(chunk_stream)
+        if chunks is not source:
+            await close_event_stream(chunks)
+        await close_event_stream(source)
 
 
 async def project_resume_stream(
@@ -290,17 +300,18 @@ async def project_resume_stream(
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    async for ev in _project_chunks(
-        _with_session_auto_approve(
-            agent_manager.resume_hitl(
-                agent_id, thread_id, decisions, user_id=hitl_ctx.user_id if hitl_ctx else None
-            ),
-            agent_manager=agent_manager,
-            agent_id=agent_id,
-            thread_id=thread_id,
-            hitl_coordinator=hitl_coordinator,
-            user_id=hitl_ctx.user_id if hitl_ctx else None,
-        ),
+    user_id = hitl_ctx.user_id if hitl_ctx else None
+    source = agent_manager.resume_hitl(agent_id, thread_id, decisions, user_id=user_id)
+    chunks = _with_session_auto_approve(
+        source,
+        agent_manager=agent_manager,
+        agent_id=agent_id,
+        thread_id=thread_id,
+        hitl_coordinator=hitl_coordinator,
+        user_id=user_id,
+    )
+    chunk_stream = _project_chunks(
+        chunks,
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,
@@ -309,5 +320,12 @@ async def project_resume_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in chunk_stream:
+            yield ev
+    finally:
+        await close_event_stream(chunk_stream)
+        if chunks is not source:
+            await close_event_stream(chunks)
+        await close_event_stream(source)

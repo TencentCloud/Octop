@@ -32,12 +32,7 @@ export default function BrandLoading({ label, viewport }: BrandLoadingProps) {
       aria-live="polite"
     >
       <div className={styles.stack}>
-        <img
-          className={styles.logo}
-          src={logoSrc}
-          alt="Octop"
-          height={72}
-        />
+        <img className={styles.logo} src={logoSrc} alt="Octop" height={72} />
         <p className={styles.status}>
           <OctopSpinner />
           <span>{label ?? t("common.loading")}</span>

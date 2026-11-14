@@ -439,6 +439,7 @@
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "当前安装的 octop-gateway 不支持这些 Telegram 选项。请先安装兼容的 Gateway 构建再保存。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",
@@ -450,6 +451,7 @@
     "CONNECTOR_NOT_BOUND": "连接器未绑定到此专家。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
     "CONNECTOR_MCP_LOAD_FAILED": "无法加载 MCP 工具：{servers}",
+    "CONNECTOR_AUTH_REQUIRED": "以下连接器需要授权后才能使用：{servers}",
     "BRIDGE_NOT_FOUND": "未找到云端协同连接。",
     "BRIDGE_AUTH_FAILED": "对端 Octop 拒绝了登录凭证。请核对地址、用户名和密码；也可先点「探测」验证账号是否可用。",
     "BRIDGE_PEER_UNREACHABLE": "无法连接对端 Octop 实例。请确认：地址可访问、账号密码正确，且对端已升级到支持云端协同的版本（需开放 /api/bridge/ws）。若对端在内网，需由可达的一侧主动发起连接。",
@@ -519,6 +521,8 @@
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
     "KNOWLEDGE_MOVE_INVALID": "不能把文件夹移动到它自身或其子文件夹中。",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "目标文件夹中已有同名项目。",
+    "KNOWLEDGE_RERANK_NOT_READY": "所选的重排序模型不可用，请选择已启用且提供重排序模型的供应商。",
+    "KNOWLEDGE_MOVE_BUSY": "其中有文档正在建立索引，完成后再移动到其他知识库。",
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
     "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
     "INVITE_INVALID": "邀请码无效。",
@@ -536,6 +540,7 @@
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{used}/{quota}）。",
+    "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{types}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
     "CONFIG_FILE_CORRUPT": "无法更新 {path}：该文件不是合法 JSON（{detail}）。请修正语法后重试；现有配置未被改动。",
@@ -742,6 +747,21 @@
       "discord_connection_failed": "Discord 连接失败，请检查网络、代理和机器人配置。",
       "discord_disconnected": "Discord 尚未连接或正在重连。",
       "discord_proxy_auth_invalid": "代理认证格式应为 user:password。"
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "这张卡片已过期，请重新提问",
+        "question_index_changed": "问题已更新，请用新卡片",
+        "user_mismatch": "该卡片不属于当前会话",
+        "owner_changed": "该卡片不属于当前会话",
+        "model_unavailable": "该模型已不可用，请重新选择",
+        "thread_rebound": "会话已切换，请重新操作",
+        "default": "操作未生效，请重试"
+      },
+      "quote": {
+        "header": "[引用消息]",
+        "current": "[当前消息]"
+      }
     }
   },
   "threads": {

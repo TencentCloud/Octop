@@ -89,6 +89,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
@@ -595,8 +596,11 @@ class GlobalProcessor:
                 history_finalize=_finalize,
                 member_hitl=self.teams.deliver_member_hitl,
             )
-        async for ev in stream:
-            yield ev
+        try:
+            async for ev in stream:
+                yield ev
+        finally:
+            await close_event_stream(stream)
         if not slash_outcome.completed_turn:
             return
         thread_id = self._thread_registry.get_bound_thread_id(session_key)
@@ -902,7 +906,7 @@ class GlobalProcessor:
                 usage_tracker = UsageTracker()
                 history_tracker = TurnHistoryTracker.from_request({})
                 answer_outcome = HitlAnswerOutcome()
-                async for ev in self._hitl.iter_answer_resolution(
+                answer_stream = self._hitl.iter_answer_resolution(
                     ask_record,
                     msg.text,
                     agent_manager=self._agent_manager,
@@ -911,8 +915,12 @@ class GlobalProcessor:
                     history_tracker=history_tracker,
                     outcome=answer_outcome,
                     member_hitl=self.teams.deliver_member_hitl,
-                ):
-                    yield ev
+                )
+                try:
+                    async for ev in answer_stream:
+                        yield ev
+                finally:
+                    await close_event_stream(answer_stream)
                 if answer_outcome.completed_turn:
                     self._touch_thread_after_turn(ask_record.thread_id, msg.text)
                     if usage_tracker.usage:
@@ -1063,7 +1071,7 @@ class GlobalProcessor:
         history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
         try:
-            async for ev in project_stream(
+            turn_stream = project_stream(
                 self._agent_manager,
                 agent_id,
                 request,
@@ -1080,8 +1088,12 @@ class GlobalProcessor:
                     session_key=session_key,
                     channel_type=channel_type,
                 ),
-            ):
-                yield ev
+            )
+            try:
+                async for ev in turn_stream:
+                    yield ev
+            finally:
+                await close_event_stream(turn_stream)
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
@@ -1178,7 +1190,7 @@ class GlobalProcessor:
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
+            slash_stream = self._hitl.iter_slash_resolution(
                 cmd,
                 self._slash_ctx(
                     agent_id=agent_id,
@@ -1193,9 +1205,13 @@ class GlobalProcessor:
                 outcome=slash_outcome,
                 history_finalize=self._complete_resumed_history,
                 member_hitl=self.teams.deliver_member_hitl,
-            ):
-                for frame in message_event_to_cli_chunks(ev):
-                    yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            )
+            try:
+                async for ev in slash_stream:
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            finally:
+                await close_event_stream(slash_stream)
             thread_id = self._thread_registry.get_bound_thread_id(session_key)
             if thread_id is None:
                 thread_id = await self._thread_registry.get_or_create_by_key(
@@ -1474,6 +1490,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
             failure_saved = True
@@ -1569,6 +1588,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             failure_saved = True
@@ -1894,6 +1916,14 @@ class GlobalProcessor:
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
+                blocked = await self._agent_manager.connector_auth_blocked(user_id, failed)
+                if blocked:
+                    names = ", ".join(str(item["display_name"]) for item in blocked)
+                    raise OctopError(
+                        ErrorCode.CONNECTOR_AUTH_REQUIRED,
+                        f"connector authorization required: {names}",
+                        details={"connectors": blocked, "servers": names},
+                    )
                 raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
             logger.warning(
                 "skipping turn MCP for agent=%s user=%s (%s)",

@@ -133,3 +133,54 @@ export function buildKnowledgeFileTree(
   }
   return freezeKnowledgeTree(root);
 }
+
+/** One place a file or folder can move to: a folder ("" is the root) of a base. */
+export type KnowledgeMoveTreeNode = {
+  key: string;
+  kbId: string;
+  path: string;
+  name: string;
+  disabled: boolean;
+  children: KnowledgeMoveTreeNode[];
+};
+
+export function knowledgeMoveKey(kbId: string, path: string): string {
+  return `${kbId}:${path}`;
+}
+
+/**
+ * Destinations for `moving` (an entry of `currentKbId`): each base in `bases`
+ * as a root, in the given order, with its folders below. In the current base
+ * the places `moving` cannot go are disabled; any folder of another base can
+ * take it.
+ */
+export function buildKnowledgeMoveTree(
+  bases: { id: string; name: string }[],
+  documentsByBase: Record<string, KnowledgeTreeSource[] | undefined>,
+  moving: KnowledgeTreeSource,
+  currentKbId: string,
+): KnowledgeMoveTreeNode[] {
+  return bases.map((base) => {
+    const sameBase = base.id === currentKbId;
+    const toMoveNode = (
+      node: KnowledgeFileTreeNode,
+    ): KnowledgeMoveTreeNode => ({
+      key: knowledgeMoveKey(base.id, node.path),
+      kbId: base.id,
+      path: node.path,
+      name: node.name,
+      disabled: sameBase && !canMoveKnowledgeEntryTo(moving, node.path),
+      children: (node.children ?? []).map(toMoveNode),
+    });
+    return {
+      key: knowledgeMoveKey(base.id, ""),
+      kbId: base.id,
+      path: "",
+      name: base.name,
+      disabled: sameBase && !canMoveKnowledgeEntryTo(moving, ""),
+      children: buildKnowledgeFileTree(documentsByBase[base.id] ?? []).map(
+        toMoveNode,
+      ),
+    };
+  });
+}

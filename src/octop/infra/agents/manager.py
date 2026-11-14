@@ -83,6 +83,7 @@ from octop.infra.skills.workspace_catalog import (
     repair_workspace_skill_manifests,
 )
 from octop.infra.utils.locale import Locale, resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
@@ -795,6 +796,7 @@ class AgentManager:
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_backend_types_disallowed,
                 raise_if_workspace_dir_outside_user_root,
             )
 
@@ -823,6 +825,13 @@ class AgentManager:
                     config,
                 )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    require_present=True,
+                )
                 self._assert_model_ref(spec.user_id, spec.default_model)
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
@@ -1063,6 +1072,7 @@ class AgentManager:
                     effective_workspace_root_dir,
                     persisted_workspace_within_root,
                     raise_if_backend_outside_user_root,
+                    raise_if_backend_types_disallowed,
                 )
 
                 allowed_root = effective_workspace_root_dir(
@@ -1087,6 +1097,13 @@ class AgentManager:
                 self._assert_named_storage_backends(
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                )
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    previous=parse_config_json(owner_row.config_json).get("backend"),
                 )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
@@ -1972,8 +1989,12 @@ class AgentManager:
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
             ):
-                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                    yield chunk
+                chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -2025,10 +2046,12 @@ class AgentManager:
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
             ):
-                async for chunk in self._harness_manager.resume_hitl(
-                    agent_id, thread_id, decisions
-                ):
-                    yield chunk
+                chunk_stream = self._harness_manager.resume_hitl(agent_id, thread_id, decisions)
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -2514,15 +2537,40 @@ class AgentManager:
             return list(names)
         self.validate_mcp_servers(uid, names)
         scope = self._mcp_scope_for(agent_id)
-        custom_configs = self._connector_svc.custom_harness_configs(uid)
-        owner_id = row.user_id if row is not None else None
+        owner_raw = getattr(row, "user_id", None)
+        owner_id = owner_raw if isinstance(owner_raw, int) else None
         aliases = (
             self._connector_svc.shared_custom_harness_aliases(owner_id)
-            if isinstance(owner_id, int) and owner_id != uid
+            if owner_id is not None and owner_id != uid
             else {}
         )
         shared_short_names = {aliases[name] for name in names if name in aliases}
         names = [name for name in names if name not in shared_short_names]
+        # Refresh before reading the exact specs used by this turn.
+        for token_owner in {i for i in (uid, owner_id) if i is not None}:
+            try:
+                await self._connector_svc.ensure_fresh_custom_servers(token_owner)
+            except Exception:
+                logger.warning(
+                    "prepare_chat_mcp agent=%s: custom MCP token refresh failed",
+                    agent_id,
+                    exc_info=True,
+                )
+        try:
+            awaiting_auth = await self._connector_svc.auth_blocked_servers(uid, names, probe=False)
+        except Exception:
+            logger.warning(
+                "prepare_chat_mcp agent=%s: connector auth check failed", agent_id, exc_info=True
+            )
+            awaiting_auth = []
+        if awaiting_auth:
+            blocked = sorted({str(item["server"]) for item in awaiting_auth})
+            # A paused turn may still refer to a previously prepared tool.
+            for name in blocked:
+                scope.prepared.pop((uid, name), None)
+            return blocked
+
+        custom_configs = self._connector_svc.custom_harness_configs(uid)
         custom_missing = [name for name in names if name in custom_configs]
         builtin_missing = [name for name in names if name not in custom_configs]
         if builtin_missing:
@@ -2567,6 +2615,16 @@ class AgentManager:
             if fresh:
                 agent.append_mcp_tools(fresh)
         return sorted(name for name in names if not scope.prepared.get((uid, name)))
+
+    async def connector_auth_blocked(
+        self, user_id: int, server_names: list[str]
+    ) -> list[dict[str, Any]]:
+        """Of the MCP servers that failed to load, the ones waiting for authorization."""
+        try:
+            return await self._connector_svc.auth_blocked_servers(user_id, server_names)
+        except Exception:
+            logger.warning("connector auth check failed for user=%s", user_id, exc_info=True)
+            return []
 
     async def _load_connector_mcp_tools(self, uid: int, server: str) -> tuple[list[Any], str]:
         from octop.infra.connectors.builder import build_http_mcp_spec
@@ -3000,6 +3058,13 @@ class AgentManager:
             resource_key=ref,
             is_owner=False,
         )
+
+    def _named_storage_kind(self, name: str) -> str | None:
+        row = self._repos.storage_backend_repo.get_by_name(name)
+        if row is None:
+            return None
+        kind = (row.kind or "").strip().lower()
+        return kind or None
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs

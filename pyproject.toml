@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.3b4"
+version = "1.0.3b5"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on octop-harness"
 readme = "README.md"
 license = { text = "MIT" }
@@ -55,6 +55,10 @@ dependencies = [
     "pyotp>=2.10.0",
     "webauthn>=3.0.1",
 ]
+
+[tool.uv.sources]
+# Draft-only: replace with the published version requirement after Gateway #44 ships.
+octop-gateway = { git = "https://github.com/ideshun/octop-gateway.git", rev = "590a71c395255d46907debd5d9978e6f288df637" }
 
 [project.optional-dependencies]
 # PEP 621 extras — kept so `pip install -e ".[dev]"` keeps working for

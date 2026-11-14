@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b4-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b5-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -278,13 +278,13 @@ Open **http://127.0.0.1:8088**. With Docker, a valid `OCTOP_DEFAULT_PASSWORD` cr
 
 ```bash
 # Build and start
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # China mirror when ghcr.io is unreachable (no local build)
-docker compose -f docker/docker-compose.cn.yml up -d
+docker compose -f deploy/docker/docker-compose.cn.yml up -d
 
 # Or build manually
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -294,6 +294,8 @@ docker run -d \
 ```
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
+
+The Helm chart for a shared PostgreSQL and multiple replicas is documented in [deploy/helm/octop/README.md](deploy/helm/octop/README.md). Install it from `oci://ghcr.io/tencentcloud/octop/charts/octop`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
@@ -351,7 +353,7 @@ To serve the dashboard under a reverse-proxy subpath (for example `https://examp
 | Local script | macOS / Linux | `bash scripts/install.sh` |
 | Local script | Windows | `scripts\install.bat` or `install.ps1` |
 | PyPI | Any | `pip install octop` (optional extras such as `local-embedding`) |
-| Docker | Any | `docker/docker-compose.yml`; China mirror: `docker/docker-compose.cn.yml` |
+| Docker | Any | `deploy/docker/docker-compose.yml`; China mirror: `deploy/docker/docker-compose.cn.yml` |
 
 All install scripts provision an isolated environment at `~/.octop/venv` and a `~/.octop/bin/octop` wrapper — they do not touch system Python.
 
@@ -520,7 +522,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-docker/        Docker Compose, entrypoint, build & deploy scripts
+deploy/        Docker (deploy/docker) and the Kubernetes Helm chart (deploy/helm/octop)
 tests/         unit/ + integration/
 ```
 

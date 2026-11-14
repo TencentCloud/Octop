@@ -126,6 +126,14 @@ class _Catalog(ConnectorService):
     def shared_custom_harness_aliases(self, owner_user_id: int) -> dict[str, str]:
         return {}
 
+    async def ensure_fresh_custom_servers(self, user_id: int) -> dict[str, Any]:
+        return self.get_custom_servers(user_id)
+
+    async def auth_blocked_servers(
+        self, user_id: int, server_names: list[str], *, probe: bool = True
+    ) -> list[dict[str, Any]]:
+        return []
+
 
 @pytest.fixture
 async def runtime_factory(
@@ -720,8 +728,9 @@ async def test_agently_confirm_still_requires_hitl_with_global_policy_off(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("authorization_expired", [False, True])
 async def test_manager_resume_rechecks_effective_credentials_before_approval(
-    runtime_factory: Any,
+    runtime_factory: Any, monkeypatch: pytest.MonkeyPatch, authorization_expired: bool
 ) -> None:
     from contextlib import asynccontextmanager
 
@@ -743,7 +752,17 @@ async def test_manager_resume_rechecks_effective_credentials_before_approval(
     assert await _prepare(env, 1, ["inventory"]) == []
     paused = await _execute(env, _request(1, ["inventory"], label="manager-approval"))
     assert paused.result.get("__interrupt__")
-    env.catalog.specs[1]["inventory"]["headers"]["Authorization"] = "changed-without-prepare"
+    if authorization_expired:
+
+        async def blocked(
+            uid: int, names: list[str], *, probe: bool = True
+        ) -> list[dict[str, Any]]:
+            assert (uid, names, probe) == (1, ["inventory"], False)
+            return [{"server": "inventory", "auth_status": "expired"}]
+
+        monkeypatch.setattr(env.catalog, "auth_blocked_servers", blocked)
+    else:
+        env.catalog.specs[1]["inventory"]["headers"]["Authorization"] = "changed-without-prepare"
     chunks = [
         chunk
         async for chunk in env.manager.resume_hitl(

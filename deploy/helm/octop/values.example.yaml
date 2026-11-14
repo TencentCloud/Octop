@@ -1,0 +1,98 @@
+# 安装样例。复制后改域名、镜像和资源，再：
+#   helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
+#     --version 1.0.3-b5 -n octop -f my-values.yaml
+#
+# 口令不要写在这个文件里。安装前另建 Secret，见 secrets.example.yaml。
+#   octop-admin  username / password     控制台账号，只在第一次初始化时创建
+#   octop-pg     user / password / database   PostgreSQL 账号，不是控制台密码
+#   octop-tls    域名证书。ingress.tls.enabled 为 true 时必须已存在
+
+# 副本数。没有 HPA，改数量就改这里再 upgrade。
+replicaCount: 2
+
+image:
+  repository: ghcr.io/tencentcloud/octop
+  # 留空则用 chart 的 appVersion。请写成仓库里真实存在的版本。
+  # 精简版没有虚拟桌面、本地向量和 OCR。那些能力用 <版本>-full，并打开下面的 shm。
+  tag: "1.0.3b5"
+  pullPolicy: IfNotPresent
+
+# 完整版镜像需要约 1Gi 的 /dev/shm。精简版保持 false。
+shm:
+  enabled: false
+  sizeLimit: 1Gi
+
+config:
+  # 控制台时间和定时任务使用这个时区。
+  timezone: Asia/Shanghai
+  # 留空则使用 https://<ingress.host>。有多个来源时写成逗号分隔的完整地址。
+  corsOrigins: ""
+
+# Secret 名字。内容仍要事先 kubectl create，chart 不会生成口令。
+secrets:
+  database: octop-pg
+  admin: octop-admin
+
+service:
+  port: 8088
+
+ingress:
+  # 没有域名或入口不是 Ingress NGINX 时设为 false，再用 kubectl port-forward。
+  enabled: true
+  # MicroK8s 自带 Traefik 时常见类名是 public，并要换掉下面的 nginx 注解。
+  className: nginx
+  host: octop.example.com
+  tls:
+    enabled: true
+    secretName: octop-tls
+  annotations:
+    nginx.ingress.kubernetes.io/affinity: cookie
+    nginx.ingress.kubernetes.io/affinity-mode: persistent
+    nginx.ingress.kubernetes.io/session-cookie-name: OCTOP_AFFINITY
+    nginx.ingress.kubernetes.io/session-cookie-secure: "true"
+    nginx.ingress.kubernetes.io/session-cookie-samesite: Lax
+    nginx.ingress.kubernetes.io/session-cookie-expires: "10800"
+    nginx.ingress.kubernetes.io/session-cookie-max-age: "10800"
+    nginx.ingress.kubernetes.io/session-cookie-change-on-failure: "true"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+# 自带 pgvector。改用托管库时 enabled 设为 false，并填写下面的 database.host。
+# 托管库要预先允许 CREATE EXTENSION vector。
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+    pullPolicy: IfNotPresent
+  persistence:
+    size: 20Gi
+    # 空字符串使用集群默认 StorageClass。
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# 只在 postgresql.enabled 为 false 时使用 host。
+database:
+  host: ""
+  port: 5432
+
+# 一般留空。发布名是 octop 时，资源名就是 octop、octop-pgvector。
+nameOverride: ""
+fullnameOverride: ""

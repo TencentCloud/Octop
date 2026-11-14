@@ -214,8 +214,8 @@ remains in effect. `database_env_configured()` returns `True` when any
 `OCTOP_DATABASE_*` is set, which lets `OctopServer.start()` pick the
 configured backend at boot.
 
-**Docker Compose:** put `OCTOP_DATABASE_*` in `docker/.env` *and* ensure
-they are listed under `environment:` in `docker/docker-compose.yml`
+**Docker Compose:** put `OCTOP_DATABASE_*` in `deploy/docker/.env` *and* ensure
+they are listed under `environment:` in `deploy/docker/docker-compose.yml`
 (Compose uses `.env` for interpolation only; unset keys do not enter the
 container). Writing the same keys to the mounted `~/.octop/env` also works.
 
@@ -225,7 +225,7 @@ originals are stored in that same database (`public.skill_package_files` and
 (`public.knowledge_chunks`). Names sit next to `skill_packages` and
 `knowledge_bases`. SQLite keeps the local `skill-packages/` and
 `knowledge/` directories. The `vector` extension is not created by Octop
-migrations; enable it with `docker/postgres/init-vector.sql` or
+migrations; enable it with `deploy/docker/postgres/init-vector.sql` or
 `CREATE EXTENSION vector` before indexing knowledge. There is no sqlite→PostgreSQL
 content migration in this release — pick the driver at install time.
 
@@ -250,7 +250,7 @@ no automatic SQLite→PG memory data migration.
 
 PostgreSQL **extensions** (e.g. `vector`) are instance-level ops, not
 control-plane migrations. Local compose enables `vector` via
-`docker/postgres/init-vector.sql`; managed databases need a DBA /
+`deploy/docker/postgres/init-vector.sql`; managed databases need a DBA /
 provider toggle. See [ADR 002](./adr/002-database-backends.md).
 
 ### Scheduled SQLite checkpoint backups
