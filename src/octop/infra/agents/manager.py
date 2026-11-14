@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
+from weakref import WeakSet
 
 from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
 from octop_harness.registry import AgentEntry
@@ -71,8 +72,6 @@ from octop.infra.backend.resolver import (
 )
 from octop.infra.connectors.builder import (
     build_mcp_server_configs_for_user,
-    gateway_mcp_server_names,
-    inject_missing_gateway_tools,
 )
 from octop.infra.connectors.service import ConnectorService
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
@@ -436,59 +435,6 @@ class AgentCreateSpec:
     member_ids: list[str] = field(default_factory=list)
 
 
-def _sanitize_bound_mcp_tools(agent: Any) -> None:
-    """Clamp MCP tool names already bound on *agent* to the 64-char LLM limit."""
-    from octop.infra.agents.plugins.plugin_tool_names import sanitize_plugin_tool_names
-
-    tools = list(getattr(agent, "_mcp_tools", []) or [])
-    if not tools:
-        return
-    before = [str(getattr(t, "name", "")) for t in tools]
-    sanitize_plugin_tool_names(tools)
-    if before != [str(getattr(t, "name", "")) for t in tools]:
-        agent.replace_mcp_tools(tools)
-
-
-def _bind_custom_mcp_tools(
-    agent: Any,
-    name: str,
-    tools: list[Any],
-    *,
-    user_id: int | None,
-) -> None:
-    """Attach custom MCP tools, replacing that server when another user owns the slot.
-
-    A shared expert's harness has one short name. The owner's tools and a
-    viewer's same-named server both land on ``{name}_*``, and ``append`` keeps
-    the first set. Record who was bound so the next turn can swap.
-    """
-    prefix = f"{name}_"
-    current_names: Any = getattr(agent, "_mcp_tool_name_set", frozenset())
-    occupied = isinstance(current_names, frozenset) and any(
-        isinstance(tool_name, str) and tool_name.startswith(prefix) for tool_name in current_names
-    )
-    if occupied:
-        existing = getattr(agent, "_mcp_tools", None)
-        kept = (
-            [
-                tool
-                for tool in existing
-                if not str(getattr(tool, "name", "") or "").startswith(prefix)
-            ]
-            if isinstance(existing, list)
-            else []
-        )
-        agent.replace_mcp_tools([*kept, *tools])
-    else:
-        agent.append_mcp_tools(tools)
-    if user_id is None:
-        return
-    book = getattr(agent, "_mcp_attached_user", None)
-    attached: dict[str, int] = book if isinstance(book, dict) else {}
-    attached[name] = user_id
-    agent._mcp_attached_user = attached
-
-
 # ---------------------------------------------------------------------------
 # AgentManager
 # ---------------------------------------------------------------------------
@@ -573,6 +519,7 @@ class AgentManager:
         self._bootstrap_known: dict[str, bool] = {}
         # Chat user id used to resolve connectors when agent.user_id is NULL (shared agents).
         self._connector_user_override: dict[str, int] = {}
+        self._mcp_scopes: WeakSet[Any] = WeakSet()
         self._langfuse = LangfuseSettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
@@ -2073,8 +2020,12 @@ class AgentManager:
         agent_id: str,
         thread_id: str,
         decisions: list[dict[str, Any]],
+        *,
+        user_id: int | None = None,
     ) -> AsyncIterator[Any]:
         """Resume a paused HITL interrupt for *thread_id*."""
+        from octop.infra.agents.middleware.mcp_scope import mcp_actor_scope
+
         if self._harness_manager is None:
             raise self._unavailable_error(agent_id)
         async with (
@@ -2082,7 +2033,16 @@ class AgentManager:
             self._track_invocation(agent_id),
         ):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
+            if user_id is not None:
+                agent = self.get_agent(agent_id)
+                snapshot = await agent.graph.aget_state({"configurable": {"thread_id": thread_id}})
+                scope = snapshot.values.get("octop_mcp_scope") or {}
+                if scope.get("user") == user_id and scope.get("servers"):
+                    await self.prepare_chat_mcp(
+                        agent_id, scope["servers"], connector_user_id=user_id
+                    )
             with (
+                mcp_actor_scope(user_id if user_id is not None else 0),
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
             ):
@@ -2331,7 +2291,11 @@ class AgentManager:
             await self.reload_connectors(row.agent_id, connector_user_id=user_id)
 
     def invalidate_mcp_tool_cache(self, user_id: int | None = None) -> None:
-        """Drop cached custom MCP tools (one user, or all users when ``user_id`` is None)."""
+        """Drop cached MCP tools and prepared catalogs for the affected user(s)."""
+        for scope in getattr(self, "_mcp_scopes", ()):
+            for key in list(scope.prepared):
+                if user_id is None or key[0] == user_id:
+                    del scope.prepared[key]
         if user_id is None:
             self._mcp_tool_cache.clear()
             self._mcp_tool_cache_locks.clear()
@@ -2429,6 +2393,8 @@ class AgentManager:
             sanitize_plugin_tool_names(raw)
             server_lock = await self._server_lock(user_id, server_name)
             wrapped = wrap_tools_for_shared_use(raw, server_lock)
+            if not wrapped:
+                return []
             self._mcp_tool_cache[cache_key] = wrapped
             stale = [
                 key
@@ -2521,6 +2487,26 @@ class AgentManager:
             return []
         return id_list_from_row(row, "knowledge_base_ids")
 
+    def _mcp_scope_for(self, agent_id: str) -> Any:
+        from octop.infra.agents.middleware.mcp_scope import MCPToolScopeMiddleware
+
+        agent = self.get_agent(agent_id)
+        for middleware in getattr(agent.config, "middleware", None) or []:
+            if isinstance(middleware, MCPToolScopeMiddleware):
+                return middleware
+
+        async def prepare(uid: int, servers: list[str]) -> list[str]:
+            return await self.prepare_chat_mcp(agent_id, servers, connector_user_id=uid)
+
+        scope = MCPToolScopeMiddleware(agent, self.validate_mcp_servers, prepare)
+        if not hasattr(self, "_mcp_scopes"):
+            self._mcp_scopes = WeakSet()
+        self._mcp_scopes.add(scope)
+        agent.config.middleware = [scope, *(getattr(agent.config, "middleware", None) or [])]
+        # Credential-bearing tools must never remain in the HITL execution table.
+        agent.replace_mcp_tools([])
+        return scope
+
     async def prepare_chat_mcp(
         self,
         agent_id: str,
@@ -2530,14 +2516,14 @@ class AgentManager:
     ) -> list[str]:
         """Ensure requested MCP servers are configured and tools are loaded before chat.
 
-        Custom MCP tools are loaded on demand and shared via a user-level cache.
-        Built-in connectors still use reload_connectors when missing.
-
-        Returns server names that still have no loaded tools after reload/retry.
+        Resolve exact server sources for the caller and cache credential-bearing tools
+        outside the shared graph. Only neutral, execution-guarded proxies are registered.
+        Returns server names that could not be prepared.
         """
         if not names:
             return []
         from octop.infra.agents.teams import is_team_agent
+        from octop.infra.connectors.mcp_tool_cache import fingerprint_mcp_spec
 
         if is_team_agent(self.get_row(agent_id)):
             return []
@@ -2546,257 +2532,89 @@ class AgentManager:
         uid = self._connector_uid_for(row, connector_user_id=connector_user_id) if row else None
         if uid is None and connector_user_id is not None:
             uid = connector_user_id
-        owner_raw = getattr(row, "user_id", None) if row is not None else None
-        owner_id = owner_raw if isinstance(owner_raw, int) else None
-        requested = list(names)
-        aliases: dict[str, str] = {}
-        if owner_id is not None and uid is not None and owner_id != uid:
-            aliases = self._connector_svc.shared_custom_harness_aliases(owner_id)
-            names = []
-            for name in requested:
-                mapped = aliases.get(name, name)
-                if mapped not in names:
-                    names.append(mapped)
 
-        custom_configs: dict[str, Any] = {}
-        load_user: dict[str, int] = {}
-        if uid is not None:
-            # Renew OAuth tokens that are about to expire, and flag the ones that
-            # cannot be renewed, before building the specs the tools load from.
-            for token_owner in {i for i in (uid, owner_id) if i is not None}:
-                try:
-                    await self._connector_svc.ensure_fresh_custom_servers(token_owner)
-                except Exception:
-                    logger.warning(
-                        "prepare_chat_mcp agent=%s: custom MCP token refresh failed",
-                        agent_id,
-                        exc_info=True,
-                    )
-            custom_configs = self._connector_svc.custom_harness_configs(uid)
-            load_user = dict.fromkeys(custom_configs, uid)
-        # Tools stay cached on the agent after the first load, so a token that
-        # lapsed since then is only caught by checking the stored status.
-        awaiting_auth: set[str] = set()
-        if uid is not None:
+        if uid is None:
+            return list(names)
+        self.validate_mcp_servers(uid, names)
+        scope = self._mcp_scope_for(agent_id)
+        owner_raw = getattr(row, "user_id", None)
+        owner_id = owner_raw if isinstance(owner_raw, int) else None
+        aliases = (
+            self._connector_svc.shared_custom_harness_aliases(owner_id)
+            if owner_id is not None and owner_id != uid
+            else {}
+        )
+        shared_short_names = {aliases[name] for name in names if name in aliases}
+        names = [name for name in names if name not in shared_short_names]
+        # Refresh before reading the exact specs used by this turn.
+        for token_owner in {i for i in (uid, owner_id) if i is not None}:
             try:
-                awaiting_auth = {
-                    str(item["server"])
-                    for item in await self._connector_svc.auth_blocked_servers(
-                        uid, requested, probe=False
-                    )
-                }
+                await self._connector_svc.ensure_fresh_custom_servers(token_owner)
             except Exception:
                 logger.warning(
-                    "prepare_chat_mcp agent=%s: connector auth check failed",
+                    "prepare_chat_mcp agent=%s: custom MCP token refresh failed",
                     agent_id,
                     exc_info=True,
                 )
-        if awaiting_auth:
-            logger.info(
-                "prepare_chat_mcp agent=%s: waiting for authorization %s",
-                agent_id,
-                sorted(awaiting_auth),
-            )
-            return sorted(awaiting_auth)
-        if aliases and uid is not None and owner_id is not None:
-            # Load the owner's spec when the turn asked for the shared server.
-            # A viewer's own server with the same short name stays theirs unless
-            # the collision-safe name was selected too.
-            viewer_own = set(self._connector_svc.get_custom_servers(uid))
-            owner_backed = {
-                short
-                for long_name, short in aliases.items()
-                if long_name in requested or (short in requested and short not in viewer_own)
-            }
-            if owner_backed:
-                owner_configs = self._connector_svc.custom_harness_configs(owner_id)
-                for name in owner_backed:
-                    spec = owner_configs.get(name)
-                    if isinstance(spec, dict):
-                        custom_configs[name] = spec
-                        load_user[name] = owner_id
-
-        tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
-        attached_raw = getattr(agent, "_mcp_attached_user", None)
-        attached: dict[str, int] = attached_raw if isinstance(attached_raw, dict) else {}
-        missing_tools: list[str] = []
-        for name in names:
-            has_tools = any(tool_name.startswith(f"{name}_") for tool_name in tool_set)
-            expected = load_user.get(name)
-            if has_tools and (expected is None or attached.get(name) == expected):
-                continue
-            missing_tools.append(name)
-        logger.info(
-            "prepare_chat_mcp agent=%s connector_user_id=%s requested=%s tool_count=%d missing=%s",
-            agent_id,
-            connector_user_id,
-            names,
-            len(tool_set),
-            missing_tools,
-        )
-        if not missing_tools:
-            matched = sorted(t for t in tool_set if any(t.startswith(f"{n}_") for n in names))
-            logger.info(
-                "prepare_chat_mcp agent=%s: MCP already ready, matching_tools=%s",
-                agent_id,
-                matched,
-            )
-            return []
-
-        custom_missing = [n for n in missing_tools if n in custom_configs]
-        builtin_missing = [n for n in missing_tools if n not in custom_configs]
-
-        if custom_missing and uid is not None:
-            for name in custom_missing:
-                spec = custom_configs[name]
-                if not isinstance(spec, dict) or not spec.get("transport"):
-                    continue
-                try:
-                    tools = await self._get_or_load_mcp_tools(load_user.get(name, uid), name, spec)
-                except Exception:
-                    logger.exception(
-                        "prepare_chat_mcp agent=%s: failed loading custom MCP %s",
-                        agent_id,
-                        name,
-                    )
-                    continue
-                if tools:
-                    try:
-                        bound_user = load_user.get(name, uid)
-                        _bind_custom_mcp_tools(
-                            agent,
-                            name,
-                            tools,
-                            user_id=bound_user if isinstance(bound_user, int) else None,
-                        )
-                    except Exception:
-                        logger.exception(
-                            "prepare_chat_mcp agent=%s: append_mcp_tools failed for %s",
-                            agent_id,
-                            name,
-                        )
-                        continue
-                agent.config.mcp_server_configs[name] = dict(spec)
-
-        gateway_missing: list[str] = []
-        if builtin_missing and uid is not None:
-            gateway_names = gateway_mcp_server_names(
-                connector_repo=self._repos.connector_repo,
-                user_id=uid,
-            )
-            gateway_missing = [n for n in builtin_missing if n in gateway_names]
-            builtin_missing = [n for n in builtin_missing if n not in gateway_names]
-
-        if gateway_missing and uid is not None:
-            await self._attach_gateway_tools(
-                agent,
-                agent_id=agent_id,
-                user_id=uid,
-                server_names=gateway_missing,
-            )
-
-        if builtin_missing:
-            logger.info(
-                "Reloading agent %s MCP tools (builtin_missing=%s)",
-                agent_id,
-                builtin_missing,
-            )
-            await self.reload_connectors(agent_id, connector_user_id=connector_user_id)
-            agent = self.get_agent(agent_id)
-            tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
-            still_builtin = [
-                n
-                for n in builtin_missing
-                if n in agent.config.mcp_server_configs
-                and not any(t.startswith(f"{n}_") for t in tool_set)
-            ]
-            still_builtin.extend(
-                n for n in builtin_missing if n not in agent.config.mcp_server_configs
-            )
-            still_builtin = sorted(set(still_builtin))
-            if still_builtin:
-                from octop_harness.mcp import aload_mcp_tools
-
-                from octop.infra.utils.env_file import (
-                    env_file_path,
-                    load_env_file,
-                    overlay_stdio_mcp_configs,
-                )
-
-                subset = {
-                    n: agent.config.mcp_server_configs[n]
-                    for n in still_builtin
-                    if isinstance(agent.config.mcp_server_configs.get(n), dict)
-                    and agent.config.mcp_server_configs[n].get("transport")
-                }
-                if subset:
-                    logger.info(
-                        "prepare_chat_mcp agent=%s: targeted MCP reload for %s",
-                        agent_id,
-                        sorted(subset),
-                    )
-                    global_env = load_env_file(env_file_path(self._paths.root))
-                    extra = await aload_mcp_tools(overlay_stdio_mcp_configs(subset, global_env))
-                    if extra:
-                        from octop.infra.agents.plugins.plugin_tool_names import (  # noqa: PLC0415
-                            sanitize_plugin_tool_names,
-                        )
-
-                        sanitize_plugin_tool_names(extra)
-                        agent.append_mcp_tools(extra)
-
-            # Full reload drops previously appended custom tools — re-inject from cache.
-            if custom_configs and uid is not None:
-                agent = self.get_agent(agent_id)
-                tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
-                for name in names:
-                    if name not in custom_configs:
-                        continue
-                    if any(t.startswith(f"{name}_") for t in tool_set):
-                        continue
-                    spec = custom_configs[name]
-                    if not isinstance(spec, dict) or not spec.get("transport"):
-                        continue
-                    try:
-                        tools = await self._get_or_load_mcp_tools(
-                            load_user.get(name, uid), name, spec
-                        )
-                    except Exception:
-                        logger.exception(
-                            "prepare_chat_mcp agent=%s: re-inject custom MCP %s failed",
-                            agent_id,
-                            name,
-                        )
-                        continue
-                    if tools:
-                        bound_user = load_user.get(name, uid)
-                        _bind_custom_mcp_tools(
-                            agent,
-                            name,
-                            tools,
-                            user_id=bound_user if isinstance(bound_user, int) else None,
-                        )
-                        agent.config.mcp_server_configs[name] = dict(spec)
-                    tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
-
-        agent = self.get_agent(agent_id)
-        tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
-        still_missing = sorted(n for n in names if not any(t.startswith(f"{n}_") for t in tool_set))
-        if still_missing:
+        try:
+            awaiting_auth = await self._connector_svc.auth_blocked_servers(uid, names, probe=False)
+        except Exception:
             logger.warning(
-                "prepare_chat_mcp agent=%s: tools still missing for %s",
-                agent_id,
-                still_missing,
+                "prepare_chat_mcp agent=%s: connector auth check failed", agent_id, exc_info=True
             )
-        if aliases:
-            short_to_long = {short: long for long, short in aliases.items()}
-            still_missing = [
-                short_to_long[name]
-                if name in short_to_long and short_to_long[name] in requested
-                else name
-                for name in still_missing
-            ]
-        return still_missing
+            awaiting_auth = []
+        if awaiting_auth:
+            blocked = sorted({str(item["server"]) for item in awaiting_auth})
+            # A paused turn may still refer to a previously prepared tool.
+            for name in blocked:
+                scope.prepared.pop((uid, name), None)
+            return blocked
+
+        custom_configs = self._connector_svc.custom_harness_configs(uid)
+        custom_missing = [name for name in names if name in custom_configs]
+        builtin_missing = [name for name in names if name not in custom_configs]
+        if builtin_missing:
+            extra = self._agently_write_interrupts(uid)
+            current = getattr(agent.config, "interrupt_on", None) or {}
+            merged = {**current, **extra}
+            if merged != current:
+                store = getattr(self, "_hitl_session_store", None)
+                agent.config.interrupt_on = apply_session_bypass(merged, store) if store else merged
+                agent.replace_mcp_tools(list(agent._mcp_tools))
+        for name in custom_missing:
+            scope.prepared.pop((uid, name), None)
+            spec = custom_configs[name]
+            if not isinstance(spec, dict) or not spec.get("transport"):
+                continue
+            try:
+                # Keep the catalog name in the scope and the owner's short name in the model.
+                harness_name = aliases.get(name, name)
+                source_uid = owner_id if name in aliases and owner_id is not None else uid
+                tools = await self._get_or_load_mcp_tools(source_uid, harness_name, spec)
+                proxies = scope.register(
+                    uid, name, tools, fingerprint_mcp_spec(spec), harness_name=harness_name
+                )
+            except Exception:
+                logger.exception("prepare_chat_mcp agent=%s: failed loading MCP %s", agent_id, name)
+                continue
+            agent.config.mcp_server_configs[name] = {}
+            fresh = [tool for tool in proxies if tool.name not in agent._mcp_tool_name_set]
+            if fresh:
+                agent.append_mcp_tools(fresh)
+
+        for name in builtin_missing:
+            scope.prepared.pop((uid, name), None)
+            try:
+                tools, version = await self._load_connector_mcp_tools(uid, name)
+                proxies = scope.register(uid, name, tools, version)
+            except Exception:
+                logger.exception("prepare_chat_mcp agent=%s: failed loading MCP %s", agent_id, name)
+                continue
+            agent.config.mcp_server_configs[name] = {}
+            fresh = [tool for tool in proxies if tool.name not in agent._mcp_tool_name_set]
+            if fresh:
+                agent.append_mcp_tools(fresh)
+        return sorted(name for name in names if not scope.prepared.get((uid, name)))
 
     async def connector_auth_blocked(
         self, user_id: int, server_names: list[str]
@@ -2808,51 +2626,53 @@ class AgentManager:
             logger.warning("connector auth check failed for user=%s", user_id, exc_info=True)
             return []
 
-    async def _attach_gateway_tools(
-        self,
-        agent: HarnessAgent,
-        *,
-        agent_id: str,
-        user_id: int,
-        server_names: list[str],
-    ) -> None:
-        """Add gateway connector tools to the running agent without rebuilding it.
-
-        A rebuild would drop the harness instance (and with it the checkpointer
-        pool an in-flight turn still writes to) only to run the very same
-        in-process injection at the end of ``_post_start_agent``.
-        """
-        repo = self._repos.connector_repo
-        if not repo.connector_feature_allows(user_id):
-            return
-        for inst in repo.list_visible(user_id):
-            if inst.status != "active" or inst.mcp_server_name not in server_names:
-                continue
-            try:
-                await self._connector_svc.ensure_fresh_credentials(inst.instance_id, inst.kind)
-            except Exception:
-                logger.exception(
-                    "prepare_chat_mcp agent=%s: credential refresh failed for %s",
-                    agent_id,
-                    inst.mcp_server_name,
-                )
-        for name in server_names:
-            agent.config.mcp_server_configs.setdefault(name, {})
-        extra = self._agently_write_interrupts(user_id)
-        if extra:
-            current = {**(getattr(agent.config, "interrupt_on", None) or {}), **extra}
-            store = getattr(self, "_hitl_session_store", None)
-            if store is not None:
-                current = apply_session_bypass(current, store) or current
-            agent.config.interrupt_on = current
-        inject_missing_gateway_tools(
-            agent,
-            svc=self._connector_svc,
-            connector_repo=repo,
-            user_id=user_id,
-            agent_id=agent_id,
-            mcp_server_configs=agent.config.mcp_server_configs,
+    async def _load_connector_mcp_tools(self, uid: int, server: str) -> tuple[list[Any], str]:
+        from octop.infra.connectors.builder import build_http_mcp_spec
+        from octop.infra.connectors.catalog import get_catalog_entry, is_inprocess_gateway
+        from octop.infra.connectors.gateway import build_gateway_langchain_tools
+        from octop.infra.connectors.mcp_tool_cache import (
+            fingerprint_mcp_spec,
+            wrap_tools_for_shared_use,
         )
+
+        repo = self._repos.connector_repo
+        if not repo.connector_feature_allows(uid):
+            return [], ""
+        inst = next(
+            (
+                item
+                for item in repo.list_visible(uid)
+                if item.status == "active" and item.mcp_server_name == server
+            ),
+            None,
+        )
+        if inst is None or (entry := get_catalog_entry(inst.kind)) is None:
+            return [], ""
+        await self._connector_svc.ensure_fresh_credentials(inst.instance_id, inst.kind)
+        creds = self._connector_svc.decrypt(inst.instance_id)
+        if not creds:
+            return [], ""
+        if not is_inprocess_gateway(entry):
+            spec = build_http_mcp_spec(
+                entry=entry, instance_id=inst.instance_id, creds=creds, config=self._config
+            )
+            return await self._get_or_load_mcp_tools(uid, server, spec), fingerprint_mcp_spec(spec)
+
+        key = (uid, server, fingerprint_mcp_spec({"transport": entry.kind, "headers": creds}))
+        lock = await self._server_lock(uid, server)
+        async with lock:
+            cached = self._mcp_tool_cache.get(key)
+            if cached is not None:
+                return cached, key[2]
+            tools = build_gateway_langchain_tools(
+                entry=entry, instance_id=inst.instance_id, mcp_server_name=server, creds=creds
+            )
+            wrapped = wrap_tools_for_shared_use(tools, lock)
+            self._mcp_tool_cache[key] = wrapped
+            for stale in list(self._mcp_tool_cache):
+                if stale[:2] == key[:2] and stale != key:
+                    del self._mcp_tool_cache[stale]
+            return wrapped, key[2]
 
     # ------------------------------------------------------------------
     # Settings persistence — push global policy into harness runtime
@@ -3736,18 +3556,8 @@ class AgentManager:
         from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
 
         team_host = is_team_agent(row)
-        uid = self._connector_uid_for(row)
-        if uid is not None and not team_host:
-            inject_missing_gateway_tools(
-                agent,
-                svc=self._connector_svc,
-                connector_repo=self._repos.connector_repo,
-                user_id=uid,
-                agent_id=row.agent_id,
-                mcp_server_configs=cfg.mcp_server_configs,
-            )
         if not team_host:
-            _sanitize_bound_mcp_tools(agent)
+            self._mcp_scope_for(row.agent_id)
         if team_host:
             self.strip_team_host_runtime_tools(row.agent_id)
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
@@ -4178,11 +3988,11 @@ class AgentManager:
         *,
         connector_user_id: int | None = None,
     ) -> int | None:
+        if connector_user_id is not None:
+            return connector_user_id
         override = self._connector_user_override.get(row.agent_id)
         if override is not None:
             return override
-        if connector_user_id is not None:
-            return connector_user_id
         return row.user_id
 
     def _prepare_stream_request(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -4468,6 +4278,7 @@ class AgentManager:
                 mcp_server_configs,
                 load_env_file(env_file_path(self._paths.root)),
             )
+            mcp_server_configs = {name: {} for name in mcp_server_configs}
 
         skill_dirs: list[str] = []
         plugin_skills_disabled: set[str] = set()

@@ -17,6 +17,8 @@ _FINGERPRINT_KEYS = (
     "command",
     "args",
     "env",
+    "allowed_tools",
+    "tool_arg_aliases",
 )
 
 

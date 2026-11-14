@@ -177,6 +177,30 @@ class TeamManager:
         question = ""
         dispatch_message = None
         if group:
+            if uid is not None:
+                # A failed connector must not discard the resolved peer session.
+                try:
+                    bound = self._agent_manager.default_mcp_servers(call.to_agent_id)
+                    member = self._agent_manager.get_row(call.to_agent_id)
+                    owner_id = getattr(member, "user_id", None)
+                    servers = bound
+                    if bound and isinstance(owner_id, int) and owner_id != uid:
+                        servers = self._agent_manager.present_mcp_names_for_viewer(
+                            owner_id, uid, bound
+                        )
+                    servers = (
+                        self._agent_manager.validate_mcp_servers(uid, servers)
+                        if len(servers) == len(bound)
+                        else []
+                    )
+                    if servers and not await self._agent_manager.prepare_chat_mcp(
+                        call.to_agent_id, servers, connector_user_id=uid
+                    ):
+                        extra = {**(extra or {}), "mcp_servers": servers}
+                except Exception:
+                    logger.exception(
+                        "team member MCP prepare failed agent=%s user=%s", call.to_agent_id, uid
+                    )
             question = await self._assignment_text(call)
             dispatch_message = await self._dispatch_message(call, uid)
             if thread_id and (question or dispatch_message):
@@ -537,7 +561,12 @@ class TeamManager:
                             fut.cancel()
                         self._expire_hitl(pending_id)
                 resume_pending = pending_id
-                agen = self._agent_manager.resume_hitl(speaker_id, member_tid, decisions)
+                agen = self._agent_manager.resume_hitl(
+                    speaker_id,
+                    member_tid,
+                    decisions,
+                    user_id=_octop_user_id(payload.get("user") or ""),
+                )
             completed = True
         except Exception:
             if resume_pending:

@@ -225,6 +225,7 @@ def _with_session_auto_approve(
     agent_id: str,
     thread_id: str,
     hitl_coordinator: HitlChannelCoordinator | None,
+    user_id: int | None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Skip a follow-up card when this chat already allows the tool."""
     if hitl_coordinator is None or not thread_id:
@@ -235,7 +236,9 @@ def _with_session_auto_approve(
         source,
         thread_id=thread_id,
         policies=hitl_coordinator.session_policies,
-        resume=lambda decisions: agent_manager.resume_hitl(agent_id, thread_id, decisions),
+        resume=lambda decisions: agent_manager.resume_hitl(
+            agent_id, thread_id, decisions, user_id=user_id
+        ),
     )
 
 
@@ -261,6 +264,7 @@ async def project_stream(
         agent_id=agent_id,
         thread_id=thread_id,
         hitl_coordinator=hitl_coordinator,
+        user_id=hitl_ctx.user_id if hitl_ctx else None,
     )
     chunk_stream = _project_chunks(
         chunks,
@@ -296,13 +300,15 @@ async def project_resume_stream(
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    source = agent_manager.resume_hitl(agent_id, thread_id, decisions)
+    user_id = hitl_ctx.user_id if hitl_ctx else None
+    source = agent_manager.resume_hitl(agent_id, thread_id, decisions, user_id=user_id)
     chunks = _with_session_auto_approve(
         source,
         agent_manager=agent_manager,
         agent_id=agent_id,
         thread_id=thread_id,
         hitl_coordinator=hitl_coordinator,
+        user_id=user_id,
     )
     chunk_stream = _project_chunks(
         chunks,

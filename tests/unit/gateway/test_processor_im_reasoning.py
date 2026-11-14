@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -66,7 +67,8 @@ def _im_message() -> InboundMessage:
 
 
 @pytest.mark.asyncio
-async def test_im_request_carries_reasoning_overrides() -> None:
+@pytest.mark.parametrize("shared_mcp", [False, True])
+async def test_im_request_carries_reasoning_overrides(shared_mcp: bool) -> None:
     captured: dict[str, object] = {}
     overrides = {"model_fields": {"reasoning_effort": "high"}}
 
@@ -75,6 +77,13 @@ async def test_im_request_carries_reasoning_overrides() -> None:
         yield MagicMock()
 
     processor = _processor(overrides)
+    shared_name = "custom__owner__docs"
+    if shared_mcp:
+        manager = processor._agent_manager
+        manager.get_row.return_value = SimpleNamespace(user_id=13, kind="expert")
+        manager.merge_turn_mcp_servers.return_value = [shared_name]
+        manager.align_mcp_names_to_harness.return_value = ["docs"]
+        manager.mcp_names_for_chips.return_value = [shared_name]
 
     with (
         patch(
@@ -90,6 +99,13 @@ async def test_im_request_carries_reasoning_overrides() -> None:
 
     assert events
     assert captured["request"]["configurable"]["octop_reasoning_overrides"] == overrides
+    if shared_mcp:
+        assert captured["request"]["mcp_servers"] == [shared_name]
+        manager.prepare_chat_mcp.assert_awaited_once_with(
+            "agent-1", [shared_name], connector_user_id=7
+        )
+    else:
+        assert "mcp_servers" not in captured["request"]
 
 
 @pytest.mark.asyncio

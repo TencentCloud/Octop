@@ -2816,7 +2816,9 @@ async def test_prepare_chat_mcp_loads_shared_server_as_owner(
     manager: AgentManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A viewer's catalog name loads the owner's tools under the harness short name."""
+    """Viewer and owner load separately and share one credential-free graph tool."""
+    from langchain_core.tools import StructuredTool
+
     owner_id = _seed_user(manager, "mcp-owner")
     viewer_id = _seed_user(manager, "mcp-viewer")
     manager._connector_svc.put_custom_servers(
@@ -2849,7 +2851,7 @@ async def test_prepare_chat_mcp_loads_shared_server_as_owner(
     agent._mcp_tools = []
     agent._mcp_tool_name_set = frozenset()
     agent.config.mcp_server_configs = {"doris": {}}
-    loaded: list[tuple[int, str]] = []
+    loaded: list[tuple[int, str, str]] = []
 
     def _tool_names() -> frozenset[str]:
         return frozenset(
@@ -2869,11 +2871,13 @@ async def test_prepare_chat_mcp_loads_shared_server_as_owner(
     agent.append_mcp_tools = MagicMock(side_effect=_append)
     agent.replace_mcp_tools = MagicMock(side_effect=_replace)
 
-    async def fake_load(user_id: int, server_name: str, _spec: dict[str, Any]) -> list[Any]:
-        loaded.append((user_id, server_name))
-        tool = MagicMock()
-        tool.name = f"{server_name}_ping_{user_id}"
-        return [tool]
+    async def fake_load(user_id: int, server_name: str, spec: dict[str, Any]) -> list[Any]:
+        loaded.append((user_id, server_name, spec["url"]))
+        return [
+            StructuredTool.from_function(
+                func=lambda: user_id, name=f"{server_name}_ping", description="Identity probe"
+            )
+        ]
 
     monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
     monkeypatch.setattr(manager, "_get_or_load_mcp_tools", fake_load)
@@ -2884,21 +2888,23 @@ async def test_prepare_chat_mcp_loads_shared_server_as_owner(
         connector_user_id=viewer_id,
     )
     assert missing == []
-    assert loaded == [(owner_id, "doris")]
-    agent.append_mcp_tools.assert_called_once()
-    agent.replace_mcp_tools.assert_not_called()
+    assert loaded == [(owner_id, "doris", "https://doris.example.com/mcp")]
+    (proxy,) = agent._mcp_tools
 
-    # The owner's tools stay on the running expert. The viewer's own server
-    # must replace that slot instead of looking "already loaded".
+    # The viewer's selection loads a different endpoint under the same short name.
     missing_own = await manager.prepare_chat_mcp(
         agent_id,
         ["doris"],
         connector_user_id=viewer_id,
     )
     assert missing_own == []
-    assert loaded == [(owner_id, "doris"), (viewer_id, "doris")]
-    assert agent._mcp_tool_name_set == {f"doris_ping_{viewer_id}"}
-    agent.replace_mcp_tools.assert_called_once()
+    assert loaded == [
+        (owner_id, "doris", "https://doris.example.com/mcp"),
+        (viewer_id, "doris", "https://viewer.example.com/mcp"),
+    ]
+    assert agent._mcp_tools == [proxy]
+    assert agent._mcp_tool_name_set == {"doris_ping"}
+    agent.replace_mcp_tools.assert_called_once_with([])
 
 
 @pytest.mark.asyncio
@@ -2918,6 +2924,10 @@ async def test_prepare_chat_mcp_reports_failure_in_caller_name(
             }
         },
     )
+    manager._connector_svc.put_custom_servers(
+        viewer_id,
+        {"notes": {"transport": "streamable_http", "url": "https://notes.example.com/mcp"}},
+    )
     shared_name = next(iter(manager._connector_svc.shared_custom_harness_aliases(owner_id)))
     agent_id = manager._repos.agent_repo.create(
         agent_id="SHAREFAIL",
@@ -2933,7 +2943,6 @@ async def test_prepare_chat_mcp_reports_failure_in_caller_name(
 
     monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
     monkeypatch.setattr(manager, "_get_or_load_mcp_tools", fake_load)
-    monkeypatch.setattr(manager, "reload_connectors", AsyncMock())
 
     missing = await manager.prepare_chat_mcp(
         agent_id,

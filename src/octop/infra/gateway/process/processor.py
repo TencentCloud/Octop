@@ -8,7 +8,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from octop_gateway.models import (
@@ -160,13 +160,6 @@ class _MessageEventSink(SlashSink):
 class _ResolvedModelRoute:
     model_ref: str | None
     automatic: bool
-
-
-class _ResolvedTurnMcp(NamedTuple):
-    """Harness names go to the model; shown names go on history chips."""
-
-    harness: list[str]
-    shown: list[str]
 
 
 class GlobalProcessor:
@@ -1010,15 +1003,13 @@ class GlobalProcessor:
             model_ref=model_ref,
             meta=None,
         )
-        resolved_mcp = await self._resolve_turn_mcp_servers(
+        mcp_servers = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=None,
             apply_defaults=True,
             raise_on_failure=False,
         )
-        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
-        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         message_kwargs: dict[str, Any] = {}
         attachments = inbound_attachments_from_parts(msg.content)
         if attachments:
@@ -1032,7 +1023,7 @@ class GlobalProcessor:
             row = self._agent_repo.get(agent_id)
             default_model = (row.default_model if row is not None else None) or None
             composer = build_composer_context(
-                mcp_servers=shown_mcp,
+                mcp_servers=mcp_servers,
                 skills=None,
                 target_agent_ids=None,
                 model_ref=model_ref,
@@ -1418,7 +1409,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 policies=self._hitl.session_policies,
                 resume=lambda next_decisions: self._agent_manager.resume_hitl(
-                    agent_id, thread_id, next_decisions
+                    agent_id, thread_id, next_decisions, user_id=user_id
                 ),
             ):
                 usage_tracker.observe(chunk)
@@ -1556,11 +1547,12 @@ class GlobalProcessor:
                     agent_id,
                     thread_id,
                     decisions,
+                    user_id=user_id,
                 ),
                 thread_id=thread_id,
                 policies=self._hitl.session_policies,
                 resume=lambda next_decisions: self._agent_manager.resume_hitl(
-                    agent_id, thread_id, next_decisions
+                    agent_id, thread_id, next_decisions, user_id=user_id
                 ),
             ):
                 usage_tracker.observe(chunk)
@@ -1677,21 +1669,16 @@ class GlobalProcessor:
         else:
             explicit_mcp = None
             apply_defaults = True
-        resolved_mcp = await self._resolve_turn_mcp_servers(
+        mcp_servers = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=explicit_mcp,
             apply_defaults=apply_defaults,
         )
-        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
-        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         if mcp_servers:
-            # History chips use the viewer's catalog names. The harness request
-            # below keeps the names registered on the shared expert.
-            shown = shown_mcp if shown_mcp is not None else mcp_servers
             if isinstance(composer, dict) and composer:
                 stamped = dict(composer)
-                stamped["connectors"] = list(shown)
+                stamped["connectors"] = list(mcp_servers)
                 message_kwargs[COMPOSER_CTX_KEY] = stamped
             else:
                 from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
@@ -1701,7 +1688,7 @@ class GlobalProcessor:
                 row = self._agent_repo.get(agent_id)
                 default_model = (row.default_model if row is not None else None) or None
                 built = build_composer_context(
-                    mcp_servers=shown,
+                    mcp_servers=mcp_servers,
                     skills=meta.get("skills") if isinstance(meta.get("skills"), list) else None,
                     target_agent_ids=None,
                     model_ref=model_ref,
@@ -1890,7 +1877,7 @@ class GlobalProcessor:
         explicit: list[str] | None,
         apply_defaults: bool | None = None,
         raise_on_failure: bool = True,
-    ) -> _ResolvedTurnMcp | None:
+    ) -> list[str] | None:
         """Merge turn picks with default_open and ensure tools are loaded.
 
         Dashboard / HTTP paths should keep ``raise_on_failure=True`` so the
@@ -1917,14 +1904,13 @@ class GlobalProcessor:
         )
         if not merged:
             return None
-        harness = list(merged)
-        shown = list(merged)
+        selected = merged
         if owner_id is not None and owner_id != user_id:
             harness = self._agent_manager.align_mcp_names_to_harness(owner_id, user_id, merged)
-            shown = self._agent_manager.mcp_names_for_chips(owner_id, user_id, merged, harness)
+            selected = self._agent_manager.mcp_names_for_chips(owner_id, user_id, merged, harness)
         failed = await self._agent_manager.prepare_chat_mcp(
             agent_id,
-            merged,
+            selected,
             connector_user_id=user_id,
         )
         if failed:
@@ -1946,7 +1932,7 @@ class GlobalProcessor:
                 detail,
             )
             return None
-        return _ResolvedTurnMcp(harness=harness, shown=shown)
+        return selected
 
     async def _record_stream_error(
         self,
