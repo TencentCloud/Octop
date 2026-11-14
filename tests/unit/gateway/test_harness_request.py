@@ -10,7 +10,10 @@ from octop_gateway.models import (
     TextContent,
 )
 
-from octop.infra.gateway.process.harness_request import build_content_from_message
+from octop.infra.gateway.process.harness_request import (
+    build_content_from_message,
+    build_harness_request,
+)
 
 
 @pytest.mark.asyncio
@@ -38,6 +41,26 @@ async def test_quoted_message_is_added_only_to_model_content(
         assert result.startswith(label)
         assert ("selection" if explicit else "whole message") in result
         assert result.endswith("explain this")
+
+
+def test_harness_request_carries_the_turn_user_for_auto_route() -> None:
+    req = build_harness_request(
+        thread_id="t1",
+        user_id=7,
+        source="web/x",
+        content="hi",
+        auto_route=True,
+    )
+    assert req["configurable"]["octop_user_id"] == 7
+
+    req2 = build_harness_request(
+        thread_id="t1",
+        user_id=7,
+        source="web/x",
+        messages=[{"role": "user", "content": "hi"}],
+        auto_route=True,
+    )
+    assert req2["configurable"]["octop_user_id"] == 7
 
 
 @pytest.mark.asyncio

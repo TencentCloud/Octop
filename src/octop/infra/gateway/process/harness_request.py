@@ -328,6 +328,8 @@ def build_harness_request(
         configurable: dict[str, Any] = {}
         if auto_route:
             configurable["octop_auto_route"] = True
+        if user_id > 0:
+            configurable["octop_user_id"] = user_id
         if session_key is not None:
             configurable["session_key"] = session_key
         if reasoning_overrides:
@@ -369,6 +371,8 @@ def build_harness_request(
     configurable = {}
     if auto_route:
         configurable["octop_auto_route"] = True
+    if user_id > 0:
+        configurable["octop_user_id"] = user_id
     if session_key is not None:
         configurable["session_key"] = session_key
     if reasoning_overrides:

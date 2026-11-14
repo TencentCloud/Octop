@@ -795,13 +795,13 @@ class GlobalProcessor:
             )
             if (
                 preferred
-                and self._agent_manager.is_auto_route_model_available(preferred)
+                and self._agent_manager.is_auto_route_model_available(preferred, user_id)
                 and self._agent_manager.model_ref_allowed_for_user(user_id, preferred)
             ):
                 model_ref = preferred
                 automatic = True
         if not model_ref:
-            fallback = self._agent_manager.resolve_fallback_model_ref()
+            fallback = self._agent_manager.resolve_fallback_model_ref(user_id)
             candidate = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
             if candidate and self._agent_manager.model_ref_allowed_for_user(user_id, candidate):
                 model_ref = candidate
@@ -811,6 +811,7 @@ class GlobalProcessor:
         resolved = providers.resolve_model_for_multimodal_turn(
             model_ref,
             needs_multimodal=needs_multimodal,
+            user_id=user_id,
         )
         if resolved != model_ref:
             automatic = True
