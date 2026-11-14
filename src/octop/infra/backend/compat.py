@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import posixpath
+import shlex
 import threading
 from collections.abc import Coroutine
 from concurrent.futures import Future
@@ -48,10 +50,63 @@ def adapt_backend_protocol(backend: Any) -> Any:
     if isinstance(backend, _LegacyProtocolBackend):
         return backend
     if not _needs_adapt(backend):
+        _patch_sandbox_path_ops(backend)
         return backend
     wrapped = _LegacyProtocolBackend(backend)
     _patch_s3_list_v1(backend)
     return wrapped
+
+
+_SANDBOX_PATH_OPS = ("mkdir_path", "delete_path", "move_path")
+
+
+def _patch_sandbox_path_ops(backend: Any) -> None:
+    """Add the missing workspace mutation primitives to sandbox backends.
+
+    ``octop_harness``'s ``OpenSandbox`` implements the deepagents ``BaseSandbox``
+    file surface with ``execute`` but not the ``mkdir_path`` / ``delete_path`` /
+    ``move_path`` helpers ``DockerSandbox`` adds, so ``BackendWorkspace.mkdir``
+    raises ``BackendOperationNotSupportedError`` on workspace init and every
+    agent on that backend fails to start. Workspace files live inside the
+    sandbox (``sandbox_fs``), so no host mount can take over the fallback.
+
+    Patch the helpers in place with the same ``execute`` commands
+    ``octop_harness.backends.docker_sandbox`` uses. Wrapping the backend would
+    drop the ``SandboxBackendProtocol`` instance behind ``supports_execution``.
+    No-op once the harness backend defines them itself.
+    """
+    if not callable(getattr(backend, "execute", None)):
+        return
+    if not getattr(backend, "sandbox_fs", False):
+        return
+    if all(callable(getattr(backend, name, None)) for name in _SANDBOX_PATH_OPS):
+        return
+
+    def mkdir_path(path: str) -> None:
+        result = backend.execute(f"mkdir -p {shlex.quote(str(path))}")
+        if result.exit_code not in (0, None):
+            raise OSError(result.output or f"mkdir failed for {path!r}")
+
+    def delete_path(path: str) -> None:
+        result = backend.execute(f"rm -rf {shlex.quote(str(path))}")
+        if result.exit_code not in (0, None):
+            raise OSError(result.output or f"delete failed for {path!r}")
+
+    def move_path(src: str, dest: str) -> None:
+        parent = posixpath.dirname(str(dest)) or "/"
+        result = backend.execute(
+            f"mkdir -p {shlex.quote(parent)} && mv {shlex.quote(str(src))} {shlex.quote(str(dest))}"
+        )
+        if result.exit_code not in (0, None):
+            raise OSError(result.output or f"move failed for {src!r} -> {dest!r}")
+
+    for name, patched in (
+        ("mkdir_path", mkdir_path),
+        ("delete_path", delete_path),
+        ("move_path", move_path),
+    ):
+        if not callable(getattr(backend, name, None)):
+            setattr(backend, name, patched)
 
 
 async def _s3_als_info_v1(backend: Any, path: str) -> list[Any]:

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from deepagents.backends.protocol import BackendProtocol, ReadResult
+from deepagents.backends.protocol import BackendProtocol, ExecuteResponse, ReadResult
+from octop_harness.backends.utils import BackendOperationNotSupportedError
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.backend.compat import adapt_backend_protocol, is_adapted_backend
 
@@ -262,3 +265,84 @@ def test_adapt_run_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
     wrapped = compat.adapt_backend_protocol(_Hung())
     with pytest.raises(TimeoutError, match="backend I/O timed out"):
         wrapped.ls("/")
+
+
+class _FakeSandbox:
+    """Mirrors ``octop_harness`` OpenSandbox: execute-capable, no path ops."""
+
+    sandbox_fs = True
+    virtual_mode = True
+
+    def __init__(self, *, exit_code: int = 0, output: str = "") -> None:
+        self.commands: list[str] = []
+        self._exit_code = exit_code
+        self._output = output
+
+    def execute(self, command: str, *, timeout: int | None = None) -> ExecuteResponse:
+        del timeout
+        self.commands.append(command)
+        return ExecuteResponse(output=self._output, exit_code=self._exit_code, truncated=False)
+
+
+def test_unpatched_sandbox_backend_cannot_mkdir(tmp_path: Path) -> None:
+    """The harness contract ``adapt_backend_protocol`` has to bridge (issue #1813)."""
+    with pytest.raises(BackendOperationNotSupportedError, match="mkdir"):
+        BackendWorkspace(_FakeSandbox(), tmp_path).mkdir("skills/demo")
+
+
+def test_sandbox_path_ops_enable_workspace_mutations(tmp_path: Path) -> None:
+    backend = _FakeSandbox()
+    adapted = adapt_backend_protocol(backend)
+    assert adapted is backend
+    assert adapt_backend_protocol(adapted) is adapted
+
+    workspace = BackendWorkspace(adapted, tmp_path)
+    workspace.mkdir("skills/demo")
+    workspace.delete("skills/demo")
+    workspace.move("SOUL.md", "skills/demo/SOUL.md")
+    workspace.mkdir("a b")
+    assert backend.commands == [
+        "mkdir -p /skills/demo",
+        "rm -rf /skills/demo",
+        "mkdir -p /skills/demo && mv /SOUL.md /skills/demo/SOUL.md",
+        "mkdir -p '/a b'",
+    ]
+
+
+def test_sandbox_path_ops_raise_on_failure() -> None:
+    adapted = adapt_backend_protocol(_FakeSandbox(exit_code=1, output="denied"))
+    with pytest.raises(OSError, match="denied"):
+        adapted.mkdir_path("/skills")
+    with pytest.raises(OSError, match="denied"):
+        adapted.delete_path("/skills")
+    with pytest.raises(OSError, match="denied"):
+        adapted.move_path("/a", "/b")
+
+
+def test_sandbox_path_ops_keep_existing_implementations() -> None:
+    class _WithPathOps(_FakeSandbox):
+        def __init__(self) -> None:
+            super().__init__()
+            self.mkdirs: list[str] = []
+
+        def mkdir_path(self, path: str) -> None:
+            self.mkdirs.append(path)
+
+    backend = _WithPathOps()
+    adapted = adapt_backend_protocol(backend)
+    adapted.mkdir_path("/skills")
+    assert backend.mkdirs == ["/skills"]
+    assert backend.commands == []
+
+
+def test_sandbox_path_ops_skip_backends_without_sandbox_fs() -> None:
+    class _ShellLike:
+        virtual_mode = True
+
+        def execute(self, command: str) -> ExecuteResponse:
+            raise AssertionError("must not run")
+
+    adapted = adapt_backend_protocol(_ShellLike())
+    assert not callable(getattr(adapted, "mkdir_path", None))
+    assert not callable(getattr(adapted, "delete_path", None))
+    assert not callable(getattr(adapted, "move_path", None))
