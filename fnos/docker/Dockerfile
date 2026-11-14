@@ -3,7 +3,7 @@
 # Octop — 可选的源码镜像（飞牛 FPK 不使用本文件）
 #
 # 飞牛 Docker 版安装包复用 docker-publish 推送的
-# ghcr.io/tencentcloud/octop:{version}，那份镜像由 docker/Dockerfile 构建。
+# ghcr.io/tencentcloud/octop:{version}，那份镜像由 deploy/docker/Dockerfile 构建。
 # 本文件只在显式执行下面的命令时使用，构建上下文为仓库根目录：
 #   docker build -f fnos/docker/Dockerfile -t octop:fnos-source .
 #
@@ -16,7 +16,7 @@
 # 另外用 bake-desktop.sh 装入虚拟桌面和系统 Chromium，但不启动。
 # 桌面组件已包含浏览器，不再另下 Playwright Chromium。
 # 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
-# 飞牛 Docker 版安装包不构建本文件，而是拉取由 docker/Dockerfile 打出的镜像；
+# 飞牛 Docker 版安装包不构建本文件，而是拉取由 deploy/docker/Dockerfile 打出的镜像；
 # 两份 Dockerfile 的 Node 运行时保持一致。
 # Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘。
 #
@@ -29,7 +29,8 @@
 # ---------------------------------------------------------------------------
 FROM node:20-slim AS frontend-builder
 
-ARG NODE_MAX_OLD_SPACE_SIZE=2048
+# 与 docker/Dockerfile 相同：2048 在 Vite chunk 渲染时会触顶 abort（退出码 134）。
+ARG NODE_MAX_OLD_SPACE_SIZE=4096
 ARG NPM_REGISTRY=
 WORKDIR /build/dashboard
 
@@ -101,8 +102,8 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 
-COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
+COPY deploy/docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY deploy/docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/bake-desktop.sh
 
 # 安装项目与附加组件。full 含桌面、本地向量和 OCR，由后面的 bake-desktop.sh 装入
