@@ -11,6 +11,7 @@ import {
   Alert,
   App,
   Button,
+  Checkbox,
   Drawer,
   Dropdown,
   Empty,
@@ -33,6 +34,7 @@ import {
 } from "antd";
 import type { MenuProps, TreeDataNode } from "antd";
 import type { InputRef } from "antd/es/input";
+import DocumentBatchActions from "./DocumentBatchActions";
 import { ResizableTable } from "@/components/ResizableTable";
 import {
   SharedAvatarMark,
@@ -302,6 +304,9 @@ export default function KnowledgeBasesPage() {
   );
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [selected, setSelected] = useState<KnowledgeBase | null>(null);
+  const requestedBaseIdRef = useRef<string | null>(null);
+  const batchScopeRef = useRef(0);
+  const [batchScope, setBatchScope] = useState(0);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selected?.id ?? null;
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
@@ -1078,6 +1083,11 @@ export default function KnowledgeBasesPage() {
 
   const loadDetail = useCallback(
     async (id: string, options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        requestedBaseIdRef.current = id;
+        batchScopeRef.current += 1;
+        setBatchScope(batchScopeRef.current);
+      } else if (requestedBaseIdRef.current !== id) return;
       const requestId = detailRequestGate.current.begin();
       if (!options?.silent) setDetailLoading(true);
       try {
@@ -1091,11 +1101,15 @@ export default function KnowledgeBasesPage() {
       } catch (error) {
         if (!detailRequestGate.current.isCurrent(requestId)) return;
         if (isNotFoundApiError(error)) {
+          requestedBaseIdRef.current = null;
           setSelected(null);
           setDocuments([]);
           return;
         }
         if (!options?.silent) {
+          // Keep the displayed base usable after a failed navigation. The new
+          // scope still invalidates every batch from before navigation began.
+          requestedBaseIdRef.current = selectedIdRef.current;
           message.error(
             apiErrorMessage(error, t("knowledgeBases.loadFailed"), t),
           );
@@ -2951,301 +2965,425 @@ export default function KnowledgeBasesPage() {
                           })}
                         />
                       ) : null}
-                      {folderEntries.length === 0 ? (
-                        !currentFolder && documents.length === 0 ? (
-                          <StreamSetupGuide
-                            className={styles.emptyGuide}
-                            wide
-                            plain
-                            icon={<OctopEmptyMascot />}
-                            title={t("knowledgeBases.emptyDocumentsTitle")}
-                            description={
-                              canWriteSelected
-                                ? t("knowledgeBases.emptyDocumentsDesc")
-                                : t("knowledgeBases.emptyDocumentsReadonlyDesc")
-                            }
-                            steps={[
-                              {
-                                label: t(
-                                  "knowledgeBases.emptyDocumentsStepUpload",
-                                ),
-                                detail: t(
-                                  "knowledgeBases.emptyDocumentsStepUploadDetail",
-                                ),
-                              },
-                              {
-                                label: t(
-                                  "knowledgeBases.emptyDocumentsStepWrite",
-                                ),
-                                detail: t(
-                                  "knowledgeBases.emptyDocumentsStepWriteDetail",
-                                ),
-                              },
-                              {
-                                label: t(
-                                  "knowledgeBases.emptyDocumentsStepUse",
-                                ),
-                                detail: t(
-                                  "knowledgeBases.emptyDocumentsStepUseDetail",
-                                ),
-                              },
-                            ]}
-                            primaryAction={
-                              canWriteSelected
-                                ? {
-                                    label: t("knowledgeBases.upload"),
-                                    onClick: () => uploadRef.current?.click(),
-                                    icon: <FileUp size={14} />,
-                                    loading: uploadingThisBase,
-                                    disabled: isAtDocumentLimit || uploadBusy,
-                                  }
-                                : undefined
-                            }
-                            secondaryAction={
-                              canWriteSelected
-                                ? {
-                                    label: t("knowledgeBases.createFile"),
-                                    onClick: openCreateTextDocument,
-                                    icon: <FilePlus size={14} />,
-                                    type: "default",
-                                    disabled: isAtDocumentLimit,
-                                  }
-                                : undefined
-                            }
-                          />
-                        ) : (
-                          <Empty
-                            image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={t("knowledgeBases.emptyDocuments")}
-                          />
-                        )
-                      ) : showCardView ? (
-                        <div className={styles.docCardGrid}>
-                          {folderEntries.map((document) => {
-                            const name = knowledgeBasename(
-                              document.path || document.filename,
-                            );
-                            return (
-                              <div
-                                key={document.id}
-                                className={styles.docCard}
-                                role={document.is_dir ? "button" : undefined}
-                                onClick={(event) => {
-                                  if (
-                                    !shouldOpenKnowledgeFolder(
-                                      Boolean(document.is_dir),
-                                      event,
-                                    )
-                                  ) {
-                                    return;
-                                  }
-                                  setCurrentFolder(
-                                    document.path || document.filename,
-                                  );
-                                }}
-                              >
-                                <div className={styles.docCardHeader}>
-                                  <DocumentFormatIcon
-                                    filename={name}
-                                    size={14}
-                                    isDir={document.is_dir}
-                                  />
-                                  <div className={styles.docCardTitleBlock}>
-                                    <div className={styles.docCardTitleRow}>
-                                      {renderEntryName(
-                                        document,
-                                        styles.docCardName,
-                                      )}
-                                    </div>
-                                    <div className={styles.docCardMeta}>
-                                      {document.is_dir
-                                        ? t("knowledgeBases.folder")
-                                        : `${formatBytes(
-                                            document.byte_size,
-                                          )} · ${t(
-                                            "knowledgeBases.chunkCount",
-                                            {
-                                              count: document.chunk_count,
-                                            },
-                                          )}`}
-                                    </div>
-                                    {document.is_dir ? null : (
-                                      <div
-                                        className={styles.docCardMeta}
-                                        title={formatServerDateTime(
-                                          document.updated_at,
-                                          timeZone,
-                                        )}
-                                      >
-                                        {formatServerDateTime(
-                                          document.updated_at,
-                                          timeZone,
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className={styles.docCardFooter}>
-                                  {document.is_dir ? null : (
-                                    <Tooltip
-                                      title={
-                                        document.error_message ||
-                                        t(
-                                          `knowledgeBases.statuses.${document.status}`,
-                                        )
-                                      }
-                                    >
-                                      <Tag
-                                        className={styles.docStatusTag}
-                                        color={documentStatusColor(
-                                          document.status,
-                                        )}
-                                      >
-                                        {t(
-                                          `knowledgeBases.statusesShort.${document.status}`,
-                                        )}
-                                      </Tag>
-                                    </Tooltip>
+                      <DocumentBatchActions
+                        key={JSON.stringify([
+                          selected.id,
+                          currentFolder,
+                          canWriteSelected,
+                          batchScope,
+                        ])}
+                        kbId={selected.id}
+                        documents={folderEntries}
+                        writable={canWriteSelected}
+                        isCurrent={() =>
+                          requestedBaseIdRef.current === selected.id &&
+                          batchScopeRef.current === batchScope
+                        }
+                        onChanged={async () => {
+                          if (requestedBaseIdRef.current !== selected.id)
+                            return;
+                          const requestId = detailRequestGate.current.begin();
+                          const [base, nextDocuments, rows] = await Promise.all(
+                            [
+                              knowledgeBasesApi.get(selected.id),
+                              knowledgeBasesApi.listDocuments(selected.id),
+                              knowledgeBasesApi.list(),
+                            ],
+                          );
+                          if (
+                            !detailRequestGate.current.isCurrent(requestId) ||
+                            requestedBaseIdRef.current !== selected.id
+                          )
+                            return;
+                          setSelected(base);
+                          setDocuments(nextDocuments);
+                          setBases(rows);
+                        }}
+                      >
+                        {(batch) => (
+                          <>
+                            {folderEntries.length === 0 ? (
+                              !currentFolder && documents.length === 0 ? (
+                                <StreamSetupGuide
+                                  className={styles.emptyGuide}
+                                  wide
+                                  plain
+                                  icon={<OctopEmptyMascot />}
+                                  title={t(
+                                    "knowledgeBases.emptyDocumentsTitle",
                                   )}
-                                  <span
-                                    className={styles.docCardFooterActions}
-                                    data-kb-doc-actions=""
-                                    onClick={(event) => event.stopPropagation()}
-                                  >
-                                    {renderDocumentActions(document)}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <ResizableTable
-                          storageKey="kb-documents"
-                          size="small"
-                          rowKey="id"
-                          pagination={false}
-                          scroll={{ x: 720 }}
-                          dataSource={folderEntries}
-                          onRow={(document) => ({
-                            onClick: document.is_dir
-                              ? (event) => {
-                                  if (!shouldOpenKnowledgeFolder(true, event)) {
-                                    return;
+                                  description={
+                                    canWriteSelected
+                                      ? t("knowledgeBases.emptyDocumentsDesc")
+                                      : t(
+                                          "knowledgeBases.emptyDocumentsReadonlyDesc",
+                                        )
                                   }
-                                  setCurrentFolder(
+                                  steps={[
+                                    {
+                                      label: t(
+                                        "knowledgeBases.emptyDocumentsStepUpload",
+                                      ),
+                                      detail: t(
+                                        "knowledgeBases.emptyDocumentsStepUploadDetail",
+                                      ),
+                                    },
+                                    {
+                                      label: t(
+                                        "knowledgeBases.emptyDocumentsStepWrite",
+                                      ),
+                                      detail: t(
+                                        "knowledgeBases.emptyDocumentsStepWriteDetail",
+                                      ),
+                                    },
+                                    {
+                                      label: t(
+                                        "knowledgeBases.emptyDocumentsStepUse",
+                                      ),
+                                      detail: t(
+                                        "knowledgeBases.emptyDocumentsStepUseDetail",
+                                      ),
+                                    },
+                                  ]}
+                                  primaryAction={
+                                    canWriteSelected
+                                      ? {
+                                          label: t("knowledgeBases.upload"),
+                                          onClick: () =>
+                                            uploadRef.current?.click(),
+                                          icon: <FileUp size={14} />,
+                                          loading: uploadingThisBase,
+                                          disabled:
+                                            isAtDocumentLimit || uploadBusy,
+                                        }
+                                      : undefined
+                                  }
+                                  secondaryAction={
+                                    canWriteSelected
+                                      ? {
+                                          label: t("knowledgeBases.createFile"),
+                                          onClick: openCreateTextDocument,
+                                          icon: <FilePlus size={14} />,
+                                          type: "default",
+                                          disabled: isAtDocumentLimit,
+                                        }
+                                      : undefined
+                                  }
+                                />
+                              ) : (
+                                <Empty
+                                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                                  description={t(
+                                    "knowledgeBases.emptyDocuments",
+                                  )}
+                                />
+                              )
+                            ) : showCardView ? (
+                              <div className={styles.docCardGrid}>
+                                {folderEntries.map((document) => {
+                                  const name = knowledgeBasename(
                                     document.path || document.filename,
                                   );
-                                }
-                              : undefined,
-                          })}
-                          locale={{
-                            emptyText: t("knowledgeBases.emptyDocuments"),
-                          }}
-                          columns={[
-                            {
-                              title: t("knowledgeBases.filename"),
-                              key: "filename",
-                              ellipsis: true,
-                              render: (_, document) => {
-                                const name = knowledgeBasename(
-                                  document.path || document.filename,
-                                );
-                                return (
-                                  <span className={styles.tableFilename}>
-                                    <DocumentFormatIcon
-                                      filename={name}
-                                      size={13}
-                                      className={styles.docTableIcon}
-                                      isDir={document.is_dir}
-                                    />
-                                    {renderEntryName(document)}
-                                  </span>
-                                );
-                              },
-                            },
-                            {
-                              title: t("knowledgeBases.entryType"),
-                              key: "entry_type",
-                              width: 88,
-                              render: (_, document) =>
-                                document.is_dir
-                                  ? t("knowledgeBases.folder")
-                                  : t("knowledgeBases.file"),
-                            },
-                            {
-                              title: t("knowledgeBases.status"),
-                              key: "status",
-                              width: 100,
-                              render: (_, document) =>
-                                document.is_dir ? (
-                                  "—"
-                                ) : (
-                                  <Tooltip
-                                    title={document.error_message || undefined}
-                                  >
-                                    <Tag
-                                      color={documentStatusColor(
-                                        document.status,
-                                      )}
+                                  return (
+                                    <div
+                                      key={document.id}
+                                      className={styles.docCard}
+                                      role={
+                                        document.is_dir ? "button" : undefined
+                                      }
+                                      onClick={(event) => {
+                                        if (
+                                          !shouldOpenKnowledgeFolder(
+                                            Boolean(document.is_dir),
+                                            event,
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        setCurrentFolder(
+                                          document.path || document.filename,
+                                        );
+                                      }}
                                     >
-                                      {t(
-                                        `knowledgeBases.statusesShort.${document.status}`,
-                                      )}
-                                    </Tag>
-                                  </Tooltip>
-                                ),
-                            },
-                            {
-                              title: t("knowledgeBases.chunks"),
-                              dataIndex: "chunk_count",
-                              key: "chunk_count",
-                              width: 80,
-                              render: (chunkCount: number, document) =>
-                                document.is_dir ? (
-                                  "—"
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className={styles.chunkCountButton}
-                                    disabled={!chunkCount}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      void openDocumentPreview(
-                                        document,
-                                        "chunks",
+                                      <div className={styles.docCardHeader}>
+                                        {canWriteSelected &&
+                                        !document.is_dir ? (
+                                          <span
+                                            data-kb-doc-actions=""
+                                            onClick={(event) =>
+                                              event.stopPropagation()
+                                            }
+                                          >
+                                            <Checkbox
+                                              aria-label={t(
+                                                "knowledgeBases.batchSelectDocument",
+                                                { name },
+                                              )}
+                                              checked={batch.keys.includes(
+                                                document.id,
+                                              )}
+                                              disabled={batch.busy}
+                                              onChange={(event) =>
+                                                batch.setKeys(
+                                                  event.target.checked
+                                                    ? [
+                                                        ...batch.keys,
+                                                        document.id,
+                                                      ]
+                                                    : batch.keys.filter(
+                                                        (id) =>
+                                                          id !== document.id,
+                                                      ),
+                                                )
+                                              }
+                                            />
+                                          </span>
+                                        ) : null}
+                                        <DocumentFormatIcon
+                                          filename={name}
+                                          size={14}
+                                          isDir={document.is_dir}
+                                        />
+                                        <div
+                                          className={styles.docCardTitleBlock}
+                                        >
+                                          <div
+                                            className={styles.docCardTitleRow}
+                                          >
+                                            {renderEntryName(
+                                              document,
+                                              styles.docCardName,
+                                            )}
+                                          </div>
+                                          <div className={styles.docCardMeta}>
+                                            {document.is_dir
+                                              ? t("knowledgeBases.folder")
+                                              : `${formatBytes(
+                                                  document.byte_size,
+                                                )} · ${t(
+                                                  "knowledgeBases.chunkCount",
+                                                  {
+                                                    count: document.chunk_count,
+                                                  },
+                                                )}`}
+                                          </div>
+                                          {document.is_dir ? null : (
+                                            <div
+                                              className={styles.docCardMeta}
+                                              title={formatServerDateTime(
+                                                document.updated_at,
+                                                timeZone,
+                                              )}
+                                            >
+                                              {formatServerDateTime(
+                                                document.updated_at,
+                                                timeZone,
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <div className={styles.docCardFooter}>
+                                        {document.is_dir ? null : (
+                                          <Tooltip
+                                            title={
+                                              document.error_message ||
+                                              t(
+                                                `knowledgeBases.statuses.${document.status}`,
+                                              )
+                                            }
+                                          >
+                                            <Tag
+                                              className={styles.docStatusTag}
+                                              color={documentStatusColor(
+                                                document.status,
+                                              )}
+                                            >
+                                              {t(
+                                                `knowledgeBases.statusesShort.${document.status}`,
+                                              )}
+                                            </Tag>
+                                          </Tooltip>
+                                        )}
+                                        <span
+                                          className={
+                                            styles.docCardFooterActions
+                                          }
+                                          data-kb-doc-actions=""
+                                          onClick={(event) =>
+                                            event.stopPropagation()
+                                          }
+                                        >
+                                          {renderDocumentActions(document)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <ResizableTable
+                                storageKey="kb-documents"
+                                rowSelection={
+                                  canWriteSelected
+                                    ? {
+                                        selectedRowKeys: batch.keys,
+                                        onChange: (keys) =>
+                                          batch.setKeys(keys.map(String)),
+                                        getCheckboxProps: (document) => ({
+                                          disabled:
+                                            batch.busy ||
+                                            Boolean(document.is_dir),
+                                        }),
+                                        renderCell: (
+                                          _checked,
+                                          _document,
+                                          _index,
+                                          node,
+                                        ) => (
+                                          <span data-kb-doc-actions="">
+                                            {node}
+                                          </span>
+                                        ),
+                                      }
+                                    : undefined
+                                }
+                                size="small"
+                                rowKey="id"
+                                pagination={false}
+                                scroll={{ x: 720 }}
+                                dataSource={folderEntries}
+                                onRow={(document) => ({
+                                  onClick: document.is_dir
+                                    ? (event) => {
+                                        if (
+                                          !shouldOpenKnowledgeFolder(
+                                            true,
+                                            event,
+                                          )
+                                        ) {
+                                          return;
+                                        }
+                                        setCurrentFolder(
+                                          document.path || document.filename,
+                                        );
+                                      }
+                                    : undefined,
+                                })}
+                                locale={{
+                                  emptyText: t("knowledgeBases.emptyDocuments"),
+                                }}
+                                columns={[
+                                  {
+                                    title: t("knowledgeBases.filename"),
+                                    key: "filename",
+                                    ellipsis: true,
+                                    render: (_, document) => {
+                                      const name = knowledgeBasename(
+                                        document.path || document.filename,
                                       );
-                                    }}
-                                  >
-                                    {chunkCount}
-                                  </button>
-                                ),
-                            },
-                            {
-                              title: t("knowledgeBases.updatedAt"),
-                              dataIndex: "updated_at",
-                              key: "updated_at",
-                              width: 170,
-                              render: (updatedAt: number) =>
-                                formatServerDateTime(updatedAt, timeZone),
-                            },
-                            {
-                              title: t("common.actions"),
-                              key: "actions",
-                              width: canWriteSelected ? 120 : 48,
-                              render: (_, document) => (
-                                <div
-                                  className={styles.tableActions}
-                                  data-kb-doc-actions=""
-                                  onClick={(event) => event.stopPropagation()}
-                                >
-                                  {renderDocumentActions(document)}
-                                </div>
-                              ),
-                            },
-                          ]}
-                        />
-                      )}
+                                      return (
+                                        <span className={styles.tableFilename}>
+                                          <DocumentFormatIcon
+                                            filename={name}
+                                            size={13}
+                                            className={styles.docTableIcon}
+                                            isDir={document.is_dir}
+                                          />
+                                          {renderEntryName(document)}
+                                        </span>
+                                      );
+                                    },
+                                  },
+                                  {
+                                    title: t("knowledgeBases.entryType"),
+                                    key: "entry_type",
+                                    width: 88,
+                                    render: (_, document) =>
+                                      document.is_dir
+                                        ? t("knowledgeBases.folder")
+                                        : t("knowledgeBases.file"),
+                                  },
+                                  {
+                                    title: t("knowledgeBases.status"),
+                                    key: "status",
+                                    width: 100,
+                                    render: (_, document) =>
+                                      document.is_dir ? (
+                                        "—"
+                                      ) : (
+                                        <Tooltip
+                                          title={
+                                            document.error_message || undefined
+                                          }
+                                        >
+                                          <Tag
+                                            color={documentStatusColor(
+                                              document.status,
+                                            )}
+                                          >
+                                            {t(
+                                              `knowledgeBases.statusesShort.${document.status}`,
+                                            )}
+                                          </Tag>
+                                        </Tooltip>
+                                      ),
+                                  },
+                                  {
+                                    title: t("knowledgeBases.chunks"),
+                                    dataIndex: "chunk_count",
+                                    key: "chunk_count",
+                                    width: 80,
+                                    render: (chunkCount: number, document) =>
+                                      document.is_dir ? (
+                                        "—"
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className={styles.chunkCountButton}
+                                          disabled={!chunkCount}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void openDocumentPreview(
+                                              document,
+                                              "chunks",
+                                            );
+                                          }}
+                                        >
+                                          {chunkCount}
+                                        </button>
+                                      ),
+                                  },
+                                  {
+                                    title: t("knowledgeBases.updatedAt"),
+                                    dataIndex: "updated_at",
+                                    key: "updated_at",
+                                    width: 170,
+                                    render: (updatedAt: number) =>
+                                      formatServerDateTime(updatedAt, timeZone),
+                                  },
+                                  {
+                                    title: t("common.actions"),
+                                    key: "actions",
+                                    width: canWriteSelected ? 120 : 48,
+                                    render: (_, document) => (
+                                      <div
+                                        className={styles.tableActions}
+                                        data-kb-doc-actions=""
+                                        onClick={(event) =>
+                                          event.stopPropagation()
+                                        }
+                                      >
+                                        {renderDocumentActions(document)}
+                                      </div>
+                                    ),
+                                  },
+                                ]}
+                              />
+                            )}
+                          </>
+                        )}
+                      </DocumentBatchActions>
                     </div>
                   </div>
                 </div>
