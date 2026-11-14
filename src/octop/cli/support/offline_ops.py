@@ -14,6 +14,7 @@ from octop.cli.support.db import (
 )
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.cron.session_target import thread_target_key
 from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
@@ -186,7 +187,12 @@ def delete_user_offline(username: str, *, home: Path | None = None) -> None:
 
 
 async def _ensure_dashboard_session(
-    services: Any, *, agent_id: str, user_id: int, session_key: str
+    services: Any,
+    *,
+    agent_id: str,
+    user_id: int,
+    session_key: str,
+    channel_type: str = ThreadRegistry.CHANNEL_DASHBOARD,
 ) -> None:
     registry = ThreadRegistry(
         session_repo=services.session_repo,
@@ -196,7 +202,7 @@ async def _ensure_dashboard_session(
         session_key=session_key,
         agent_id=agent_id,
         user_id=user_id,
-        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        channel_type=channel_type,
     )
 
 
@@ -214,19 +220,38 @@ def create_cron_offline(
     prompt: str,
     fresh_thread: bool = False,
     task_type: str = "agent",
+    thread_id: str | None = None,
     home: Path | None = None,
 ) -> dict[str, Any]:
     build_trigger(trigger)
     cleaned_prompt = require_cron_prompt(prompt)
+    pinned = (thread_id or "").strip()
     session_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+    channel_type = ThreadRegistry.CHANNEL_DASHBOARD
     with open_cli_services(home) as svc:
         if svc.agent_repo.get(agent_id) is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        asyncio.run(
-            _ensure_dashboard_session(
-                svc, agent_id=agent_id, user_id=user_id, session_key=session_key
+        if pinned:
+            thread = svc.thread_repo.get(pinned)
+            if thread is None or thread.agent_id != agent_id:
+                raise OctopError(ErrorCode.NOT_FOUND, f"thread {pinned!r} not found")
+            if thread.user_id != user_id:
+                raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
+            session_key = thread_target_key(pinned)
+            channel_type = thread.channel_type
+            ensure_key = thread.session_key
+        else:
+            ensure_key = session_key
+        if svc.session_repo.get(ensure_key) is None:
+            asyncio.run(
+                _ensure_dashboard_session(
+                    svc,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    session_key=ensure_key,
+                    channel_type=channel_type,
+                )
             )
-        )
         cron_id = new_cron_id()
         svc.cron_repo.create(
             cron_id=cron_id,

@@ -22,6 +22,7 @@ from octop.infra.connectors.gateway.adapters.agently_cli import read_auth_status
 from octop.infra.connectors.gateway.agently_watch import AgentlyWatchManager
 from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.job import CronJob
+from octop.infra.cron.session_target import LATEST_TARGET, pinned_thread_id
 from octop.infra.cron.trigger import (
     ONE_SHOT_MISFIRE_GRACE_SECONDS,
     RECURRING_MISFIRE_GRACE_SECONDS,
@@ -176,12 +177,8 @@ class CronManager:
         if spec is None:
             spec = CronCreateSpec(**kwargs)
         self._mail_source(spec.trigger, spec.user_id)
-        session_key = spec.session_key or ThreadRegistry.dashboard_key(
-            agent_id=spec.agent_id,
-            user_id=spec.user_id,
-        )
-        await self._ensure_session(
-            session_key,
+        session_key = await self._prepare_session_key(
+            spec.session_key,
             agent_id=spec.agent_id,
             user_id=spec.user_id,
         )
@@ -253,6 +250,12 @@ class CronManager:
             existing = self._repos.cron_repo.get(cron_id)
             if existing is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
+            if session_key is not None:
+                session_key = await self._prepare_session_key(
+                    session_key,
+                    agent_id=existing.agent_id,
+                    user_id=existing.user_id,
+                )
             trigger_changed = trigger is not None and trigger != existing.trigger
             enabled_changed = enabled_bool is not None and enabled_bool != bool(existing.enabled)
             # Validate a new trigger, or a mailbox, before persisting. Echoing the
@@ -623,6 +626,33 @@ class CronManager:
 
     async def resume_mail_watch(self, instance_id: str) -> None:
         await self.sync_mail_watch(instance_id)
+
+    async def _prepare_session_key(
+        self,
+        raw: str | None,
+        *,
+        agent_id: str,
+        user_id: int,
+    ) -> str:
+        """Store a channel key, or ``thread:{id}`` for one historical conversation.
+
+        Empty and ``latest`` mean the owner's Dashboard channel. Each run then
+        follows that channel's most recent conversation unless a thread is pinned.
+        """
+        text = (raw or "").strip()
+        pinned = pinned_thread_id(text)
+        if pinned:
+            row = self._gateway.thread_registry.get_thread(pinned)
+            if row is None or row.agent_id != agent_id:
+                raise OctopError(ErrorCode.NOT_FOUND, f"thread {pinned!r} not found")
+            if row.user_id != user_id:
+                raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
+            await self._ensure_session(row.session_key, agent_id=agent_id, user_id=user_id)
+            return text
+        if not text or text == LATEST_TARGET:
+            text = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+        await self._ensure_session(text, agent_id=agent_id, user_id=user_id)
+        return text
 
     async def _ensure_session(self, session_key: str, *, agent_id: str, user_id: int) -> None:
         registry = self._gateway.thread_registry

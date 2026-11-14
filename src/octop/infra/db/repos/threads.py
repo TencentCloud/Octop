@@ -312,6 +312,20 @@ class ThreadRepo:
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
+    def latest_active_for_session(self, *, session_key: str) -> ThreadRow | None:
+        """Newest conversation on this channel session that already has a turn.
+
+        ``last_active`` of 0 is an empty thread. A blank chat created later must
+        not hide the conversation the user last spoke in.
+        """
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads WHERE session_key = ? AND last_active > 0 "
+                "ORDER BY last_active DESC, thread_id DESC LIMIT 1",
+                (session_key,),
+            ).fetchone()
+        return ThreadRow.from_row(row) if row else None
+
     def set_title_if_null(self, thread_id: str, title: str) -> None:
         with self._db.transaction() as conn:
             conn.execute(

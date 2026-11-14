@@ -12,6 +12,7 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  pinnedThreadId,
   truncatePromptPreview,
 } from "../cronDisplay";
 import {
@@ -60,13 +61,18 @@ export const createColumns = (
           typeof meta.octop_session_key === "string"
             ? meta.octop_session_key
             : "";
-        const channel = sessionKey
+        const pinned = pinnedThreadId(sessionKey);
+        const channel = pinned
+          ? ""
+          : sessionKey
           ? channelFromSessionKey(sessionKey)
           : Array.isArray(record.dispatch?.channel)
           ? record.dispatch.channel[0]
           : record.dispatch?.channel || "dashboard";
         const icon = CHANNEL_ICONS[channel as keyof typeof CHANNEL_ICONS];
-        const label = channelLabel(channel, handlers.t);
+        const label = pinned
+          ? handlers.t("cronJobs.form.sessionKeyHistory")
+          : channelLabel(channel, handlers.t);
         return (
           <Tooltip title={id}>
             <div
