@@ -63,6 +63,7 @@ import {
   Trash2,
   User,
   Mail,
+  Monitor,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -90,7 +91,11 @@ import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
 import InviteDrawer from "./InviteDrawer";
 import RootDirSelect from "../../Experts/components/RootDirSelect";
-import { fetchFilesystemDefaults } from "../../Experts/components/agentBackendForm";
+import { getStorageLogo } from "../../../assets/storage";
+import {
+  backendPolicyTypeLabel,
+  fetchFilesystemDefaults,
+} from "../../Experts/components/agentBackendForm";
 import { HOST_FS_ROOT } from "../../Experts/components/rootDirTree";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import expertStyles from "../../Experts/index.module.less";
@@ -128,6 +133,7 @@ interface UserRow {
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
+  allowed_backend_types?: string[] | null;
   /** Present when the users list includes MFA status from the backend. */
   mfa_active?: boolean;
 }
@@ -152,6 +158,8 @@ export interface PolicyFormValues {
   token_quota?: number | null;
   limit_max_agents?: boolean;
   max_agents?: number | null;
+  limit_allowed_backend_types?: boolean;
+  allowed_backend_types?: string[];
 }
 
 const DEFAULT_EXPERT_TEMPLATE_ID = "general-assistant";
@@ -307,6 +315,10 @@ function policyFieldsFromRole(
     token_quota: role.token_quota ?? undefined,
     limit_max_agents: role.max_agents != null,
     max_agents: role.max_agents ?? undefined,
+    limit_allowed_backend_types: (role.allowed_backend_types?.length ?? 0) > 0,
+    allowed_backend_types: role.allowed_backend_types?.length
+      ? [...role.allowed_backend_types]
+      : undefined,
   };
 }
 
@@ -586,6 +598,7 @@ export function policyPayload(
   workspace_root_dir: string | null;
   token_quota: number | null;
   max_agents: number | null;
+  allowed_backend_types: string[] | null;
 } {
   return {
     workspace_root_dir:
@@ -594,6 +607,10 @@ export function policyPayload(
         : null,
     token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
     max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
+    allowed_backend_types:
+      values.limit_allowed_backend_types && values.allowed_backend_types?.length
+        ? [...values.allowed_backend_types]
+        : null,
   };
 }
 
@@ -614,6 +631,12 @@ export function rolePoliciesFromForm(
   }
   if (flat.max_agents != null) {
     policies.push({ name: "max_agents", value: String(flat.max_agents) });
+  }
+  if (flat.allowed_backend_types?.length) {
+    policies.push({
+      name: "allowed_backend_types",
+      value: flat.allowed_backend_types.join(","),
+    });
   }
   return policies;
 }
@@ -743,6 +766,57 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
   );
 }
 
+const BACKEND_POLICY_GROUPS: { labelKey: string; types: readonly string[] }[] =
+  [
+    {
+      labelKey: "storage.groupLocal",
+      types: ["local_shell", "filesystem"],
+    },
+    {
+      labelKey: "storage.groupObject",
+      types: ["cos", "s3", "oss", "obs", "tos", "custom"],
+    },
+    {
+      labelKey: "storage.groupSandbox",
+      types: ["docker", "opensandbox"],
+    },
+    {
+      labelKey: "storage.groupDatabase",
+      types: ["postgres"],
+    },
+  ];
+
+function backendPolicyTypeLogo(type: string): string | undefined {
+  return getStorageLogo(type === "local_shell" ? "shell" : type);
+}
+
+function BackendTypeOptionLabel({
+  type,
+  text,
+}: {
+  type: string;
+  text: string;
+}) {
+  const logo = backendPolicyTypeLogo(type);
+  return (
+    <span className={styles.backendTypeOption}>
+      <span className={styles.backendTypeIconSlot}>
+        {logo ? (
+          <img
+            src={logo}
+            alt=""
+            className={styles.backendTypeIcon}
+            draggable={false}
+          />
+        ) : (
+          <Monitor size={14} strokeWidth={1.75} />
+        )}
+      </span>
+      <span>{text}</span>
+    </span>
+  );
+}
+
 export function ResourcePolicyFields({
   fsTreeRoots,
   workspaceRootAllowed,
@@ -756,6 +830,62 @@ export function ResourcePolicyFields({
       <div className={styles.createSectionTitle}>
         {t("adminUsers.createSectionPolicy")}
       </div>
+      <Form.Item
+        label={t("adminUsers.policyAllowedBackendTypes")}
+        extra={t("adminUsers.policyAllowedBackendTypesHint")}
+      >
+        <Form.Item
+          name="limit_allowed_backend_types"
+          valuePropName="checked"
+          noStyle
+        >
+          <Switch />
+        </Form.Item>
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) =>
+          prev.limit_allowed_backend_types !== cur.limit_allowed_backend_types
+        }
+      >
+        {({ getFieldValue }) =>
+          getFieldValue("limit_allowed_backend_types") ? (
+            <Form.Item
+              name="allowed_backend_types"
+              rules={[
+                {
+                  validator: async (_, value) => {
+                    if (!Array.isArray(value) || value.length === 0) {
+                      throw new Error(
+                        t("adminUsers.policyAllowedBackendTypesRequired"),
+                      );
+                    }
+                  },
+                },
+              ]}
+            >
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="text"
+                options={BACKEND_POLICY_GROUPS.map((group) => ({
+                  label: t(group.labelKey),
+                  options: group.types.map((type) => {
+                    const text = backendPolicyTypeLabel(type, t);
+                    return {
+                      value: type,
+                      text,
+                      label: <BackendTypeOptionLabel type={type} text={text} />,
+                    };
+                  }),
+                }))}
+                placeholder={t("adminUsers.policyAllowedBackendTypesRequired")}
+              />
+            </Form.Item>
+          ) : null
+        }
+      </Form.Item>
       <Form.Item
         label={t("adminUsers.policyWorkspaceRoot")}
         extra={
@@ -2045,6 +2175,8 @@ export default function UsersListPanel() {
       token_quota: undefined,
       limit_max_agents: false,
       max_agents: undefined,
+      limit_allowed_backend_types: false,
+      allowed_backend_types: undefined,
       create_default_expert: true,
       expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
       ...(userRole ? policyFieldsFromRole(userRole, workspaceRootAllowed) : {}),
@@ -2077,6 +2209,10 @@ export default function UsersListPanel() {
       token_quota: row.token_quota ?? undefined,
       limit_max_agents: row.max_agents != null,
       max_agents: row.max_agents ?? undefined,
+      limit_allowed_backend_types: (row.allowed_backend_types?.length ?? 0) > 0,
+      allowed_backend_types: row.allowed_backend_types?.length
+        ? [...row.allowed_backend_types]
+        : undefined,
     });
   };
 
@@ -2673,6 +2809,7 @@ export default function UsersListPanel() {
             limit_workspace_root: false,
             limit_token_quota: false,
             limit_max_agents: false,
+            limit_allowed_backend_types: false,
             create_default_expert: true,
             expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
           }}

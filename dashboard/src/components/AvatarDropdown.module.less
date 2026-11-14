@@ -139,6 +139,38 @@
   }
 }
 
+.accountRow {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.accountRowCompact {
+  width: auto;
+  display: inline-flex;
+}
+
+/* Upgrade prompt sits just left of the chevron, beside the user name. */
+.accountUpgrade {
+  position: absolute;
+  top: 50%;
+  right: 28px;
+  z-index: 1;
+  display: flex;
+  transform: translateY(-50%);
+}
+
+.accountRow:has([data-update-badge]) .triggerName {
+  padding-right: 14px;
+}
+
+.accountUpgradeCompact {
+  top: auto;
+  right: -2px;
+  bottom: -2px;
+  transform: none;
+}
+
 .triggerExpanded {
   display: flex;
   align-items: center;

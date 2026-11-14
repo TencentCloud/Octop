@@ -17,6 +17,7 @@ PREFERENCES_KEY_PREFERRED_MODEL = "preferred_model"
 PREFERENCES_KEY_MODEL_REASONING = "model_reasoning"
 PREFERENCES_KEY_TIMEZONE = "timezone"
 PREFERENCES_KEY_SIDEBAR_NAV = "sidebar_nav"
+PREFERENCES_KEY_ONBOARDING_COMPLETED = "onboarding_completed"
 
 # Keep in sync with dashboard/src/layouts/sidebarNav.tsx SIDEBAR_NAV_KEYS.
 SIDEBAR_NAV_KEYS = frozenset(
@@ -309,4 +310,18 @@ def merge_sidebar_nav_json(current_raw: str | None, layout: Any | None) -> str:
     else:
         groups, items = validate_sidebar_nav(layout)
         data[PREFERENCES_KEY_SIDEBAR_NAV] = sidebar_nav_to_dict(groups, items)
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+
+
+def get_onboarding_completed_from_json(raw: str | None) -> bool:
+    """True once the user has finished or skipped the dashboard welcome guide."""
+    return parse_preferences_json(raw).get(PREFERENCES_KEY_ONBOARDING_COMPLETED) is True
+
+
+def merge_onboarding_completed_json(current_raw: str | None, completed: bool) -> str:
+    data = parse_preferences_json(current_raw)
+    if completed:
+        data[PREFERENCES_KEY_ONBOARDING_COMPLETED] = True
+    else:
+        data.pop(PREFERENCES_KEY_ONBOARDING_COMPLETED, None)
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"))

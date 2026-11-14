@@ -71,9 +71,7 @@ describe("ChatTitleBar", () => {
     expect(titleBar).toContain("display: flex");
     expect(titleBar).toContain("padding: 0 var(--chat-title-pad-x)");
     expect(titleBar).not.toContain("window-controls-inset-end");
-    expect(css).not.toMatch(
-      /\.chatTitleBar \{[^}]*window-controls-inset-end/,
-    );
+    expect(css).not.toMatch(/\.chatTitleBar \{[^}]*window-controls-inset-end/);
     expect(titleBar).not.toMatch(/^\s*max-width:|chatTitleEditBtn/m);
     expect(left).toContain("flex: 1");
     expect(left).toContain("min-width: 0");
