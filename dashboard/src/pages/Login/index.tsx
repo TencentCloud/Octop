@@ -51,6 +51,17 @@ import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { type PublicCaptchaConfig } from "./captchaAdapters";
+import {
+  desktopLocalAutoLoginHeld,
+  isLocalDesktopUser,
+  releaseDesktopLocalAutoLogin,
+  renewDesktopSession,
+} from "../../api/desktopSession";
+import { isDesktopShell } from "../../utils/desktopBridge";
+
+// Per page load, not per mount: the point is to stop a renew/refuse cycle from
+// ping-ponging between /login and /chat.
+let desktopAutoLoginTried = false;
 
 type MfaStepMode = "totp" | "recovery" | "passkey";
 
@@ -125,6 +136,9 @@ export default function LoginPage() {
   const [captchaReady, setCaptchaReady] = useState(false);
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const [showForgotHelp, setShowForgotHelp] = useState(false);
+  const [showCreateLocal, setShowCreateLocal] = useState(false);
+  const [localAccountExists, setLocalAccountExists] = useState(false);
+  const [localLoading, setLocalLoading] = useState(false);
   const [captcha, setCaptcha] = useState<PublicCaptchaConfig>({
     provider: "slider",
   });
@@ -146,6 +160,33 @@ export default function LoginPage() {
     void applyGuestLocale();
   }, []);
 
+  // Desktop: landing here does not mean a signed-out user. The shell holds a
+  // device credential and the wizard minted a password no human ever types, so
+  // try a refresh before showing a form nobody can fill in. Runs once per page
+  // load, so a server that keeps refusing cannot bounce us in a loop.
+  useEffect(() => {
+    if (desktopAutoLoginTried) return;
+    desktopAutoLoginTried = true;
+    // Logout of the local account sets this so the form stays up for other
+    // accounts. The flag dies with the window; the next launch can enter again.
+    if (desktopLocalAutoLoginHeld()) return;
+    let cancelled = false;
+    void renewDesktopSession().then((issued) => {
+      if (
+        cancelled ||
+        !issued?.access_token ||
+        !isLocalDesktopUser(issued.access_token)
+      ) {
+        return;
+      }
+      setAuthToken(issued.access_token, true);
+      navigate("/chat", { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
+
   useEffect(() => {
     let cancelled = false;
     void isConditionalMediationAvailable().then((ok) => {
@@ -166,6 +207,10 @@ export default function LoginPage() {
           clearAuthToken();
           navigate("/setup", { replace: true });
           return;
+        }
+        if (isDesktopShell()) {
+          setShowCreateLocal(true);
+          setLocalAccountExists(status.local_account);
         }
         // Only probe OIDC / captcha after setup is done — otherwise lockdown 503s.
         authApi
@@ -360,6 +405,26 @@ export default function LoginPage() {
       popup?.close();
       message.error(apiErrorMessage(err, t("login.oidcStartFailed"), t));
       setSsoLoadingKind(null);
+    }
+  };
+
+  const handleLocalAccount = async () => {
+    if (!localAccountExists) {
+      navigate("/setup?localAccount=1");
+      return;
+    }
+    setLocalLoading(true);
+    try {
+      releaseDesktopLocalAutoLogin();
+      const issued = await renewDesktopSession();
+      if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
+        message.error(t("login.localSignInFailed"));
+        return;
+      }
+      setAuthToken(issued.access_token, true);
+      navigate("/chat", { replace: true });
+    } finally {
+      setLocalLoading(false);
     }
   };
 
@@ -745,6 +810,50 @@ export default function LoginPage() {
           onReadyChange={setCaptchaReady}
         />
 
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <Checkbox
+            checked={remember}
+            onChange={(e) => setRemember(e.target.checked)}
+            style={{
+              margin: 0,
+              fontSize: 13,
+              color: "var(--fn-text-tertiary)",
+            }}
+          >
+            {t("login.remember")}
+          </Checkbox>
+          <button
+            type="button"
+            data-testid="login-forgot-password-toggle"
+            onClick={() => setShowForgotHelp(true)}
+            style={{
+              margin: 0,
+              padding: 0,
+              border: "none",
+              background: "none",
+              cursor: "pointer",
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "var(--fn-text-tertiary)",
+              flexShrink: 0,
+            }}
+          >
+            {t("login.forgotPassword", "Forgot password?")}
+          </button>
+        </div>
+        <ForgotPasswordModal
+          open={showForgotHelp}
+          onClose={() => setShowForgotHelp(false)}
+        />
+
         <Button
           type="primary"
           size="large"
@@ -801,90 +910,54 @@ export default function LoginPage() {
           )
         ) : null}
 
-        <div
-          style={{
-            width: "100%",
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        >
+        {(showCreateLocal || providers.length > 0) && (
           <div
             style={{
+              width: "100%",
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
               gap: 12,
-              width: "100%",
+              color: "var(--fn-text-tertiary)",
+              fontSize: 13,
             }}
           >
-            <Checkbox
-              checked={remember}
-              onChange={(e) => setRemember(e.target.checked)}
+            <span
               style={{
-                margin: 0,
-                flex: "1 1 auto",
-                minWidth: 0,
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: "var(--fn-text-tertiary)",
+                flex: 1,
+                height: 1,
+                background: "var(--fn-border-primary)",
               }}
-            >
-              {t("login.remember")}
-            </Checkbox>
-            <button
-              type="button"
-              data-testid="login-forgot-password-toggle"
-              onClick={() => setShowForgotHelp(true)}
+            />
+            {t("login.or")}
+            <span
               style={{
-                margin: 0,
-                padding: 0,
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: "var(--fn-text-tertiary)",
-                flexShrink: 0,
+                flex: 1,
+                height: 1,
+                background: "var(--fn-border-primary)",
               }}
-            >
-              {t("login.forgotPassword", "Forgot password?")}
-            </button>
+            />
           </div>
-          <ForgotPasswordModal
-            open={showForgotHelp}
-            onClose={() => setShowForgotHelp(false)}
-          />
-        </div>
+        )}
+
+        {showCreateLocal && (
+          <Button
+            size="large"
+            block
+            data-testid="login-create-local"
+            loading={localLoading}
+            onClick={() => void handleLocalAccount()}
+            style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+          >
+            {t(
+              localAccountExists
+                ? "login.signInLocalAccount"
+                : "login.createLocalAccount",
+            )}
+          </Button>
+        )}
 
         {providers.length > 0 && (
           <>
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                color: "var(--fn-text-tertiary)",
-                fontSize: 13,
-              }}
-            >
-              <span
-                style={{
-                  flex: 1,
-                  height: 1,
-                  background: "var(--fn-border-primary)",
-                }}
-              />
-              {t("login.or")}
-              <span
-                style={{
-                  flex: 1,
-                  height: 1,
-                  background: "var(--fn-border-primary)",
-                }}
-              />
-            </div>
             {providers.map((provider) => (
               <Button
                 key={provider.kind}

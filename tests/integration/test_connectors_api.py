@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from octop.api.routers.connectors import _connector_service
 from octop.infra.connectors.custom_mcp import CUSTOM_MCP_KIND
 from octop.infra.connectors.oauth.registry import save_oauth_ctx
 from octop.infra.utils.ulid import new_ulid
@@ -846,6 +847,98 @@ async def test_custom_mcp_oauth_start_unified(env):
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
 
 
+async def test_custom_mcp_oauth_client_is_saved_redacted_and_used(env):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    server = {
+        "transport": "streamable_http",
+        "url": "https://mcp.example.com/mcp",
+        "oauth_client": {
+            "client_id": "cid",
+            "client_secret": "shh",
+            "authorization_endpoint": "https://auth.example.com/authorize",
+            "token_endpoint": "https://auth.example.com/token",
+        },
+    }
+    put = await c.put(
+        "/api/connectors/custom-mcp", headers=auth, json={"servers": {"manual": server}}
+    )
+    assert put.status_code == 200
+    preview = put.json()["servers"]["manual"]["oauth_client"]
+    assert preview["has_client_secret"] is True
+    assert "client_secret" not in preview
+
+    # Saving what the dashboard got back must not lose the secret.
+    again = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={"servers": put.json()["servers"]},
+    )
+    assert again.status_code == 200
+
+    mocked_start = AsyncMock(
+        return_value=("https://auth.example.com/authorize?state=x", "verifier", {})
+    )
+    with (
+        patch("octop.api.routers.connectors._is_public_http_uri", return_value=False),
+        patch("octop.api.routers.connectors.start_oauth_for_target", mocked_start),
+    ):
+        r = await c.post(
+            "/api/connectors/oauth/start",
+            headers=auth,
+            json={"target": {"type": "custom_mcp", "server_name": "manual"}},
+        )
+    assert r.status_code == 200
+    assert mocked_start.await_args.kwargs["oauth_client"] == server["oauth_client"]
+
+    oauth_state = "manual-client-state"
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=oauth_state,
+        user_id=user_id,
+        kind=CUSTOM_MCP_KIND,
+        code_verifier="verifier123",
+        redirect_after="/connectors",
+    )
+    save_oauth_ctx(
+        srv.services.settings_repo,
+        state_id,
+        {
+            "flow": "custom_mcp",
+            "kind": CUSTOM_MCP_KIND,
+            "server_name": "manual",
+            "issuer": "https://auth.example.com",
+            "resource": None,
+            "client_id": "cid",
+            "client_secret": "shh",
+            "token_endpoint": "https://auth.example.com/token",
+            "redirect_uri": "http://testserver/api/connectors/oauth/callback",
+            "metadata": {
+                "authorization_endpoint": "https://auth.example.com/authorize",
+                "token_endpoint": "https://auth.example.com/token",
+            },
+        },
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        return_value={"access_token": "tok", "refresh_token": "r", "expires_at": 9_999_999_999},
+    ):
+        callback = await c.get(
+            f"/api/connectors/oauth/callback?code=authcode&state={oauth_state}",
+            follow_redirects=False,
+        )
+    assert callback.status_code == 200
+
+    stored = _connector_service(srv).get_custom_servers(user_id)["manual"]
+    assert stored["oauth"]["oauth_client_id"] == "cid"
+    assert stored["oauth"]["oauth_token_endpoint"] == "https://auth.example.com/token"
+    listed = await c.get("/api/connectors/custom-mcp", headers=auth)
+    assert listed.json()["servers"]["manual"]["oauth"]["configured"] is True
+    assert "shh" not in listed.text
+
+
 @pytest.mark.parametrize("oauth", [False, True])
 async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch, oauth):
     from octop.api.routers.internal_mcp import _service
@@ -967,7 +1060,7 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
         state_id=state_id,
         state=state_id,
         user_id=user_id,
-        kind="notion",
+        kind="custom-mcp",
         code_verifier="verifier",
         redirect_after="/connectors",
     )
@@ -983,3 +1076,94 @@ async def test_oauth_callback_escapes_error_html(env, exchange_error):
     assert response.status_code == 400
     assert payload not in response.text
     assert escape(payload) in response.text
+
+
+@pytest.mark.parametrize(
+    ("error", "status"), [("access_denied", "cancelled"), ("server_error", "error")]
+)
+async def test_a_cancelled_or_refused_authorization_is_reported_to_the_opener(env, error, status):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state="opaque-state",
+        user_id=user_id,
+        kind="custom-mcp",
+        code_verifier="verifier",
+        redirect_after="/chat/agent-1?x=1",
+    )
+
+    response = await c.get(
+        "/api/connectors/oauth/callback", params={"error": error, "state": "opaque-state"}
+    )
+
+    assert response.status_code == 400
+    assert f'"status": "{status}"' in response.text
+    assignment = re.search(r"window.location.href = (.*);", response.text)
+    assert assignment is not None
+    target = urlsplit(json.loads(assignment.group(1)))
+    assert target.path == "/chat/agent-1"
+    assert parse_qs(target.query) == {
+        "x": ["1"],
+        "oauth_state": [state_id],
+        "oauth_error": [status],
+    }
+    # The state is used up, and the outcome is waiting for a page that polls.
+    assert srv.services.repos.connector_repo.consume_oauth_state("opaque-state") is None
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 200
+    assert pending.json()["status"] == status
+    assert pending.json()["tokens"] == {}
+
+
+async def test_a_cancelled_catalog_authorization_keeps_the_plain_callback_page(env):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state="catalog-state",
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+
+    response = await c.get(
+        "/api/connectors/oauth/callback",
+        params={"error": "access_denied", "state": "catalog-state"},
+    )
+
+    assert response.status_code == 400
+    assert "octop:connector-oauth" not in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 404
+
+
+async def test_a_failed_token_exchange_is_reported_as_an_error(env):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="custom-mcp",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        side_effect=ValueError("invalid_grant"),
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback", params={"code": "c", "state": state_id}
+        )
+
+    assert response.status_code == 400
+    assert '"status": "error"' in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.json()["status"] == "error"
+    assert "invalid_grant" in pending.json()["message"]

@@ -348,5 +348,15 @@ describe("agentsSnapshotEqual", () => {
         }),
       ]),
     ).toBe(false);
+    expect(
+      agentsSnapshotEqual(base, [
+        agent("A", "running", {
+          default_model: null,
+          knowledge_base_ids: [],
+          mcp_servers: [],
+          last_active: 20,
+        }),
+      ]),
+    ).toBe(false);
   });
 });

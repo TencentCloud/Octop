@@ -26,6 +26,7 @@ async def test_create_list_get_delete(env):
     assert r.json()["login_retry_after_seconds"] == 0
     assert isinstance(r.json()["created_at"], int)
     assert r.json()["created_at"] > 0
+    assert r.json()["last_login_at"] is None
 
     r = await c.delete(f"/api/users/{uid}", headers=auth)
     assert r.status_code == 204

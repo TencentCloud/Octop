@@ -116,6 +116,30 @@ def test_process_document_indexes_chunks_and_marks_ready(
     assert KnowledgeIndex(kb.id).search([1.0, 0.0], 1)[0].doc_id == doc.id
 
 
+def test_process_document_skips_a_document_moved_to_another_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    repo = KnowledgeRepo(pool)
+    owner_id = UserRepo(pool).create(username="owner", password_hash="h", role="user")
+    old = repo.create_base(owner_user_id=owner_id, name="Old")
+    new = repo.create_base(owner_user_id=owner_id, name="New")
+    doc = repo.create_document(
+        kb_id=old.id, filename="notes.md", content_type="text/markdown", byte_size=5
+    )
+    repo.move_to_base(doc, target_kb_id=new.id, target_folder="", max_documents=0)
+    services = SimpleNamespace(knowledge_repo=repo, settings_repo=SettingsRepo(pool))
+    monkeypatch.setattr(jobs, "assert_knowledge_usable", lambda *_args: None)
+
+    jobs.process_document(services, old.id, doc.id)
+
+    moved = repo.get_document(doc.id)
+    assert moved is not None
+    assert (moved.kb_id, moved.status) == (new.id, "pending")
+
+
 def test_process_document_indexes_ocr_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
     pool = SqlitePool(tmp_path / "octop.db")
@@ -192,3 +216,47 @@ def test_resume_pending_index_jobs_resets_processing_and_enqueues(
 
     assert repo.get_document(doc.id).status == "pending"
     assert enqueued == [(kb.id, doc.id)]
+
+
+def test_indexing_refreshes_an_existing_graph_after_the_index_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs.reset_index_semaphore_for_tests()
+    events: list[str] = []
+    monkeypatch.setattr(jobs, "process_document", lambda *_args: events.append("indexed"))
+    monkeypatch.setattr(
+        jobs, "mark_document_reindexed", lambda _services, _kb, doc_id: doc_id == "with-graph"
+    )
+    monkeypatch.setattr(
+        jobs,
+        "enqueue_document_graph",
+        lambda _services, _kb, doc_id: events.append(f"graph:{doc_id}"),
+    )
+
+    async def run() -> None:
+        await jobs.enqueue_index_document(object(), "kb", "with-graph")
+        await jobs.enqueue_index_document(object(), "kb", "without-graph")
+
+    asyncio.run(run())
+
+    assert events == ["indexed", "graph:with-graph", "indexed"]
+
+
+def test_indexing_succeeds_when_the_graph_cannot_be_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs.reset_index_semaphore_for_tests()
+
+    def boom(*_args: object) -> bool:
+        raise RuntimeError("graph storage is unavailable")
+
+    monkeypatch.setattr(jobs, "process_document", lambda *_args: None)
+    monkeypatch.setattr(jobs, "mark_document_reindexed", boom)
+    monkeypatch.setattr(
+        jobs, "enqueue_document_graph", lambda *_args: pytest.fail("must not be queued")
+    )
+
+    async def run() -> None:
+        await jobs.enqueue_index_document(object(), "kb", "doc")
+
+    asyncio.run(run())

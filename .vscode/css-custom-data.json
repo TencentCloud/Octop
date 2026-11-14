@@ -1,0 +1,19 @@
+{
+  "version": 1.1,
+  "properties": [
+    {
+      "name": "app-region",
+      "status": "nonstandard",
+      "description": "Electron/Chromium window drag region. `drag` makes the element a window drag handle; `no-drag` keeps a control clickable inside a drag region.",
+      "syntax": "drag | no-drag",
+      "values": [{ "name": "drag" }, { "name": "no-drag" }]
+    },
+    {
+      "name": "-webkit-app-region",
+      "status": "nonstandard",
+      "description": "Vendor-prefixed form of `app-region`. Chromium uses this name for frameless-window dragging.",
+      "syntax": "drag | no-drag",
+      "values": [{ "name": "drag" }, { "name": "no-drag" }]
+    }
+  ]
+}
