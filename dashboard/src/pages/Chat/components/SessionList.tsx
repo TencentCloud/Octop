@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Dropdown } from "antd";
+import { Checkbox, Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
   GitFork,
@@ -16,6 +16,10 @@ import {
 import cx from "classnames";
 import { type Session } from "../hooks/useSessions";
 import { saveSessionShared } from "../utils/shareSession";
+import SessionBatchSelection, {
+  type BatchDeleteSessions,
+  type SessionSelection,
+} from "./SessionBatchSelection";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
 import {
@@ -84,6 +88,7 @@ interface SessionItemProps {
   shareable: boolean;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  selection?: SessionSelection;
 }
 
 const SessionItem = memo(function SessionItem({
@@ -99,6 +104,7 @@ const SessionItem = memo(function SessionItem({
   shareable,
   forkDisabled,
   forkDisabledHint,
+  selection,
 }: SessionItemProps) {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -203,14 +209,26 @@ const SessionItem = memo(function SessionItem({
         session.pinned && styles.sessionRowPinned,
       )}
       onClick={() => {
-        if (!isEditing) onSelect(session.id);
+        if (selection) selection.toggle(session.id);
+        else if (!isEditing) onSelect(session.id);
       }}
-      role="button"
-      tabIndex={0}
+      role={selection ? undefined : "button"}
+      tabIndex={selection ? undefined : 0}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !isEditing) onSelect(session.id);
+        if (e.key === "Enter" && !isEditing && !selection) onSelect(session.id);
       }}
     >
+      {selection ? (
+        <Checkbox
+          aria-label={t("chat.selectSession", { name: session.name })}
+          checked={selection.selectedIds.has(session.id)}
+          disabled={
+            selection.disabled || !selection.selectableIds.has(session.id)
+          }
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => selection.toggle(session.id)}
+        />
+      ) : null}
       <span className={styles.sessionRowLead}>
         {workStatus !== "idle" ? (
           <SessionWorkStatusIcon status={workStatus} />
@@ -222,7 +240,7 @@ const SessionItem = memo(function SessionItem({
           />
         )}
       </span>
-      {isEditing ? (
+      {isEditing && !selection ? (
         <input
           ref={inputRef}
           className={styles.sessionNameInput}
@@ -256,7 +274,7 @@ const SessionItem = memo(function SessionItem({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          {menuItems && menuItems.length > 0 ? (
+          {!selection && menuItems && menuItems.length > 0 ? (
             <Dropdown
               menu={{ items: menuItems }}
               trigger={["click"]}
@@ -293,6 +311,7 @@ interface AgentCardProps {
     id: string,
     compact: boolean,
   ) => void | Promise<boolean | null | void>;
+  onBatchDelete: BatchDeleteSessions;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -319,6 +338,7 @@ function ActiveAgentCard({
   onSelect,
   onNewChat,
   onDelete,
+  onBatchDelete,
   onRename,
   onPin,
   onFork,
@@ -428,50 +448,61 @@ function ActiveAgentCard({
             {t("chat.agentNotRunningHint")}
           </div>
         ) : sessions.length === 0 ? (
-          <div className={styles.agentCardSessionsEmpty}>
-            {t("chat.noSessionsYet", "直接发消息即可开始对话")}
-          </div>
+          !hasMore && (
+            <div className={styles.agentCardSessionsEmpty}>
+              {t("chat.noSessionsYet", "直接发消息即可开始对话")}
+            </div>
+          )
         ) : filteredSessions.length === 0 ? (
           <div className={styles.agentCardSessionsEmpty}>
             {t("chat.noSearchResults", "没有匹配的会话")}
           </div>
         ) : (
           <>
-            {filteredSessions.map((s) => (
-              <SessionItem
-                key={s.id}
-                session={s}
-                isActive={activeId === s.id}
-                workStatus={resolveSessionWorkStatus(s, liveWorkingIds)}
-                onSelect={(id) => onSelect(id, agent.agent_id)}
-                onDelete={onDelete}
-                onRename={onRename}
-                onPin={onPin}
-                onContribute={onContribute}
-                shareable={Boolean(agent.is_shared)}
-                onFork={(id) => onFork(id, agent.agent_id)}
-                forkDisabled={
-                  activeId === s.id ? activeForkDisabled : undefined
-                }
-                forkDisabledHint={
-                  activeId === s.id ? activeForkDisabledHint : undefined
-                }
-              />
-            ))}
-            {showExpandMore ? (
-              <button
-                type="button"
-                className={styles.sessionLoadMore}
-                onClick={onLoadMore}
-                disabled={loadingMore}
-              >
-                {loadingMore
-                  ? t("common.loading")
-                  : t("chat.expandMore", "展开更多")}
-              </button>
-            ) : null}
+            <SessionBatchSelection
+              agentId={agent.agent_id}
+              sessions={filteredSessions}
+              onDelete={onBatchDelete}
+            >
+              {(selection) =>
+                filteredSessions.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    selection={selection}
+                    isActive={activeId === s.id}
+                    workStatus={resolveSessionWorkStatus(s, liveWorkingIds)}
+                    onSelect={(id) => onSelect(id, agent.agent_id)}
+                    onDelete={onDelete}
+                    onRename={onRename}
+                    onPin={onPin}
+                    onContribute={onContribute}
+                    shareable={Boolean(agent.is_shared)}
+                    onFork={(id) => onFork(id, agent.agent_id)}
+                    forkDisabled={
+                      activeId === s.id ? activeForkDisabled : undefined
+                    }
+                    forkDisabledHint={
+                      activeId === s.id ? activeForkDisabledHint : undefined
+                    }
+                  />
+                ))
+              }
+            </SessionBatchSelection>
           </>
         )}
+        {sessionsEnabled && showExpandMore ? (
+          <button
+            type="button"
+            className={styles.sessionLoadMore}
+            onClick={onLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore
+              ? t("common.loading")
+              : t("chat.expandMore", "展开更多")}
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -584,6 +615,7 @@ interface SessionListProps {
     id: string,
     compact: boolean,
   ) => void | Promise<boolean | null | void>;
+  onBatchDelete: BatchDeleteSessions;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -605,6 +637,7 @@ export default function SessionList({
   onAgentSelect,
   onNewChat,
   onDelete,
+  onBatchDelete,
   onRename,
   onPin,
   onFork,
@@ -698,6 +731,20 @@ export default function SessionList({
     });
   }, [hiddenAgents, listedAgents, searchQuery, searching, showingHidden]);
 
+  const handleBatchDelete = useCallback(
+    async (agentId: string, ids: string[]) => {
+      const result = await onBatchDelete(agentId, ids);
+      if (result.deletedIds.length > 0) {
+        const deleted = new Set(result.deletedIds);
+        catalog.patch(agentId, (prev) =>
+          prev.filter((session) => !deleted.has(session.id)),
+        );
+      }
+      return result;
+    },
+    [onBatchDelete, catalog],
+  );
+
   const deleteOther = useCallback(
     async (agentId: string, id: string, compact: boolean) => {
       const deleted = await deleteConversation(agentId, id, compact, t);
@@ -789,6 +836,7 @@ export default function SessionList({
               ? onDelete
               : (id, compact) => deleteOther(agent.agent_id, id, compact)
           }
+          onBatchDelete={handleBatchDelete}
           onRename={
             isActive
               ? onRename
