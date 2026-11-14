@@ -24,6 +24,17 @@ afterEach(() => {
 });
 
 describe("inflight transcript cache", () => {
+  it("round-trips the turn id that keeps a later stream from joining this bubble", () => {
+    flushInflightTail(thread, [
+      msg("u", "user", "继续"),
+      { ...msg("a", "assistant", "写到这里"), turnId: "turn-a" },
+    ]);
+    expect(readInflightTail(thread)?.map((message) => message.turnId)).toEqual([
+      undefined,
+      "turn-a",
+    ]);
+  });
+
   it("round-trips the current turn and drops earlier history", () => {
     flushInflightTail(thread, [
       msg("old", "assistant", "更早"),

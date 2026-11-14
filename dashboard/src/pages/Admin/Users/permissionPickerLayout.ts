@@ -127,6 +127,7 @@ const NAV_PERMISSION_CHIPS: readonly {
       "tls",
       "captcha",
       "update",
+      "app_config",
     ],
   },
 ];
