@@ -357,7 +357,10 @@ export default function CreateFromExpertDrawer({
     setDetailPrompts(null);
     if (source.kind === "market") {
       setFileContents(ensurePromptFiles([]));
-      setOriginalFileContents([]);
+      // Baseline the editor placeholders too — otherwise diffComposerFiles
+      // reads the untouched empty AGENTS.md stub as a user edit and the
+      // create request overrides the template-seeded file with "".
+      setOriginalFileContents(ensurePromptFiles([]));
       setDetailLoading(false);
       return;
     }
@@ -372,7 +375,7 @@ export default function CreateFromExpertDrawer({
         if (cancelled) return;
         const files = data.file_contents ?? [];
         setFileContents(ensurePromptFiles(files));
-        setOriginalFileContents(files);
+        setOriginalFileContents(ensurePromptFiles(files));
         setDetailPrompts(normalizeQuickPrompts(data.quick_prompts));
         const welcome = data.welcome_message;
         const welcomeText = pickLocale(welcome, lang);
