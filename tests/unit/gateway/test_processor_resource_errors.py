@@ -72,6 +72,35 @@ def test_stream_error_preserves_resource_error_code() -> None:
     assert "12/10" in message
 
 
+@pytest.mark.asyncio
+async def test_mcp_load_failure_keeps_servers_and_code() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "done"}
+
+    processor, _msg, _appended = _processor_with_stream(stream)
+    row = MagicMock()
+    row.user_id = 1
+    row.config_json = "{}"
+    processor._agent_manager.get_row = MagicMock(return_value=row)
+    processor._agent_manager.default_mcp_servers = MagicMock(return_value=None)
+    processor._agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["github"])
+    processor._agent_manager.prepare_chat_mcp = AsyncMock(return_value=["github"])
+
+    with pytest.raises(OctopError) as exc_info:
+        await processor._resolve_turn_mcp_servers(
+            agent_id="agent-1",
+            user_id=1,
+            explicit=None,
+            apply_defaults=True,
+        )
+
+    message, code = stream_error(exc_info.value, "en")
+
+    assert code == "CONNECTOR_MCP_LOAD_FAILED"
+    assert "github" in message
+    assert "{servers}" not in message
+
+
 def _processor_with_stream(
     stream: Callable[..., AsyncIterator[dict[str, Any]]],
 ) -> tuple[GlobalProcessor, InboundMessage, list[list[Any]]]:

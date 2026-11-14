@@ -213,7 +213,13 @@ async def dashboard_chat_ws(
                     turn=turn,
                 )
             except OctopError as exc:
-                await send_frame({"type": "error", "message": str(exc)})
+                await send_frame(
+                    {
+                        "type": "error",
+                        "message": str(exc),
+                        "error_code": exc.code.value,
+                    }
+                )
                 await send_frame({"type": "done"})
                 continue
 

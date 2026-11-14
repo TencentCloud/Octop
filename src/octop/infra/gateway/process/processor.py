@@ -2003,7 +2003,11 @@ class GlobalProcessor:
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
-                raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
+                raise OctopError(
+                    ErrorCode.CONNECTOR_MCP_LOAD_FAILED,
+                    detail,
+                    details={"servers": ", ".join(failed)},
+                )
             logger.warning(
                 "skipping turn MCP for agent=%s user=%s (%s)",
                 agent_id,
