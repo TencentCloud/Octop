@@ -327,6 +327,16 @@ class ProviderStore:
             ):
                 yield row
 
+    def iter_auto_route_rows(self) -> Iterator[Any]:
+        """Usable rows eligible for an automatic route.
+
+        Automatic routing has no user context, so it only uses providers with a
+        global key. Keyless and BYOK rows stay available for manual selection.
+        """
+        for row in self.iter_usable_rows():
+            if str(getattr(row, "api_key", "") or "").strip():
+                yield row
+
     def has_usable_providers(self) -> bool:
         """True when at least one enabled provider has credentials and a model."""
         return next(self.iter_usable_rows(), None) is not None
@@ -398,8 +408,8 @@ class ProviderStore:
         return False
 
     def resolve_multimodal_model_ref(self) -> str | None:
-        """First enabled image-capable model across usable providers."""
-        for row in self.iter_usable_rows():
+        """First enabled image-capable model across auto-routable providers."""
+        for row in self.iter_auto_route_rows():
             for model in row.get_models():
                 if not is_chat_eligible_model(
                     model, provider_name=row.name, provider_api_key=row.api_key
@@ -425,8 +435,8 @@ class ProviderStore:
         return upgraded or ref
 
     def resolve_first_model_ref(self) -> str | None:
-        """First chat-eligible enabled model across usable providers."""
-        for row in self.iter_usable_rows():
+        """First chat-eligible enabled model across auto-routable providers."""
+        for row in self.iter_auto_route_rows():
             for model in row.get_models():
                 if not is_chat_eligible_model(
                     model, provider_name=row.name, provider_api_key=row.api_key
@@ -442,9 +452,13 @@ class ProviderStore:
         *,
         needs_multimodal: bool,
     ) -> list[AutoRouteCandidate]:
-        """Return stable, usable candidates for one automatic route."""
+        """Return stable, auto-routable candidates for one automatic route.
+
+        Candidates require a global provider key; keyless and BYOK rows are
+        manual-only because this list is not user-aware.
+        """
         candidates: list[AutoRouteCandidate] = []
-        for row in self.iter_usable_rows():
+        for row in self.iter_auto_route_rows():
             for model in row.get_models():
                 if not is_chat_eligible_model(
                     model,
@@ -488,6 +502,14 @@ class ProviderStore:
                 model, provider_name=provider_name, provider_api_key=row.api_key
             )
         return False
+
+    def is_model_ref_auto_usable(self, ref: str) -> bool:
+        """True when *ref* may join an automatic route (provider has a global key)."""
+        if not self.is_model_ref_usable(ref):
+            return False
+        provider_name, _, _ = ref.strip().partition("/")
+        row = self._provider_repo.get_by_name(provider_name)
+        return row is not None and bool(str(getattr(row, "api_key", "") or "").strip())
 
     def get_model_reasoning_capability(self, ref: str) -> dict[str, Any] | None:
         """Return normalized reasoning metadata for a usable model ref."""

@@ -2088,7 +2088,7 @@ class AgentManager:
         name, model_id = self._repos.settings_repo.get_active_model()
         if name and model_id:
             ref = f"{name}/{model_id}"
-            if self._providers.is_model_ref_usable(ref):
+            if self._providers.is_model_ref_auto_usable(ref):
                 return ref
         return self._providers.resolve_first_model_ref()
 
@@ -2103,8 +2103,8 @@ class AgentManager:
         return None
 
     def is_auto_route_model_available(self, ref: str) -> bool:
-        """Return whether a usable model can start an automatic route now."""
-        return self._providers.is_model_ref_usable(ref) and self._model_health.is_routable(ref)
+        """Return whether an auto-routable model can start a route now."""
+        return self._providers.is_model_ref_auto_usable(ref) and self._model_health.is_routable(ref)
 
     # ------------------------------------------------------------------
     # Hot-reload — rebuild harness agents after config / provider changes

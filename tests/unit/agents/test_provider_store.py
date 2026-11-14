@@ -306,7 +306,7 @@ def test_build_harness_configs_skips_incomplete_rows(store: ProviderStore) -> No
 
 
 def test_keyless_provider_is_usable(store: ProviderStore) -> None:
-    """Keyless endpoints are valid; BYOK providers authenticate per call."""
+    """Keyless endpoints are valid for manual selection; BYOK providers authenticate per call."""
     store._provider_repo.create(
         name="bare",
         kind="openai",
@@ -316,6 +316,40 @@ def test_keyless_provider_is_usable(store: ProviderStore) -> None:
     assert store.has_usable_providers() is True
     assert [row.name for row in store.iter_usable_rows()] == ["bare"]
     assert store.is_model_ref_usable("bare/m1") is True
+
+
+def test_keyless_provider_is_manual_only(store: ProviderStore) -> None:
+    """AUTO needs a global key; manual refs may still use keyless/BYOK rows."""
+    store._provider_repo.create(
+        name="bare",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        models_json=json.dumps([{"id": "vision", "name": "vision", "input": ["text", "image"]}]),
+    )
+    store._provider_repo.create(
+        name="keyed",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "text", "name": "text", "input": ["text"]}]),
+    )
+
+    assert {row.name for row in store.iter_usable_rows()} == {"bare", "keyed"}
+    assert store.is_model_ref_usable("bare/vision") is True
+    assert store.is_model_ref_auto_usable("bare/vision") is False
+    assert store.is_model_ref_auto_usable("keyed/text") is True
+
+    assert {row.name for row in store.iter_auto_route_rows()} == {"keyed"}
+    assert [
+        candidate.ref for candidate in store.list_auto_route_candidates(needs_multimodal=False)
+    ] == ["keyed/text"]
+    assert store.list_auto_route_candidates(needs_multimodal=True) == []
+    assert store.resolve_first_model_ref() == "keyed/text"
+    assert store.resolve_multimodal_model_ref() is None
+    assert (
+        store.resolve_model_for_multimodal_turn("bare/vision", needs_multimodal=True)
+        == "bare/vision"
+    )
 
 
 def test_has_usable_providers_requires_enabled_model(store: ProviderStore) -> None:
