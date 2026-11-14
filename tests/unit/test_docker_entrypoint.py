@@ -21,7 +21,7 @@ bash_exe = shutil.which("bash")
 bash_only = pytest.mark.skipif(bash_exe is None, reason="requires a bash shell")
 
 REPO = Path(__file__).resolve().parents[2]
-ENTRYPOINT = REPO / "docker" / "docker-entrypoint.sh"
+ENTRYPOINT = REPO / "deploy" / "docker" / "docker-entrypoint.sh"
 
 
 def _bash_path(path: Path) -> str:

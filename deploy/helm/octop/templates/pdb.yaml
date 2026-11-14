@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "octop.fullname" . }}
+  labels:
+    {{- include "octop.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "octop.selectorLabels" . | nindent 6 }}

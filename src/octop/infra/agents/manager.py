@@ -85,6 +85,7 @@ from octop.infra.skills.workspace_catalog import (
     repair_workspace_skill_manifests,
 )
 from octop.infra.utils.locale import Locale, resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
@@ -849,6 +850,7 @@ class AgentManager:
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
+                raise_if_backend_types_disallowed,
                 raise_if_workspace_dir_outside_user_root,
             )
 
@@ -877,6 +879,13 @@ class AgentManager:
                     config,
                 )
                 self._assert_named_storage_backends(spec.user_id, config.get("backend"))
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    require_present=True,
+                )
                 self._assert_model_ref(spec.user_id, spec.default_model)
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
@@ -1134,6 +1143,7 @@ class AgentManager:
                     effective_workspace_root_dir,
                     persisted_workspace_within_root,
                     raise_if_backend_outside_user_root,
+                    raise_if_backend_types_disallowed,
                 )
 
                 allowed_root = effective_workspace_root_dir(
@@ -1158,6 +1168,13 @@ class AgentManager:
                 self._assert_named_storage_backends(
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                )
+                raise_if_backend_types_disallowed(
+                    self._repos.user_policy_repo,
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                    named_kind=self._named_storage_kind,
+                    previous=parse_config_json(owner_row.config_json).get("backend"),
                 )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
@@ -2043,8 +2060,12 @@ class AgentManager:
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
             ):
-                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                    yield chunk
+                chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -2083,10 +2104,12 @@ class AgentManager:
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
             ):
-                async for chunk in self._harness_manager.resume_hitl(
-                    agent_id, thread_id, decisions
-                ):
-                    yield chunk
+                chunk_stream = self._harness_manager.resume_hitl(agent_id, thread_id, decisions)
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -3233,6 +3256,13 @@ class AgentManager:
             resource_key=ref,
             is_owner=False,
         )
+
+    def _named_storage_kind(self, name: str) -> str | None:
+        row = self._repos.storage_backend_repo.get_by_name(name)
+        if row is None:
+            return None
+        kind = (row.kind or "").strip().lower()
+        return kind or None
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs

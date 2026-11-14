@@ -66,6 +66,11 @@ export interface OctopAgent {
   mcp_servers?: string[];
   /** Aggregated unread count across all sessions for this agent (current user). */
   unread_count?: number;
+  /**
+   * Unix seconds of this user's latest turn with the expert.
+   * ``null`` when they have never chatted with it.
+   */
+  last_active?: number | null;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */
   bootstrap_pending?: boolean;
   /** ``expert`` (default) or ``team`` host. */
@@ -164,6 +169,7 @@ export function agentsSnapshotEqual(
         a.agent_id === b.agent_id &&
         a.state === b.state &&
         a.unread_count === b.unread_count &&
+        a.last_active === b.last_active &&
         a.bootstrap_pending === b.bootstrap_pending &&
         a.name === b.name &&
         a.icon === b.icon &&
