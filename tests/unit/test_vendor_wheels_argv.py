@@ -2,7 +2,7 @@
 
 The optional ``--overrides`` argv is built into ``extra=()`` (line 30), which stays
 empty for every platform where ``write_green_overrides`` prints no override file —
-that is all of them except ``windows-arm64`` and ``darwin-amd64``. Under the
+that is all of them except ``windows-arm64``, ``darwin-arm64``, and ``darwin-amd64``. Under the
 script's ``set -euo pipefail`` (line 7), bash 3.2 — the default ``/bin/bash`` on
 macOS, and the shell ``desktop/portable/README.md:78`` tells you to run this with —
 expands an empty array as an unbound variable and aborts before ``uv`` is called.
@@ -24,9 +24,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "desktop" / "portable" / "vendor-wheels.sh"
 BASH = shutil.which("bash")
 
-# ``extra`` is empty for these; only the two override platforms add an argument.
-NO_OVERRIDE_PLATS = ["darwin-arm64", "linux-amd64", "windows-amd64"]
-OVERRIDE_PLATS = ["darwin-amd64"]
+# ``extra`` is empty for these; override platforms add ``--overrides``.
+NO_OVERRIDE_PLATS = ["linux-amd64", "windows-amd64"]
+OVERRIDE_PLATS = ["darwin-arm64", "darwin-amd64"]
 
 # The installers and packaging scripts are POSIX shell entry points.
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only shell scripts")
@@ -100,3 +100,36 @@ def test_override_platform_still_passes_its_file(plat: str, tmp_path: Path) -> N
 
     assert "--overrides" in argv_log
     assert f"overrides-{plat}.txt]" in argv_log
+
+
+@posix_only
+def test_windows_arm64_overrides_drop_unwheeled_ocr(tmp_path: Path) -> None:
+    """opencv-python and pyclipper have never published a win_arm64 wheel.
+
+    The full package drops them instead of compiling OpenCV / Cython on the
+    runner. shapely's floor lives in the knowledge-ocr extra, not here.
+    """
+    assert BASH is not None
+    common = REPO_ROOT / "desktop" / "portable" / "_common.sh"
+    out = tmp_path / "overrides-windows-arm64.txt"
+    result = subprocess.run(
+        [
+            BASH,
+            "-c",
+            'source "$1" && write_green_overrides windows-arm64 "$2"',
+            "bash",
+            str(common),
+            str(out),
+        ],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "REPO_ROOT": str(REPO_ROOT), "GREEN_ROOT": str(tmp_path)},
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    text = out.read_text(encoding="utf-8")
+    assert "shapely" not in text
+    assert "opencv-python ; sys_platform == 'octop-unsupported'" in text
+    assert "pyclipper ; sys_platform == 'octop-unsupported'" in text
+    assert "cryptography==46.0.0" in text

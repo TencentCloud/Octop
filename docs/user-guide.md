@@ -112,10 +112,10 @@ octop run --help
 
 ```bash
 # 构建并后台启动
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # 或手动构建后运行
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -134,6 +134,8 @@ docker run -d \
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 
 > 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
+
+多副本怎么工作、虚拟机和 Kubernetes 怎么装，见 [cluster_CN.md](cluster_CN.md)。Kubernetes 的安装参数见 [deploy/helm/octop/README_CN.md](../deploy/helm/octop/README_CN.md)。
 
 ---
 

@@ -14,6 +14,7 @@ from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge import service as service_module
+from octop.infra.knowledge.index import KnowledgeIndex
 from octop.infra.knowledge.service import MAX_DOCS_PER_KB, KnowledgeService
 from octop.infra.utils.paths import PathLayout
 
@@ -406,6 +407,176 @@ def test_move_does_not_cross_knowledge_bases(service: KnowledgeService) -> None:
         service.move_document(other.id, doc.id, actor_user_id=owner, target_folder="")
 
 
+def _two_bases(service: KnowledgeService) -> tuple[int, str, str]:
+    """owner, a source base holding ``notes/law/act.md`` and ``notes/readme.md``, and an
+    empty target base with an ``inbox`` folder. Every file is indexed with one chunk."""
+    owner, kb_id = _base_with_tree(service)
+    repo = service._services.knowledge_repo
+    for row in repo.list_documents(kb_id):
+        if not row.is_dir:
+            KnowledgeIndex(kb_id).replace_doc_chunks(row.id, [f"text of {row.path}"], [[1.0, 0.0]])
+            repo.update_document(row.id, status="ready", chunk_count=1)
+    repo.update_base(kb_id, embedding_dim=2)
+    target = service.create_base(owner_user_id=owner, name="Target")
+    service.create_folder(target.id, actor_user_id=owner, path="inbox")
+    return owner, kb_id, target.id
+
+
+def test_move_file_to_another_base_takes_its_original_and_chunks(
+    service: KnowledgeService,
+) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    doc = repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    moved = service.move_document(
+        kb_id, doc.id, actor_user_id=owner, target_folder="inbox", target_kb_id=target_id
+    )
+
+    assert (moved.id, moved.kb_id, moved.path) == (doc.id, target_id, "inbox/readme.md")
+    assert (moved.status, moved.chunk_count) == ("ready", 1)
+    assert repo.get_document_by_path(kb_id, "notes/readme.md") is None
+    assert (repo.get_base(kb_id).doc_count, repo.get_base(target_id).doc_count) == (1, 1)
+    assert repo.get_base(target_id).embedding_dim == 2
+    blobs = service._blobs()
+    assert blobs.read_bytes(target_id, doc.id, "readme.md") == b"x"
+    assert not blobs.exists(kb_id, doc.id, "readme.md")
+    assert KnowledgeIndex(target_id).read_doc_chunks(doc.id) == [
+        ("text of notes/readme.md", [1.0, 0.0], {})
+    ]
+    assert KnowledgeIndex(kb_id).list_doc_chunks(doc.id) == []
+
+
+def test_move_folder_to_another_base_takes_its_subtree(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    folder = repo.get_document_by_path(kb_id, "notes")
+
+    service.move_document(
+        kb_id, folder.id, actor_user_id=owner, target_folder="", target_kb_id=target_id
+    )
+
+    assert repo.list_documents(kb_id) == [repo.get_document_by_path(kb_id, "archive")]
+    assert sorted(row.path for row in repo.list_documents(target_id)) == [
+        "inbox",
+        "notes",
+        "notes/law",
+        "notes/law/act.md",
+        "notes/readme.md",
+    ]
+    act = repo.get_document_by_path(target_id, "notes/law/act.md")
+    assert KnowledgeIndex(target_id).list_doc_chunks(act.id) == [(0, "text of notes/law/act.md")]
+    assert (repo.get_base(kb_id).doc_count, repo.get_base(target_id).doc_count) == (0, 2)
+
+
+def test_move_to_a_base_with_another_model_indexes_again(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    repo.update_base(target_id, embedding_model="other-model")
+    doc = repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    moved = service.move_document(
+        kb_id, doc.id, actor_user_id=owner, target_folder="", target_kb_id=target_id
+    )
+
+    assert (moved.status, moved.chunk_count) == ("pending", 0)
+    assert service.pending_file_ids(moved) == [doc.id]
+    assert KnowledgeIndex(target_id).list_doc_chunks(doc.id) == []
+    assert KnowledgeIndex(kb_id).list_doc_chunks(doc.id) == []
+    assert service._blobs().exists(target_id, doc.id, "readme.md")
+
+
+def test_move_to_another_base_keeps_a_failed_file_failed(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    doc = repo.get_document_by_path(kb_id, "notes/readme.md")
+    repo.update_document(doc.id, status="failed", error_message="bad file", chunk_count=0)
+
+    moved = service.move_document(
+        kb_id, doc.id, actor_user_id=owner, target_folder="", target_kb_id=target_id
+    )
+
+    assert (moved.status, moved.error_message) == ("failed", "bad file")
+
+
+def test_move_to_another_base_waits_for_indexing(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    repo.update_document(
+        repo.get_document_by_path(kb_id, "notes/law/act.md").id, status="processing"
+    )
+
+    with pytest.raises(OctopError) as raised:
+        service.move_document(
+            kb_id,
+            repo.get_document_by_path(kb_id, "notes").id,
+            actor_user_id=owner,
+            target_folder="",
+            target_kb_id=target_id,
+        )
+
+    assert raised.value.code is ErrorCode.KNOWLEDGE_MOVE_BUSY
+    assert repo.get_document_by_path(kb_id, "notes/law/act.md") is not None
+
+
+def test_move_to_a_full_base_changes_nothing(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    service.update_base(target_id, actor_user_id=owner, max_documents=1)
+    folder = repo.get_document_by_path(kb_id, "notes")
+
+    with pytest.raises(OctopError) as raised:
+        service.move_document(
+            kb_id, folder.id, actor_user_id=owner, target_folder="", target_kb_id=target_id
+        )
+
+    assert raised.value.code is ErrorCode.KNOWLEDGE_DOC_LIMIT
+    assert repo.get_document(folder.id).kb_id == kb_id
+    assert repo.get_base(target_id).doc_count == 0
+    assert repo.get_base(kb_id).doc_count == 2
+
+
+def test_move_to_another_base_rejects_a_name_collision(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    repo = service._services.knowledge_repo
+    service.create_folder(target_id, actor_user_id=owner, path="notes")
+
+    with pytest.raises(OctopError) as raised:
+        service.move_document(
+            kb_id,
+            repo.get_document_by_path(kb_id, "notes").id,
+            actor_user_id=owner,
+            target_folder="",
+            target_kb_id=target_id,
+        )
+
+    assert raised.value.code is ErrorCode.KNOWLEDGE_MOVE_NAME_TAKEN
+
+
+def test_move_to_another_base_needs_its_folder(service: KnowledgeService) -> None:
+    owner, kb_id, target_id = _two_bases(service)
+    doc = service._services.knowledge_repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    with pytest.raises(LookupError, match="folder not found"):
+        service.move_document(
+            kb_id, doc.id, actor_user_id=owner, target_folder="archive", target_kb_id=target_id
+        )
+
+
+def test_move_into_a_base_the_actor_cannot_write_is_rejected(service: KnowledgeService) -> None:
+    owner, kb_id, _target_id = _two_bases(service)
+    stranger = service._services.user_repo.create(username="s", password_hash="h", role="user")
+    theirs = service._services.knowledge_repo.create_base(
+        owner_user_id=stranger, name="Theirs", shared=True
+    )
+    doc = service._services.knowledge_repo.get_document_by_path(kb_id, "notes/readme.md")
+
+    with pytest.raises(PermissionError, match="write"):
+        service.move_document(
+            kb_id, doc.id, actor_user_id=owner, target_folder="", target_kb_id=theirs.id
+        )
+
+
 def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
     users = service._services.user_repo
     owner = users.create(username="owner", password_hash="h", role="user")
@@ -417,3 +588,87 @@ def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
 
     with pytest.raises(PermissionError, match="write"):
         service.move_document(kb.id, folder.id, actor_user_id=viewer, target_folder="b")
+
+
+def _graph_fixture(service: KnowledgeService) -> tuple[str, int, int, str]:
+    from octop.infra.knowledge.graph_store import (
+        ChunkEntity,
+        ChunkGraph,
+        ChunkRelation,
+        SqliteKnowledgeGraphStore,
+    )
+    from octop.infra.knowledge.index import KnowledgeIndex
+
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    reader = users.create(username="reader", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs", shared=True)
+    document = service._repo.create_document(
+        kb_id=kb.id, filename="plan.md", content_type="text/markdown", byte_size=1, status="ready"
+    )
+    service._repo.create_document(
+        kb_id=kb.id, filename="draft.md", content_type="text/markdown", byte_size=1
+    )
+    KnowledgeIndex(kb.id).replace_doc_chunks(document.id, ["Alice leads Apollo."], [[1.0, 0.0]])
+    SqliteKnowledgeGraphStore(kb.id).replace_document(
+        document.id,
+        [
+            ChunkGraph(
+                ordinal=0,
+                entities=(ChunkEntity("Alice", "person"), ChunkEntity("Apollo", "product")),
+                relations=(ChunkRelation("Alice", "Apollo", "leads"),),
+            )
+        ],
+    )
+    return kb.id, owner, reader, document.id
+
+
+def test_readers_can_view_a_graph_but_not_build_or_delete_it(service: KnowledgeService) -> None:
+    kb_id, owner, reader, doc_id = _graph_fixture(service)
+    outsider = service._services.user_repo.create(username="out", password_hash="h", role="user")
+    service.update_base(kb_id, actor_user_id=owner, shared=False)
+    with pytest.raises(PermissionError):
+        service.get_graph(kb_id, actor_user_id=outsider)
+    service.update_base(kb_id, actor_user_id=owner, shared=True)
+
+    view = service.get_graph(kb_id, actor_user_id=reader)
+
+    assert view["stats"]["built"] is True
+    assert view["stats"]["documents_total"] == 1
+    assert [node["name"] for node in view["nodes"]] == ["Alice", "Apollo"]
+    assert view["edges"][0]["labels"] == ["leads"]
+    entity = service.get_graph_entity(kb_id, "alice", actor_user_id=reader)
+    assert entity["passages"][0]["doc_id"] == doc_id
+    with pytest.raises(PermissionError):
+        service.graph_build_targets(kb_id, actor_user_id=reader)
+    with pytest.raises(PermissionError):
+        service.clear_graph(kb_id, actor_user_id=reader)
+
+
+def test_graph_build_needs_an_extraction_model_and_targets_indexed_documents(
+    service: KnowledgeService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kb_id, owner, _reader, doc_id = _graph_fixture(service)
+
+    with pytest.raises(RuntimeError, match="knowledge graph extraction is not ready"):
+        service.graph_build_targets(kb_id, actor_user_id=owner)
+
+    monkeypatch.setattr(service_module, "get_graph_capability", lambda *_args: {"usable": True})
+    assert service.graph_build_targets(kb_id, actor_user_id=owner) == [doc_id]
+
+
+def test_clearing_a_graph_and_deleting_a_document_remove_graph_rows(
+    service: KnowledgeService,
+) -> None:
+    from octop.infra.knowledge.graph_store import SqliteKnowledgeGraphStore
+
+    kb_id, owner, _reader, doc_id = _graph_fixture(service)
+    store = SqliteKnowledgeGraphStore(kb_id)
+
+    service.delete_document(kb_id, doc_id, actor_user_id=owner)
+    assert store.counts() == (0, 0)
+    assert store.document_states() == {}
+
+    store.mark_document("other", "ready")
+    service.clear_graph(kb_id, actor_user_id=owner)
+    assert service.get_graph(kb_id, actor_user_id=owner)["stats"]["built"] is False

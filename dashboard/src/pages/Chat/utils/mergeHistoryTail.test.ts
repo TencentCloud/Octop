@@ -3,6 +3,7 @@ import type { ChatMessage } from "../hooks/sseHelpers";
 import {
   mergeHistoryWithLocalTail,
   preferLocalTranscript,
+  restoreUnpersistedTurn,
   serverCaughtUp,
   retainedHistoryPrefix,
 } from "./mergeHistoryTail";
@@ -384,5 +385,71 @@ describe("history cache chronology", () => {
         pending("u15", "user", "15:02"),
       ]),
     ).toEqual([]);
+  });
+});
+
+describe("restoreUnpersistedTurn", () => {
+  it("puts the cached turn back when history was loaded before the write", () => {
+    const loaded = [msg("old", "assistant", "之前的回复", 1_000)];
+    const cached = [
+      msg("local-user", "user", "继续做", 5_000),
+      {
+        ...msg("local-a", "assistant", "已经写到这里了", 5_100),
+        status: "streaming" as const,
+        turnId: "turn-a",
+      },
+    ];
+    const restored = restoreUnpersistedTurn(loaded, cached, true);
+    expect(restored.map((message) => message.id)).toEqual([
+      "old",
+      "local-user",
+      "local-a",
+    ]);
+    expect(restored[1].localPending).toBe(true);
+    expect(restored[2].turnId).toBe("turn-a");
+    expect(restored[2].status).toBe("streaming");
+    expect(
+      mergeHistoryWithLocalTail(loaded, restored, true).map(
+        (message) => message.id,
+      ),
+    ).toEqual(["old", "local-user", "local-a"]);
+  });
+
+  it("does not append a finished unmatched turn while another turn is active", () => {
+    const loaded = [msg("old", "assistant", "之前的回复", 1_000)];
+    const cached = [
+      msg("local-user", "user", "更早的问题", 2_000),
+      {
+        ...msg("local-a", "assistant", "已经结束", 2_100),
+        status: "done" as const,
+        turnId: "turn-old",
+      },
+    ];
+    expect(restoreUnpersistedTurn(loaded, cached, true)).toEqual(loaded);
+  });
+
+  it("seals a restored reply that has no turn id so a later turn cannot continue it", () => {
+    const restored = restoreUnpersistedTurn(
+      [msg("old", "assistant", "之前的回复", 1_000)],
+      [
+        msg("local-user", "user", "继续做", 5_000),
+        {
+          ...msg("local-a", "assistant", "半截", 5_100),
+          status: "streaming" as const,
+        },
+      ],
+      true,
+    );
+    expect(restored[2].status).toBe("done");
+    expect(restored[2].turnId).toBeUndefined();
+  });
+
+  it("leaves an unmatched cache off the page once the turn is idle", () => {
+    const loaded = [msg("old", "assistant", "之前的回复", 1_000)];
+    const cached = [
+      msg("local-user", "user", "继续做", 5_000),
+      msg("local-a", "assistant", "已经写到这里了", 5_100),
+    ];
+    expect(restoreUnpersistedTurn(loaded, cached, false)).toEqual(loaded);
   });
 });

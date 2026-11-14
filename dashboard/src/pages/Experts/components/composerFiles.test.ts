@@ -29,6 +29,42 @@ describe("diffComposerFiles", () => {
       omit_files: ["skills/demo/SKILL.md"],
     });
   });
+
+  it("does not report an empty file without a baseline as an override", () => {
+    expect(diffComposerFiles([], [{ name: "AGENTS.md", content: "" }])).toEqual(
+      {
+        file_overrides: [],
+        omit_files: [],
+      },
+    );
+  });
+
+  it("reports a stub filled in by the user, and clearing a baseline file", () => {
+    expect(
+      diffComposerFiles([], [{ name: "AGENTS.md", content: "rules" }]),
+    ).toEqual({
+      file_overrides: [{ name: "AGENTS.md", content: "rules" }],
+      omit_files: [],
+    });
+    expect(
+      diffComposerFiles(
+        [{ name: "AGENTS.md", content: "rules" }],
+        [{ name: "AGENTS.md", content: "" }],
+      ),
+    ).toEqual({
+      file_overrides: [{ name: "AGENTS.md", content: "" }],
+      omit_files: [],
+    });
+  });
+
+  it("stays empty when both sides carry the same ensurePromptFiles stubs", () => {
+    expect(
+      diffComposerFiles(ensurePromptFiles([]), ensurePromptFiles([])),
+    ).toEqual({
+      file_overrides: [],
+      omit_files: [],
+    });
+  });
 });
 
 describe("composer file helpers", () => {

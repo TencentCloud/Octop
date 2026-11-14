@@ -26,6 +26,7 @@ import {
 } from "../../../components/AvatarPicker";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import AgentTrajectoryField from "./AgentTrajectoryField";
+import MoreConfigCollapse from "./MoreConfigCollapse";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
@@ -152,6 +153,7 @@ interface EditFormValues {
   backend_choice: string;
   composite_default: string;
   root_dir?: string;
+  workspace_dir?: string;
   max_iters?: number;
   max_input_length?: number;
   temperature?: number;
@@ -331,6 +333,8 @@ function EditAgentDrawerBody({
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
+          workspace_dir:
+            typeof cfg.workspace_dir === "string" ? cfg.workspace_dir : "",
           ...readAgentRuntimeFormValues(ag),
           enable_trajectory: cfg.enable_trajectory !== false,
           knowledge_base_ids: Array.isArray(ag.knowledge_base_ids)
@@ -889,6 +893,18 @@ function EditAgentDrawerBody({
                   form.setFieldsValue({ welcome_message: text })
                 }
               />
+              <AgentBackendFields
+                backends={backends}
+                backendsLoading={backendsLoading}
+                backendChoice={backendChoice}
+                pathMappings={pathMappings}
+                rootDirMode="edit"
+                disabled
+                skipHostFilesystem={remote}
+                onAddPathMapping={addPathMapping}
+                onRemovePathMapping={removePathMapping}
+                onUpdatePathMapping={updatePathMapping}
+              />
               <ResourceVisibilityFormItem
                 allowOwner
                 visibility={expertVisibility}
@@ -901,6 +917,10 @@ function EditAgentDrawerBody({
                   );
                 }}
               />
+            </Form>
+          </div>
+          <MoreConfigCollapse>
+            <Form form={form} layout="vertical" size="middle">
               <Form.Item
                 name="conversation_mode"
                 label={t("experts.defaultModeLabel")}
@@ -933,18 +953,6 @@ function EditAgentDrawerBody({
                 />
               </Form.Item>
 
-              <AgentBackendFields
-                backends={backends}
-                backendsLoading={backendsLoading}
-                backendChoice={backendChoice}
-                pathMappings={pathMappings}
-                rootDirMode="edit"
-                disabled
-                skipHostFilesystem={remote}
-                onAddPathMapping={addPathMapping}
-                onRemovePathMapping={removePathMapping}
-                onUpdatePathMapping={updatePathMapping}
-              />
               <AgentTrajectoryField />
               <ExpertComposerDefaultsFields agentId={agent.agent_id} />
               {!skillPackagesSupported ? (
@@ -978,177 +986,57 @@ function EditAgentDrawerBody({
                 ]}
               />
             ) : null}
-          </div>
 
-          {isAgentChatReady(agent.state) && (
-            <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
-              <Collapse
-                ghost
-                className={styles.drawerCollapse}
-                defaultActiveKey={["configFiles"]}
-                style={{ width: "100%" }}
-                items={[
-                  {
-                    key: "configFiles",
-                    label: (
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          width: "100%",
-                        }}
-                      >
-                        <span>
-                          {t("experts.configFiles", {
-                            count: workspaceFiles.length,
-                          })}
-                        </span>
-                        <Button
-                          type="link"
-                          size="small"
-                          style={{ padding: 0, height: "auto" }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setWorkspaceDrawerOpen(true);
-                          }}
-                        >
-                          {t("experts.openWorkspace")}
-                        </Button>
-                      </div>
-                    ),
-                    children: (
-                      <div className={styles.fileList}>
-                        {filesLoading ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "center",
-                              padding: "16px 0",
-                            }}
-                          >
-                            <Spin size="small" />
-                          </div>
-                        ) : workspaceFiles.length === 0 ? (
-                          <div
-                            style={{
-                              fontSize: 13,
-                              color: "var(--fn-text-tertiary)",
-                              padding: "8px 0",
-                            }}
-                          >
-                            {t("experts.noWorkspaceFiles")}
-                          </div>
-                        ) : (
-                          workspaceFiles.map((file) => {
-                            const basename = displayName(file);
-                            const meta = metaForFile(basename, t);
-                            return (
-                              <div key={file} className={styles.fileItem}>
-                                <button
-                                  type="button"
-                                  className={styles.fileItemMain}
-                                  onClick={() => openFileEditor(file)}
-                                >
-                                  <div
-                                    className={styles.fileIcon}
-                                    style={{
-                                      color: meta.color,
-                                      background: `${meta.color}1a`,
-                                    }}
-                                  >
-                                    {meta.icon}
-                                  </div>
-                                  <div className={styles.fileMeta}>
-                                    <div className={styles.fileLabel}>
-                                      {meta.label}
-                                    </div>
-                                    <div className={styles.filePath}>
-                                      {basename}
-                                    </div>
-                                  </div>
-                                  <span className={styles.fileHint}>
-                                    {t("experts.editFile")}
-                                  </span>
-                                </button>
-                                <Dropdown
-                                  menu={{
-                                    items: [
-                                      {
-                                        key: "rename",
-                                        label: t("workspace.rename"),
-                                        onClick: () =>
-                                          openListRename(file, "config"),
-                                      },
-                                      {
-                                        key: "delete",
-                                        label: t("common.delete"),
-                                        danger: true,
-                                        onClick: () =>
-                                          confirmDeleteConfigFile(file),
-                                      },
-                                    ],
-                                  }}
-                                  trigger={["click"]}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.fileItemMenu}
-                                    aria-label={t("workspace.rename")}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <MoreHorizontal size={16} />
-                                  </button>
-                                </Dropdown>
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    ),
-                  },
-                  {
-                    key: "skills",
-                    label: (
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          width: "100%",
-                        }}
-                      >
-                        <span>
-                          {t("experts.skillFilesTitle", {
-                            count: agentSkills.length,
-                          })}
-                        </span>
-                        <Button
-                          type="link"
-                          size="small"
-                          style={{ padding: 0, height: "auto" }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSkillCatalogOpen(true);
-                          }}
-                        >
-                          {t("experts.manageSkills")}
-                        </Button>
-                      </div>
-                    ),
-                    children: (
-                      <>
-                        <p
+            {isAgentChatReady(agent.state) && (
+              <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
+                <Collapse
+                  ghost
+                  className={styles.drawerCollapse}
+                  defaultActiveKey={["configFiles"]}
+                  style={{ width: "100%" }}
+                  items={[
+                    {
+                      key: "configFiles",
+                      label: (
+                        <div
                           style={{
-                            fontSize: 12,
-                            color: "var(--fn-text-tertiary)",
-                            margin: "0 0 8px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            width: "100%",
                           }}
                         >
-                          {t("experts.skillFilesEditHint")}
-                        </p>
+                          <span>
+                            {t("experts.configFiles", {
+                              count: workspaceFiles.length,
+                            })}
+                          </span>
+                          <Button
+                            type="link"
+                            size="small"
+                            style={{ padding: 0, height: "auto" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setWorkspaceDrawerOpen(true);
+                            }}
+                          >
+                            {t("experts.openWorkspace")}
+                          </Button>
+                        </div>
+                      ),
+                      children: (
                         <div className={styles.fileList}>
-                          {agentSkills.length === 0 ? (
+                          {filesLoading ? (
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent: "center",
+                                padding: "16px 0",
+                              }}
+                            >
+                              <Spin size="small" />
+                            </div>
+                          ) : workspaceFiles.length === 0 ? (
                             <div
                               style={{
                                 fontSize: 13,
@@ -1156,54 +1044,34 @@ function EditAgentDrawerBody({
                                 padding: "8px 0",
                               }}
                             >
-                              {t("experts.noSkillFiles")}
+                              {t("experts.noWorkspaceFiles")}
                             </div>
                           ) : (
-                            agentSkills.map((skill) => {
-                              const iconUrl = skill.icon_url?.trim();
-                              const label = skillDisplayName(skill);
+                            workspaceFiles.map((file) => {
+                              const basename = displayName(file);
+                              const meta = metaForFile(basename, t);
                               return (
-                                <div
-                                  key={skill.slug ?? skill.name}
-                                  className={styles.fileItem}
-                                >
+                                <div key={file} className={styles.fileItem}>
                                   <button
                                     type="button"
                                     className={styles.fileItemMain}
-                                    onClick={() =>
-                                      openFileEditor(
-                                        `/skills/${
-                                          skill.slug ?? skill.name
-                                        }/SKILL.md`,
-                                      )
-                                    }
+                                    onClick={() => openFileEditor(file)}
                                   >
                                     <div
                                       className={styles.fileIcon}
                                       style={{
-                                        color: "#8B5CF6",
-                                        background: iconUrl
-                                          ? "transparent"
-                                          : "#8B5CF61a",
+                                        color: meta.color,
+                                        background: `${meta.color}1a`,
                                       }}
                                     >
-                                      {iconUrl ? (
-                                        <img
-                                          src={iconUrl}
-                                          alt={label}
-                                          className={styles.fileIconImg}
-                                        />
-                                      ) : (
-                                        skill.emoji?.trim() ||
-                                        DEFAULT_SKILL_EMOJI
-                                      )}
+                                      {meta.icon}
                                     </div>
                                     <div className={styles.fileMeta}>
                                       <div className={styles.fileLabel}>
-                                        {label}
+                                        {meta.label}
                                       </div>
                                       <div className={styles.filePath}>
-                                        {skill.description || "SKILL.md"}
+                                        {basename}
                                       </div>
                                     </div>
                                     <span className={styles.fileHint}>
@@ -1214,11 +1082,17 @@ function EditAgentDrawerBody({
                                     menu={{
                                       items: [
                                         {
+                                          key: "rename",
+                                          label: t("workspace.rename"),
+                                          onClick: () =>
+                                            openListRename(file, "config"),
+                                        },
+                                        {
                                           key: "delete",
                                           label: t("common.delete"),
                                           danger: true,
                                           onClick: () =>
-                                            confirmDeleteSkill(skill),
+                                            confirmDeleteConfigFile(file),
                                         },
                                       ],
                                     }}
@@ -1227,7 +1101,7 @@ function EditAgentDrawerBody({
                                     <button
                                       type="button"
                                       className={styles.fileItemMenu}
-                                      aria-label={t("common.delete")}
+                                      aria-label={t("workspace.rename")}
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <MoreHorizontal size={16} />
@@ -1238,155 +1112,289 @@ function EditAgentDrawerBody({
                             })
                           )}
                         </div>
-                      </>
-                    ),
-                  },
-                  {
-                    key: "subagents",
-                    label: (
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
-                        <span>
-                          {t("experts.subagentFilesTitle", {
-                            count: agentSubagents.length,
-                          })}
-                        </span>
-                        <Button
-                          type="link"
-                          size="small"
-                          style={{ padding: 0, height: "auto" }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSubagentCatalogOpen(true);
-                          }}
-                        >
-                          {t("experts.manageSubagents")}
-                        </Button>
-                      </div>
-                    ),
-                    children: (
-                      <>
-                        <p
+                      ),
+                    },
+                    {
+                      key: "skills",
+                      label: (
+                        <div
                           style={{
-                            fontSize: 12,
-                            color: "var(--fn-text-tertiary)",
-                            margin: "0 0 8px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            width: "100%",
                           }}
                         >
-                          {t("experts.subagentFilesHint")}
-                        </p>
-                        <div className={styles.fileList}>
-                          {agentSubagents.length === 0 ? (
-                            <div
-                              style={{
-                                fontSize: 13,
-                                color: "var(--fn-text-tertiary)",
-                                padding: "8px 0",
-                              }}
-                            >
-                              {t("experts.noSubagentFiles")}
-                            </div>
-                          ) : (
-                            agentSubagents.map((subagent) => (
+                          <span>
+                            {t("experts.skillFilesTitle", {
+                              count: agentSkills.length,
+                            })}
+                          </span>
+                          <Button
+                            type="link"
+                            size="small"
+                            style={{ padding: 0, height: "auto" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSkillCatalogOpen(true);
+                            }}
+                          >
+                            {t("experts.manageSkills")}
+                          </Button>
+                        </div>
+                      ),
+                      children: (
+                        <>
+                          <p
+                            style={{
+                              fontSize: 12,
+                              color: "var(--fn-text-tertiary)",
+                              margin: "0 0 8px",
+                            }}
+                          >
+                            {t("experts.skillFilesEditHint")}
+                          </p>
+                          <div className={styles.fileList}>
+                            {agentSkills.length === 0 ? (
                               <div
-                                key={subagent.slug}
-                                className={styles.fileItem}
+                                style={{
+                                  fontSize: 13,
+                                  color: "var(--fn-text-tertiary)",
+                                  padding: "8px 0",
+                                }}
                               >
-                                <button
-                                  type="button"
-                                  className={styles.fileItemMain}
-                                  onClick={() =>
-                                    openFileEditor(
-                                      subagentFilePath(subagent.path),
-                                    )
-                                  }
-                                >
+                                {t("experts.noSkillFiles")}
+                              </div>
+                            ) : (
+                              agentSkills.map((skill) => {
+                                const iconUrl = skill.icon_url?.trim();
+                                const label = skillDisplayName(skill);
+                                return (
                                   <div
-                                    className={styles.fileIcon}
-                                    style={{
-                                      color: "#6366f1",
-                                      background: "#6366f11a",
-                                    }}
+                                    key={skill.slug ?? skill.name}
+                                    className={styles.fileItem}
                                   >
-                                    {subagent.emoji ?? "🤖"}
+                                    <button
+                                      type="button"
+                                      className={styles.fileItemMain}
+                                      onClick={() =>
+                                        openFileEditor(
+                                          `/skills/${
+                                            skill.slug ?? skill.name
+                                          }/SKILL.md`,
+                                        )
+                                      }
+                                    >
+                                      <div
+                                        className={styles.fileIcon}
+                                        style={{
+                                          color: "#8B5CF6",
+                                          background: iconUrl
+                                            ? "transparent"
+                                            : "#8B5CF61a",
+                                        }}
+                                      >
+                                        {iconUrl ? (
+                                          <img
+                                            src={iconUrl}
+                                            alt={label}
+                                            className={styles.fileIconImg}
+                                          />
+                                        ) : (
+                                          skill.emoji?.trim() ||
+                                          DEFAULT_SKILL_EMOJI
+                                        )}
+                                      </div>
+                                      <div className={styles.fileMeta}>
+                                        <div className={styles.fileLabel}>
+                                          {label}
+                                        </div>
+                                        <div className={styles.filePath}>
+                                          {skill.description || "SKILL.md"}
+                                        </div>
+                                      </div>
+                                      <span className={styles.fileHint}>
+                                        {t("experts.editFile")}
+                                      </span>
+                                    </button>
+                                    <Dropdown
+                                      menu={{
+                                        items: [
+                                          {
+                                            key: "delete",
+                                            label: t("common.delete"),
+                                            danger: true,
+                                            onClick: () =>
+                                              confirmDeleteSkill(skill),
+                                          },
+                                        ],
+                                      }}
+                                      trigger={["click"]}
+                                    >
+                                      <button
+                                        type="button"
+                                        className={styles.fileItemMenu}
+                                        aria-label={t("common.delete")}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <MoreHorizontal size={16} />
+                                      </button>
+                                    </Dropdown>
                                   </div>
-                                  <div className={styles.fileMeta}>
-                                    <div className={styles.fileLabel}>
-                                      {subagent.name}
-                                    </div>
-                                    <div className={styles.filePath}>
-                                      {subagent.description ||
-                                        subagent.path.replace(/^\//, "")}
-                                    </div>
-                                  </div>
-                                  <span className={styles.fileHint}>
-                                    {t("experts.editFile")}
-                                  </span>
-                                </button>
-                                <Dropdown
-                                  menu={{
-                                    items: [
-                                      {
-                                        key: "rename",
-                                        label: t("workspace.rename"),
-                                        onClick: () =>
-                                          openListRename(
-                                            subagentFilePath(subagent.path),
-                                            "subagent",
-                                          ),
-                                      },
-                                      {
-                                        key: "delete",
-                                        label: t("common.delete"),
-                                        danger: true,
-                                        onClick: () =>
-                                          confirmDeleteSubagent(subagent),
-                                      },
-                                    ],
-                                  }}
-                                  trigger={["click"]}
+                                );
+                              })
+                            )}
+                          </div>
+                        </>
+                      ),
+                    },
+                    {
+                      key: "subagents",
+                      label: (
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span>
+                            {t("experts.subagentFilesTitle", {
+                              count: agentSubagents.length,
+                            })}
+                          </span>
+                          <Button
+                            type="link"
+                            size="small"
+                            style={{ padding: 0, height: "auto" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSubagentCatalogOpen(true);
+                            }}
+                          >
+                            {t("experts.manageSubagents")}
+                          </Button>
+                        </div>
+                      ),
+                      children: (
+                        <>
+                          <p
+                            style={{
+                              fontSize: 12,
+                              color: "var(--fn-text-tertiary)",
+                              margin: "0 0 8px",
+                            }}
+                          >
+                            {t("experts.subagentFilesHint")}
+                          </p>
+                          <div className={styles.fileList}>
+                            {agentSubagents.length === 0 ? (
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  color: "var(--fn-text-tertiary)",
+                                  padding: "8px 0",
+                                }}
+                              >
+                                {t("experts.noSubagentFiles")}
+                              </div>
+                            ) : (
+                              agentSubagents.map((subagent) => (
+                                <div
+                                  key={subagent.slug}
+                                  className={styles.fileItem}
                                 >
                                   <button
                                     type="button"
-                                    className={styles.fileItemMenu}
-                                    aria-label={t("workspace.rename")}
-                                    onClick={(e) => e.stopPropagation()}
+                                    className={styles.fileItemMain}
+                                    onClick={() =>
+                                      openFileEditor(
+                                        subagentFilePath(subagent.path),
+                                      )
+                                    }
                                   >
-                                    <MoreHorizontal size={16} />
+                                    <div
+                                      className={styles.fileIcon}
+                                      style={{
+                                        color: "#6366f1",
+                                        background: "#6366f11a",
+                                      }}
+                                    >
+                                      {subagent.emoji ?? "🤖"}
+                                    </div>
+                                    <div className={styles.fileMeta}>
+                                      <div className={styles.fileLabel}>
+                                        {subagent.name}
+                                      </div>
+                                      <div className={styles.filePath}>
+                                        {subagent.description ||
+                                          subagent.path.replace(/^\//, "")}
+                                      </div>
+                                    </div>
+                                    <span className={styles.fileHint}>
+                                      {t("experts.editFile")}
+                                    </span>
                                   </button>
-                                </Dropdown>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </>
-                    ),
-                  },
-                ]}
-              />
-            </div>
-          )}
-          <Collapse
-            ghost
-            className={styles.drawerCollapse}
-            style={{ width: "100%" }}
-            items={[
-              {
-                key: "advanced",
-                label: t("experts.advancedOptions"),
-                children: (
-                  <Form form={form} layout="vertical" size="middle">
-                    <AgentAdvancedConfigFields />
-                  </Form>
-                ),
-              },
-            ]}
-          />
+                                  <Dropdown
+                                    menu={{
+                                      items: [
+                                        {
+                                          key: "rename",
+                                          label: t("workspace.rename"),
+                                          onClick: () =>
+                                            openListRename(
+                                              subagentFilePath(subagent.path),
+                                              "subagent",
+                                            ),
+                                        },
+                                        {
+                                          key: "delete",
+                                          label: t("common.delete"),
+                                          danger: true,
+                                          onClick: () =>
+                                            confirmDeleteSubagent(subagent),
+                                        },
+                                      ],
+                                    }}
+                                    trigger={["click"]}
+                                  >
+                                    <button
+                                      type="button"
+                                      className={styles.fileItemMenu}
+                                      aria-label={t("workspace.rename")}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <MoreHorizontal size={16} />
+                                    </button>
+                                  </Dropdown>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            )}
+            <Collapse
+              ghost
+              className={styles.drawerCollapse}
+              style={{ width: "100%" }}
+              items={[
+                {
+                  key: "advanced",
+                  label: t("experts.advancedOptions"),
+                  children: (
+                    <Form form={form} layout="vertical" size="middle">
+                      <AgentAdvancedConfigFields />
+                    </Form>
+                  ),
+                },
+              ]}
+            />
+          </MoreConfigCollapse>
         </>
       )}
       <WorkspaceDrawer

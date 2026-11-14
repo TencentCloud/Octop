@@ -327,6 +327,7 @@ class MfaService:
         user = user_manager.get_by_id(user_id)
         if user is None:
             raise OctopError(ErrorCode.USER_DISABLED, "user not active")
+        self._s.user_repo.touch_last_login(user.id)
         self._s.audit_repo.write(
             actor=user.username, action="auth.passkey_login", target=str(user_id)
         )

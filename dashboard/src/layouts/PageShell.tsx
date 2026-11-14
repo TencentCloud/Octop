@@ -6,7 +6,6 @@ import { useAgent } from "../context/AgentContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   titleRowEndPadding,
-  DESKTOP_DRAG_REGION_CLASS,
   DESKTOP_NO_DRAG_CLASS,
 } from "../utils/desktopChrome";
 import styles from "./PageShell.module.less";
@@ -131,7 +130,6 @@ function PageShell({
 
   return (
     <div
-      className={DESKTOP_DRAG_REGION_CLASS}
       style={{
         display: "flex",
         flexDirection: "column",

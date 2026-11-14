@@ -227,8 +227,12 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  font-weight: 500;
-  color: var(--fn-text-primary);
+  font-weight: 400;
+  color: color-mix(
+    in srgb,
+    var(--fn-text-primary) 35%,
+    var(--fn-text-secondary)
+  );
   line-height: 1.3;
 }
 
@@ -252,7 +256,7 @@
 .modeMenuToolsLabel {
   padding: 0 8px 6px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
   letter-spacing: 0.02em;
   color: var(--fn-text-tertiary);
 }
@@ -1070,7 +1074,11 @@
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: var(--fn-text-primary);
+  color: color-mix(
+    in srgb,
+    var(--fn-text-primary) 35%,
+    var(--fn-text-secondary)
+  );
   cursor: pointer;
   text-align: left;
 
@@ -1095,7 +1103,7 @@
   gap: 8px;
   flex: 0 0 auto;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   white-space: nowrap;
 
   svg {
