@@ -588,3 +588,87 @@ def test_shared_reader_cannot_move(service: KnowledgeService) -> None:
 
     with pytest.raises(PermissionError, match="write"):
         service.move_document(kb.id, folder.id, actor_user_id=viewer, target_folder="b")
+
+
+def _graph_fixture(service: KnowledgeService) -> tuple[str, int, int, str]:
+    from octop.infra.knowledge.graph_store import (
+        ChunkEntity,
+        ChunkGraph,
+        ChunkRelation,
+        SqliteKnowledgeGraphStore,
+    )
+    from octop.infra.knowledge.index import KnowledgeIndex
+
+    users = service._services.user_repo
+    owner = users.create(username="owner", password_hash="h", role="user")
+    reader = users.create(username="reader", password_hash="h", role="user")
+    kb = service.create_base(owner_user_id=owner, name="Docs", shared=True)
+    document = service._repo.create_document(
+        kb_id=kb.id, filename="plan.md", content_type="text/markdown", byte_size=1, status="ready"
+    )
+    service._repo.create_document(
+        kb_id=kb.id, filename="draft.md", content_type="text/markdown", byte_size=1
+    )
+    KnowledgeIndex(kb.id).replace_doc_chunks(document.id, ["Alice leads Apollo."], [[1.0, 0.0]])
+    SqliteKnowledgeGraphStore(kb.id).replace_document(
+        document.id,
+        [
+            ChunkGraph(
+                ordinal=0,
+                entities=(ChunkEntity("Alice", "person"), ChunkEntity("Apollo", "product")),
+                relations=(ChunkRelation("Alice", "Apollo", "leads"),),
+            )
+        ],
+    )
+    return kb.id, owner, reader, document.id
+
+
+def test_readers_can_view_a_graph_but_not_build_or_delete_it(service: KnowledgeService) -> None:
+    kb_id, owner, reader, doc_id = _graph_fixture(service)
+    outsider = service._services.user_repo.create(username="out", password_hash="h", role="user")
+    service.update_base(kb_id, actor_user_id=owner, shared=False)
+    with pytest.raises(PermissionError):
+        service.get_graph(kb_id, actor_user_id=outsider)
+    service.update_base(kb_id, actor_user_id=owner, shared=True)
+
+    view = service.get_graph(kb_id, actor_user_id=reader)
+
+    assert view["stats"]["built"] is True
+    assert view["stats"]["documents_total"] == 1
+    assert [node["name"] for node in view["nodes"]] == ["Alice", "Apollo"]
+    assert view["edges"][0]["labels"] == ["leads"]
+    entity = service.get_graph_entity(kb_id, "alice", actor_user_id=reader)
+    assert entity["passages"][0]["doc_id"] == doc_id
+    with pytest.raises(PermissionError):
+        service.graph_build_targets(kb_id, actor_user_id=reader)
+    with pytest.raises(PermissionError):
+        service.clear_graph(kb_id, actor_user_id=reader)
+
+
+def test_graph_build_needs_an_extraction_model_and_targets_indexed_documents(
+    service: KnowledgeService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    kb_id, owner, _reader, doc_id = _graph_fixture(service)
+
+    with pytest.raises(RuntimeError, match="knowledge graph extraction is not ready"):
+        service.graph_build_targets(kb_id, actor_user_id=owner)
+
+    monkeypatch.setattr(service_module, "get_graph_capability", lambda *_args: {"usable": True})
+    assert service.graph_build_targets(kb_id, actor_user_id=owner) == [doc_id]
+
+
+def test_clearing_a_graph_and_deleting_a_document_remove_graph_rows(
+    service: KnowledgeService,
+) -> None:
+    from octop.infra.knowledge.graph_store import SqliteKnowledgeGraphStore
+
+    kb_id, owner, _reader, doc_id = _graph_fixture(service)
+    store = SqliteKnowledgeGraphStore(kb_id)
+
+    service.delete_document(kb_id, doc_id, actor_user_id=owner)
+    assert store.counts() == (0, 0)
+    assert store.document_states() == {}
+
+    store.mark_document("other", "ready")
+    service.clear_graph(kb_id, actor_user_id=owner)
+    assert service.get_graph(kb_id, actor_user_id=owner)["stats"]["built"] is False

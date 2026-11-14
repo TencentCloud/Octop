@@ -518,6 +518,7 @@
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
+    "KNOWLEDGE_GRAPH_NOT_READY": "请先在知识库设置中为知识图谱选择一个可用的对话模型。",
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
     "KNOWLEDGE_MOVE_INVALID": "不能把文件夹移动到它自身或其子文件夹中。",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "目标文件夹中已有同名项目。",
@@ -821,6 +822,7 @@
   "knowledge": {
     "retrieval": {
       "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
+      "graph_preamble": "以下是从同一批知识库中自动抽取的实体关系，可用于串联上面的内容，但不要把它们当作可引用的来源。",
       "preamble": "以下知识库内容仅供参考；回答时请引用对应来源。"
     }
   },

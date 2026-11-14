@@ -216,3 +216,47 @@ def test_resume_pending_index_jobs_resets_processing_and_enqueues(
 
     assert repo.get_document(doc.id).status == "pending"
     assert enqueued == [(kb.id, doc.id)]
+
+
+def test_indexing_refreshes_an_existing_graph_after_the_index_slot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs.reset_index_semaphore_for_tests()
+    events: list[str] = []
+    monkeypatch.setattr(jobs, "process_document", lambda *_args: events.append("indexed"))
+    monkeypatch.setattr(
+        jobs, "mark_document_reindexed", lambda _services, _kb, doc_id: doc_id == "with-graph"
+    )
+    monkeypatch.setattr(
+        jobs,
+        "enqueue_document_graph",
+        lambda _services, _kb, doc_id: events.append(f"graph:{doc_id}"),
+    )
+
+    async def run() -> None:
+        await jobs.enqueue_index_document(object(), "kb", "with-graph")
+        await jobs.enqueue_index_document(object(), "kb", "without-graph")
+
+    asyncio.run(run())
+
+    assert events == ["indexed", "graph:with-graph", "indexed"]
+
+
+def test_indexing_succeeds_when_the_graph_cannot_be_checked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    jobs.reset_index_semaphore_for_tests()
+
+    def boom(*_args: object) -> bool:
+        raise RuntimeError("graph storage is unavailable")
+
+    monkeypatch.setattr(jobs, "process_document", lambda *_args: None)
+    monkeypatch.setattr(jobs, "mark_document_reindexed", boom)
+    monkeypatch.setattr(
+        jobs, "enqueue_document_graph", lambda *_args: pytest.fail("must not be queued")
+    )
+
+    async def run() -> None:
+        await jobs.enqueue_index_document(object(), "kb", "doc")
+
+    asyncio.run(run())

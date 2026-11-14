@@ -14,6 +14,13 @@ from octop.infra.db.repos.knowledge import KnowledgeBaseRow, KnowledgeDocumentRo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge.blobs import KnowledgeBlobs
 from octop.infra.knowledge.gate import assert_knowledge_usable
+from octop.infra.knowledge.graph import (
+    entity_view,
+    graph_stats,
+    graph_view,
+    open_knowledge_graph,
+)
+from octop.infra.knowledge.graph_extract import get_graph_capability
 from octop.infra.knowledge.ocr import (
     OCR_IMAGE_SUFFIXES,
     load_ocr_config,
@@ -436,6 +443,7 @@ class KnowledgeService:
             if row.is_dir:
                 continue
             open_knowledge_index(self._services, kb_id).delete_doc(row.id)
+            open_knowledge_graph(self._services, kb_id).delete_document(row.id)
             self._blobs().delete(kb_id, row.id, row.filename)
 
     def reindex_document(
@@ -641,6 +649,54 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         return cast(KnowledgeDocumentRow, result)
 
+    def get_graph(
+        self,
+        kb_id: str,
+        *,
+        actor_user_id: int,
+        is_admin: bool = False,
+        limit: int = 80,
+        search: str = "",
+    ) -> dict[str, Any]:
+        """Return graph statistics plus the most-mentioned entities and their relations."""
+        self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        store = open_knowledge_graph(self._services, kb_id)
+        return {
+            "stats": graph_stats(store, self._graph_document_ids(kb_id)),
+            **graph_view(store, limit=limit, search=search),
+        }
+
+    def get_graph_entity(
+        self, kb_id: str, name: str, *, actor_user_id: int, is_admin: bool = False
+    ) -> dict[str, Any]:
+        """Return one entity with its relations and source passages."""
+        self.get_readable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        return entity_view(self._services, kb_id, name)
+
+    def graph_build_targets(
+        self, kb_id: str, *, actor_user_id: int, is_admin: bool = False
+    ) -> list[str]:
+        """Check that a graph can be built and return the documents to extract."""
+        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        capability = get_graph_capability(
+            self._services.settings_repo.get, getattr(self._services, "provider_repo", None)
+        )
+        if not capability["usable"]:
+            raise RuntimeError("knowledge graph extraction is not ready")
+        return self._graph_document_ids(kb_id)
+
+    def clear_graph(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
+        """Drop the graph; documents indexed later are no longer extracted."""
+        self.get_writable_base(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
+        open_knowledge_graph(self._services, kb_id).clear()
+
+    def _graph_document_ids(self, kb_id: str) -> list[str]:
+        return [
+            document.id
+            for document in self._repo.list_documents(kb_id)
+            if document.status == "ready" and not document.is_dir
+        ]
+
     def delete_base(self, kb_id: str, *, actor_user_id: int, is_admin: bool = False) -> None:
         self.require_owner(kb_id, actor_user_id=actor_user_id, is_admin=is_admin)
         database = postgres_database(self._services)
@@ -648,6 +704,7 @@ class KnowledgeService:
             from octop.infra.knowledge.pg_index import PgVectorKnowledgeIndex
 
             PgVectorKnowledgeIndex(kb_id, database).delete_kb()
+            open_knowledge_graph(self._services, kb_id).clear()
         self._repo.delete_base(kb_id)
         from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, GroupAccess
 

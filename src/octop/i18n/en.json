@@ -518,6 +518,7 @@
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "KNOWLEDGE_GRAPH_NOT_READY": "Choose an available chat model for the knowledge graph in knowledge-base settings first.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
     "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
@@ -821,6 +822,7 @@
   "knowledge": {
     "retrieval": {
       "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
+      "graph_preamble": "Relations between entities, extracted automatically from the same knowledge bases. Use them to connect the passages above; they are not sources to cite.",
       "preamble": "The following knowledge-base content is reference material. Cite the relevant source in your answer."
     }
   },
