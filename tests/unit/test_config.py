@@ -389,25 +389,50 @@ def test_new_timezone_env_wins_over_legacy_env(tmp_path: Path, monkeypatch: pyte
     assert cfg.default_timezone == "UTC"
 
 
-def test_loads_mobile_capabilities(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("file_enabled", "env_value", "expected_enabled"),
+    [
+        (True, None, True),
+        (False, None, False),
+        (False, "true", True),
+        (True, "false", False),
+    ],
+)
+def test_loads_mobile_capabilities(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    file_enabled: bool,
+    env_value: str | None,
+    expected_enabled: bool,
+) -> None:
+    if env_value is None:
+        monkeypatch.delenv("OCTOP_ENABLE_MOBILE", raising=False)
+    else:
+        monkeypatch.setenv("OCTOP_ENABLE_MOBILE", env_value)
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(
         json.dumps(
             {
                 "capabilities": {
                     "mobile": {
-                        "enabled": True,
+                        "enabled": file_enabled,
                         "backend": "physical",
                         "probed_at": "2026-01-01T00:00:00Z",
-                        "reason": "",
+                        "reason": "probe succeeded",
                     }
                 }
             }
         )
     )
     cfg = load_config(cfg_path)
-    assert cfg.capabilities.mobile.enabled is True
+    assert cfg.capabilities.mobile.enabled is expected_enabled
     assert cfg.capabilities.mobile.backend == "physical"
+    assert cfg.capabilities.mobile.probed_at == "2026-01-01T00:00:00Z"
+    assert cfg.capabilities.mobile.reason == "probe succeeded"
+    assert (
+        json.loads(cfg_path.read_text(encoding="utf-8"))["capabilities"]["mobile"]["enabled"]
+        is file_enabled
+    )
 
 
 def test_corrupt_config_names_file_and_position_without_leaking_contents(tmp_path: Path):
