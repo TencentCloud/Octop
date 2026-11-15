@@ -2428,6 +2428,62 @@ def test_resolve_harness_model_route_marks_fallback_automatic() -> None:
     assert route.automatic is True
 
 
+def test_resolve_harness_model_route_scopes_personal_key_to_its_provider() -> None:
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_manager.providers.is_model_ref_usable.return_value = True
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/picked"
+    processor._agent_manager.resolve_api_key_override.return_value = "sk-personal"
+
+    route = processor._resolve_harness_model_route(
+        "a1",
+        "t1",
+        {"model": "p/picked"},
+        needs_multimodal=False,
+    )
+
+    assert route.api_key_override == "sk-personal"
+    assert route.api_key_override_provider == "p"
+
+
+def test_resolve_harness_model_route_omits_provider_without_personal_key() -> None:
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_manager.providers.is_model_ref_usable.return_value = True
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/picked"
+    processor._agent_manager.resolve_api_key_override.return_value = None
+
+    route = processor._resolve_harness_model_route(
+        "a1",
+        "t1",
+        {"model": "p/picked"},
+        needs_multimodal=False,
+    )
+
+    assert route.api_key_override is None
+    assert route.api_key_override_provider is None
+
+
 def test_resolve_harness_model_drops_unusable_dashboard_override() -> None:
     """Stale composer/expert refs must not bypass catalog usability checks."""
     processor = GlobalProcessor(

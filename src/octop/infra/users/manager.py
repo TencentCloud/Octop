@@ -827,6 +827,7 @@ class UserManager:
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
+        self._services.user_provider_key_repo.delete_for_user(row.id)
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
 

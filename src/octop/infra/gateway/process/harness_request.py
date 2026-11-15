@@ -312,6 +312,8 @@ def build_harness_request(
     messages: list[Any] | None = None,
     model: str | None = None,
     auto_route: bool = False,
+    api_key_override: str | None = None,
+    api_key_override_provider: str | None = None,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
     message_id: str | None = None,
@@ -330,6 +332,10 @@ def build_harness_request(
             configurable["octop_auto_route"] = True
         if user_id > 0:
             configurable["octop_user_id"] = user_id
+        if api_key_override:
+            configurable["api_key_override"] = api_key_override
+            if api_key_override_provider:
+                configurable["api_key_override_provider"] = api_key_override_provider
         if session_key is not None:
             configurable["session_key"] = session_key
         if reasoning_overrides:
@@ -373,6 +379,10 @@ def build_harness_request(
         configurable["octop_auto_route"] = True
     if user_id > 0:
         configurable["octop_user_id"] = user_id
+    if api_key_override:
+        configurable["api_key_override"] = api_key_override
+        if api_key_override_provider:
+            configurable["api_key_override_provider"] = api_key_override_provider
     if session_key is not None:
         configurable["session_key"] = session_key
     if reasoning_overrides:
