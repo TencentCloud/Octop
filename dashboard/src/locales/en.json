@@ -356,7 +356,40 @@
     "saveFailed": "Could not save the navigation layout",
     "dragToReorder": "Drag to reorder",
     "chatHistory": "Session list",
-    "passkeys": "Passkeys"
+    "passkeys": "Passkeys",
+    "keys": "Keys",
+    "searchKeys": "Search Keys"
+  },
+  "searchKeys": {
+    "title": "My search keys",
+    "hint": "Store your personal search-provider key here. Your searches then use your own key (billing, rate limits, and audit follow you); without one, the administrator's global key is used. Keys stay on the server and are never shown again.",
+    "empty": "No search providers available for personal keys",
+    "inputPlaceholder": "Paste {{key}}",
+    "optionalPlaceholder": "{{key}} (optional)",
+    "save": "Save",
+    "saved": "Personal search key saved",
+    "saveFailed": "Failed to save the search key",
+    "deleteFailed": "Failed to delete the search key",
+    "loadFailed": "Failed to load search keys",
+    "delete": "Delete personal search key?",
+    "deleteWarnNoGlobal": "This provider has no global key — you won't be able to use it until you add a new personal key.",
+    "deleted": "Personal search key deleted; the global key will be used",
+    "deletedNoGlobal": "Personal search key deleted. This provider has no global key — add a new personal key to keep using it.",
+    "hasOwn": "Personal key configured",
+    "usingGlobal": "Using global key",
+    "keyless": "No key required",
+    "requiredTag": "Personal key required",
+    "updated": "Updated {{time}}",
+    "providers": {
+      "tavily": "Tavily",
+      "brave": "Brave Search",
+      "deepseek": "DeepSeek Search",
+      "google": "Google Search",
+      "kimi": "Kimi (Moonshot)",
+      "yuanbao": "Yuanbao Search",
+      "you": "You.com",
+      "searchfree": "Built-in search"
+    }
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -4105,7 +4138,12 @@
       "sourceBuiltinTitle": "Current search source: built-in search",
       "sourceBuiltinDesc": "When no third-party search provider is configured, Octop still provides its built-in search service. It requires no API key, but its stability and availability are not guaranteed. It switches automatically once a third-party provider is configured.",
       "sourceConfiguredTitle": "Current search source: {{name}}",
-      "sourceConfiguredDesc": "A third-party search provider is configured, so the built-in search is no longer loaded by default, avoiding multiple search tools being exposed to the model at once."
+      "sourceConfiguredDesc": "A third-party search provider is configured, so the built-in search is no longer loaded by default, avoiding multiple search tools being exposed to the model at once.",
+      "endpointLabel": "Service endpoint",
+      "endpointHint": "Optional. Leave empty to use the provider's default endpoint. Only https is allowed.",
+      "endpointHttps": "Only https endpoints are allowed",
+      "keyOptional": "Keys may stay empty: blank keeps the current global key (or leaves the provider on personal keys only). To set a global key, fill every required field for this provider.",
+      "keyIncomplete": "Fill every required key for this provider, or leave them all empty."
     },
     "update": {
       "title": "Version & Updates",

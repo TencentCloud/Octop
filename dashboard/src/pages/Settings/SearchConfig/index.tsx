@@ -12,6 +12,7 @@ import {
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { envsApi } from "../../../api/modules/env";
+import { searchConfigApi } from "../../../api/modules/searchConfig";
 import api from "../../../api";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -26,6 +27,8 @@ interface SearchProvider {
   docs_url?: string;
   required_keys: string[];
   configured: boolean;
+  /** Env var holding the administrator-configured endpoint (DeepSeek). */
+  endpoint_env?: string | null;
 }
 
 const SEARCH_PROVIDERS: SearchProvider[] = [
@@ -52,6 +55,7 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     docs_url: "https://api-docs.deepseek.com/guides/search/",
     required_keys: ["DEEPSEEK_API_KEY"],
     configured: false,
+    endpoint_env: "DEEPSEEK_SEARCH_ENDPOINT",
   },
   {
     id: "google",
@@ -111,17 +115,35 @@ function ConfigureDrawer({
     provider.required_keys.forEach((key) => {
       if (envVars[key]) initialValues[key] = envVars[key];
     });
+    if (provider.endpoint_env && envVars[provider.endpoint_env]) {
+      initialValues.endpoint = envVars[provider.endpoint_env];
+    }
     form.setFieldsValue(initialValues);
-  }, [envVars, provider.required_keys, form, open]);
+  }, [envVars, provider.required_keys, provider.endpoint_env, form, open]);
 
   const handleSave = async () => {
     try {
       setSaving(true);
       const values = (await form.validateFields()) as Record<string, string>;
+      const filled = provider.required_keys.filter((key) =>
+        (values[key] ?? "").trim(),
+      );
+      if (filled.length > 0 && filled.length < provider.required_keys.length) {
+        message.error(t("advancedSettings.search.keyIncomplete"));
+        return;
+      }
       const allEnvs = { ...envVars };
       provider.required_keys.forEach((key) => {
         if (values[key]) allEnvs[key] = values[key];
       });
+      // Validate/persist the endpoint first so an invalid URL cannot clear a
+      // previously working endpoint via the generic env batch.
+      if (provider.endpoint_env) {
+        const endpoint = (values.endpoint ?? "").trim();
+        await searchConfigApi.setEndpoint(provider.id, endpoint || null);
+        if (endpoint) allEnvs[provider.endpoint_env] = endpoint;
+        else delete allEnvs[provider.endpoint_env];
+      }
       await envsApi.batchSaveEnvs(allEnvs);
       message.success(
         t("setupWizard.search.saveSuccess", { name: provider.name }),
@@ -144,7 +166,11 @@ function ConfigureDrawer({
       provider.required_keys.forEach((key) => {
         if (values[key]) testEnvs[key] = values[key];
       });
-      const result = await api.testSearch(provider.id, testEnvs);
+      const result = await api.testSearch(
+        provider.id,
+        testEnvs,
+        (values.endpoint ?? "").trim() || undefined,
+      );
       if (result.success) {
         message.success(
           t("setupWizard.search.testSuccess", { name: provider.name }),
@@ -230,18 +256,15 @@ function ConfigureDrawer({
       }
     >
       <div className={styles.drawerHint}>{t(provider.descriptionKey)}</div>
+      <Text type="secondary" style={{ display: "block", marginBottom: 12 }}>
+        {t("advancedSettings.search.keyOptional")}
+      </Text>
       <Form form={form} layout="vertical" requiredMark={false}>
         {provider.required_keys.map((key) => (
           <Form.Item
             key={key}
             name={key}
             label={key}
-            rules={[
-              {
-                required: true,
-                message: t("setupWizard.search.required", { key }),
-              },
-            ]}
             extra={
               key === "GOOGLE_CSE_ID" ? (
                 <span>
@@ -276,6 +299,25 @@ function ConfigureDrawer({
             />
           </Form.Item>
         ))}
+        {provider.endpoint_env ? (
+          <Form.Item
+            name="endpoint"
+            label={t("advancedSettings.search.endpointLabel")}
+            extra={t("advancedSettings.search.endpointHint")}
+            rules={[
+              {
+                validator: async (_rule, value) => {
+                  const text = String(value ?? "").trim();
+                  if (text && !text.startsWith("https://")) {
+                    throw new Error(t("advancedSettings.search.endpointHttps"));
+                  }
+                },
+              },
+            ]}
+          >
+            <Input placeholder="https://api.deepseek.com/v1/tools/search" />
+          </Form.Item>
+        ) : null}
       </Form>
       {provider.configured ? (
         <Button
@@ -308,11 +350,29 @@ export default function SearchConfigPage() {
         envMap[env.key] = env.value;
       });
       setEnvVars(envMap);
+      // The backend catalog is the source of truth for required env vars and
+      // the endpoint env; the local list only supplies display metadata.
+      const catalog = await searchConfigApi.listProviders().catch(() => null);
+      const specById = new Map(
+        (catalog?.providers ?? []).map((spec) => [spec.id, spec] as const),
+      );
       setProviders(
-        SEARCH_PROVIDERS.map((p) => ({
-          ...p,
-          configured: p.required_keys.every((key) => !!envMap[key]),
-        })),
+        SEARCH_PROVIDERS.map((p) => {
+          const spec = specById.get(p.id);
+          const required = spec ? spec.env_vars : p.required_keys;
+          const endpointEnv = spec?.endpoint_env ?? p.endpoint_env ?? null;
+          const hasKeys =
+            required.length > 0 && required.every((key) => !!envMap[key]);
+          const hasEndpoint = !!endpointEnv && !!envMap[endpointEnv];
+          return {
+            ...p,
+            required_keys: required,
+            endpoint_env: endpointEnv,
+            // A provider is configured when it has a usable global key set or
+            // an administrator-configured endpoint (DeepSeek endpoint-only).
+            configured: hasKeys || hasEndpoint,
+          };
+        }),
       );
     } catch (err) {
       console.error("Failed to load env vars:", err);

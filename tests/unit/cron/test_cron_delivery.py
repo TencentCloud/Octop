@@ -260,6 +260,41 @@ async def test_agent_empty_reply_does_not_push() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_request_carries_personal_search_keys() -> None:
+    session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
+    captured: dict[str, Any] = {}
+
+    async def _stream(_aid: str, request: dict[str, Any]):
+        captured.update(request)
+        yield {"type": "token", "content": "ok"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    agent_manager.resolve_search_tool_env = MagicMock(
+        return_value={"DEEPSEEK_API_KEY": "sk-personal"}
+    )
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    assert captured["configurable"]["tool_env"] == {"DEEPSEEK_API_KEY": "sk-personal"}
+    agent_manager.resolve_search_tool_env.assert_called_once_with(session.user_id)
+
+
+@pytest.mark.asyncio
 async def test_agent_strips_orphan_thinking_prefix() -> None:
     session = _session(channel_type="weixin")
 

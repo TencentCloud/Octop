@@ -48,7 +48,13 @@ describe("sidebarNav", () => {
     const keys = buildNavSections(adminUser, { mobileEnabled: true }).flatMap(
       (section) => section.items.map((item) => item.key),
     );
-    expect(new Set(keys)).toEqual(new Set(SIDEBAR_NAV_KEYS));
+    // ``model-keys`` / ``search-keys`` remain valid preference keys for
+    // backward compatibility but now render as the unified ``keys`` page.
+    const legacy = new Set(["model-keys", "search-keys"]);
+    const expected = new Set(
+      [...SIDEBAR_NAV_KEYS].filter((key) => !legacy.has(key)),
+    );
+    expect(new Set(keys)).toEqual(expected);
     const grouped = buildNavSections(adminUser, { mobileEnabled: true }).filter(
       (section) => section.id,
     );
@@ -57,5 +63,18 @@ describe("sidebarNav", () => {
       "control",
       "admin",
     ]);
+  });
+
+  it("shows the unified keys page to every user for self-service", () => {
+    const plainUser = {
+      id: 2,
+      username: "ada",
+      role: "user",
+      permissions: [],
+    } as OctopUser;
+    const keys = buildNavSections(plainUser, { mobileEnabled: false }).flatMap(
+      (section) => section.items.map((item) => item.key),
+    );
+    expect(keys).toContain("keys");
   });
 });

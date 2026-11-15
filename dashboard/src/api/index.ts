@@ -22,6 +22,7 @@ import { rootApi } from "./modules/root";
 import { channelApi } from "./modules/channel";
 import { envsApi } from "./modules/env";
 import { providerApi } from "./modules/provider";
+import { searchConfigApi } from "./modules/searchConfig";
 import { agentApi } from "./modules/agent";
 import { workspaceApi } from "./modules/workspace";
 import { ollamaModelApi } from "./modules/ollamaModel";
@@ -60,6 +61,9 @@ export const api = {
 
   // Providers
   ...providerApi,
+
+  // Search catalog / endpoint configuration
+  ...searchConfigApi,
 
   // Agent
   ...agentApi,

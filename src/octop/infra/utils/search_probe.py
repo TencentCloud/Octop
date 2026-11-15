@@ -7,11 +7,14 @@ request body and are never written to ``os.environ``.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Mapping
 from typing import Any, Literal
 
 import httpx
+
+from octop.infra.utils.search_providers import SEARCH_PROVIDERS
 
 ErrorType = Literal[
     "auth_error",
@@ -25,29 +28,34 @@ ErrorType = Literal[
 
 _TIMEOUT_S = 30.0
 _TEST_QUERY = "octop connectivity probe"
-_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "deepseek", "google", "kimi", "yuanbao"})
+DEFAULT_DEEPSEEK_ENDPOINT = "https://api.deepseek.com/v1/tools/search"
+# Providers this module can probe directly. ``you`` / ``searchfree`` have no
+# credential to validate and are excluded.
+_PROBE_SUPPORTED: frozenset[str] = frozenset(
+    {"tavily", "brave", "deepseek", "google", "kimi", "yuanbao"}
+)
+_KNOWN_IDS: frozenset[str] = frozenset(spec.id for spec in SEARCH_PROVIDERS)
 _REQUIRED: dict[str, tuple[str, ...]] = {
-    "tavily": ("TAVILY_API_KEY",),
-    "brave": ("BRAVE_API_KEY",),
-    "deepseek": ("DEEPSEEK_API_KEY",),
-    "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
-    "kimi": ("MOONSHOT_API_KEY",),
-    "yuanbao": ("TENCENTCLOUD_WSA_APIKEY",),
+    spec.id: spec.env_vars for spec in SEARCH_PROVIDERS if spec.id in _PROBE_SUPPORTED
 }
 
 
 async def probe_search_provider(
     provider_id: str,
     env_vars: Mapping[str, str],
+    *,
+    endpoint: str | None = None,
 ) -> dict[str, Any]:
     """Run a one-shot search against ``provider_id`` using ``env_vars``.
 
-    Returns a dict matching the dashboard ``TestSearchResponse`` shape.
+    *endpoint* overrides DeepSeek's global ``DEEPSEEK_SEARCH_ENDPOINT`` for
+    this probe only. Returns a dict matching the dashboard
+    ``TestSearchResponse`` shape.
     """
     started = time.perf_counter()
     try:
         outcome = await asyncio.wait_for(
-            _probe(provider_id, env_vars),
+            _probe(provider_id, env_vars, endpoint=endpoint),
             timeout=_TIMEOUT_S,
         )
     except TimeoutError:
@@ -66,13 +74,19 @@ async def probe_search_provider(
     }
 
 
-async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any]:
-    if provider_id not in _KNOWN:
-        return {
-            "success": False,
-            "error": f"Unknown search provider: {provider_id}",
-            "error_type": "invalid_config",
-        }
+async def _probe(
+    provider_id: str,
+    env_vars: Mapping[str, str],
+    *,
+    endpoint: str | None = None,
+) -> dict[str, Any]:
+    if provider_id not in _PROBE_SUPPORTED:
+        error = (
+            f"testing is not supported for provider: {provider_id}"
+            if provider_id in _KNOWN_IDS
+            else f"Unknown search provider: {provider_id}"
+        )
+        return {"success": False, "error": error, "error_type": "invalid_config"}
 
     missing = [k for k in _REQUIRED[provider_id] if not str(env_vars.get(k, "")).strip()]
     if missing:
@@ -89,7 +103,12 @@ async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any
         if provider_id == "brave":
             return await _brave(client, creds["BRAVE_API_KEY"])
         if provider_id == "deepseek":
-            return await _deepseek(client, creds["DEEPSEEK_API_KEY"])
+            deepseek_endpoint = (
+                (endpoint or "").strip()
+                or os.getenv("DEEPSEEK_SEARCH_ENDPOINT", "").strip()
+                or DEFAULT_DEEPSEEK_ENDPOINT
+            )
+            return await _deepseek(client, creds["DEEPSEEK_API_KEY"], deepseek_endpoint)
         if provider_id == "google":
             return await _google(client, creds["GOOGLE_API_KEY"], creds["GOOGLE_CSE_ID"])
         if provider_id == "kimi":
@@ -118,9 +137,9 @@ async def _brave(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
     return _from_brave(response)
 
 
-async def _deepseek(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+async def _deepseek(client: httpx.AsyncClient, api_key: str, endpoint: str) -> dict[str, Any]:
     response = await client.post(
-        "https://api.deepseek.com/v1/tools/search",
+        endpoint,
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",

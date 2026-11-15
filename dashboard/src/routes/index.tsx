@@ -11,6 +11,8 @@ const BridgePage = lazy(() => import("../pages/Settings/Bridge"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
+const KeysPage = lazy(() => import("../pages/Keys"));
+const SearchKeysPage = lazy(() => import("../pages/SearchKeys"));
 const ACPPage = lazy(() => import("../pages/Agent/ACP"));
 const TokenUsagePage = lazy(() => import("../pages/Control/TokenUsage"));
 
@@ -55,6 +57,8 @@ export const pathToKey: Record<string, string> = {
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
   "/bridge": "bridge",
+  "/keys": "keys",
+  "/search-keys": "keys",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
@@ -163,6 +167,8 @@ export const routeConfigs: RouteConfig[] = [
     element: <RedirectPreserveSearch to="/acp" />,
   },
   { path: "/personalization/*", element: <PersonalizationPage /> },
+  { path: "/keys", element: <KeysPage /> },
+  { path: "/search-keys", element: <SearchKeysPage /> },
   {
     path: "/skills",
     element: <RedirectPreserveSearch to="/personalization/skills" />,
