@@ -90,6 +90,7 @@ import {
   ResourceAvatarPicker,
   avatarPickerStyles,
 } from "../../components/AvatarPicker";
+import BetaBadge from "../../components/BetaBadge";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import DocumentPreviewCore from "../../components/DocumentPreviewCore";
 import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
@@ -2764,7 +2765,12 @@ export default function KnowledgeBasesPage() {
                           icon={<Waypoints size={14} />}
                           onClick={() => setGraphOpen(true)}
                         >
-                          {t("knowledgeBases.graphOpen")}
+                          <span className={styles.graphOpenLabel}>
+                            {t("knowledgeBases.graphOpen")}
+                            <BetaBadge
+                              tooltip={t("knowledgeBases.graphBetaTooltip")}
+                            />
+                          </span>
                         </Button>
                       ) : null}
                       {canWriteSelected ? (

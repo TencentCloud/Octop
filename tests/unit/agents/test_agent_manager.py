@@ -1816,6 +1816,57 @@ def test_host_model_sdk_errors_keep_original_retry_budget(
     assert handler.call_count == cfg.model_retry_max_retries + 1
 
 
+def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: AgentManager) -> None:
+    from langchain.agents.middleware import (
+        ModelRetryMiddleware,
+        ToolCallLimitMiddleware,
+        ToolRetryMiddleware,
+    )
+
+    cfg = manager._build_harness_config(
+        _row(
+            config_json=json.dumps(
+                {
+                    "tool_call_run_limit": 12,
+                    "model_retry_max_retries": 4,
+                    "model_retry_initial_delay": 0.25,
+                    "tool_retry_max_retries": 1,
+                }
+            )
+        )
+    )
+    limit = next(item for item in cfg.middleware or [] if isinstance(item, ToolCallLimitMiddleware))
+    tool_retry = next(
+        item for item in cfg.middleware or [] if isinstance(item, ToolRetryMiddleware)
+    )
+    model_retry = next(
+        item for item in cfg.middleware or [] if isinstance(item, ModelRetryMiddleware)
+    )
+    assert limit.run_limit == 12
+    assert limit.thread_limit is None
+    assert tool_retry.max_retries == 1
+    assert model_retry.max_retries == 4
+    assert model_retry.initial_delay == 0.25
+    assert not cfg.model_retry_enabled
+
+    disabled = manager._build_harness_config(
+        _row(
+            config_json=json.dumps(
+                {
+                    "tool_call_limit_enabled": False,
+                    "tool_retry_enabled": False,
+                    "model_retry_enabled": False,
+                }
+            )
+        )
+    )
+    assert not any(
+        isinstance(item, ToolCallLimitMiddleware | ToolRetryMiddleware | ModelRetryMiddleware)
+        for item in (disabled.middleware or [])
+    )
+    assert not disabled.model_retry_enabled
+
+
 def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None:
     from octop.infra.agents.middleware.model_failover import SafeModelFailoverMiddleware
 

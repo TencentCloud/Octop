@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_SANDBOX_PREFIX = "octop_sandbox"
 
+# ``volumes`` is intentionally absent. Host bind mounts run as the Docker
+# daemon and are not covered by the local-backend root policy.
 _DOCKER_PASSTHROUGH_KEYS = (
     "allow_network",
     "memory",
@@ -16,7 +21,6 @@ _DOCKER_PASSTHROUGH_KEYS = (
     "max_output_bytes",
     "auto_remove",
     "workspace_path",
-    "volumes",
     "environment",
     "environment_file",
     "agent_id",
@@ -34,6 +38,49 @@ def apply_docker_cfg_keys(spec: dict[str, Any], cfg: dict[str, Any]) -> None:
     for key in _DOCKER_PASSTHROUGH_KEYS:
         if key in cfg:
             spec[key] = cfg[key]
+
+
+def omit_docker_volumes(spec: Any) -> Any:
+    """Drop ``volumes`` from docker specs, including composite children.
+
+    A returned docker or composite dict is a shallow copy when a mount was
+    removed. Other specs are returned unchanged.
+    """
+    if not isinstance(spec, dict):
+        return spec
+    kind = str(spec.get("type") or "").strip().lower()
+    if kind == "docker":
+        if "volumes" not in spec:
+            return spec
+        logger.warning("ignoring docker backend volumes; host mounts are not allowed")
+        out = dict(spec)
+        out.pop("volumes", None)
+        return out
+    if kind != "composite":
+        return spec
+    out = dict(spec)
+    changed = False
+    default = out.get("default")
+    if isinstance(default, dict):
+        stripped = omit_docker_volumes(default)
+        if stripped is not default:
+            out["default"] = stripped
+            changed = True
+    routes = out.get("routes")
+    if isinstance(routes, dict):
+        new_routes: dict[str, Any] = {}
+        routes_changed = False
+        for prefix, route in routes.items():
+            if isinstance(route, dict):
+                stripped = omit_docker_volumes(route)
+                new_routes[str(prefix)] = stripped
+                routes_changed = routes_changed or stripped is not route
+            else:
+                new_routes[str(prefix)] = route
+        if routes_changed:
+            out["routes"] = new_routes
+            changed = True
+    return out if changed else spec
 
 
 def docker_spec_previewable(spec: Any) -> bool:
@@ -67,7 +114,9 @@ def enrich_docker_backend_spec(
     """
     if str(spec.get("type") or "").lower() != "docker":
         return spec
-    out = dict(spec)
+    out = cast(dict[str, Any], omit_docker_volumes(spec))
+    if out is spec:
+        out = dict(spec)
     out.setdefault("sandbox_prefix", DEFAULT_SANDBOX_PREFIX)
     scope = str(out.get("sandbox_scope") or "agent").strip().lower() or "agent"
     out.setdefault("sandbox_scope", scope)
