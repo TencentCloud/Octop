@@ -261,6 +261,7 @@ class CronDeliveryService:
             source=session.channel_type,
             text=command.prompt,
             model=command.model,
+            tool_env=self._agent_manager.resolve_search_tool_env(session.user_id),
             message_kwargs=message_kwargs,
         )
         if servers:

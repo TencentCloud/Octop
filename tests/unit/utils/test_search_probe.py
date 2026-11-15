@@ -172,3 +172,62 @@ async def test_yuanbao_auth_error_in_body(monkeypatch: pytest.MonkeyPatch) -> No
     )
     assert result["success"] is False
     assert result["error_type"] == "auth_error"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_probe_uses_explicit_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://search.example/v1/tools/search"
+        return httpx.Response(200, json={"results": []})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+        endpoint="https://search.example/v1/tools/search",
+    )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_deepseek_probe_falls_back_to_global_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_SEARCH_ENDPOINT", "https://global.example/v1/search")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://global.example/v1/search"
+        return httpx.Response(200, json={"results": []})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+    )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_deepseek_probe_falls_back_to_default_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_SEARCH_ENDPOINT", raising=False)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == search_probe.DEFAULT_DEEPSEEK_ENDPOINT
+        return httpx.Response(200, json={"results": []})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+    )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_keyless_provider_is_not_probeable() -> None:
+    result = await search_probe.probe_search_provider("you", {})
+    assert result["success"] is False
+    assert result["error_type"] == "invalid_config"
+    assert "not supported" in (result.get("error") or "")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from octop_gateway.media import MediaBackend
@@ -312,6 +312,7 @@ def build_harness_request(
     messages: list[Any] | None = None,
     model: str | None = None,
     auto_route: bool = False,
+    tool_env: Mapping[str, str] | None = None,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
     message_id: str | None = None,
@@ -328,6 +329,8 @@ def build_harness_request(
         configurable: dict[str, Any] = {}
         if auto_route:
             configurable["octop_auto_route"] = True
+        if tool_env:
+            configurable["tool_env"] = dict(tool_env)
         if session_key is not None:
             configurable["session_key"] = session_key
         if reasoning_overrides:
@@ -369,6 +372,8 @@ def build_harness_request(
     configurable = {}
     if auto_route:
         configurable["octop_auto_route"] = True
+    if tool_env:
+        configurable["tool_env"] = dict(tool_env)
     if session_key is not None:
         configurable["session_key"] = session_key
     if reasoning_overrides:

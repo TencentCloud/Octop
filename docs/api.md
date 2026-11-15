@@ -321,6 +321,23 @@ starts a new conversation on the channel and ignores the history pin.
 | `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
 | `DELETE` | `/admin/providers/{id}` | admin | `204` |
 
+## Search
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET`    | `/search/providers` | admin | provider catalog, global endpoints, and `allow_private_endpoints` |
+| `PUT`    | `/search/{provider}/endpoint` | admin | body `{endpoint: str \| null}`; https only; LAN/private hosts are allowed |
+| `POST`   | `/search/{provider}/test` | admin | probe with supplied `env_vars` (and optional DeepSeek `endpoint`); not persisted |
+| `GET`    | `/me/search-keys` | user | per-provider personal-key status; never returns key values |
+| `PUT`    | `/me/search-keys/{provider}` | user | body `{env}`; must contain every required env var for that provider |
+| `DELETE` | `/me/search-keys/{provider}` | user | `204`; calls fall back to the global env key |
+| `POST`   | `/me/search-keys/{provider}/test` | user | probe with supplied `env` or the stored personal values; not persisted |
+
+Personal search keys are Fernet-encrypted in the `secrets` KV
+(`user_search_key:{user_id}:{provider}`) and injected per turn through the
+harness `tool_env` scope; they never enter `RunnableConfig` or checkpoint
+metadata.
+
 ## Models
 
 | Method | Path | Auth | Notes |

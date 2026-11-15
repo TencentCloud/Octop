@@ -3316,6 +3316,15 @@ class AgentManager:
             model_ref=model_ref,
         )
 
+    def resolve_search_tool_env(self, user_id: int) -> dict[str, str]:
+        """Personal web-search credentials for this turn (empty = global env)."""
+        from octop.infra.agents.providers.search_keys import resolve_search_tool_env
+
+        return resolve_search_tool_env(
+            user_id=user_id,
+            search_key_repo=self._repos.user_search_key_repo,
+        )
+
     def _assert_model_ref(self, user_id: int, model_ref: str | None) -> None:
         from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess
 
@@ -4703,6 +4712,16 @@ class AgentManager:
         harness_fields: dict[str, Any] = {}
         if "decision" in _HARNESS_AGENT_CONFIG_FIELDS:
             harness_fields["decision"] = self._decision.harness_config()
+        if "web_search_require_env" in _HARNESS_AGENT_CONFIG_FIELDS:
+            if cfg.get("web_search_tools") is False:
+                harness_fields["web_search_tools"] = False
+            else:
+                # Mount every provider so a personal key can light it up; the
+                # harness hides tools with no call-level/global credential per turn.
+                from octop.infra.utils.search_providers import SEARCH_PROVIDER_IDS
+
+                harness_fields["web_search_tools"] = list(SEARCH_PROVIDER_IDS)
+                harness_fields["web_search_require_env"] = False
 
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),

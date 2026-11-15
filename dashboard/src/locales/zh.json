@@ -356,7 +356,40 @@
     "saveFailed": "没能保存导航布局",
     "dragToReorder": "拖动排序",
     "chatHistory": "会话列表",
-    "passkeys": "通行密钥"
+    "passkeys": "通行密钥",
+    "keys": "密钥",
+    "searchKeys": "搜索密钥"
+  },
+  "searchKeys": {
+    "title": "我的搜索密钥",
+    "hint": "在这里配置搜索服务的个人 Key。之后你的搜索会使用自己的 Key（计费、限额与审计都跟随你）；未配置时使用管理员配置的全局 Key。Key 只保存在服务端，保存后不会再次显示。",
+    "empty": "暂无可配置个人密钥的搜索服务",
+    "inputPlaceholder": "粘贴 {{key}}",
+    "optionalPlaceholder": "{{key}}（可选）",
+    "save": "保存",
+    "saved": "个人搜索密钥已保存",
+    "saveFailed": "保存搜索密钥失败",
+    "deleteFailed": "删除搜索密钥失败",
+    "loadFailed": "加载搜索密钥失败",
+    "delete": "删除个人搜索密钥？",
+    "deleteWarnNoGlobal": "该搜索服务没有全局 Key，删除后将无法继续使用，除非重新添加个人 Key。",
+    "deleted": "个人搜索密钥已删除，将使用全局 Key",
+    "deletedNoGlobal": "个人搜索密钥已删除。该搜索服务没有全局 Key，如需继续使用请重新添加。",
+    "hasOwn": "已配置个人 Key",
+    "usingGlobal": "使用全局 Key",
+    "keyless": "无需 Key",
+    "requiredTag": "需要个人 Key",
+    "updated": "更新于 {{time}}",
+    "providers": {
+      "tavily": "Tavily",
+      "brave": "Brave Search",
+      "deepseek": "DeepSeek 搜索",
+      "google": "Google 搜索",
+      "kimi": "Kimi（Moonshot）",
+      "yuanbao": "元宝搜索",
+      "you": "You.com",
+      "searchfree": "内置搜索"
+    }
   },
   "skillPackages": {
     "title": "技能包",
@@ -4105,7 +4138,12 @@
       "sourceBuiltinTitle": "当前搜索源：内置搜索",
       "sourceBuiltinDesc": "未配置第三方搜索服务时，仍可使用产品内置搜索服务；该服务无需 API Key，但不保证稳定性和可用性。配置第三方服务后会自动切换。",
       "sourceConfiguredTitle": "当前搜索源：{{name}}",
-      "sourceConfiguredDesc": "已配置第三方搜索服务，内置搜索默认不再加载，避免多个搜索工具同时暴露给模型。"
+      "sourceConfiguredDesc": "已配置第三方搜索服务，内置搜索默认不再加载，避免多个搜索工具同时暴露给模型。",
+      "endpointLabel": "服务地址 / Endpoint",
+      "endpointHint": "可选。留空使用服务默认地址；仅允许 https。",
+      "endpointHttps": "仅允许 https 地址",
+      "keyOptional": "密钥可留空：留空表示保留现有全局 Key，或仅使用用户个人 Key；如需设置全局 Key，请填写该 provider 的全部必需字段。",
+      "keyIncomplete": "请填写该 provider 的全部必需密钥，或全部留空。"
     },
     "update": {
       "title": "版本与更新",

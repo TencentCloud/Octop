@@ -118,12 +118,18 @@ export const providerApi = {
 
   /* ---- Test search connectivity ---- */
 
-  testSearch: (providerId: string, envVars: Record<string, string>) =>
+  testSearch: (
+    providerId: string,
+    envVars: Record<string, string>,
+    endpoint?: string,
+  ) =>
     request<TestSearchResponse>(
       `/search/${encodeURIComponent(providerId)}/test`,
       {
         method: "POST",
-        body: JSON.stringify({ env_vars: envVars }),
+        body: JSON.stringify(
+          endpoint ? { env_vars: envVars, endpoint } : { env_vars: envVars },
+        ),
       },
     ),
 };
