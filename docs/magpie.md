@@ -2,15 +2,14 @@
 
 Magpie is an OpenAI-compatible provider. Octop discovers it on the **server that runs Octop**, reads its model catalog, and attributes chat requests to this install and to the current thread. Magpie's own subscription routing stays inside Magpie. Octop keeps using the existing AUTO failover.
 
-## Local one-click add
+## Add Magpie
 
-1. Open **Settings → Models** with the `providers` permission.
-2. If Magpie is listening on `http://127.0.0.1:3425` on the Octop host, the page shows its version and **Add Magpie**.
-3. Confirming that button reads `GET /v1/models` with the local key `magpie-octop` and creates a provider named `Magpie` only when the catalog contains chat models.
-4. The configuration panel stays open. Pick models there, then set a preferred model with the existing global model control. Octop does not choose a route group for you.
-5. Adding again does not overwrite an existing `Magpie` provider. Use **Check again** to repeat discovery. Discovery does not scan arbitrary URLs.
+1. Open **Settings → Models** with the `providers` permission and add the Magpie preset, or open an existing Magpie provider.
+2. The configuration drawer explains AUTO failover. It does not probe Magpie when the models page opens.
+3. **Check** asks the Octop host whether Magpie is listening at `http://127.0.0.1:3425`. **Check again** repeats that probe. Discovery does not scan arbitrary URLs.
+4. Creating the preset reads `GET /v1/models` with the local key `magpie-octop` and saves a provider named `Magpie` only when the catalog contains chat models. Pick models there, then set a preferred model with the existing global model control. Octop does not choose a route group for you.
 
-If Magpie is not running, the page stays usable. Add the Magpie preset manually or use a custom provider.
+If Magpie is not running, the drawer says so after a check. You can still add the Magpie preset or a custom provider.
 
 ## Custom address, port, and Docker
 

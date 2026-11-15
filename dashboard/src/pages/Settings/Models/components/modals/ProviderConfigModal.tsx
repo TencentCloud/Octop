@@ -43,6 +43,7 @@ import {
   planMagpieSync,
 } from "../../magpie";
 import { expandOllamaDownloadedIds } from "../../ollamaNames";
+import { MagpieServerNotice } from "../MagpieServerNotice";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
@@ -1131,6 +1132,7 @@ export function ProviderConfigModal({
         </div>
       }
     >
+      {isMagpie ? <MagpieServerNotice /> : null}
       {/* ===== Provider connection form ===== */}
       <Form
         form={form}
@@ -1227,9 +1229,6 @@ export function ProviderConfigModal({
         >
           {isMagpie ? t("models.magpieRefresh") : t("models.fetchModels")}
         </Button>
-        {isMagpie ? (
-          <div style={{ marginTop: 8 }}>{t("models.magpieFailoverNote")}</div>
-        ) : null}
         {!isOnnx && provider.kind === "openai" ? <TestStreamHint /> : null}
       </div>
 

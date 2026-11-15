@@ -25,6 +25,7 @@ import {
   magpieIntegrationExtra,
   magpieModelFromCatalog,
 } from "../../magpie";
+import { MagpieServerNotice } from "../MagpieServerNotice";
 import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
@@ -392,6 +393,7 @@ export function PresetProviderModal({
       ) : (
         <>
           <SetupDrawerSteps current={setupStep} />
+          {isMagpie ? <MagpieServerNotice /> : null}
           <Form form={form} layout="vertical">
             <Form.Item
               name="name"
