@@ -13,6 +13,39 @@ function optionalAgentHeaders(
   return { "X-Octop-Agent-Id": id };
 }
 
+export interface AcpHostStatus {
+  runner: string;
+  platform: string;
+  command: string;
+  args: string[];
+  binary_found: boolean;
+  acp_ok: boolean;
+  docs_url?: string;
+  install_script: string;
+  scripts: Record<string, string>;
+  agent_prompt: string;
+  can_auto_install: boolean;
+  status: "ready" | "missing" | "degraded" | "installed" | "skipped";
+  reason: string;
+  detail?: string;
+}
+
+export interface AcpAskResult {
+  ok: boolean;
+  prompt: string;
+  text: string;
+  reason: string;
+  detail?: string;
+  command: string;
+}
+
+export interface AcpHostRequest {
+  runner: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
 export const acpApi = {
   /** Global runner definitions (shared by all agents for the current user). */
   getGlobalRunners: (agentId?: string | null) =>
@@ -42,6 +75,24 @@ export const acpApi = {
   deleteRunner: (runnerName: string) =>
     request<void>(`/acp/${encodeURIComponent(runnerName)}`, {
       method: "DELETE",
+    }),
+
+  probeHost: (body: AcpHostRequest) =>
+    request<AcpHostStatus>("/acp/probe", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  askHost: (body: AcpHostRequest) =>
+    request<AcpAskResult>("/acp/ask", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  installHost: (body: AcpHostRequest) =>
+    request<AcpHostStatus>("/acp/install", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 
   /** Combined view: global runners + per-agent tool toggle. */

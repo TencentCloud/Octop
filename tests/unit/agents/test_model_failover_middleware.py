@@ -298,3 +298,152 @@ async def test_provider_failure_skips_sibling_model(monkeypatch) -> None:
     assert response.result[0].content == "ok"
     assert attempts == ["p/a", "q/c"]
     assert configurable["model"] == "q/c"
+
+
+def _sdk_connection_error() -> Exception:
+    import httpx
+    from openai import APIConnectionError
+
+    request = httpx.Request("POST", "http://127.0.0.1:3425/v1/chat/completions")
+    cause = httpx.ConnectError("All connection attempts failed")
+    try:
+        raise APIConnectionError(request=request) from cause
+    except APIConnectionError as exc:
+        return exc
+
+
+@pytest.mark.asyncio
+async def test_auto_failover_on_openai_connection_error(monkeypatch) -> None:
+    models = {"Magpie/a": _model("Magpie/a", 100_000), "openai/b": _model("openai/b", 100_000)}
+    configurable = {"model": "Magpie/a", "octop_auto_route": True}
+    middleware = SafeModelFailoverMiddleware(
+        health=ModelHealthRegistry(clock=lambda: 100.0),
+        candidates=lambda _current, _vision: [AutoRouteCandidate("openai/b", 100_000)],
+        model_for_ref=models.__getitem__,
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(model_failover, "_configurable", lambda _request: configurable)
+    attempts: list[str] = []
+
+    async def handler(request: ModelRequest) -> ModelResponse:
+        attempts.append(request.model.model)
+        if request.model.model == "Magpie/a":
+            raise _sdk_connection_error()
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    response = await middleware.awrap_model_call(
+        ModelRequest(model=models["Magpie/a"], messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+    assert response.result[0].content == "ok"
+    assert attempts == ["Magpie/a", "openai/b"]
+
+
+@pytest.mark.asyncio
+async def test_pinned_model_does_not_switch_on_connection_error(monkeypatch) -> None:
+    model = _model("Magpie/a", 100_000)
+    middleware = SafeModelFailoverMiddleware(
+        health=ModelHealthRegistry(clock=lambda: 100.0),
+        candidates=lambda _current, _vision: [AutoRouteCandidate("openai/b", 100_000)],
+        model_for_ref=lambda ref: _model(ref, 100_000),
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "Magpie/a", "octop_auto_route": False},
+    )
+    handler = AsyncMock(side_effect=_sdk_connection_error())
+    response = await middleware.awrap_model_call(
+        ModelRequest(model=model, messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+    assert "[model_call_failed]" in str(response.result[0].content)
+    assert handler.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_failover_skips_models_omitted_by_permission_and_modality(monkeypatch) -> None:
+    models = {
+        "Magpie/a": _model("Magpie/a", 100_000),
+        "openai/text": _model("openai/text", 100_000),
+        "openai/vision": _model("openai/vision", 100_000),
+    }
+    middleware = SafeModelFailoverMiddleware(
+        health=ModelHealthRegistry(clock=lambda: 100.0),
+        candidates=lambda _current, needs_multimodal: (
+            [AutoRouteCandidate("openai/vision", 100_000)]
+            if needs_multimodal
+            else [AutoRouteCandidate("openai/text", 8_000)]
+        ),
+        model_for_ref=models.__getitem__,
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "Magpie/a", "octop_auto_route": True},
+    )
+    monkeypatch.setattr(model_failover, "latest_human_needs_multimodal", lambda _messages: True)
+    attempts: list[str] = []
+
+    async def handler(request: ModelRequest) -> ModelResponse:
+        attempts.append(request.model.model)
+        if request.model.model == "Magpie/a":
+            raise _sdk_connection_error()
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    response = await middleware.awrap_model_call(
+        ModelRequest(model=models["Magpie/a"], messages=[HumanMessage(content="see")]),
+        handler,
+    )
+    assert response.result[0].content == "ok"
+    assert attempts == ["Magpie/a", "openai/vision"]
+
+
+@pytest.mark.asyncio
+async def test_cooled_down_model_is_tried_again(monkeypatch) -> None:
+    clock = {"now": 100.0}
+    models = {"Magpie/a": _model("Magpie/a", 100_000)}
+    health = ModelHealthRegistry(clock=lambda: clock["now"])
+    middleware = SafeModelFailoverMiddleware(
+        health=health,
+        candidates=lambda _current, _vision: [],
+        model_for_ref=models.__getitem__,
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "Magpie/a", "octop_auto_route": True},
+    )
+    calls = {"n": 0}
+
+    async def handler(request: ModelRequest) -> ModelResponse:
+        del request
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _sdk_connection_error()
+        return ModelResponse(result=[AIMessage(content="back")])
+
+    first = await middleware.awrap_model_call(
+        ModelRequest(model=models["Magpie/a"], messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+    assert "[model_call_failed]" in str(first.result[0].content)
+    assert not health.is_routable("Magpie/a")
+    clock["now"] = 100.0 + 60.0
+    second = await middleware.awrap_model_call(
+        ModelRequest(model=models["Magpie/a"], messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+    assert second.result[0].content == "back"
+    assert health.is_routable("Magpie/a")

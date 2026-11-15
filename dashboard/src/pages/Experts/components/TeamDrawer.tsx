@@ -570,7 +570,7 @@ export default function TeamDrawer({
           className={styles.textAssistField}
         >
           <Input.TextArea
-            autoSize={{ minRows: 2, maxRows: 5 }}
+            rows={3}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>

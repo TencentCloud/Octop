@@ -368,7 +368,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  overflow: hidden;
+  overflow: visible;
   line-height: 0;
 }
 
@@ -1286,6 +1286,54 @@
   transition:
     transform 0.15s ease,
     color 0.15s ease;
+}
+
+.fileChangeList {
+  justify-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fileChangeRow {
+  margin-top: 0;
+}
+
+.fileChangeName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileChangePending,
+.fileChangeRowStats {
+  flex-shrink: 0;
+}
+
+.fileChangePending {
+  color: var(--fn-text-tertiary);
+  font-weight: 400;
+}
+
+.fileChangeRowStats {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fileChangeAdd {
+  color: var(--fn-color-success, #389e0d);
+}
+
+.fileChangeDel {
+  color: var(--fn-color-danger, #cf1322);
 }
 
 .processSummaryToggle {
