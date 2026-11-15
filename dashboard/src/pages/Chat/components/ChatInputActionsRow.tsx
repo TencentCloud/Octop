@@ -1353,16 +1353,18 @@ export default function ChatInputActionsRow({
         </p>
       ) : null}
       <div className={styles.inputActions}>
-        <ContextWindowRing
-          usedTokens={contextUsedTokens}
-          usageEstimated={contextUsedTokens == null}
-          maxTokens={contextMaxTokens}
-          agentId={agentId}
-          threadId={threadId}
-          selectedConnectors={selectedConnectors}
-          isMobile={isMobile}
-          decisionSaved={decisionSaved}
-        />
+        {!managed && (
+          <ContextWindowRing
+            usedTokens={contextUsedTokens}
+            usageEstimated={contextUsedTokens == null}
+            maxTokens={contextMaxTokens}
+            agentId={agentId}
+            threadId={threadId}
+            selectedConnectors={selectedConnectors}
+            isMobile={isMobile}
+            decisionSaved={decisionSaved}
+          />
+        )}
         {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}
         {useCompactControls ? (
           <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>

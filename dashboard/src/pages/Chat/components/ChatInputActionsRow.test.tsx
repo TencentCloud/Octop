@@ -16,7 +16,7 @@ vi.hoisted(() => {
 });
 
 vi.mock("./ContextWindowRing", () => ({
-  default: () => null,
+  default: () => <div data-testid="context-window-ring" />,
 }));
 
 const models: ResolvedModel[] = [
@@ -78,6 +78,17 @@ describe("ChatInputActionsRow plus menu", () => {
     expect(
       screen.queryByTestId("conversation-mode-hint"),
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId("context-window-ring")).toBeInTheDocument();
+  });
+
+  it("hides context usage for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} managed />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("context-window-ring")).not.toBeInTheDocument();
   });
 
   it("folds shortcut, upload, and polish into the plus menu when the composer is narrow", async () => {
