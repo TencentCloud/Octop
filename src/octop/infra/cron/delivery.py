@@ -246,6 +246,11 @@ class CronDeliveryService:
             default_model=default_model,
         )
         message_kwargs = {COMPOSER_CTX_KEY: composer} if composer else None
+        api_key_override, api_key_override_provider = self._resolve_turn_api_key(
+            session.user_id,
+            command.model,
+            agent_id=command.agent_id,
+        )
         request = build_harness_request(
             thread_id=session.thread_id,
             user_id=session.user_id,
@@ -254,12 +259,53 @@ class CronDeliveryService:
             source=session.channel_type,
             text=command.prompt,
             model=command.model,
+            api_key_override=api_key_override,
+            api_key_override_provider=api_key_override_provider,
             message_kwargs=message_kwargs,
         )
         if servers:
             request["mcp_servers"] = servers
         self._attach_turn_knowledge_config(request, command, session)
         return request
+
+    def _resolve_turn_api_key(
+        self,
+        user_id: int,
+        model_ref: str | None,
+        *,
+        agent_id: str,
+    ) -> tuple[str | None, str | None]:
+        """Personal key (and its provider) for one cron turn, or ``(None, None)``.
+
+        A job that pins no model still runs on the harness default ref, so the
+        key is resolved against that ref; otherwise personal keys would never
+        apply to AUTO cron jobs.
+        """
+        if user_id <= 0:
+            return None, None
+        ref = model_ref.strip() if isinstance(model_ref, str) and model_ref.strip() else None
+        if ref is None:
+            ref = self._default_model_ref(agent_id)
+        if ref is None:
+            return None, None
+        key = self._agent_manager.resolve_api_key_override(user_id, ref)
+        if not isinstance(key, str) or not key:
+            return None, None
+        return key, ref.partition("/")[0]
+
+    def _default_model_ref(self, agent_id: str) -> str | None:
+        """The ref the harness falls back to when a cron job pins no model."""
+        row = self._agent_manager.get_row(agent_id)
+        cfg = self._agent_manager.get_config(agent_id)
+        explicit = (
+            self._agent_manager.providers.resolve_explicit_default_model(row, cfg)
+            if row is not None
+            else None
+        )
+        for candidate in (explicit, self._agent_manager.resolve_fallback_model_ref()):
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        return None
 
     def _attach_turn_knowledge_config(
         self,
