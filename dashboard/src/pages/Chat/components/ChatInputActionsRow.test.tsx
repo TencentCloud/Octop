@@ -63,7 +63,11 @@ describe("ChatInputActionsRow plus menu", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("composer-plus")).toBeInTheDocument();
+    expect(screen.queryByTestId("composer-plus")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Model")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.conversationMode.picker"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
     expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
     expect(screen.getByLabelText("Upload")).toBeInTheDocument();
@@ -211,7 +215,11 @@ describe("ChatInputActionsRow plus menu", () => {
   it("opens a flyout beside the plus menu instead of a window drawer", async () => {
     render(
       <MemoryRouter>
-        <ChatInputActionsRow {...baseProps} />
+        <ChatInputActionsRow
+          {...baseProps}
+          availableConnectors={[]}
+          onConnectorsChange={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
@@ -254,7 +262,12 @@ describe("ChatInputActionsRow plus menu", () => {
     ];
     render(
       <MemoryRouter>
-        <ChatInputActionsRow {...baseProps} availableModels={extraModels} />
+        <ChatInputActionsRow
+          {...baseProps}
+          availableModels={extraModels}
+          availableConnectors={[]}
+          onConnectorsChange={vi.fn()}
+        />
       </MemoryRouter>,
     );
 

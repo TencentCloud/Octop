@@ -18,6 +18,12 @@ def test_tool_display_name_known_zh():
     assert tool_display_name("write_env_file", "en") == "Write env file"
 
 
+def test_external_agent_approval_has_a_display_name():
+    assert tool_display_name("external-agent", "zh") == "托管智能体"
+    assert tool_display_name("external-agent", "en") == "Managed agent"
+    assert "external-agent" not in {entry.name for entry in hitl_tool_catalog()}
+
+
 def test_tool_display_name_unknown_passthrough():
     assert tool_display_name("custom_plugin_tool", "en") == "custom_plugin_tool"
 

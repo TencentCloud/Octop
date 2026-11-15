@@ -141,6 +141,19 @@ does not set these headers itself.
 | `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
 | `PATCH`  | `/agents/{id}/tool-settings/{tool_name}` | owner | body `{enabled, source, plugin_id?}` — toggle one tool (hot-sync) |
 
+Create and patch accept the same per-expert runtime fields the dashboard shows
+under advanced options (`max_iters`, sampling, `compaction`, tool-call limit,
+model retry, tool retry). They are stored on the agent and returned as
+top-level fields, not inside `config`. Omit a field to keep its default;
+send `null` to clear a stored override.
+
+Tool calls in one user turn default to 40 (`tool_call_run_limit`). Reaching
+the cap ends that turn. `tool_call_limit_enabled: false` removes the cap.
+Model retry defaults to on, 2 extra attempts, 1s–60s, and fails the turn when
+exhausted. Tool retry defaults to on, 5 extra attempts, 1s–60s, and only
+retries a tool that raises; the error is then handed back to the model.
+These middleware settings apply the next time the expert starts.
+
 ## Skills and skill packages
 
 Skill copy operations create snapshots; they do not keep the source and
@@ -489,6 +502,9 @@ this gate at production: it creates test namespaces and a temporary failure trig
 |--------|------|------|-------|
 | `GET`    | `/acp` | user | current user's global runner list |
 | `PUT`    | `/acp` | user | replace global runners |
+| `POST`   | `/acp/probe` | admin | probe command + ACP initialize; returns host install script and Octop prompt |
+| `POST`   | `/acp/ask` | admin | send `who are you?` over ACP and return the reply text |
+| `POST`   | `/acp/install` | admin | best-effort install of a built-in runner, then probe again |
 | `GET`    | `/acp/{runner_name}` | user | one runner |
 | `PUT`    | `/acp/{runner_name}` | user | upsert one runner |
 | `DELETE` | `/acp/{runner_name}` | user | delete a custom runner (built-ins are protected) |

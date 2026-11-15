@@ -59,6 +59,9 @@ dependencies = [
 [tool.uv.sources]
 # Draft-only: replace with the published version requirement after Gateway #44 ships.
 octop-gateway = { git = "https://github.com/ideshun/octop-gateway.git", rev = "590a71c395255d46907debd5d9978e6f288df637" }
+# Draft-only: published 1.0.9 has no managed_runner or summarization overrides.
+# Replace with the version requirement after octop-harness #270 ships.
+octop-harness = { git = "https://github.com/TencentCloud/octop-harness.git", rev = "3032b2ed1a11040b376632f3861426bae9db871f" }
 
 [project.optional-dependencies]
 # PEP 621 extras — kept so `pip install -e ".[dev]"` keeps working for
