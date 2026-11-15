@@ -288,7 +288,10 @@ in the list. If the process is down for more than 24 hours past that
 time and the job never ran, `last_status` is `missed` and the job is
 disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
 an optional display label; when omitted, the server derives one from
-`prompt`.
+`prompt`. `session_key` omitted or `latest` uses the owner's Dashboard
+channel and, on each run, that channel's most recent conversation.
+`thread:{thread_id}` pins the job to that conversation. `fresh_thread`
+starts a new conversation on the channel and ignores the history pin.
 
 ## Providers
 
