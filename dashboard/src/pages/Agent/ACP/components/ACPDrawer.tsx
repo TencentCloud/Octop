@@ -1,6 +1,20 @@
-import { Button, Drawer, Form, Input, InputNumber, Select, Switch } from "antd";
+import { useState } from "react";
+import {
+  Button,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Select,
+  Spin,
+  Switch,
+  Tooltip,
+} from "antd";
+import { MessageSquare } from "lucide-react";
 import type { FormInstance } from "antd";
+import cx from "classnames";
 import { useTranslation } from "react-i18next";
+import { acpApi } from "../../../../api/modules/acp";
 import type {
   ACPToolParseMode,
   ACPRunnerConfig,
@@ -11,6 +25,14 @@ import {
   stringifyArgs,
   stringifyEnv,
 } from "../../../../api/types/acp";
+import {
+  isBuiltinRunner,
+  runnerIcon,
+  runnerIntroKey,
+  runnerLabelKey,
+} from "../constants";
+import { AcpHostPanel } from "./AcpHostPanel";
+import { AcpSectionToggle } from "./AcpSectionToggle";
 import styles from "../index.module.less";
 
 const PARSE_MODES: { value: ACPToolParseMode; label: string }[] = [
@@ -45,98 +67,217 @@ export function ACPDrawer({
   onDelete,
 }: ACPDrawerProps) {
   const { t } = useTranslation();
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [askText, setAskText] = useState("");
+  const [askError, setAskError] = useState("");
+  const watchedCommand = Form.useWatch("command", form);
+  const watchedArgs = Form.useWatch("argsText", form);
+  const watchedEnv = Form.useWatch("envText", form);
+  const titleName =
+    !isCreateMode && activeKey
+      ? isBuiltinRunner(activeKey)
+        ? t(runnerLabelKey(activeKey))
+        : activeKey
+      : "";
+  const intro =
+    !isCreateMode && activeKey && isBuiltinRunner(activeKey)
+      ? t(runnerIntroKey(activeKey))
+      : "";
+
+  const runAsk = async () => {
+    setAsking(true);
+    setAskText("");
+    setAskError("");
+    try {
+      const result = await acpApi.askHost({
+        runner: activeKey ?? String(form.getFieldValue("runnerKey") || ""),
+        command: String(form.getFieldValue("command") || "").trim(),
+        args: parseArgsText(form.getFieldValue("argsText")),
+        env: parseEnvText(form.getFieldValue("envText")),
+      });
+      if (result.ok) {
+        setAskText(result.text);
+      } else {
+        setAskError(
+          result.detail ||
+            t(`acp.host.reason.${result.reason}`, {
+              defaultValue: t("acp.askFailed"),
+            }),
+        );
+      }
+    } catch (err) {
+      setAskError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAsking(false);
+    }
+  };
+
+  const runnerKeyField = (
+    <Form.Item
+      name="runnerKey"
+      label={t("acp.runnerKey")}
+      rules={[
+        { required: true, message: t("acp.runnerKeyRequired") },
+        { pattern: /^[A-Za-z0-9_-]+$/, message: t("acp.runnerKeyInvalid") },
+      ]}
+    >
+      <Input placeholder="my_custom_runner" disabled={!canEditKey} />
+    </Form.Item>
+  );
 
   return (
     <Drawer
       title={
-        isCreateMode
-          ? t("acp.createTitle")
-          : activeKey
-          ? `${t("acp.editTitle")}: ${activeKey}`
-          : t("acp.editTitle")
+        isCreateMode ? (
+          t("acp.createTitle")
+        ) : (
+          <span className={styles.drawerTitle}>
+            {activeKey ? (
+              <img
+                src={runnerIcon(activeKey)}
+                alt=""
+                className={cx(
+                  styles.drawerTitleIcon,
+                  activeKey === "pi" && styles.invertOnDark,
+                )}
+              />
+            ) : null}
+            <span>
+              {titleName
+                ? `${t("acp.editTitle")}: ${titleName}`
+                : t("acp.editTitle")}
+            </span>
+          </span>
+        )
       }
       open={open}
       onClose={onClose}
-      width={520}
+      width={560}
       destroyOnHidden
+      afterOpenChange={(next) => {
+        if (!next) return;
+        setAdvancedOpen(false);
+        setAsking(false);
+        setAskText("");
+        setAskError("");
+      }}
       footer={
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <div>
-            {canDelete ? (
-              <Button danger onClick={onDelete}>
-                {t("common.delete")}
+        <div className={styles.drawerFooterWrap}>
+          {asking || askText || askError ? (
+            <div className={styles.askBar}>
+              <div className={styles.askResultLabel}>{t("acp.askResult")}</div>
+              {asking && !askText ? <Spin size="small" /> : null}
+              {askText ? (
+                <pre className={styles.askOutput}>{askText}</pre>
+              ) : null}
+              {askError ? <p className={styles.askError}>{askError}</p> : null}
+            </div>
+          ) : null}
+          <div className={styles.drawerFooter}>
+            <div>
+              {canDelete ? (
+                <Button danger onClick={onDelete}>
+                  {t("common.delete")}
+                </Button>
+              ) : null}
+            </div>
+            <div className={styles.drawerFooterActions}>
+              <Tooltip title={t("acp.askHint")}>
+                <Button
+                  icon={<MessageSquare size={14} />}
+                  loading={asking}
+                  onClick={() => void runAsk()}
+                >
+                  {t("acp.askProbe")}
+                </Button>
+              </Tooltip>
+              <Button onClick={onClose}>{t("common.cancel")}</Button>
+              <Button
+                type="primary"
+                loading={saving}
+                onClick={() => form.submit()}
+              >
+                {t("common.save")}
               </Button>
-            ) : null}
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <Button onClick={onClose}>{t("common.cancel")}</Button>
-            <Button
-              type="primary"
-              loading={saving}
-              onClick={() => form.submit()}
-            >
-              {t("common.save")}
-            </Button>
+            </div>
           </div>
         </div>
       }
     >
       <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <Form.Item
-          name="runnerKey"
-          label={t("acp.runnerKey")}
-          rules={[
-            { required: true, message: t("acp.runnerKeyRequired") },
-            { pattern: /^[A-Za-z0-9_-]+$/, message: t("acp.runnerKeyInvalid") },
-          ]}
+        {intro ? <p className={styles.drawerIntro}>{intro}</p> : null}
+        {isCreateMode ? (
+          <p className={styles.drawerHint}>{t("acp.docsHint")}</p>
+        ) : (
+          <AcpHostPanel
+            open={open}
+            runner={activeKey ?? ""}
+            command={String(watchedCommand ?? "")}
+            argsText={String(watchedArgs ?? "")}
+            envText={String(watchedEnv ?? "")}
+          />
+        )}
+
+        <div className={styles.switchRow}>
+          <div>
+            <div className={styles.switchLabel}>{t("common.enabled")}</div>
+            {!isCreateMode ? (
+              <div className={styles.switchHelp}>
+                {t("acp.disableKeepsRunner")}
+              </div>
+            ) : null}
+          </div>
+          <Form.Item name="enabled" valuePropName="checked" noStyle>
+            <Switch />
+          </Form.Item>
+        </div>
+
+        {runnerKeyField}
+
+        <AcpSectionToggle
+          label={t("acp.advanced")}
+          open={advancedOpen}
+          onToggle={() => setAdvancedOpen((current) => !current)}
         >
-          <Input placeholder="my_custom_runner" disabled={!canEditKey} />
-        </Form.Item>
-        <Form.Item
-          name="enabled"
-          label={t("common.enabled")}
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-        <Form.Item
-          name="command"
-          label={t("acp.command")}
-          rules={[{ required: true, message: t("acp.commandRequired") }]}
-        >
-          <Input placeholder="opencode" />
-        </Form.Item>
-        <Form.Item
-          name="argsText"
-          label={t("acp.args")}
-          tooltip={t("acp.argsHelp")}
-        >
-          <Input.TextArea autoSize={{ minRows: 4, maxRows: 8 }} />
-        </Form.Item>
-        <Form.Item
-          name="envText"
-          label={t("acp.env")}
-          tooltip={t("acp.envHelp")}
-        >
-          <Input.TextArea autoSize={{ minRows: 3, maxRows: 6 }} />
-        </Form.Item>
-        <Form.Item
-          name="trusted"
-          label={t("acp.trusted")}
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-        <Form.Item name="tool_parse_mode" label={t("acp.toolParseMode")}>
-          <Select options={PARSE_MODES} />
-        </Form.Item>
-        <Form.Item
-          name="stdio_buffer_limit_bytes"
-          label={t("acp.stdioBufferLimit")}
-        >
-          <InputNumber style={{ width: "100%" }} min={1} step={1024} />
-        </Form.Item>
-        <p className={styles.drawerHint}>{t("acp.docsHint")}</p>
+          <Form.Item
+            name="command"
+            label={t("acp.command")}
+            rules={[{ required: true, message: t("acp.commandRequired") }]}
+          >
+            <Input placeholder="opencode" />
+          </Form.Item>
+          <Form.Item
+            name="argsText"
+            label={t("acp.args")}
+            tooltip={t("acp.argsHelp")}
+          >
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} />
+          </Form.Item>
+          <Form.Item
+            name="envText"
+            label={t("acp.env")}
+            tooltip={t("acp.envHelp")}
+          >
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} />
+          </Form.Item>
+          <Form.Item
+            name="trusted"
+            label={t("acp.trusted")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item name="tool_parse_mode" label={t("acp.toolParseMode")}>
+            <Select options={PARSE_MODES} />
+          </Form.Item>
+          <Form.Item
+            name="stdio_buffer_limit_bytes"
+            label={t("acp.stdioBufferLimit")}
+          >
+            <InputNumber style={{ width: "100%" }} min={1} step={1024} />
+          </Form.Item>
+        </AcpSectionToggle>
       </Form>
     </Drawer>
   );

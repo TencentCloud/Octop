@@ -21,13 +21,14 @@ import { useKeyboardOffset } from "../../hooks/useKeyboardOffset";
 import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/chatRailEvents";
 import RailEdgeControl from "../../components/RailEdgeControl";
+import DesktopWindowDragBand from "../../components/DesktopWindowDragBand";
+import { useTranslation } from "react-i18next";
 import {
   isMacPlatform,
   railShortcutAria,
   railShortcutLabel,
 } from "../../utils/railShortcuts";
-import { useTranslation } from "react-i18next";
-import DesktopWindowDragBand from "../../components/DesktopWindowDragBand";
+import { readNavCollapsed, writeNavCollapsed } from "../navCollapsed";
 import RequirePermission from "../../components/RequirePermission";
 import { routeNeedsPermission } from "../../utils/permissions";
 import { useLayoutMode } from "../../context/LayoutModeContext";
@@ -40,16 +41,8 @@ const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
 
 const { Content } = Layout;
 
-const SIDEBAR_COLLAPSED_KEY = "octop:sidebar:collapsed";
-
 function getSavedCollapsed(): boolean {
-  try {
-    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-    if (saved !== null) return saved === "true";
-  } catch {
-    // localStorage may be unavailable (e.g. private browsing restrictions)
-  }
-  return false; // Default: expanded on both desktop and mobile.
+  return readNavCollapsed();
 }
 
 /**
@@ -93,11 +86,7 @@ export default function MainLayout() {
 
   const persistNavCollapsed = useCallback((next: boolean) => {
     setCollapsed(next);
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(next));
-    } catch {
-      /* ignore */
-    }
+    writeNavCollapsed(next);
   }, []);
 
   /** Mobile header / overlay: simple nav toggle. */
@@ -160,15 +149,6 @@ export default function MainLayout() {
     onToggleNav: isMobile ? toggleCollapsed : handleNavRailToggle,
     onToggleHistory: handleHistoryRailToggle,
   });
-
-  const navEdgeLabel = t(
-    collapsed ? "layout.expandNav" : "layout.collapseNav",
-    collapsed ? "展开导航栏" : "收起导航栏",
-  );
-  const navEdgeHint = `${navEdgeLabel} (${railShortcutLabel(
-    "toggle-nav",
-    isMacPlatform(),
-  )})`;
 
   // When switching to mobile, always collapse; restore saved preference on desktop
   useEffect(() => {
@@ -319,6 +299,7 @@ export default function MainLayout() {
                 selectedKey={selectedKey}
                 collapsed={collapsed}
                 onToggle={toggleCollapsed}
+                onNavFold={handleNavRailToggle}
                 isMobile={isMobile}
               />
               {!isMobile && (
@@ -326,9 +307,16 @@ export default function MainLayout() {
                   expanded={!collapsed}
                   onToggle={handleNavRailToggle}
                   side="end"
-                  placement="center"
-                  label={navEdgeLabel}
-                  hint={navEdgeHint}
+                  label={
+                    collapsed
+                      ? t("layout.expandNav", "展开导航栏")
+                      : t("layout.collapseNav", "收起导航栏")
+                  }
+                  hint={`${
+                    collapsed
+                      ? t("layout.expandNav", "展开导航栏")
+                      : t("layout.collapseNav", "收起导航栏")
+                  } (${railShortcutLabel("toggle-nav", isMacPlatform())})`}
                   shortcut={railShortcutAria("toggle-nav")}
                 />
               )}
@@ -357,6 +345,7 @@ export default function MainLayout() {
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
+                position: "relative",
               }}
             >
               {isMobile &&

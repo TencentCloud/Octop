@@ -360,7 +360,49 @@
   gap: 4px;
   min-width: 0;
   overflow: hidden;
-  flex-shrink: 1;
+  flex: 1 1 auto;
+}
+
+/* Logo, version, then the fold control against the rail's right edge. */
+.brandRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 10px 4px 10px 14px;
+}
+
+.brandRowCollapsed {
+  justify-content: center;
+  padding: 10px 0 12px;
+}
+
+.navFold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: var(--fn-sidebar-item-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
 }
 
 /* Mobile drawer slides in from the left; same opt-out as the rail. */

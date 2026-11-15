@@ -66,6 +66,7 @@ import {
   Monitor,
   X,
 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { request } from "../../../api/request";
@@ -85,7 +86,11 @@ import { useSetCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../../utils/apiError";
-import { formatServerDateTime } from "../../../utils/formatMessageTime";
+import {
+  calendarDaysAgo,
+  formatServerDateTime,
+  formatServerYmd,
+} from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
@@ -126,6 +131,7 @@ interface UserRow {
   login_locked_until?: number;
   login_retry_after_seconds?: number;
   created_at?: number;
+  last_login_at?: number | null;
   permissions?: string[];
   role_name?: string | null;
   avatar_url?: string | null;
@@ -532,6 +538,19 @@ function lockRemainingSeconds(row: UserRow, nowSec: number): number {
 function formatUserTs(ts: number | undefined, timeZone: string): string {
   if (!ts) return "—";
   return formatServerDateTime(ts, timeZone);
+}
+
+/** Today, yesterday, N days ago, or a calendar date. */
+function formatRelativeLogin(
+  ts: number,
+  timeZone: string,
+  t: TFunction,
+): string {
+  const diff = calendarDaysAgo(ts * 1000, timeZone);
+  if (!Number.isFinite(diff) || diff <= 0) return t("memory.time.today");
+  if (diff === 1) return t("memory.time.yesterday");
+  if (diff < 30) return t("memory.time.daysAgo", { n: diff });
+  return formatServerYmd(new Date(ts * 1000), timeZone);
 }
 
 interface UserCardGridProps {
@@ -1406,6 +1425,17 @@ function UserCardGrid({
         const remaining = lockRemainingSeconds(row, nowSec);
         const isLocked = remaining > 0;
         const failedCount = row.login_failed_count ?? 0;
+        const cardLead = [
+          row.email?.trim() || t("adminUsers.noEmail"),
+          row.created_at ? formatUserTs(row.created_at, timeZone) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const cardLogin = row.last_login_at
+          ? t("adminUsers.lastLoginAt", {
+              time: formatRelativeLogin(row.last_login_at, timeZone, t),
+            })
+          : t("adminUsers.lastLoginNever");
         return (
           <div
             key={row.id}
@@ -1457,13 +1487,26 @@ function UserCardGrid({
                 </div>
               </div>
               <p className={styles.userCardDesc}>
-                {row.email?.trim() || t("adminUsers.noEmail")}
-                {row.created_at != null
-                  ? ` · ${formatUserTs(row.created_at, timeZone)}`
-                  : ""}
+                {cardLead}
+                {cardLead ? " · " : null}
+                {row.last_login_at ? (
+                  <Tooltip title={formatUserTs(row.last_login_at, timeZone)}>
+                    <span>{cardLogin}</span>
+                  </Tooltip>
+                ) : (
+                  cardLogin
+                )}
               </p>
               <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
+                <button
+                  type="button"
+                  className={styles.userCardDetailLink}
+                  onClick={() => onShowAgents(row)}
+                >
+                  <Bot size={14} />
+                  {t("adminUsers.colAgents")} {agentsLoading ? "…" : agentCount}
+                </button>
                 {row.directory ? (
                   <span>{t("adminUsers.directoryBadge")}</span>
                 ) : row.sso_linked ? (
@@ -1500,14 +1543,6 @@ function UserCardGrid({
               ) : null}
             </div>
             <div className={styles.userCardFooter}>
-              <button
-                type="button"
-                className={styles.userCardDetailLink}
-                onClick={() => onShowAgents(row)}
-              >
-                <Bot size={14} />
-                {t("adminUsers.colAgents")} {agentsLoading ? "…" : agentCount}
-              </button>
               <span className={styles.userCardFooterSpacer} />
               <Switch
                 size="small"
@@ -2486,7 +2521,7 @@ export default function UsersListPanel() {
           loading={loading}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 1360 }}
+          scroll={{ x: 1540 }}
           rowSelection={{
             selectedRowKeys: selectedIds,
             onChange: (keys) => setSelectedIds(keys.map((key) => Number(key))),
@@ -2616,6 +2651,18 @@ export default function UsersListPanel() {
                 <span className={styles.userCellMuted}>
                   {formatUserTs(ts, timeZone)}
                 </span>
+              ),
+            },
+            {
+              title: t("adminUsers.colLastLogin"),
+              dataIndex: "last_login_at",
+              width: 168,
+              render: (ts: number | null | undefined) => (
+                <Tooltip title={ts ? formatUserTs(ts, timeZone) : undefined}>
+                  <span className={styles.userCellMuted}>
+                    {ts ? formatRelativeLogin(ts, timeZone, t) : "—"}
+                  </span>
+                </Tooltip>
               ),
             },
             {

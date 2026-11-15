@@ -61,7 +61,7 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "workbench",
     labelKey: "nav.workbench",
-    permissions: ["terminal", "browser"],
+    permissions: ["terminal", "browser", "cloud"],
   },
   {
     key: "remote-desktop",
@@ -128,6 +128,7 @@ const NAV_PERMISSION_CHIPS: readonly {
       "tls",
       "captcha",
       "update",
+      "app_config",
     ],
   },
 ];

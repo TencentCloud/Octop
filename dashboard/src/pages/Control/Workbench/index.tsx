@@ -4,7 +4,7 @@ import { Globe, Server, TerminalSquare } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { userCan, userCanAny } from "../../../utils/permissions";
+import { userCan } from "../../../utils/permissions";
 import TerminalPage from "../Terminal";
 import RemoteBrowserPage from "../RemoteBrowser";
 import CloudHostsPage from "../CloudHosts";
@@ -35,15 +35,13 @@ export default function WorkbenchPage({
   const { t } = useTranslation();
   const user = useCurrentUser();
   const isAllowed = useCallback(
-    (tab: WorkbenchTab) =>
-      tab === "cloud"
-        ? userCanAny(user, ["browser", "terminal"])
-        : userCan(user, tab),
+    (tab: WorkbenchTab) => userCan(user, tab),
     [user],
   );
-  const defaultTab: WorkbenchTab = userCan(user, "browser")
-    ? "browser"
-    : "terminal";
+  const defaultTab: WorkbenchTab =
+    (["browser", "terminal", "cloud"] as const).find((tab) =>
+      userCan(user, tab),
+    ) ?? "browser";
 
   const { activeTab, handleTabChange, isMounted } = usePathTabs({
     basePath: "/workbench",

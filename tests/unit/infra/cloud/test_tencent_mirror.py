@@ -43,14 +43,13 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "octop.infra.cloud.tencent.Path.home",
         lambda: tmp_path,
     )
-    monkeypatch.delenv("OCTOP_TCCLI_PROFILE_ISOLATION", raising=False)
     return tmp_path
 
 
 def test_mirror_writes_credential_and_pointer(home: Path) -> None:
     assert mirror_to_tccli(_credential(), uid=1) == "ok"
 
-    path = home / ".tccli" / "default.credential"
+    path = home / ".tccli" / "octop-1.credential"
     payload = json.loads(path.read_text())
     assert payload["type"] == "oauth"
     assert payload["secretId"] == "AKIDtest000000000000"
@@ -62,11 +61,7 @@ def test_mirror_writes_credential_and_pointer(home: Path) -> None:
     # read-only flag, so the Unix mode is meaningful on POSIX.
     if os.name == "posix":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    # 指针文件告诉技能脚本该读哪个 profile
-    pointer = home / ".tccli" / ".octop-profile"
-    assert pointer.read_text().strip() == "default"
-    if os.name == "posix":
-        assert stat.S_IMODE(pointer.stat().st_mode) == 0o600
+    assert not (home / ".tccli" / ".octop-profile").exists()
 
 
 def test_mirror_skips_without_tccli_dir(home: Path) -> None:
@@ -84,14 +79,14 @@ def test_mirror_reports_failure(home: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setattr("octop.infra.cloud.tencent._write_private", boom)
     assert mirror_to_tccli(_credential(), uid=1) == "failed"
-    assert not (home / ".tccli" / "default.credential").exists()
+    assert not (home / ".tccli" / "octop-1.credential").exists()
 
 
 def test_credential_from_tccli_roundtrip(home: Path) -> None:
     original = _credential()
     assert mirror_to_tccli(original, uid=1) == "ok"
 
-    parsed = credential_from_tccli(home / ".tccli" / "default.credential")
+    parsed = credential_from_tccli(home / ".tccli" / "octop-1.credential")
     assert parsed == original
 
 
@@ -103,21 +98,14 @@ def test_credential_from_tccli_rejects_static_key_file(home: Path) -> None:
         credential_from_tccli(path)
 
 
-def test_profile_isolation_is_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OCTOP_TCCLI_PROFILE_ISOLATION", raising=False)
-    assert tccli_profile_for_user(7) == "default"
-
-    monkeypatch.setenv("OCTOP_TCCLI_PROFILE_ISOLATION", "1")
+def test_profile_is_per_user() -> None:
     assert tccli_profile_for_user(7) == "octop-7"
-
-    # 无用户上下文（CLI 直接调用）时不能用隔离名
     assert tccli_profile_for_user(None) == "default"
 
 
-def test_isolated_profile_writes_separate_file(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_TCCLI_PROFILE_ISOLATION", "1")
+def test_isolated_profile_writes_separate_file(home: Path) -> None:
     assert mirror_to_tccli(_credential(), uid=3) == "ok"
 
     assert (home / ".tccli" / "octop-3.credential").is_file()
     assert not (home / ".tccli" / "default.credential").exists()
-    assert (home / ".tccli" / ".octop-profile").read_text().strip() == "octop-3"
+    assert not (home / ".tccli" / ".octop-profile").exists()
