@@ -160,6 +160,11 @@ class _MessageEventSink(SlashSink):
 class _ResolvedModelRoute:
     model_ref: str | None
     automatic: bool
+    #: Personal provider key for this turn (bring-your-own-key); None = global key.
+    api_key_override: str | None = None
+    #: Provider the personal key belongs to; the harness must not reuse it for
+    #: a model that routes to another provider.
+    api_key_override_provider: str | None = None
 
 
 class _ResolvedTurnMcp(NamedTuple):
@@ -814,7 +819,18 @@ class GlobalProcessor:
         )
         if resolved != model_ref:
             automatic = True
-        return _ResolvedModelRoute(resolved, automatic=automatic)
+        api_key_override = self._agent_manager.resolve_api_key_override(user_id, resolved)
+        # A personal key is only valid for the provider it was stored for; the
+        # harness drops it if routing ever selects another provider.
+        api_key_override_provider = (
+            resolved.partition("/")[0] if api_key_override and resolved else None
+        )
+        return _ResolvedModelRoute(
+            resolved,
+            automatic=automatic,
+            api_key_override=api_key_override,
+            api_key_override_provider=api_key_override_provider,
+        )
 
     def _resolve_reasoning_overrides(
         self,
@@ -1049,6 +1065,8 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
+            api_key_override=model_route.api_key_override,
+            api_key_override_provider=model_route.api_key_override_provider,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )
@@ -1720,6 +1738,8 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
+            api_key_override=model_route.api_key_override,
+            api_key_override_provider=model_route.api_key_override_provider,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
             message_id=client_message_id if isinstance(client_message_id, str) else None,
