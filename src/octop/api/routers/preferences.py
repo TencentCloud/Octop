@@ -198,6 +198,20 @@ async def patch_preferences(
                     ErrorCode.RESOURCE_NOT_ALLOWED,
                     "resource is not visible to this user",
                 )
+            # Reject a preference the user cannot actually use (no global key,
+            # not keyless, no personal key). Otherwise AUTO would silently skip
+            # it and fall back to another model.
+            if (
+                preferred is not None
+                and not server.app_runtime.agent_registry.providers.has_usable_credential(
+                    user.id,
+                    preferred,
+                )
+            ):
+                raise OctopError(
+                    ErrorCode.PROVIDER_KEY_REQUIRED,
+                    "this provider requires a personal API key",
+                )
         reasoning = None
         if body.model_reasoning is not None:
             reasoning = {

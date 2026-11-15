@@ -2,9 +2,70 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from tests.support.auth import create_user
+
+
+def _insert_provider(
+    srv,
+    *,
+    name: str,
+    api_key: str,
+    keyless: bool = False,
+) -> None:
+    """Insert a provider row directly.
+
+    Creating an empty-key provider through the admin API rehydrates harness
+    providers, which requires the harness release that allows an empty
+    ``api_key``. The preferences endpoint only reads the repo, so a direct row
+    keeps this test independent of that pin.
+    """
+    srv.services.provider_repo.create(
+        name=name,
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key=api_key,
+        extra_json='{"keyless": true}' if keyless else None,
+        models_json=json.dumps([{"id": "m", "name": "M", "enabled": True, "input": ["text"]}]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_preferences_preferred_model_rejects_missing_credential(env) -> None:
+    client, srv, auth = env
+    _insert_provider(srv, name="byok", api_key="")
+
+    r = await client.patch("/api/preferences", headers=auth, json={"preferred_model": "byok/m"})
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "PROVIDER_KEY_REQUIRED"
+    saved = await client.get("/api/preferences", headers=auth)
+    assert saved.json()["preferred_model"] is None
+
+    # A personal key makes the same preference valid.
+    r = await client.put("/api/me/provider-keys/byok", headers=auth, json={"api_key": "sk-user"})
+    r.raise_for_status()
+    r = await client.patch("/api/preferences", headers=auth, json={"preferred_model": "byok/m"})
+    assert r.status_code == 200
+    assert r.json()["preferred_model"] == "byok/m"
+
+    # Clearing a preference never needs a credential.
+    r = await client.patch("/api/preferences", headers=auth, json={"preferred_model": None})
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_preferences_preferred_model_allows_global_and_keyless(env) -> None:
+    client, srv, auth = env
+    _insert_provider(srv, name="gw", api_key="sk-global")
+    _insert_provider(srv, name="localgw", api_key="", keyless=True)
+
+    for ref in ("gw/m", "localgw/m"):
+        r = await client.patch("/api/preferences", headers=auth, json={"preferred_model": ref})
+        assert r.status_code == 200, r.text
+        assert r.json()["preferred_model"] == ref
 
 
 @pytest.mark.asyncio

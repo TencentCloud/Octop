@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -24,6 +25,54 @@ from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.db.services import build_shared_services
 from octop.infra.utils.paths import PathLayout
+
+
+class _FakeProviderRepo:
+    def __init__(self, row: Any) -> None:
+        self._row = row
+
+    def get_by_name(self, name: str) -> Any:
+        return self._row if self._row is not None and self._row.name == name else None
+
+
+class _FakeKeyRepo:
+    def __init__(self, keys: dict[tuple[int, str], str] | None = None) -> None:
+        self._keys = dict(keys or {})
+
+    def get_key(self, user_id: int, provider_name: str) -> str | None:
+        return self._keys.get((user_id, provider_name))
+
+
+def _provider_row(*, api_key: str | None, keyless: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(
+        name="p",
+        api_key=api_key,
+        extra_json='{"keyless": true}' if keyless else None,
+    )
+
+
+def _store_with(row: Any, keys: dict[tuple[int, str], str] | None = None) -> ProviderStore:
+    return ProviderStore(
+        provider_repo=_FakeProviderRepo(row),
+        user_provider_key_repo=_FakeKeyRepo(keys),
+    )
+
+
+def test_has_usable_credential_accepts_global_keyless_and_personal() -> None:
+    assert _store_with(_provider_row(api_key="sk-global")).has_usable_credential(7, "p/m") is True
+    keyless = _provider_row(api_key=None, keyless=True)
+    assert _store_with(keyless).has_usable_credential(7, "p/m") is True
+    personal = _store_with(_provider_row(api_key=""), {(7, "p"): "sk-user"})
+    assert personal.has_usable_credential(7, "p/m") is True
+
+
+def test_has_usable_credential_rejects_missing_and_unknown() -> None:
+    missing = _store_with(_provider_row(api_key=""))
+    assert missing.has_usable_credential(7, "p/m") is False
+    assert missing.has_usable_credential(0, "p/m") is False
+    assert missing.has_usable_credential(7, None) is False
+    assert missing.has_usable_credential(7, "missing/m") is False
+    assert _store_with(None).has_usable_credential(7, "p/m") is False
 
 
 @pytest.fixture
