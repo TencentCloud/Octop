@@ -16,7 +16,7 @@ vi.hoisted(() => {
 });
 
 vi.mock("./ContextWindowRing", () => ({
-  default: () => null,
+  default: () => <div data-testid="context-window-ring" />,
 }));
 
 const models: ResolvedModel[] = [
@@ -63,7 +63,11 @@ describe("ChatInputActionsRow plus menu", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("composer-plus")).toBeInTheDocument();
+    expect(screen.queryByTestId("composer-plus")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Model")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.conversationMode.picker"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
     expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
     expect(screen.getByLabelText("Upload")).toBeInTheDocument();
@@ -74,6 +78,17 @@ describe("ChatInputActionsRow plus menu", () => {
     expect(
       screen.queryByTestId("conversation-mode-hint"),
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId("context-window-ring")).toBeInTheDocument();
+  });
+
+  it("hides context usage for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} managed />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("context-window-ring")).not.toBeInTheDocument();
   });
 
   it("folds shortcut, upload, and polish into the plus menu when the composer is narrow", async () => {
@@ -211,7 +226,11 @@ describe("ChatInputActionsRow plus menu", () => {
   it("opens a flyout beside the plus menu instead of a window drawer", async () => {
     render(
       <MemoryRouter>
-        <ChatInputActionsRow {...baseProps} />
+        <ChatInputActionsRow
+          {...baseProps}
+          availableConnectors={[]}
+          onConnectorsChange={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
@@ -254,7 +273,12 @@ describe("ChatInputActionsRow plus menu", () => {
     ];
     render(
       <MemoryRouter>
-        <ChatInputActionsRow {...baseProps} availableModels={extraModels} />
+        <ChatInputActionsRow
+          {...baseProps}
+          availableModels={extraModels}
+          availableConnectors={[]}
+          onConnectorsChange={vi.fn()}
+        />
       </MemoryRouter>,
     );
 

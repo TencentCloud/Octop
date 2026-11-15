@@ -30,6 +30,7 @@ import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import BackendFlag from "./BackendFlag";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark } from "./ManagedAvatarMark";
 import {
   formatAgentError,
   formatAgentState,
@@ -325,16 +326,25 @@ export const AgentCard = memo(function AgentCard({
             owned={!sharedViewer}
             ownerName={agent.owner_username}
           >
-            <div
-              className={styles.agentCard2Icon}
-              style={{ color: accent, background: `${accent}1a` }}
+            <ManagedAvatarMark
+              runner={
+                agent.kind === "managed" &&
+                typeof agent.config?.managed_runner === "string"
+                  ? agent.config.managed_runner
+                  : null
+              }
             >
-              <ExpertIcon
-                iconUrl={iconUrl ?? agent.icon_url}
-                iconName={iconName ?? agent.icon_name}
-                size={iconUrl ?? agent.icon_url ? 42 : 22}
-              />
-            </div>
+              <div
+                className={styles.agentCard2Icon}
+                style={{ color: accent, background: `${accent}1a` }}
+              >
+                <ExpertIcon
+                  iconUrl={iconUrl ?? agent.icon_url}
+                  iconName={iconName ?? agent.icon_name}
+                  size={iconUrl ?? agent.icon_url ? 42 : 22}
+                />
+              </div>
+            </ManagedAvatarMark>
           </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>

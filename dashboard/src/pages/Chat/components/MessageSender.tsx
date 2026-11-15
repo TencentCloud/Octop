@@ -34,6 +34,8 @@ interface ExpertMessageAvatarProps {
   tooltip?: string | null;
   /** Open this agent in the profile drawer (member vs team host). */
   profileAgentId?: string | null;
+  /** ACP runner shown at the avatar's bottom-right. */
+  managedRunner?: string | null;
 }
 
 export function ExpertMessageAvatar({
@@ -43,6 +45,7 @@ export function ExpertMessageAvatar({
   iconUrl,
   tooltip,
   profileAgentId,
+  managedRunner,
 }: ExpertMessageAvatarProps) {
   const { t } = useTranslation();
   const profile = useChatAgentProfile();
@@ -54,6 +57,7 @@ export function ExpertMessageAvatar({
       iconUrl={iconUrl}
       color={color}
       size={MESSAGE_AVATAR_SIZE}
+      managedRunner={managedRunner}
     />
   );
 

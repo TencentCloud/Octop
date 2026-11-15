@@ -79,6 +79,8 @@ type CompactPickerKey =
   | "shortcut"
   | "upload";
 
+type ToolbarPickerKey = Exclude<CompactPickerKey, "shortcut" | "upload">;
+
 function resolveModelLogo(model: {
   provider_name: string;
   provider_kind: string;
@@ -180,6 +182,8 @@ interface ChatInputActionsRowProps {
   slashPickerGroups: SlashMenuGroup<SlashMenuItem>[] | null;
   slashMenuItems: SlashMenuItem[];
   onSlashShortcutSelect: (command: string) => void;
+  /** Hide mode, model, connectors, knowledge, experts, and shortcuts. */
+  managed?: boolean;
   onFileSelect: () => void;
   onFolderSelect: () => void;
   onNewChat: () => void;
@@ -240,6 +244,7 @@ export default function ChatInputActionsRow({
   slashPickerGroups,
   slashMenuItems,
   onSlashShortcutSelect,
+  managed = false,
   onFileSelect,
   onFolderSelect,
   onNewChat,
@@ -294,6 +299,10 @@ export default function ChatInputActionsRow({
   const [compactPicker, setCompactPicker] = useState<CompactPickerKey | null>(
     null,
   );
+  /** Picker opened from a toolbar button when the plus menu has fewer than 3 items. */
+  const [inlinePicker, setInlinePicker] = useState<CompactPickerKey | null>(
+    null,
+  );
 
   const useCompactControls = isMobile || isCompact;
 
@@ -346,25 +355,26 @@ export default function ChatInputActionsRow({
     return () => observer.disconnect();
   }, [isMobile]);
 
-  const showModelPicker = Boolean(
-    availableModels && availableModels.length > 0 && onModelChange,
-  );
+  const showModelPicker =
+    !managed &&
+    Boolean(availableModels && availableModels.length > 0 && onModelChange);
   const allowWriteTools = conversationMode === "craft";
-  const showConnectorPicker = Boolean(
-    allowWriteTools && availableConnectors && onConnectorsChange,
-  );
-  const showKnowledgePicker = Boolean(
-    availableKnowledgeBases && onKnowledgeBaseIdsChange,
-  );
+  const showConnectorPicker =
+    !managed &&
+    Boolean(allowWriteTools && availableConnectors && onConnectorsChange);
+  const showKnowledgePicker =
+    !managed && Boolean(availableKnowledgeBases && onKnowledgeBaseIdsChange);
   const showSkillPicker = Boolean(
     allowWriteTools && availableSkills && onInsertSkillCommand,
   );
-  const showExpertPicker = Boolean(
-    allowWriteTools &&
-      availableExperts &&
-      onInsertExpertMention &&
-      availableExperts.length > 0,
-  );
+  const showExpertPicker =
+    !managed &&
+    Boolean(
+      allowWriteTools &&
+        availableExperts &&
+        onInsertExpertMention &&
+        availableExperts.length > 0,
+    );
   const showSubagentPicker = Boolean(
     allowWriteTools &&
       availableSubagents &&
@@ -386,18 +396,25 @@ export default function ChatInputActionsRow({
     [availableSkills, skillDisplayName],
   );
   const activeSkillSlugs = parseSkillSlugsInText(text, skillTokenRefs);
-  const showModePicker = Boolean(onConversationModeChange);
+  const showModePicker = !managed && Boolean(onConversationModeChange);
   const polishDisabled =
     !text.trim() || polishing || isStreaming || disabled || !agentId;
+  const overflowKeys = (
+    [
+      showModePicker ? "mode" : null,
+      showModelPicker ? "model" : null,
+      showConnectorPicker ? "connector" : null,
+      showKnowledgePicker ? "knowledge" : null,
+      showSkillPicker ? "skill" : null,
+      showExpertPicker ? "expert" : null,
+      showSubagentPicker ? "subagent" : null,
+    ] as const
+  ).filter((key): key is ToolbarPickerKey => key !== null);
+  // A narrow dock already folds every control into the plus menu.
+  const flattenOverflow =
+    !useCompactControls && overflowKeys.length > 0 && overflowKeys.length < 3;
   const showOverflowMenu =
-    showModePicker ||
-    showModelPicker ||
-    showConnectorPicker ||
-    showKnowledgePicker ||
-    showSkillPicker ||
-    showExpertPicker ||
-    showSubagentPicker ||
-    useCompactControls;
+    useCompactControls || (!flattenOverflow && overflowKeys.length > 0);
 
   const overflowBadgeCount =
     selectedConnectors.length +
@@ -414,6 +431,7 @@ export default function ChatInputActionsRow({
 
   const closePlusMenu = () => {
     setOverflowPopoverOpen(false);
+    setInlinePicker(null);
     closeCompactPicker();
   };
 
@@ -904,7 +922,7 @@ export default function ChatInputActionsRow({
           </span>
         </button>
       )}
-      {useCompactControls && (
+      {useCompactControls && !managed && (
         <button
           type="button"
           className={cx(
@@ -1053,8 +1071,8 @@ export default function ChatInputActionsRow({
     </div>
   );
 
-  const renderCompactPickerContent = () => {
-    switch (compactPicker) {
+  const renderPickerBody = (key: CompactPickerKey) => {
+    switch (key) {
       case "mode":
         return (
           <ConversationModeMenu
@@ -1128,6 +1146,9 @@ export default function ChatInputActionsRow({
     }
   };
 
+  const renderCompactPickerContent = () =>
+    compactPicker ? renderPickerBody(compactPicker) : null;
+
   const renderSecondaryActions = () => {
     const plusButton = (
       <button
@@ -1146,8 +1167,54 @@ export default function ChatInputActionsRow({
       </button>
     );
 
+    const overflowIcon = (key: CompactPickerKey) => {
+      switch (key) {
+        case "mode":
+          return <ModeIcon size={16} />;
+        case "model":
+          return <Cpu size={16} />;
+        case "connector":
+          return <Link2 size={16} />;
+        case "knowledge":
+          return <BookOpen size={16} />;
+        case "skill":
+          return <Sparkles size={16} />;
+        case "expert":
+          return <GraduationCap size={16} />;
+        case "subagent":
+          return <Bot size={16} />;
+        case "shortcut":
+          return <Zap size={16} />;
+        case "upload":
+          return <Paperclip size={16} />;
+      }
+    };
+
     return (
       <>
+        {flattenOverflow &&
+          overflowKeys.map((key) => (
+            <Popover
+              key={key}
+              trigger="click"
+              placement="topLeft"
+              arrow={false}
+              open={inlinePicker === key}
+              onOpenChange={(open) => setInlinePicker(open ? key : null)}
+              overlayClassName={styles.skillPickerPopover}
+              content={renderPickerBody(key)}
+            >
+              <Tooltip title={compactPickerTitle[key]} mouseEnterDelay={0.4}>
+                <button
+                  className={styles.secondaryBtn}
+                  type="button"
+                  aria-label={compactPickerTitle[key]}
+                >
+                  {overflowIcon(key)}
+                </button>
+              </Tooltip>
+            </Popover>
+          ))}
         {showOverflowMenu && (
           <Popover
             trigger="click"
@@ -1218,7 +1285,7 @@ export default function ChatInputActionsRow({
             disabledHint={settingsLockedHint}
           />
         )}
-        {!useCompactControls && (
+        {!useCompactControls && !managed && (
           <Popover
             trigger="click"
             placement="topLeft"
@@ -1286,16 +1353,18 @@ export default function ChatInputActionsRow({
         </p>
       ) : null}
       <div className={styles.inputActions}>
-        <ContextWindowRing
-          usedTokens={contextUsedTokens}
-          usageEstimated={contextUsedTokens == null}
-          maxTokens={contextMaxTokens}
-          agentId={agentId}
-          threadId={threadId}
-          selectedConnectors={selectedConnectors}
-          isMobile={isMobile}
-          decisionSaved={decisionSaved}
-        />
+        {!managed && (
+          <ContextWindowRing
+            usedTokens={contextUsedTokens}
+            usageEstimated={contextUsedTokens == null}
+            maxTokens={contextMaxTokens}
+            agentId={agentId}
+            threadId={threadId}
+            selectedConnectors={selectedConnectors}
+            isMobile={isMobile}
+            decisionSaved={decisionSaved}
+          />
+        )}
         {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}
         {useCompactControls ? (
           <Tooltip title={t("chatWelcome.newChat")} mouseEnterDelay={0.4}>

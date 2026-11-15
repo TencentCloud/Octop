@@ -216,6 +216,7 @@ function ChatPageInner() {
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {}, user);
   const isTeamChat = isTeamAgent(activeAgent);
+  const isManagedChat = activeAgent?.kind === "managed";
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [profileAgentId, setProfileAgentId] = useState<string | null>(null);
   const profileAgent = useMemo(() => {
@@ -1911,7 +1912,10 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
-            {!showWelcome && modelsReady && availableModels.length === 0 ? (
+            {!showWelcome &&
+            !isManagedChat &&
+            modelsReady &&
+            availableModels.length === 0 ? (
               <div className={styles.modelConfigDock}>
                 <div className={styles.modelConfigDockInner}>
                   <Alert
@@ -1955,8 +1959,8 @@ function ChatPageInner() {
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||
-                !modelsReady ||
-                availableModels.length === 0
+                (!isManagedChat &&
+                  (!modelsReady || availableModels.length === 0))
               }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
@@ -1997,6 +2001,7 @@ function ChatPageInner() {
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
+              managed={isManagedChat}
               defaultModel={activeAgent?.default_model ?? null}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}
