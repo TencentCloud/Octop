@@ -77,7 +77,7 @@ import {
 } from "./welcomeManifest";
 import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
-  buildBackendSpec,
+  backendSpecForAgentSave,
   DEFAULT_BACKEND,
   ensureBubblewrapAfterProbe,
   ensureBwrapMessage,
@@ -446,7 +446,9 @@ function EditAgentDrawerBody({
         }
       }
 
-      const backendSpec = buildBackendSpec(
+      const backendSpec = backendSpecForAgentSave(
+        agent.kind,
+        agentConfig.backend,
         values.backend_choice,
         values.composite_default ?? DEFAULT_BACKEND,
         pathMappings,
