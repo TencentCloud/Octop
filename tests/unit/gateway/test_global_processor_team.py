@@ -2338,6 +2338,7 @@ def test_resolve_harness_model_uses_agent_default_and_upgrades_vision() -> None:
     processor._agent_manager.providers.resolve_model_for_multimodal_turn.assert_called_once_with(
         "p/text-only",
         needs_multimodal=True,
+        user_id=0,
     )
 
 
@@ -2368,6 +2369,7 @@ def test_resolve_harness_model_dashboard_override_wins() -> None:
     processor._agent_manager.providers.resolve_model_for_multimodal_turn.assert_called_once_with(
         "p/picked",
         needs_multimodal=False,
+        user_id=0,
     )
 
 

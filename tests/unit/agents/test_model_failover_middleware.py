@@ -318,7 +318,7 @@ async def test_auto_failover_on_openai_connection_error(monkeypatch) -> None:
     configurable = {"model": "Magpie/a", "octop_auto_route": True}
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [AutoRouteCandidate("openai/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("openai/b", 100_000)],
         model_for_ref=models.__getitem__,
         max_retries=0,
         initial_delay=0,
@@ -346,7 +346,7 @@ async def test_pinned_model_does_not_switch_on_connection_error(monkeypatch) -> 
     model = _model("Magpie/a", 100_000)
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, _vision: [AutoRouteCandidate("openai/b", 100_000)],
+        candidates=lambda _current, _vision, _user_id: [AutoRouteCandidate("openai/b", 100_000)],
         model_for_ref=lambda ref: _model(ref, 100_000),
         max_retries=0,
         initial_delay=0,
@@ -375,7 +375,7 @@ async def test_failover_skips_models_omitted_by_permission_and_modality(monkeypa
     }
     middleware = SafeModelFailoverMiddleware(
         health=ModelHealthRegistry(clock=lambda: 100.0),
-        candidates=lambda _current, needs_multimodal: (
+        candidates=lambda _current, needs_multimodal, _user_id: (
             [AutoRouteCandidate("openai/vision", 100_000)]
             if needs_multimodal
             else [AutoRouteCandidate("openai/text", 8_000)]
@@ -414,7 +414,7 @@ async def test_cooled_down_model_is_tried_again(monkeypatch) -> None:
     health = ModelHealthRegistry(clock=lambda: clock["now"])
     middleware = SafeModelFailoverMiddleware(
         health=health,
-        candidates=lambda _current, _vision: [],
+        candidates=lambda _current, _vision, _user_id: [],
         model_for_ref=models.__getitem__,
         max_retries=0,
         initial_delay=0,
