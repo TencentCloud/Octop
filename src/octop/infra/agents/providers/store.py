@@ -352,7 +352,11 @@ class ProviderStore:
                 yield row
 
     def has_usable_providers(self) -> bool:
-        """True when at least one enabled provider has credentials and a model."""
+        """True when at least one enabled provider has a chat-eligible model.
+
+        There is no credential gate: keyless endpoints and BYOK-only providers
+        (empty static key, personal key supplied per call) still count.
+        """
         return next(self.iter_usable_rows(), None) is not None
 
     def build_harness_configs(self) -> list[ProviderConfig]:
@@ -470,8 +474,10 @@ class ProviderStore:
     ) -> list[AutoRouteCandidate]:
         """Return stable, auto-routable candidates for one automatic route.
 
-        Candidates require a global provider key; keyless and BYOK rows are
-        manual-only because this list is not user-aware.
+        A candidate is included when its provider may join AUTO for *user_id*:
+        it has a global key, is explicitly keyless, or the user stored a
+        personal key. ``user_id=0`` therefore yields only global-key and
+        keyless providers.
         """
         candidates: list[AutoRouteCandidate] = []
         for row in self.iter_auto_route_rows(user_id):
