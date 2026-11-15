@@ -5,14 +5,34 @@
 
 import { useTranslation } from "react-i18next";
 
+/** Names the harness invents when an ACP update did not include a title. */
+export function isPlaceholderToolName(name?: string): boolean {
+  const text = name?.trim().toLowerCase();
+  return !text || text === "unknown";
+}
+
+/** Keep a real tool name. A later ``unknown`` update must not replace it. */
+export function preferToolName(
+  incoming?: string,
+  current?: string,
+): string | undefined {
+  const next = incoming?.trim();
+  if (!isPlaceholderToolName(next)) return next;
+  const prev = current?.trim();
+  return prev || next;
+}
+
 export function useToolDisplayNames(): (name?: string) => string {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   return (name?: string) => {
-    if (!name) return t("tools.unknown", "unknown");
-    const key = `tools.${name}`;
+    const raw = name?.trim();
+    if (!raw) return t("tools.unknown", "unknown");
+    const key = `tools.${raw}`;
+    // No catalog entry: show the name the tool already used.
+    if (!i18n.exists(key)) return raw;
     const translated = t(key);
-    return translated === key ? name : translated;
+    return translated === key ? raw : translated;
   };
 }
 
