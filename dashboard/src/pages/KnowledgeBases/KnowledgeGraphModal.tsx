@@ -28,6 +28,7 @@ import {
   type KnowledgeGraph,
   type KnowledgeGraphEntityDetail,
 } from "../../api/modules/knowledgeBases";
+import BetaBadge from "../../components/BetaBadge";
 import { apiErrorMessage } from "../../utils/apiError";
 import { layoutGraph, neighborIds } from "./knowledgeGraphLayout";
 import styles from "./KnowledgeGraphModal.module.less";
@@ -573,7 +574,12 @@ export default function KnowledgeGraphModal({
       footer={null}
       width={1160}
       destroyOnHidden
-      title={t("knowledgeBases.graphTitle", { name: kbName })}
+      title={
+        <span className={styles.modalTitle}>
+          {t("knowledgeBases.graphTitle", { name: kbName })}
+          <BetaBadge tooltip={t("knowledgeBases.graphBetaTooltip")} />
+        </span>
+      }
     >
       <div className={styles.toolbar}>
         <div className={styles.stats}>

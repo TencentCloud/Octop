@@ -24,6 +24,10 @@ import {
 } from "../utils/deleteConversation";
 import { isImeComposing } from "../../../utils/ime";
 import { ExpertIcon } from "../../Experts/components/iconForName";
+import {
+  ManagedAvatarMark,
+  managedRunnerId,
+} from "../../Experts/components/ManagedAvatarMark";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import SessionChannelIcon from "./SessionChannelIcon";
@@ -366,20 +370,22 @@ function ActiveAgentCard({
     >
       <div className={styles.agentCardProfile}>
         <SharedExpertHint agent={agent}>
-          <div
-            className={styles.agentCardAvatar}
-            style={{
-              color: accent,
-              background: `${accent}14`,
-              boxShadow: `0 0 0 1px ${accent}22`,
-            }}
-          >
-            <ExpertIcon
-              iconUrl={agent.icon_url}
-              iconName={agent.icon_name}
-              size={agent.icon_url?.trim() ? 28 : 16}
-            />
-          </div>
+          <ManagedAvatarMark runner={managedRunnerId(agent)}>
+            <div
+              className={styles.agentCardAvatar}
+              style={{
+                color: accent,
+                background: `${accent}14`,
+                boxShadow: `0 0 0 1px ${accent}22`,
+              }}
+            >
+              <ExpertIcon
+                iconUrl={agent.icon_url}
+                iconName={agent.icon_name}
+                size={agent.icon_url?.trim() ? 28 : 16}
+              />
+            </div>
+          </ManagedAvatarMark>
         </SharedExpertHint>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
@@ -516,16 +522,18 @@ function InactiveAgentRow({
       }}
     >
       <SharedExpertHint agent={agent}>
-        <div
-          className={styles.agentRowAvatar}
-          style={{ color: accent, background: `${accent}12` }}
-        >
-          <ExpertIcon
-            iconUrl={agent.icon_url}
-            iconName={agent.icon_name}
-            size={agent.icon_url?.trim() ? 26 : 14}
-          />
-        </div>
+        <ManagedAvatarMark runner={managedRunnerId(agent)}>
+          <div
+            className={styles.agentRowAvatar}
+            style={{ color: accent, background: `${accent}12` }}
+          >
+            <ExpertIcon
+              iconUrl={agent.icon_url}
+              iconName={agent.icon_name}
+              size={agent.icon_url?.trim() ? 26 : 14}
+            />
+          </div>
+        </ManagedAvatarMark>
       </SharedExpertHint>
       <div className={styles.agentRowInfo}>
         <div className={styles.agentRowNameRow}>

@@ -62,6 +62,23 @@ describe("useChatDockPanel tabs", () => {
     });
   });
 
+  it("toggleSidePanel opens workspace, then closes the dock from any tab", () => {
+    const { result } = renderHook(() => useChatDockPanel(false));
+    act(() => {
+      result.current.toggleSidePanel();
+    });
+    expect(result.current.dockOpen).toBe(true);
+    expect(result.current.activeTabId).toBe("workspace");
+    act(() => {
+      result.current.openFileList();
+    });
+    expect(result.current.activeTabId).toBe("files");
+    act(() => {
+      result.current.toggleSidePanel();
+    });
+    expect(result.current.dockOpen).toBe(false);
+  });
+
   it("toggleWorkspacePanel opens workspace tab then closes dock when active", () => {
     const { result } = renderHook(() => useChatDockPanel(false));
     act(() => {

@@ -39,3 +39,20 @@ def test_sync_adds_and_removes_providers() -> None:
 
     harness_manager.remove_provider.assert_called_once_with("old")
     harness_manager.add_provider.assert_called_once_with(keep)
+
+
+def test_sync_forwards_magpie_session_header_unchanged() -> None:
+    harness_manager = MagicMock()
+    magpie = ProviderConfig(
+        id="Magpie",
+        base_url="http://127.0.0.1:3425/v1",
+        api_key="magpie-octop",
+        name="Magpie",
+        headers={"User-Agent": "Octop/test"},
+        session_header="X-Magpie-Session",
+    )
+    sync_providers_to_harness(harness_manager, [magpie], shared_factory=None)
+    forwarded = harness_manager.add_provider.call_args.args[0]
+    assert forwarded.session_header == "X-Magpie-Session"
+    assert forwarded.headers == {"User-Agent": "Octop/test"}
+    assert "X-Magpie-Session" not in forwarded.headers

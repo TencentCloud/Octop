@@ -42,12 +42,32 @@
   overflow: hidden;
   padding-right: 12px;
   box-sizing: border-box;
+  container: workspace-embed / inline-size;
 }
 
 .embeddedHeader {
   flex-shrink: 0;
   padding: 8px 20px 8px 12px;
   border-bottom: 1px solid var(--fn-border-secondary);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+
+  .drawerTitleRow {
+    width: max-content;
+    min-width: 100%;
+  }
+}
+
+@container workspace-embed (max-width: 520px) {
+  .drawerTitleActions {
+    :global(.octop-btn),
+    :global(.ant-btn) {
+      /* Icon-only: the labels otherwise run under the dock edge. */
+      font-size: 0;
+      gap: 0;
+    }
+  }
 }
 
 .embeddedBody {

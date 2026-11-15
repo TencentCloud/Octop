@@ -45,6 +45,7 @@ import {
 } from "../../../styles/themePalettes";
 import {
   buildAgentRuntimeRequest,
+  emptyAgentRuntimeFormValues,
   type AgentRuntimeFormValues,
 } from "../../../utils/agentRuntimeConfig";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
@@ -348,6 +349,7 @@ export default function CreateFromExpertDrawer({
       knowledge_base_ids: [],
       mcp_servers: [],
       enable_trajectory: true,
+      ...emptyAgentRuntimeFormValues(),
     });
 
     setPendingHubSkills([]);
@@ -806,7 +808,7 @@ export default function CreateFromExpertDrawer({
           className={styles.textAssistField}
         >
           <Input.TextArea
-            autoSize={{ minRows: 2, maxRows: 5 }}
+            rows={3}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>
