@@ -1924,6 +1924,8 @@
     "openSidePanel": "展开侧栏",
     "closeSidePanel": "收起侧栏",
     "editFileCard": "编辑了{{count}}个文件",
+    "fileChangePending": "进行中",
+    "fileChangeMore": "还有 {{count}} 个",
     "fileWorkspace": "工作区文件",
     "fileWorkspaceHint": "专家已生成或编辑文件",
     "fileSwitch": "切换文件",
