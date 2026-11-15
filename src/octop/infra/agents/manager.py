@@ -70,6 +70,7 @@ from octop.infra.agents.settings.runtime_limits import (
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
+    omit_docker_volumes,
 )
 from octop.infra.backend.resolver import (
     default_agent_backend_spec,
@@ -3961,7 +3962,8 @@ class AgentManager:
         )
         # Windows: the dashboard defaults local backends to root_dir "/", which
         # resolves to a drive other than the workspace and breaks path checks.
-        return windows_neutralize_host_root(resolved, workspace_dir=workspace_dir)
+        resolved = windows_neutralize_host_root(resolved, workspace_dir=workspace_dir)
+        return omit_docker_volumes(resolved)
 
     def resolved_backend_spec(self, agent_id: str) -> Any:
         """Backend spec for *agent_id* with Octop docker enrichments applied."""

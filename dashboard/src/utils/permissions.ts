@@ -33,9 +33,10 @@ export const PERM = {
   knowledgeSettings: ["knowledge_settings"],
   knowledgeBasesPage: ["knowledge_bases", "knowledge_settings"],
   bridge: ["bridge"],
-  workbench: ["browser", "terminal"],
+  workbench: ["browser", "terminal", "cloud"],
   browser: ["browser"],
   terminal: ["terminal"],
+  cloud: ["cloud"],
   desktop: ["desktop"],
   mobile: ["mobile"],
   usersPage: [
@@ -307,6 +308,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     pathname.startsWith("/remote-desktop/")
   ) {
     return ["desktop", "mobile"];
+  }
+  if (pathname === "/workbench/cloud") {
+    return PERM.cloud;
   }
   if (pathname === "/workbench/terminal" || pathname === "/terminal") {
     return PERM.terminal;
