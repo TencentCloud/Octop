@@ -75,6 +75,11 @@ export interface OctopUser {
   avatar_icon?: string | null;
   /** Uploaded portrait. Shown ahead of the preset when present. */
   avatar_url?: string | null;
+  /**
+   * Backend types this account may select when creating an expert.
+   * ``null`` or omitted means unrestricted.
+   */
+  allowed_backend_types?: string[] | null;
 }
 
 export interface LoginResponse {

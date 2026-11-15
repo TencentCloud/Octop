@@ -1,5 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Navigate, useSearchParams } from "react-router-dom";
 import { Group, IdCard, Network, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
@@ -108,6 +109,14 @@ function OauthTabPanel({ kind }: { kind: OauthAppKind }) {
 }
 
 export default function AdminUsersPage() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("tab") === "config") {
+    return <Navigate to="/admin/advanced?tab=config" replace />;
+  }
+  return <AdminUsersPageBody />;
+}
+
+function AdminUsersPageBody() {
   const { t } = useTranslation();
   const { allowedTabs, activeTab, forbidden, selectTab } = useGatedSearchTabs({
     tabs: TABS,

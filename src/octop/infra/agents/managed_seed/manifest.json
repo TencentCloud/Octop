@@ -1,0 +1,71 @@
+{
+  "id": "managed",
+  "label": { "zh": "托管专家", "en": "Managed expert" },
+  "description": {
+    "zh": "把问题交给已连接的编程代理，并在工作区里协作。",
+    "en": "Hand each task to a connected coding agent and work in this directory."
+  },
+  "prompt_files": ["AGENTS.md"],
+  "quick_prompts": [
+    {
+      "title": { "zh": "修一个问题", "en": "Fix a bug" },
+      "description": { "zh": "根据现象定位并改到通过", "en": "Find the cause and make it pass" },
+      "prompt": {
+        "zh": "请在当前工作区修这个问题。先复现或定位原因，再做最小改动，并说明如何验证：\n\n",
+        "en": "Fix this in the current workspace. Find the cause first, then make the smallest change, and say how to verify it:\n\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "wrench"
+    },
+    {
+      "title": { "zh": "加一个功能", "en": "Add a feature" },
+      "description": { "zh": "按现有结构把功能做进去", "en": "Fit the feature into the current structure" },
+      "prompt": {
+        "zh": "请在当前工作区实现下面的功能。先看相关代码再改，保持现有风格，并说明改动范围：\n\n",
+        "en": "Implement this feature in the current workspace. Read the related code first, match the existing style, and summarize what changed:\n\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "zap"
+    },
+    {
+      "title": { "zh": "看懂这段代码", "en": "Explain this code" },
+      "description": { "zh": "讲清它做什么、数据怎么走", "en": "What it does and how data moves" },
+      "prompt": {
+        "zh": "请阅读当前工作区里下面这些代码，说明它做什么、关键调用链，以及容易改错的地方：\n\n",
+        "en": "Read this code in the current workspace. Explain what it does, the main call path, and what is easy to get wrong:\n\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "book-open"
+    },
+    {
+      "title": { "zh": "审查改动", "en": "Review a change" },
+      "description": { "zh": "看正确性、回归和遗漏", "en": "Correctness, regressions, and gaps" },
+      "prompt": {
+        "zh": "请审查当前工作区里的这次改动。指出正确性、回归风险和遗漏的测试，不要泛泛而谈：\n\n",
+        "en": "Review the change in the current workspace. Call out correctness, regression risk, and missing tests. Be specific:\n\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": { "zh": "补测试", "en": "Add tests" },
+      "description": { "zh": "给关键路径补上能跑的测试", "en": "Cover the important path with a test that runs" },
+      "prompt": {
+        "zh": "请为下面的行为补测试。先看现有测试怎么写，再补能失败也能通过的用例，并跑一下：\n\n",
+        "en": "Add tests for this behavior. Follow the existing tests, cover a case that can fail, and run them:\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": { "zh": "整理代码", "en": "Refactor" },
+      "description": { "zh": "让结构更清楚，行为保持不变", "en": "Clarify the structure without changing behavior" },
+      "prompt": {
+        "zh": "请整理下面这块代码，让它更好读，但不要改变对外行为。改完说明动了哪里，以及你怎么确认行为没变：\n\n",
+        "en": "Refactor this code so it is easier to follow, without changing observable behavior. Say what moved and how you checked:\n\n"
+      },
+      "color": "#fff7ed",
+      "icon_name": "pen-tool"
+    }
+  ]
+}

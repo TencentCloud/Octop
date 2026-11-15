@@ -273,6 +273,65 @@ def test_enrich_docker_backend_spec_defaults() -> None:
     assert "agent_id" not in fixed or fixed.get("agent_id") == "ZE6GR2"
 
 
+def test_omit_docker_volumes_drops_host_mounts() -> None:
+    from octop.infra.backend.docker_spec import (
+        enrich_docker_backend_spec,
+        omit_docker_volumes,
+    )
+
+    mounted = {
+        "type": "docker",
+        "image": "python:3.12-slim",
+        "volumes": {"/var/lib/octop": {"bind": "/host", "mode": "rw"}},
+    }
+    stripped = omit_docker_volumes(mounted)
+    assert "volumes" not in stripped
+    assert stripped["image"] == "python:3.12-slim"
+    assert "volumes" in mounted
+
+    composite = omit_docker_volumes(
+        {
+            "type": "composite",
+            "default": {"type": "local_shell", "root_dir": "workspace-root"},
+            "routes": {
+                "/box": {
+                    "type": "docker",
+                    "image": "python:3.12-slim",
+                    "volumes": ["/etc:/host:ro"],
+                }
+            },
+        }
+    )
+    assert "volumes" not in composite["routes"]["/box"]
+    assert composite["default"]["root_dir"] == "workspace-root"
+
+    enriched = enrich_docker_backend_spec(mounted, agent_id="ZE6GR2")
+    assert "volumes" not in enriched
+    assert enriched["agent_id"] == "ZE6GR2"
+
+
+def test_row_to_backend_spec_docker_ignores_volumes() -> None:
+    row = BackendRow(
+        id=1,
+        name="sandbox",
+        kind="docker",
+        endpoint=None,
+        access_key=None,
+        secret_key=None,
+        bucket="python:3.12-slim",
+        region=None,
+        config_json='{"memory": "512m", "volumes": {"/": {"bind": "/host", "mode": "rw"}}}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec is not None
+    assert spec["memory"] == "512m"
+    assert "volumes" not in spec
+
+
 def test_inject_docker_global_environment_sets_file() -> None:
     from octop.infra.backend.docker_spec import inject_docker_global_environment
 

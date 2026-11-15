@@ -332,7 +332,7 @@ class CloudCredentialStore:
 
     def save(self, user_id: int, credential: CloudCredential) -> None:
         if self._secrets is not None:
-            self._secrets.put(_cred_key(user_id), _dump_credential(credential))
+            self._secrets.put(_cred_key(user_id), self._seal(credential))
             self._path(user_id).unlink(missing_ok=True)
             return
         path = self._path(user_id)
@@ -411,7 +411,7 @@ class CloudCredentialStore:
             credential = self._credential_or_none(raw)
             if credential is None:
                 continue
-            if secrets_repo.put_if_absent(_cred_key(user_id), _dump_credential(credential)):
+            if secrets_repo.put_if_absent(_cred_key(user_id), self._seal(credential)):
                 imported += 1
             if secrets_repo.get(_cred_key(user_id)) is not None:
                 path.unlink(missing_ok=True)
@@ -429,9 +429,23 @@ class CloudCredentialStore:
         raw = secrets_repo.get(_cred_key(user_id))
         if raw is None:
             return None
+        return self._credential_from_stored(raw)
+
+    def _seal(self, credential: CloudCredential) -> bytes:
+        return self._fernet().encrypt(_dump_credential(credential))
+
+    def _credential_from_stored(self, raw: bytes) -> CloudCredential | None:
+        """Read a sealed blob, or a legacy plaintext JSON row."""
         try:
-            payload = json.loads(raw)
-        except (UnicodeDecodeError, json.JSONDecodeError):
+            text = self._fernet().decrypt(raw).decode()
+        except Exception:  # noqa: BLE001 - fall through to pre-seal rows
+            try:
+                text = raw.decode()
+            except UnicodeDecodeError:
+                return None
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
             return None
         return self._credential_or_none(payload)
 
@@ -1064,24 +1078,31 @@ def instance_action(
     return {"instance_id": instance_id, "action": action, "accepted": True}
 
 
-_TCCLI_PROFILE_POINTER = ".octop-profile"
-_TCCLI_ISOLATION_ENV = "OCTOP_TCCLI_PROFILE_ISOLATION"
-
-
 def tccli_profile_for_user(uid: int | None) -> str:
-    """tccli profile the mirror writes to.
+    """tccli profile for a known Octop account.
 
-    Multi-user isolation (``octop-<uid>``) stops two Octop accounts from
-    overwriting each other's machine-wide ``~/.tccli`` login. It stays opt-in
-    (``OCTOP_TCCLI_PROFILE_ISOLATION=1``) because plain ``tccli`` without
-    ``--profile`` always reads ``default``.
+    A user id always maps to ``octop-<uid>``. There is no switch back to the
+    machine-wide ``default`` profile. A missing user id (no account) stays on
+    ``default``.
     """
     if uid is None:
         return "default"
-    enabled = os.environ.get(_TCCLI_ISOLATION_ENV, "").strip().lower()
-    if enabled not in ("1", "true", "yes", "on"):
-        return "default"
     return f"octop-{int(uid)}"
+
+
+def tccli_profile_owner(profile: str | None) -> int | None:
+    """User id encoded in an ``octop-<uid>`` profile name."""
+    if not profile or not profile.startswith("octop-"):
+        return None
+    raw = profile.removeprefix("octop-")
+    if not raw.isdigit():
+        return None
+    return int(raw)
+
+
+def tccli_credential_path_for_user(uid: int) -> Path:
+    """Host path of this user's tccli credential file."""
+    return Path.home() / ".tccli" / f"{tccli_profile_for_user(uid)}.credential"
 
 
 def mirror_to_tccli(
@@ -1120,12 +1141,10 @@ def mirror_to_tccli(
     }
     path = tccli_dir / f"{name}.credential"
     tmp = path.with_name(f".{path.name}.tmp")
-    pointer = tccli_dir / _TCCLI_PROFILE_POINTER
     try:
         _write_private(tmp, json.dumps(payload, indent=4).encode())
         os.replace(tmp, path)
         os.chmod(path, 0o600)
-        _write_private(pointer, (name + "\n").encode())
     except OSError:
         tmp.unlink(missing_ok=True)
         logger.warning("failed to mirror cloud credential into %s", path, exc_info=True)
