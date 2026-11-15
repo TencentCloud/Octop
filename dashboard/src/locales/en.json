@@ -1924,6 +1924,8 @@
     "openSidePanel": "Open side panel",
     "closeSidePanel": "Close side panel",
     "editFileCard": "Edited {{count}} files",
+    "fileChangePending": "In progress",
+    "fileChangeMore": "{{count}} more",
     "fileWorkspace": "Workspace files",
     "fileWorkspaceHint": "Agent created or edited a file",
     "fileSwitch": "Switch file",
