@@ -51,6 +51,7 @@ import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
 import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import {
+  canManageExpert,
   canReadAgentRuntimeStatus,
   isSharedExpertViewer,
 } from "../../../utils/sharedExpert";
@@ -359,7 +360,7 @@ export default function AgentExpertsTable({
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
         const switchChecked = state === "running" || state === "starting";
-        const isOwner = row.is_owner !== false;
+        const canManage = canManageExpert(row, user);
         const friendlyError =
           state === "failed" && row.last_error
             ? formatAgentError(row.last_error, t)
@@ -373,7 +374,7 @@ export default function AgentExpertsTable({
               >
                 {formatAgentState(state, t)}
               </Tag>
-              {isOwner && (
+              {canManage && (
                 <Switch
                   size="small"
                   checked={switchChecked}
@@ -433,7 +434,7 @@ export default function AgentExpertsTable({
         <MbtiPersonaTag
           value={value}
           onClick={
-            row.is_owner !== false
+            canManageExpert(row, user)
               ? () => openMbtiCatalog(row.agent_id)
               : undefined
           }
@@ -449,11 +450,11 @@ export default function AgentExpertsTable({
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
         const chatReady = isAgentChatReady(state);
-        const isOwner = row.is_owner !== false;
+        const canManage = canManageExpert(row, user);
         const deleteConfirm = expertDeleteConfirm(row, t);
         return (
           <div className={styles.tableActions}>
-            {isOwner && (
+            {canManage && (
               <>
                 <Tooltip
                   title={
@@ -545,7 +546,7 @@ export default function AgentExpertsTable({
                 {t("experts.openChat", "对话")}
                 <ChevronRight size={13} />
               </button>
-            ) : isOwner &&
+            ) : canManage &&
               (state === "failed" ||
                 state === "stopped" ||
                 state === "created") ? (

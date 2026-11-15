@@ -3006,13 +3006,19 @@ export async function attachThread(
             ) {
               emitStreamEvent({ kind: "streamResume", sessionId });
             }
-          } else if (state.isStreaming) {
+          } else if (state.isStreaming || hasStreamingMessages(state)) {
             // Host thread went idle — seal the host turn, but keep this
             // socket so late team / inbox replies still land in the room.
+            // A refresh can restore a streaming bubble before isStreaming is
+            // set; an already-finished turn must not leave that bubble open,
+            // or the next turn's tokens can attach to it.
             finalizeHostTurn(state, sessionId);
             notify(state);
             if (!hasStreamingMessages(state)) {
-              finish();
+              if (state.isStreaming) finish();
+              else if (state.abortController === controller) {
+                state.abortController = previousController;
+              }
             }
           } else if (state.abortController === controller) {
             state.abortController = previousController;

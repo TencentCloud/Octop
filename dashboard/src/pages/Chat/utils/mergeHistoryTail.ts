@@ -84,6 +84,46 @@ export function preferLocalTranscript(
   return memory;
 }
 
+/**
+ * Keep a turn the server has not stored yet.
+ *
+ * History is written when the request finishes. A refresh while that turn is
+ * still running loads the previous page, and the cached user id is absent, so
+ * the in-flight reply would otherwise disappear until the next refresh.
+ * Only an active turn may bring that cache back; a finished unmatched tail
+ * stays off the latest page.
+ */
+export function restoreUnpersistedTurn(
+  folded: ChatMessage[],
+  cached: ChatMessage[] | null | undefined,
+  turnActive: boolean,
+): ChatMessage[] {
+  if (!turnActive || !cached || cached.length === 0) return folded;
+  const tail = inFlightTail(cached);
+  const userIdx = lastUserIndex(tail);
+  if (userIdx < 0) return folded;
+  const user = tail[userIdx];
+  if (folded.some((message) => message.id === user.id)) return folded;
+  const reply = tail.slice(userIdx + 1);
+  // A finished tail whose user row is not on this page is an older turn.
+  // Only the turn still streaming (or a question with no reply yet) belongs
+  // on the latest page.
+  const stillRunning =
+    reply.length === 0 ||
+    reply.some((message) => message.status === "streaming");
+  if (!stillRunning) return folded;
+  const pending = tail.slice(userIdx).map((message) => {
+    const row =
+      message.role === "assistant" &&
+      message.status === "streaming" &&
+      !message.turnId
+        ? { ...message, status: "done" as const }
+        : message;
+    return row.id === user.id ? { ...row, localPending: true } : row;
+  });
+  return [...folded, ...pending];
+}
+
 /** True when server history can replace this cached turn. */
 export function serverCaughtUp(
   loaded: ChatMessage[],
