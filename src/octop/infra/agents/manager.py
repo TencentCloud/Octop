@@ -24,6 +24,8 @@ from octop.i18n.domains.agents import (
     NO_MODELS_CONFIGURED,
     format_agent_start_error,
 )
+from octop.infra.agents.acp_permission_compat import install_acp_permission_queue
+from octop.infra.agents.acp_tool_name_compat import install_acp_tool_titles
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
@@ -107,6 +109,9 @@ if TYPE_CHECKING:
     from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+install_acp_permission_queue()
+install_acp_tool_titles()
 
 
 def _model_retry_on_failure(
