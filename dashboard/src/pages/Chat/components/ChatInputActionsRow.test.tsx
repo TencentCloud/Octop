@@ -76,6 +76,71 @@ describe("ChatInputActionsRow plus menu", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("folds shortcut, upload, and polish into the plus menu when the composer is narrow", async () => {
+    const rect = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 40,
+      right: 360,
+      width: 360,
+      height: 40,
+      toJSON: () => ({}),
+    } as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(rect);
+    const OriginalObserver = globalThis.ResizeObserver;
+    class NarrowObserver {
+      private readonly callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback(
+          [{ contentRect: { width: 360, height: 40 } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", NarrowObserver);
+    try {
+      const onFileSelect = vi.fn();
+      render(
+        <MemoryRouter>
+          <ChatInputActionsRow {...baseProps} onFileSelect={onFileSelect} />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByLabelText("快捷指令")).not.toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText("Upload")).not.toBeInTheDocument();
+      expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("conversation-mode-hint"),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("composer-plus"));
+      expect(
+        await screen.findByText("chat.polish.tooltip"),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByText("Upload"));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Files" }));
+      expect(onFileSelect).toHaveBeenCalledTimes(1);
+    } finally {
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", OriginalObserver);
+    }
+  });
+
   it("starts a folder upload from the toolbar", () => {
     const onFolderSelect = vi.fn();
     render(
