@@ -26,6 +26,8 @@ export interface MarketExpert {
   skill_slugs?: string[];
   skill_count?: number;
   source?: string;
+  /** True when this card is a template that ships with Octop. */
+  featured?: boolean;
   content?: LocalizedText;
   quick_prompts?: ExpertMarketQuickPrompt[];
   task_examples?: { zh?: string[]; en?: string[] } | null;
@@ -86,6 +88,8 @@ export interface CreateMarketExpertBody {
     summary?: { zh?: string; en?: string };
   }[];
   copy_skills?: { agent_id: string; slug: string }[];
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
   quick_prompts?: ExpertMarketQuickPrompt[];
 }
 

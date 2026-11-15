@@ -36,6 +36,10 @@ export interface TeamWriteBody {
   icon_url?: string | null;
   welcome_message?: string | null;
   member_ids?: string[];
+  /** Create only. Matches the id segment of the default workspace path. */
+  agent_id?: string;
+  /** Create only: backend and, for a filesystem root, optional workspace_dir. */
+  config?: Record<string, unknown>;
 }
 
 export interface TeamTemplateFile {

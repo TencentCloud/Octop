@@ -18,6 +18,7 @@ import type {
 import { isEmbeddingModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
@@ -51,8 +52,15 @@ export function PresetProviderModal({
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
   const [form] = Form.useForm<PresetForm>();
   const isCodexOAuth = preset.auth_method === "codex_oauth";
+  const embeddingLane =
+    preset.purpose === "embedding" || preset.provider_variant === "embedding";
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
   const canTest = !!apiKey?.trim();
+  const setupStep = !apiKey?.trim()
+    ? 0
+    : draftModels.some((m) => m.enabled !== false)
+    ? 2
+    : 1;
 
   const draftProvider = useMemo<ProviderRow>(
     () => ({
@@ -66,8 +74,16 @@ export function PresetProviderModal({
       models: draftModels,
       note: null,
       enabled: true,
+      purpose: embeddingLane ? "embedding" : "chat",
     }),
-    [draftModels, form, preset.base_url, preset.name, preset.protocol],
+    [
+      draftModels,
+      embeddingLane,
+      form,
+      preset.base_url,
+      preset.name,
+      preset.protocol,
+    ],
   );
 
   useEffect(() => {
@@ -86,6 +102,10 @@ export function PresetProviderModal({
         if (meta.reasoning) entry.reasoning = true;
         if (ctx) entry.context_window = ctx;
         if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
+        if (embeddingLane || m.embedding || m.task === "embedding") {
+          entry.embedding = true;
+          entry.task = "embedding";
+        }
         return entry;
       });
       setDraftModels(baseModels);
@@ -97,7 +117,7 @@ export function PresetProviderModal({
         stream_usage: preset.protocol === "openai",
       });
     }
-  }, [open, preset, form, t]);
+  }, [open, preset, form, t, embeddingLane]);
 
   const handleFetchModels = async () => {
     if (isCodexOAuth) return;
@@ -123,9 +143,18 @@ export function PresetProviderModal({
         );
         return;
       }
-      const fetched = result.models ?? [];
+      const fetched = (result.models ?? []).filter((m) => {
+        if (!embeddingLane) return true;
+        const id = m.id.toLowerCase();
+        if (id.includes("rerank")) return false;
+        return /embed|bge-|e5-|gte-/.test(id);
+      });
       if (fetched.length === 0) {
-        message.info(t("models.fetchModelsNoNew"));
+        message.info(
+          embeddingLane
+            ? t("models.embeddingFetchModelsNone")
+            : t("models.fetchModelsNoNew"),
+        );
         return;
       }
       const existingIds = new Set(draftModels.map((m) => m.id));
@@ -137,6 +166,9 @@ export function PresetProviderModal({
           enabled: false,
           input: ["text"],
           thinking: null,
+          ...(embeddingLane
+            ? { embedding: true as const, task: "embedding" as const }
+            : {}),
         }));
       if (missing.length === 0) {
         message.info(t("models.fetchModelsNoNew"));
@@ -156,7 +188,11 @@ export function PresetProviderModal({
     }
   };
 
-  const testDraftModel = async (modelId: string) => {
+  const testDraftModel = async (
+    modelId: string,
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ) => {
     const values = await form.validateFields(["name", "base_url", "api_key"]);
     const key = values.api_key?.trim();
     if (!key) {
@@ -168,7 +204,11 @@ export function PresetProviderModal({
       api_key: key,
       base_url: values.base_url?.trim() || preset.base_url,
       model_id: modelId,
-      embedding: isEmbeddingModel(draftModels.find((m) => m.id === modelId)),
+      api_mode: apiMode,
+      api_fallback: apiFallback,
+      embedding:
+        embeddingLane ||
+        isEmbeddingModel(draftModels.find((m) => m.id === modelId)),
     });
   };
 
@@ -188,14 +228,22 @@ export function PresetProviderModal({
         return;
       }
       setTesting(true);
-      const result = await testDraftModel(modelId);
+      const result = await testDraftModel(
+        modelId,
+        draftModels.find((m) => m.id === modelId)?.api_mode,
+        draftModels.find((m) => m.id === modelId)?.api_fallback,
+      );
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: values.name,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: values.name,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testConnectionFailed", {
@@ -219,6 +267,13 @@ export function PresetProviderModal({
       const values = await form.validateFields();
       setSaving(true);
 
+      const models = embeddingLane
+        ? draftModels.map((m) => ({
+            ...m,
+            embedding: true,
+            task: "embedding",
+          }))
+        : draftModels;
       await request<ProviderRow>("/admin/providers", {
         method: "POST",
         body: JSON.stringify({
@@ -226,14 +281,19 @@ export function PresetProviderModal({
           kind: preset.protocol,
           base_url: values.base_url?.trim() || null,
           api_key: values.api_key?.trim() || null,
-          models: draftModels,
-          ...(preset.protocol === "openai"
+          models,
+          purpose: embeddingLane ? "embedding" : "chat",
+          ...(preset.protocol === "openai" && !embeddingLane
             ? { stream_usage: values.stream_usage !== false }
             : {}),
         }),
       });
       message.success(
-        t("models.providerCreatedSimple", { name: values.name.trim() }),
+        embeddingLane
+          ? t("models.embeddingProviderCreated", {
+              name: values.name.trim(),
+            })
+          : t("models.providerCreatedSimple", { name: values.name.trim() }),
       );
       await onSaved();
       onClose();
@@ -292,7 +352,8 @@ export function PresetProviderModal({
         />
       ) : (
         <>
-          <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <SetupDrawerSteps current={setupStep} />
+          <Form form={form} layout="vertical">
             <Form.Item
               name="name"
               label={t("models.nameLabel")}
@@ -348,7 +409,9 @@ export function PresetProviderModal({
             >
               {t("models.fetchModels")}
             </Button>
-            {preset.protocol === "openai" ? <TestStreamHint /> : null}
+            {preset.protocol === "openai" && !embeddingLane ? (
+              <TestStreamHint />
+            ) : null}
           </div>
 
           <Divider orientation="left" style={{ fontSize: 13 }}>
@@ -360,7 +423,10 @@ export function PresetProviderModal({
             onModelsChange={setDraftModels}
             apiPrefix="/admin/providers"
             canTest={canTest}
-            onTestModel={(modelId) => testDraftModel(modelId)}
+            forcePurpose={embeddingLane ? "embedding" : undefined}
+            onTestModel={(modelId, _modelName, apiMode, apiFallback) =>
+              testDraftModel(modelId, apiMode, apiFallback)
+            }
           />
         </>
       )}

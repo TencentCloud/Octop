@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "antd";
 import { Check } from "lucide-react";
+import cx from "classnames";
 import { isOwnedExpert } from "../../../utils/sharedExpert";
 import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import { ExpertIcon } from "./iconForName";
@@ -128,9 +129,10 @@ export default function TeamMemberPicker({
               <button
                 key={expert.agent_id}
                 type="button"
-                className={`${styles.memberPickCard}${
-                  active ? ` ${styles.memberPickCardSelected}` : ""
-                }`}
+                className={cx(
+                  styles.memberPickCard,
+                  active && styles.memberPickCardSelected,
+                )}
                 onClick={() => toggle(expert.agent_id)}
                 aria-pressed={active}
               >

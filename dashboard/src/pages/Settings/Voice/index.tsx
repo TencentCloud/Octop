@@ -13,6 +13,7 @@ import { message } from "@/utils/antdMessage";
 
 import { Activity, Check, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   voiceApi,
   type VoicePreset,
@@ -246,13 +247,11 @@ export function VoiceSettingsPanel() {
       preset.requires_key && !configured && preset.kind !== "browser";
     const logo = voiceLogoForKind(preset.kind);
 
-    const cardClass = [
+    const cardClass = cx(
       styles.card,
-      isActive ? styles.cardActive : "",
-      needsSetup ? styles.cardSetup : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+      isActive && styles.cardActive,
+      needsSetup && styles.cardSetup,
+    );
 
     return (
       <div
@@ -289,23 +288,23 @@ export function VoiceSettingsPanel() {
           </div>
           <div className={styles.badges}>
             {isActive && (
-              <span className={`${styles.badge} ${styles.badgeActive}`}>
+              <span className={cx(styles.badge, styles.badgeActive)}>
                 <Check size={11} />
                 {t("voice.active")}
               </span>
             )}
             {preset.free && (
-              <span className={`${styles.badge} ${styles.badgeFree}`}>
+              <span className={cx(styles.badge, styles.badgeFree)}>
                 {t("voice.free")}
               </span>
             )}
             {preset.limited_free && (
-              <span className={`${styles.badge} ${styles.badgeFree}`}>
+              <span className={cx(styles.badge, styles.badgeFree)}>
                 {t("voice.limitedFree")}
               </span>
             )}
             {needsSetup && (
-              <span className={`${styles.badge} ${styles.badgeSetup}`}>
+              <span className={cx(styles.badge, styles.badgeSetup)}>
                 {t("voice.notConfigured")}
               </span>
             )}

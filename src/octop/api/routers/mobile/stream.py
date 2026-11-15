@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from octop.api.deps import resolve_user_from_token
-from octop.infra.mobile.adb import (
+from octop.infra.control.mobile.adb import (
     KEYCODE_APP_SWITCH,
     KEYCODE_BACK,
     KEYCODE_HOME,
@@ -32,11 +32,11 @@ from octop.infra.mobile.adb import (
     toggle_portrait_landscape,
     wm_size,
 )
-from octop.infra.mobile.agent_control import (
+from octop.infra.control.mobile.agent_control import (
     clear_mobile_agent_control_if_device,
     set_mobile_agent_control,
 )
-from octop.infra.mobile.h264 import (
+from octop.infra.control.mobile.h264 import (
     NAL_IDR,
     NAL_PPS,
     NAL_SLICE,
@@ -47,7 +47,7 @@ from octop.infra.mobile.h264 import (
     avcc_sample,
     nal_type,
 )
-from octop.infra.mobile.setup import mobile_status
+from octop.infra.control.mobile.setup import mobile_status
 from octop.infra.users.identity import User
 from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.locale import resolve_request_locale

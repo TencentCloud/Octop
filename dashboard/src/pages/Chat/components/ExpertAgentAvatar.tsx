@@ -1,3 +1,5 @@
+import cx from "classnames";
+
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import styles from "../index.module.less";
 
@@ -49,7 +51,7 @@ export default function ExpertAgentAvatar({
 
   return (
     <span
-      className={`${styles.expertAgentAvatar} ${className ?? ""}`}
+      className={cx(styles.expertAgentAvatar, className)}
       style={{
         width: size,
         height: size,

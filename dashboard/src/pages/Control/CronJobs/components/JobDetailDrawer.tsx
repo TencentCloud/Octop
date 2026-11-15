@@ -17,7 +17,14 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  pinnedThreadId,
 } from "../cronDisplay";
+import {
+  formatTriggerText,
+  lastRunStatusTag,
+  oneShotPhase,
+  oneShotPhaseLabelKey,
+} from "../onceSchedule";
 
 const { Text } = Typography;
 
@@ -44,12 +51,25 @@ export function JobDetailDrawer({
   const meta = (job.meta as Record<string, unknown> | undefined) ?? {};
   const sessionKey =
     typeof meta.octop_session_key === "string" ? meta.octop_session_key : "";
-  const channel = sessionKey
+  const pinned = pinnedThreadId(sessionKey);
+  const channel = pinned
+    ? t("cronJobs.form.sessionKeyHistory")
+    : sessionKey
     ? channelFromSessionKey(sessionKey)
     : String(job.dispatch?.channel || "—");
   const agentPrompt = extractPromptFromJob(job) || null;
   const lastStatus =
     typeof meta.octop_last_status === "string" ? meta.octop_last_status : "";
+  const phase = oneShotPhase(
+    job.schedule?.cron,
+    Boolean(job.enabled),
+    lastStatus,
+  );
+  const statusTag = lastStatus ? lastRunStatusTag(lastStatus) : null;
+  const triggerLabel = formatTriggerText(job.schedule?.cron, {
+    mail: t("cronJobs.form.agentlyNewMail"),
+    once: t("cronJobs.form.scheduleModeOnce"),
+  });
   const lastError =
     typeof meta.octop_last_error === "string" && meta.octop_last_error.trim()
       ? meta.octop_last_error
@@ -115,7 +135,21 @@ export function JobDetailDrawer({
           {job.name || "—"}
         </Descriptions.Item>
         <Descriptions.Item label={t("common.enabled")}>
-          {job.enabled ? (
+          {phase ? (
+            <Tag
+              color={
+                phase === "pending"
+                  ? "success"
+                  : phase === "failed"
+                  ? "error"
+                  : phase === "missed"
+                  ? "warning"
+                  : "default"
+              }
+            >
+              {t(oneShotPhaseLabelKey(phase))}
+            </Tag>
+          ) : job.enabled ? (
             <Tag color="success">{t("common.enabled")}</Tag>
           ) : (
             <Tag color="default">{t("common.disabled")}</Tag>
@@ -138,9 +172,7 @@ export function JobDetailDrawer({
       >
         <Descriptions.Item label={t("cronJobs.col.trigger")}>
           <Text code style={{ fontSize: 12 }}>
-            {job.schedule?.cron?.startsWith("agently:")
-              ? t("cronJobs.form.agentlyNewMail")
-              : job.schedule?.cron || "—"}
+            {triggerLabel}
           </Text>
         </Descriptions.Item>
         <Descriptions.Item label={t("cronJobs.form.timezone")}>
@@ -156,16 +188,8 @@ export function JobDetailDrawer({
         </Descriptions.Item>
         <Descriptions.Item label={t("cronJobs.col.lastStatus")}>
           {lastStatus ? (
-            <Tag
-              color={
-                lastStatus === "error"
-                  ? "error"
-                  : lastStatus === "ok"
-                  ? "success"
-                  : "default"
-              }
-            >
-              {lastStatus}
+            <Tag color={statusTag?.color ?? "default"}>
+              {statusTag ? t(statusTag.labelKey) : lastStatus}
             </Tag>
           ) : (
             "—"
@@ -240,9 +264,13 @@ export function JobDetailDrawer({
         </Descriptions.Item>
         {sessionKey && (
           <Descriptions.Item label={t("cronJobs.col.sessionKey")}>
-            <Text copyable style={{ fontSize: 12, fontFamily: "monospace" }}>
-              {sessionKey}
-            </Text>
+            {pinned ? (
+              `${t("cronJobs.form.sessionKeyHistory")} · ${pinned.slice(-6)}`
+            ) : (
+              <Text copyable style={{ fontSize: 12, fontFamily: "monospace" }}>
+                {sessionKey}
+              </Text>
+            )}
           </Descriptions.Item>
         )}
       </Descriptions>

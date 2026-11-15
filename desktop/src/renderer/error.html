@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'sha256-szVNN498TTn4zbYtA+JAqnw6Ytl/gi1a7lcOVBVhlH0='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
+    />
+    <!-- Same boot script as splash.html; the hash in the CSP is the script body. -->
+    <script id="octop-shell-theme">
+      (function () {
+        var theme = new URLSearchParams(location.search).get("theme");
+        if (theme === "dark" || theme === "light") {
+          document.documentElement.setAttribute("data-theme", theme);
+        }
+      })();
+    </script>
+    <title>Octop 无法启动</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./src/error.tsx"></script>
+  </body>
+</html>

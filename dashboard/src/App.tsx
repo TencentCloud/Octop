@@ -5,12 +5,13 @@ import enUS from "antd/locale/en_US";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import { useEffect } from "react";
-import DesktopWindowControls from "./components/DesktopWindowControls";
 import {
   DesktopChromeProvider,
   useDesktopChrome,
 } from "./hooks/useDesktopChrome";
+import { useNativeWindowChrome } from "./hooks/useNativeWindowChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { routerBasename } from "./utils/publicUrl";
 import { useTranslation } from "react-i18next";
 import MainLayout from "./layouts/MainLayout";
 import LoginPage from "./pages/Login";
@@ -18,8 +19,12 @@ import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
 import InvitePage from "./pages/Invite";
 import AuthGuard from "./components/AuthGuard";
+import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
+import DesktopWindowDragBand from "./components/DesktopWindowDragBand";
+import WindowsAppMenu from "./components/WindowsAppMenu";
 import OctopSpinner from "./components/OctopSpinner";
 import { AntdAppProvider } from "./components/AntdAppProvider";
+import { popupLayer } from "./utils/overlayLayers";
 import GlobalErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider, useTheme } from "./context/ThemeContext";
 import { AgentProvider } from "./context/AgentContext";
@@ -27,7 +32,6 @@ import { LayoutModeProvider } from "./context/LayoutModeContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
-import { installDesktopExternalLinks } from "./utils/desktopExternalLinks";
 import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
@@ -46,6 +50,8 @@ function ThemedApp() {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
+  // Native window buttons follow the app theme. Linux draws square ones.
+  useNativeWindowChrome();
   const brandTokens = brandTokensFor(palette, isDark, customColor);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
   // Pagination, DatePicker, Table… ) follow the current UI language.
@@ -55,8 +61,6 @@ function ThemedApp() {
   dayjs.locale(isZh ? "zh-cn" : "en");
 
   useUnauthorizedRedirect();
-
-  useEffect(() => installDesktopExternalLinks(), []);
 
   // Set document title based on current language
   useEffect(() => {
@@ -124,13 +128,16 @@ function ThemedApp() {
       theme={themeConfig}
       prefixCls="octop"
       locale={antdLocale}
+      getPopupContainer={popupLayer}
       spin={{ indicator: <OctopSpinner /> }}
     >
       <AntdAppProvider>
         <DesktopChromeProvider value={desktopChrome}>
-          {desktopChrome ? (
-            <DesktopWindowControls chrome={desktopChrome} />
-          ) : null}
+          <PwaUpdatePrompt />
+          {/* Login, setup and invite sit outside MainLayout, so the drag
+              strip has to live above the router, not only inside the shell. */}
+          <DesktopWindowDragBand />
+          <WindowsAppMenu />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
@@ -162,7 +169,7 @@ function App() {
     // `useTransitions` off: with router transitions on, React keeps the old
     // page mounted while a lazy route chunk downloads and never renders the
     // Suspense fallback, so a nav click looks like it did nothing.
-    <BrowserRouter useTransitions={false}>
+    <BrowserRouter basename={routerBasename()} useTransitions={false}>
       <GlobalErrorBoundary>
         <GlobalStyle />
         <ThemeProvider>

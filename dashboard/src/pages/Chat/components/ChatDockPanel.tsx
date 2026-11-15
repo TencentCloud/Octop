@@ -23,6 +23,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import BrowserWorkspace, {
   type PanelMode,
 } from "../../../components/BrowserWorkspace";
@@ -452,9 +453,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
           return (
             <div
               key={tab.id}
-              className={`${styles.dockTab} ${
-                selected ? styles.dockTabActive : ""
-              }`}
+              className={cx(styles.dockTab, selected && styles.dockTabActive)}
               role="tab"
               aria-selected={selected}
             >

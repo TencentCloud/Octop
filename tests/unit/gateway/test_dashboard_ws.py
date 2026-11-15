@@ -19,6 +19,21 @@ def _token(content: str, thread_id: str) -> dict[str, Any]:
     return {"type": "token", "content": content, "thread_id": thread_id}
 
 
+def _user(content: str, thread_id: str, user_id: int = 7) -> dict[str, Any]:
+    return {
+        "type": "user",
+        "content": content,
+        "thread_id": thread_id,
+        "author": {
+            "user_id": user_id,
+            "display_name": "",
+            "username": "",
+            "avatar_icon": None,
+            "avatar_url": f"/api/users/{user_id}/avatar",
+        },
+    }
+
+
 _STEER_PROTOCOL_TYPES = frozenset(
     {
         "turn.started",
@@ -44,6 +59,8 @@ def _stream_frames(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if ftype == "user" and isinstance(frame.get("meta"), dict) and frame["meta"].get("steer"):
             continue
+        if "turn_id" in frame:
+            frame = {key: value for key, value in frame.items() if key != "turn_id"}
         out.append(frame)
     return out
 
@@ -240,8 +257,16 @@ async def test_ws_channel_streams_chunks() -> None:
     )
     await channel.handle_inbound(msg)
 
-    assert {"type": "token", "content": "hello", "thread_id": "thread-1"} in frames
-    assert {"type": "done", "thread_id": "thread-1"} in frames
+    assert _user("hi", "thread-1") in frames
+    started = next(frame for frame in frames if frame["type"] == "turn.started")
+    turn_id = started["turn_id"]
+    assert {
+        "type": "token",
+        "content": "hello",
+        "thread_id": "thread-1",
+        "turn_id": turn_id,
+    } in frames
+    assert {"type": "done", "thread_id": "thread-1", "turn_id": turn_id} in frames
     assert frames[-1]["type"] == "turn.ended"
     assert frames[-1]["thread_id"] == "thread-1"
     assert hub.is_turn_active("thread-1") is False
@@ -291,7 +316,10 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
+        _token("first", "thread-1"),
+    ]
     assert hub.is_turn_active("thread-1") is True
 
     hub.unsubscribe_connection("a")
@@ -350,13 +378,17 @@ async def test_ws_channel_fans_out_mid_turn_to_all_subscribers() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
+        _token("first", "thread-1"),
+    ]
 
     hub.subscribe("thread-1", "b")
     gate.set()
     await task
 
     assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
         _token("first", "thread-1"),
         _token("second", "thread-1"),
         {"type": "done", "thread_id": "thread-1"},
@@ -616,6 +648,174 @@ async def test_global_processor_iter_turn_chunks_registers_hitl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_iter_turn_chunks_answers_ask_on_same_dashboard_thread() -> None:
+    """Plain text on the paused thread still resumes ``ask_user_question``."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    stream_calls: list[str] = []
+    resume_calls: list[str] = []
+
+    async def _stream(*_args: object, **_kwargs: object):
+        stream_calls.append("stream")
+        yield {"type": "token", "content": "should not run"}
+
+    async def _resume(*_args: object, **_kwargs: object):
+        resume_calls.append("resume")
+        yield {"type": "token", "content": "answered"}
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.resume_hitl = _resume
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thr_quiz")
+
+    hitl = HitlChannelCoordinator()
+    ask = hitl.store.register(
+        thread_id="thr_quiz",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="dashboard:agent-1:1",
+        channel_type="dashboard",
+        action_requests=[
+            {
+                "name": "ask_user_question",
+                "args": {
+                    "questions": [
+                        {
+                            "header": "Q1",
+                            "question": "1+1=?",
+                            "options": [{"label": "2"}, {"label": "3"}],
+                        }
+                    ]
+                },
+            }
+        ],
+        review_configs=[{"action_name": "ask_user_question", "allowed_decisions": ["respond"]}],
+    )
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+        hitl=hitl,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="a")],
+        metadata={
+            "session_key": "dashboard:agent-1:1",
+            "thread_id": "thr_quiz",
+        },
+    )
+
+    chunks = [c async for c in processor.iter_turn_chunks(msg)]
+    assert stream_calls == []
+    assert resume_calls == ["resume"]
+    assert any(c.get("type") == "token" and "answered" in str(c.get("content")) for c in chunks)
+    leftover = hitl.store.get(ask.pending_id)
+    assert leftover is not None
+    assert leftover.status != "pending"
+
+
+@pytest.mark.asyncio
+async def test_iter_turn_chunks_does_not_answer_ask_on_other_dashboard_thread() -> None:
+    """Shared dashboard session_key must not route a new chat into another thread's ask."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+    from octop.infra.gateway.process.processor import GlobalProcessor
+    from octop.infra.gateway.slash.dispatcher import SlashDispatcher
+
+    stream_calls: list[str] = []
+
+    async def _stream(*_args: object, **_kwargs: object):
+        stream_calls.append("stream")
+        yield {"type": "token", "content": "fresh turn on new chat"}
+
+    agent_manager = MagicMock()
+    agent_manager.stream = _stream
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.resume_hitl = MagicMock()
+
+    thread_registry = MagicMock()
+    thread_registry.get_or_create_by_key = AsyncMock(return_value="thr_new")
+
+    hitl = HitlChannelCoordinator()
+    ask = hitl.store.register(
+        thread_id="thr_quiz",
+        agent_id="agent-1",
+        user_id=1,
+        session_key="dashboard:agent-1:1",
+        channel_type="dashboard",
+        action_requests=[
+            {
+                "name": "ask_user_question",
+                "args": {
+                    "questions": [
+                        {
+                            "header": "Q1",
+                            "question": "1+1=?",
+                            "options": [{"label": "2"}, {"label": "3"}],
+                        }
+                    ]
+                },
+            }
+        ],
+        review_configs=None,
+    )
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=thread_registry,
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+        hitl=hitl,
+    )
+
+    msg = InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="1"),
+        content=[TextContent(text="hello from a new chat")],
+        metadata={
+            "session_key": "dashboard:agent-1:1",
+            "thread_id": "thr_new",
+        },
+    )
+
+    chunks = [c async for c in processor.iter_turn_chunks(msg)]
+    assert stream_calls == ["stream"]
+    assert agent_manager.resume_hitl.call_count == 0
+    assert any(c.get("type") == "token" and "fresh turn" in str(c.get("content")) for c in chunks)
+    leftover = hitl.store.get(ask.pending_id)
+    assert leftover is not None
+    assert leftover.status == "pending"
+    assert leftover.thread_id == "thr_quiz"
+
+
+@pytest.mark.asyncio
 async def test_global_processor_iter_turn_chunks_expires_stale_hitl() -> None:
     from unittest.mock import AsyncMock, MagicMock
 
@@ -861,7 +1061,13 @@ async def test_ws_channel_preempts_at_tool_boundary_when_steer_pending() -> None
     types = [f["type"] for f in frames]
     assert "steer.drained" in types
     assert "turn.resumed" in types
-    assert {"type": "token", "content": "steered answer", "thread_id": "thread-1"} in frames
+    resumed = next(frame for frame in frames if frame["type"] == "turn.resumed")
+    assert {
+        "type": "token",
+        "content": "steered answer",
+        "thread_id": "thread-1",
+        "turn_id": resumed["turn_id"],
+    } in frames
     assert types[-1] == "turn.ended"
     assert hub.is_turn_active("thread-1") is False
 

@@ -27,7 +27,12 @@ BRIDGE_WS_MAX_BYTES = 32 * 1024 * 1024
 BRIDGE_TUNNEL_MAX_BODY_BYTES = 8 * 1024 * 1024
 # Advertised when both sides can split an upload across several frames.
 FEATURE_BODY_CHUNKS = "body_chunks"
-ADVERTISED_BRIDGE_FEATURES = [FEATURE_BODY_CHUNKS]
+# Mid-turn cancel / steer_remove on the peer (hub fails fast if the peer is older).
+FEATURE_TURN_CONTROL = "turn_control"
+ADVERTISED_BRIDGE_FEATURES = [
+    FEATURE_BODY_CHUNKS,
+    FEATURE_TURN_CONTROL,
+]
 # Each chunk stays well under the default WebSocket frame cap after base64.
 BODY_CHUNK_RAW_BYTES = 256 * 1024
 # Upper bound once ``body_chunks`` is negotiated. The peer upload route still
@@ -245,8 +250,9 @@ class BridgeSession:
                 fut.set_result(complete)
             return
         if msg_type.startswith("turn.") and self._on_turn_frame is not None:
-            # turn.start can run for minutes — never block the recv / heartbeat loop.
-            if msg_type == "turn.start":
+            # turn.start / turn.listen can run for minutes — never block the
+            # recv / heartbeat loop.
+            if msg_type in {"turn.start", "turn.listen", "turn.cancel", "turn.steer_remove"}:
                 handler = self._on_turn_frame
 
                 async def _run_turn() -> None:

@@ -14,6 +14,7 @@
   },
   "icon_name": "terminal",
   "color": "#16a34a",
+  "scene": "tech",
   "prompt_files": [
     "SOUL.md",
     "IDENTITY.md"

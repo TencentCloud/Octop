@@ -267,7 +267,7 @@ async def test_setup_database_postgresql_bind(tmp_octop_home: Path) -> None:
         assert status.json()["database_bound"] is True
         assert status.json()["database_driver"] == "postgresql"
 
-        pw = read_password(tmp_octop_home.parent)
+        pw = read_password(tmp_octop_home)
         assert pw is not None
         verified = await client.post("/api/setup/verify-password", json={"password": pw})
         assert verified.status_code == 200, verified.text

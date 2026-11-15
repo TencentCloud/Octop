@@ -12,7 +12,7 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
@@ -27,6 +27,7 @@ from octop.infra.db.repos.users import UserRepo
 from octop.infra.proactive.scheduler import (
     ProactiveCareScheduler,
     compute_next_trigger,
+    decide_send_timing,
     is_in_active_hours,
 )
 from octop.infra.utils.ulid import new_ulid
@@ -181,6 +182,173 @@ def test_is_in_active_hours_boundary_end():
     """Should return False exactly at the active-window end."""
     now = datetime(2026, 7, 1, 22, 0, 0, tzinfo=UTC)
     assert is_in_active_hours(now, active_hours_start="09:00", active_hours_end="22:00") is False
+
+
+def test_missed_window_waits_for_the_next_opening():
+    """A gap that lands at night waits until care hours open, not two hours into them."""
+    now = datetime(2026, 7, 1, 23, 0, 0, tzinfo=UTC)
+
+    def randint(low: int, high: int) -> int:
+        # Minimum gap, then no opening jitter.
+        return low
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", randint)
+        result = compute_next_trigger(
+            now=now,
+            active_hours_start="09:00",
+            active_hours_end="22:00",
+            min_interval_hours=1,
+            max_interval_hours=2,
+        )
+    assert result == datetime(2026, 7, 2, 9, 0, tzinfo=UTC)
+
+
+def test_short_window_keeps_opening_jitter_inside():
+    now = datetime(2026, 7, 1, 23, 0, 0, tzinfo=UTC)
+
+    def randint(low: int, high: int) -> int:
+        return high
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", randint)
+        result = compute_next_trigger(
+            now=now,
+            active_hours_start="09:00",
+            active_hours_end="10:00",
+            min_interval_hours=1,
+            max_interval_hours=2,
+        )
+    result_t = result.time().replace(second=0, microsecond=0)
+    # Jitter is capped by the 60-minute window, so 09:00 + 120 cannot escape it.
+    assert time(9, 0) <= result_t < time(10, 0)
+
+
+def test_config_body_allows_overnight_window():
+    from pydantic import ValidationError
+
+    from octop.api.routers.proactive_care import ProactiveCareConfigBody
+
+    cfg = ProactiveCareConfigBody(active_hours_start="22:00", active_hours_end="08:00")
+    assert cfg.active_hours_start == "22:00"
+    with pytest.raises(ValidationError):
+        ProactiveCareConfigBody(active_hours_start="09:00", active_hours_end="09:00")
+
+
+def test_overnight_window_accepts_evening_and_morning():
+    evening = datetime(2026, 7, 1, 22, 30, tzinfo=UTC)
+    morning = datetime(2026, 7, 2, 3, 0, tzinfo=UTC)
+    midday = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
+    assert is_in_active_hours(evening, active_hours_start="22:00", active_hours_end="08:00")
+    assert is_in_active_hours(morning, active_hours_start="22:00", active_hours_end="08:00")
+    assert not is_in_active_hours(midday, active_hours_start="22:00", active_hours_end="08:00")
+    assert not is_in_active_hours(
+        datetime(2026, 7, 2, 8, 0, tzinfo=UTC),
+        active_hours_start="22:00",
+        active_hours_end="08:00",
+    )
+
+
+def test_overnight_gap_lands_inside_the_night_window():
+    now = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", lambda a, b: 60)
+        result = compute_next_trigger(
+            now=now,
+            active_hours_start="22:00",
+            active_hours_end="08:00",
+            min_interval_hours=1,
+            max_interval_hours=2,
+        )
+    assert is_in_active_hours(result, active_hours_start="22:00", active_hours_end="08:00")
+    assert result > now
+
+
+def _unix(moment: datetime) -> int:
+    return int(moment.timestamp())
+
+
+def test_recent_user_activity_defers_until_idle():
+    now = datetime(2026, 7, 1, 15, 0, tzinfo=UTC)
+    last_active = now - timedelta(minutes=30)
+    decision = decide_send_timing(
+        now=now,
+        active_hours_start="09:00",
+        active_hours_end="22:00",
+        last_active_at=_unix(last_active),
+    )
+    assert decision.send is False
+    assert decision.retry_at == last_active + timedelta(hours=4)
+
+
+def test_own_care_push_does_not_reset_idle():
+    now = datetime(2026, 7, 1, 15, 0, tzinfo=UTC)
+    pushed = now - timedelta(hours=6)
+    decision = decide_send_timing(
+        now=now,
+        active_hours_start="09:00",
+        active_hours_end="22:00",
+        last_active_at=_unix(pushed) + 60,
+        last_push_at=_unix(pushed),
+    )
+    assert decision.send is True
+
+
+def test_reply_after_care_restarts_idle():
+    now = datetime(2026, 7, 1, 15, 0, tzinfo=UTC)
+    pushed = now - timedelta(hours=6)
+    replied = now - timedelta(minutes=20)
+    decision = decide_send_timing(
+        now=now,
+        active_hours_start="09:00",
+        active_hours_end="22:00",
+        last_active_at=_unix(replied),
+        last_push_at=_unix(pushed),
+    )
+    assert decision.send is False
+    assert decision.retry_at == replied + timedelta(hours=4)
+
+
+def test_busy_turn_waits_without_leaving_the_window():
+    now = datetime(2026, 7, 1, 15, 0, tzinfo=UTC)
+    decision = decide_send_timing(
+        now=now,
+        active_hours_start="09:00",
+        active_hours_end="22:00",
+        agent_busy=True,
+    )
+    assert decision.send is False
+    assert decision.retry_at == now + timedelta(minutes=15)
+
+
+def test_outside_hours_waits_for_the_window_to_open():
+    now = datetime(2026, 7, 1, 23, 0, tzinfo=UTC)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", lambda a, b: 0)
+        decision = decide_send_timing(
+            now=now,
+            active_hours_start="09:00",
+            active_hours_end="22:00",
+            agent_busy=True,
+        )
+    assert decision.send is False
+    assert decision.retry_at == datetime(2026, 7, 2, 9, 0, tzinfo=UTC)
+
+
+def test_idle_deadline_after_hours_moves_to_the_next_opening():
+    now = datetime(2026, 7, 1, 21, 0, tzinfo=UTC)
+    last_active = now - timedelta(minutes=30)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", lambda a, b: 0)
+        decision = decide_send_timing(
+            now=now,
+            active_hours_start="09:00",
+            active_hours_end="22:00",
+            last_active_at=_unix(last_active),
+        )
+    assert decision.send is False
+    # Quiet at 00:30, which is outside 09:00–22:00, so wait until the window opens.
+    assert decision.retry_at == datetime(2026, 7, 2, 9, 0, tzinfo=UTC)
 
 
 def test_compute_next_trigger_with_timezone():

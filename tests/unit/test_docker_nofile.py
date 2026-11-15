@@ -11,9 +11,9 @@ import yaml
 @pytest.mark.parametrize(
     "relative_path",
     [
-        "docker/docker-compose.yml",
-        "docker/docker-compose.cn.yml",
-        "docker/docker-compose.mobile.yml",
+        "deploy/docker/docker-compose.yml",
+        "deploy/docker/docker-compose.cn.yml",
+        "deploy/docker/docker-compose.mobile.yml",
         "fnos/docker/app/docker/docker-compose.yaml",
     ],
 )
@@ -23,3 +23,4 @@ def test_octop_container_has_explicit_nofile_limit(relative_path):
     limit = compose["services"]["octop"]["ulimits"]["nofile"]
     assert limit["soft"] >= 65535
     assert limit["hard"] >= limit["soft"]
+    assert compose["services"]["octop"]["shm_size"] == "1gb"

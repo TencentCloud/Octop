@@ -7,23 +7,26 @@ import {
   Typography,
   InputNumber,
   Space,
+  Modal,
 } from "antd";
 import { Database, ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { authApi } from "../../../api/modules/auth";
 import { wizardApi, type DatabaseSetupBody } from "../wizardClient";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
 import setupStyles from "../setup.module.less";
 
 const { Text } = Typography;
 
 interface Props {
   onContinue: () => void;
+  /** PostgreSQL target already had users; setup is finished, go to login. */
+  onAdopted?: () => void;
   onBack?: () => void;
 }
 
-export default function DatabaseStep({ onContinue, onBack }: Props) {
+export default function DatabaseStep({ onContinue, onAdopted, onBack }: Props) {
   const { t } = useTranslation();
   const [form] = Form.useForm<DatabaseSetupBody>();
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -34,6 +37,7 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
   const [boundDriver, setBoundDriver] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testMsg, setTestMsg] = useState<string | null>(null);
+  const [existingUsers, setExistingUsers] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,7 +62,36 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
     setTestedOk(false);
     setTestMsg(null);
     setError(null);
+    setExistingUsers(0);
   };
+
+  const noteProbe = (userCount: number) => {
+    setExistingUsers(userCount);
+    setTestedOk(true);
+    setTestMsg(
+      userCount > 0
+        ? t("wizard.database.testOkExisting", { count: userCount })
+        : t("wizard.database.testOk"),
+    );
+  };
+
+  const confirmAdopt = (count: number) =>
+    new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (value: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      Modal.confirm({
+        title: t("wizard.database.adoptTitle"),
+        content: t("wizard.database.adoptBody", { count }),
+        okText: t("wizard.database.adoptOk"),
+        cancelText: t("wizard.database.adoptCancel"),
+        onOk: () => finish(true),
+        onCancel: () => finish(false),
+      });
+    });
 
   const buildSqliteBody = (values: DatabaseSetupBody): DatabaseSetupBody => ({
     driver: "sqlite",
@@ -79,6 +112,30 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
     onContinue();
   };
 
+  const applyPostgres = async (body: DatabaseSetupBody, userCount: number) => {
+    let payload = body;
+    if (userCount > 0) {
+      const confirmed = await confirmAdopt(userCount);
+      if (!confirmed) return;
+      payload = { ...body, adopt_existing: true };
+    }
+    try {
+      const applied = await wizardApi.applyDatabase(payload);
+      if (applied.adopted) onAdopted?.();
+      else onContinue();
+    } catch (e) {
+      if (parseApiError(e)?.code !== "DATABASE_NOT_EMPTY") throw e;
+      const confirmed = await confirmAdopt(userCount);
+      if (!confirmed) return;
+      const applied = await wizardApi.applyDatabase({
+        ...body,
+        adopt_existing: true,
+      });
+      if (applied.adopted) onAdopted?.();
+      else onContinue();
+    }
+  };
+
   const onTestPostgres = async () => {
     setError(null);
     setTestMsg(null);
@@ -91,9 +148,8 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
         "user",
         "password",
       ]);
-      await wizardApi.testDatabase(buildPostgresBody(values));
-      setTestedOk(true);
-      setTestMsg(t("wizard.database.testOk"));
+      const probed = await wizardApi.testDatabase(buildPostgresBody(values));
+      noteProbe(probed.user_count ?? 0);
     } catch (e) {
       setTestedOk(false);
       setError(apiErrorMessage(e, t("wizard.database.testFailed"), t));
@@ -131,11 +187,13 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
         "password",
       ]);
       const body = buildPostgresBody(values);
+      let userCount = existingUsers;
       if (!testedOk) {
-        await wizardApi.testDatabase(body);
-        setTestedOk(true);
+        const probed = await wizardApi.testDatabase(body);
+        userCount = probed.user_count ?? 0;
+        noteProbe(userCount);
       }
-      await applyAndContinue(body);
+      await applyPostgres(body, userCount);
     } catch (e) {
       setError(apiErrorMessage(e, t("wizard.database.applyFailed"), t));
     } finally {

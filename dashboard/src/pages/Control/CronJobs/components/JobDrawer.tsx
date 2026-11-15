@@ -9,7 +9,9 @@ import {
   Divider,
   Typography,
   Alert,
+  DatePicker,
 } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import { providerApi } from "../../../../api/modules/provider";
@@ -23,7 +25,9 @@ import {
   presetToCron,
 } from "./constants";
 import { CRON_NAME_MAX_LEN, CRON_PROMPT_MAX_LEN } from "../constants";
-import { channelFromSessionKey } from "../cronDisplay";
+import { CHANNEL_LABEL_KEYS } from "../../../Agent/Channels/components/constants";
+import { LATEST_SESSION_TARGET, channelFromSessionKey } from "../cronDisplay";
+import { defaultOnceRunAt, isFutureWallClock } from "../onceSchedule";
 import type { CronJobFormValues } from "../useCronJobs";
 import {
   buildModelSelectOptions,
@@ -91,10 +95,11 @@ export function JobDrawer({
   const remote = isBridgeAgentId(activeAgentId);
   const scheduleMode = Form.useWatch("_scheduleMode", form);
   const freshThread = Form.useWatch("fresh_thread", form);
+  const sessionTarget = Form.useWatch("session_target", form);
 
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [sessionOptions, setSessionOptions] = useState<
+  const [historyOptions, setHistoryOptions] = useState<
     Array<{ label: string; value: string }>
   >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -115,20 +120,48 @@ export function JobDrawer({
     [t],
   );
 
+  const sessionSelectOptions = useMemo(() => {
+    const history = [...historyOptions];
+    if (
+      sessionTarget &&
+      sessionTarget !== LATEST_SESSION_TARGET &&
+      !history.some((option) => option.value === sessionTarget)
+    ) {
+      history.unshift({
+        value: sessionTarget,
+        label: `${t("cronJobs.form.sessionKeyHistory")} · ${sessionTarget.slice(
+          -6,
+        )}`,
+      });
+    }
+    const latest = {
+      value: LATEST_SESSION_TARGET,
+      label: t("cronJobs.form.sessionKeyLatest"),
+    };
+    if (history.length === 0) return [latest];
+    return [
+      latest,
+      { label: t("cronJobs.form.sessionKeyHistory"), options: history },
+    ];
+  }, [historyOptions, sessionTarget, t]);
+
   useEffect(() => {
     if (!open) return;
     if (editingJob) {
       const matchedPreset = cronToPreset(editingJob.schedule?.cron || "");
+      const mode =
+        editingJob._scheduleMode === "once" ||
+        editingJob._scheduleMode === "agently"
+          ? editingJob._scheduleMode
+          : matchedPreset
+          ? "preset"
+          : "custom";
       form.setFieldsValue({
         ...editingJob,
         model: defaultModelToForm(editingJob.model),
-        _scheduleMode:
-          editingJob._scheduleMode === "agently"
-            ? "agently"
-            : matchedPreset
-            ? "preset"
-            : "custom",
+        _scheduleMode: mode,
         _preset: matchedPreset || editingJob._preset || "daily_9am",
+        run_at: editingJob.run_at ? dayjs(editingJob.run_at) : undefined,
       });
     } else {
       form.resetFields();
@@ -148,32 +181,34 @@ export function JobDrawer({
 
   useEffect(() => {
     if (!open || !activeAgentId) {
-      setSessionOptions([]);
+      setHistoryOptions([]);
       return;
     }
     setSessionsLoading(true);
     octopThreadsApi
       .list(activeAgentId, 100)
       .then((threads) => {
-        const seen = new Set<string>();
         const options: Array<{ label: string; value: string }> = [];
         for (const th of threads || []) {
-          if (!th.session_key || seen.has(th.session_key)) continue;
-          seen.add(th.session_key);
-          const channel = channelFromSessionKey(th.session_key);
+          if (th.owned === false) continue;
           const title = th.title?.trim();
+          if (!title && !(th.last_active > 0)) continue;
+          const channel = channelFromSessionKey(th.session_key);
+          const labelKey =
+            CHANNEL_LABEL_KEYS[channel as keyof typeof CHANNEL_LABEL_KEYS];
+          const channelName = labelKey ? t(labelKey) : channel;
           options.push({
-            value: th.session_key,
+            value: th.thread_id,
             label: title
-              ? `${channel} · ${title}`
-              : `${channel} · ${th.session_key}`,
+              ? `${channelName} · ${title}`
+              : `${channelName} · ${th.thread_id.slice(-6)}`,
           });
         }
-        setSessionOptions(options);
+        setHistoryOptions(options);
       })
-      .catch(() => setSessionOptions([]))
+      .catch(() => setHistoryOptions([]))
       .finally(() => setSessionsLoading(false));
-  }, [open, activeAgentId]);
+  }, [open, activeAgentId, t]);
 
   useEffect(() => {
     if (!open) {
@@ -190,7 +225,8 @@ export function JobDrawer({
               (i) =>
                 i.kind === "agently-cli" &&
                 i.status === "active" &&
-                i.has_credentials,
+                i.has_credentials &&
+                i.usable !== false,
             )
             .map((i) => ({
               value: i.instance_id,
@@ -199,7 +235,12 @@ export function JobDrawer({
         );
         setConnectorOptions(
           (instances || [])
-            .filter((i) => i.status === "active" && i.has_credentials)
+            .filter(
+              (i) =>
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
             .map((i) => ({
               value: i.mcp_server_name,
               label: i.display_name?.trim()
@@ -307,7 +348,19 @@ export function JobDrawer({
           label={t("cronJobs.form.scheduleMode")}
           tooltip={t("cronJobs.form.scheduleModeTooltip")}
         >
-          <Select>
+          <Select
+            onChange={(mode) => {
+              if (mode === "once" && !form.getFieldValue("run_at")) {
+                form.setFieldValue(
+                  "run_at",
+                  dayjs(defaultOnceRunAt(cronTimezone)),
+                );
+              }
+            }}
+          >
+            <Select.Option value="once">
+              {t("cronJobs.form.scheduleModeOnce")}
+            </Select.Option>
             <Select.Option value="preset">
               {t("cronJobs.form.scheduleModePreset")}
             </Select.Option>
@@ -322,7 +375,43 @@ export function JobDrawer({
           </Select>
         </Form.Item>
 
-        {scheduleMode === "agently" ? (
+        {scheduleMode === "once" ? (
+          <Form.Item
+            name="run_at"
+            label={t("cronJobs.form.onceAt")}
+            dependencies={["enabled"]}
+            rules={[
+              {
+                validator: (_, value: Dayjs | undefined) => {
+                  if (!value || !dayjs.isDayjs(value)) {
+                    return Promise.reject(
+                      new Error(t("cronJobs.form.pleaseSelectOnceTime")),
+                    );
+                  }
+                  const enabled = Boolean(form.getFieldValue("enabled"));
+                  const text = value.format("YYYY-MM-DDTHH:mm:ss");
+                  if (enabled && !isFutureWallClock(text, cronTimezone)) {
+                    return Promise.reject(
+                      new Error(t("cronJobs.form.onceMustBeFuture")),
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
+            extra={
+              <span className={styles.mailTriggerHint}>
+                {t("cronJobs.form.onceHint")}
+              </span>
+            }
+          >
+            <DatePicker
+              showTime={{ format: "HH:mm" }}
+              format="YYYY-MM-DD HH:mm"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+        ) : scheduleMode === "agently" ? (
           <Form.Item
             name="mail_instance_id"
             label={t("cronJobs.form.agentlyMailbox")}
@@ -489,13 +578,7 @@ export function JobDrawer({
           valuePropName="checked"
           tooltip={t("cronJobs.form.freshThreadTooltip")}
         >
-          <Switch
-            onChange={(checked) => {
-              if (checked) {
-                form.setFieldValue("session_key", undefined);
-              }
-            }}
-          />
+          <Switch />
         </Form.Item>
 
         {!freshThread && (
@@ -506,9 +589,10 @@ export function JobDrawer({
             />
 
             <Form.Item
-              name="session_key"
+              name="session_target"
               label={t("cronJobs.form.sessionKey")}
               tooltip={t("cronJobs.form.sessionKeyTooltip")}
+              initialValue={LATEST_SESSION_TARGET}
               extra={
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {t("cronJobs.form.sessionKeyDefault")}
@@ -516,16 +600,10 @@ export function JobDrawer({
               }
             >
               <Select
-                allowClear
                 showSearch
                 loading={sessionsLoading}
-                placeholder={t("cronJobs.form.sessionKeyPlaceholder")}
-                options={sessionOptions}
-                filterOption={(input, option) =>
-                  (option?.label?.toString() || "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
+                options={sessionSelectOptions}
+                optionFilterProp="label"
               />
             </Form.Item>
           </>

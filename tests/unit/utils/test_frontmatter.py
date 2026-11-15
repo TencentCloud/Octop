@@ -20,6 +20,26 @@ def test_leading_multiline_html_comment_is_skipped() -> None:
     assert is_agent_file(text)
 
 
+def test_bom_prefixed_frontmatter_is_parsed() -> None:
+    """A BOM is an encoding artifact: the fence after it still opens frontmatter.
+
+    Windows editors (Notepad, and the Windows PowerShell 5.1
+    ``Set-Content -Encoding UTF8`` switch) prepend one to files they save.
+    """
+    text = "\ufeff---\nname: foo\ndescription: bar\n---\nbody"
+    meta, body = parse_frontmatter(text)
+    assert meta == {"name": "foo", "description": "bar"}
+    assert body == "body"
+    assert "\ufeff" not in body
+    assert is_agent_file(text)
+
+
+def test_plain_frontmatter_is_unaffected_by_bom_handling() -> None:
+    meta, body = parse_frontmatter("---\nname: foo\n---\nbody")
+    assert meta == {"name": "foo"}
+    assert body == "body"
+
+
 def test_leading_one_line_html_comment_is_skipped() -> None:
     """The documented invariant: leading HTML comments are skipped before the
     first ``---`` fence, including a comment that closes on its own line."""

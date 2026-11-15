@@ -1,0 +1,17 @@
+# Extra GitHub logins that may open pull requests.
+#
+# Already allowed without an entry here:
+# - authors of a previously merged pull request (Contributor)
+# - users with admin, maintain, or write access on this repository
+# - bots
+#
+# One login per line. Text after # is a comment. A leading @ is ignored.
+# Repository variable PR_AUTHOR_ALLOWLIST is merged with this file
+# (commas, spaces, or newlines). Set PR_AUTHOR_GUARD=off to disable the guard.
+#
+# Push-capable maintainers who are not on the contributor graph.
+# Kept here so a failed permission lookup cannot lock them out.
+zqfan
+ansonxjh
+GardenChan
+kaioji

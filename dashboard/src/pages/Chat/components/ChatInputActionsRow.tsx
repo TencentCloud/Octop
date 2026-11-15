@@ -30,6 +30,7 @@ import {
   Search,
 } from "lucide-react";
 import { Tooltip, Popover } from "antd";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -74,7 +75,9 @@ type CompactPickerKey =
   | "knowledge"
   | "skill"
   | "expert"
-  | "subagent";
+  | "subagent"
+  | "shortcut"
+  | "upload";
 
 function resolveModelLogo(model: {
   provider_name: string;
@@ -110,11 +113,7 @@ function PlusMenuCount({
 }) {
   if (count <= 0) return null;
   return (
-    <span
-      className={`${styles.mobileOverflowItemCount}${
-        className ? ` ${className}` : ""
-      }`}
-    >
+    <span className={cx(styles.mobileOverflowItemCount, className)}>
       <span className={styles.mobileOverflowItemCountText}>{count}</span>
     </span>
   );
@@ -161,6 +160,7 @@ interface ChatInputActionsRowProps {
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
   hitlPolicy?: HitlSessionPolicy;
   onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
+  lockThreadSettings?: boolean;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -224,6 +224,7 @@ export default function ChatInputActionsRow({
   onConversationModeChange,
   hitlPolicy,
   onHitlPolicyChange,
+  lockThreadSettings = false,
   availableConnectors,
   selectedConnectors = [],
   onConnectorsChange,
@@ -248,6 +249,13 @@ export default function ChatInputActionsRow({
   onSubmit,
 }: ChatInputActionsRowProps) {
   const { t } = useTranslation();
+  const settingsLockedHint = lockThreadSettings
+    ? t("chat.threadSettingsOwnerOnly", "只有会话创建人可以改模型和审批设置")
+    : undefined;
+  const modelChange = lockThreadSettings ? undefined : onModelChange;
+  const reasoningChange = lockThreadSettings ? undefined : onReasoningChange;
+  const modeChange = lockThreadSettings ? undefined : onConversationModeChange;
+  const hitlChange = lockThreadSettings ? undefined : onHitlPolicyChange;
   const navigate = useNavigate();
   const remoteManaged = Boolean(agentId?.startsWith("bridge:"));
   const skillDisplayName = useSkillDisplayName();
@@ -328,7 +336,8 @@ export default function ChatInputActionsRow({
     }
     const row = actionsRowRef.current;
     if (!row) return;
-    const update = (width: number) => setIsCompact(width <= 560);
+    // Width 0 means the row has not been laid out yet (tests, first paint).
+    const update = (width: number) => setIsCompact(width > 0 && width <= 560);
     update(row.getBoundingClientRect().width);
     const observer = new ResizeObserver(([entry]) => {
       if (entry) update(entry.contentRect.width);
@@ -378,6 +387,8 @@ export default function ChatInputActionsRow({
   );
   const activeSkillSlugs = parseSkillSlugsInText(text, skillTokenRefs);
   const showModePicker = Boolean(onConversationModeChange);
+  const polishDisabled =
+    !text.trim() || polishing || isStreaming || disabled || !agentId;
   const showOverflowMenu =
     showModePicker ||
     showModelPicker ||
@@ -385,7 +396,8 @@ export default function ChatInputActionsRow({
     showKnowledgePicker ||
     showSkillPicker ||
     showExpertPicker ||
-    showSubagentPicker;
+    showSubagentPicker ||
+    useCompactControls;
 
   const overflowBadgeCount =
     selectedConnectors.length +
@@ -429,6 +441,8 @@ export default function ChatInputActionsRow({
     skill: t("chat.skillPicker"),
     expert: t("chat.expertPicker"),
     subagent: t("chat.subagentPicker"),
+    shortcut: t("shortcut.title", "快捷指令"),
+    upload: t("upload.tooltip", "Upload"),
   };
 
   const reasoningModel = availableModels?.find(
@@ -484,7 +498,7 @@ export default function ChatInputActionsRow({
   };
 
   const openModelReasoning = (modelRef: string) => {
-    if (selectedModel !== modelRef) onModelChange?.(modelRef);
+    if (selectedModel !== modelRef) modelChange?.(modelRef);
     setReasoningModelRef(modelRef);
   };
 
@@ -524,10 +538,11 @@ export default function ChatInputActionsRow({
             <button
               key={mode}
               type="button"
-              className={`${styles.reasoningMenuChoice} ${
-                reasoningMode === mode ? styles.reasoningMenuChoiceActive : ""
-              }`}
-              onClick={() => onReasoningChange?.(mode, reasoningEffort)}
+              className={cx(
+                styles.reasoningMenuChoice,
+                reasoningMode === mode && styles.reasoningMenuChoiceActive,
+              )}
+              onClick={() => reasoningChange?.(mode, reasoningEffort)}
             >
               <span>{reasoningModeLabel(mode)}</span>
               {reasoningMode === mode && <Check size={16} />}
@@ -543,13 +558,13 @@ export default function ChatInputActionsRow({
                 <button
                   key={effort}
                   type="button"
-                  className={`${styles.reasoningMenuChoice} ${
-                    reasoningEffort === effort
-                      ? styles.reasoningMenuChoiceActive
-                      : ""
-                  }`}
+                  className={cx(
+                    styles.reasoningMenuChoice,
+                    reasoningEffort === effort &&
+                      styles.reasoningMenuChoiceActive,
+                  )}
                   onClick={() =>
-                    onReasoningChange?.(
+                    reasoningChange?.(
                       reasoningMode === "disabled" ? "enabled" : reasoningMode,
                       effort,
                     )
@@ -588,11 +603,12 @@ export default function ChatInputActionsRow({
             {showAutoModel ? (
               <button
                 type="button"
-                className={`${styles.modelMenuItem} ${
-                  !selectedModel ? styles.modelMenuItemActive : ""
-                }`}
+                className={cx(
+                  styles.modelMenuItem,
+                  !selectedModel && styles.modelMenuItemActive,
+                )}
                 onClick={() => {
-                  onModelChange?.(null);
+                  modelChange?.(null);
                   closePlusMenu();
                 }}
               >
@@ -611,15 +627,16 @@ export default function ChatInputActionsRow({
               return (
                 <div
                   key={value}
-                  className={`${styles.modelMenuRow} ${
-                    active ? styles.modelMenuItemActive : ""
-                  }`}
+                  className={cx(
+                    styles.modelMenuRow,
+                    active && styles.modelMenuItemActive,
+                  )}
                 >
                   <button
                     type="button"
                     className={styles.modelMenuSelect}
                     onClick={() => {
-                      onModelChange?.(active ? null : value);
+                      modelChange?.(active ? null : value);
                       closePlusMenu();
                     }}
                   >
@@ -667,9 +684,10 @@ export default function ChatInputActionsRow({
           <div className={styles.modelMenuDivider} />
           <button
             type="button"
-            className={`${styles.modelMenuFooter} ${
-              remoteManaged ? styles.modelMenuFooterMuted : ""
-            }`}
+            className={cx(
+              styles.modelMenuFooter,
+              remoteManaged && styles.modelMenuFooterMuted,
+            )}
             onClick={() => {
               if (remoteManaged) {
                 message.info(t("chat.remoteExpert.manageToast"));
@@ -713,12 +731,14 @@ export default function ChatInputActionsRow({
           nameClassName={styles.skillPickerName}
           cmdClassName={styles.skillPickerDesc}
           iconWrapClassName={(tone) =>
-            `${styles.shortcutPickerIcon} ${
-              SHORTCUT_ICON_TONE_CLASS[tone] ?? styles.shortcutPickerIconBlue
-            }`
+            cx(
+              styles.shortcutPickerIcon,
+              SHORTCUT_ICON_TONE_CLASS[tone] ?? styles.shortcutPickerIconBlue,
+            )
           }
           onSelect={(command) => {
             setShortcutOpen(false);
+            closePlusMenu();
             onSlashShortcutSelect(command);
           }}
           onHover={() => undefined}
@@ -734,10 +754,15 @@ export default function ChatInputActionsRow({
       {showModePicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "mode" ? styles.mobileOverflowItemActive : ""
-          }`}
-          onClick={() => openCompactPicker("mode")}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "mode" && styles.mobileOverflowItemActive,
+          )}
+          title={settingsLockedHint}
+          onClick={() => {
+            if (lockThreadSettings) return;
+            openCompactPicker("mode");
+          }}
         >
           <span className={styles.mobileOverflowItemMain}>
             <ModeIcon size={16} />
@@ -754,10 +779,15 @@ export default function ChatInputActionsRow({
       {showModelPicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "model" ? styles.mobileOverflowItemActive : ""
-          }`}
-          onClick={() => openCompactPicker("model")}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "model" && styles.mobileOverflowItemActive,
+          )}
+          title={settingsLockedHint}
+          onClick={() => {
+            if (lockThreadSettings) return;
+            openCompactPicker("model");
+          }}
         >
           <span className={styles.mobileOverflowItemMain}>
             <Cpu size={16} />
@@ -776,9 +806,10 @@ export default function ChatInputActionsRow({
       {showConnectorPicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "connector" ? styles.mobileOverflowItemActive : ""
-          }`}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "connector" && styles.mobileOverflowItemActive,
+          )}
           onClick={() => openCompactPicker("connector")}
         >
           <span className={styles.mobileOverflowItemMain}>
@@ -794,9 +825,10 @@ export default function ChatInputActionsRow({
       {showKnowledgePicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "knowledge" ? styles.mobileOverflowItemActive : ""
-          }`}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "knowledge" && styles.mobileOverflowItemActive,
+          )}
           onClick={() => openCompactPicker("knowledge")}
         >
           <span className={styles.mobileOverflowItemMain}>
@@ -812,9 +844,10 @@ export default function ChatInputActionsRow({
       {showSkillPicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "skill" ? styles.mobileOverflowItemActive : ""
-          }`}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "skill" && styles.mobileOverflowItemActive,
+          )}
           onClick={() => openCompactPicker("skill")}
         >
           <span className={styles.mobileOverflowItemMain}>
@@ -830,9 +863,10 @@ export default function ChatInputActionsRow({
       {showExpertPicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "expert" ? styles.mobileOverflowItemActive : ""
-          }`}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "expert" && styles.mobileOverflowItemActive,
+          )}
           onClick={() => openCompactPicker("expert")}
         >
           <span className={styles.mobileOverflowItemMain}>
@@ -851,9 +885,10 @@ export default function ChatInputActionsRow({
       {showSubagentPicker && (
         <button
           type="button"
-          className={`${styles.mobileOverflowItem} ${
-            compactPicker === "subagent" ? styles.mobileOverflowItemActive : ""
-          }`}
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "subagent" && styles.mobileOverflowItemActive,
+          )}
           onClick={() => openCompactPicker("subagent")}
         >
           <span className={styles.mobileOverflowItemMain}>
@@ -869,6 +904,152 @@ export default function ChatInputActionsRow({
           </span>
         </button>
       )}
+      {useCompactControls && (
+        <button
+          type="button"
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "shortcut" && styles.mobileOverflowItemActive,
+          )}
+          onClick={() => openCompactPicker("shortcut")}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <Zap size={16} />
+            <span>{t("shortcut.title", "快捷指令")}</span>
+          </span>
+          <span className={styles.mobileOverflowItemMeta}>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+      )}
+      {useCompactControls && (
+        <button
+          type="button"
+          className={cx(
+            styles.mobileOverflowItem,
+            compactPicker === "upload" && styles.mobileOverflowItemActive,
+          )}
+          onClick={() => openCompactPicker("upload")}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <Paperclip size={16} />
+            <span>{t("upload.tooltip", "Upload")}</span>
+          </span>
+          <span className={styles.mobileOverflowItemMeta}>
+            <ChevronRight size={16} />
+          </span>
+        </button>
+      )}
+      {useCompactControls && (
+        <button
+          type="button"
+          className={styles.mobileOverflowItem}
+          disabled={polishDisabled}
+          onClick={() => {
+            onPolish();
+            closePlusMenu();
+          }}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            <Wand2
+              size={16}
+              className={polishing ? styles.spinIcon : undefined}
+            />
+            <span>{t("chat.polish.tooltip")}</span>
+          </span>
+        </button>
+      )}
+      {useCompactControls &&
+        (onStartBrowserRecording || onStopBrowserRecording) && (
+          <button
+            type="button"
+            className={styles.mobileOverflowItem}
+            disabled={disabled || browserReplayBusy}
+            onClick={() => {
+              if (browserRecording) onStopBrowserRecording?.();
+              else onStartBrowserRecording?.();
+              closePlusMenu();
+            }}
+          >
+            <span className={styles.mobileOverflowItemMain}>
+              {browserRecording ? (
+                <Square size={16} />
+              ) : (
+                <CircleDot size={16} />
+              )}
+              <span>
+                {browserRecording
+                  ? t("browser.recordReplay.stop", "停止浏览器录制")
+                  : t("browser.recordReplay.start", "开始浏览器录制")}
+              </span>
+            </span>
+          </button>
+        )}
+      {useCompactControls && onReplayBrowserRecording && (
+        <button
+          type="button"
+          className={styles.mobileOverflowItem}
+          disabled={
+            disabled ||
+            browserRecording ||
+            browserReplayBusy ||
+            !browserLastRecordingId
+          }
+          onClick={() => {
+            onReplayBrowserRecording();
+            closePlusMenu();
+          }}
+        >
+          <span className={styles.mobileOverflowItemMain}>
+            {browserReplayBusy ? (
+              <Loader2 size={16} className={styles.spinIcon} />
+            ) : (
+              <Play size={16} />
+            )}
+            <span>
+              {browserLastRecordingId
+                ? t("browser.recordReplay.replay", "回放最近一次浏览器录制")
+                : t(
+                    "browser.recordReplay.noRecording",
+                    "请先完成一次浏览器录制",
+                  )}
+            </span>
+          </span>
+        </button>
+      )}
+    </div>
+  );
+
+  const renderUploadMenu = (close: () => void) => (
+    <div className={styles.mobileOverflowMenu} role="menu">
+      <button
+        type="button"
+        role="menuitem"
+        className={styles.mobileOverflowItem}
+        onClick={() => {
+          close();
+          onFileSelect();
+        }}
+      >
+        <span className={styles.mobileOverflowItemMain}>
+          <FileUp size={16} />
+          <span>{t("upload.files", "Files")}</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        role="menuitem"
+        className={styles.mobileOverflowItem}
+        onClick={() => {
+          close();
+          onFolderSelect();
+        }}
+      >
+        <span className={styles.mobileOverflowItemMain}>
+          <FolderUp size={16} />
+          <span>{t("upload.folder", "Folder")}</span>
+        </span>
+      </button>
     </div>
   );
 
@@ -879,7 +1060,7 @@ export default function ChatInputActionsRow({
           <ConversationModeMenu
             conversationMode={conversationMode}
             onChange={(mode) => {
-              onConversationModeChange?.(mode);
+              modeChange?.(mode);
               closePlusMenu();
             }}
           />
@@ -938,6 +1119,10 @@ export default function ChatInputActionsRow({
             remoteManaged={remoteManaged}
           />
         );
+      case "shortcut":
+        return shortcutMenu;
+      case "upload":
+        return renderUploadMenu(closePlusMenu);
       default:
         return null;
     }
@@ -946,9 +1131,10 @@ export default function ChatInputActionsRow({
   const renderSecondaryActions = () => {
     const plusButton = (
       <button
-        className={`${styles.secondaryBtn} ${
-          overflowBadgeCount > 0 ? styles.secondaryBtnActive : ""
-        }`}
+        className={cx(
+          styles.secondaryBtn,
+          overflowBadgeCount > 0 && styles.secondaryBtnActive,
+        )}
         type="button"
         aria-label={t("chat.composerMore", "更多工具")}
         data-testid="composer-plus"
@@ -979,15 +1165,13 @@ export default function ChatInputActionsRow({
                 {compactPicker ? (
                   <div
                     ref={isMobile ? undefined : setPlusPanelEl}
-                    className={
-                      isMobile
-                        ? styles.plusFlyoutPanelInPlace
-                        : `${styles.plusFlyoutPanel}${
-                            plusPanelAlignBottom
-                              ? ` ${styles.plusFlyoutPanelAlignBottom}`
-                              : ""
-                          }`
-                    }
+                    className={cx(
+                      isMobile && styles.plusFlyoutPanelInPlace,
+                      !isMobile && styles.plusFlyoutPanel,
+                      !isMobile &&
+                        plusPanelAlignBottom &&
+                        styles.plusFlyoutPanelAlignBottom,
+                    )}
                     style={
                       !isMobile && plusPanelMaxHeight
                         ? { maxHeight: plusPanelMaxHeight }
@@ -1029,81 +1213,59 @@ export default function ChatInputActionsRow({
         {onHitlPolicyChange && (
           <HitlPolicyPicker
             policy={hitlPolicy ?? { mode: "ask" }}
-            onChange={onHitlPolicyChange}
+            onChange={hitlChange ?? onHitlPolicyChange}
+            disabled={lockThreadSettings}
+            disabledHint={settingsLockedHint}
           />
         )}
-        <Popover
-          trigger="click"
-          placement="topLeft"
-          open={shortcutOpen}
-          onOpenChange={setShortcutOpen}
-          overlayClassName={styles.skillPickerPopover}
-          content={shortcutMenu}
-        >
-          <Tooltip
-            title={t("shortcut.title", "快捷指令")}
-            mouseEnterDelay={0.4}
+        {!useCompactControls && (
+          <Popover
+            trigger="click"
+            placement="topLeft"
+            open={shortcutOpen}
+            onOpenChange={setShortcutOpen}
+            overlayClassName={styles.skillPickerPopover}
+            content={shortcutMenu}
           >
-            <button
-              className={styles.secondaryBtn}
-              type="button"
-              aria-label={t("shortcut.title", "快捷指令")}
+            <Tooltip
+              title={t("shortcut.title", "快捷指令")}
+              mouseEnterDelay={0.4}
             >
-              <Zap size={16} />
-            </button>
-          </Tooltip>
-        </Popover>
-        <Popover
-          trigger="click"
-          placement="topLeft"
-          open={uploadOpen}
-          onOpenChange={setUploadOpen}
-          overlayClassName={styles.skillPickerPopover}
-          content={
-            <div className={styles.mobileOverflowMenu} role="menu">
               <button
+                className={styles.secondaryBtn}
                 type="button"
-                role="menuitem"
-                className={styles.mobileOverflowItem}
-                onClick={() => {
-                  setUploadOpen(false);
-                  onFileSelect();
-                }}
+                aria-label={t("shortcut.title", "快捷指令")}
               >
-                <span className={styles.mobileOverflowItemMain}>
-                  <FileUp size={16} />
-                  <span>{t("upload.files", "Files")}</span>
-                </span>
+                <Zap size={16} />
               </button>
-              <button
-                type="button"
-                role="menuitem"
-                className={styles.mobileOverflowItem}
-                onClick={() => {
-                  setUploadOpen(false);
-                  onFolderSelect();
-                }}
-              >
-                <span className={styles.mobileOverflowItemMain}>
-                  <FolderUp size={16} />
-                  <span>{t("upload.folder", "Folder")}</span>
-                </span>
-              </button>
-            </div>
-          }
-        >
-          <Tooltip title={t("upload.tooltip", "Upload")} mouseEnterDelay={0.4}>
-            <button
-              className={styles.secondaryBtn}
-              type="button"
-              disabled={uploading}
-              aria-label={t("upload.tooltip", "Upload")}
-              aria-haspopup="menu"
+            </Tooltip>
+          </Popover>
+        )}
+        {!useCompactControls && (
+          <Popover
+            trigger="click"
+            placement="topLeft"
+            open={uploadOpen}
+            onOpenChange={setUploadOpen}
+            overlayClassName={styles.skillPickerPopover}
+            content={renderUploadMenu(() => setUploadOpen(false))}
+          >
+            <Tooltip
+              title={t("upload.tooltip", "Upload")}
+              mouseEnterDelay={0.4}
             >
-              <Paperclip size={16} />
-            </button>
-          </Tooltip>
-        </Popover>
+              <button
+                className={styles.secondaryBtn}
+                type="button"
+                disabled={uploading}
+                aria-label={t("upload.tooltip", "Upload")}
+                aria-haspopup="menu"
+              >
+                <Paperclip size={16} />
+              </button>
+            </Tooltip>
+          </Popover>
+        )}
       </>
     );
   };
@@ -1111,12 +1273,13 @@ export default function ChatInputActionsRow({
   return (
     <div
       ref={actionsRowRef}
-      className={`${styles.actionsRow}${
-        isMobile ? ` ${styles.actionsRowCompact}` : ""
-      }`}
+      className={cx(
+        styles.actionsRow,
+        useCompactControls && styles.actionsRowCompact,
+      )}
     >
       <div className={styles.secondaryActions}>{renderSecondaryActions()}</div>
-      {conversationMode !== "craft" ? (
+      {conversationMode !== "craft" && !isCompact ? (
         <p className={styles.modeHint} data-testid="conversation-mode-hint">
           <ModeIcon size={14} aria-hidden />
           <span>{t(`chat.conversationMode.${conversationMode}Reminder`)}</span>
@@ -1160,13 +1323,7 @@ export default function ChatInputActionsRow({
                 className={styles.secondaryBtn}
                 onClick={onPolish}
                 type="button"
-                disabled={
-                  !text.trim() ||
-                  polishing ||
-                  isStreaming ||
-                  disabled ||
-                  !agentId
-                }
+                disabled={polishDisabled}
               >
                 <Wand2
                   size={16}
@@ -1193,9 +1350,10 @@ export default function ChatInputActionsRow({
           mouseEnterDelay={0.4}
         >
           <button
-            className={`${styles.secondaryBtn} ${
-              recording || transcribing ? styles.secondaryBtnActive : ""
-            }`}
+            className={cx(
+              styles.secondaryBtn,
+              (recording || transcribing) && styles.secondaryBtnActive,
+            )}
             type="button"
             // Dictation only fills the composer, so it stays available while a
             // reply is still streaming.
@@ -1224,68 +1382,72 @@ export default function ChatInputActionsRow({
             <Mic size={16} />
           </button>
         </Tooltip>
-        {(onStartBrowserRecording || onStopBrowserRecording) && (
-          <Tooltip
-            title={
-              browserRecording
-                ? t("browser.recordReplay.stop", "停止浏览器录制")
-                : t("browser.recordReplay.start", "开始浏览器录制")
-            }
-            mouseEnterDelay={0.4}
-          >
-            <button
-              className={`${styles.secondaryBtn} ${
-                browserRecording ? styles.secondaryBtnRecording : ""
-              }`}
-              type="button"
-              disabled={disabled || browserReplayBusy}
-              onClick={
+        {(onStartBrowserRecording || onStopBrowserRecording) &&
+          (!useCompactControls || browserRecording) && (
+            <Tooltip
+              title={
                 browserRecording
-                  ? onStopBrowserRecording
-                  : onStartBrowserRecording
+                  ? t("browser.recordReplay.stop", "停止浏览器录制")
+                  : t("browser.recordReplay.start", "开始浏览器录制")
               }
+              mouseEnterDelay={0.4}
             >
-              {browserRecording ? (
-                <Square size={15} />
-              ) : (
-                <CircleDot size={16} />
-              )}
-            </button>
-          </Tooltip>
-        )}
-        {onReplayBrowserRecording && (
-          <Tooltip
-            title={
-              browserLastRecordingId
-                ? t("browser.recordReplay.replay", "回放最近一次浏览器录制")
-                : t(
-                    "browser.recordReplay.noRecording",
-                    "请先完成一次浏览器录制",
-                  )
-            }
-            mouseEnterDelay={0.4}
-          >
-            <button
-              className={`${styles.secondaryBtn} ${
-                browserReplayBusy ? styles.secondaryBtnActive : ""
-              }`}
-              type="button"
-              disabled={
-                disabled ||
-                browserRecording ||
-                browserReplayBusy ||
-                !browserLastRecordingId
+              <button
+                className={cx(
+                  styles.secondaryBtn,
+                  browserRecording && styles.secondaryBtnRecording,
+                )}
+                type="button"
+                disabled={disabled || browserReplayBusy}
+                onClick={
+                  browserRecording
+                    ? onStopBrowserRecording
+                    : onStartBrowserRecording
+                }
+              >
+                {browserRecording ? (
+                  <Square size={15} />
+                ) : (
+                  <CircleDot size={16} />
+                )}
+              </button>
+            </Tooltip>
+          )}
+        {onReplayBrowserRecording &&
+          (!useCompactControls || browserReplayBusy) && (
+            <Tooltip
+              title={
+                browserLastRecordingId
+                  ? t("browser.recordReplay.replay", "回放最近一次浏览器录制")
+                  : t(
+                      "browser.recordReplay.noRecording",
+                      "请先完成一次浏览器录制",
+                    )
               }
-              onClick={onReplayBrowserRecording}
+              mouseEnterDelay={0.4}
             >
-              {browserReplayBusy ? (
-                <Loader2 size={16} className={styles.spinIcon} />
-              ) : (
-                <Play size={16} />
-              )}
-            </button>
-          </Tooltip>
-        )}
+              <button
+                className={cx(
+                  styles.secondaryBtn,
+                  browserReplayBusy && styles.secondaryBtnActive,
+                )}
+                type="button"
+                disabled={
+                  disabled ||
+                  browserRecording ||
+                  browserReplayBusy ||
+                  !browserLastRecordingId
+                }
+                onClick={onReplayBrowserRecording}
+              >
+                {browserReplayBusy ? (
+                  <Loader2 size={16} className={styles.spinIcon} />
+                ) : (
+                  <Play size={16} />
+                )}
+              </button>
+            </Tooltip>
+          )}
         {isStreaming ? (
           canSend ? (
             // Queue into the chip bar; ↵ Steer lives on the chip row.

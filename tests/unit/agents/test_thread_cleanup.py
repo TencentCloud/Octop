@@ -221,6 +221,30 @@ def test_delete_stored_thread_failure_raises(
     assert _checkpoint_count(workspace / "memory.sqlite", "thr_keep") == 1
 
 
+def test_delete_only_skips_incremental_vacuum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "ws"
+    db_path = workspace / "memory.sqlite"
+    _seed_checkpoint(db_path, "thr_only")
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("delete-only must not vacuum")
+
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.nudge_vacuum", _boom)
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.compact_vacuum", _boom)
+
+    delete_stored_thread(
+        agent_id="ag1",
+        thread_id="thr_only",
+        cfg={},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        reclaim=False,
+    )
+    assert _checkpoint_count(db_path, "thr_only") == 0
+
+
 def test_reclaim_failure_still_deletes_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

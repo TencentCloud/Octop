@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from typing import Literal
 
 from apscheduler.triggers.base import BaseTrigger
 from apscheduler.triggers.cron import CronTrigger
@@ -11,6 +12,13 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from octop.infra.errors import ErrorCode, OctopError
+
+# Recurring jobs only catch a short outage; the next tick covers the rest.
+RECURRING_MISFIRE_GRACE_SECONDS = 60
+# One-shot jobs have no next tick. Keep a day of downtime before calling them missed.
+ONE_SHOT_MISFIRE_GRACE_SECONDS = 24 * 60 * 60
+
+OneShotDisposition = Literal["schedule", "close", "miss"]
 
 _NUMERIC_DAY_OF_WEEK = re.compile(r"(?P<first>\*|\d+)(?:-(?P<last>\d+))?(?:/(?P<step>\d+))?")
 _UNIX_WEEKDAYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -106,3 +114,27 @@ def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger | Ag
             f"trigger spec {spec!r} could not be parsed: {exc}",
         ) from exc
     raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"unknown trigger kind: {kind!r}")
+
+
+def one_shot_disposition(
+    run_at: dt.datetime,
+    *,
+    now: dt.datetime,
+    last_run_at: int | None,
+    grace_seconds: int = ONE_SHOT_MISFIRE_GRACE_SECONDS,
+) -> OneShotDisposition:
+    """Whether a ``date:`` job should arm, stay finished, or be marked missed.
+
+    A run that already happened for this slot (or any earlier run once the slot
+    is in the past) does not fire again. A slot that was never reached, and is
+    older than *grace_seconds*, is missed. Anything else is still scheduled,
+    including a catch-up inside the grace window.
+    """
+    run_ts = int(run_at.timestamp())
+    if last_run_at is not None and last_run_at >= run_ts:
+        return "close"
+    if now >= run_at and last_run_at is not None:
+        return "close"
+    if now > run_at + dt.timedelta(seconds=grace_seconds):
+        return "miss"
+    return "schedule"

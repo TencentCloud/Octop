@@ -56,6 +56,7 @@ async def collapse_to_invoke_response(
     """
     text_buffer = ""
     media_buffer: list[ContentPart] = []
+    hitl_pending_id: str | None = None
 
     try:
         async for event in events:
@@ -66,6 +67,7 @@ async def collapse_to_invoke_response(
                 continue
 
             if event.type == MessageEventType.MESSAGE:
+                hitl_pending_id = event.metadata.get("octop_hitl_pending_id") or hitl_pending_id
                 for part in event.content:
                     if isinstance(part, TextContent):
                         text = part.text.strip()
@@ -109,7 +111,13 @@ async def collapse_to_invoke_response(
                     content.append(TextContent(text=final_text))
                 content.extend(media_buffer)
                 if content:
-                    yield MessageEvent(type=MessageEventType.MESSAGE, content=content)
+                    yield MessageEvent(
+                        type=MessageEventType.MESSAGE,
+                        content=content,
+                        metadata=(
+                            {"octop_hitl_pending_id": hitl_pending_id} if hitl_pending_id else {}
+                        ),
+                    )
                 yield event
                 return
 

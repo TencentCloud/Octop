@@ -11,6 +11,7 @@ export interface PublishedExpert {
   icon_name: string | null;
   icon_url?: string | null;
   color: string | null;
+  skill_count?: number;
   created_at: string;
   updated_at: string;
   welcome_message?: { zh?: string; en?: string };
@@ -59,6 +60,8 @@ export interface InstallPublishedExpertBody {
     summary?: { zh?: string; en?: string };
   }[];
   copy_skills?: { agent_id: string; slug: string }[];
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
   quick_prompts?: {
     title: { zh?: string; en?: string };
     description: { zh?: string; en?: string };

@@ -23,13 +23,16 @@ interface TurnProcessBlocksProps {
   showAvatar?: boolean;
 }
 
-function hasFoldContent(split: AssistantTurnSplit): boolean {
+function hasFoldContent(
+  split: AssistantTurnSplit,
+  opts?: { deferLoneDecision?: boolean },
+): boolean {
   const { toolCount, thinkingCount } = countProcessStats(split);
-  return (
-    toolCount > 0 ||
-    thinkingCount > 0 ||
-    split.processSteps.some((step) => step.kind === "decision")
-  );
+  if (toolCount > 0 || thinkingCount > 0) return true;
+  // A decision that arrives before tools would flash as its own row, then
+  // jump into the tool fold. Hold it until the reply has tools or settles.
+  if (opts?.deferLoneDecision) return false;
+  return split.processSteps.some((step) => step.kind === "decision");
 }
 
 /** Process summary (fold) and rich tool UIs as **sibling** blocks — not nested. */
@@ -66,7 +69,9 @@ export function TurnProcessBlocks({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [split, rendererVersion],
   );
-  const showFold = hasFoldContent(folded);
+  const showFold = hasFoldContent(folded, {
+    deferLoneDecision: isStreaming,
+  });
 
   if (!showFold && pinned.length === 0) return null;
 
@@ -120,12 +125,18 @@ export function TurnProcessBlocks({
   );
 }
 
-export function turnHasVisibleProcess(split: AssistantTurnSplit): boolean {
+export function turnHasVisibleProcess(
+  split: AssistantTurnSplit,
+  opts?: { deferLoneDecision?: boolean },
+): boolean {
   const { pinned, folded } = partitionPinnedTools(split);
-  return hasFoldContent(folded) || pinned.length > 0;
+  return hasFoldContent(folded, opts) || pinned.length > 0;
 }
 
 /** True when the foldable「已调用 N 次工具 / 深度思考」row will render. */
-export function turnHasProcessSummary(split: AssistantTurnSplit): boolean {
-  return hasFoldContent(partitionPinnedTools(split).folded);
+export function turnHasProcessSummary(
+  split: AssistantTurnSplit,
+  opts?: { deferLoneDecision?: boolean },
+): boolean {
+  return hasFoldContent(partitionPinnedTools(split).folded, opts);
 }

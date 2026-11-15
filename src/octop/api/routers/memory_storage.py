@@ -8,10 +8,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.utils.locale import resolve_request_locale
 
-router = APIRouter(prefix="/agents/{agent_id}/memory/storage")
+router = APIRouter(
+    prefix="/agents/{agent_id}/memory/storage",
+    dependencies=[Depends(require_permission("memory"))],
+)
 
 
 class StorageTableCheck(BaseModel):
@@ -70,6 +73,17 @@ class StorageInspection(BaseModel):
     wal_size: int | None = None
     reclaimable_bytes: int | None = None
     auto_vacuum_enabled: bool | None = None
+    checkpoint_retention_enabled: bool | None = None
+    checkpoint_keep_last: int | None = None
+    checkpoint_keep_days: int | None = None
+    checkpoint_backup_before_prune: Literal["first", "always", "off"] | None = Field(
+        default=None, description="Configured backup mode for scheduled SQLite checkpoint pruning."
+    )
+    checkpoint_backup_keep_days: int | None = Field(
+        default=None,
+        description="Days to keep a pre-prune SQLite backup. Zero disables expiration.",
+    )
+    checkpoint_vacuum_recommended: bool | None = None
     page_size: int | None = None
     total_pages: int | None = None
     freelist_pages: int | None = None

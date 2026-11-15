@@ -161,6 +161,26 @@ def test_resolve_inline_postgres_drops_connection_string() -> None:
     assert "connection_string" not in resolved
 
 
+def test_row_to_backend_spec_tos_requires_endpoint() -> None:
+    row = BackendRow(
+        id=1,
+        name="tos",
+        kind="tos",
+        endpoint=None,
+        access_key="AK",
+        secret_key="SK",
+        bucket="b",
+        region="cn-beijing",
+        config_json=None,
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    assert row_to_backend_spec(row) is None
+    assert storage_backend_kind_agent_resolvable("tos")
+
+
 def test_row_to_backend_spec_opensandbox() -> None:
     from octop.infra.backend.adapter import storage_spec_previewable
 

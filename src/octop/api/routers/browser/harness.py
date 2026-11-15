@@ -116,6 +116,11 @@ async def resolve_harness_session(
     if not create:
         return None
 
+    from octop.infra.control.browser.bundled import browser_enabled  # noqa: PLC0415
+
+    if not browser_enabled():
+        raise OctopError(ErrorCode.BROWSER_NOT_ENABLED, "The browser is installed but not enabled.")
+
     profile = hint
     harness_settings = None
     if server is not None and agent_id:
@@ -130,7 +135,7 @@ async def resolve_harness_session(
         shots = agent_outbound_screenshots_dir(resolve_agent_workspace_dir(server, agent_id))
         harness_settings = harness_settings_for_screenshots_dir(shots)
 
-    from octop.infra.browser.setup import (  # noqa: PLC0415
+    from octop.infra.control.browser.setup import (  # noqa: PLC0415
         prepare_harness_profile_for_launch,
         resolve_browser_display,
     )

@@ -89,12 +89,14 @@ def delete_thread_from_agent_stores(
     octop_config: OctopConfig,
     workspace_dir: Path,
     paths: Any | None = None,
+    reclaim: bool = True,
 ) -> None:
     """Delete one conversation's checkpoints from Postgres and every SQLite file.
 
     The configured backend is always cleaned. SQLite files that sit in the
     agent's other workspace directories are cleaned too, so a Postgres agent
-    does not leave a leftover ``memory.sqlite``.
+    does not leave a leftover ``memory.sqlite``. ``reclaim=False`` skips the
+    incremental SQLite vacuum on every file.
     """
     delete_stored_thread(
         agent_id=agent_id,
@@ -102,6 +104,7 @@ def delete_thread_from_agent_stores(
         cfg=cfg,
         octop_config=octop_config,
         workspace_dir=workspace_dir,
+        reclaim=reclaim,
     )
     _ns, _backend, _backend_config, primary = _memory_location(
         agent_id=agent_id,
@@ -121,6 +124,7 @@ def delete_thread_from_agent_stores(
             cfg=_sqlite_file_cfg(cfg, path),
             octop_config=octop_config,
             workspace_dir=workspace_dir,
+            reclaim=reclaim,
         )
 
 
@@ -176,13 +180,15 @@ def delete_stored_thread(
     cfg: dict[str, Any],
     octop_config: OctopConfig,
     workspace_dir: Path,
+    reclaim: bool = True,
 ) -> None:
     """Remove ``thread_id`` from the agent's checkpoint store.
 
     Returns normally when the store does not exist yet or the thread was
     never written. Raises ``CHECKPOINT_DELETE_FAILED`` when a store is
-    present and the delete does not complete. A following SQLite reclaim
-    is best-effort and never fails the delete.
+    present and the delete does not complete. The default then runs a
+    bounded incremental vacuum, which is best-effort and never fails the
+    delete. ``reclaim=False`` leaves the freelist for idle maintenance.
     """
     ns, backend, backend_config, sqlite_path = _memory_location(
         agent_id=agent_id,
@@ -201,7 +207,8 @@ def delete_stored_thread(
             if _store_has_no_checkpoints(exc):
                 return
             raise _delete_failed(thread_id, exc) from exc
-        _reclaim_sqlite(memory, agent_id=agent_id, thread_id=thread_id)
+        if reclaim:
+            _reclaim_sqlite(memory, agent_id=agent_id, thread_id=thread_id)
     finally:
         close_memory(memory)
 

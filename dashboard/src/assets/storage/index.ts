@@ -2,6 +2,7 @@ import cos from "./cos.png";
 import s3 from "./s3.svg";
 import oss from "./oss.svg";
 import obs from "./obs.svg";
+import tos from "./tos.svg";
 import filesystem from "./filesystem.svg";
 import shell from "./shell.svg";
 import docker from "./docker.svg";
@@ -14,6 +15,7 @@ export const STORAGE_LOGOS: Record<string, string> = {
   s3,
   oss,
   obs,
+  tos,
   filesystem,
   shell,
   docker,

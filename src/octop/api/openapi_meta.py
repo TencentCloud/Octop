@@ -24,16 +24,16 @@ Most endpoints require a JWT bearer token:
    accepts LDAP credentials and provisions the account on first login.
 3. Send `Authorization: Bearer <access_token>` on subsequent requests.
 
-Access tokens use sliding renewal: when less than one-third of
+Access tokens use sliding renewal: when less than two-thirds of
 `access_token_ttl_seconds` remains, authenticated responses may include a fresh
 token in the `X-Octop-Access-Token` header. Clients should replace the stored
-token when present.
+token when present. Changing the password invalidates previously issued tokens.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
-`/api/auth/ldap/status`,
+`/api/auth/ldap/status`, `/api/auth/passkey/status`,
 `/api/auth/invite/validate`,
 `/api/auth/invite/redeem`, `/api/connectors/oauth/callback`,
 and `/api/internal/mcp/*`.
@@ -64,7 +64,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "auth", "description": "Sign in, sign out, and manage the current user profile."},
     {"name": "health", "description": "Liveness probe for load balancers and monitoring."},
-    {"name": "users", "description": "Admin user management (create, disable, reset passwords)."},
+    {"name": "users", "description": "Admin user management, roles, and user groups."},
     {
         "name": "agents",
         "description": "Create and configure AI agents; start, stop, and inspect runtime status.",
@@ -115,7 +115,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "search",
-        "description": "Web-search provider API key probes (Tavily, Brave, Google, Kimi).",
+        "description": "Web-search provider API key probes (Tavily, Brave, DeepSeek, Google, Kimi).",
     },
     {"name": "providers", "description": "LLM provider configuration and active model selection."},
     {"name": "voice", "description": "Speech-to-text and text-to-speech provider configuration."},
@@ -142,6 +142,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "teams",
         "description": "Expert teams: roster, create/edit, and member dispatch.",
+    },
+    {
+        "name": "text-assist",
+        "description": (
+            "One-shot LLM polish/generate for form copy and chat composer prompts. "
+            "Prompts are managed in backend i18n."
+        ),
     },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},

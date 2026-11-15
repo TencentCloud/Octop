@@ -1,0 +1,31 @@
+Octop {{ .Chart.AppVersion }} is in namespace {{ .Release.Namespace }}.
+
+Replicas share one PostgreSQL control plane. Each Pod is still one process.
+Cron jobs and IM channels run on the replica that holds the database lease.
+The others stay quiet. A short gap while that lease moves to another Pod is expected.
+There is no HorizontalPodAutoscaler. Change replicaCount and upgrade the release
+to add Pods. The Ingress cookie OCTOP_AFFINITY pins one browser to one Pod.
+
+Agent workspaces in this cluster use PostgreSQL, OpenSandbox, or another
+movable backend. Each Pod's OCTOP_HOME is an emptyDir and is not a shared
+workspace. Use allowed_backend_types to keep experts off the local filesystem.
+
+{{- if and .Values.ingress.enabled .Values.ingress.tls.enabled }}
+
+Open https://{{ .Values.ingress.host }} after the TLS secret {{ .Values.ingress.tls.secretName }} exists.
+{{- else if .Values.ingress.enabled }}
+
+Open http://{{ .Values.ingress.host }}
+{{- else }}
+
+kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "octop.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- end }}
+
+Database host: {{ include "octop.database.host" . }}
+
+Create these Secrets before install. The chart does not store passwords.
+  {{ .Values.secrets.admin }}   username, password   console login, applied only when the admin is first created
+  {{ .Values.secrets.database }}   user, password, database   PostgreSQL login, not the console password
+{{- if and .Values.ingress.enabled .Values.ingress.tls.enabled }}
+  {{ .Values.ingress.tls.secretName }}   TLS certificate for {{ .Values.ingress.host }}
+{{- end }}

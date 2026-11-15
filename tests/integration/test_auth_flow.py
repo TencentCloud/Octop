@@ -50,6 +50,14 @@ async def test_change_password(client):
         json={"old_password": "OldPass12", "new_password": "NewPass12"},
     )
     assert r.status_code == 204
+    renewed = r.headers.get("X-Octop-Access-Token")
+    assert renewed
+    assert renewed != tok
+    stale = await c.get("/api/auth/me", headers={"Authorization": f"Bearer {tok}"})
+    assert stale.status_code == 401
+    assert stale.json()["error"]["code"] == "AUTH_FAILED"
+    current = await c.get("/api/auth/me", headers={"Authorization": f"Bearer {renewed}"})
+    assert current.status_code == 200
     assert (
         await c.post("/api/auth/login", json={"username": "a", "password": "OldPass12"})
     ).status_code == 401

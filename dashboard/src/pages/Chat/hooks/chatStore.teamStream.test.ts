@@ -4,6 +4,7 @@ import {
   ingestHarnessChunk,
   removeSession,
   sendTurn,
+  setMessages,
   setSessionTeamRoom,
 } from "./chatStore";
 
@@ -699,6 +700,115 @@ describe("team member live stream", () => {
     expect(host[0]?.content).toContain("已安排健康管理专家");
     expect(host[1]?.content).toBe("睡眠建议已经给出。");
     expect(host[1]?.status).toBe("streaming");
+  });
+
+  it("keeps a restored host bubble and member bubble on their own turns", () => {
+    setMessages(SESSION, [
+      { id: "u", role: "user", content: "问", timestamp: 1 },
+      {
+        id: "h",
+        role: "assistant",
+        content: "主持半截",
+        status: "streaming",
+        timestamp: 2,
+        speakerAgentId: "host",
+        turnId: "turn-a",
+      },
+      {
+        id: "m",
+        role: "assistant",
+        content: "成员半截",
+        status: "streaming",
+        timestamp: 3,
+        speakerAgentId: "doctor",
+        turnId: "turn-a",
+      },
+    ]);
+    ingestHarnessChunk(
+      SESSION,
+      { type: "token", content: "主持续", turn_id: "turn-a", agent_id: "host" },
+      "host",
+    );
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "token",
+        content: "成员续",
+        turn_id: "turn-a",
+        agent_id: "doctor",
+      },
+      "host",
+    );
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "token",
+        content: "主持新轮",
+        turn_id: "turn-b",
+        agent_id: "host",
+      },
+      "host",
+    );
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "token",
+        content: "成员新轮",
+        turn_id: "turn-b",
+        agent_id: "doctor",
+      },
+      "host",
+    );
+
+    const messages = getSnapshot(SESSION).messages;
+    const host = messages.filter((item) => item.speakerAgentId === "host");
+    const doctor = messages.filter((item) => item.speakerAgentId === "doctor");
+    // A member reply already follows the host, so the same turn opens a new
+    // host bubble instead of writing back into the dispatch text.
+    expect(host.map((item) => item.content)).toEqual([
+      "主持半截",
+      "主持续",
+      "主持新轮",
+    ]);
+    expect(host.map((item) => item.turnId)).toEqual([
+      "turn-a",
+      "turn-a",
+      "turn-b",
+    ]);
+    expect(doctor.map((item) => item.content)).toEqual([
+      "成员半截成员续",
+      "成员新轮",
+    ]);
+    expect(doctor.map((item) => item.turnId)).toEqual(["turn-a", "turn-b"]);
+  });
+
+  it("restores an in-progress member answer after refresh and keeps streaming", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "hello ",
+      agent_id: "doctor",
+      team_snapshot: true,
+      team_live: true,
+    });
+    let member = getSnapshot(SESSION).messages.filter(
+      (item) => item.speakerAgentId === "doctor",
+    );
+    expect(member).toHaveLength(1);
+    expect(member[0]?.content).toBe("hello ");
+    expect(member[0]?.status).toBe("streaming");
+    expect(getSnapshot(SESSION).liveSpeakers).toContain("doctor");
+
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "doc",
+      agent_id: "doctor",
+    });
+    member = getSnapshot(SESSION).messages.filter(
+      (item) => item.speakerAgentId === "doctor" && !item.toolData,
+    );
+    expect(member).toHaveLength(1);
+    expect(member[0]?.content).toBe("hello doc");
+    expect(member[0]?.status).toBe("streaming");
   });
 
   it("merges a member snapshot onto the live bubble", () => {

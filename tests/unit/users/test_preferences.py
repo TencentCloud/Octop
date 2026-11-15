@@ -8,11 +8,13 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import (
     ModelReasoningPreference,
     get_model_reasoning_from_json,
+    get_onboarding_completed_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
     get_sidebar_nav_from_json,
     get_timezone_from_preferences_json,
     merge_model_preferences_json,
+    merge_onboarding_completed_json,
     merge_preferences_json,
     merge_sidebar_nav_json,
     validate_remote_browser_bookmarks,
@@ -154,3 +156,26 @@ def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     cleared = merge_model_preferences_json(raw, preferred_model=None)
     assert get_preferred_model_from_json(cleared) is None
     assert "token/glm-5" in get_model_reasoning_from_json(cleared)
+
+
+def test_onboarding_completed_defaults_to_false() -> None:
+    assert get_onboarding_completed_from_json(None) is False
+    assert get_onboarding_completed_from_json("") is False
+    assert get_onboarding_completed_from_json("not json") is False
+    # Only a real boolean counts; stray truthy values do not hide the guide.
+    assert get_onboarding_completed_from_json('{"onboarding_completed": "yes"}') is False
+
+
+def test_onboarding_completed_roundtrip_preserves_other_keys() -> None:
+    raw = merge_preferences_json(
+        None,
+        validate_remote_browser_bookmarks([{"url": "https://a.example", "title": "A"}]),
+    )
+    done = merge_onboarding_completed_json(raw, True)
+    assert get_onboarding_completed_from_json(done) is True
+    assert get_remote_browser_bookmarks_from_json(done)[0].url == "https://a.example"
+
+    reset = merge_onboarding_completed_json(done, False)
+    assert get_onboarding_completed_from_json(reset) is False
+    assert "onboarding_completed" not in reset
+    assert get_remote_browser_bookmarks_from_json(reset)[0].url == "https://a.example"

@@ -1,11 +1,13 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { IdCard, Network, Users } from "lucide-react";
+import { Navigate, useSearchParams } from "react-router-dom";
+import { Group, IdCard, Network, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { TAB_ICON_SIZE } from "../../../components/TabLabel";
 import { TabPanelHeader } from "../../Settings/AdvancedSettings/TabPanelHeader";
 import RolesPanel from "./RolesPanel";
+import GroupsPanel from "./GroupsPanel";
 import UsersListPanel from "./UsersListPanel";
 import SsoPanel from "./SsoPanel";
 import LdapPanel from "./LdapPanel";
@@ -20,7 +22,7 @@ import dingtalkIcon from "../../../assets/channels/dingtalk.svg";
 import openidIcon from "../../../assets/providers/openid.svg";
 import styles from "./index.module.less";
 
-type TabKey = "local" | "roles" | OauthAppKind | "oidc" | "ldap";
+type TabKey = "local" | "roles" | "groups" | OauthAppKind | "oidc" | "ldap";
 
 const OAUTH_BRAND_ICONS: Record<OauthAppKind, string> = {
   feishu: feishuIcon,
@@ -41,6 +43,7 @@ function BrandTabIcon({
 const TABS: TabBarItem<TabKey>[] = [
   { key: "local", labelKey: "adminUsers.tabLocal", icon: Users },
   { key: "roles", labelKey: "adminUsers.tabRoles", icon: IdCard },
+  { key: "groups", labelKey: "adminUsers.tabGroups", icon: Group },
   {
     key: "feishu",
     labelKey: "adminUsers.tabFeishu",
@@ -70,6 +73,7 @@ const TABS: TabBarItem<TabKey>[] = [
 
 function parseTab(raw: string | null): TabKey {
   if (raw === "roles") return "roles";
+  if (raw === "groups") return "groups";
   if (
     raw === "feishu" ||
     raw === "wecom" ||
@@ -105,6 +109,14 @@ function OauthTabPanel({ kind }: { kind: OauthAppKind }) {
 }
 
 export default function AdminUsersPage() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("tab") === "config") {
+    return <Navigate to="/admin/advanced?tab=config" replace />;
+  }
+  return <AdminUsersPageBody />;
+}
+
+function AdminUsersPageBody() {
   const { t } = useTranslation();
   const { allowedTabs, activeTab, forbidden, selectTab } = useGatedSearchTabs({
     tabs: TABS,
@@ -118,6 +130,8 @@ export default function AdminUsersPage() {
   let body: ReactNode = <UsersListPanel />;
   if (activeTab === "roles") {
     body = <RolesPanel />;
+  } else if (activeTab === "groups") {
+    body = <GroupsPanel />;
   } else if (activeTab === "oidc") {
     body = (
       <div className={styles.ssoPanel}>

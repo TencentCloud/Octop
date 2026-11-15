@@ -972,7 +972,10 @@ async def test_copy_package_skills_to_workspace_is_an_independent_snapshot(env: 
     )
     assert replaced.status_code == 200, replaced.text
     assert await agent.workspace.aread_text("skills/package-demo/SKILL.md") == changed
-    assert await agent.workspace.aread_text("skills/package-demo/references/guide.txt") is None
+    # Content-only package edits keep siblings; overwrite copy mirrors the package.
+    assert (
+        await agent.workspace.aread_text("skills/package-demo/references/guide.txt") == "guide-v1"
+    )
     config = srv.app_runtime.agent_registry.get_config(aid)
     assert "package-demo" not in set(config.get("skills_disabled") or [])
     assert "Package Demo" not in set(config.get("skills_disabled") or [])

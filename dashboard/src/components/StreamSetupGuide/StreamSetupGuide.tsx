@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
+import cx from "classnames";
 
 import { useIsMobile } from "../../hooks/useIsMobile";
 import styles from "./StreamSetupGuide.module.less";
@@ -29,6 +30,8 @@ interface StreamSetupGuideProps {
   secondaryAction?: SetupGuideAction;
   /** Optional third action (e.g. uninstall) rendered after the main pair. */
   extraAction?: SetupGuideAction;
+  /** Callout rendered immediately above the action buttons. */
+  notice?: ReactNode;
   className?: string;
   /** Widen the card for longer explanatory copy. */
   wide?: boolean;
@@ -72,19 +75,18 @@ export default function StreamSetupGuide({
   primaryAction,
   secondaryAction,
   extraAction,
+  notice,
   className,
   wide,
   plain,
 }: StreamSetupGuideProps) {
   const hasActions = primaryAction || secondaryAction || extraAction;
-  const wrapClass = [
+  const wrapClass = cx(
     styles.wrap,
-    wide ? styles.wide : "",
-    plain ? styles.plain : "",
-    className ?? "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    wide && styles.wide,
+    plain && styles.plain,
+    className,
+  );
 
   return (
     <div className={wrapClass}>
@@ -109,6 +111,7 @@ export default function StreamSetupGuide({
             ))}
           </ol>
         ) : null}
+        {notice ? <div className={styles.notice}>{notice}</div> : null}
         {hasActions ? (
           <div className={styles.actions}>
             {primaryAction ? <ActionButton action={primaryAction} /> : null}

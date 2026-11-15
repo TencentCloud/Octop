@@ -1,14 +1,21 @@
-"""Harden deepagents' Python grep fallback (issue #2101).
+"""Process-start patches for deepagents grep.
 
-``FilesystemBackend._python_search`` walks ``root_dir`` (often ``/``) and
-reads files with unbounded ``readline()``. Pseudo-files such as
-``/proc/<pid>/pagemap`` report ``st_size == 0`` but yield unlimited content
-with no newline, so one read can grow RSS until the host OOMs.
+Two separate paths, installed together:
 
-This module replaces ``_python_search`` at process start: skip POSIX virtual
-filesystems and read with per-line / per-file byte caps. ``LocalShellBackend``
-inherits the method, so a class-level patch covers agent tools and the
-workspace API. deepagents itself is not modified.
+* Python fallback (issue #2101). ``_python_search`` walks ``root_dir`` (often
+  ``/``) and reads files with unbounded ``readline()``. Pseudo-files such as
+  ``/proc/<pid>/pagemap`` report ``st_size == 0`` but yield unlimited content
+  with no newline, so one read can grow RSS until the host OOMs. The
+  replacement skips POSIX virtual filesystems and caps reads. It already
+  decodes file bytes as UTF-8. ``LocalShellBackend`` inherits the method, so a
+  class-level patch covers agent tools and the workspace API.
+* ripgrep (issue #1959). When ``rg`` is installed, ``grep`` uses it first and
+  never reaches the Python fallback. ``_ripgrep_search`` runs ``rg --json``
+  with ``text=True`` and no ``encoding``, so a Chinese Windows host decodes
+  that UTF-8 stream as cp936 and the turn dies. A ``subprocess`` stand-in
+  forces UTF-8 for ripgrep only.
+
+deepagents itself is not modified.
 """
 
 from __future__ import annotations
@@ -33,8 +40,10 @@ _VIRTUAL_FS_NAMES = frozenset({"proc", "sys", "dev"})
 
 _READ_CHUNK_BYTES = 64 * 1024
 _MAX_LINE_BYTES = 1024 * 1024
+_RIPGREP_NAMES = frozenset({"rg", "rg.exe"})
 
-_INSTALLED = False
+_PYTHON_SEARCH_INSTALLED = False
+_RIPGREP_UTF8_INSTALLED = False
 
 
 class _ReadStatus:
@@ -281,17 +290,73 @@ def _safe_python_search(
 _safe_python_search.__octop_safe_grep__ = True  # type: ignore[attr-defined]
 
 
-def install_safe_grep_fallback() -> None:
-    """Replace ``FilesystemBackend._python_search`` once per process."""
-    global _INSTALLED
-    if _INSTALLED:
+def _executable_name(exe: str) -> str:
+    """Final path segment, accepting both POSIX and Windows separators."""
+    return exe.replace("\\", "/").rsplit("/", 1)[-1].lower()
+
+
+def _command_is_ripgrep(command: object) -> bool:
+    if isinstance(command, (str, bytes)) or not isinstance(command, (list, tuple)):
+        return False
+    if not command:
+        return False
+    exe = command[0]
+    if isinstance(exe, bytes):
+        text = os.fsdecode(exe)
+    elif isinstance(exe, str):
+        text = exe
+    else:
+        return False
+    return _executable_name(text) in _RIPGREP_NAMES
+
+
+class _RipgrepSubprocess:
+    """``subprocess`` stand-in used only by ``deepagents.backends.filesystem``."""
+
+    __slots__ = ("_real",)
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+    def Popen(self, *args: Any, **kwargs: Any) -> Any:
+        command = args[0] if args else kwargs.get("args")
+        text_mode = bool(kwargs.get("text") or kwargs.get("universal_newlines"))
+        if text_mode and _command_is_ripgrep(command):
+            kwargs.setdefault("encoding", "utf-8")
+            kwargs.setdefault("errors", "replace")
+        return self._real.Popen(*args, **kwargs)
+
+
+def _install_python_search_fallback() -> None:
+    global _PYTHON_SEARCH_INSTALLED
+    if _PYTHON_SEARCH_INSTALLED:
         return
     from deepagents.backends.filesystem import FilesystemBackend
 
     current = FilesystemBackend._python_search
-    if getattr(current, "__octop_safe_grep__", False):
-        _INSTALLED = True
+    if not getattr(current, "__octop_safe_grep__", False):
+        FilesystemBackend._python_search = _safe_python_search  # type: ignore[method-assign]
+        logger.info("installed safe python grep fallback (skip virtual fs, bound reads)")
+    _PYTHON_SEARCH_INSTALLED = True
+
+
+def _install_ripgrep_utf8_decoding() -> None:
+    global _RIPGREP_UTF8_INSTALLED
+    if _RIPGREP_UTF8_INSTALLED:
         return
-    FilesystemBackend._python_search = _safe_python_search  # type: ignore[method-assign]
-    _INSTALLED = True
-    logger.info("installed safe python grep fallback (skip virtual fs, bound reads)")
+    import deepagents.backends.filesystem as filesystem
+
+    current = filesystem.subprocess  # type: ignore[attr-defined]
+    if not isinstance(current, _RipgrepSubprocess):
+        filesystem.subprocess = _RipgrepSubprocess(current)  # type: ignore[attr-defined, assignment]
+        logger.info("installed ripgrep utf-8 decoding (ignore host locale)")
+    _RIPGREP_UTF8_INSTALLED = True
+
+
+def install_safe_grep_fallback() -> None:
+    """Install the Python-search and ripgrep patches once per process."""
+    _install_python_search_fallback()
+    _install_ripgrep_utf8_decoding()

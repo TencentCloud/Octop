@@ -207,3 +207,55 @@ def test_assert_can_mutate_allows_creator_and_admin_only(
     with pytest.raises(OctopError) as exc_info:
         store.assert_can_mutate(row, other)
     assert exc_info.value.code is ErrorCode.FORBIDDEN
+
+
+def test_list_skill_tree_and_read_file(store: SkillPackageStore) -> None:
+    row = store.create(name="P", description="", created_by="42")
+    store.write_skill(
+        row.id,
+        "pdf",
+        [
+            ("SKILL.md", b"---\nname: pdf\n---\n"),
+            ("references/guide.md", b"# Guide"),
+            ("notes.txt", b"hello"),
+        ],
+    )
+
+    root = store.list_skill_tree(row.id, "pdf")
+    assert {item["path"] for item in root} == {
+        "skills/pdf/SKILL.md",
+        "skills/pdf/notes.txt",
+        "skills/pdf/references",
+    }
+    refs = next(item for item in root if item["path"].endswith("/references"))
+    assert refs["is_dir"] is True
+    assert "size" not in refs
+
+    nested = store.list_skill_tree(row.id, "pdf", "references")
+    assert nested == [
+        {"path": "skills/pdf/references/guide.md", "is_dir": False, "size": 7},
+    ]
+    assert store.read_skill_file_text(row.id, "pdf", "notes.txt") == "hello"
+    assert store.read_skill_file_bytes(row.id, "pdf", "references/guide.md") == b"# Guide"
+
+    with pytest.raises(OctopError) as exc_info:
+        store.list_skill_tree(row.id, "pdf", "../escape")
+    assert exc_info.value.code is ErrorCode.SLASH_BAD_ARGS
+
+
+def test_write_skill_manifest_keeps_siblings(store: SkillPackageStore) -> None:
+    row = store.create(name="P", description="", created_by="42")
+    store.write_skill(
+        row.id,
+        "pdf",
+        [
+            ("SKILL.md", b"---\nname: pdf\n---\nold\n"),
+            ("notes.txt", b"keep me"),
+        ],
+    )
+
+    store.write_skill_manifest(row.id, "pdf", "---\nname: pdf\n---\nnew\n")
+
+    skill_dir = store.package_skills_dir(row.id) / "pdf"
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == "---\nname: pdf\n---\nnew\n"
+    assert (skill_dir / "notes.txt").read_text(encoding="utf-8") == "keep me"
