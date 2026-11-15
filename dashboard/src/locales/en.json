@@ -3667,6 +3667,8 @@
     "myKeysDeleted": "Personal key deleted; the global key will be used",
     "myKeysDeletedNoGlobal": "Personal key deleted. This provider has no global key — add a new personal key to keep using it.",
     "myKeysSaveFailed": "Failed to save the personal key",
+    "myKeysLoadFailed": "Failed to load personal keys",
+    "myKeysDeleteFailed": "Failed to delete the personal key",
     "capReasoning": "Reasoning",
     "cap_text": "Text",
     "cap_image": "Image",

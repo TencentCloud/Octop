@@ -3667,6 +3667,8 @@
     "myKeysDeleted": "个人密钥已删除，将使用全局 Key",
     "myKeysDeletedNoGlobal": "个人密钥已删除。该供应商没有全局 Key，请填入新的个人 Key 后继续使用。",
     "myKeysSaveFailed": "保存个人密钥失败",
+    "myKeysLoadFailed": "加载个人密钥失败",
+    "myKeysDeleteFailed": "删除个人密钥失败",
     "capReasoning": "推理",
     "cap_text": "文本",
     "cap_image": "图像",

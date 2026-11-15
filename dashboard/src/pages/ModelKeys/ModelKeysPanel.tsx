@@ -33,7 +33,7 @@ export function ModelKeysPanel() {
     try {
       setRows(await userProviderKeysApi.list());
     } catch (error) {
-      message.error(apiErrorMessage(error, t("models.myKeysSaveFailed"), t));
+      message.error(apiErrorMessage(error, t("models.myKeysLoadFailed"), t));
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,7 @@ export function ModelKeysPanel() {
         t(required ? "models.myKeysDeletedNoGlobal" : "models.myKeysDeleted"),
       );
     } catch (error) {
-      message.error(apiErrorMessage(error, t("models.myKeysSaveFailed"), t));
+      message.error(apiErrorMessage(error, t("models.myKeysDeleteFailed"), t));
     } finally {
       setSaving(null);
     }
