@@ -498,6 +498,25 @@ export function buildBackendSpec(
   return backendRefToSpec(choice, rootDir);
 }
 
+/**
+ * Backend written when saving an expert.
+ *
+ * Managed experts hide the backend picker, so the form never registers
+ * `backend_choice`. Rebuilding from that missing value calls `startsWith`
+ * on undefined. Keep the stored spec; the server pins the filesystem root.
+ */
+export function backendSpecForAgentSave(
+  kind: string | undefined,
+  storedBackend: unknown,
+  choice: string | undefined,
+  compositeDefault: string,
+  pathMappings: PathMapping[],
+  rootDir?: string,
+): unknown {
+  if (kind === "managed" || !choice) return storedBackend;
+  return buildBackendSpec(choice, compositeDefault, pathMappings, rootDir);
+}
+
 function specToBackendRef(spec: Record<string, unknown>): string {
   const type = String(spec.type ?? "");
   if (type === "named") {
