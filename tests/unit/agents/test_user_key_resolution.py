@@ -97,15 +97,29 @@ def test_build_harness_request_carries_api_key_override() -> None:
         source="web/x",
         content="hi",
         api_key_override="sk-personal",
+        api_key_override_provider="p",
     )
     assert req["configurable"]["api_key_override"] == "sk-personal"
+    assert req["configurable"]["api_key_override_provider"] == "p"
     req2 = build_harness_request(
         thread_id="t1",
         user_id=7,
         source="web/x",
         messages=[{"role": "user", "content": "hi"}],
         api_key_override="sk-personal",
+        api_key_override_provider="p",
     )
     assert req2["configurable"]["api_key_override"] == "sk-personal"
+    assert req2["configurable"]["api_key_override_provider"] == "p"
     req3 = build_harness_request(thread_id="t1", user_id=7, source="web/x", content="hi")
     assert "api_key_override" not in req3.get("configurable", {})
+    assert "api_key_override_provider" not in req3.get("configurable", {})
+    # A provider tag without a key is meaningless and must not ride along.
+    req4 = build_harness_request(
+        thread_id="t1",
+        user_id=7,
+        source="web/x",
+        content="hi",
+        api_key_override_provider="p",
+    )
+    assert "api_key_override_provider" not in req4.get("configurable", {})

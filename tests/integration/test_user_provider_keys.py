@@ -153,6 +153,7 @@ async def test_turn_carries_personal_key_to_harness(tmp_octop_home: Any) -> None
         agent = server.app_runtime.agent_registry.get_agent(agent_id)
         assert agent.last_request is not None
         assert agent.last_request["configurable"]["api_key_override"] == "sk-alice"
+        assert agent.last_request["configurable"]["api_key_override_provider"] == "openai"
 
 
 async def test_keyless_provider_blocks_turn_without_key(tmp_octop_home: Any) -> None:
