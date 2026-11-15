@@ -62,6 +62,11 @@ class HitlPendingRecord:
     # Resume still targets the member agent and ``room~member`` thread.
     resume_agent_id: str | None = None
     resume_thread_id: str | None = None
+    # Structured form context, serialised once when the pause is registered.
+    # Keys: form_id, schema_version, timeout_seconds, context (dict).
+    form_context: dict[str, Any] | None = None
+    # Submission ids that have already been consumed for this form pause.
+    consumed_submission_ids: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -330,6 +335,51 @@ class HitlPendingStore:
         record.ask_answers.append(answer)
         record.ask_question_index += 1
         return record
+
+    def mark_form_consumed(
+        self,
+        pending_id: str,
+        submission_id: str,
+    ) -> bool:
+        """Atomically record a structured-form submission as consumed.
+
+        Returns ``True`` when the submission was recorded for the first time.
+        Returns ``False`` when it was already consumed (idempotent reject).
+        """
+        record = self._records.get(pending_id)
+        if record is None or record.status != "pending":
+            return False
+        if submission_id in record.consumed_submission_ids:
+            return False
+        record.consumed_submission_ids.add(submission_id)
+        return True
+
+    def cancel_pending_by_form_id(
+        self,
+        form_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> bool:
+        """Cancel all pending structured-form pauses matching *form_id*.
+
+        Returns ``True`` when at least one record was expired.
+        """
+        self._gc()
+        cancelled = False
+        for record in self._records.values():
+            if record.status != "pending":
+                continue
+            ctx = record.form_context
+            if ctx is None or ctx.get("form_id") != form_id:
+                continue
+            if record.agent_id != agent_id:
+                continue
+            if user_id is not None and record.user_id != user_id:
+                continue
+            record.status = "expired"
+            cancelled = True
+        return cancelled
 
     def _gc(self) -> None:
         now = time.time()

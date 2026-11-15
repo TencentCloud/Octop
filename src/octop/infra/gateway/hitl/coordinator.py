@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -262,12 +264,31 @@ def decision_rejection_reason(
             request_error = validate_structured_form_request(action.get("args"))
             if request_error:
                 return request_error
+            # Timeout: expire the form when timeout_seconds has elapsed.
+            args = action.get("args") or {}
+            timeout = args.get("timeout_seconds")
+            if (
+                isinstance(timeout, int)
+                and timeout > 0
+                and time.time() - record.created_at > timeout
+            ):
+                return "structured form has expired"
+            if kind == "cancel" and getattr(record, "consumed_submission_ids", set()):
+                return "structured form has already been consumed and cannot be cancelled"
             if kind == "respond":
-                response_error = validate_structured_form_response(
-                    action.get("args"), decision.get("message")
-                )
+                # Idempotency: reject duplicate submission ids.
+                message = decision.get("message")
+                response_error = validate_structured_form_response(args, message)
                 if response_error:
                     return response_error
+                try:
+                    resp = json.loads(message) if isinstance(message, str) else message
+                    sub_id = resp.get("submission_id") if isinstance(resp, dict) else None
+                except Exception:
+                    sub_id = None
+                consumed = getattr(record, "consumed_submission_ids", set())
+                if sub_id and sub_id in consumed:
+                    return "structured form submission has already been consumed"
     return None
 
 
@@ -306,7 +327,7 @@ class HitlChannelCoordinator:
         ctx: HitlStreamContext,
         resume_agent_id: str | None = None,
     ) -> HitlPendingRecord:
-        return self._store.register(
+        record = self._store.register(
             thread_id=ctx.thread_id,
             agent_id=ctx.agent_id,
             user_id=ctx.user_id,
@@ -316,6 +337,18 @@ class HitlChannelCoordinator:
             review_configs=parse_review_configs(raw_request),
             resume_agent_id=resume_agent_id,
         )
+        # Attach structured-form context so timeout/idempotency checks can use it.
+        for action in record.action_requests:
+            if action.get("name") == STRUCTURED_FORM_TOOL_NAME:
+                args = action.get("args") or {}
+                record.form_context = {
+                    "form_id": args.get("form_id", ""),
+                    "schema_version": args.get("schema_version", 1),
+                    "timeout_seconds": args.get("timeout_seconds"),
+                    "context": args.get("context") or {},
+                }
+                break
+        return record
 
     @staticmethod
     def build_decisions(
@@ -399,6 +432,23 @@ class HitlChannelCoordinator:
             if not room_match and not member_match:
                 return None
         return record
+
+    def cancel_structured_form(
+        self,
+        form_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> bool:
+        """Cancel all pending structured-form pauses matching *form_id*.
+
+        Returns ``True`` when at least one record was cancelled.
+        """
+        return self._store.cancel_pending_by_form_id(
+            form_id,
+            agent_id=agent_id,
+            user_id=user_id,
+        )
 
     @staticmethod
     def build_answer_decisions(

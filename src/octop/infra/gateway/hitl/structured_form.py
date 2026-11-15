@@ -32,6 +32,7 @@ def validate_structured_form_request(args: Any) -> str | None:
         "description",
         "context",
         "submit_label",
+        "timeout_seconds",
         "fields",
     }
     if set(args) - allowed:
@@ -45,14 +46,21 @@ def validate_structured_form_request(args: Any) -> str | None:
         return "structured form form_id is invalid"
     if not isinstance(args.get("title"), str) or not args["title"].strip():
         return "structured form title is required"
-    if "description" in args and args["description"] is not None and not isinstance(args["description"], str):
-        return "structured form description must be a string"
-    if "context" in args and (
-        not isinstance(args["context"], dict) or len(args["context"]) > 16
+    if (
+        "description" in args
+        and args["description"] is not None
+        and not isinstance(args["description"], str)
     ):
+        return "structured form description must be a string"
+    if "context" in args and (not isinstance(args["context"], dict) or len(args["context"]) > 16):
         return "structured form context is invalid"
     if "submit_label" in args and not isinstance(args["submit_label"], str):
         return "structured form submit_label must be a string"
+    timeout = args.get("timeout_seconds")
+    if timeout is not None and (
+        isinstance(timeout, bool) or not isinstance(timeout, int) or timeout < 30 or timeout > 3600
+    ):
+        return "structured form timeout_seconds must be an integer between 30 and 3600"
     fields = args.get("fields")
     if not isinstance(fields, list) or not 1 <= len(fields) <= MAX_STRUCTURED_FORM_FIELDS:
         return "structured form must contain between 1 and 64 fields"
@@ -60,7 +68,17 @@ def validate_structured_form_request(args: Any) -> str | None:
     for field in fields:
         if not isinstance(field, dict):
             return "structured form field must be an object"
-        field_allowed = {"key", "label", "type", "required", "nullable", "min", "max", "step", "group"}
+        field_allowed = {
+            "key",
+            "label",
+            "type",
+            "required",
+            "nullable",
+            "min",
+            "max",
+            "step",
+            "group",
+        }
         if set(field) - field_allowed:
             return "structured form field contains unsupported fields"
         key = field.get("key")
@@ -84,7 +102,9 @@ def validate_structured_form_request(args: Any) -> str | None:
         step = field.get("step", 1)
         if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum < 0:
             return "structured form min must be a non-negative integer"
-        if maximum is not None and (isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < minimum):
+        if maximum is not None and (
+            isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < minimum
+        ):
             return "structured form max must be an integer greater than or equal to min"
         if step != 1:
             return "structured form step must be 1"
@@ -115,7 +135,9 @@ def validate_structured_form_response(args: Any, message: Any) -> str | None:
         return "structured form response schema version does not match"
     if response.get("form_id") != args.get("form_id"):
         return "structured form response form_id does not match"
-    if "context" in response and (not isinstance(response["context"], dict) or len(response["context"]) > 16):
+    if "context" in response and (
+        not isinstance(response["context"], dict) or len(response["context"]) > 16
+    ):
         return "structured form response context is invalid"
     if not isinstance(response["submission_id"], str) or not response["submission_id"].strip():
         return "structured form submission_id is required"
