@@ -100,9 +100,10 @@ def import_tccli(profile: str | None, as_user: str | None, as_json: bool, quiet:
     elif acting is not None:
         uid = acting
     else:
-        uid = _first_admin_id()
-        if uid is None:
+        fallback = _first_admin_id()
+        if fallback is None:
             raise SystemExit(f"error: {acting_error}") from acting_error
+        uid = fallback
     if not profile:
         profile = tccli_profile_for_user(uid)
 

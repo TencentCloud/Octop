@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +114,7 @@ def enrich_docker_backend_spec(
     """
     if str(spec.get("type") or "").lower() != "docker":
         return spec
-    out = omit_docker_volumes(spec)
+    out = cast(dict[str, Any], omit_docker_volumes(spec))
     if out is spec:
         out = dict(spec)
     out.setdefault("sandbox_prefix", DEFAULT_SANDBOX_PREFIX)
