@@ -42,6 +42,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlStreamContext,
     iter_with_session_auto_approve,
 )
+from octop.infra.gateway.hitl.factory import build_pending_store
 from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.phrases import ApprovalUtterance, match_approval_utterance
 from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
@@ -210,7 +211,7 @@ class GlobalProcessor:
         self._usage_repo = usage_repo
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
-        self._hitl = hitl or HitlChannelCoordinator()
+        self._hitl = hitl or HitlChannelCoordinator(store=build_pending_store())
         self._trajectory_service = trajectory_service
         self._title_inflight: set[str] = set()
         self._pending_system_prompt: set[str] = set()
