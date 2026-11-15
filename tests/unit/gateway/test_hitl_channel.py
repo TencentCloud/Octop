@@ -510,6 +510,43 @@ async def test_session_auto_approve_resumes_without_yielding_the_card() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("start_paused", [False, True])
+async def test_im_approval_keeps_the_authenticated_actor(start_paused: bool) -> None:
+    from octop.infra.agents.security.hitl_session import HitlSessionPolicy
+
+    coordinator = HitlChannelCoordinator()
+    coordinator.session_policies.set("thr1", HitlSessionPolicy(mode="allow_all"))
+    context = HitlStreamContext("thr1", "agent1", 7, "sk1", "feishu")
+    resumed_by: list[int | None] = []
+
+    async def pause(*_args: object, **_kwargs: object):
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {}}]},
+        }
+
+    async def resume(*_args: object, user_id: int | None = None):
+        resumed_by.append(user_id)
+        if start_paused and len(resumed_by) == 1:
+            async for chunk in pause():
+                yield chunk
+        else:
+            yield {"type": "token", "content": "done"}
+
+    manager = MagicMock()
+    manager.stream = pause
+    manager.resume_hitl = resume
+    options = {"hitl_coordinator": coordinator, "hitl_ctx": context}
+    stream = (
+        project_resume_stream(manager, "agent1", "thr1", [{"type": "approve"}], **options)
+        if start_paused
+        else project_stream(manager, "agent1", {}, **options)
+    )
+    assert [event async for event in stream]
+    assert resumed_by == ([7, 7] if start_paused else [7])
+
+
+@pytest.mark.asyncio
 async def test_session_auto_approve_yields_card_when_approve_is_forbidden() -> None:
     from octop.infra.agents.security.hitl_session import (
         HitlSessionPolicy,
@@ -997,7 +1034,10 @@ async def test_im_phrase_approves_without_slash() -> None:
     )
     resumed: list[list[dict[str, str]]] = []
 
-    async def _resume(_agent_id: str, _thread_id: str, decisions: list[dict[str, str]]):
+    async def _resume(
+        _agent_id: str, _thread_id: str, decisions: list[dict[str, str]], *, user_id: int
+    ):
+        assert user_id == 1
         resumed.append(decisions)
         yield {"type": "token", "content": "done", "node": "agent"}
 
@@ -1061,7 +1101,10 @@ async def test_im_phrase_does_not_steal_question_answer() -> None:
     )
     resumed: list[list[dict[str, str]]] = []
 
-    async def _resume(_agent_id: str, _thread_id: str, decisions: list[dict[str, str]]):
+    async def _resume(
+        _agent_id: str, _thread_id: str, decisions: list[dict[str, str]], *, user_id: int
+    ):
+        assert user_id == 1
         resumed.append(decisions)
         yield {"type": "token", "content": "ok", "node": "agent"}
 
@@ -1225,7 +1268,10 @@ async def test_im_approval_resume_records_turn_duration() -> None:
         review_configs=None,
     )
 
-    async def _resume(_agent_id: str, _thread_id: str, _decisions: list[dict[str, str]]):
+    async def _resume(
+        _agent_id: str, _thread_id: str, _decisions: list[dict[str, str]], *, user_id: int
+    ):
+        assert user_id == 1
         yield {"type": "token", "content": "done", "node": "agent"}
 
     agent_manager = MagicMock()
@@ -1311,7 +1357,10 @@ async def test_cli_phrase_approves_without_starting_a_new_turn() -> None:
     )
     resumed: list[list[dict[str, str]]] = []
 
-    async def _resume(_agent_id: str, _thread_id: str, decisions: list[dict[str, str]]):
+    async def _resume(
+        _agent_id: str, _thread_id: str, decisions: list[dict[str, str]], *, user_id: int
+    ):
+        assert user_id == 1
         resumed.append(decisions)
         yield {"type": "token", "content": "done", "node": "agent"}
 
