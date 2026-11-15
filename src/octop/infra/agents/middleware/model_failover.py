@@ -26,6 +26,7 @@ from octop.infra.agents.settings.runtime_limits import CONFIGURABLE_MAX_INPUT_TO
 logger = logging.getLogger(__name__)
 
 AUTO_ROUTE_CONFIG_KEY = "octop_auto_route"
+AUTO_ROUTE_USER_KEY = "octop_user_id"
 _CONTEXT_SAFETY_RATIO = 0.9
 
 
@@ -59,7 +60,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         self,
         *,
         health: ModelHealthRegistry,
-        candidates: Callable[[str, bool], Sequence[AutoRouteCandidate]],
+        candidates: Callable[[str, bool, int], Sequence[AutoRouteCandidate]],
         model_for_ref: Callable[[str], Any],
         max_retries: int,
         initial_delay: float,
@@ -101,9 +102,11 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         estimated = _estimated_input_tokens(request)
         raw_route_cap = _configurable(request).get(CONFIGURABLE_MAX_INPUT_TOKENS)
         route_cap = raw_route_cap if isinstance(raw_route_cap, int) else None
+        raw_user = _configurable(request).get(AUTO_ROUTE_USER_KEY)
+        user_id = raw_user if isinstance(raw_user, int) else 0
         return [
             candidate
-            for candidate in self._candidates(current_ref, needs_multimodal)
+            for candidate in self._candidates(current_ref, needs_multimodal, user_id)
             if candidate.ref != current_ref
             and self._health.is_routable(candidate.ref)
             and _fits_context(candidate, estimated, route_cap)

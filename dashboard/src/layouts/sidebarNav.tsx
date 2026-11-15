@@ -17,6 +17,7 @@ import {
   Package,
   HardDrive,
   GraduationCap,
+  KeyRound,
   Shield,
   PanelsTopLeft,
 } from "lucide-react";
@@ -75,6 +76,8 @@ export const SIDEBAR_NAV_KEYS = [
   "skill-packages",
   "knowledge-bases",
   "bridge",
+  "model-keys",
+  "keys",
   "workbench",
   "remote-desktop",
   "acp",
@@ -129,6 +132,8 @@ export const SIDEBAR_GROUPED_NAV_KEYS = [
   "skill-packages",
   "knowledge-bases",
   "bridge",
+  "model-keys",
+  "keys",
   "workbench",
   "remote-desktop",
   "acp",
@@ -234,6 +239,13 @@ export function buildNavSections(
       labelKey: "nav.bridge",
     });
   }
+  // Self-service credentials: model + search keys share one page with tabs.
+  settingsItems.push({
+    key: "keys",
+    path: "/keys",
+    icon: <KeyRound size={iconSize} strokeWidth={iconStroke} />,
+    labelKey: "nav.keys",
+  });
   if (settingsItems.length > 0) {
     sections.push({
       id: "settings",

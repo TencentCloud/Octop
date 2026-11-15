@@ -321,6 +321,22 @@ starts a new conversation on the channel and ignores the history pin.
 | `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
 | `DELETE` | `/admin/providers/{id}` | admin | `204` |
 
+### Personal provider keys (bring-your-own-key)
+
+Self-service per-user keys. A stored key overrides the provider's global key for
+that user's model calls (including their cron turns). Keys are write-only: no
+endpoint returns key material.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET`    | `/me/provider-keys` | user | `[{provider_name, has_own_key, updated_at?, user_key_required, keyless}]` |
+| `PUT`    | `/me/provider-keys/{provider_name}` | user | body `{api_key}` (1–4096 chars) → status row; audited |
+| `DELETE` | `/me/provider-keys/{provider_name}` | user | `204`; later calls fall back to the global key; audited |
+
+`user_key_required` is true when the provider has no global key and is not
+explicitly keyless — such a provider stays unusable until the caller stores a
+personal key. Local runtime providers (e.g. Ollama) are not listed.
+
 ## Models
 
 | Method | Path | Auth | Notes |

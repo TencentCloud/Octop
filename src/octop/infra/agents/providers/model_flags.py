@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 # LocalServiceCard creates the ONNX provider with ``api_key=preset.id`` ("onnx").
@@ -83,6 +84,23 @@ def is_local_runtime_provider(
         provider_api_key=provider_api_key,
         provider_base_url=provider_base_url,
     )
+
+
+def is_keyless_provider_row(row: Any) -> bool:
+    """True when a provider is explicitly marked as needing no API key.
+
+    The marker lives in ``extra_json`` (``{"keyless": true}``) so existing
+    rows stay backward compatible: an absent flag means credentials are still
+    required.
+    """
+    raw = getattr(row, "extra_json", None)
+    if not raw:
+        return False
+    try:
+        extra = json.loads(raw)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(extra, dict) and extra.get("keyless") is True
 
 
 def is_rerank_model(model: dict[str, Any]) -> bool:

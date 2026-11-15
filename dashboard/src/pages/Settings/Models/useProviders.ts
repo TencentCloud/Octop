@@ -87,6 +87,8 @@ export interface ProviderRow {
   model?: string | null;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
+  /** Explicitly marked as needing no API key. */
+  keyless?: boolean;
   /** UI lane: embedding providers are managed on the embedding Models tab. */
   purpose?: "chat" | "embedding";
   /** Set when the provider was saved as a named integration such as Magpie. */

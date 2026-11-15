@@ -16,6 +16,7 @@ import { preferencesApi } from "../../../../../api/modules/preferences";
 import type { ProviderRow, ResolvedModel } from "../../useProviders";
 import { ModelMetaTags } from "../../modelMeta";
 import { modelOptionLabel } from "../../../../../utils/modelOptions";
+import { apiErrorMessage } from "../../../../../utils/apiError";
 import styles from "../../index.module.less";
 
 interface ActiveModel {
@@ -101,9 +102,7 @@ export function ActiveModelPool({
       }
       await onSaved();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("common.saveFailed"),
-      );
+      message.error(apiErrorMessage(err, t("common.saveFailed"), t));
     } finally {
       setSetting(null);
     }

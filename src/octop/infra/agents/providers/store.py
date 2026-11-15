@@ -15,6 +15,7 @@ from octop.infra.agents.providers.headers import (
 )
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
+    is_keyless_provider_row,
     is_local_runtime_provider,
     is_vision_model,
 )
@@ -307,15 +308,21 @@ class ProviderStore:
     def __init__(
         self,
         provider_repo: ProviderRepo | SealedProviderRepo,
+        user_provider_key_repo: Any | None = None,
     ) -> None:
         self._provider_repo = provider_repo
+        self._user_provider_key_repo = user_provider_key_repo
 
     def iter_usable_rows(self) -> Iterator[Any]:
-        """Yield enabled DB providers that have credentials and at least one enabled model."""
+        """Yield enabled DB providers with a base URL and at least one enabled model.
+
+        No credential gate: keyless endpoints are valid and BYOK providers
+        authenticate per call via ``api_key_override``.
+        """
         for row in self._provider_repo.list_all():
             if not row.enabled:
                 continue
-            if not row.base_url or not row.api_key:
+            if not row.base_url:
                 continue
             models = row.get_models()
             if not models:
@@ -326,8 +333,33 @@ class ProviderStore:
             ):
                 yield row
 
+    def _auto_route_eligible(self, row: Any, user_id: int) -> bool:
+        """Whether a provider may join AUTO for this user.
+
+        Global-key and explicitly keyless providers are always eligible. A
+        BYOK-only provider joins AUTO only when the user stored a personal key.
+        """
+        if str(getattr(row, "api_key", "") or "").strip():
+            return True
+        if is_keyless_provider_row(row):
+            return True
+        repo = self._user_provider_key_repo
+        if user_id > 0 and repo is not None:
+            return bool(repo.get_key(user_id, row.name))
+        return False
+
+    def iter_auto_route_rows(self, user_id: int = 0) -> Iterator[Any]:
+        """Usable rows eligible for an automatic route for this user."""
+        for row in self.iter_usable_rows():
+            if self._auto_route_eligible(row, user_id):
+                yield row
+
     def has_usable_providers(self) -> bool:
-        """True when at least one enabled provider has credentials and a model."""
+        """True when at least one enabled provider has a chat-eligible model.
+
+        There is no credential gate: keyless endpoints and BYOK-only providers
+        (empty static key, personal key supplied per call) still count.
+        """
         return next(self.iter_usable_rows(), None) is not None
 
     def build_harness_configs(self) -> list[ProviderConfig]:
@@ -360,7 +392,9 @@ class ProviderStore:
                 ProviderConfig(
                     id=row.name,
                     base_url=row.base_url,
-                    api_key=row.api_key,
+                    # Keyless rows register with an empty key: the endpoint
+                    # needs no auth, or every call supplies api_key_override.
+                    api_key=row.api_key or "",
                     protocol=protocol,  # type: ignore[arg-type]
                     name=row.name,
                     models=models,
@@ -401,9 +435,9 @@ class ProviderStore:
                 return _model_dict_supports_image(model)
         return False
 
-    def resolve_multimodal_model_ref(self) -> str | None:
-        """First enabled image-capable model across usable providers."""
-        for row in self.iter_usable_rows():
+    def resolve_multimodal_model_ref(self, user_id: int = 0) -> str | None:
+        """First enabled image-capable model across auto-routable providers."""
+        for row in self.iter_auto_route_rows(user_id):
             for model in row.get_models():
                 if not is_chat_eligible_model(
                     model, provider_name=row.name, provider_api_key=row.api_key
@@ -418,6 +452,7 @@ class ProviderStore:
         model_ref: str | None,
         *,
         needs_multimodal: bool,
+        user_id: int = 0,
     ) -> str | None:
         """Keep explicit ref when it supports vision; else upgrade to a vision model."""
         if not needs_multimodal:
@@ -425,12 +460,12 @@ class ProviderStore:
         ref = (model_ref or "").strip() or None
         if ref and self.is_model_ref_multimodal(ref):
             return ref
-        upgraded = self.resolve_multimodal_model_ref()
+        upgraded = self.resolve_multimodal_model_ref(user_id)
         return upgraded or ref
 
-    def resolve_first_model_ref(self) -> str | None:
-        """First chat-eligible enabled model across usable providers."""
-        for row in self.iter_usable_rows():
+    def resolve_first_model_ref(self, user_id: int = 0) -> str | None:
+        """First chat-eligible enabled model across auto-routable providers."""
+        for row in self.iter_auto_route_rows(user_id):
             for model in row.get_models():
                 if not is_chat_eligible_model(
                     model, provider_name=row.name, provider_api_key=row.api_key
@@ -445,10 +480,17 @@ class ProviderStore:
         self,
         *,
         needs_multimodal: bool,
+        user_id: int = 0,
     ) -> list[AutoRouteCandidate]:
-        """Return stable, usable candidates for one automatic route."""
+        """Return stable, auto-routable candidates for one automatic route.
+
+        A candidate is included when its provider may join AUTO for *user_id*:
+        it has a global key, is explicitly keyless, or the user stored a
+        personal key. ``user_id=0`` therefore yields only global-key and
+        keyless providers.
+        """
         candidates: list[AutoRouteCandidate] = []
-        for row in self.iter_usable_rows():
+        for row in self.iter_auto_route_rows(user_id):
             for model in row.get_models():
                 if not is_chat_eligible_model(
                     model,
@@ -483,7 +525,7 @@ class ProviderStore:
         if not provider_name or not model_id:
             return False
         row = self._provider_repo.get_by_name(provider_name)
-        if row is None or not row.enabled or not row.api_key or not row.base_url:
+        if row is None or not row.enabled or not row.base_url:
             return False
         for model in row.get_models():
             if model.get("id") != model_id:
@@ -492,6 +534,28 @@ class ProviderStore:
                 model, provider_name=provider_name, provider_api_key=row.api_key
             )
         return False
+
+    def has_usable_credential(self, user_id: int, model_ref: str | None) -> bool:
+        """Whether *user_id* can call *model_ref* with the credentials on record.
+
+        Uses the same rule as AUTO eligibility: a global provider key, the
+        explicit keyless marker, or a personal key stored by the user. Unknown
+        refs/providers are ``False``.
+        """
+        ref = (model_ref or "").strip()
+        if user_id <= 0 or not ref or "/" not in ref:
+            return False
+        provider_name, _, _ = ref.partition("/")
+        row = self._provider_repo.get_by_name(provider_name)
+        return row is not None and self._auto_route_eligible(row, user_id)
+
+    def is_model_ref_auto_usable(self, ref: str, user_id: int = 0) -> bool:
+        """True when *ref* may join an automatic route for this user."""
+        if not self.is_model_ref_usable(ref):
+            return False
+        provider_name, _, _ = ref.strip().partition("/")
+        row = self._provider_repo.get_by_name(provider_name)
+        return row is not None and self._auto_route_eligible(row, user_id)
 
     def get_model_reasoning_capability(self, ref: str) -> dict[str, Any] | None:
         """Return normalized reasoning metadata for a usable model ref."""
