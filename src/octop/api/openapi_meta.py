@@ -43,6 +43,17 @@ and `/api/internal/mcp/*`.
 Many agent-scoped routes use the agent ID in the URL path (`/api/agents/{agent_id}/…`).
 The caller must own the agent unless they are an admin.
 
+## Agent payload reload window
+
+Agent payloads returned by `GET /api/agents`, `GET /api/agents/{agent_id}`, and
+`PATCH /api/agents/{agent_id}` carry a `reload_pending` boolean. It is `true`
+from the moment `PATCH` persists a config change until the background harness
+rebuild completes; while it is `true`, turns may still reach the previous
+runtime (e.g. the old default model) even though the payload already reports
+the new config. Poll until `reload_pending` is `false` — or use
+`POST /api/agents/{agent_id}/reload`, which awaits the rebuild — before sending
+requests that depend on the new configuration.
+
 ## Streaming chat
 
 Dashboard live turns use **WebSocket** at `/api/agents/{agent_id}/chat/ws` (pass JWT as

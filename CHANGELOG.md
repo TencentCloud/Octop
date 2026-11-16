@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- Agent API 响应新增 `reload_pending` 字段：`PATCH /api/agents/{id}` 落库后、后台 harness 重建完成前为 `true`，调用方可据此等待或展示「重载中」状态（Fixes octop-harness#19）。
+
 ### 修复
 - MCP OAuth 对带路径的授权服务器按 RFC 8414 §3.1 发现 metadata，不再拼成 404；授权端点自带查询参数时也会保留并正确追加 OAuth 参数（#2926）
 
