@@ -327,28 +327,32 @@ class HitlChannelCoordinator:
         ctx: HitlStreamContext,
         resume_agent_id: str | None = None,
     ) -> HitlPendingRecord:
-        record = self._store.register(
-            thread_id=ctx.thread_id,
-            agent_id=ctx.agent_id,
-            user_id=ctx.user_id,
-            session_key=ctx.session_key,
-            channel_type=ctx.channel_type,
-            action_requests=parse_action_requests(raw_request),
-            review_configs=parse_review_configs(raw_request),
-            resume_agent_id=resume_agent_id,
-        )
-        # Attach structured-form context so timeout/idempotency checks can use it.
-        for action in record.action_requests:
+        action_requests = parse_action_requests(raw_request)
+        # Structured-form context must be handed to register() so durable stores
+        # persist it in the same INSERT. Assigning it on the returned record only
+        # mutates a local object once the row already exists.
+        form_context: dict[str, Any] | None = None
+        for action in action_requests:
             if action.get("name") == STRUCTURED_FORM_TOOL_NAME:
                 args = action.get("args") or {}
-                record.form_context = {
+                form_context = {
                     "form_id": args.get("form_id", ""),
                     "schema_version": args.get("schema_version", 1),
                     "timeout_seconds": args.get("timeout_seconds"),
                     "context": args.get("context") or {},
                 }
                 break
-        return record
+        return self._store.register(
+            thread_id=ctx.thread_id,
+            agent_id=ctx.agent_id,
+            user_id=ctx.user_id,
+            session_key=ctx.session_key,
+            channel_type=ctx.channel_type,
+            action_requests=action_requests,
+            review_configs=parse_review_configs(raw_request),
+            resume_agent_id=resume_agent_id,
+            form_context=form_context,
+        )
 
     @staticmethod
     def build_decisions(

@@ -87,6 +87,8 @@ class HitlPendingStore:
         action_requests: list[dict[str, Any]],
         review_configs: list[dict[str, Any]] | None,
         resume_agent_id: str | None = None,
+        resume_thread_id: str | None = None,
+        form_context: dict[str, Any] | None = None,
     ) -> HitlPendingRecord:
         self._gc()
         # A new pause replaces only the same slot. Two team members share the
@@ -103,6 +105,8 @@ class HitlPendingStore:
             ):
                 continue
             if _actions_equivalent(existing.action_requests, action_requests):
+                if form_context is not None:
+                    existing.form_context = form_context
                 return existing
         for existing in list(self._records.values()):
             if not _same_pause_slot(
@@ -127,6 +131,8 @@ class HitlPendingStore:
             review_configs=list(review_configs) if review_configs else None,
             created_at=time.time(),
             resume_agent_id=resume_agent_id,
+            resume_thread_id=resume_thread_id,
+            form_context=form_context,
         )
         self._records[pending_id] = record
         return record
