@@ -216,7 +216,7 @@ curl -fsS http://127.0.0.1:8089/api/health
 
 机器已经在 Kubernetes 里时，用 Helm 一次装上三部分：带 pgvector 的 PostgreSQL、默认两个副本的 Octop，以及对外的 Ingress。数据库是单副本，数据卷 20Gi，集群需要有默认的 StorageClass。要能拉取 `pgvector/pgvector:pg16` 和 `ghcr.io/tencentcloud/octop:<版本>`。需要 Kubernetes 1.25 或更新版本，以及 Helm 3。参数说明写在 [deploy/helm/octop/README_CN.md](../deploy/helm/octop/README_CN.md)。Chart 不安装 HorizontalPodAutoscaler，副本数只通过 `replicaCount` 修改。
 
-安装直接用线上包 `oci://ghcr.io/tencentcloud/octop/charts/octop`，不必克隆仓库。打 `v*` 标签时流水线推这个包。镜像 tag 是 `1.0.3b5` 这种形式。Helm 要求 chart 版本是 SemVer，所以同一次发布里 chart 版本写成 `1.0.3-b5`；没有字母后缀的 `1.0.3` 两边相同。发布包里的 `appVersion` 已经是镜像 tag，安装命令不用再写 `image.tag`。要虚拟桌面、本地向量或 OCR 时，把 `image.tag` 设为 `<版本>-full`，并设 `shm.enabled=true`。改 chart 源码时仍用仓库目录 `deploy/helm/octop`。已经发出的 `v1.0.3b5` 不含这份 chart，要等下一次版本标签。
+安装直接用线上包 `oci://ghcr.io/tencentcloud/octop/charts/octop`，不必克隆仓库。打 `v*` 标签时流水线推这个包。镜像 tag 是 `1.0.3b6` 这种形式。Helm 要求 chart 版本是 SemVer，所以同一次发布里 chart 版本写成 `1.0.3-b6`；没有字母后缀的 `1.0.3` 两边相同。发布包里的 `appVersion` 已经是镜像 tag，安装命令不用再写 `image.tag`。要虚拟桌面、本地向量或 OCR 时，把 `image.tag` 设为 `<版本>-full`，并设 `shm.enabled=true`。改 chart 源码时仍用仓库目录 `deploy/helm/octop`。已经发出的 `v1.0.3b5` 不含这份 chart，要等下一次版本标签。
 
 【插图 5】Kubernetes 里的三个部分
 
@@ -227,7 +227,7 @@ curl -fsS http://127.0.0.1:8089/api/health
 Chart 不保存口令，也不会根据 values 生成 Secret。线上包的默认值用下面这条命令查看：
 
 ```bash
-helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b5
+helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b6
 ```
 
 仓库里的 `deploy/helm/octop/values.example.yaml` 是带注释的同一批参数，`secrets.example.yaml` 是口令样例。复制后改域名，占位符换成真实口令。填好的口令文件不要提交进仓库。
@@ -265,7 +265,7 @@ kubectl -n octop create secret tls octop-tls \
   --cert=fullchain.pem --key=privkey.pem
 
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b6 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -278,7 +278,7 @@ helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b6 \
   -n octop \
   --reuse-values \
   --set ingress.host=octop.example.com
@@ -307,7 +307,7 @@ curl -fsS http://127.0.0.1:8088/api/health
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b6 \
   -n octop \
   --set postgresql.enabled=false \
   --set database.host=pg.example.com \
@@ -318,7 +318,7 @@ helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b6 \
   -n octop \
   --reuse-values \
   --set replicaCount=3
