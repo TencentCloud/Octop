@@ -59,14 +59,18 @@ TOOLS: list[dict[str, Any]] = [
     },
     {
         "name": "base",
-        "description": "Feishu Base (多维表格) via lark-cli base <method…>",
+        "description": (
+            "Feishu Base (多维表格) via lark-cli base <method…>. "
+            "method is the lark-cli method; for method names and shortcuts "
+            "with hyphenated options, put those keys in args."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "method": {"type": "string"},
                 "args": {"type": "object"},
             },
-            "required": ["method"],
+            "required": ["method", "args"],
         },
     },
     {
