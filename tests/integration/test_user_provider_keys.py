@@ -161,7 +161,15 @@ async def test_keyless_provider_blocks_turn_without_key(tmp_octop_home: Any) -> 
         await bootstrap_admin(client, tmp_octop_home)
         auth = await auth_header(client)
         await seed_openai_provider(client, auth)
-        agent_id = await create_agent(client, auth)
+        # Pin the default in the canonical ``provider/model`` form so the route
+        # resolves without credentials and reaches the personal-key gate. The
+        # legacy colon form only resolves through AUTO, which excludes
+        # BYOK-only providers without a key.
+        agent_id = await create_agent(
+            client,
+            auth,
+            config={"providers": ["openai"], "default_model": "openai/gpt-4o"},
+        )
         # No real global key → the turn must demand a personal key. Store a
         # whitespace key (blank under our own resolution semantics) rather
         # than None at the repo layer: None makes the model ref unresolvable
