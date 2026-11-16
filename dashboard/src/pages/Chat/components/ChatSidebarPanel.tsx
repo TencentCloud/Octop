@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
+import type { BatchDeleteSessions } from "./SessionBatchSelection";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
@@ -38,6 +39,7 @@ interface ChatSidebarPanelProps {
     id: string,
     compact: boolean,
   ) => void | Promise<boolean | null | void>;
+  onBatchDeleteSessions: BatchDeleteSessions;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
@@ -73,6 +75,7 @@ export default function ChatSidebarPanel({
   onAgentSelect,
   onNewChatWithAgent,
   onDeleteSession,
+  onBatchDeleteSessions,
   onRenameSession,
   onPinSession,
   onForkSession,
@@ -114,6 +117,7 @@ export default function ChatSidebarPanel({
       onAgentSelect={onAgentSelect}
       onNewChat={onNewChatWithAgent}
       onDeleteActive={onDeleteSession}
+      onBatchDelete={onBatchDeleteSessions}
       onRenameActive={onRenameSession}
       onPinActive={onPinSession}
       onFork={onForkSession}
@@ -135,6 +139,7 @@ export default function ChatSidebarPanel({
       onAgentSelect={onAgentSelect}
       onNewChat={onNewChatWithAgent}
       onDelete={onDeleteSession}
+      onBatchDelete={onBatchDeleteSessions}
       onRename={onRenameSession}
       onPin={onPinSession}
       onFork={onForkSession}
