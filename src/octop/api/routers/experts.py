@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import apply_agent_audience, require_agent_owner_row, user_owns_agent
-from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.agent_runtime import AgentRuntimeFields, persisted_agent_settings
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.avatar import (
@@ -800,7 +800,7 @@ async def install_published_expert(
             color=body.color,
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
-            runtime_config=runtime_field_updates(body, exclude_unset=True),
+            runtime_config=persisted_agent_settings(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
             conversation_mode=body.conversation_mode,
             workspace_patch=patch,
@@ -954,7 +954,7 @@ async def install_expert_hub_item(
                 composer_copies=copies,
                 composer_report=report,
                 quick_prompts=_quick_prompts_from_body(body),
-                **runtime_field_updates(body, exclude_unset=False),
+                **persisted_agent_settings(body, exclude_unset=False),
             ),
         )
     except SkillHubMarketError as exc:
@@ -1087,7 +1087,7 @@ async def create_agent_from_expert(
         locale=locale,
         default_model=body.default_model,
         config_extra=config_extra or None,
-        runtime_config=runtime_field_updates(body, exclude_unset=True),
+        runtime_config=persisted_agent_settings(body, exclude_unset=True),
         agent_id=body.agent_id,
         color=body.color,
         welcome_message=body.welcome_message,

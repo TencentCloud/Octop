@@ -295,7 +295,7 @@ docker run -d \
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
 
-Kubernetes manifests for a shared PostgreSQL and multiple replicas are in [deploy/k8s/README.md](deploy/k8s/README.md).
+The Helm chart for a shared PostgreSQL and multiple replicas is documented in [deploy/helm/octop/README.md](deploy/helm/octop/README.md). Install it from `oci://ghcr.io/tencentcloud/octop/charts/octop`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
@@ -522,7 +522,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-deploy/        Docker (deploy/docker) and Kubernetes (deploy/k8s)
+deploy/        Docker (deploy/docker) and the Kubernetes Helm chart (deploy/helm/octop)
 tests/         unit/ + integration/
 ```
 

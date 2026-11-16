@@ -10,6 +10,7 @@ from langgraph.config import get_config
 from pydantic import Field
 
 from octop.infra.cron.manager import CronCreateSpec
+from octop.infra.cron.session_target import thread_target_key
 from octop.infra.cron.task_type import (
     CRON_NAME_MAX_LEN,
     require_cron_name,
@@ -38,19 +39,28 @@ _TASK_TYPE_HELP = (
     "Use 'agent' only when each run must query, analyze, or summarize fresh data."
 )
 
+_SESSION_TARGET_HELP = (
+    "Where the run lands when fresh_thread is false. "
+    "'latest' (default): each run uses the most recent conversation on the current channel. "
+    "'history': stay on one conversation. Pass thread_id, or omit it to pin the current conversation. "
+    "Ignored when fresh_thread is true, which starts a new conversation every run."
+)
+
 _CRONJOB_CREATE_DESC = (
-    "Create a scheduled cron job bound to the current conversation session. "
-    "Results are delivered to the same channel (QQ/WeChat/dashboard/…). "
+    "Create a scheduled cron job on the current channel (QQ/WeChat/dashboard/…). "
     "name is required: a short label for the job list. "
+    f"session_target: {_SESSION_TARGET_HELP} "
     f"task_type: {_TASK_TYPE_HELP} "
     "Examples: 'remind me to drink water at 14:00 daily' → "
-    "name='Daily water reminder', task_type=text, prompt='Time to drink water'; "
-    "'summarize my inbox every morning' → name='Morning inbox summary', task_type=agent. "
+    "name='Daily water reminder', task_type=text, prompt='Time to drink water', session_target=latest; "
+    "'summarize my inbox every morning into this chat' → "
+    "name='Morning inbox summary', task_type=agent, session_target=history. "
     f"trigger: {_TRIGGER_HELP}"
 )
 
 _CRONJOB_UPDATE_DESC = (
-    "Update an existing cron job (trigger, prompt, enabled, task_type, …). "
+    "Update an existing cron job (trigger, prompt, enabled, task_type, session_target, …). "
+    f"session_target: {_SESSION_TARGET_HELP} "
     f"task_type: {_TASK_TYPE_HELP} "
     f"trigger: {_TRIGGER_HELP}"
 )
@@ -87,6 +97,28 @@ def _get_owned(mgr: CronManager, cron_id: str, agent_id: str, user_id: int) -> C
     if row is None or row.agent_id != agent_id:
         raise ValueError(f"cron job not found: {cron_id}")
     return row
+
+
+def _stored_session_key(
+    *,
+    channel_session_key: str,
+    fresh_thread: bool,
+    session_target: str | None,
+    thread_id: str | None,
+) -> str:
+    """Channel key for latest runs, or ``thread:{id}`` for a history pin."""
+    target = (session_target or "latest").strip().lower()
+    if fresh_thread or target == "latest":
+        return channel_session_key
+    if target != "history":
+        raise ValueError("session_target must be 'latest' or 'history'")
+    pinned = (thread_id or "").strip()
+    if not pinned:
+        cfg = get_config().get("configurable") or {}
+        pinned = str(cfg.get("thread_id") or "").strip()
+    if not pinned:
+        raise ValueError("history session_target requires thread_id")
+    return thread_target_key(pinned)
 
 
 def _ok(data: Any) -> str:
@@ -145,8 +177,23 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
         ],
         fresh_thread: Annotated[
             bool,
-            Field(description="If true, reset conversation context before each agent run."),
+            Field(
+                description="If true, start a new conversation before each run. Ignores session_target."
+            ),
         ] = False,
+        session_target: Annotated[
+            str,
+            Field(description=_SESSION_TARGET_HELP),
+        ] = "latest",
+        thread_id: Annotated[
+            str | None,
+            Field(
+                description=(
+                    "Historical conversation to pin when session_target is 'history'. "
+                    "Omit to pin the current conversation."
+                ),
+            ),
+        ] = None,
         enabled: Annotated[
             bool,
             Field(description="Whether the job is active immediately after creation."),
@@ -157,7 +204,7 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
         ] = "text",
     ) -> str:
         try:
-            agent_id, user_id, session_key = _tool_ctx()
+            agent_id, user_id, channel_key = _tool_ctx()
             _require_agent_owner(mgr, agent_id, user_id)
             cron_id = new_cron_id()
             cleaned_prompt = require_cron_prompt(prompt)
@@ -169,7 +216,12 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
                 trigger=trigger,
                 prompt=cleaned_prompt,
                 fresh_thread=fresh_thread,
-                session_key=session_key,
+                session_key=_stored_session_key(
+                    channel_session_key=channel_key,
+                    fresh_thread=fresh_thread,
+                    session_target=session_target,
+                    thread_id=thread_id,
+                ),
                 enabled=enabled,
                 task_type=require_cron_task_type(task_type),
             )
@@ -187,13 +239,30 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
             Field(description="New prompt / message text."),
         ] = None,
         fresh_thread: bool | None = None,
+        session_target: Annotated[
+            str | None,
+            Field(description=_SESSION_TARGET_HELP),
+        ] = None,
+        thread_id: Annotated[
+            str | None,
+            Field(description="Historical conversation to pin when session_target is 'history'."),
+        ] = None,
         enabled: bool | None = None,
         task_type: Annotated[str | None, Field(description=_TASK_TYPE_HELP)] = None,
     ) -> str:
         try:
-            agent_id, user_id, _session_key = _tool_ctx()
+            agent_id, user_id, channel_key = _tool_ctx()
             existing = _get_owned(mgr, cron_id, agent_id, user_id)
             cleaned_prompt = require_cron_prompt(prompt) if prompt is not None else None
+            stored_session: str | None = None
+            if fresh_thread or session_target is not None or (thread_id or "").strip():
+                stored_session = _stored_session_key(
+                    channel_session_key=channel_key,
+                    fresh_thread=bool(fresh_thread),
+                    session_target=session_target
+                    or ("history" if (thread_id or "").strip() else "latest"),
+                    thread_id=thread_id,
+                )
             row = await mgr.update(
                 cron_id,
                 name=(
@@ -207,6 +276,7 @@ def build_cronjob_tools(cron_manager: CronManager) -> list[StructuredTool]:
                 ),
                 trigger=trigger,
                 prompt=cleaned_prompt,
+                session_key=stored_session,
                 fresh_thread=fresh_thread,
                 enabled=int(enabled) if enabled is not None else None,
                 task_type=require_cron_task_type(task_type) if task_type is not None else None,

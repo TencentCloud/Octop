@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { modal } from "../../../utils/antdModal";
-import ChatTitleBar from "./ChatTitleBar";
+import ChatTitleBar, { ChatSidePanelToggle } from "./ChatTitleBar";
 import type { Session } from "../hooks/useSessions";
 import styles from "../index.module.less";
 
@@ -27,7 +27,7 @@ describe("ChatTitleBar", () => {
   it.each([
     ["短标题", "Weekly recap"],
     ["超长标题", "很长的会话标题".repeat(80)],
-  ])("将%s与右侧常驻操作组分开", (_label, title) => {
+  ])("将%s右侧的编辑和更多放在标题旁", (_label, title) => {
     render(
       <ChatTitleBar
         session={session}
@@ -36,27 +36,35 @@ describe("ChatTitleBar", () => {
         onPin={noop}
         onFork={noop}
         onDelete={noop}
+        sideSlot={<ChatSidePanelToggle open={false} onToggle={noop} />}
       />,
     );
 
     const heading = screen.getByRole("heading", { name: title });
     const edit = screen.getByRole("button", { name: "common.edit" });
     const more = screen.getByRole("button", { name: "更多" });
+    const toggle = screen.getByRole("button", { name: "展开侧栏" });
     const actions = edit.parentElement;
     const left = heading.closest(`.${styles.chatTitleLeft}`);
 
     expect(actions).toHaveClass(styles.chatTitleActions);
     expect(actions).toContainElement(more);
-    expect(actions?.parentElement).toHaveClass(styles.chatTitleBar);
-    expect(actions?.previousElementSibling).toBe(left);
-    expect(left).not.toContainElement(edit);
-    expect(left).not.toContainElement(more);
+    expect(left).toContainElement(edit);
+    expect(left).toContainElement(more);
+    expect(heading.compareDocumentPosition(actions as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(actions?.parentElement).toHaveClass(styles.chatTitleCluster);
+    expect(actions?.parentElement?.parentElement).toBe(left);
+    expect(left?.parentElement).toHaveClass(styles.chatTitleBar);
+    expect(left?.nextElementSibling).toContainElement(toggle);
     expect(heading).toHaveAttribute("title", title);
     expect(edit).toBeVisible();
     expect(more).toBeVisible();
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("通过样式约束保持右侧按钮贴边、常驻，以及标题省略", () => {
+  it("通过样式约束让标题旁操作默认隐藏、悬停显示，并省略过长标题", () => {
     const css = readFileSync(
       resolve(__dirname, "../index.module.less"),
       "utf8",
@@ -71,16 +79,21 @@ describe("ChatTitleBar", () => {
     expect(titleBar).toContain("display: flex");
     expect(titleBar).toContain("padding: 0 var(--chat-title-pad-x)");
     expect(titleBar).not.toContain("window-controls-inset-end");
-    expect(css).not.toMatch(
-      /\.chatTitleBar \{[^}]*window-controls-inset-end/,
-    );
+    expect(css).not.toMatch(/\.chatTitleBar \{[^}]*window-controls-inset-end/);
     expect(titleBar).not.toMatch(/^\s*max-width:|chatTitleEditBtn/m);
     expect(left).toContain("flex: 1");
     expect(left).toContain("min-width: 0");
     expect(left).not.toMatch(/max-width|margin:/);
     expect(actions).toContain("display: flex");
+    expect(actions).toContain("position: absolute");
+    expect(actions).toContain("inset-inline-start: 100%");
     expect(actions).toContain("flex-shrink: 0");
-    expect(actions).not.toMatch(/opacity:\s*0|visibility:\s*hidden/);
+    expect(actions).toMatch(/opacity:\s*0/);
+    expect(actions).toMatch(/pointer-events:\s*none/);
+    expect(css).toMatch(
+      /\.chatTitleLeft:hover \.chatTitleActions[\s\S]*opacity:\s*1/,
+    );
+    expect(css).toMatch(/\.chatTitleActionsOpen[\s\S]*opacity:\s*1/);
     expect(button).not.toMatch(
       /opacity:\s*0|pointer-events:\s*none|visibility:\s*hidden/,
     );

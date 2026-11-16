@@ -1022,3 +1022,271 @@ class TestRestartRequiredMapping:
         err = _map_knowledge_error(RuntimeError("embedding provider is not ready"), locale="zh")
 
         assert err.code is ErrorCode.KNOWLEDGE_PREREQUISITES_FAILED
+
+
+def _chat_provider() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=3,
+        name="Acme",
+        enabled=True,
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        get_models=lambda: [
+            {"id": "chat-1", "name": "Chat One"},
+            {"id": "embed-1", "name": "Embed", "embedding": True},
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_graph_options_lists_chat_models_per_provider() -> None:
+    from octop.api.routers import knowledge_bases
+
+    disabled = _chat_provider()
+    disabled.enabled = False
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            provider_repo=SimpleNamespace(list_all=lambda: [_chat_provider(), disabled])
+        )
+    )
+
+    options = await knowledge_bases.graph_options(server=server, _admin=object())
+
+    assert options == {
+        "remote": [
+            {
+                "provider_id": "3",
+                "provider_name": "Acme",
+                "models": [{"id": "chat-1", "name": "Chat One"}],
+            }
+        ]
+    }
+
+
+def test_capability_payload_reports_graph_settings() -> None:
+    from octop.api.routers import knowledge_bases
+
+    settings = {
+        "knowledge_graph_enabled": "true",
+        "knowledge_graph_provider_id": "3",
+        "knowledge_graph_model": "chat-1",
+    }
+    provider = _chat_provider()
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            settings_repo=SimpleNamespace(get=settings.get),
+            provider_repo=SimpleNamespace(get=lambda _id: provider),
+            config=None,
+        )
+    )
+
+    assert knowledge_bases._capability_payload(server)["graph"] == {
+        "enabled": True,
+        "provider_id": "3",
+        "model": "chat-1",
+        "ready": True,
+        "usable": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_enabling_graph_without_a_chat_model_is_rejected_before_anything_is_saved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    saved: dict[str, str] = {}
+    provider = _chat_provider()
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            settings_repo=SimpleNamespace(get=saved.get, set=saved.__setitem__),
+            provider_repo=SimpleNamespace(get=lambda _id: provider, list_all=lambda: [provider]),
+        )
+    )
+    monkeypatch.setattr(
+        knowledge_bases,
+        "set_feature_enabled",
+        lambda *_a, **_k: pytest.fail("feature must not be saved"),
+    )
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.put_feature(
+            knowledge_bases.FeatureBody(
+                enabled=False, graph_enabled=True, graph_provider_id="3", graph_model="embed-1"
+            ),
+            request=_request(),
+            server=server,
+            _admin=object(),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_GRAPH_NOT_READY
+    assert raised.value.status == 409
+    assert saved == {}
+
+
+@pytest.mark.asyncio
+async def test_put_feature_saves_graph_settings() -> None:
+    from octop.api.routers import knowledge_bases
+
+    saved: dict[str, str] = {}
+    provider = _chat_provider()
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            settings_repo=SimpleNamespace(get=saved.get, set=saved.__setitem__),
+            provider_repo=SimpleNamespace(get=lambda _id: provider, list_all=lambda: [provider]),
+            config=None,
+        )
+    )
+
+    capability = await knowledge_bases.put_feature(
+        knowledge_bases.FeatureBody(
+            enabled=False, graph_enabled=True, graph_provider_id="3", graph_model="chat-1"
+        ),
+        request=_request(),
+        server=server,
+        _admin=object(),
+    )
+
+    assert capability["graph"]["usable"] is True
+    assert saved["knowledge_graph_model"] == "chat-1"
+
+
+@pytest.mark.asyncio
+async def test_get_graph_passes_limit_and_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    seen: dict[str, object] = {}
+
+    def get_graph(kb_id: str, **kwargs: object) -> dict[str, object]:
+        seen.update(kb_id=kb_id, **kwargs)
+        return {"stats": {}, "nodes": [], "edges": []}
+
+    monkeypatch.setattr(
+        knowledge_bases, "_knowledge_service", lambda _server: SimpleNamespace(get_graph=get_graph)
+    )
+
+    response = await knowledge_bases.get_graph(
+        "kb-1",
+        request=_request(),
+        limit=20,
+        q="apollo",
+        server=SimpleNamespace(services=_services()),
+        user=SimpleNamespace(id=5, is_admin=False),
+    )
+
+    assert response == {"stats": {}, "nodes": [], "edges": []}
+    assert seen == {
+        "kb_id": "kb-1",
+        "actor_user_id": 5,
+        "is_admin": False,
+        "limit": 20,
+        "search": "apollo",
+    }
+
+
+@pytest.mark.asyncio
+async def test_get_graph_entity_maps_missing_entity_to_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def missing(*_args: object, **_kwargs: object) -> None:
+        raise LookupError("knowledge graph entity not found")
+
+    monkeypatch.setattr(
+        knowledge_bases,
+        "_knowledge_service",
+        lambda _server: SimpleNamespace(get_graph_entity=missing),
+    )
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.get_graph_entity(
+            "kb-1",
+            request=_request(),
+            name="nobody",
+            server=SimpleNamespace(services=_services()),
+            user=SimpleNamespace(id=5, is_admin=False),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_build_graph_enqueues_indexed_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    calls: list[tuple[object, str, list[str]]] = []
+    server = SimpleNamespace(services=_services())
+    monkeypatch.setattr(
+        knowledge_bases,
+        "_knowledge_service",
+        lambda _server: SimpleNamespace(graph_build_targets=lambda *_a, **_k: ["doc-1", "doc-2"]),
+    )
+    monkeypatch.setattr(knowledge_bases, "_require_usable", lambda *_a, **_k: None)
+
+    def enqueue(services: object, kb_id: str, doc_ids: list[str]) -> int:
+        calls.append((services, kb_id, doc_ids))
+        return len(doc_ids)
+
+    monkeypatch.setattr(knowledge_bases, "enqueue_base_graph", enqueue)
+
+    response = await knowledge_bases.build_graph(
+        "kb-1", request=_request(), server=server, user=SimpleNamespace(id=1, is_admin=False)
+    )
+
+    assert response == {"enqueued": 2}
+    assert calls == [(server.services, "kb-1", ["doc-1", "doc-2"])]
+
+
+@pytest.mark.asyncio
+async def test_build_graph_without_an_extraction_model_maps_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def not_ready(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("knowledge graph extraction is not ready")
+
+    monkeypatch.setattr(
+        knowledge_bases,
+        "_knowledge_service",
+        lambda _server: SimpleNamespace(graph_build_targets=not_ready),
+    )
+    monkeypatch.setattr(knowledge_bases, "_require_usable", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        knowledge_bases, "enqueue_base_graph", lambda *_a: pytest.fail("must not be queued")
+    )
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.build_graph(
+            "kb-1",
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=SimpleNamespace(id=1, is_admin=False),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_GRAPH_NOT_READY
+
+
+@pytest.mark.asyncio
+async def test_delete_graph_requires_write_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("knowledge base write access is required")
+
+    monkeypatch.setattr(
+        knowledge_bases,
+        "_knowledge_service",
+        lambda _server: SimpleNamespace(clear_graph=forbidden),
+    )
+
+    with pytest.raises(OctopError) as raised:
+        await knowledge_bases.delete_graph(
+            "kb-1",
+            request=_request(),
+            server=SimpleNamespace(services=_services()),
+            user=SimpleNamespace(id=2, is_admin=False),
+        )
+
+    assert raised.value.code == ErrorCode.KNOWLEDGE_FORBIDDEN

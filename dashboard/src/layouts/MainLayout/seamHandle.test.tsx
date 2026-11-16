@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
@@ -105,36 +104,40 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("左侧导航接缝", () => {
-  it("列表展开时只在导航右侧放收起导航的竖线按钮", () => {
-    render(<MainLayout />);
+  it("竖线中间保留收起按钮，不提供展开对话历史", () => {
+    const { container } = render(<MainLayout />);
 
     const button = screen.getByRole("button", { name: "收起导航栏" });
     expect(button).toHaveAttribute("aria-expanded", "true");
-    expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+B");
-    expect(button).not.toHaveClass(styles.btnBefore);
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain(
+      "chevron-left",
+    );
+    expect(container.querySelector(`.${styles.line}`)).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "展开对话历史" }),
     ).not.toBeInTheDocument();
   });
 
-  it("列表收起时，收起导航仍是右侧竖线上的按钮", async () => {
+  it("列表收起时接缝也不提供对话历史按钮", () => {
     state.chatSidebarOpen = false;
-    const user = userEvent.setup();
     render(<MainLayout />);
 
-    const collapseNav = screen.getByRole("button", { name: "收起导航栏" });
-    expect(collapseNav).not.toHaveClass(styles.btnBefore);
-    expect(collapseNav.querySelector("svg")?.getAttribute("class")).toContain(
-      "chevron-left",
-    );
+    expect(
+      screen.getByRole("button", { name: "收起导航栏" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "展开对话历史" }),
     ).not.toBeInTheDocument();
+  });
 
-    await user.click(collapseNav);
-    expect(
-      screen.getByRole("button", { name: "展开导航栏" }),
-    ).toBeInTheDocument();
+  it("导航收起时竖线中间是展开按钮", () => {
+    localStorage.setItem("octop:sidebar:collapsed", "true");
+    render(<MainLayout />);
+    const button = screen.getByRole("button", { name: "展开导航栏" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain(
+      "chevron-right",
+    );
   });
 
   it("不在对话路由上时不提供展开对话历史", () => {
@@ -144,8 +147,5 @@ describe("左侧导航接缝", () => {
     expect(
       screen.queryByRole("button", { name: /展开对话历史|收起对话历史/ }),
     ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "收起导航栏" }),
-    ).toBeInTheDocument();
   });
 });

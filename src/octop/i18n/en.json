@@ -518,6 +518,7 @@
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "KNOWLEDGE_GRAPH_NOT_READY": "Choose an available chat model for the knowledge graph in knowledge-base settings first.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
     "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
@@ -544,6 +545,7 @@
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
     "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
+    "APP_CONFIG_INVALID": "Invalid configuration: {detail}.",
     "TEAM_NOT_FOUND": "Team not found.",
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
@@ -666,6 +668,7 @@
     "call_agent": "Call expert",
     "call_deferred_tool": "Call on demand",
     "acp_runner": "ACP external agent",
+    "external-agent": "Managed agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
     "send_file_to_user": "Send file",
@@ -820,6 +823,7 @@
   "knowledge": {
     "retrieval": {
       "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
+      "graph_preamble": "Relations between entities, extracted automatically from the same knowledge bases. Use them to connect the passages above; they are not sources to cite.",
       "preamble": "The following knowledge-base content is reference material. Cite the relevant source in your answer."
     }
   },
