@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Scale } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import type { DecisionNotice } from "../hooks/useChat";
 import type { AssistantTurnSplit } from "../utils/messageContent";
@@ -115,9 +116,10 @@ export function DecisionToolRow({ notice }: { notice: DecisionNotice }) {
         </span>
         <ChevronRight
           size={14}
-          className={`${styles.inlineToolChevron} ${
-            expanded ? styles.inlineToolChevronOpen : ""
-          }`}
+          className={cx(
+            styles.inlineToolChevron,
+            expanded && styles.inlineToolChevronOpen,
+          )}
         />
       </button>
       {expanded ? (
@@ -195,12 +197,15 @@ function resolveLiveProcessHint(
   }
 
   // Tool finished, next tokens not yet — keep the fold "alive" so it does
-  // not look stuck on a static count between ReAct rounds.
+  // not look stuck on a static count between ReAct rounds. Once the answer
+  // text is on screen, the count is the status; don't keep saying we're
+  // still organizing.
   const hasProcess =
     split.tools.length > 0 ||
     split.thinkings.length > 0 ||
     split.processSteps.length > 0;
-  if (hasProcess) {
+  const answerText = (split.answerMessage?.content || "").trim();
+  if (hasProcess && !answerText) {
     return t("chat.processOrganizing", { defaultValue: "整理结果中" });
   }
 
@@ -259,6 +264,9 @@ function AssistantProcessSummary({
   }, [isStreaming, collapseThinking]);
 
   if (toolCount === 0 && thinkingCount === 0) {
+    // While the reply is still coming in, a lone decision would paint its own
+    // line and then jump into the tool fold. Wait until the turn settles.
+    if (isStreaming) return null;
     return decisionOnly?.kind === "decision" ? (
       <DecisionToolRow notice={decisionOnly.notice} />
     ) : null;
@@ -285,9 +293,10 @@ function AssistantProcessSummary({
     <div className={styles.processSummary}>
       <button
         type="button"
-        className={`${styles.processSummaryToggle}${
-          liveHint ? ` ${styles.processSummaryToggleLive}` : ""
-        }`}
+        className={cx(
+          styles.processSummaryToggle,
+          liveHint && styles.processSummaryToggleLive,
+        )}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         aria-busy={liveHint ? true : undefined}
@@ -295,10 +304,12 @@ function AssistantProcessSummary({
         <span className={styles.processSummaryText}>
           {liveHint ? (
             <span className={styles.processLiveHint} aria-live="polite">
-              <span className={styles.thinkingDot} />
-              <span className={styles.thinkingDot} />
-              <span className={styles.thinkingDot} />
               <span className={styles.processLiveLabel}>{liveHint}</span>
+              <span className={styles.processLiveDots} aria-hidden="true">
+                <span className={styles.thinkingDot} />
+                <span className={styles.thinkingDot} />
+                <span className={styles.thinkingDot} />
+              </span>
             </span>
           ) : (
             summaryText
@@ -306,9 +317,10 @@ function AssistantProcessSummary({
         </span>
         <ChevronRight
           size={14}
-          className={`${styles.processSummaryChevron} ${
-            expanded ? styles.processSummaryChevronOpen : ""
-          }`}
+          className={cx(
+            styles.processSummaryChevron,
+            expanded && styles.processSummaryChevronOpen,
+          )}
         />
       </button>
       {expanded && (

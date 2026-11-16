@@ -22,6 +22,12 @@ from octop.infra.utils.ssrf_guard import (
     validate_https_url_resolved,
 )
 
+# Some servers (GitHub) answer the token endpoint form-encoded unless JSON is asked for.
+_TOKEN_REQUEST_HEADERS = {
+    "Content-Type": "application/x-www-form-urlencoded",
+    "Accept": "application/json",
+}
+
 
 def mcp_oauth_kinds() -> frozenset[str]:
     return mcp_oauth_remote_kinds()
@@ -59,6 +65,33 @@ async def _ensure_mcp_oauth_url(url: str, *, issuer: str, field: str) -> str:
     return url
 
 
+async def manual_client_metadata(
+    *, authorization_endpoint: str, token_endpoint: str
+) -> tuple[str, dict[str, Any]]:
+    """Issuer + metadata for an OAuth client whose endpoints the user typed in.
+
+    There is no discovered issuer to bind the endpoints to — authorize and token
+    hosts legitimately differ (accounts.google.com / oauth2.googleapis.com) — so
+    each one only has to be a public https URL. The issuer is the token
+    endpoint's origin, which is what the later exchange and refresh validate
+    against.
+    """
+    for field, url in (
+        ("authorization_endpoint", authorization_endpoint),
+        ("token_endpoint", token_endpoint),
+    ):
+        try:
+            await validate_https_url_resolved(url, field=field)
+        except UnsafeOutboundUrl as exc:
+            raise ValueError(str(exc)) from exc
+    parsed = urlparse(token_endpoint)
+    issuer = f"{parsed.scheme}://{parsed.netloc}"
+    return issuer, {
+        "authorization_endpoint": authorization_endpoint,
+        "token_endpoint": token_endpoint,
+    }
+
+
 async def _validate_metadata_endpoints(metadata: dict[str, Any], *, issuer: str) -> dict[str, Any]:
     for key in ("authorization_endpoint", "token_endpoint"):
         await _ensure_mcp_oauth_url(str(metadata[key]), issuer=issuer, field=key)
@@ -69,7 +102,16 @@ async def _validate_metadata_endpoints(metadata: dict[str, Any], *, issuer: str)
 
 
 async def fetch_authorization_metadata(issuer: str) -> dict[str, Any]:
-    metadata_url = f"{issuer.rstrip('/')}/.well-known/oauth-authorization-server"
+    # RFC 8414 §3.1: insert the well-known suffix between authority and path.
+    # A path-scoped issuer such as https://auth.example.com/realms/tenant is
+    # fetched at
+    # https://auth.example.com/.well-known/oauth-authorization-server/realms/tenant
+    # — not at …/realms/tenant/.well-known/oauth-authorization-server (404).
+    parsed = urlparse(issuer)
+    issuer_path = parsed.path.rstrip("/")
+    metadata_url = (
+        f"{parsed.scheme}://{parsed.netloc}/.well-known/oauth-authorization-server{issuer_path}"
+    )
     await _ensure_mcp_oauth_url(metadata_url, issuer=issuer, field="issuer_metadata")
     r = await safe_request("GET", metadata_url, timeout=20.0)
     r.raise_for_status()
@@ -133,7 +175,13 @@ def build_authorize_url(
         params["scope"] = scope
     if resource:
         params["resource"] = resource
-    return f"{metadata['authorization_endpoint']}?{urlencode(params)}"
+    # RFC 6749 §3.1: keep any query the authorization endpoint already has
+    # and append OAuth params.
+    endpoint = urlparse(str(metadata["authorization_endpoint"]))
+    query = urlencode(params)
+    if endpoint.query:
+        query = f"{endpoint.query}&{query}"
+    return endpoint._replace(query=query).geturl()
 
 
 def _http_error_detail(resp: Any) -> str:
@@ -177,7 +225,7 @@ async def exchange_authorization_code(
         "POST",
         token_url,
         data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers=_TOKEN_REQUEST_HEADERS,
         timeout=30.0,
     )
     try:
@@ -217,7 +265,7 @@ async def refresh_access_token(
         "POST",
         token_url,
         data=data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers=_TOKEN_REQUEST_HEADERS,
         timeout=30.0,
     )
     try:

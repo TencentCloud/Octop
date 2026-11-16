@@ -9,6 +9,9 @@ import {
 import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import type { AgentRuntimeApiFields } from "../utils/agentRuntimeConfig";
+import { userCan } from "../utils/permissions";
 import {
   retainDisconnectedBridgeAgents,
   toBridgeShadowAgentId,
@@ -24,7 +27,7 @@ import {
  * ``X-Octop-Agent-Id`` header.
  */
 
-export interface OctopAgent {
+export interface OctopAgent extends AgentRuntimeApiFields {
   /** Surrogate integer primary key from the database. */
   id: number;
   /** Public agent id used in API paths and ``X-Octop-Agent-Id``. */
@@ -52,11 +55,12 @@ export interface OctopAgent {
   icon_name: string | null;
   icon_url: string | null;
   color: string | null;
-  max_iters?: number | null;
-  max_input_length?: number | null;
-  temperature?: number | null;
-  top_p?: number | null;
-  max_tokens?: number | null;
+  compaction?: {
+    enabled?: boolean;
+    trigger_fraction?: number;
+    keep_fraction?: number;
+    trim_tokens?: number;
+  } | null;
   config: Record<string, unknown>;
   /** Knowledge bases opened by default in new chats with this expert. */
   knowledge_base_ids?: string[];
@@ -64,6 +68,11 @@ export interface OctopAgent {
   mcp_servers?: string[];
   /** Aggregated unread count across all sessions for this agent (current user). */
   unread_count?: number;
+  /**
+   * Unix seconds of this user's latest turn with the expert.
+   * ``null`` when they have never chatted with it.
+   */
+  last_active?: number | null;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */
   bootstrap_pending?: boolean;
   /** ``expert`` (default) or ``team`` host. */
@@ -162,6 +171,7 @@ export function agentsSnapshotEqual(
         a.agent_id === b.agent_id &&
         a.state === b.state &&
         a.unread_count === b.unread_count &&
+        a.last_active === b.last_active &&
         a.bootstrap_pending === b.bootstrap_pending &&
         a.name === b.name &&
         a.icon === b.icon &&
@@ -205,6 +215,7 @@ export function projectChatAgentOption(agent: OctopAgent): {
   bridge_connection_icon: string | null;
   bridge_disconnected: boolean;
   bridge_inbound: boolean;
+  managed_runner: string | null;
 } {
   return {
     agent_id: agent.agent_id,
@@ -221,6 +232,11 @@ export function projectChatAgentOption(agent: OctopAgent): {
     bridge_connection_icon: agent.bridge_connection_icon ?? null,
     bridge_disconnected: Boolean(agent.bridge_disconnected),
     bridge_inbound: Boolean(agent.bridge_inbound),
+    managed_runner:
+      agent.kind === "managed" &&
+      typeof agent.config?.managed_runner === "string"
+        ? agent.config.managed_runner
+        : null,
   };
 }
 
@@ -255,7 +271,7 @@ interface FetchAgentsResult {
  * falls back to a direct request if the legacy module hasn't been
  * regenerated yet.
  */
-async function fetchAgents(): Promise<FetchAgentsResult> {
+async function fetchAgents(includeBridge: boolean): Promise<FetchAgentsResult> {
   const candidate = legacyAgentApi as Partial<ListAgentsResponse> &
     Record<string, unknown>;
   let local: OctopAgent[] = [];
@@ -266,8 +282,13 @@ async function fetchAgents(): Promise<FetchAgentsResult> {
     const { request } = await import("../api/request");
     local = await request<OctopAgent[]>("/agents");
   }
-  const { remote, liveConnectionIds, resolvedConnectionIds } =
-    await fetchBridgeShadowAgents();
+  const { remote, liveConnectionIds, resolvedConnectionIds } = includeBridge
+    ? await fetchBridgeShadowAgents()
+    : {
+        remote: [] as OctopAgent[],
+        liveConnectionIds: new Set<string>(),
+        resolvedConnectionIds: new Set<string>(),
+      };
   const localIds = new Set(local.map((a) => a.agent_id));
   return {
     agents: [...local, ...remote.filter((a) => !localIds.has(a.agent_id))],
@@ -310,7 +331,7 @@ async function fetchBridgeShadowAgents(): Promise<{
     );
     return { remote: batches.flat(), liveConnectionIds, resolvedConnectionIds };
   } catch {
-    // Non-admin users or cloud-collab-unavailable installs — ignore.
+    // Bridge list failed (network or a stale permission). Keep local experts.
     return empty;
   }
 }
@@ -324,14 +345,23 @@ function stringIdList(value: unknown): string[] | undefined {
   return ids;
 }
 
-/** Peer public config the local composer reads (mode). Other keys stay on the peer. */
+/**
+ * Peer public config the local UI reads. Composer mode and the storage
+ * backend stay; everything else remains on the peer.
+ */
 function bridgeShadowConfig(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const mode = (value as Record<string, unknown>).conversation_mode;
+  const src = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  const mode = src.conversation_mode;
   if (mode === "ask" || mode === "plan" || mode === "craft") {
-    return { conversation_mode: mode };
+    out.conversation_mode = mode;
   }
-  return {};
+  const backend = src.backend;
+  if (backend && typeof backend === "object" && !Array.isArray(backend)) {
+    out.backend = backend;
+  }
+  return out;
 }
 
 export function mapBridgeAgent(
@@ -421,6 +451,8 @@ export function mapBridgeAgent(
 }
 
 export function AgentProvider({ children }: { children: ReactNode }) {
+  const user = useCurrentUser();
+  const includeBridge = userCan(user, "bridge");
   const [agents, setAgents] = useState<OctopAgent[]>([]);
   const [activeAgentId, setActiveAgentIdState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -451,7 +483,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           agents: list,
           liveConnectionIds,
           resolvedConnectionIds,
-        } = await fetchAgents();
+        } = await fetchAgents(includeBridge);
         // Only update state when content actually changed, to prevent
         // unnecessary re-renders of every component subscribed to this context
         // (the chat page polls every 10 s to refresh unread badges).
@@ -491,7 +523,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [persistAndApply],
+    [includeBridge, persistAndApply],
   );
 
   // Initial fetch — fire once on mount. Login flow lives elsewhere; this

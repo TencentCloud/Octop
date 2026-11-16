@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Image, Tabs } from "antd";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { isNotFoundApiError } from "../utils/apiError";
 import type { DocKind } from "../utils/docKind";
 import styles from "./DocumentPreviewCore.module.less";
@@ -728,9 +729,10 @@ export default function DocumentPreviewCore({
           ) : null}
         </div>
         <div
-          className={`${styles.documentLoading}${
-            loading ? "" : ` ${styles.documentLoadingHidden}`
-          }`}
+          className={cx(
+            styles.documentLoading,
+            !loading && styles.documentLoadingHidden,
+          )}
           aria-hidden={!loading}
         >
           <DocumentPreviewLoading
@@ -749,9 +751,10 @@ export default function DocumentPreviewCore({
         ref={containerRef}
       />
       <div
-        className={`${styles.documentLoading}${
-          loading ? "" : ` ${styles.documentLoadingHidden}`
-        }`}
+        className={cx(
+          styles.documentLoading,
+          !loading && styles.documentLoadingHidden,
+        )}
         aria-hidden={!loading}
       >
         <DocumentPreviewLoading

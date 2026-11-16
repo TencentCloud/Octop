@@ -146,7 +146,8 @@ def _project_harness_chunk(
         _copy_content_reference(chunk, context_payload)
         if content:
             context_payload["content"] = content
-        summary = _clip_summary(label, content) if content else label
+        # The ledger title is the label. The body stays in ``content``.
+        summary = label if label else _clip_summary(source or "context", content)
         return [
             _event(
                 **common,

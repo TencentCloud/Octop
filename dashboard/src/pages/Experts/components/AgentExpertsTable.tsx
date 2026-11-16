@@ -36,8 +36,10 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
+import BackendFlag from "./BackendFlag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark } from "./ManagedAvatarMark";
 import {
   isAgentChatReady,
   formatAgentState,
@@ -49,7 +51,12 @@ import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
 import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
+import {
+  canManageExpert,
+  canReadAgentRuntimeStatus,
+  isSharedExpertViewer,
+} from "../../../utils/sharedExpert";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
 import AgentMoreActions from "./AgentMoreActions";
@@ -85,6 +92,7 @@ export default function AgentExpertsTable({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const user = useCurrentUser();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
   const [localStates, setLocalStates] = useState<Record<string, string>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -173,7 +181,7 @@ export default function AgentExpertsTable({
 
   useEffect(() => {
     const transientIds = agents
-      .filter((a) => !a.bridge)
+      .filter((a) => !a.bridge && canReadAgentRuntimeStatus(a, user))
       .map((a) => a.agent_id)
       .filter((id) => TRANSIENT.has(localStates[id] ?? ""));
     if (transientIds.length === 0) {
@@ -200,7 +208,7 @@ export default function AgentExpertsTable({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [agents, localStates, onStateChange, refreshAgents]);
+  }, [agents, localStates, onStateChange, refreshAgents, user]);
 
   const handleToggle = useCallback(
     async (agent: OctopAgent, checked: boolean) => {
@@ -303,19 +311,28 @@ export default function AgentExpertsTable({
       fixed: isMobile ? undefined : "left",
       render: (name: string, row) => (
         <div className={styles.tableNameCell}>
-          <span
-            className={styles.tableIcon}
-            style={{
-              color: row.color || "#6366f1",
-              background: `${row.color || "#6366f1"}1a`,
-            }}
+          <ManagedAvatarMark
+            runner={
+              row.kind === "managed" &&
+              typeof row.config?.managed_runner === "string"
+                ? row.config.managed_runner
+                : null
+            }
           >
-            <ExpertIcon
-              iconUrl={row.icon_url}
-              iconName={row.icon_name}
-              size={row.icon_url ? 28 : 16}
-            />
-          </span>
+            <span
+              className={styles.tableIcon}
+              style={{
+                color: row.color || "#6366f1",
+                background: `${row.color || "#6366f1"}1a`,
+              }}
+            >
+              <ExpertIcon
+                iconUrl={row.icon_url}
+                iconName={row.icon_name}
+                size={row.icon_url ? 28 : 16}
+              />
+            </span>
+          </ManagedAvatarMark>
           <span className={styles.tableNameText}>{name}</span>
           <SharedResourceBadge
             shared={row.is_shared}
@@ -353,7 +370,7 @@ export default function AgentExpertsTable({
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
         const switchChecked = state === "running" || state === "starting";
-        const isOwner = row.is_owner !== false;
+        const canManage = canManageExpert(row, user);
         const friendlyError =
           state === "failed" && row.last_error
             ? formatAgentError(row.last_error, t)
@@ -367,7 +384,7 @@ export default function AgentExpertsTable({
               >
                 {formatAgentState(state, t)}
               </Tag>
-              {isOwner && (
+              {canManage && (
                 <Switch
                   size="small"
                   checked={switchChecked}
@@ -413,6 +430,13 @@ export default function AgentExpertsTable({
       render: (model: string | null | undefined) => model || "—",
     },
     {
+      title: t("experts.table.backend", "后端"),
+      key: "backend",
+      width: 88,
+      align: "center",
+      render: (_value, row) => <BackendFlag config={row.config} />,
+    },
+    {
       title: t("experts.table.persona", "人格"),
       dataIndex: "persona_mbti",
       width: 120,
@@ -420,7 +444,7 @@ export default function AgentExpertsTable({
         <MbtiPersonaTag
           value={value}
           onClick={
-            row.is_owner !== false
+            canManageExpert(row, user)
               ? () => openMbtiCatalog(row.agent_id)
               : undefined
           }
@@ -436,11 +460,11 @@ export default function AgentExpertsTable({
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
         const chatReady = isAgentChatReady(state);
-        const isOwner = row.is_owner !== false;
+        const canManage = canManageExpert(row, user);
         const deleteConfirm = expertDeleteConfirm(row, t);
         return (
           <div className={styles.tableActions}>
-            {isOwner && (
+            {canManage && (
               <>
                 <Tooltip
                   title={
@@ -532,7 +556,7 @@ export default function AgentExpertsTable({
                 {t("experts.openChat", "对话")}
                 <ChevronRight size={13} />
               </button>
-            ) : isOwner &&
+            ) : canManage &&
               (state === "failed" ||
                 state === "stopped" ||
                 state === "created") ? (

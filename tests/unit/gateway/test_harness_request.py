@@ -14,6 +14,33 @@ from octop.infra.gateway.process.harness_request import build_content_from_messa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("channel_type", ["telegram", "qq"])
+@pytest.mark.parametrize("locale,label", [("en", "[Quoted message]"), ("zh", "[引用消息]")])
+@pytest.mark.parametrize("own_reply,explicit", [(False, False), (True, False), (True, True)])
+async def test_quoted_message_is_added_only_to_model_content(
+    channel_type, locale, label, own_reply, explicit
+):
+    msg = InboundMessage(
+        channel_id="tg",
+        channel_type=channel_type,
+        content=[TextContent(text="explain this")],
+        metadata={
+            "reply_to_text": "whole message",
+            "reply_to_is_own_bot": own_reply,
+            "reply_quote_text": "selection" if explicit else "",
+        },
+    )
+    result = await build_content_from_message(msg, locale=locale)
+    assert msg.text == "explain this"
+    if own_reply and not explicit:
+        assert result == "explain this"
+    else:
+        assert result.startswith(label)
+        assert ("selection" if explicit else "whole message") in result
+        assert result.endswith("explain this")
+
+
+@pytest.mark.asyncio
 async def test_group_context_is_rendered_as_background_inside_current_turn() -> None:
     msg = InboundMessage(
         channel_id="qq-1",
@@ -139,3 +166,24 @@ async def test_group_context_uses_anonymous_labels_instead_of_raw_ids() -> None:
     assert "[群成员2] 你怎么看？" in content
     assert "1468FCD" not in content
     assert "BD552189" not in content
+
+
+@pytest.mark.asyncio
+async def test_generic_inbound_text_extension_has_no_plugin_field_contract(monkeypatch):
+    from types import SimpleNamespace
+
+    from octop_harness.plugins import PluginRegistry
+
+    seen = []
+
+    def render(message, current_text, *, background, locale):
+        seen.append((current_text, background, locale))
+        return "custom-text: " + current_text
+
+    monkeypatch.setattr(
+        PluginRegistry, "all_inbound", lambda _: [SimpleNamespace(render_inbound_text=render)]
+    )
+    message = InboundMessage(channel_id="sample", content=[TextContent(text="hello")])
+    assert await build_content_from_message(message, locale="zh") == "custom-text: hello"
+    assert seen == [("hello", [], "zh")]
+    assert message.text == "hello"

@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
+import cx from "classnames";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
@@ -51,6 +52,7 @@ import styles from "./index.module.less";
 import { PluginIconView } from "./PluginIconView";
 import { PluginGroupTag } from "./PluginGroupTag";
 import { PluginCardMeta } from "./PluginCardMeta";
+import { PluginSettingsPanel } from "./PluginSettingsPanel";
 import { notifyPluginsChanged, PLUGINS_CHANGED_EVENT } from "./pluginsEvents";
 
 const { Text, Paragraph } = Typography;
@@ -414,7 +416,9 @@ export function InstalledPluginsPanel() {
 
       {showCardView ? (
         loading ? (
-          <CardSkeleton count={3} />
+          <div className={styles.loadingSkeleton}>
+            <CardSkeleton count={3} />
+          </div>
         ) : plugins.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -441,9 +445,7 @@ export function InstalledPluginsPanel() {
               return (
                 <article
                   key={row.id}
-                  className={`${styles.card} ${
-                    enabled ? "" : styles.cardDisabled
-                  }`}
+                  className={cx(styles.card, !enabled && styles.cardDisabled)}
                 >
                   <div className={styles.cardBody}>
                     <div className={styles.cardTop}>
@@ -616,6 +618,10 @@ export function InstalledPluginsPanel() {
               />
             </div>
 
+            {detail.enabled !== false && detail.settings_ui?.entry && (
+              <PluginSettingsPanel plugin={detail} />
+            )}
+
             <ResourceVisibilityCollapse
               allowOwner={false}
               visibility={detail.visibility === "groups" ? "groups" : "all"}
@@ -664,9 +670,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colPath")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.path || "—"}
                   </span>
                 </div>
@@ -674,9 +678,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colUi")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.ui?.entry || "—"}
                   </span>
                 </div>

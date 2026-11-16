@@ -497,3 +497,19 @@ def test_channel_reload_preserves_class_until_source_changes(tmp_path: Path) -> 
     source.write_text(source.read_text() + "\n# updated implementation\n")
     third = manager.load_installed(install_deps=False)[0].channels[0].channel_cls
     assert third is not first
+
+
+def test_settings_ui_is_independent_from_resource_ui(tmp_path: Path) -> None:
+    (tmp_path / "plugin.yaml").write_text(
+        "settings_ui:\n  entry: ui/dist/settings.js\n", encoding="utf-8"
+    )
+    dist = tmp_path / "ui" / "dist"
+    dist.mkdir(parents=True)
+    (dist / "settings.js").write_text("export function createSettingsPanel() {}", encoding="utf-8")
+    assert parse_plugin_ui_meta(tmp_path) is None
+    assert parse_plugin_ui_meta(tmp_path, key="settings_ui") == {
+        "entry": "ui/dist/settings.js",
+        "manifest": "ui/dist/manifest.json",
+    }
+    (dist / "settings.js").unlink()
+    assert parse_plugin_ui_meta(tmp_path, key="settings_ui") is None

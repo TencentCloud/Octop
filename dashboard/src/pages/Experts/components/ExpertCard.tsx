@@ -2,6 +2,7 @@
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
 import { CheckCircle } from "lucide-react";
+import cx from "classnames";
 import { pickLocale } from "../../../utils/localizedText";
 import { ExpertIcon, resolveExpertAvatarUrl } from "./iconForName";
 import type { QuickPrompt } from "./welcomeManifest";
@@ -58,9 +59,10 @@ export const ExpertCard = memo(function ExpertCard({
       {/* Icon + title */}
       <div className={styles.expertTemplateHeader}>
         <div
-          className={`${styles.agentCardIcon} ${
-            hasPortrait ? styles.agentCardPortrait : ""
-          }`}
+          className={cx(
+            styles.agentCardIcon,
+            hasPortrait && styles.agentCardPortrait,
+          )}
           style={
             hasPortrait
               ? undefined

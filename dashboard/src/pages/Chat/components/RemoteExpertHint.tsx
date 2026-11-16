@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "antd";
+import cx from "classnames";
 import { iconForName } from "../../Experts/components/iconForName";
 import styles from "../index.module.less";
 
@@ -39,9 +40,10 @@ export default function RemoteExpertHint({
   return (
     <Tooltip title={tip} mouseEnterDelay={0.35}>
       <span
-        className={`${styles.remoteExpertFlag}${
-          compact ? ` ${styles.remoteExpertFlagCompact}` : ""
-        }`}
+        className={cx(
+          styles.remoteExpertFlag,
+          compact && styles.remoteExpertFlagCompact,
+        )}
         aria-label={tip}
         onClick={(event) => event.stopPropagation()}
       >

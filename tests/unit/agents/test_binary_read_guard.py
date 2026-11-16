@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from octop.infra.agents.middleware.binary_read_guard import read_file_block_reason
+from unittest.mock import AsyncMock
+
+import pytest
+from langchain_core.messages import HumanMessage
+from langgraph.prebuilt.tool_node import ToolCallRequest
+
+from octop.infra.agents.middleware.binary_read_guard import (
+    BinaryReadGuardMiddleware,
+    _workspace_path,
+    read_file_block_reason,
+)
 
 
 def test_blocks_inbound_pdf() -> None:
@@ -78,3 +88,68 @@ def test_blocks_binary_mime_with_an_unknown_extension() -> None:
 
 def test_blocks_pdf_anywhere() -> None:
     assert read_file_block_reason("docs/report.pdf") is not None
+
+
+def test_workspace_path_accepts_inbound_prefix() -> None:
+    assert _workspace_path("inbound/1793159656_iron-man.pptx") == "inbound/1793159656_iron-man.pptx"
+
+
+def test_workspace_path_strips_virtual_prefix() -> None:
+    assert (
+        _workspace_path("/.octop/workspaces/C10WX7/inbound/1793159656_iron-man.pptx")
+        == "inbound/1793159656_iron-man.pptx"
+    )
+
+
+@pytest.mark.asyncio
+async def test_inbound_pptx_is_blocked_without_reading() -> None:
+    request = ToolCallRequest(
+        tool_call={
+            "name": "read_file",
+            "args": {"file_path": "inbound/1793159656_iron-man.pptx"},
+            "id": "call-1",
+        },
+        tool=None,
+        state={
+            "messages": [
+                HumanMessage(
+                    content="看看",
+                    additional_kwargs={
+                        "octop_inbound_attachments": [
+                            {
+                                "workspace_path": "/.octop/workspaces/C10WX7/inbound/1793159656_iron-man.pptx",
+                                "media_type": (
+                                    "application/vnd.openxmlformats-officedocument"
+                                    ".presentationml.presentation"
+                                ),
+                            }
+                        ]
+                    },
+                )
+            ]
+        },
+        runtime=None,  # type: ignore[arg-type]
+    )
+    handler = AsyncMock()
+
+    result = await BinaryReadGuardMiddleware().awrap_tool_call(request, handler)
+
+    handler.assert_not_awaited()
+    assert getattr(result, "status", None) == "error"
+    assert "binary" in str(getattr(result, "content", "")).lower()
+
+
+@pytest.mark.asyncio
+async def test_inbound_text_still_reaches_read_file() -> None:
+    request = ToolCallRequest(
+        tool_call={"name": "read_file", "args": {"file_path": "inbound/notes.txt"}, "id": "call-1"},
+        tool=None,
+        state={},
+        runtime=None,  # type: ignore[arg-type]
+    )
+    handler = AsyncMock(return_value="ok")
+
+    result = await BinaryReadGuardMiddleware().awrap_tool_call(request, handler)
+
+    assert result == "ok"
+    assert handler.await_args.args[0] is request

@@ -197,6 +197,59 @@ async def test_cronjob_create_uses_configurable_session_key(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
+async def test_cronjob_create_pins_history_thread(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    agent_id = new_ulid()
+    user_id = services.repos.user_repo.create(username="hist", password_hash="x", role="user")
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="a")
+    channel_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+    thread = MagicMock()
+    thread.agent_id = agent_id
+    thread.user_id = user_id
+    thread.session_key = channel_key
+    mgr = _make_manager(services)
+    mgr._gateway.thread_registry.get_thread = MagicMock(return_value=thread)
+    create = _tool_by_name(build_cronjob_tools(mgr), "cronjob_create")
+
+    with _configurable(agent_id=agent_id, user=str(user_id), thread_id="thr_current"):
+        out = await create.ainvoke(
+            {
+                "trigger": "interval:30",
+                "prompt": "stay here",
+                "name": "stay",
+                "session_target": "history",
+            }
+        )
+    data = json.loads(out)
+    assert data["session_key"] == "thread:thr_current"
+
+
+@pytest.mark.asyncio
+async def test_cronjob_create_fresh_thread_ignores_history_pin(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    agent_id = new_ulid()
+    user_id = services.repos.user_repo.create(username="fresh", password_hash="x", role="user")
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="a")
+    mgr = _make_manager(services)
+    create = _tool_by_name(build_cronjob_tools(mgr), "cronjob_create")
+    channel_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+
+    with _configurable(agent_id=agent_id, user=str(user_id), thread_id="thr_current"):
+        out = await create.ainvoke(
+            {
+                "trigger": "interval:30",
+                "prompt": "new chat",
+                "name": "new",
+                "session_target": "history",
+                "fresh_thread": True,
+            }
+        )
+    data = json.loads(out)
+    assert data["session_key"] == channel_key
+    assert data["fresh_thread"] is True
+
+
+@pytest.mark.asyncio
 async def test_cronjob_create_persists_task_type(tmp_path: Path) -> None:
     services = _make_services(tmp_path)
     agent_id = new_ulid()

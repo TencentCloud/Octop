@@ -472,6 +472,57 @@ async def test_summary_agent_id_filter_for_user(env: Any) -> None:
     assert buckets[0]["total_tokens"] == 150
 
 
+async def test_repo_summary_by_user(env: Any) -> None:
+    _c, srv, _admin_auth, _alice_auth, ctx = env
+    repo = srv.services.usage_repo
+    repo.record(agent_id="x", user_id=1, input_tokens=100, output_tokens=50)
+    repo.record(agent_id="y", user_id=ctx["alice_id"], input_tokens=10, output_tokens=5)
+    repo.record(agent_id="y", user_id=ctx["alice_id"], input_tokens=4, output_tokens=1)
+    result = repo.summary(window="last_30d", granularity="by_user")
+    by_id = {b["key"]: b for b in result["buckets"]}
+    assert by_id["1"]["total_tokens"] == 150
+    assert by_id["1"]["turns"] == 1
+    assert by_id[str(ctx["alice_id"])]["total_tokens"] == 20
+    assert by_id[str(ctx["alice_id"])]["turns"] == 2
+
+
+async def test_by_user_summary_labels_display_name(env: Any) -> None:
+    c, srv, admin_auth, alice_auth, ctx = env
+    srv.services.user_repo.set_display_name(ctx["alice_id"], "爱丽丝")
+    srv.services.usage_repo.record(
+        agent_id="y",
+        user_id=ctx["alice_id"],
+        input_tokens=10,
+        output_tokens=5,
+    )
+    srv.services.usage_repo.record(
+        agent_id="x",
+        user_id=1,
+        input_tokens=100,
+        output_tokens=50,
+    )
+
+    r = await c.get(
+        "/api/admin/usage/summary?granularity=by_user&window=all",
+        headers=admin_auth,
+    )
+    assert r.status_code == 200
+    buckets = {b["key"]: b for b in r.json()["buckets"]}
+    assert buckets[str(ctx["alice_id"])]["label"] == "爱丽丝"
+    assert buckets[str(ctx["alice_id"])]["total_tokens"] == 15
+    assert buckets["1"]["total_tokens"] == 150
+
+    own = await c.get(
+        "/api/usage/summary?granularity=by_user&window=all",
+        headers=alice_auth,
+    )
+    assert own.status_code == 200
+    own_buckets = own.json()["buckets"]
+    assert len(own_buckets) == 1
+    assert own_buckets[0]["key"] == str(ctx["alice_id"])
+    assert own_buckets[0]["label"] == "爱丽丝"
+
+
 async def test_by_agent_summary_labels_other_users_experts(env: Any) -> None:
     """Admin rollup names experts the caller does not own."""
     c, srv, admin_auth, alice_auth, ctx = env

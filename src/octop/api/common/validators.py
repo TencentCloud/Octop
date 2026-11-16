@@ -17,10 +17,12 @@ def assert_user_backend_root_dirs(
 ) -> None:
     """Reject local backend ``root_dir`` values that fail denylist or user policy.
 
-    When *policy_repo* is provided, ``local_shell`` / ``filesystem`` roots must
-    stay under the user's ``workspace_root_dir`` (if set). All authenticated
-    users may otherwise select host paths outside home (UI still defaults to
-    home). Sensitive pseudo-fs mounts remain blocked.
+    When *policy_repo* is provided, explicit ``local_shell`` / ``filesystem``
+    roots must stay under the user's ``workspace_root_dir`` (if set). A missing
+    root or the host filesystem root is left for create/update to snap onto
+    that directory. All authenticated users may otherwise select host paths
+    outside home (UI still defaults to home). Sensitive pseudo-fs mounts remain
+    blocked.
     """
     if backend is None:
         return

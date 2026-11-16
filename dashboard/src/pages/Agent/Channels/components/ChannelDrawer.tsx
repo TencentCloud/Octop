@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import type { Rule } from "antd/es/form";
 import { QRCodeSVG } from "qrcode.react";
+import cx from "classnames";
 import {
   CHANNEL_FIELDS,
   CHANNEL_ICONS,
@@ -172,19 +173,40 @@ interface ChannelDrawerProps {
 function FormItemForField({
   field,
   disabled = false,
+  editing = false,
 }: {
   field: ChannelField;
+  editing?: boolean;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
     ? t(field.label)
     : field.label;
+  const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
+  if (field.type === "select") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        initialValue={initialValue}
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <Select
+          options={field.options?.map((value) => ({
+            value,
+            label: t(`channels.telegram_option_${value}`),
+          }))}
+        />
+      </Form.Item>
+    );
+  }
   if (field.type === "switch") {
     return (
       <Form.Item
         name={field.name}
         label={label}
+        initialValue={initialValue}
         valuePropName="checked"
         extra={field.helpKey ? t(field.helpKey) : undefined}
       >
@@ -222,20 +244,32 @@ function FormItemForField({
   }
   if (
     field.name === "allowed_channel_ids" ||
-    field.name === "allowed_user_ids"
+    field.name === "allowed_user_ids" ||
+    field.name === "allowed_chat_ids"
   ) {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
         try {
           normalizeChannelFieldValue(field.name, value);
         } catch {
-          throw new Error(t("channels.discordInvalidIds"));
+          throw new Error(
+            t(
+              field.name === "allowed_chat_ids"
+                ? "channels.telegramInvalidChatIds"
+                : "channels.discordInvalidIds",
+            ),
+          );
         }
       },
     });
   }
   return (
-    <Form.Item name={field.name} label={label} rules={rules}>
+    <Form.Item
+      name={field.name}
+      label={label}
+      rules={rules}
+      extra={field.helpKey ? t(field.helpKey) : undefined}
+    >
       <Input1
         disabled={disabled}
         placeholder={field.placeholder}
@@ -275,9 +309,11 @@ function PolicyTagGroup<T extends string>({
         return (
           <button
             key={option.value}
-            className={`${styles.qqGroupPolicyTag} ${
-              checked ? styles.qqGroupPolicyTagChecked : ""
-            } ${option.disabled ? styles.qqGroupPolicyTagDisabled : ""}`}
+            className={cx(
+              styles.qqGroupPolicyTag,
+              checked && styles.qqGroupPolicyTagChecked,
+              option.disabled && styles.qqGroupPolicyTagDisabled,
+            )}
             type="button"
             role="radio"
             aria-checked={checked}
@@ -1962,11 +1998,20 @@ export function ChannelDrawer({
                   style={{ marginBottom: 16 }}
                 />
               )}
+              {selectedKind === "telegram" && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("channels.telegramSetupHelp")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               {hasSchema ? (
                 fields!.map((f) => (
                   <FormItemForField
                     key={f.name}
                     field={f}
+                    editing={isEdit}
                     disabled={
                       selectedKind === "discord" &&
                       f.name === "allowed_channel_ids" &&

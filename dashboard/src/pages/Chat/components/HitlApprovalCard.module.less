@@ -107,13 +107,35 @@
 }
 
 .actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 6px;
   padding-top: 12px;
   border-top: 1px solid var(--fn-border-secondary);
+}
+
+.allowAllLink {
+  display: inline-block;
+  margin-top: 9px;
+  padding: 0;
+  font-size: 11px;
+  color: var(--fn-text-tertiary, #8a9099);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+
+  &:hover {
+    color: var(--fn-color-brand);
+  }
+}
+
+@media (max-width: 420px) {
+  .actions {
+    grid-template-columns: 1fr;
+  }
 }
 
 .actionButton {

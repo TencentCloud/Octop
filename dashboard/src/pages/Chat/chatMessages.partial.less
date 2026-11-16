@@ -368,7 +368,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  overflow: hidden;
+  overflow: visible;
   line-height: 0;
 }
 
@@ -728,14 +728,11 @@
   }
 }
 
-.inlineToolStatusLive {
+.inlineToolLiveDots {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
+  gap: 3px;
   flex-shrink: 0;
-  color: var(--fn-color-brand);
-  font-size: 12px;
 
   .thinkingDot {
     width: 5px;
@@ -1291,6 +1288,54 @@
     color 0.15s ease;
 }
 
+.fileChangeList {
+  justify-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fileChangeRow {
+  margin-top: 0;
+}
+
+.fileChangeName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileChangePending,
+.fileChangeRowStats {
+  flex-shrink: 0;
+}
+
+.fileChangePending {
+  color: var(--fn-text-tertiary);
+  font-weight: 400;
+}
+
+.fileChangeRowStats {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fileChangeAdd {
+  color: var(--fn-color-success, #389e0d);
+}
+
+.fileChangeDel {
+  color: var(--fn-color-danger, #cf1322);
+}
+
 .processSummaryToggle {
   display: inline-flex;
   align-items: center;
@@ -1330,11 +1375,25 @@
   gap: 6px;
   min-width: 0;
   color: var(--fn-color-brand);
+}
+
+.processLiveDots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
 
   .thinkingDot {
     width: 5px;
     height: 5px;
-    flex-shrink: 0;
+
+    &:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.4s;
+    }
   }
 }
 
