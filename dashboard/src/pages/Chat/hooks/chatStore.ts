@@ -32,6 +32,7 @@ import { isChatStreamError } from "../../../utils/chatStreamError";
 import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { hasPendingHitl } from "../utils/pendingHitl";
+import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import {
   findSpeakerTextToContinue,
@@ -2282,8 +2283,10 @@ function upsertToolCall(
       const m = state.messages[idx];
       const prevArgs = m.toolData?.arguments ?? "";
       const nextArgs = prevArgs + (chunk.args ?? "");
-      const nextName = chunk.name || m.toolData?.name;
-      const nextDisplay = chunk.display_name || m.toolData?.displayName;
+      const nextName = preferToolName(chunk.name, m.toolData?.name);
+      const nextDisplay = isPlaceholderToolName(chunk.name)
+        ? m.toolData?.displayName
+        : chunk.display_name || m.toolData?.displayName;
       const nextCallId =
         m.toolData?.callId?.startsWith("idx-") && id
           ? id

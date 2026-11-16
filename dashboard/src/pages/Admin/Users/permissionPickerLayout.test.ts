@@ -22,6 +22,7 @@ const CATALOG = [
   "bridge",
   "terminal",
   "browser",
+  "cloud",
   "desktop",
   "mobile",
   "users",
@@ -155,7 +156,7 @@ describe("buildPermissionPickerGroups", () => {
             kind: "page",
             id: "workbench",
             title: "nav.workbench",
-            keys: ["terminal", "browser"],
+            keys: ["terminal", "browser", "cloud"],
           },
           {
             kind: "page",

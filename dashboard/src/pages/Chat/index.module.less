@@ -15,6 +15,8 @@
 
 /* ---------- Page shell ---------- */
 .chatPage {
+  /* Title, messages, and composer stay one column; the right dock is the other. */
+  --chat-main-min: 320px;
   /* Shared column metrics: title bar + composer alignment. */
   --chat-column-max: 960px;
   --chat-column-pad-x: 32px;
@@ -46,7 +48,7 @@
   display: flex;
   flex-direction: column;
   container: chat-main / inline-size;
-  min-width: 320px;
+  min-width: var(--chat-main-min, 320px);
   height: 100%;
   overflow: hidden;
   background: var(--fn-bg-elevated, #fff);
@@ -140,8 +142,9 @@
   display: flex;
   align-items: center;
   flex: 0 0 var(--fn-chat-chrome-height, 58px);
+  width: 100%;
   --chat-title-pad-x: var(--chat-column-pad-x);
-  padding-inline-start: var(--chat-title-pad-x);
+  padding-inline: var(--chat-title-pad-x);
   box-sizing: border-box;
 }
 
@@ -153,12 +156,23 @@
   justify-content: flex-start;
   gap: 8px;
   box-sizing: border-box;
+  /* Room for the hover actions, which hang off the title without a gap. */
+  padding-inline-end: 60px;
 }
 
 .chatTitleLeadingIcon {
   flex-shrink: 0;
   color: var(--chat-title-color);
   opacity: 1;
+}
+
+.chatTitleCluster {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
 }
 
 .chatTitleHeading {
@@ -193,10 +207,81 @@
 }
 
 .chatTitleActions {
+  position: absolute;
+  inset-inline-start: 100%;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   flex-shrink: 0;
   gap: 4px;
+  padding-inline-start: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--fn-transition-fast, 0.15s ease);
+}
+
+.chatTitleLeft:hover .chatTitleActions,
+.chatTitleLeft:focus-within .chatTitleActions,
+.chatTitleActionsOpen {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .chatTitleActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Clears caption buttons when this row reaches the window edge. */
+.chatSideToggleWrap {
+  margin-inline-start: auto;
+  margin-inline-end: max(
+    0px,
+    calc(var(--window-controls-inset-end, 0px) - var(--chat-title-pad-x, 32px))
+  );
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.chatSideToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  /* Same tile as the nav fold icon, one step lighter than title actions. */
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-text-primary);
+    background: var(--fn-sidebar-item-hover);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+/* Side-by-side dock: the toggle sits against the panel, not the window edge.
+   The chat column keeps --chat-main-min; the dock shrinks beside it. */
+.chatPageWithRightDock .chatSideToggleWrap {
+  margin-inline-end: 0;
 }
 
 .chatTitleEditBtn {

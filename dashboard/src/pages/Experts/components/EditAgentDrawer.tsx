@@ -59,6 +59,9 @@ import {
   buildAgentRuntimeRequest,
   omitAgentRuntimeConfig,
   readAgentRuntimeFormValues,
+  type AgentCompactionFormValues,
+  type AgentRuntimeApiFields,
+  type AgentRuntimeFormValues,
 } from "../../../utils/agentRuntimeConfig";
 import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import EditExpertDrawerTitle from "./EditExpertDrawerTitle";
@@ -74,7 +77,7 @@ import {
 } from "./welcomeManifest";
 import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
-  buildBackendSpec,
+  backendSpecForAgentSave,
   DEFAULT_BACKEND,
   ensureBubblewrapAfterProbe,
   ensureBwrapMessage,
@@ -95,18 +98,14 @@ import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import styles from "../index.module.less";
 
-interface AgentDetail {
+interface AgentDetail extends AgentRuntimeApiFields {
   id: string;
   name: string;
   description: string | null;
   default_model: string | null;
   color?: string | null;
   icon_url?: string | null;
-  max_iters?: number | null;
-  max_input_length?: number | null;
-  temperature?: number | null;
-  top_p?: number | null;
-  max_tokens?: number | null;
+  compaction?: AgentCompactionFormValues | null;
   welcome_message?: string | null;
   is_shared?: boolean;
   visibility?: ResourceVisibilityMode | null;
@@ -144,7 +143,7 @@ function subagentFilePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
-interface EditFormValues {
+interface EditFormValues extends AgentRuntimeFormValues {
   name: string;
   description: string;
   welcome_message?: string;
@@ -154,11 +153,6 @@ interface EditFormValues {
   composite_default: string;
   root_dir?: string;
   workspace_dir?: string;
-  max_iters?: number;
-  max_input_length?: number;
-  temperature?: number;
-  top_p?: number;
-  max_tokens?: number;
   enable_trajectory?: boolean;
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
@@ -452,7 +446,9 @@ function EditAgentDrawerBody({
         }
       }
 
-      const backendSpec = buildBackendSpec(
+      const backendSpec = backendSpecForAgentSave(
+        agent.kind,
+        agentConfig.backend,
         values.backend_choice,
         values.composite_default ?? DEFAULT_BACKEND,
         pathMappings,
@@ -466,8 +462,13 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
         enable_trajectory: values.enable_trajectory === true,
-        conversation_mode: values.conversation_mode,
+        ...(agent.kind === "managed"
+          ? {}
+          : { conversation_mode: values.conversation_mode }),
       });
+      if (agent.kind === "managed") {
+        delete nextConfig.conversation_mode;
+      }
       delete nextConfig.color;
       delete nextConfig.icon_name;
       delete nextConfig.icon_url;
@@ -512,17 +513,21 @@ function EditAgentDrawerBody({
           is_shared: expertVisibility !== "owner",
           visibility: expertVisibility,
           group_ids: expertVisibility === "groups" ? expertGroupIds : [],
-          default_model: defaultModelFromForm(values.default_model),
+          ...(agent.kind === "managed"
+            ? {}
+            : {
+                default_model: defaultModelFromForm(values.default_model),
+                knowledge_base_ids: stored.knowledge_base_ids ?? [],
+                mcp_servers: stored.mcp_servers ?? [],
+                ...buildAgentRuntimeRequest(values, { clearMissing: true }),
+              }),
           color: nextColor,
           config: nextConfig,
           welcome_message: stored.welcome_message ?? "",
-          knowledge_base_ids: stored.knowledge_base_ids ?? [],
-          mcp_servers: stored.mcp_servers ?? [],
-          ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
 
-      if (!remote && !skillPackagesSupported) {
+      if (!remote && agent.kind !== "managed" && !skillPackagesSupported) {
         try {
           await skillPackagesApi.replaceMounted(agent.agent_id, []);
         } catch (pkgErr) {
@@ -556,6 +561,7 @@ function EditAgentDrawerBody({
     }
   }, [
     agent.agent_id,
+    agent.kind,
     agent.state,
     agentConfig,
     remote,
@@ -879,7 +885,7 @@ function EditAgentDrawerBody({
                 className={styles.textAssistField}
               >
                 <Input.TextArea
-                  autoSize={{ minRows: 2, maxRows: 5 }}
+                  rows={3}
                   placeholder={t("experts.welcomeMessagePlaceholder")}
                 />
               </Form.Item>
@@ -893,18 +899,20 @@ function EditAgentDrawerBody({
                   form.setFieldsValue({ welcome_message: text })
                 }
               />
-              <AgentBackendFields
-                backends={backends}
-                backendsLoading={backendsLoading}
-                backendChoice={backendChoice}
-                pathMappings={pathMappings}
-                rootDirMode="edit"
-                disabled
-                skipHostFilesystem={remote}
-                onAddPathMapping={addPathMapping}
-                onRemovePathMapping={removePathMapping}
-                onUpdatePathMapping={updatePathMapping}
-              />
+              {agent.kind === "managed" ? null : (
+                <AgentBackendFields
+                  backends={backends}
+                  backendsLoading={backendsLoading}
+                  backendChoice={backendChoice}
+                  pathMappings={pathMappings}
+                  rootDirMode="edit"
+                  disabled
+                  skipHostFilesystem={remote}
+                  onAddPathMapping={addPathMapping}
+                  onRemovePathMapping={removePathMapping}
+                  onUpdatePathMapping={updatePathMapping}
+                />
+              )}
               <ResourceVisibilityFormItem
                 allowOwner
                 visibility={expertVisibility}
@@ -921,41 +929,47 @@ function EditAgentDrawerBody({
           </div>
           <MoreConfigCollapse>
             <Form form={form} layout="vertical" size="middle">
-              <Form.Item
-                name="conversation_mode"
-                label={t("experts.defaultModeLabel")}
-                tooltip={t("experts.defaultModeHint")}
-              >
-                <Select
-                  options={CONVERSATION_MODES.map((mode) => ({
-                    value: mode,
-                    label: t(`chat.conversationMode.${mode}`),
-                  }))}
-                />
-              </Form.Item>
-              <Form.Item
-                name="default_model"
-                label={t("experts.defaultModelLabel")}
-              >
-                <Select
-                  loading={modelsLoading}
-                  placeholder={t("experts.defaultModelPlaceholder")}
-                  options={buildModelSelectOptions(
-                    models,
-                    t("experts.defaultModelAuto"),
-                  )}
-                  showSearch
-                  filterOption={(input, opt) =>
-                    ((opt?.label as string) ?? "")
-                      .toLowerCase()
-                      .includes(input.toLowerCase())
-                  }
-                />
-              </Form.Item>
+              {agent.kind === "managed" ? null : (
+                <Form.Item
+                  name="conversation_mode"
+                  label={t("experts.defaultModeLabel")}
+                  tooltip={t("experts.defaultModeHint")}
+                >
+                  <Select
+                    options={CONVERSATION_MODES.map((mode) => ({
+                      value: mode,
+                      label: t(`chat.conversationMode.${mode}`),
+                    }))}
+                  />
+                </Form.Item>
+              )}
+              {agent.kind === "managed" ? null : (
+                <Form.Item
+                  name="default_model"
+                  label={t("experts.defaultModelLabel")}
+                >
+                  <Select
+                    loading={modelsLoading}
+                    placeholder={t("experts.defaultModelPlaceholder")}
+                    options={buildModelSelectOptions(
+                      models,
+                      t("experts.defaultModelAuto"),
+                    )}
+                    showSearch
+                    filterOption={(input, opt) =>
+                      ((opt?.label as string) ?? "")
+                        .toLowerCase()
+                        .includes(input.toLowerCase())
+                    }
+                  />
+                </Form.Item>
+              )}
 
               <AgentTrajectoryField />
-              <ExpertComposerDefaultsFields agentId={agent.agent_id} />
-              {!skillPackagesSupported ? (
+              {agent.kind === "managed" ? null : (
+                <ExpertComposerDefaultsFields agentId={agent.agent_id} />
+              )}
+              {agent.kind !== "managed" && !skillPackagesSupported ? (
                 <Alert
                   type="info"
                   showIcon
@@ -1378,22 +1392,24 @@ function EditAgentDrawerBody({
                 />
               </div>
             )}
-            <Collapse
-              ghost
-              className={styles.drawerCollapse}
-              style={{ width: "100%" }}
-              items={[
-                {
-                  key: "advanced",
-                  label: t("experts.advancedOptions"),
-                  children: (
-                    <Form form={form} layout="vertical" size="middle">
-                      <AgentAdvancedConfigFields />
-                    </Form>
-                  ),
-                },
-              ]}
-            />
+            {agent.kind === "managed" ? null : (
+              <Collapse
+                ghost
+                className={styles.drawerCollapse}
+                style={{ width: "100%" }}
+                items={[
+                  {
+                    key: "advanced",
+                    label: t("experts.advancedOptions"),
+                    children: (
+                      <Form form={form} layout="vertical" size="middle">
+                        <AgentAdvancedConfigFields />
+                      </Form>
+                    ),
+                  },
+                ]}
+              />
+            )}
           </MoreConfigCollapse>
         </>
       )}
