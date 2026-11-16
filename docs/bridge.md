@@ -40,9 +40,6 @@
 └─────────────────────┘                                       └─────────────────────┘
 ```
 
-![图 2-1 总体架构：两台 Octop 经 Bridge WebSocket 互联](./assets/bridge-architecture.png)
-<!-- 生图建议：扁平化技术架构示意图，16:9。左侧一台服务器图标标「本机 Octop」，右侧标「对端 Octop」，中间一条加粗双向箭头标「Bridge WebSocket（双向可发起）」，细注「HTTP 隧道 + turn 流式多路复用」。两侧各自画出：Dashboard（浏览器仅连本机）、localhost/peer API、infra/bridge 模块、本地/对端 agent+harness。强调机机总线是独立 Bridge WS，不复用浏览器 Hub。现代 SaaS 蓝灰配色、等宽无衬线、留白充足。（注意：含精确文字的架构图建议用 Mermaid/Excalidraw 生成；AI 生图只作概念示意图，文字以图注补充） -->
-
 - **Harness / GlobalProcessor** 保持单机语义；桥只负责把请求送到对端执行并把响应送回。
 - Dashboard 的 `WebSocketHub` 仅服务浏览器↔本机；**机机总线是独立的 Bridge WS**，不要复用 Hub。
 - NAT：对端 HTTP 往往不可达时，业务走已建立的 Bridge WS 隧道（尤其云端访问家里的本地实例）。
@@ -79,8 +76,21 @@
 4. 建立 Bridge WS；之后业务优先走隧道（尤其反向访问 NAT 后实例）。
 5. 密码与 token **加密落库**；重连优先 refresh，失败再用密码登录。
 
-![图 4-1 配对流程：从填表到建立 Bridge WS](./assets/bridge-pairing-flow.png)
-<!-- 生图建议：横向步骤/时序图。①用户填 base_url+用户名+密码；②本机发 HTTP 登录对端换 token（箭头指向对端）；③生成 ULID connection_id；④握手帧确认后两边各存同一 id（两个数据库图标显示相同 id）；⑤建立 Bridge WS，业务优先走隧道。编号圆点或泳道呈现，蓝灰科技风。（精确流程图建议用 Mermaid，AI 生图作概念示意） -->
+图 4-1 配对流程：从填表到建立 Bridge WS
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant L as 本机 Octop
+    participant P as 对端 Octop
+    U->>L: 填 base_url + username + password
+    L->>P: POST /api/auth/login 换 token
+    P-->>L: 返回 token
+    L->>L: 生成 connection_id（ULID）
+    L->>P: 建立 Bridge WS（握手帧含 connection_id 与用户证明）
+    P-->>L: hello_ack，两边各存同一 id
+    Note over L,P: 业务优先走隧道（反向访问 NAT 后实例）
+```
 
 ### 4.2 存储（示意）
 
@@ -127,9 +137,6 @@
 - 大 body（上传）分片；支持取消与超时。
 - SSE：v1 可不透传或单独标记；实时对话用 §6 的 turn 流，避免与 HTTP 隧道搅在一起。
 
-![图 5-1 HTTP 隧道帧流转：Bridge WS 上的请求/响应/错误/取消帧](./assets/bridge-tunnel-frames.png)
-<!-- 生图建议：展示一条 Bridge WS 管道上流动的四类消息气泡：tunnel.request（id/method/path/body）、tunnel.response（status/body/chunks/done）、tunnel.error、tunnel.cancel。标注「大 body 分片」「支持取消/超时」。画成消息流气泡，蓝灰风。（含文字帧名建议用 Mermaid 序列图，AI 生图作概念示意） -->
-
 ### 5.2 本机路由（浏览器只打本机）
 
 1. Dashboard 请求本机（列表、history、upload、chat 等）。
@@ -139,8 +146,18 @@
    - 将 status/body 原样返回浏览器。
 3. 本地真实 agent 仍走现有代码，零隧道。
 
-![图 5-2 本机路由：浏览器只打本机，bridge:* 目标改走隧道](./assets/bridge-routing.png)
-<!-- 生图建议：路由判断图。浏览器→本机 API；本机 router 用菱形判断目标是否为 bridge:{connection_id}:{agent_id}：若是则改写真实 id 并经隧道转发对端、原样回传（蓝色「隧道路径」）；若本地真实 agent 则零隧道走现有代码（绿色「本地路径」）。双色区分两条分支。（建议用 Mermaid 流程图，AI 生图作概念示意） -->
+图 5-2 本机路由：浏览器只打本机，bridge:* 目标改走隧道
+
+```mermaid
+flowchart TD
+    B[浏览器] -->|HTTP| A[本机 API]
+    A --> R{"目标是 bridge:{connection_id}:{agent_id}?"}
+    R -->|是| W["path 内 agent id 改写为对端真实 id"]
+    W -->|经该 connection 隧道| P[对端]
+    P -->|status/body 原样返回| B
+    R -->|否| N[本地真实 agent 走现有代码]
+    N -->|零隧道| B
+```
 
 ## 6. 远程专家与对话
 
@@ -158,8 +175,21 @@
 - 同一条 Bridge WS 上：**HTTP 隧道**与 **turn 流式帧**多路复用。
 - Chat dock「远程浏览器」在 `bridge:*` 专家下经隧道读对端 `env-status` / `harness-sessions` / `handoff`，画面走显式 `browser.*` 中继（`WS /api/bridge/connections/{id}/browser-stream/ws`）；独立 Remote Browser 页与 install/录制仍打本机。
 
-![图 6-1 远程对话中继：前端→本机 chat WS→对端 harness→chunk 回传](./assets/bridge-chat-relay.png)
-<!-- 生图建议：远程专家对话时序/泳道图。泳道：浏览器 / 本机 bridge / 对端 harness。前端→本机 /api/agents/bridge:…/chat/ws；本机识别 bridge:* 不启本地 harness，把 user_turn/subscribe 转对端对话通道；对端 GlobalProcessor→harness 产出 chunk，经桥回传，本机再推浏览器。底部注「同一 Bridge WS 上 HTTP 隧道与 turn 流多路复用」。蓝灰风。（精确时序建议用 Mermaid，AI 生图作概念示意） -->
+图 6-1 远程对话中继：前端→本机 chat WS→对端 harness→chunk 回传
+
+```mermaid
+sequenceDiagram
+    participant B as 浏览器
+    participant L as 本机 bridge
+    participant P as 对端 harness
+    B->>L: /api/agents/bridge:…/chat/ws
+    L->>L: 识别 bridge:*，不启本地 harness
+    L->>P: user_turn / subscribe 转对端对话通道
+    P->>P: GlobalProcessor → harness
+    P-->>L: chunk 回传
+    L-->>B: 推给浏览器
+    Note over L,P: 同一 Bridge WS 上 HTTP 隧道与 turn 流多路复用
+```
 
 ### 6.3 会话与历史
 
@@ -174,8 +204,21 @@
 - 本机隧道转发对端同名 upload，文件落入对端 `inbound/`。
 - 预览/下载由本机代理（再隧道 GET），避免浏览器直连对端。
 
-![图 6-2 附件代理：上传经隧道落对端 inbound，本机只代理](./assets/bridge-attachment-proxy.png)
-<!-- 生图建议：附件上传代理图。前端 POST 本机 /upload；本机隧道转发对端同名 upload，文件落入对端 inbound/（强调「文件只在对端落盘、本机只代理」）；预览/下载由本机代理（再隧道 GET）避免浏览器直连对端。箭头带文件图标，蓝色隧道路径突出。蓝灰风。（建议用 Mermaid，AI 生图作概念示意） -->
+图 6-2 附件代理：上传经隧道落对端 inbound，本机只代理
+
+```mermaid
+sequenceDiagram
+    participant B as 浏览器
+    participant L as 本机（只代理）
+    participant P as 对端（专家所在侧）
+    B->>L: POST /api/agents/bridge:…/upload
+    L->>P: 隧道转发对端同名 upload
+    Note over P: 文件落入对端 inbound/
+    B->>L: 预览 / 下载
+    L->>P: 隧道 GET 对端文件
+    P-->>L: 返回文件
+    L-->>B: 本机代理回传
+```
 
 ## 7. 与现有组件关系
 
