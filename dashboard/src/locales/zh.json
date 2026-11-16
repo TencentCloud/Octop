@@ -4142,6 +4142,7 @@
       "endpointLabel": "服务地址 / Endpoint",
       "endpointHint": "可选。留空使用服务默认地址；仅允许 https。",
       "endpointHttps": "仅允许 https 地址",
+      "keyPlaceholder": "{{key}}",
       "keyOptional": "密钥可留空：留空表示保留现有全局 Key，或仅使用用户个人 Key；如需设置全局 Key，请填写该 provider 的全部必需字段。",
       "keyIncomplete": "请填写该 provider 的全部必需密钥，或全部留空。"
     },

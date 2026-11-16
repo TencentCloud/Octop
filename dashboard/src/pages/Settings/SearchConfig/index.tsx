@@ -294,7 +294,7 @@ function ConfigureDrawer({
             }
           >
             <Input.Password
-              placeholder={t("setupWizard.search.required", { key })}
+              placeholder={t("advancedSettings.search.keyPlaceholder", { key })}
               autoComplete="off"
             />
           </Form.Item>

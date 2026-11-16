@@ -4142,6 +4142,7 @@
       "endpointLabel": "Service endpoint",
       "endpointHint": "Optional. Leave empty to use the provider's default endpoint. Only https is allowed.",
       "endpointHttps": "Only https endpoints are allowed",
+      "keyPlaceholder": "{{key}}",
       "keyOptional": "Keys may stay empty: blank keeps the current global key (or leaves the provider on personal keys only). To set a global key, fill every required field for this provider.",
       "keyIncomplete": "Fill every required key for this provider, or leave them all empty."
     },
