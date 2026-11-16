@@ -5,11 +5,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from octop_harness.backends.workspace import BackendWorkspace
-
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 
 if TYPE_CHECKING:
+    # Import-time only: octop_harness.backends.workspace transitively imports
+    # deepagents and every langchain provider SDK (~18s cold on Windows), and
+    # BackendWorkspace is only needed for the return annotation below.
+    from octop_harness.backends.workspace import BackendWorkspace
+
     from octop.infra.agents.manager import AgentManager
 
 logger = logging.getLogger(__name__)

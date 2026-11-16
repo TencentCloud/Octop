@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from octop_gateway.media import MediaBackend
-from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.gateway.media.inbound_store import inbound_rel_path, validate_inbound_size
+
+if TYPE_CHECKING:
+    # Import-time only: octop_harness.backends.workspace transitively imports
+    # deepagents and every langchain provider SDK (~12s cold on Windows), and
+    # BackendWorkspace is only needed for the annotation below.
+    from octop_harness.backends.workspace import BackendWorkspace
 
 
 class AgentBackedMediaBackend(MediaBackend):
