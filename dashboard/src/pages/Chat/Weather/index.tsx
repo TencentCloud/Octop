@@ -3,6 +3,7 @@ import { Sun, Cloud, CloudRain } from "lucide-react";
 import { Card, Typography } from "antd";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 
 interface WeatherItem {
@@ -135,14 +136,14 @@ const WeatherIcon = ({
   }
 };
 
-const getWeatherLabel = (type: string) => {
+const getWeatherLabel = (type: string, t: TFunction) => {
   switch (type) {
     case "sunny":
-      return "晴朗";
+      return t("weather.sunny");
     case "rainy":
-      return "雨天";
+      return t("weather.rainy");
     case "cloudy":
-      return "多云";
+      return t("weather.cloudy");
     default:
       return type;
   }
@@ -174,7 +175,7 @@ export default function Weather(props: {
   data: { content: Array<{ data: { output: string } }> };
 }) {
   const { styles } = useStyles();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const timeZone = useServerTimezone();
   const data = useMemo(() => {
     try {
@@ -218,7 +219,7 @@ export default function Weather(props: {
           <Typography.Text className={styles.degree}>°C</Typography.Text>
         </div>
         <Typography.Text className={styles.condition}>
-          {getWeatherLabel(current.weather)}
+          {getWeatherLabel(current.weather, t)}
         </Typography.Text>
       </div>
 
