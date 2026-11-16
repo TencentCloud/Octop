@@ -40,7 +40,9 @@ from lark_oapi.scene.registration.errors import (
 
 _reconfigure = getattr(sys.stdout, "reconfigure", None)
 if callable(_reconfigure):
-    _reconfigure(write_through=True)
+    # NDJSON must be UTF-8 (the parent decodes it as such) and some messages
+    # carry non-ANSI characters such as ``✅``, which crash on cp936.
+    _reconfigure(encoding="utf-8", write_through=True)
 
 PLATFORM = "feishu"
 
