@@ -39,6 +39,18 @@ export function hasPendingHitl(messages: ChatMessage[]): boolean {
   });
 }
 
+/**
+ * True while an open HITL card should freeze the turn process spinner.
+ *
+ * Shares {@link hasPendingHitl}'s predicate on purpose: an ``ask_user_question``
+ * bubble reconstructed from a tool chunk carries no ``pending_id``, so the server
+ * cannot resume it and the composer stays unlocked. Treating it as a live pause
+ * froze the spinner forever while the user was free to keep chatting.
+ */
+export function shouldFreezeProcessSpinner(messages: ChatMessage[]): boolean {
+  return hasPendingHitl(messages);
+}
+
 export type PendingApproval = {
   messageId: string;
   actions: HitlActionRequest[];
