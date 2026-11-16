@@ -919,6 +919,10 @@ class TeamManager:
                 thread_id,
                 exc_info=True,
             )
+            return
+        # The seeded question is the thread's first content; without this the
+        # row keeps last_active=0 and the dashboard reports an empty thread.
+        self._thread_registry.touch_last_active(thread_id)
 
     async def _assignment_text(self, call: PeerCall) -> str:
         """Host-rewritten task; fall back to the last room user line if empty."""
