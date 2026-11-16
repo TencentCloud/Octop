@@ -654,3 +654,82 @@ def test_list_auto_route_candidates_filters_and_preserves_capacity(
     assert [(item.ref, item.max_input_tokens) for item in vision_candidates] == [
         ("p/vision", 32_000)
     ]
+
+
+def test_magpie_runtime_headers_are_dynamic_and_do_not_pin_a_session(store: ProviderStore) -> None:
+    from octop import __version__
+
+    store._provider_repo.create(
+        name="Magpie",
+        kind="openai",
+        base_url="http://127.0.0.1:3425/v1",
+        api_key="magpie-octop",
+        extra_json=json.dumps({"integration": "magpie", "headers": {"User-Agent": "Custom/9"}}),
+        models_json=json.dumps([{"id": "group/a/b", "name": "Route", "enabled": True}]),
+    )
+    store._provider_repo.create(
+        name="openai",
+        kind="openai",
+        base_url="https://api.openai.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "gpt-4o", "name": "GPT", "enabled": True}]),
+    )
+    configs = {item.name: item for item in store.build_harness_configs()}
+    magpie = configs["Magpie"]
+    assert magpie.session_header == "X-Magpie-Session"
+    assert magpie.headers.get("User-Agent") == "Custom/9"
+    assert "X-Magpie-Session" not in {key.lower() for key in magpie.headers}
+    assert configs["openai"].session_header is None
+    assert "Octop/" not in str(configs["openai"].headers)
+
+    store._provider_repo.create(
+        name="Magpie Remote",
+        kind="openai",
+        base_url="https://gateway.example/v1",
+        api_key="real-key",
+        extra_json=json.dumps({"integration": "magpie"}),
+        models_json=json.dumps([{"id": "m", "enabled": True}]),
+    )
+    remote = next(item for item in store.build_harness_configs() if item.name == "Magpie Remote")
+    assert remote.session_header == "X-Magpie-Session"
+    assert remote.headers["User-Agent"] == f"Octop/{__version__}"
+    assert "X-Magpie-Session" not in remote.headers
+
+
+def test_magpie_model_removal_clears_stale_pins(tmp_path: Path) -> None:
+    from octop.infra.agents.providers.magpie import plan_magpie_sync
+    from octop.infra.agents.providers.store import clear_stale_pins_for_provider
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    db = SqlitePool(paths.db)
+    run_migrations(db)
+    services = build_shared_services(db=db, paths=paths, config=OctopConfig())
+    existing = [
+        {
+            "id": "keep",
+            "enabled": True,
+            "input": ["text", "image"],
+            "visibility": "groups",
+            "group_ids": ["design"],
+        },
+        {"id": "gone", "enabled": True},
+    ]
+    plan = plan_magpie_sync(existing, [{"id": "keep", "name": "Keep", "input": ["text"]}])
+    assert plan.models[0]["group_ids"] == ["design"]
+    assert plan.models[0]["input"] == ["text", "image"]
+    services.repos.agent_repo.create(
+        agent_id="01GONE",
+        user_id=None,
+        name="pinned",
+        default_model="Magpie/gone",
+    )
+    services.repos.settings_repo.set_active_model("Magpie", "gone")
+    cleared = clear_stale_pins_for_provider(
+        agent_repo=services.repos.agent_repo,
+        settings_repo=services.repos.settings_repo,
+        provider_name="Magpie",
+        models=plan.models,
+    )
+    assert cleared == ["01GONE"]
+    assert services.repos.settings_repo.get_active_model() == ("", "")

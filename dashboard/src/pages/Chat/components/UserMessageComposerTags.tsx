@@ -113,6 +113,7 @@ export default function UserMessageComposerTags({
             size={16}
             iconSize={9}
             muted
+            managedRunner={agent?.managed_runner}
           />
         ),
         label: agent?.name || id,
