@@ -76,6 +76,7 @@ def _run_vendor(plat: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess[
 
 
 @pytest.mark.parametrize("plat", NO_OVERRIDE_PLATS + OVERRIDE_PLATS)
+@posix_only
 def test_download_line_is_reached(plat: str, tmp_path: Path) -> None:
     result, argv_log = _run_vendor(plat, tmp_path)
 
@@ -85,6 +86,7 @@ def test_download_line_is_reached(plat: str, tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("plat", NO_OVERRIDE_PLATS)
+@posix_only
 def test_empty_optional_argv_adds_no_argument(plat: str, tmp_path: Path) -> None:
     result, argv_log = _run_vendor(plat, tmp_path)
 
@@ -95,6 +97,7 @@ def test_empty_optional_argv_adds_no_argument(plat: str, tmp_path: Path) -> None
 
 
 @pytest.mark.parametrize("plat", OVERRIDE_PLATS)
+@posix_only
 def test_override_platform_still_passes_its_file(plat: str, tmp_path: Path) -> None:
     result, argv_log = _run_vendor(plat, tmp_path)
 
