@@ -7,7 +7,7 @@ import hashlib
 import json
 from typing import Any
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, ToolException
 
 # Connection fields that affect the live MCP session (exclude Octop meta like enabled).
 _FINGERPRINT_KEYS = (
@@ -18,6 +18,42 @@ _FINGERPRINT_KEYS = (
     "args",
     "env",
 )
+
+
+class _McpOutputValidationError(ToolException):
+    """An MCP tool returned structured content that failed schema validation."""
+
+
+def _handle_mcp_tool_error(exc: ToolException) -> str:
+    if not isinstance(exc, _McpOutputValidationError):
+        raise exc
+    return str(exc)
+
+
+def _mcp_output_validation_error(exc: RuntimeError) -> ToolException | None:
+    if str(exc).startswith("Invalid structured content returned by tool "):
+        return _McpOutputValidationError(str(exc))
+    return None
+
+
+async def _ainvoke_shared_tool(tool: Any, kwargs: dict[str, Any]) -> Any:
+    try:
+        return await tool.ainvoke(kwargs)
+    except RuntimeError as exc:
+        tool_error = _mcp_output_validation_error(exc)
+        if tool_error is None:
+            raise
+        raise tool_error from exc
+
+
+def _invoke_shared_tool(tool: Any, kwargs: dict[str, Any]) -> Any:
+    try:
+        return tool.invoke(kwargs)
+    except RuntimeError as exc:
+        tool_error = _mcp_output_validation_error(exc)
+        if tool_error is None:
+            raise
+        raise tool_error from exc
 
 
 def fingerprint_mcp_spec(spec: dict[str, Any]) -> str:
@@ -64,7 +100,7 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
             **kwargs: Any,
         ) -> Any:
             async with _lock:
-                return await _tool.ainvoke(kwargs)
+                return await _ainvoke_shared_tool(_tool, kwargs)
 
         def _call(
             _tool: Any = tool,
@@ -73,13 +109,13 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
         ) -> Any:
             async def _run() -> Any:
                 async with _lock:
-                    return await _tool.ainvoke(kwargs)
+                    return await _ainvoke_shared_tool(_tool, kwargs)
 
             try:
                 asyncio.get_running_loop()
             except RuntimeError:
                 return asyncio.run(_run())
-            return _tool.invoke(kwargs)
+            return _invoke_shared_tool(_tool, kwargs)
 
         st_kwargs: dict[str, Any] = {
             "name": name,
@@ -87,6 +123,7 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
             "args_schema": args_schema,
             "coroutine": _acall,
             "func": _call,
+            "handle_tool_error": _handle_mcp_tool_error,
         }
         if isinstance(metadata, dict) and metadata:
             st_kwargs["metadata"] = dict(metadata)

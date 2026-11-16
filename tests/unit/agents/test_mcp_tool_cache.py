@@ -7,7 +7,10 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import BaseTool, StructuredTool
+from langgraph.graph import END, START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode
 
 from octop.infra.connectors.mcp_tool_cache import (
     fingerprint_mcp_spec,
@@ -72,6 +75,70 @@ async def test_wrap_tools_serialize_ainvoke() -> None:
 
     await asyncio.gather(_call(), _call())
     assert order == ["start", "end", "start", "end"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_output_validation_error_is_a_recoverable_tool_message() -> None:
+    error = (
+        "Invalid structured content returned by tool manage.search_file: "
+        "invalid result"
+    )
+
+    class _FakeTool:
+        name = "manage.search_file"
+        description = "search files"
+        args_schema = None
+
+        async def ainvoke(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise RuntimeError(error)
+
+        def invoke(self, *_args: Any, **_kwargs: Any) -> Any:
+            raise RuntimeError(error)
+
+    builder = StateGraph(MessagesState)
+    builder.add_node(
+        "tools", ToolNode(wrap_tools_for_shared_use([_FakeTool()], asyncio.Lock()))
+    )
+    builder.add_edge(START, "tools")
+    builder.add_edge("tools", END)
+    graph = builder.compile()
+    result = await graph.ainvoke(
+        {
+            "messages": [
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "name": "manage.search_file",
+                            "args": {},
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                )
+            ]
+        }
+    )
+
+    message = result["messages"][-1]
+    assert isinstance(message, ToolMessage)
+    assert message.tool_call_id == "call-1"
+    assert message.status == "error"
+    assert error in message.content
+
+
+@pytest.mark.asyncio
+async def test_wrap_tools_preserve_unrelated_runtime_errors() -> None:
+    tool = MagicMock()
+    tool.name = "manage.search_file"
+    tool.description = "search files"
+    tool.args_schema = None
+    tool.metadata = None
+    tool.ainvoke = AsyncMock(side_effect=RuntimeError("MCP connection lost"))
+    wrapped = wrap_tools_for_shared_use([tool], asyncio.Lock())[0]
+
+    with pytest.raises(RuntimeError, match="MCP connection lost"):
+        await wrapped.ainvoke({})
 
 
 @pytest.mark.asyncio
