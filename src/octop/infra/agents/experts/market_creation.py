@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from octop.infra.agents.experts.avatar import materialize_remote_icon_url
@@ -12,6 +12,7 @@ from octop.infra.agents.experts.catalog import (
     apply_workspace_quick_prompts,
     build_create_spec_from_expert,
 )
+from octop.infra.agents.settings.runtime_limits import AGENT_RUNTIME_CONFIG_KEYS
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.market import PortalMarketError, install_portal_expert
@@ -42,6 +43,17 @@ class SkillHubMarketAgentCreateOptions:
     temperature: float | None = None
     top_p: float | None = None
     max_tokens: int | None = None
+    tool_call_limit_enabled: bool | None = None
+    tool_call_run_limit: int | None = None
+    model_retry_enabled: bool | None = None
+    model_retry_max_retries: int | None = None
+    model_retry_initial_delay: float | None = None
+    model_retry_max_delay: float | None = None
+    tool_retry_enabled: bool | None = None
+    tool_retry_max_retries: int | None = None
+    tool_retry_initial_delay: float | None = None
+    tool_retry_max_delay: float | None = None
+    compaction: dict[str, Any] | None = None
     enable_trajectory: bool = True
     conversation_mode: str | None = None
     workspace_patch: Any = None
@@ -60,6 +72,16 @@ class SkillHubMarketAgentCreateResult:
     welcome_enrichment: WelcomeEnrichment
     source: str = "portal"
     kind: str = "library"
+
+
+def _runtime_config(options: SkillHubMarketAgentCreateOptions) -> dict[str, Any]:
+    """Runtime fields the market installer should persist. ``None`` means omit."""
+    raw = asdict(options)
+    return {
+        key: raw[key]
+        for key in (*AGENT_RUNTIME_CONFIG_KEYS, "compaction")
+        if raw.get(key) is not None
+    }
 
 
 async def create_agent_from_skillhub_skillset(
@@ -149,17 +171,7 @@ async def create_agent_from_skillhub_skillset(
         default_model=options.default_model,
         config_extra=config_extra,
         agent_id=options.agent_id,
-        runtime_config={
-            key: value
-            for key, value in {
-                "max_iters": options.max_iters,
-                "max_input_length": options.max_input_length,
-                "temperature": options.temperature,
-                "top_p": options.top_p,
-                "max_tokens": options.max_tokens,
-            }.items()
-            if value is not None
-        },
+        runtime_config=_runtime_config(options),
         icon_url=portrait_url,
         color=options.color,
         welcome_message=(options.welcome_message if customized_welcome else None),

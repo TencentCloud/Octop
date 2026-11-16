@@ -17,6 +17,7 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  pinnedThreadId,
 } from "../cronDisplay";
 import {
   formatTriggerText,
@@ -50,7 +51,10 @@ export function JobDetailDrawer({
   const meta = (job.meta as Record<string, unknown> | undefined) ?? {};
   const sessionKey =
     typeof meta.octop_session_key === "string" ? meta.octop_session_key : "";
-  const channel = sessionKey
+  const pinned = pinnedThreadId(sessionKey);
+  const channel = pinned
+    ? t("cronJobs.form.sessionKeyHistory")
+    : sessionKey
     ? channelFromSessionKey(sessionKey)
     : String(job.dispatch?.channel || "—");
   const agentPrompt = extractPromptFromJob(job) || null;
@@ -260,9 +264,13 @@ export function JobDetailDrawer({
         </Descriptions.Item>
         {sessionKey && (
           <Descriptions.Item label={t("cronJobs.col.sessionKey")}>
-            <Text copyable style={{ fontSize: 12, fontFamily: "monospace" }}>
-              {sessionKey}
-            </Text>
+            {pinned ? (
+              `${t("cronJobs.form.sessionKeyHistory")} · ${pinned.slice(-6)}`
+            ) : (
+              <Text copyable style={{ fontSize: 12, fontFamily: "monospace" }}>
+                {sessionKey}
+              </Text>
+            )}
           </Descriptions.Item>
         )}
       </Descriptions>

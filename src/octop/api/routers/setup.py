@@ -457,6 +457,7 @@ async def initial_admin(
         locale=locale,
         role_name=admin_role.user_role_name if admin_role is not None else "管理员",
     )
+    server.services.user_repo.touch_last_login(user.id)
     from octop.infra.auth.tokens import PURPOSE_ACCESS
 
     secret = server.services.secret_repo.get("jwt")

@@ -163,6 +163,7 @@ export default function ExpertPickerPopover({
                 color={agent.color}
                 size={32}
                 iconSize={18}
+                managedRunner={agent.managed_runner}
               />
               <span className={styles.expertPickerItemText}>
                 <span className={pickerStyles.itemName}>{agent.name}</span>

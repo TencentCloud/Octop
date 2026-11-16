@@ -32,6 +32,7 @@ import { isChatStreamError } from "../../../utils/chatStreamError";
 import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
 import { hasPendingHitl } from "../utils/pendingHitl";
+import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import {
   findSpeakerTextToContinue,
@@ -2282,8 +2283,10 @@ function upsertToolCall(
       const m = state.messages[idx];
       const prevArgs = m.toolData?.arguments ?? "";
       const nextArgs = prevArgs + (chunk.args ?? "");
-      const nextName = chunk.name || m.toolData?.name;
-      const nextDisplay = chunk.display_name || m.toolData?.displayName;
+      const nextName = preferToolName(chunk.name, m.toolData?.name);
+      const nextDisplay = isPlaceholderToolName(chunk.name)
+        ? m.toolData?.displayName
+        : chunk.display_name || m.toolData?.displayName;
       const nextCallId =
         m.toolData?.callId?.startsWith("idx-") && id
           ? id
@@ -3006,13 +3009,19 @@ export async function attachThread(
             ) {
               emitStreamEvent({ kind: "streamResume", sessionId });
             }
-          } else if (state.isStreaming) {
+          } else if (state.isStreaming || hasStreamingMessages(state)) {
             // Host thread went idle — seal the host turn, but keep this
             // socket so late team / inbox replies still land in the room.
+            // A refresh can restore a streaming bubble before isStreaming is
+            // set; an already-finished turn must not leave that bubble open,
+            // or the next turn's tokens can attach to it.
             finalizeHostTurn(state, sessionId);
             notify(state);
             if (!hasStreamingMessages(state)) {
-              finish();
+              if (state.isStreaming) finish();
+              else if (state.abortController === controller) {
+                state.abortController = previousController;
+              }
             }
           } else if (state.abortController === controller) {
             state.abortController = previousController;

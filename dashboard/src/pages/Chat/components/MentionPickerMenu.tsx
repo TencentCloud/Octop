@@ -204,6 +204,7 @@ export default function MentionPickerMenu({
                   color={agent?.color}
                   size={20}
                   iconSize={11}
+                  managedRunner={agent?.managed_runner}
                 />
               );
             }
