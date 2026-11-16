@@ -36,7 +36,21 @@ Legacy per-agent `config_json.acp.runners` is migrated to the user-global store 
 | `cursor_cli` | `agent` | `acp` |
 | `pi` | `npx` | `-y`, `pi-acp` |
 
-Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (or set an absolute `command` in the runner drawer). Built-in runners cannot be deleted; custom runners can be added from **Add runner**.
+Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (or set an absolute `command` in the runner drawer). Open a built-in runner to probe it: Octop checks the command, then starts it long enough to complete ACP `initialize` and closes the process. The same drawer offers three installs for the host operating system (Linux, macOS, or Windows): one-click when the official installer needs no password, a copyable manual command, and a prompt you can hand to an Octop agent.
+
+| ID | macOS / Linux | Windows |
+|----|---------------|---------|
+| `opencode` | `curl -fsSL https://opencode.ai/v2/install \| bash` | no PowerShell installer; use WSL or the GitHub zip |
+| `codebuddy` | `curl -fsSL https://www.codebuddy.cn/cli/install.sh \| bash` | `irm https://www.codebuddy.cn/cli/install.ps1 \| iex` |
+| `claude_code` | `curl -fsSL https://claude.ai/install.sh \| bash` | `irm https://claude.ai/install.ps1 \| iex` |
+| `codex` | `curl -fsSL https://chatgpt.com/codex/install.sh \| sh` | `irm https://chatgpt.com/codex/install.ps1 \| iex` |
+| `kimi_code` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` | `irm https://code.kimi.com/kimi-code/install.ps1 \| iex` |
+| `cursor_cli` | `curl https://cursor.com/install -fsS \| bash` | `irm 'https://cursor.com/install?win32=true' \| iex` |
+| `pi` | `curl -fsSL https://pi.dev/install.sh \| sh` | `irm https://pi.dev/install.ps1 \| iex` |
+
+Claude Code, Codex, and Pi still start over ACP with `npx`, so Node.js has to be on `PATH` as well as the CLI itself.
+
+Built-in runners cannot be deleted; turning one off keeps the ID. Custom runners can be added from **Add runner**, and a disabled custom ID can be added again to update and re-enable it.
 
 ### Enable delegation in chat
 

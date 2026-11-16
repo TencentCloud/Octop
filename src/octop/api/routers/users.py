@@ -163,6 +163,7 @@ def _row_to_dict(
         "login_locked_until": locked_until if locked else 0,
         "login_retry_after_seconds": retry_after,
         "created_at": int(r.created_at),
+        "last_login_at": (int(r.last_login_at) if getattr(r, "last_login_at", None) else None),
         "permissions": expand_permission_grants(list(getattr(r, "permissions", None) or [])),
         "role_name": getattr(r, "role_name", None) or None,
         "avatar_icon": getattr(r, "avatar_icon", None) or None,
