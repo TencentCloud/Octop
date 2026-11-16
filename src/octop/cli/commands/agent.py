@@ -207,6 +207,34 @@ def stop(agent_id: str, as_user: str | None) -> None:
 @click.option("--user", "as_user", default=None)
 def reload(agent_id: str, as_user: str | None) -> None:
     _act("reload", agent_id, as_user)
+    _print_workspace_skills(agent_id)
+
+
+def _print_workspace_skills(agent_id: str) -> None:
+    """Best-effort listing of the skills the workspace exposes after reload.
+
+    Reload returns ok even when freshly written ``SKILL.md`` files only take
+    effect from the next turn, so an operator had no verification hook
+    (#1933). Print what the workspace currently exposes; skip silently when
+    the workspace layout cannot be resolved.
+    """
+    import os
+    from pathlib import Path
+
+    root = os.environ.get("OCTOP_HOME") or str(Path.home() / ".octop")
+    base = Path(root) / "agents" / agent_id
+    slugs: set[str] = set()
+    for skills_dir in (base / "skills", base / ".octop" / "skills"):
+        if skills_dir.is_dir():
+            slugs |= {
+                p.parent.name
+                for p in skills_dir.glob("*/SKILL.md")
+                if not p.read_text(encoding="utf-8", errors="replace").startswith(
+                    "---\nremoved"
+                )
+            }
+    if slugs:
+        click.echo(f"skills in workspace ({len(slugs)}): " + ", ".join(sorted(slugs)))
 
 
 @agent.command("delete")
