@@ -1,4 +1,5 @@
 export const SSO_MESSAGE_TYPE = "octop-sso";
+const SSO_POPUP_WINDOW_NAME = "octop-sso";
 
 export type SsoPopupMessage = {
   type: typeof SSO_MESSAGE_TYPE;
@@ -13,7 +14,10 @@ export type SsoPopupMessage = {
 
 export function isSsoPopup(): boolean {
   try {
-    return Boolean(window.opener && !window.opener.closed);
+    return (
+      window.name === SSO_POPUP_WINDOW_NAME &&
+      Boolean(window.opener && !window.opener.closed)
+    );
   } catch {
     return false;
   }
@@ -32,7 +36,7 @@ export function notifySsoOpener(
 export function openSsoPopup(): Window | null {
   return window.open(
     "about:blank",
-    "octop-sso",
+    SSO_POPUP_WINDOW_NAME,
     "popup=yes,width=520,height=720,noopener=no",
   );
 }
