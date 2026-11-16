@@ -41,8 +41,9 @@ class InvalidSkillManifestEncodingError(ValueError):
 
 def looks_like_text_path(path: str) -> bool:
     """Return True when *path* is likely a text file worth UTF-8 coercion."""
-    suffix = PurePosixPath(path.replace("\\", "/")).suffix.lower()
-    return suffix in _TEXT_SUFFIXES or PurePosixPath(path).name in {
+    normalized_path = PurePosixPath(path.replace("\\", "/"))
+    suffix = normalized_path.suffix.lower()
+    return suffix in _TEXT_SUFFIXES or normalized_path.name in {
         "SKILL.md",
         "LICENSE",
         "LICENSE.md",
