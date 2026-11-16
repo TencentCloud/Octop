@@ -41,4 +41,9 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
         "migrate",
         "Migrate an OpenClaw or Hermes Agent setup into an expert.",
     ),
+    "db": (
+        ".commands.db",
+        "db",
+        "Database inspection and migration (e.g. SQLite -> PostgreSQL).",
+    ),
 }
