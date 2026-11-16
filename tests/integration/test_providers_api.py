@@ -182,3 +182,76 @@ async def test_admin_stream_usage_defaults_and_patch(env):
     )
     assert patched.status_code == 200
     assert patched.json()["stream_usage"] is False
+
+
+async def test_magpie_discovery_is_typed_and_permissioned(env, monkeypatch):
+    from octop.infra.agents.providers.magpie import MagpieDiscovery
+
+    async def found():
+        return MagpieDiscovery(available=True, version="1.4.0")
+
+    monkeypatch.setattr("octop.api.routers.providers.discover_local_magpie", found)
+    c, _, auth = env
+    ok = await c.get("/api/admin/providers/magpie/discovery", headers=auth)
+    assert ok.status_code == 200
+    assert ok.json() == {
+        "available": True,
+        "base_url": "http://127.0.0.1:3425/v1",
+        "version": "1.4.0",
+    }
+
+    async def missing():
+        return MagpieDiscovery(available=False, version=None)
+
+    monkeypatch.setattr("octop.api.routers.providers.discover_local_magpie", missing)
+    quiet = await c.get("/api/admin/providers/magpie/discovery", headers=auth)
+    assert quiet.status_code == 200
+    assert quiet.json()["available"] is False
+    assert quiet.json()["version"] is None
+    assert "error" not in quiet.json()
+
+    await c.post(
+        "/api/users",
+        headers=auth,
+        json={"username": "magpie-user", "password": "TestPass12", "role": "user"},
+    )
+    token = (
+        await c.post(
+            "/api/auth/login",
+            json={"username": "magpie-user", "password": "TestPass12"},
+        )
+    ).json()["access_token"]
+    denied = await c.get(
+        "/api/admin/providers/magpie/discovery",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert denied.status_code == 403
+
+
+async def test_duplicate_magpie_create_does_not_overwrite(env):
+    c, _, auth = env
+    body = {
+        "name": "Magpie",
+        "kind": "openai",
+        "base_url": "http://127.0.0.1:3425/v1",
+        "api_key": "magpie-octop",
+        "extra_json": '{"integration": "magpie"}',
+        "models": [{"id": "vendor/org/model", "name": "Shown", "enabled": True}],
+        "stream_usage": True,
+    }
+    created = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert created.status_code == 201
+    saved = created.json()
+    assert saved["integration"] == "magpie"
+    assert saved["api_key"] == "magpie-octop"
+    assert saved["models"][0]["id"] == "vendor/org/model"
+
+    again = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
+
+    listed = await c.get("/api/admin/providers", headers=auth)
+    rows = [row for row in listed.json() if row["name"] == "Magpie"]
+    assert len(rows) == 1
+    assert rows[0]["api_key"] == "magpie-octop"
+    assert rows[0]["models"][0]["id"] == "vendor/org/model"

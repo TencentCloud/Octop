@@ -459,6 +459,10 @@ class ThreadRegistry:
     def list_threads_for_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         return self._threads.list_by_session(session_key=session_key, limit=limit)
 
+    def latest_active_thread(self, *, session_key: str) -> ThreadRow | None:
+        """Most recent conversation on this channel, ignoring empty threads."""
+        return self._threads.latest_active_for_session(session_key=session_key)
+
     def create_thread(
         self,
         *,

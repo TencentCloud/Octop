@@ -4,7 +4,12 @@ import { useTranslation } from "react-i18next";
 import { octopCronApi } from "../../../api/modules/cronjob";
 import { useAgent } from "../../../context/AgentContext";
 import type { CronJobSpecOutput, OctopCronRow } from "../../../api/types";
-import { channelFromSessionKey } from "./cronDisplay";
+import {
+  LATEST_SESSION_TARGET,
+  THREAD_TARGET_PREFIX,
+  channelFromSessionKey,
+  pinnedThreadId,
+} from "./cronDisplay";
 import { presetToCron, cronToPreset } from "./components/constants";
 import {
   isOnceTrigger,
@@ -39,6 +44,9 @@ export interface CronJobFormValues {
   task_type: "text" | "agent";
   model?: string;
   fresh_thread: boolean;
+  /** ``latest`` or a historical thread id. Ignored while ``fresh_thread`` is on. */
+  session_target?: string;
+  /** Preserved channel key when the choice is "latest". */
   session_key?: string | null;
   mcp_servers?: string[];
 }
@@ -131,8 +139,12 @@ export function jobToFormValues(
         (typeof meta.octop_model === "string" ? meta.octop_model : undefined),
     ),
     fresh_thread: Boolean(meta.octop_fresh_thread),
+    session_target: sessionTargetFromKey(
+      typeof meta.octop_session_key === "string" ? meta.octop_session_key : "",
+    ),
     session_key:
-      typeof meta.octop_session_key === "string"
+      typeof meta.octop_session_key === "string" &&
+      !pinnedThreadId(meta.octop_session_key)
         ? meta.octop_session_key
         : null,
     mcp_servers: Array.isArray(meta.octop_mcp_servers)
@@ -174,13 +186,35 @@ function resolveCronExpression(values: CronJobFormValues): string {
   return /^(cron|interval|date|agently):/.test(cron) ? cron : `cron:${cron}`;
 }
 
+function sessionTargetFromKey(sessionKey: string): string {
+  return pinnedThreadId(sessionKey) || LATEST_SESSION_TARGET;
+}
+
+/** Channel key, ``latest``, or ``thread:{id}``. Fresh runs drop a history pin. */
+function sessionKeyFromForm(values: CronJobFormValues): string | null {
+  const kept =
+    typeof values.session_key === "string" &&
+    values.session_key &&
+    !values.session_key.startsWith(THREAD_TARGET_PREFIX)
+      ? values.session_key
+      : "";
+  if (values.fresh_thread) {
+    return kept || LATEST_SESSION_TARGET;
+  }
+  const target = values.session_target || LATEST_SESSION_TARGET;
+  if (target === LATEST_SESSION_TARGET) {
+    return kept || LATEST_SESSION_TARGET;
+  }
+  return `${THREAD_TARGET_PREFIX}${target}`;
+}
+
 function toOctopCreateBody(values: CronJobFormValues) {
   return {
     name: (values.name || "").trim(),
     trigger: resolveCronExpression(values),
     prompt: values.prompt.trim(),
     task_type: values.task_type,
-    session_key: values.fresh_thread ? null : values.session_key || null,
+    session_key: sessionKeyFromForm(values),
     fresh_thread: Boolean(values.fresh_thread),
     enabled: Boolean(values.enabled),
     model: defaultModelFromForm(values.model),

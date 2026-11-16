@@ -72,6 +72,14 @@
   }
 }
 
+/* The corner toggle already opens the side dock; drop the duplicate
+   workspace / files / terminal icons once the chat column is narrow. */
+@container chat-main (max-width: 480px) {
+  .chatFloatHideNarrow {
+    display: none;
+  }
+}
+
 .chatFloatBtnWrap {
   position: relative;
   display: inline-flex;
