@@ -333,11 +333,21 @@ class ProactiveCareScheduler:
         """Stop creating new loops. Tests call this so leftover sleeps do not hang pytest."""
         self._suspended = True
 
+    def _agent_kind(self, agent_id: str) -> str | None:
+        repo = self._agent_repo
+        if repo is None:
+            return None
+        row = repo.get(agent_id)
+        kind = getattr(row, "kind", None) if row is not None else None
+        return kind if isinstance(kind, str) else None
+
     def ensure_scheduled(self, agent_id: str) -> None:
         """Start the loop if this agent is enabled and not already scheduled."""
         if self._suspended:
             return
         if agent_id in self._tasks:
+            return
+        if self._agent_kind(agent_id) == "managed":
             return
         cfg = self._config_repo.get(agent_id)
         if cfg.enabled:

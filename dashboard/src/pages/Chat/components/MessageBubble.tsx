@@ -48,6 +48,7 @@ import {
   isConnectorAuthError,
 } from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
+import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
@@ -846,6 +847,7 @@ function MessageBubble({
       iconUrl={expert?.icon_url}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
+      managedRunner={managedRunnerId(expert)}
     />
   ) : null;
 

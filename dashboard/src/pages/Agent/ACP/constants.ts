@@ -65,3 +65,21 @@ export function runnerLabelKey(key: string): string {
 export function runnerIntroKey(key: string): string {
   return RUNNER_INTRO_KEYS[key] ?? "acp.intro_custom";
 }
+
+/** One-line install for the host that runs `octop`. Same text in every locale. */
+export const RUNNER_INSTALL_COMMANDS: Partial<
+  Record<BuiltinRunnerKey, string>
+> = {
+  opencode: "curl -fsSL https://opencode.ai/v2/install | bash",
+  codebuddy: "curl -fsSL https://www.codebuddy.cn/cli/install.sh | bash",
+  claude_code: "curl -fsSL https://claude.ai/install.sh | bash",
+  codex: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
+  kimi_code: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
+  cursor_cli: "curl https://cursor.com/install -fsS | bash",
+  pi: "curl -fsSL https://pi.dev/install.sh | sh",
+};
+
+export function runnerInstallCommand(key: string): string | null {
+  if (!isBuiltinRunner(key)) return null;
+  return RUNNER_INSTALL_COMMANDS[key] ?? null;
+}
