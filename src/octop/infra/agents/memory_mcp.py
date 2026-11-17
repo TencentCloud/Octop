@@ -57,6 +57,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.agents.memory_tokens import hash_token, token_matches
 from octop.infra.server import OctopServer
+from octop.infra.users.permissions import user_has_permission
 
 logger = logging.getLogger(__name__)
 
@@ -564,11 +565,18 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             if supersedes:
                 if memory is None:
                     raise RuntimeError("memory backend unavailable for supersedes")
-                deprecated = memory.deprecate_atom(
-                    supersedes, actor="user", note="superseded by memory_save"
-                )
                 metadata["supersedes"] = supersedes
             node = service.save(content, topic=topic, metadata=metadata)
+            # Only retire the old fact after the replacement is safely stored: if
+            # ``save`` fails the previous fact must stay active.
+            if supersedes and memory is not None:
+                try:
+                    deprecated = memory.deprecate_atom(
+                        supersedes, actor="user", note="superseded by memory_save"
+                    )
+                except Exception:  # noqa: BLE001 - new fact exists; do not fail the call
+                    logger.warning("memory_save: deprecate_atom failed for %s", supersedes, exc_info=True)
+                    deprecated = False
             result: dict[str, Any] = {
                 "node_id": node.id,
                 "content": node.content,
@@ -647,7 +655,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                     event: dict[str, Any] = {
                         "event_type": str(item.get("event_type") or _USER_ROLE),
                         "content": body,
-                        "payload": {**payload, **(item.get("payload") or {})},
+                        "payload": {**(item.get("payload") or {}), **payload},
                     }
                     timestamp_iso = item.get("timestamp_iso")
                     if isinstance(timestamp_iso, str) and timestamp_iso:
@@ -1051,22 +1059,22 @@ def _require_live_service(server: OctopServer, agent_id: str) -> Any:
 
 
 def _expert_extract_promote(server: OctopServer, agent_id: str) -> bool:
-    """Whether extraction should promote, following the expert's extraction config.
+    """Whether extraction should promote, following the expert's **explicit** config.
 
-    Default is ``False``: external writes wait in the review queue. When the live
-    ``MemoryService`` exposes its runtime config, use its ``promote`` value.
+    ``_extraction_cfg()`` merges library defaults (octop-memory 1.0.4 defaults
+    ``promote=True``), so reading it would silently auto-promote external writes.
+    External capture stays review-only unless the expert itself set ``promote``.
     """
     runtime = getattr(server, "app_runtime", None)
     registry = getattr(runtime, "agent_registry", None) if runtime is not None else None
     service = _live_memory_service(registry, agent_id) if registry is not None else None
     service_runtime = getattr(service, "_runtime", None) if service is not None else None
-    cfg_fn = getattr(service_runtime, "_extraction_cfg", None)
-    if callable(cfg_fn):
-        try:
-            return bool(cfg_fn().get("promote", False))
-        except Exception:  # noqa: BLE001 - a foreign runtime must not break capture
-            return False
-    return False
+    config = getattr(service_runtime, "_config", None)
+    extraction = getattr(config, "extraction", None)
+    if isinstance(extraction, dict):
+        return bool(extraction.get("promote", False)) if "promote" in extraction else False
+    promote = getattr(extraction, "promote", None) if extraction is not None else None
+    return bool(promote) if promote is not None else False
 
 
 def _schedule_extract(
@@ -1196,7 +1204,7 @@ class _TokenAuthMiddleware:
             return
 
         digest = hash_token(provided)
-        row = repo.get_by_token_hash(digest)
+        row = await asyncio.to_thread(repo.get_by_token_hash, digest)
         if row is None or not token_matches(provided, row.token_hash):
             await _send_json(send, 401, {"error": "invalid token"})
             return
@@ -1204,9 +1212,18 @@ class _TokenAuthMiddleware:
             await _send_json(send, 401, {"error": "token revoked"})
             return
 
-        user = _user_of(self._server, row.user_id)
+        user = await asyncio.to_thread(_user_of, self._server, row.user_id)
         if user is None:
             await _send_json(send, 401, {"error": "token owner not found"})
+            return
+        # Permission may be withdrawn after the token was issued: re-check it per
+        # request so revoking ``memory`` takes effect for existing tokens at once.
+        if not user_has_permission(user, "memory"):
+            await _send_json(
+                send,
+                403,
+                {"error": "permission required", "permission": "memory"},
+            )
             return
 
         # Clients that identify themselves (``X-Octop-Client``) are counted per
@@ -1215,7 +1232,7 @@ class _TokenAuthMiddleware:
         client = headers.get("x-octop-client", "").strip()[:64]
         if client:
             try:
-                repo.record_client(row.token_id, client)
+                await asyncio.to_thread(repo.record_client, row.token_id, client)
             except Exception:  # noqa: BLE001 - usage stats must never fail a request
                 logger.warning(
                     "memory MCP client stats update failed for token %s",
@@ -1235,7 +1252,7 @@ class _TokenAuthMiddleware:
         token_name_cv = _current_token_name.set(row.name)
         scope_cv = _current_token_scope.set(list(row.expert_ids) if row.expert_ids else None)
         try:
-            _touch_token(repo, row.token_id)
+            await asyncio.to_thread(_touch_token, repo, row.token_id)
             await self._app(scope, receive, send)
         finally:
             _current_token_scope.reset(scope_cv)

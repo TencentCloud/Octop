@@ -56,15 +56,24 @@ import McpAccess from "./McpAccess";
 const api = vi.mocked(memoryMcpApi, true);
 const copyMock = vi.mocked(copyText);
 
-/** The MCP client config a row copies. */
-function clientConfig(plaintext: string): string {
+/** The MCP client config a row copies (expert header for unbound tokens). */
+function clientConfig(
+  plaintext: string,
+  expertIds: string[] | null = null,
+): string {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${plaintext}`,
+  };
+  if (!expertIds || expertIds.length !== 1) {
+    headers["X-Octop-Agent-Id"] = "<专家 ID>";
+  }
   return JSON.stringify(
     {
       mcpServers: {
         "octop-memory": {
           type: "http",
           url: `${window.location.origin}/mcp/memory/`,
-          headers: { Authorization: `Bearer ${plaintext}` },
+          headers,
         },
       },
     },

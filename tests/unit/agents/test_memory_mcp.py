@@ -22,10 +22,18 @@ from octop.infra.agents import memory_mcp as mm
 
 
 class _User:
-    def __init__(self, user_id: int, username: str, *, is_admin: bool = False) -> None:
+    def __init__(
+        self,
+        user_id: int,
+        username: str,
+        *,
+        is_admin: bool = False,
+        permissions: list[str] | None = None,
+    ) -> None:
         self.id = user_id
         self.username = username
         self.is_admin = is_admin
+        self.permissions = ["memory"] if permissions is None else permissions
 
 
 class _UserManager:
@@ -125,6 +133,13 @@ def _call_tool(mcp: Any, name: str, **kwargs: Any) -> Any:
     return _run(_tools(mcp)[name].fn(**kwargs))
 
 
+@pytest.fixture(autouse=True)
+def _reset_token_touch_cache():
+    mm._TOKEN_TOUCH_AT.clear()
+    yield
+    mm._TOKEN_TOUCH_AT.clear()
+
+
 @pytest.fixture
 def bind_agent():
     token = mm._current_agent_id.set("A1")
@@ -219,6 +234,48 @@ async def _capture_response(
 
     await middleware(scope, receive, send)
     return (status[0] if status else 0), bodies
+
+
+async def test_middleware_rechecks_memory_permission_per_request():
+    """Revoking ``memory`` must invalidate tokens that were already issued."""
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(token_hash=mm.hash_token(token))
+    called = False
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    server = _server(token_repo=repo, users={1: _User(1, "alice", permissions=[])})
+    mw = mm._TokenAuthMiddleware(inner, server)
+    status, bodies = await _capture_response(
+        mw, _http_scope({"authorization": f"Bearer {token}"})
+    )
+    assert status == 403
+    assert called is False
+    assert json.loads(bodies[0]["body"])["permission"] == "memory"
+
+
+async def test_middleware_admin_still_bypasses_memory_permission():
+    token = "omcp_live"
+    repo = _TokenRepo()
+    repo.rows[mm.hash_token(token)] = _TokenRow(token_hash=mm.hash_token(token))
+    called = False
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    server = _server(
+        token_repo=repo, users={1: _User(1, "alice", is_admin=True, permissions=[])}
+    )
+    mw = mm._TokenAuthMiddleware(inner, server)
+    status, _ = await _capture_response(
+        mw, _http_scope({"authorization": f"Bearer {token}"})
+    )
+    assert status not in (401, 403)
+    assert called is True
 
 
 async def test_middleware_rejects_missing_token():
@@ -825,6 +882,59 @@ def test_shared_expert_visibility_matches_http_helper():
     assert user_may_access_agent(shared, other) is True  # no repos → historical HTTP behaviour
 
 
+def test_expert_extract_promote_ignores_library_defaults(bind_agent, monkeypatch):
+    """octop-memory 1.0.4 defaults promote=True; external capture must stay review-only."""
+    from octop_memory.application.runtime import MemoryRuntime
+    from octop_memory.core import Memory
+
+    memory = Memory(namespace="promote-test", backend="sqlite", backend_config={})
+    default_runtime = MemoryRuntime(memory)
+    assert default_runtime._extraction_cfg()["promote"] is True
+
+    service = SimpleNamespace(_runtime=default_runtime)
+    monkeypatch.setattr(mm, "_live_memory_service", lambda registry, agent_id: service)
+    server = SimpleNamespace(app_runtime=SimpleNamespace(agent_registry=object()))
+    assert mm._expert_extract_promote(server, "A1") is False
+
+    explicit = SimpleNamespace(
+        _runtime=MemoryRuntime(memory, config={"extraction": {"promote": True}})
+    )
+    monkeypatch.setattr(mm, "_live_memory_service", lambda registry, agent_id: explicit)
+    assert mm._expert_extract_promote(server, "A1") is True
+
+
+def test_capture_events_cannot_spoof_identity_fields(bind_agent, bind_user, monkeypatch, tmp_path):
+    """Client payload may extend metadata but must not override caller/source_host."""
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
+    mcp = mm.build_memory_mcp(_server())
+
+    token_cv = mm._current_token_name.set("codex@macbook")
+    try:
+        _call_tool(
+            mcp,
+            "memory_capture",
+            events=[
+                {
+                    "event_type": "user_message",
+                    "content": "伪造来源字段",
+                    "payload": {"caller": "mallory", "source_host": "spoofed", "src_key": "x:1"},
+                }
+            ],
+            source="codex",
+            session_id="spoof-1",
+            extract=False,
+        )
+    finally:
+        mm._current_token_name.reset(token_cv)
+
+    event = list(memory.list_raw(session_id="spoof-1", limit=5))[0]
+    assert event.payload["caller"] == "alice"
+    assert event.payload["source_host"] == "codex@macbook"
+    assert event.payload["src_key"] == "x:1"
+
+
 # ─── capture: provenance ─────────────────────────────────────────────────
 
 
@@ -894,6 +1004,55 @@ def test_save_goes_through_memory_service(bind_agent, bind_user, monkeypatch):
         "source_host": "codex",
         "caller": "alice",
     }
+
+
+def test_save_supersedes_keeps_old_fact_when_new_save_fails(bind_agent, bind_user, monkeypatch):
+    """A failed replacement must leave the previous fact active."""
+    deprecated: list[str] = []
+
+    class _Service:
+        memory = SimpleNamespace(
+            deprecate_atom=lambda atom_id, actor=None, note=None: deprecated.append(atom_id) or True
+        )
+
+        def save(self, content: str, *, topic=None, metadata=None):
+            raise RuntimeError("storage failed")
+
+    monkeypatch.setattr(mm, "_require_live_service", lambda server, agent_id: _Service())
+    mcp = mm.build_memory_mcp(_server())
+
+    with pytest.raises(RuntimeError, match="storage failed"):
+        _call_tool(
+            mcp,
+            "memory_save",
+            content="新事实",
+            source="codex",
+            supersedes="old-atom",
+        )
+    assert deprecated == []
+
+
+def test_save_supersedes_deprecates_after_successful_save(bind_agent, bind_user, monkeypatch):
+    deprecated: list[tuple[str, str]] = []
+
+    class _Service:
+        memory = SimpleNamespace(
+            deprecate_atom=lambda atom_id, actor=None, note=None: deprecated.append((atom_id, note))
+            or True
+        )
+
+        def save(self, content: str, *, topic=None, metadata=None):
+            assert deprecated == []  # old fact retires only after the new one is stored
+            return SimpleNamespace(id="n2", content=content)
+
+    monkeypatch.setattr(mm, "_require_live_service", lambda server, agent_id: _Service())
+    mcp = mm.build_memory_mcp(_server())
+
+    result = _call_tool(
+        mcp, "memory_save", content="新事实", source="codex", supersedes="old-atom"
+    )
+    assert result["deprecated"] is True
+    assert deprecated == [("old-atom", "superseded by memory_save")]
 
 
 def test_save_refuses_to_start_a_stopped_expert(bind_agent):
@@ -975,12 +1134,31 @@ def test_extract_explicit_promote_false_wins(bind_agent, bind_user, monkeypatch)
     assert calls[0]["promote"] is False
 
 
-def test_expert_promote_reads_the_service_config():
-    service = SimpleNamespace(_runtime=SimpleNamespace(_extraction_cfg=lambda: {"promote": True}))
+def test_expert_promote_reads_only_explicit_config():
+    explicit = SimpleNamespace(
+        _config=SimpleNamespace(extraction={"promote": True}),
+        _extraction_cfg=lambda: {"promote": True},
+    )
+    service = SimpleNamespace(_runtime=explicit)
     agent = SimpleNamespace(_memory_runtime=SimpleNamespace(service=service))
     registry = SimpleNamespace(get_agent=lambda agent_id: agent)
     server = _server(app_runtime=SimpleNamespace(agent_registry=registry))
     assert mm._expert_extract_promote(server, "A1") is True
+
+    # Library default (merged in _extraction_cfg) must not enable promotion.
+    defaulted = SimpleNamespace(
+        _config=SimpleNamespace(extraction={}),
+        _extraction_cfg=lambda: {"promote": True},
+    )
+    monkeypatch_service = SimpleNamespace(_runtime=defaulted)
+    registry = SimpleNamespace(
+        get_agent=lambda agent_id: SimpleNamespace(
+            _memory_runtime=SimpleNamespace(service=monkeypatch_service)
+        )
+    )
+    server = _server(app_runtime=SimpleNamespace(agent_registry=registry))
+    assert mm._expert_extract_promote(server, "A1") is False
+
     # no live service -> review queue default
     assert mm._expert_extract_promote(_server(app_runtime=None), "A1") is False
 

@@ -192,20 +192,32 @@ export default function McpAccess() {
     });
   }, [switchTarget, switchForm]);
 
-  const buildClientConfig = (plaintext: string) =>
-    JSON.stringify(
+  const buildClientConfig = (
+    plaintext: string,
+    expertIds?: string[] | null,
+  ) => {
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${plaintext}`,
+    };
+    // A token bound to exactly one expert carries its expert in the token; any
+    // other token needs the expert header, otherwise /mcp/memory returns 400.
+    if (!expertIds || expertIds.length !== 1) {
+      headers["X-Octop-Agent-Id"] = "<专家 ID>";
+    }
+    return JSON.stringify(
       {
         mcpServers: {
           "octop-memory": {
             type: "http",
             url: `${origin}/mcp/memory/`,
-            headers: { Authorization: `Bearer ${plaintext}` },
+            headers,
           },
         },
       },
       null,
       2,
     );
+  };
 
   const buildInstallScript = (plaintext: string) =>
     `curl -fsSL https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.sh | sh -s -- --url ${origin}/mcp/memory/ --token ${plaintext}`;
@@ -310,7 +322,7 @@ export default function McpAccess() {
   const handleCommandClick = (token: MemoryMcpToken) => {
     const plaintext = plaintextByToken[token.token_id];
     if (plaintext) {
-      void copySetupCommand(buildClientConfig(plaintext));
+      void copySetupCommand(buildClientConfig(plaintext, token.expert_ids));
       return;
     }
     setRotatedCommand(null);
@@ -323,7 +335,10 @@ export default function McpAccess() {
     setRotating(true);
     try {
       const result = await memoryMcpApi.rotate(commandTarget.token_id);
-      const command = buildClientConfig(result.plaintext);
+      const command = buildClientConfig(
+        result.plaintext,
+        result.token.expert_ids,
+      );
       setPlaintextByToken((prev) => ({
         ...prev,
         [result.token.token_id]: result.plaintext,
@@ -937,23 +952,45 @@ export default function McpAccess() {
                   key: "json",
                   label: t("memory.mcp.manualConfig", "手动配置"),
                   children: (
-                    <Space.Compact style={{ width: "100%" }}>
-                      <Input.TextArea
-                        readOnly
-                        autoSize={{ minRows: 6, maxRows: 12 }}
-                        value={buildClientConfig(created.plaintext)}
-                        style={{ fontFamily: "monospace", fontSize: 12 }}
-                      />
-                      <Button
-                        onClick={() =>
-                          void copySetupCommand(
-                            buildClientConfig(created.plaintext),
-                          )
-                        }
-                      >
-                        {t("memory.mcp.copyCommand", "复制命令")}
-                      </Button>
-                    </Space.Compact>
+                    <>
+                      <Space.Compact style={{ width: "100%" }}>
+                        <Input.TextArea
+                          readOnly
+                          autoSize={{ minRows: 6, maxRows: 12 }}
+                          value={buildClientConfig(
+                            created.plaintext,
+                            created.token.expert_ids,
+                          )}
+                          style={{ fontFamily: "monospace", fontSize: 12 }}
+                        />
+                        <Button
+                          onClick={() =>
+                            void copySetupCommand(
+                              buildClientConfig(
+                                created.plaintext,
+                                created.token.expert_ids,
+                              ),
+                            )
+                          }
+                        >
+                          {t("memory.mcp.copyCommand", "复制命令")}
+                        </Button>
+                      </Space.Compact>
+                      {(created.token.expert_ids?.length ?? 0) !== 1 && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontSize: 12,
+                            color: "var(--fn-text-secondary)",
+                          }}
+                        >
+                          {t(
+                            "memory.mcp.unboundHint",
+                            "该 Token 未绑定唯一专家：安装脚本不可用，请用此手动配置并把 <专家 ID> 换成要访问的专家。",
+                          )}
+                        </div>
+                      )}
+                    </>
                   ),
                 },
               ]}
