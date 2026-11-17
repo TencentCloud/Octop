@@ -98,6 +98,14 @@ def test_backup_remote_backend_id_must_be_positive(tmp_path: Path):
         load_config(cfg_path)
 
 
+def test_backup_remote_backend_id_env_rejects_non_positive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_BACKEND_ID", "-5")
+    with pytest.raises(ValueError, match="OCTOP_BACKUP_REMOTE_BACKEND_ID"):
+        load_config(tmp_path / "config.json")
+
+
 def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_BACKUP_AUTO_ENABLED", "true")
     monkeypatch.setenv("OCTOP_BACKUP_SCHEDULE", "cron:30 5 * * *")

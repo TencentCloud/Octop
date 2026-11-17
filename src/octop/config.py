@@ -225,7 +225,7 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         raise ValueError("config.backup.retention_count must be an integer") from exc
     if retention < 1:
         raise ValueError("config.backup.retention_count must be >= 1")
-    remote_backend_id = _parse_optional_int(
+    remote_backend_id = parse_optional_int(
         raw.get("remote_backend_id", defaults.remote_backend_id),
         field="config.backup.remote_backend_id",
     )
@@ -306,7 +306,7 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
     return default
 
 
-def _parse_optional_int(raw: object, *, field: str) -> int | None:
+def parse_optional_int(raw: object, *, field: str) -> int | None:
     """Parse an optional JSON integer; empty string / null → None."""
     if raw is None:
         return None
@@ -755,12 +755,15 @@ def load_config(path: Path) -> OctopConfig:
         if not text:
             backup = replace(backup, remote_backend_id=None)
         else:
-            parsed = _coerce_int(
-                "OCTOP_BACKUP_REMOTE_BACKEND_ID", text, backup.remote_backend_id or 0
-            )
-            backup = replace(backup, remote_backend_id=parsed if parsed > 0 else None)
-    if backup.remote_backend_id is not None and backup.remote_backend_id < 1:
-        raise ValueError("config.backup.remote_backend_id must be >= 1 when set")
+            try:
+                parsed = int(text)
+            except ValueError as exc:
+                raise ValueError(
+                    "OCTOP_BACKUP_REMOTE_BACKEND_ID must be an integer or empty"
+                ) from exc
+            if parsed < 1:
+                raise ValueError("OCTOP_BACKUP_REMOTE_BACKEND_ID must be >= 1 when set")
+            backup = replace(backup, remote_backend_id=parsed)
     if backup.remote_enabled and backup.remote_backend_id is None:
         raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
 

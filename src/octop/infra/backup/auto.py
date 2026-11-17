@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from octop.config import BackupConfig, OctopConfig, load_config
+from octop.config import BackupConfig, OctopConfig, load_config, parse_optional_int
 from octop.infra.backup.store import (
     BackupFileInfo,
     is_auto_backup_filename,
@@ -135,10 +135,8 @@ def backup_config_from_payload(payload: dict[str, Any]) -> BackupConfig:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "retention_count must be an integer") from exc
     if retention < 1:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "retention_count must be >= 1")
-    from octop.config import _parse_optional_int
-
     try:
-        remote_backend_id = _parse_optional_int(
+        remote_backend_id = parse_optional_int(
             payload.get("remote_backend_id", defaults.remote_backend_id),
             field="remote_backend_id",
         )
