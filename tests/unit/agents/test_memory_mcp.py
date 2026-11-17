@@ -788,6 +788,43 @@ def test_capture_events_without_src_key_dedupes_by_content_hash(
     assert len(list(memory.list_raw(session_id="hash-1", limit=10))) == 1
 
 
+def test_touch_token_is_throttled(monkeypatch):
+    """Review ask: stop writing last_used_at on every single MCP request."""
+    calls: list[str] = []
+    repo = SimpleNamespace(touch=lambda token_id: calls.append(token_id))
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(mm.time, "monotonic", lambda: clock["now"])
+
+    mm._TOKEN_TOUCH_AT.clear()
+    mm._touch_token(repo, "tok-1")
+    clock["now"] += 5
+    mm._touch_token(repo, "tok-1")
+    assert calls == ["tok-1"]
+
+    clock["now"] += mm._TOKEN_TOUCH_INTERVAL_S
+    mm._touch_token(repo, "tok-1")
+    assert calls == ["tok-1", "tok-1"]
+
+    mm._touch_token(repo, "tok-2")
+    assert calls == ["tok-1", "tok-1", "tok-2"]
+
+
+def test_shared_expert_visibility_matches_http_helper():
+    """The MCP check and the HTTP routers must use one implementation."""
+    from octop.infra.users.access import user_may_access_agent
+
+    shared = SimpleNamespace(user_id=1, is_shared=1)
+    other = SimpleNamespace(id=2, is_admin=False, permissions=[])
+    owner = SimpleNamespace(id=1, is_admin=False, permissions=[])
+    admin = SimpleNamespace(id=9, is_admin=True, permissions=[])
+    private = SimpleNamespace(user_id=1, is_shared=0)
+
+    assert user_may_access_agent(shared, owner) is True
+    assert user_may_access_agent(shared, admin) is True
+    assert user_may_access_agent(private, other) is False
+    assert user_may_access_agent(shared, other) is True  # no repos → historical HTTP behaviour
+
+
 # ─── capture: provenance ─────────────────────────────────────────────────
 
 

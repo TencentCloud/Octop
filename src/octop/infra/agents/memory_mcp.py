@@ -45,6 +45,7 @@ import hashlib
 import logging
 import os
 import threading
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from contextvars import ContextVar
@@ -97,6 +98,24 @@ with suppress(ValueError):  # bad env keeps the default
         1,
         min(1000, int(os.environ.get("OCTOP_MEMORY_CAPTURE_MAX_EVENTS") or _CAPTURE_MAX_EVENTS)),
     )
+
+_TOKEN_TOUCH_INTERVAL_S = 60.0
+"""``last_used_at`` only needs minute-level freshness; writing it per request
+turned every MCP call into a DB write. Throttle to one write per token/minute."""
+_TOKEN_TOUCH_AT: dict[str, float] = {}
+_TOKEN_TOUCH_GUARD = threading.Lock()
+
+
+def _touch_token(repo: Any, token_id: str) -> None:
+    """Record token use at most once per ``_TOKEN_TOUCH_INTERVAL_S``."""
+    now = time.monotonic()
+    with _TOKEN_TOUCH_GUARD:
+        last = _TOKEN_TOUCH_AT.get(token_id)
+        if last is not None and now - last < _TOKEN_TOUCH_INTERVAL_S:
+            return
+        _TOKEN_TOUCH_AT[token_id] = now
+    repo.touch(token_id)
+
 
 _CAPTURE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
 _CAPTURE_LOCKS_GUARD = threading.Lock()
@@ -356,25 +375,12 @@ def _user_of(server: OctopServer, user_id: int | None) -> Any:
 
 
 def _user_may_access_agent(server: OctopServer, row: Any, user: Any) -> bool:
-    """Owner / shared-expert visibility check (same rule as the HTTP routers).
+    """Owner / shared-expert visibility check (same helper as the HTTP routers)."""
+    from octop.infra.users.access import user_may_access_agent  # noqa: PLC0415
 
-    Kept in ``infra/`` so ``infra/agents`` does not import ``api/``.
-    """
-    if user is None:
-        return False
-    if getattr(user, "is_admin", False):
-        return True
-    if row.user_id is not None and row.user_id == getattr(user, "id", None):
-        return True
-    if int(getattr(row, "is_shared", 0) or 0) != 1:
-        return False
     services = server.services
     repos = getattr(services, "repos", None) if services is not None else None
-    if repos is None:
-        return False
-    from octop.infra.users.groups import expert_visible_to  # noqa: PLC0415
-
-    return bool(expert_visible_to(repos, row, user_id=user.id, is_admin=False))
+    return bool(user_may_access_agent(row, user, repos=repos))
 
 
 def build_memory_mcp(server: OctopServer) -> FastMCP:
@@ -1229,7 +1235,7 @@ class _TokenAuthMiddleware:
         token_name_cv = _current_token_name.set(row.name)
         scope_cv = _current_token_scope.set(list(row.expert_ids) if row.expert_ids else None)
         try:
-            repo.touch(row.token_id)
+            _touch_token(repo, row.token_id)
             await self._app(scope, receive, send)
         finally:
             _current_token_scope.reset(scope_cv)
