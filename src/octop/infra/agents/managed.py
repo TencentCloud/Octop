@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -139,13 +139,13 @@ def _place_skill_link(target: Path, source: Path) -> None:
     resolved = source.resolve()
     try:
         target.symlink_to(resolved, target_is_directory=True)
-        return
     except OSError:
-        if os.name != "nt":
-            raise
-    import _winapi
+        if sys.platform == "win32":
+            import _winapi
 
-    _winapi.CreateJunction(str(resolved), str(target))  # type: ignore[attr-defined]
+            _winapi.CreateJunction(str(resolved), str(target))
+            return
+        raise
 
 
 def link_managed_skill_packages(
