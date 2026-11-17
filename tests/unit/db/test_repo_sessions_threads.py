@@ -239,6 +239,50 @@ def test_unread_counts_for_threads(repos):
     assert counts == {"thr_a": 2}
 
 
+def test_latest_activity_by_agent_is_per_viewer(repos):
+    _sessions, threads = repos
+    AgentRepo(threads._db).create(agent_id="a2", user_id=1, name="Agent 2")
+    peer_id = UserRepo(threads._db).create(username="other", password_hash="h", role="user")
+    own = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    peer = ThreadRegistry.dashboard_key(agent_id="a1", user_id=peer_id)
+    empty = ThreadRegistry.dashboard_key(agent_id="a2", user_id=1)
+    threads.insert(
+        thread_id="thr_old",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=own,
+        last_active=10,
+    )
+    threads.insert(
+        thread_id="thr_new",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=own,
+        last_active=40,
+    )
+    threads.insert(
+        thread_id="thr_empty",
+        agent_id="a2",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=empty,
+        last_active=0,
+    )
+    threads.insert(
+        thread_id="thr_peer",
+        agent_id="a1",
+        user_id=peer_id,
+        channel_type="dashboard",
+        session_key=peer,
+        last_active=99,
+    )
+    assert threads.latest_activity_by_agent(1, ["a1", "a2", "missing"]) == {"a1": 40}
+    assert threads.latest_activity_by_agent(peer_id, ["a1"]) == {"a1": 99}
+    assert threads.latest_activity_by_agent(1, []) == {}
+
+
 def test_threads_pinned_sort_first(repos):
     _sessions, threads = repos
     sk = ThreadRegistry.make_key(agent_id="a1", channel_type="dashboard", channel_subject_id="1")
@@ -305,3 +349,36 @@ def test_threads_hitl_policy_roundtrip(repos):
     row = threads.get("thr_hitl")
     assert row is not None
     assert row.hitl_policy == '{"mode":"allow_all"}'
+
+
+def test_contributed_thread_is_listed_for_other_users(repos):
+    _sessions, threads = repos
+    UserRepo(threads._db).create(username="other", password_hash="h", role="user")
+    sk = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    threads.insert(
+        thread_id="thr_private",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="mine",
+        last_active=10,
+    )
+    threads.insert(
+        thread_id="thr_shared",
+        agent_id="a1",
+        user_id=1,
+        channel_type="dashboard",
+        session_key=sk,
+        title="shared",
+        last_active=20,
+    )
+    threads.set_contributed("thr_shared", True)
+    visible = threads.list_visible(agent_id="a1", user_id=2, limit=10)
+    assert [row.thread_id for row in visible] == ["thr_shared"]
+    assert visible[0].contributed is True
+    assert threads.list_by_agent_user(agent_id="a1", user_id=2, limit=10) == []
+    owner_ids = {row.thread_id for row in threads.list_visible(agent_id="a1", user_id=1, limit=10)}
+    assert owner_ids == {"thr_private", "thr_shared"}
+    threads.set_contributed("thr_shared", False)
+    assert threads.list_visible(agent_id="a1", user_id=2, limit=10) == []

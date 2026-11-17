@@ -45,6 +45,18 @@ def _running_on_windows() -> bool:
     return os.name == "nt"
 
 
+def is_explicit_host_root(root: str) -> bool:
+    """True for POSIX ``/`` and a Windows drive root such as ``C:/``.
+
+    Empty strings are not a host root. A path below the drive (``C:/data``)
+    is a scoped jail.
+    """
+    text = root.strip()
+    if text in {"/", "\\"}:
+        return True
+    return bool(_WINDOWS_DRIVE_ROOT_RE.match(text))
+
+
 def _is_host_root_sentinel(root: str | Path | None) -> bool:
     """True when *root* means the whole host filesystem (not a jail).
 
@@ -223,6 +235,13 @@ def scoped_workspace_dir_str(agent_id: str) -> str:
     return f"/{DEFAULT_SYSTEM_FILES_PATH}/{SCOPED_WORKSPACE_DIRNAME}/{agent_id}"
 
 
+def default_workspace_parent_dir() -> str:
+    """Host path of ``{OCTOP_HOME}/agents``, parent of the create-time default."""
+    from octop.infra.utils.host_dirs import host_path_text  # noqa: PLC0415
+
+    return host_path_text(PathLayout.from_env().agents_dir)
+
+
 def default_agent_workspace_dir(
     paths: PathLayout,
     agent_id: str,
@@ -249,6 +268,30 @@ def default_agent_workspace_dir(
     if ensure:
         return paths.ensure_agent_workspace(agent_id)
     return paths.agent_workspace(agent_id)
+
+
+def apply_explicit_workspace_dir(config: dict[str, Any], workspace_dir: str | None) -> None:
+    """Copy a user-chosen workspace onto *config* for a host-rooted local backend.
+
+    ``local_shell`` / ``filesystem`` rooted at the filesystem root (or with
+    ``root_dir`` omitted) keep *workspace_dir*. Scoped roots and other backends
+    ignore it so create still uses the agent-facing default. Blank input is
+    ignored.
+    """
+    text = (workspace_dir or "").strip()
+    if not text:
+        return
+    backend = config.get("backend")
+    if not isinstance(backend, dict):
+        return
+    kind = str(backend.get("type") or "").lower()
+    if kind not in {"local_shell", "filesystem"}:
+        return
+    raw = backend.get("root_dir")
+    root = str(raw).strip() if raw is not None and str(raw).strip() else ""
+    if root and not _is_host_root_sentinel(root):
+        return
+    config["workspace_dir"] = text
 
 
 def seed_workspace_dir_on_create(
@@ -510,10 +553,12 @@ __all__ = [
     "SCOPED_WORKSPACE_DIRNAME",
     "agent_auth_dir",
     "agent_facing_workspace_dir_from_config",
+    "apply_explicit_workspace_dir",
     "agent_host_data_dirs",
     "remove_agent_host_dirs",
     "agent_facing_workspace_root",
     "default_agent_workspace_dir",
+    "default_workspace_parent_dir",
     "harness_workspace_path",
     "host_system_dir",
     "join_agent_facing",

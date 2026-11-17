@@ -60,6 +60,7 @@ class PublishedExpertInstallOptions:
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    workspace_dir: str | None = None
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
@@ -440,6 +441,9 @@ async def install_published_expert(
             config_extra["providers"] = list(options.providers)
         if options.backend:
             config_extra["backend"] = options.backend
+        from octop.infra.agents.workspace.dir import apply_explicit_workspace_dir  # noqa: PLC0415
+
+        apply_explicit_workspace_dir(config_extra, options.workspace_dir)
         apply_enable_trajectory(config_extra, options.enable_trajectory)
         if options.conversation_mode:
             config_extra["conversation_mode"] = options.conversation_mode

@@ -2,6 +2,7 @@ import { App } from "antd";
 import { useEffect, type ReactNode } from "react";
 import { bindAntdMessage, unbindAntdMessage } from "../utils/antdMessage";
 import { bindAntdModal, unbindAntdModal } from "../utils/antdModal";
+import { popupLayer } from "../utils/overlayLayers";
 
 /** Captures App.useApp() APIs for non-hook call sites (utils). */
 function AntdAppApiBinder() {
@@ -20,7 +21,10 @@ function AntdAppApiBinder() {
 /** Wrap under ConfigProvider so message/modal/notification follow theme. */
 export function AntdAppProvider({ children }: { children: ReactNode }) {
   return (
-    <App>
+    <App
+      message={{ getContainer: popupLayer }}
+      notification={{ getContainer: popupLayer }}
+    >
       <AntdAppApiBinder />
       {children}
     </App>

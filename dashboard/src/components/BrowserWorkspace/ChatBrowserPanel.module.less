@@ -17,8 +17,11 @@
   }
 
   &.right {
-    min-width: 320px;
-    flex-shrink: 0;
+    /* Full-height sibling of the chat column. Shrink so the chat keeps
+       --chat-main-min; never drop under the title bar. */
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: max(0px, calc(100% - var(--chat-main-min, 320px) - 6px));
     border-left: none;
     overflow: hidden;
   }
@@ -215,8 +218,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
   min-height: 0;
+  overflow-x: auto;
 
   /* Keep ant controls from stretching the shared chrome height. */
   :global(.octop-segmented-sm),

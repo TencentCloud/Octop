@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.cloud.tencent import (
     CRED_REFRESH_SAFE_S,
     CloudCredential,
@@ -24,14 +23,17 @@ from octop.infra.cloud.tencent import (
     list_instances,
     list_regions,
     mirror_to_tccli,
+    open_cloud_credential_store,
     query_cluster_trend,
     query_latest_metrics,
     query_metrics,
     refresh_credential,
     require_credential,
+    tccli_credential_path_for_user,
 )
 
-router = APIRouter()
+# Same gate as the workbench cloud tab. Admin bypasses inside ``user_has_permission``.
+router = APIRouter(dependencies=[Depends(require_permission("cloud"))])
 
 
 class CallbackBody(BaseModel):
@@ -57,7 +59,11 @@ class ClusterTrendBody(BaseModel):
 
 
 def _store(server: Any) -> CloudCredentialStore:
-    return CloudCredentialStore(server.paths.root)
+    return open_cloud_credential_store(
+        server.paths.root,
+        server.config,
+        server.services.secret_repo,
+    )
 
 
 def _uid(user: Any) -> int:
@@ -108,6 +114,10 @@ async def status(
         else:
             store.save(uid, credential)
             mirror_state = await asyncio.to_thread(mirror_to_tccli, credential, uid=uid)
+    elif credential is not None and store.shared:
+        # Another instance may have stored the login. Seed this machine's tccli
+        # so the ops expert on the node that served the page can use it.
+        mirror_state = await asyncio.to_thread(mirror_to_tccli, credential, uid=uid)
     payload = _status_payload(credential)
     if mirror_state is not None:
         payload["tccli_mirror"] = mirror_state
@@ -345,8 +355,9 @@ async def import_from_tccli(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """One-click import of this machine's existing tccli OAuth credential."""
-    path = Path.home() / ".tccli" / "default.credential"
+    """Import this user's tccli OAuth profile (``octop-<uid>``)."""
+    uid = _uid(user)
+    path = tccli_credential_path_for_user(uid)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="本机没有 tccli 凭证，请使用一键授权")
     try:
@@ -360,5 +371,11 @@ async def import_from_tccli(
     except CloudError as exc:
         raise HTTPException(status_code=409, detail=f"本机凭证已失效: {exc}") from exc
 
-    _store(server).save(_uid(user), credential)
+    _store(server).save(uid, credential)
+    server.services.audit_repo.user_event(
+        str(getattr(user, "username", None) or uid),
+        "cloud.import_tccli",
+        target=f"user:{uid}",
+        payload=path.name,
+    )
     return _status_payload(credential)

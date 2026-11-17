@@ -50,6 +50,25 @@
   flex: 1;
 }
 
+.providerHint {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-color-info, #1677ff);
+  background: color-mix(
+    in srgb,
+    var(--fn-color-info, #1677ff) 10%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--fn-color-info, #1677ff) 28%, transparent);
+  border-radius: 999px;
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;

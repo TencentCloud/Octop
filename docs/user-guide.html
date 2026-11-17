@@ -223,10 +223,10 @@ octop run --help
 <p>若提示 <code>command not found: octop</code>，请确认已重新加载 shell 或检查 <code>~/.octop/bin</code> 是否在 PATH 中。</p>
 <h3 id="h2-4">2.4 Docker 安装（生产推荐）</h3>
 <pre><code class="language-bash"># 构建并后台启动
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # 或手动构建后运行
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \

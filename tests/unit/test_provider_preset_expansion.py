@@ -114,6 +114,14 @@ def test_load_provider_presets_integration() -> None:
     go_oai = next(p for p in presets if p["id"] == "opencode-go-openai")
     assert go_oai["base_url"] == "https://opencode.ai/zen/go/v1"
 
+    magpie = next(p for p in presets if p["id"] == "magpie")
+    assert magpie["name"] == "Magpie"
+    assert magpie["base_url"] == "http://127.0.0.1:3425/v1"
+    assert magpie["protocol"] == "openai"
+    assert magpie["models"] == []
+    assert magpie["integration"] == "magpie"
+    assert magpie["default_api_key"] == "magpie-octop"
+
     go_ant = next(p for p in presets if p["id"] == "opencode-go-anthropic")
     assert go_ant["base_url"] == "https://opencode.ai/zen/go"
 

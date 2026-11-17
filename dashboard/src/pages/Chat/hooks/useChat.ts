@@ -5,6 +5,7 @@ import {
   useSyncExternalStore,
   useEffect,
 } from "react";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import type {
   MessageMetadata,
   TokenUsage,
@@ -23,6 +24,7 @@ import {
   type ContentBlock,
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
+import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
@@ -33,6 +35,7 @@ import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessag
 import {
   mergeHistoryWithLocalTail,
   preferLocalTranscript,
+  restoreUnpersistedTurn,
   serverCaughtUp,
   retainedHistoryPrefix,
 } from "../utils/mergeHistoryTail";
@@ -391,6 +394,25 @@ function enrichAttachmentPreviewUrls(
   });
 }
 
+function messageAuthor(raw: unknown): ChatMessage["author"] {
+  if (!raw || typeof raw !== "object") return undefined;
+  const row = raw as {
+    user_id?: unknown;
+    display_name?: unknown;
+    username?: unknown;
+    avatar_url?: unknown;
+    avatar_icon?: unknown;
+  };
+  if (typeof row.user_id !== "number" || row.user_id <= 0) return undefined;
+  return {
+    userId: row.user_id,
+    displayName: typeof row.display_name === "string" ? row.display_name : "",
+    username: typeof row.username === "string" ? row.username : "",
+    avatarUrl: typeof row.avatar_url === "string" ? row.avatar_url : null,
+    avatarIcon: typeof row.avatar_icon === "string" ? row.avatar_icon : null,
+  };
+}
+
 function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   const raw: InternalChatMessage[] = entries.map((entry, index) => {
     const tool = extractToolData(entry.content);
@@ -495,6 +517,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           ? entry.speaker_agent_id.trim()
           : undefined,
       teamWrapup: Boolean(entry.team_wrapup),
+      author: messageAuthor(entry.author),
       decision: parseDecisionNotice(entry.decision) ?? undefined,
       editedFiles: Array.isArray(entry.edited_files)
         ? entry.edited_files
@@ -511,8 +534,30 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   for (const cur of raw) {
     const { _toolKind, ...current } = cur;
     if (_toolKind === "call") {
-      merged.push(current);
       const callId = current.toolData?.callId;
+      const existingIdx = callId ? callIdToMergedIndex[callId] : undefined;
+      if (existingIdx !== undefined) {
+        const existing = merged[existingIdx];
+        const name = preferToolName(
+          current.toolData?.name,
+          existing.toolData?.name,
+        );
+        if (name && name !== existing.toolData?.name) {
+          merged[existingIdx] = {
+            ...existing,
+            toolData: {
+              ...existing.toolData,
+              name,
+              displayName: isPlaceholderToolName(current.toolData?.name)
+                ? existing.toolData?.displayName
+                : current.toolData?.displayName ||
+                  existing.toolData?.displayName,
+            },
+          };
+        }
+        continue;
+      }
+      merged.push(current);
       if (callId) callIdToMergedIndex[callId] = merged.length - 1;
       continue;
     }
@@ -700,6 +745,13 @@ export function convertHistoryMessages(
     team_wrapup?: boolean;
     edited_files?: string[];
     decision?: unknown;
+    author?: {
+      user_id?: number;
+      display_name?: string | null;
+      username?: string | null;
+      avatar_url?: string | null;
+      avatar_icon?: string | null;
+    };
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -730,6 +782,7 @@ export function convertHistoryMessages(
         typeof message.agent_id === "string" && message.agent_id.trim()
           ? message.agent_id.trim()
           : undefined,
+      author: message.author,
       team_wrapup: message.team_wrapup === true,
       decision: message.decision,
       edited_files: Array.isArray(message.edited_files)
@@ -842,7 +895,12 @@ function messagesWithInflightCache(
           ? { ...message, status: "done" as const }
           : message,
       );
-  return preferLocalTranscript(messages.length ? messages : loaded, tail);
+  const base = messages.length ? messages : loaded;
+  return restoreUnpersistedTurn(
+    preferLocalTranscript(base, tail),
+    tail,
+    turnActive,
+  );
 }
 
 function dropInflightCacheIfCaughtUp(
@@ -874,6 +932,7 @@ export function useChat(
   isTeamRoom = false,
 ) {
   const stableSessionId = sessionId || "__empty__";
+  const currentUser = useCurrentUser();
   useEffect(() => {
     chatStore.setSessionTeamRoom(stableSessionId, isTeamRoom);
   }, [stableSessionId, isTeamRoom]);
@@ -976,6 +1035,16 @@ export function useChat(
         attachments:
           attachments && attachments.length > 0 ? attachments : undefined,
         composerContext,
+        author:
+          currentUser && currentUser.id > 0
+            ? {
+                userId: currentUser.id,
+                displayName: currentUser.display_name ?? "",
+                username: currentUser.username ?? "",
+                avatarUrl: currentUser.avatar_url,
+                avatarIcon: currentUser.avatar_icon,
+              }
+            : undefined,
         status: "done",
         timestamp: Date.now(),
       };
@@ -1003,7 +1072,7 @@ export function useChat(
         userMsg.id,
       );
     },
-    [stableSessionId],
+    [currentUser, stableSessionId],
   );
 
   const cancelStream = useCallback(() => {

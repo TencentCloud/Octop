@@ -76,3 +76,8 @@ def test_background_ensure_swallows_failures(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr("octop.infra.utils.bwrap.ensure_bubblewrap", fail)
     launch._ensure_linux_bubblewrap()
+
+
+def test_server_keeps_websocket_pings_but_ignores_late_pongs() -> None:
+    assert launch._WS_PING_INTERVAL == 20.0
+    assert launch._WS_PING_TIMEOUT is None

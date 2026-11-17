@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
@@ -11,11 +10,11 @@ import {
   Pin,
   PinOff,
   Search,
+  Share2,
   Trash2,
 } from "lucide-react";
 import cx from "classnames";
 import type { OctopAgent } from "../../../context/AgentContext";
-import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import {
   confirmDeleteConversation,
@@ -24,11 +23,15 @@ import {
 import { isAgentChatReady } from "../../../utils/agentError";
 import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
+import { openAgentUnread } from "../utils/openUnreadSession";
+import { saveSessionShared } from "../utils/shareSession";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
+import { useExpertSort } from "../hooks/useExpertSort";
+import { useChatNavDrawers } from "./ChatNavDrawers";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
@@ -37,7 +40,12 @@ import {
   matchesChatNavScope,
   type ChatNavScope,
 } from "../utils/chatNavScope";
-import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import AgentUnreadBadge from "./AgentUnreadBadge";
+import ChatNavScopeTabs, {
+  ChatNavCreateButton,
+  ChatNavScopeEmpty,
+} from "./ChatNavScopeTabs";
+import ExpertSortMenu from "./ExpertSortMenu";
 import {
   expertVisibleInNavSearch,
   matchesNavQuery,
@@ -46,12 +54,17 @@ import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
-import SharedExpertHint from "./SharedExpertHint";
+import { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
+import ChatEditExpertDrawer, {
+  canEditExpertFromChat,
+} from "./ChatEditExpertDrawer";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -121,19 +134,6 @@ interface MinimalAgentSessionNavProps {
   activeForkDisabledHint?: string;
 }
 
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
-
 const PreviewSessionRow = memo(function PreviewSessionRow({
   session,
   isActive,
@@ -143,6 +143,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onRename,
   onPin,
   onFork,
+  onContribute,
+  shareable,
   forkDisabled,
   forkDisabledHint,
 }: {
@@ -157,6 +159,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onContribute: (id: string, contributed: boolean) => void;
+  shareable: boolean;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
 }) {
@@ -190,52 +194,70 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   const itemForkHint = !session.hasActivity
     ? t("chat.forkNoAssistant")
     : forkDisabledHint;
+  const owned = session.owned !== false;
 
-  const menuItems: MenuProps["items"] = [
-    {
-      key: "pin",
-      label: session.pinned
-        ? t("chat.unpin", "取消置顶")
-        : t("chat.pin", "置顶"),
-      icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onPin(session.id, !session.pinned);
-      },
-    },
-    {
-      key: "fork",
-      label: t("chat.fork", "分叉"),
-      icon: <GitFork size={14} />,
-      disabled: itemForkDisabled,
-      title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        onFork(session.id);
-      },
-    },
-    {
-      key: "rename",
-      label: t("common.rename"),
-      icon: <Pencil size={14} />,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        setIsEditing(true);
-      },
-    },
-    {
-      key: "delete",
-      label: t("common.delete", "Delete"),
-      icon: <Trash2 size={14} />,
-      danger: true,
-      onClick: ({ domEvent }) => {
-        domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) =>
-          onDelete(session.id, compact),
-        );
-      },
-    },
-  ];
+  const menuItems: MenuProps["items"] = owned
+    ? [
+        ...(shareable
+          ? [
+              {
+                key: "contribute",
+                label: session.contributed
+                  ? t("chat.uncontribute", "取消共享")
+                  : t("chat.contribute", "共享会话"),
+                icon: <Share2 size={14} />,
+                onClick: (event: { domEvent: { stopPropagation(): void } }) => {
+                  event.domEvent.stopPropagation();
+                  onContribute(session.id, !session.contributed);
+                },
+              },
+            ]
+          : []),
+        {
+          key: "pin",
+          label: session.pinned
+            ? t("chat.unpin", "取消置顶")
+            : t("chat.pin", "置顶"),
+          icon: session.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onPin(session.id, !session.pinned);
+          },
+        },
+        {
+          key: "fork",
+          label: t("chat.fork", "分叉"),
+          icon: <GitFork size={14} />,
+          disabled: itemForkDisabled,
+          title: itemForkDisabled && itemForkHint ? itemForkHint : undefined,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            onFork(session.id);
+          },
+        },
+        {
+          key: "rename",
+          label: t("common.rename"),
+          icon: <Pencil size={14} />,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            setIsEditing(true);
+          },
+        },
+        {
+          key: "delete",
+          label: t("common.delete", "Delete"),
+          icon: <Trash2 size={14} />,
+          danger: true,
+          onClick: ({ domEvent }) => {
+            domEvent.stopPropagation();
+            confirmDeleteConversation(t, (compact) =>
+              onDelete(session.id, compact),
+            );
+          },
+        },
+      ]
+    : [];
 
   return (
     <div
@@ -276,7 +298,13 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           <span className={styles.sessionRowLead}>
             <SessionWorkStatusIcon status={workStatus} />
           </span>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -285,20 +313,22 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
               <Pin size={12} strokeWidth={2} />
             </span>
           ) : null}
-          <Dropdown
-            menu={{ items: menuItems }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <button
-              type="button"
-              className={styles.sessionRowMore}
-              aria-label={t("common.more", "More")}
-              onClick={(e) => e.stopPropagation()}
+          {menuItems && menuItems.length > 0 ? (
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
             >
-              <MoreHorizontal size={15} />
-            </button>
-          </Dropdown>
+              <button
+                type="button"
+                className={styles.sessionRowMore}
+                aria-label={t("common.more", "More")}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal size={15} />
+              </button>
+            </Dropdown>
+          ) : null}
         </>
       )}
     </div>
@@ -321,7 +351,6 @@ export default function MinimalAgentSessionNav({
   activeForkDisabledHint,
 }: MinimalAgentSessionNavProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [byAgent, setByAgent] = useState<Record<string, Session[]>>({});
   const [hasMoreByAgent, setHasMoreByAgent] = useState<Record<string, boolean>>(
     {},
@@ -349,6 +378,7 @@ export default function MinimalAgentSessionNav({
   );
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
   const [showingHidden, setShowingHidden] = useState(false);
   const [navScope, setNavScope] = useState<ChatNavScope>(() =>
     initialChatNavScope(
@@ -356,21 +386,23 @@ export default function MinimalAgentSessionNav({
     ),
   );
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
+  const { mode: sortMode, setMode: setSortMode } = useExpertSort();
+  const navCreate = useChatNavDrawers();
   const { filterVisible, pickHidden, hide, unhide, canHide } =
     useHiddenSharedExperts();
   const hiddenAgents = useMemo(
     () =>
-      sortExpertsByPin(pickHidden(agents), pinnedIds).filter((agent) =>
-        matchesChatNavScope(agent, navScope),
+      sortExpertsByPin(pickHidden(agents), pinnedIds, sortMode).filter(
+        (agent) => matchesChatNavScope(agent, navScope),
       ),
-    [agents, pickHidden, pinnedIds, navScope],
+    [agents, pickHidden, pinnedIds, navScope, sortMode],
   );
   const sortedAgents = useMemo(() => {
     const visible = filterVisible(agents);
-    return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
+    return sortExpertsByPin(visible, pinnedIds, sortMode).filter((agent) =>
       matchesChatNavScope(agent, navScope),
     );
-  }, [agents, filterVisible, pinnedIds, navScope]);
+  }, [agents, filterVisible, pinnedIds, navScope, sortMode]);
   const searching = searchQuery.trim().length > 0;
   const catalog = useExpertSessionCatalog(sortedAgents, searching);
   const visibleAgents = useMemo(() => {
@@ -655,25 +687,31 @@ export default function MinimalAgentSessionNav({
     [activeAgentId, onPinActive, patchLocal],
   );
 
-  if (agents.length === 0) {
-    return (
-      <div className={styles.sessionEmptyAgents}>
-        <p className={styles.sessionEmptyAgentsText}>
-          {t("chat.noAgentsHint")}
-        </p>
-        <button
-          type="button"
-          className={styles.sessionEmptyAgentsLink}
-          onClick={() => navigate("/experts")}
-        >
-          {t("chat.createExpert")}
-        </button>
-      </div>
-    );
-  }
+  const handleContribute = useCallback(
+    (agentId: string, sessionId: string, contributed: boolean) => {
+      void saveSessionShared(
+        agentId,
+        sessionId,
+        contributed,
+        () => {
+          patchLocal(agentId, (prev) =>
+            prev.map((session) =>
+              session.id === sessionId ? { ...session, contributed } : session,
+            ),
+          );
+        },
+        t("chat.shareFailed", "没能改共享状态，请再试一次"),
+      );
+    },
+    [patchLocal, t],
+  );
 
   return (
     <div className={cx(styles.sessionList, styles.minimalAgentNav)}>
+      <ChatEditExpertDrawer
+        agent={editAgent}
+        onClose={() => setEditAgent(null)}
+      />
       <div className={styles.sessionSearchWrap}>
         <Search
           size={14}
@@ -689,7 +727,17 @@ export default function MinimalAgentSessionNav({
           aria-label={t("chat.searchSessions", "搜索会话")}
         />
       </div>
-      <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      <div className={styles.sessionScopeRow}>
+        <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      </div>
+      <div className={styles.sessionCreateRow}>
+        <ChatNavCreateButton
+          scope={navScope}
+          onCreate={() => navCreate.open(navScope)}
+        />
+        <ExpertSortMenu mode={sortMode} onChange={setSortMode} />
+      </div>
+      {navCreate.drawers}
       {visibleAgents.length === 0 &&
       (searching || loading || hiddenAgents.length === 0) ? (
         searching ? (
@@ -699,7 +747,10 @@ export default function MinimalAgentSessionNav({
               : t("chat.noSearchResults", "没有匹配的会话")}
           </div>
         ) : (
-          <ChatNavScopeEmpty scope={navScope} />
+          <ChatNavScopeEmpty
+            scope={navScope}
+            onCreate={() => navCreate.open(navScope)}
+          />
         )
       ) : null}
       {navBlocks.map((block) => {
@@ -741,25 +792,6 @@ export default function MinimalAgentSessionNav({
           <section key={block.key} className={styles.minimalAgentSection}>
             <div className={styles.minimalAgentHeader}>
               <span className={styles.minimalAgentIconSlot}>
-                <SharedExpertHint
-                  agent={agent}
-                  className={styles.minimalAgentAvatarHost}
-                >
-                  <span
-                    className={styles.minimalAgentAvatar}
-                    style={{
-                      color: agent.color || "var(--fn-text-tertiary)",
-                      background: `${agent.color || "#6366f1"}14`,
-                    }}
-                    aria-hidden
-                  >
-                    <ExpertIcon
-                      iconUrl={agent.icon_url}
-                      iconName={agent.icon_name}
-                      size={agent.icon_url?.trim() ? 22 : 14}
-                    />
-                  </span>
-                </SharedExpertHint>
                 <button
                   type="button"
                   className={styles.minimalAgentChevronBtn}
@@ -790,17 +822,29 @@ export default function MinimalAgentSessionNav({
                     name={agent.name}
                     className={styles.minimalAgentName}
                   />
+                  <ExpertOwnerShareFlag agent={agent} />
                   <ExpertPinMark pinned={isPinned(agent.agent_id)} />
                   <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
                 </span>
-                <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
+              <AgentUnreadBadge
+                count={agent.unread_count ?? 0}
+                onOpen={() => {
+                  void openAgentUnread(agent.agent_id, list, onSelect);
+                }}
+              />
               <ExpertNavActions
                 variant="minimal"
                 pinned={isPinned(agent.agent_id)}
                 onTogglePin={() => togglePin(agent.agent_id)}
                 onNewChat={() => onNewChat(agent.agent_id)}
+                onEdit={
+                  canEditExpertFromChat(agent)
+                    ? () => setEditAgent(agent)
+                    : undefined
+                }
+                editingTeam={isTeamAgent(agent)}
                 onHide={
                   canHide(agent) &&
                   !hiddenAgents.some((row) => row.agent_id === agent.agent_id)
@@ -850,6 +894,10 @@ export default function MinimalAgentSessionNav({
                         onPin={(id, pinned) =>
                           handlePin(agent.agent_id, id, pinned)
                         }
+                        onContribute={(id, contributed) =>
+                          handleContribute(agent.agent_id, id, contributed)
+                        }
+                        shareable={Boolean(agent.is_shared)}
                         onFork={(id) => onFork(id, agent.agent_id)}
                         forkDisabled={
                           session.id === activeId

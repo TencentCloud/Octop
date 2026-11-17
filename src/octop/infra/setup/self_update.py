@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.i18n import lookup, tr
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import DEFAULT_LOCALE
 from octop.infra.utils.paths import PathLayout
@@ -147,7 +148,17 @@ def get_local_version() -> str:
         target = green_packages_dir()
         fpk_target = os.environ.get("OCTOP_FPK_SITE_PACKAGES", "").strip()
         if target is not None or fpk_target:
-            return get_version_in_dir(sys.executable, str(target or fpk_target)) or "0.0.0"
+            found = get_version_in_dir(sys.executable, str(target or fpk_target))
+            if found:
+                return found
+            # Desktop dev shell: the runtime points the green target at an empty
+            # ``packages/`` because octop comes from the editable venv instead.
+            # Report the install we are actually running rather than claiming an
+            # unknown ``0.0.0``; a real green install with a broken target still
+            # has no editable metadata and keeps ``0.0.0`` below.
+            if get_editable_path() is not None:
+                return version(_PACKAGE_NAME)
+            return "0.0.0"
         return version(_PACKAGE_NAME)
     except Exception:
         return "0.0.0"
@@ -975,6 +986,10 @@ def run_upgrade(
     version: str | None = None,
     locale: str = DEFAULT_LOCALE,
 ) -> UpgradeResult:
+    # Desktop-hosted sidecars must never mutate OCTOP_GREEN_PACKAGES: the shell
+    # owns the runtime and upgrades it atomically with the shell release.
+    if desktop_shell_enabled():
+        return UpgradeResult(success=False, error="updates are managed by the desktop shell")
     try:
         validate_upgrade_target(version, get_local_version())
     except OctopError as exc:

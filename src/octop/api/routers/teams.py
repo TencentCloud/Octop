@@ -31,7 +31,18 @@ class TeamCreateBody(BaseModel):
     icon_url: str | None = None
     welcome_message: str | None = None
     member_ids: list[str] = Field(default_factory=list)
-    config: dict[str, Any] = Field(default_factory=dict)
+    agent_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Optional custom agent id; auto-generated when omitted",
+    )
+    config: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Harness config. ``workspace_dir`` is kept only when ``backend`` is "
+            "local_shell or filesystem rooted at the filesystem root."
+        ),
+    )
 
 
 class TeamPatchBody(BaseModel):
@@ -76,8 +87,17 @@ async def create_team(
     teams = _teams(server)
     member_ids = teams.validate_member_ids(user, body.member_ids)
     assert server.app_runtime is not None
+    from octop.infra.agents.workspace.dir import apply_explicit_workspace_dir  # noqa: PLC0415
+
+    config = dict(body.config)
+    raw_workspace = config.pop("workspace_dir", None)
+    apply_explicit_workspace_dir(
+        config,
+        raw_workspace if isinstance(raw_workspace, str) else None,
+    )
     spec = AgentCreateSpec(
         name=body.name.strip(),
+        agent_id=(body.agent_id or "").strip() or None,
         user_id=user.id,
         description=body.description,
         default_model=body.default_model,
@@ -87,7 +107,7 @@ async def create_team(
         welcome_message=body.welcome_message,
         template_name=TEAM_TEMPLATE_NAME,
         kind=TEAM_KIND,
-        config=body.config,
+        config=config,
         member_ids=member_ids,
         mcp_servers=[],
     )

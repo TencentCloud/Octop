@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import logging
 from pathlib import Path
@@ -11,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
-from octop.api.common.agent import require_agent_row
+from octop.api.common.agent import agent_is_shared, require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
@@ -29,8 +28,7 @@ from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
-from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
-from octop.infra.history.service import HistoryArchive
+from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages, thread_visible_to
 from octop.infra.history.trajectory.service import TrajectoryService
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -45,6 +43,67 @@ def _agent_is_busy(server: Any, agent_id: str) -> bool:
 
 def _hitl_policy_payload(row: Any) -> dict[str, Any]:
     return parse_hitl_session_policy(getattr(row, "hitl_policy", None)).to_dict()
+
+
+def _message_author_profile(server: Any, user_id: int) -> dict[str, Any] | None:
+    """Name and portrait for one sender. Skips mocks and missing accounts."""
+    repo = getattr(getattr(server, "services", None), "user_repo", None)
+    get = getattr(repo, "get", None)
+    if not callable(get):
+        return None
+    row = get(user_id)
+    username = getattr(row, "username", None)
+    if not isinstance(username, str) or not username:
+        return None
+    from octop.infra.users.profile_avatar import profile_avatar_url  # noqa: PLC0415
+
+    avatars = getattr(getattr(server, "services", None), "avatars", None)
+    avatar_url = None
+    if callable(avatars):
+        avatar_url = profile_avatar_url(
+            avatars("user"),
+            str(user_id),
+            f"/api/users/{user_id}/avatar",
+        )
+    display_name = getattr(row, "display_name", None)
+    icon = getattr(row, "avatar_icon", None)
+    return {
+        "user_id": user_id,
+        "display_name": display_name if isinstance(display_name, str) else "",
+        "username": username,
+        "avatar_icon": icon if isinstance(icon, str) and icon else None,
+        "avatar_url": avatar_url,
+    }
+
+
+def _attach_message_authors(
+    server: Any, messages: list[dict[str, Any]], *, owner_user_id: int
+) -> None:
+    """Fill each user turn with who asked it.
+
+    Turns written before this stamp belong to the thread owner. Later turns
+    keep the person who actually sent them, so a shared conversation can show
+    a different head for each person.
+    """
+    if not isinstance(owner_user_id, int) or owner_user_id <= 0:
+        return
+    needed: set[int] = set()
+    for item in messages:
+        if item.get("role") != "user":
+            continue
+        author_id = item.get("author_user_id")
+        if not isinstance(author_id, int) or author_id <= 0:
+            author_id = owner_user_id
+            item["author_user_id"] = author_id
+        needed.add(author_id)
+    profiles = {user_id: _message_author_profile(server, user_id) for user_id in needed}
+    for item in messages:
+        if item.get("role") != "user":
+            continue
+        raw_author = item.get("author_user_id")
+        profile = profiles.get(raw_author) if isinstance(raw_author, int) else None
+        if profile is not None:
+            item["author"] = profile
 
 
 def _history_migration_payload(server: Any, *, agent_id: str, user_id: int) -> dict[str, Any]:
@@ -67,12 +126,7 @@ def _history_migration_payload(server: Any, *, agent_id: str, user_id: int) -> d
         "failed": summary.failed,
         "processing": processing,
         "agent_busy": agent_busy,
-        "can_start": (
-            not isinstance(getattr(server.app_runtime, "history_archive", None), HistoryArchive)
-            and summary.remaining > 0
-            and queue.available_slots > 0
-            and not agent_busy
-        ),
+        "can_start": (summary.remaining > 0 and queue.available_slots > 0 and not agent_busy),
     }
 
 
@@ -87,14 +141,28 @@ def _agent_facing_workspace_dir(server: Any, agent_id: str) -> Path:
 
 
 def _require_thread(
-    server: Any, agent_id: str, thread_id: str, user: Any, as_user: int | None
+    server: Any,
+    agent_id: str,
+    thread_id: str,
+    user: Any,
+    as_user: int | None,
+    *,
+    write: bool = False,
 ) -> Any:
+    """Load a thread the caller may open.
+
+    ``write`` is the owner's management actions (rename, delete, fork, contribute).
+    A contributed thread stays readable and continuable by anyone who can open the expert.
+    """
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     row = server.app_runtime.gateway.thread_registry.get_thread(thread_id)
     if row is None or row.agent_id != agent_id:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
     effective_uid = as_user if as_user is not None else user.id
-    if row.user_id != effective_uid:
+    if write:
+        if row.user_id != effective_uid:
+            raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
+    elif not thread_visible_to(row, effective_uid):
         raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
     return row
 
@@ -115,19 +183,24 @@ async def list_threads(
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
     effective_uid = as_user if as_user is not None else user.id
-    rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
+    rows = thread_registry.list_visible_threads(
+        agent_id=agent_id, user_id=effective_uid, limit=limit
+    )
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
     hub = server.app_runtime.gateway.ws_hub
-    awaiting_ids = server.app_runtime.gateway.processor.hitl_coordinator.store.pending_thread_ids(
-        agent_id=agent_id, user_id=effective_uid
+    hitl_store = server.app_runtime.gateway.processor.hitl_coordinator.store
+    awaiting_ids = hitl_store.pending_thread_ids(agent_id=agent_id, user_id=effective_uid)
+    shared_awaiting_ids = hitl_store.pending_thread_ids(
+        agent_id=agent_id, user_id=effective_uid, any_user=True
     )
     # title / last_active 只能说明「建过会话」，不能说明「有内容」：
     # 有些 thread 有标题但从未落过消息，点开就是空白。这里补一次真实计数。
     message_repo = server.services.thread_message_repo
     ids_with_messages = message_repo.threads_with_messages([r.thread_id for r in rows])
+    unread = thread_registry.unread_counts_for_threads([r.thread_id for r in rows])
 
     def _has_messages(row: Any) -> bool:
         if not thread_row_has_messages(row):
@@ -148,6 +221,9 @@ async def list_threads(
             "is_active": r.thread_id == bound,
             "has_messages": _has_messages(r),
             "pinned": r.pinned,
+            "unread_count": int(unread.get(r.thread_id, 0)),
+            "contributed": bool(r.contributed),
+            "owned": r.user_id == effective_uid,
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
@@ -155,7 +231,8 @@ async def list_threads(
             "pending_plan_path": r.pending_plan_path,
             "hitl_policy": _hitl_policy_payload(r),
             "turn_active": hub.is_turn_active(r.thread_id),
-            "awaiting_user": r.thread_id in awaiting_ids,
+            "awaiting_user": r.thread_id
+            in (shared_awaiting_ids if r.contributed else awaiting_ids),
             **thread_artifacts_payload(
                 r.artifacts,
                 workspace_dir,
@@ -197,9 +274,7 @@ async def start_history_migration(
     # Fail before changing persisted states when this agent is not actually available.
     server.app_runtime.agent_registry.get_agent(agent_id)
     effective_uid = as_user if as_user is not None else user.id
-    if isinstance(
-        getattr(server.app_runtime, "history_archive", None), HistoryArchive
-    ) or _agent_is_busy(server, agent_id):
+    if _agent_is_busy(server, agent_id):
         return {
             **_history_migration_payload(server, agent_id=agent_id, user_id=effective_uid),
             "accepted": 0,
@@ -325,7 +400,6 @@ async def get_thread_history(
     thread_id: str,
     limit: int = HISTORY_DEFAULT_LIMIT,
     offset: int = 0,
-    cursor: str | None = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -339,81 +413,51 @@ async def get_thread_history(
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
     page_offset = max(0, offset)
-    from langchain_core.messages import messages_from_dict  # noqa: PLC0415
+    projection_repo = server.services.thread_message_repo
+    projection_status = projection_repo.projection_status(thread_id)
+    history_loading = projection_status != "ready"
+    if history_loading:
 
-    from octop.api.routers.chat.serialize import (  # noqa: PLC0415
-        _enrich_history_tool_media,
-        _serialize_history_message,
-    )
-    from octop.infra.history.reader import read_page  # noqa: PLC0415
-
-    archive = getattr(server.app_runtime, "history_archive", None)
-    next_cursor = None
-    if isinstance(archive, HistoryArchive):
-        page = await read_page(
-            archive,
-            server.app_runtime.agent_registry,
-            agent_id,
-            thread_id,
-            limit=page_limit,
-            offset=page_offset,
-            cursor=cursor,
-        )
-        has_more, next_cursor = page["has_more"], page["next_cursor"]
-        messages = []
-        for message in messages_from_dict(page["messages"]):
-            item = _serialize_history_message(message, user=user)
-            if item is None:
-                raise ValueError("An archived history message could not be rendered")
-            messages.append(item)
-        messages = _enrich_history_tool_media(messages, agent_id=agent_id)
-        history_loading = False
-        projection_status = "ready"
-    else:
-        projection_repo = server.services.thread_message_repo
-        projection_status = projection_repo.projection_status(thread_id)
-        history_loading = projection_status != "ready"
-        if history_loading:
-
-            async def _work() -> None:
-                await _backfill_thread_projection(
-                    server,
-                    agent_id,
-                    thread_id,
-                    user=user,
-                )
-
-            accepted = (
-                False
-                if _agent_is_busy(server, agent_id)
-                else server.app_runtime.gateway.history_backfill.enqueue(thread_id, _work)
-            )
-            if accepted and projection_status not in ("queued", "running"):
-                projection_repo.mark_projection(thread_id, "queued")
-            messages = []
-            has_more = False
-            projection_status = (
-                projection_status
-                if accepted and projection_status in ("queued", "running")
-                else "queued"
-                if accepted
-                else "pending"
-            )
-        else:
-            messages, has_more = _load_projected_thread_messages(
+        async def _work() -> None:
+            await _backfill_thread_projection(
                 server,
                 agent_id,
                 thread_id,
-                page_limit,
-                offset=page_offset,
                 user=user,
             )
+
+        accepted = (
+            False
+            if _agent_is_busy(server, agent_id)
+            else server.app_runtime.gateway.history_backfill.enqueue(thread_id, _work)
+        )
+        if accepted and projection_status not in ("queued", "running"):
+            projection_repo.mark_projection(thread_id, "queued")
+        messages: list[dict[str, Any]] = []
+        has_more = False
+        projection_status = (
+            projection_status
+            if accepted and projection_status in ("queued", "running")
+            else "queued"
+            if accepted
+            else "pending"
+        )
+    else:
+        messages, has_more = _load_projected_thread_messages(
+            server,
+            agent_id,
+            thread_id,
+            page_limit,
+            offset=page_offset,
+            user=user,
+        )
     effective_uid = as_user if as_user is not None else user.id
+    _attach_message_authors(server, messages, owner_user_id=row.user_id)
     hitl_pending = pending_hitl_payload(
         server.app_runtime.gateway.processor.hitl_coordinator.store,
         thread_id=thread_id,
         agent_id=agent_id,
-        user_id=effective_uid,
+        user_id=None if row.contributed else effective_uid,
     )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
     return {
@@ -422,7 +466,7 @@ async def get_thread_history(
         "has_more": has_more,
         "limit": page_limit,
         "offset": page_offset,
-        "next_cursor": next_cursor,
+        "next_cursor": None,
         "history_loading": history_loading,
         "history_status": projection_status,
         "history_retry_after_ms": 1500 if history_loading else 0,
@@ -453,7 +497,8 @@ async def mark_thread_read(
 ) -> None:
     """Clear unread message count for a thread (e.g. when the user opens it in the dashboard)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
-    server.app_runtime.gateway.thread_registry.mark_thread_read(thread_id)
+    effective_uid = as_user if as_user is not None else user.id
+    server.app_runtime.gateway.thread_registry.mark_thread_read_for_user(thread_id, effective_uid)
 
 
 @router.post(
@@ -512,7 +557,7 @@ async def fork_thread(
             ErrorCode.SLASH_BAD_ARGS,
             "message_id or assistant_turns_from_end is required",
         )
-    row = _require_thread(server, agent_id, thread_id, user, as_user)
+    row = _require_thread(server, agent_id, thread_id, user, as_user, write=True)
     effective_uid = as_user if as_user is not None else user.id
     harness = server.app_runtime.agent_registry.get_agent(agent_id)
     return await fork_dashboard_thread(
@@ -525,7 +570,6 @@ async def fork_thread(
         assistant_turns_from_end=body.assistant_turns_from_end,
         locale=resolve_request_locale(request),
         thread_message_repo=server.services.thread_message_repo,
-        history_archive=getattr(server.app_runtime, "history_archive", None),
     )
 
 
@@ -540,44 +584,12 @@ async def rebind_session(
     _require_thread(server, agent_id, body.thread_id, user, as_user=None)
     sk = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user.id)
     await server.app_runtime.gateway.thread_registry.rebind(
-        session_key=sk, thread_id=body.thread_id, agent_id=agent_id
+        session_key=sk,
+        thread_id=body.thread_id,
+        agent_id=agent_id,
+        acting_user_id=user.id,
     )
     return {"session_key": sk, "thread_id": body.thread_id}
-
-
-@router.get(
-    "/agents/{agent_id}/threads/{thread_id}/history/export",
-    summary="Export unrendered conversation history",
-    description="Read-only JSON export of legacy and versioned messages with archive turn status.",
-)
-async def export_history(
-    thread_id: str,
-    agent_id: str,
-    as_user: int | None = None,
-    user: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> Any:
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
-
-    from octop.infra.history.reader import export_messages  # noqa: PLC0415
-
-    _require_thread(server, agent_id, thread_id, user, as_user)
-    archive = getattr(server.app_runtime, "history_archive", None)
-    if not isinstance(archive, HistoryArchive):
-        raise OctopError(ErrorCode.NOT_FOUND, "Versioned history is not enabled")
-
-    messages = await export_messages(
-        archive, server.app_runtime.agent_registry, agent_id, thread_id
-    )
-    return JSONResponse(
-        {
-            "format": "octop-history-v2",
-            "thread_id": thread_id,
-            "messages": messages,
-            "latest_turn": await asyncio.to_thread(archive.store.turn, thread_id),
-        },
-        headers={"Content-Disposition": 'attachment; filename="history.json"'},
-    )
 
 
 @router.patch("/agents/{agent_id}/threads/{thread_id}", summary="Update thread")
@@ -591,6 +603,7 @@ async def patch_thread(
 ) -> dict[str, Any]:
     """Update sidebar metadata or sticky composer settings for a thread."""
     row = _require_thread(server, agent_id, thread_id, user, as_user)
+    effective_uid = as_user if as_user is not None else user.id
     composer_fields = {
         "model_ref",
         "reasoning_mode",
@@ -598,15 +611,21 @@ async def patch_thread(
         "conversation_mode",
         "hitl_policy",
     }
+    managing = bool(body.model_fields_set)
+    if managing and row.user_id != effective_uid:
+        raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
     if (
         body.title is None
         and body.pinned is None
+        and "contributed" not in body.model_fields_set
         and not body.model_fields_set.intersection(composer_fields)
     ):
         return {
             "thread_id": thread_id,
             "title": row.title,
             "pinned": row.pinned,
+            "contributed": bool(row.contributed),
+            "owned": row.user_id == effective_uid,
             "model_ref": row.model_ref,
             "reasoning_mode": row.reasoning_mode,
             "reasoning_effort": row.reasoning_effort,
@@ -615,6 +634,15 @@ async def patch_thread(
             "hitl_policy": _hitl_policy_payload(row),
         }
     registry = server.app_runtime.gateway.thread_registry
+    if "contributed" in body.model_fields_set:
+        if body.contributed:
+            agent_row = require_agent_row(agent_id, user=user, as_user=as_user, server=server)
+            if not agent_is_shared(agent_row):
+                raise OctopError(
+                    ErrorCode.THREAD_CONTRIBUTE_REQUIRES_SHARE,
+                    "only a shared expert can accept a contributed conversation",
+                )
+        registry.set_contributed(thread_id, bool(body.contributed))
     if body.title is not None:
         registry.update_title(thread_id, body.title)
     if body.pinned is not None:
@@ -670,6 +698,8 @@ async def patch_thread(
         "thread_id": thread_id,
         "title": updated.title,
         "pinned": updated.pinned,
+        "contributed": bool(updated.contributed),
+        "owned": updated.user_id == effective_uid,
         "model_ref": updated.model_ref,
         "reasoning_mode": updated.reasoning_mode,
         "reasoning_effort": updated.reasoning_effort,
@@ -700,7 +730,7 @@ async def delete_thread(
     maintenance reclaims the free space later, once the freelist is large
     enough. Omitting ``compact`` keeps the previous empty 204.
     """
-    _require_thread(server, agent_id, thread_id, user, as_user)
+    _require_thread(server, agent_id, thread_id, user, as_user, write=True)
     if server.app_runtime.gateway.ws_hub.is_turn_active(thread_id):
         raise OctopError(
             ErrorCode.THREAD_TURN_ACTIVE,

@@ -397,9 +397,12 @@ async def test_relay_user_listen_forwards_member_frames_until_unlisten() -> None
 
     sess.send_json = send_json  # type: ignore[method-assign]
     frames: list[dict[str, Any]] = []
+    forwarded = asyncio.Event()
 
     async def on_frame(frame: dict[str, Any]) -> None:
         frames.append(frame)
+        if len(frames) >= 2:
+            forwarded.set()
 
     task = asyncio.create_task(
         mgr.relay_user_listen(
@@ -411,7 +414,7 @@ async def test_relay_user_listen_forwards_member_frames_until_unlisten() -> None
         )
     )
     await asyncio.wait_for(started.wait(), timeout=1.0)
-    await asyncio.sleep(0.05)
+    await asyncio.wait_for(forwarded.wait(), timeout=1.0)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -626,3 +629,58 @@ async def test_relay_turn_cancel_fails_fast_without_peer_feature() -> None:
     )
     assert sent == []
     assert frames == [{"type": "error", "message": "peer does not support turn.cancel"}]
+
+
+@pytest.mark.asyncio
+async def test_outbound_dial_disables_protocol_ping(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A late protocol pong must not drop the link; app heartbeats keep it up."""
+    from octop.infra.bridge.ids import PROTOCOL_VERSION
+    from octop.infra.bridge.manager import BridgeManager
+
+    captured: dict[str, Any] = {}
+
+    class _FakeWs:
+        async def send(self, _text: str) -> None:
+            return None
+
+        async def recv(self) -> str:
+            return json.dumps(
+                {
+                    "type": "hello_ack",
+                    "protocol_version": PROTOCOL_VERSION,
+                    "connection_id": "cid1",
+                }
+            )
+
+        def __aiter__(self) -> _FakeWs:
+            return self
+
+        async def __anext__(self) -> str:
+            raise StopAsyncIteration
+
+        async def close(self) -> None:
+            return None
+
+    class _FakeConnect:
+        def __init__(self, *_args: Any, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+        async def __aenter__(self) -> _FakeWs:
+            return _FakeWs()
+
+        async def __aexit__(self, *_exc: object) -> bool:
+            return False
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr._repo.get.return_value = None
+    monkeypatch.setattr("octop.infra.bridge.manager.websockets.connect", _FakeConnect)
+
+    await mgr._run_outbound_client("cid1", "https://demo.octop.chat", "tok")
+
+    assert captured["ping_interval"] is None
+    assert captured["ping_timeout"] is None

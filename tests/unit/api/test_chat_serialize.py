@@ -52,6 +52,16 @@ def test_serialize_history_message_keeps_client_message_id() -> None:
     assert entry["id"] == "1710000000000-ab12cd"
 
 
+def test_serialize_history_message_keeps_empty_tool_result() -> None:
+    entry = _serialize_history_message(
+        ToolMessage(content="", tool_call_id="call-1", name="Read", status="success"),
+    )
+    assert entry is not None
+    assert entry["content"] == [
+        {"type": "tool_result", "id": "call-1", "name": "Read", "output": ""}
+    ]
+
+
 def test_serialize_history_message_includes_tool_artifact() -> None:
     msg = ToolMessage(
         content='{"octop_ui": {"renderer": "bilibili_player"}, "data_ref": "artifact"}',
