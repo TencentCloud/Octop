@@ -13,30 +13,30 @@ class DropboxBackupProvider:
 
     async def test(self) -> None:
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.BACKUP_REMOTE_UNSUPPORTED,
             "Dropbox remote backup provider is not implemented yet",
         )
 
     async def put(self, local_path: Path, remote_name: str) -> MirrorResult:
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.BACKUP_REMOTE_UNSUPPORTED,
             "Dropbox remote backup provider is not implemented yet",
         )
 
     async def list(self) -> list[RemoteObject]:
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.BACKUP_REMOTE_UNSUPPORTED,
             "Dropbox remote backup provider is not implemented yet",
         )
 
     async def get(self, remote_name: str, dest: Path) -> None:
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.BACKUP_REMOTE_UNSUPPORTED,
             "Dropbox remote backup provider is not implemented yet",
         )
 
     async def delete(self, remote_name: str) -> None:
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.BACKUP_REMOTE_UNSUPPORTED,
             "Dropbox remote backup provider is not implemented yet",
         )

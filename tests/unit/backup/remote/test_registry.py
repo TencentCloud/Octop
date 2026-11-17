@@ -15,14 +15,14 @@ async def test_s3_and_dropbox_stubs_raise_not_implemented() -> None:
         provider = get_provider(kind)
         with pytest.raises(OctopError) as exc_info:
             await provider.test()
-        assert exc_info.value.code == ErrorCode.SLASH_BAD_ARGS
+        assert exc_info.value.code == ErrorCode.BACKUP_REMOTE_UNSUPPORTED
         assert "not implemented" in str(exc_info.value).lower()
 
 
 def test_unknown_kind_raises() -> None:
     with pytest.raises(OctopError) as exc_info:
         get_provider("webdav")
-    assert exc_info.value.code == ErrorCode.SLASH_BAD_ARGS
+    assert exc_info.value.code == ErrorCode.BACKUP_REMOTE_UNSUPPORTED
     assert "unsupported" in str(exc_info.value).lower()
 
 

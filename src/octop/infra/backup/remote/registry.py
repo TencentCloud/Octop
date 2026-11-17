@@ -36,7 +36,7 @@ def get_provider(kind: str, **kwargs: Any) -> RemoteBackupProvider:
     factory = _REGISTRY.get(key)
     if factory is None:
         raise OctopError(
-            ErrorCode.SLASH_BAD_ARGS,
+            ErrorCode.BACKUP_REMOTE_UNSUPPORTED,
             f"unsupported remote backup kind: {kind!r}",
         )
     return factory(**kwargs)

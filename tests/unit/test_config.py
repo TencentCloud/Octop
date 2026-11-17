@@ -78,6 +78,26 @@ def test_loads_backup_section(tmp_path: Path):
     assert cfg.backup.remote_backend_id == 42
 
 
+def test_backup_remote_enabled_requires_backend_id(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"backup": {"remote_enabled": True}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="remote_backend_id"):
+        load_config(cfg_path)
+
+
+def test_backup_remote_backend_id_must_be_positive(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"backup": {"remote_backend_id": 0}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="remote_backend_id"):
+        load_config(cfg_path)
+
+
 def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_BACKUP_AUTO_ENABLED", "true")
     monkeypatch.setenv("OCTOP_BACKUP_SCHEDULE", "cron:30 5 * * *")

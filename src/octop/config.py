@@ -229,6 +229,11 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         raw.get("remote_backend_id", defaults.remote_backend_id),
         field="config.backup.remote_backend_id",
     )
+    if remote_backend_id is not None and remote_backend_id < 1:
+        raise ValueError("config.backup.remote_backend_id must be >= 1 when set")
+    remote_enabled = bool(raw.get("remote_enabled", defaults.remote_enabled))
+    if remote_enabled and remote_backend_id is None:
+        raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
     return BackupConfig(
         auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
@@ -241,7 +246,7 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         include_plugins=bool(raw.get("include_plugins", defaults.include_plugins)),
         include_knowledge=bool(raw.get("include_knowledge", defaults.include_knowledge)),
         include_chats=bool(raw.get("include_chats", defaults.include_chats)),
-        remote_enabled=bool(raw.get("remote_enabled", defaults.remote_enabled)),
+        remote_enabled=remote_enabled,
         remote_backend_id=remote_backend_id,
     )
 
@@ -754,6 +759,10 @@ def load_config(path: Path) -> OctopConfig:
                 "OCTOP_BACKUP_REMOTE_BACKEND_ID", text, backup.remote_backend_id or 0
             )
             backup = replace(backup, remote_backend_id=parsed if parsed > 0 else None)
+    if backup.remote_backend_id is not None and backup.remote_backend_id < 1:
+        raise ValueError("config.backup.remote_backend_id must be >= 1 when set")
+    if backup.remote_enabled and backup.remote_backend_id is None:
+        raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
 
     return OctopConfig(
         bind_host=merged["bind_host"],
