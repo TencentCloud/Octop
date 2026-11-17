@@ -51,7 +51,11 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 
 
 @pytest.fixture
-def manager(tmp_path: Path) -> AgentManager:
+def manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentManager:
+    from octop_harness.plugins.registry import PluginRegistry
+
+    # Other test modules can leave tools in the process-wide plugin registry.
+    monkeypatch.setattr(PluginRegistry, "_instance", None)
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
     db = SqlitePool(paths.db)
