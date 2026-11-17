@@ -16,6 +16,7 @@ describe("pathPermissionKeys", () => {
       ...PERM.terminal,
     ]);
     expect(pathPermissionKeys("/workbench/browser")).toEqual([...PERM.browser]);
+    expect(pathPermissionKeys("/workbench/cloud")).toEqual([...PERM.cloud]);
     expect(pathPermissionKeys("/terminal")).toEqual([...PERM.terminal]);
     expect(pathPermissionKeys("/remote-browser")).toEqual([...PERM.browser]);
   });

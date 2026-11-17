@@ -24,6 +24,7 @@ import {
   type ContentBlock,
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
+import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
@@ -34,6 +35,7 @@ import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessag
 import {
   mergeHistoryWithLocalTail,
   preferLocalTranscript,
+  restoreUnpersistedTurn,
   serverCaughtUp,
   retainedHistoryPrefix,
 } from "../utils/mergeHistoryTail";
@@ -532,8 +534,30 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   for (const cur of raw) {
     const { _toolKind, ...current } = cur;
     if (_toolKind === "call") {
-      merged.push(current);
       const callId = current.toolData?.callId;
+      const existingIdx = callId ? callIdToMergedIndex[callId] : undefined;
+      if (existingIdx !== undefined) {
+        const existing = merged[existingIdx];
+        const name = preferToolName(
+          current.toolData?.name,
+          existing.toolData?.name,
+        );
+        if (name && name !== existing.toolData?.name) {
+          merged[existingIdx] = {
+            ...existing,
+            toolData: {
+              ...existing.toolData,
+              name,
+              displayName: isPlaceholderToolName(current.toolData?.name)
+                ? existing.toolData?.displayName
+                : current.toolData?.displayName ||
+                  existing.toolData?.displayName,
+            },
+          };
+        }
+        continue;
+      }
+      merged.push(current);
       if (callId) callIdToMergedIndex[callId] = merged.length - 1;
       continue;
     }
@@ -871,7 +895,12 @@ function messagesWithInflightCache(
           ? { ...message, status: "done" as const }
           : message,
       );
-  return preferLocalTranscript(messages.length ? messages : loaded, tail);
+  const base = messages.length ? messages : loaded;
+  return restoreUnpersistedTurn(
+    preferLocalTranscript(base, tail),
+    tail,
+    turnActive,
+  );
 }
 
 function dropInflightCacheIfCaughtUp(

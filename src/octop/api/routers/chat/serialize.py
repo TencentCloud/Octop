@@ -945,11 +945,14 @@ def _serialize_history_message(
     if role == "tool":
         content = _msg_attr(msg, "content", "")
         output = _message_content(msg) if isinstance(content, list) else str(content or "")
-        if not output.strip():
+        call_id = str(_msg_attr(msg, "tool_call_id") or "")
+        # A finished tool with no text still has to stay in history. Dropping it
+        # leaves the card looking like it is still running after a reload.
+        if not output.strip() and not call_id.strip():
             return None
         result_block = {
             "type": "tool_result",
-            "id": str(_msg_attr(msg, "tool_call_id") or ""),
+            "id": call_id,
             "name": str(_msg_attr(msg, "name") or ""),
             "output": output,
         }
