@@ -6,8 +6,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
-import { providerApi } from "../../../api/modules/provider";
-import { preferencesApi } from "../../../api/modules/preferences";
 import type { ResolvedModel } from "../../../api/types";
 
 export type { ResolvedModel };
@@ -104,12 +102,6 @@ export function isEmbeddingProvider(provider: ProviderRow): boolean {
 export interface UseProvidersResult {
   providers: ProviderRow[];
   presets: ProviderPreset[];
-  resolvedModels: ResolvedModel[];
-  activeModel: { provider_name: string; model: string };
-  modelReasoning: Record<
-    string,
-    { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
-  >;
   loading: boolean;
   error: string | null;
   fetchAll: () => Promise<void>;
@@ -119,14 +111,6 @@ export function useProviders(): UseProvidersResult {
   const { t } = useTranslation();
   const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [presets, setPresets] = useState<ProviderPreset[]>([]);
-  const [resolvedModels, setResolvedModels] = useState<ResolvedModel[]>([]);
-  const [activeModel, setActiveModel] = useState({
-    provider_name: "",
-    model: "",
-  });
-  const [modelReasoning, setModelReasoning] = useState<
-    UseProvidersResult["modelReasoning"]
-  >({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
@@ -140,8 +124,6 @@ export function useProviders(): UseProvidersResult {
       const settled = await Promise.allSettled([
         request<ProviderRow[]>("/admin/providers"),
         request<ProviderPreset[]>("/providers/presets"),
-        providerApi.listResolvedModels(),
-        preferencesApi.get(),
       ]);
       const rows =
         settled[0].status === "fulfilled" && Array.isArray(settled[0].value)
@@ -151,12 +133,6 @@ export function useProviders(): UseProvidersResult {
         settled[1].status === "fulfilled" && Array.isArray(settled[1].value)
           ? settled[1].value
           : [];
-      const resolved =
-        settled[2].status === "fulfilled" && Array.isArray(settled[2].value)
-          ? settled[2].value
-          : [];
-      const preferences =
-        settled[3].status === "fulfilled" ? settled[3].value : null;
 
       if (
         settled[0].status === "rejected" &&
@@ -173,19 +149,6 @@ export function useProviders(): UseProvidersResult {
       }));
       setProviders(normalized);
       setPresets(presetList);
-      setResolvedModels(resolved);
-      // Only an explicit per-user preference is starred. The global active
-      // model is a separate fallback and must not look selected here.
-      const preferredParts = (preferences?.preferred_model || "").split("/");
-      setActiveModel(
-        preferredParts.length > 1
-          ? {
-              provider_name: preferredParts[0],
-              model: preferredParts.slice(1).join("/"),
-            }
-          : { provider_name: "", model: "" },
-      );
-      setModelReasoning(preferences?.model_reasoning || {});
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : t("models.loadProvidersFailed");
@@ -204,9 +167,6 @@ export function useProviders(): UseProvidersResult {
   return {
     providers,
     presets,
-    resolvedModels,
-    activeModel,
-    modelReasoning,
     loading,
     error,
     fetchAll,

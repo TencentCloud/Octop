@@ -58,4 +58,17 @@ describe("sidebarNav", () => {
       "admin",
     ]);
   });
+
+  it("shows the per-user models page without admin permissions", () => {
+    const plainUser = {
+      id: 2,
+      username: "ada",
+      role: "user",
+      permissions: [],
+    } as OctopUser;
+    const keys = buildNavSections(plainUser, { mobileEnabled: false }).flatMap(
+      (section) => section.items.map((item) => item.key),
+    );
+    expect(keys).toContain("my-models");
+  });
 });

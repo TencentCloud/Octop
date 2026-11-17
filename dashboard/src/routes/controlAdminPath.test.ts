@@ -64,6 +64,11 @@ describe("pathPermissionKeys", () => {
   it("does not gate common pages", () => {
     expect(pathPermissionKeys("/chat")).toBeNull();
     expect(pathPermissionKeys("/personalization/acp")).toBeNull();
+    // Per-user model preference is not an admin page.
+    expect(pathPermissionKeys("/my-models")).toBeNull();
+    expect(routeConfigs.some((route) => route.path === "/my-models")).toBe(
+      true,
+    );
   });
 
   it("gates cloud collab behind the bridge permission", () => {

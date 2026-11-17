@@ -19,6 +19,7 @@ const RemoteDesktopPage = lazy(() => import("../pages/Control/RemoteDesktop"));
 
 // Lazy-loaded pages — Settings
 const ModelsPage = lazy(() => import("../pages/Settings/Models"));
+const MyModelsPage = lazy(() => import("../pages/MyModels"));
 
 // Lazy-loaded pages — Admin
 const OctopAdminUsersPage = lazy(() => import("../pages/Admin/Users"));
@@ -55,6 +56,7 @@ export const pathToKey: Record<string, string> = {
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
   "/bridge": "bridge",
+  "/my-models": "my-models",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
@@ -216,6 +218,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/workspace", element: <Navigate to="/experts" replace /> },
 
   // Settings
+  { path: "/my-models", element: <MyModelsPage /> },
   { path: "/admin/models", element: <ModelsPage /> },
 
   // Admin (RequirePermission wrapper applied in MainLayout)

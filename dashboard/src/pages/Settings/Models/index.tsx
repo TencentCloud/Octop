@@ -39,7 +39,6 @@ import type { PresetGroup } from "./presetUtils";
 import type { ProviderPreset } from "./useProviders";
 import {
   CustomProviderModal,
-  ActiveModelPool,
   LoadingState,
   PresetGroupCard,
   PresetProviderCard,
@@ -100,16 +99,7 @@ export default function ModelsPage() {
   const canSearch = userCan(user, "search");
   const canChat = canProviders || canOllama;
   const canEmbedding = canProviders || canOnnx;
-  const {
-    providers,
-    presets,
-    resolvedModels,
-    activeModel,
-    modelReasoning,
-    loading,
-    error,
-    fetchAll,
-  } = useProviders();
+  const { providers, presets, loading, error, fetchAll } = useProviders();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [showMoreProviders, setShowMoreProviders] = useState(false);
@@ -411,16 +401,6 @@ export default function ModelsPage() {
         <Empty description={t("models.noProvidersHint")} />
       ) : (
         <>
-          <ActiveModelPool
-            resolvedModels={resolvedModels}
-            activeModel={activeModel}
-            modelReasoning={modelReasoning}
-            providers={providers}
-            onSaved={fetchAll}
-          />
-
-          <Divider style={{ margin: "24px 0" }} />
-
           {showPresetSection && (
             <>
               <Title level={5} style={{ marginBottom: 12 }}>
