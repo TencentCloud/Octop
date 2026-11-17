@@ -97,7 +97,7 @@ Compose 可在 `deploy/docker/.env` 中配置上述变量。注意：`.env` 只�
 
 ### Kubernetes
 
-多副本、共用 PostgreSQL（含 pgvector）和统一入口的清单在 [../k8s/README_CN.md](../k8s/README_CN.md)。
+多副本、共用 PostgreSQL（含 pgvector）和统一入口的 Helm chart 在 [../helm/octop/README_CN.md](../helm/octop/README_CN.md)。
 
 ### 健康检查
 

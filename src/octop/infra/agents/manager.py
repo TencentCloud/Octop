@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager, nullcontext, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -24,6 +24,8 @@ from octop.i18n.domains.agents import (
     NO_MODELS_CONFIGURED,
     format_agent_start_error,
 )
+from octop.infra.agents.acp_permission_compat import install_acp_permission_queue
+from octop.infra.agents.acp_tool_name_compat import install_acp_tool_titles
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
@@ -36,6 +38,11 @@ from octop.infra.agents.security.hitl_session import (
     thread_id_from_request,
 )
 from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.compaction import (
+    COMPACTION_CONFIG_KEY,
+    apply_compaction_update,
+    harness_summarization_kwargs,
+)
 from octop.infra.agents.settings.decision import DecisionSettings, DecisionSettingsStore
 from octop.infra.agents.settings.langfuse import LangfuseSettings, LangfuseSettingsStore
 from octop.infra.agents.settings.media_generation import (
@@ -55,7 +62,9 @@ from octop.infra.agents.settings.profile import (
 from octop.infra.agents.settings.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     apply_agent_runtime_to_stream_request,
+    call_guard_middleware,
     merge_agent_runtime_values,
+    resolve_model_retry,
 )
 from octop.infra.agents.settings.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
@@ -63,6 +72,7 @@ from octop.infra.agents.settings.runtime_limits import (
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
+    omit_docker_volumes,
 )
 from octop.infra.backend.resolver import (
     default_agent_backend_spec,
@@ -84,6 +94,7 @@ from octop.infra.skills.workspace_catalog import (
     repair_workspace_skill_manifests,
 )
 from octop.infra.utils.locale import Locale, resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
@@ -98,6 +109,9 @@ if TYPE_CHECKING:
     from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
+
+install_acp_permission_queue()
+install_acp_tool_titles()
 
 
 def _model_retry_on_failure(
@@ -834,10 +848,12 @@ class AgentManager:
                         break
                 else:
                     raise RuntimeError("failed to allocate unique agent_id")
-            config = merge_agent_runtime_values(
-                spec.config,
-                spec.runtime_config,
-            )
+            runtime_config = dict(spec.runtime_config)
+            compaction_set = COMPACTION_CONFIG_KEY in runtime_config
+            compaction_value = runtime_config.pop(COMPACTION_CONFIG_KEY, None)
+            config = merge_agent_runtime_values(spec.config, runtime_config)
+            if compaction_set:
+                config = apply_compaction_update(config, compaction_value)
             if spec.persona_mbti:
                 config["persona"] = spec.persona_mbti.upper()
             from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
@@ -852,9 +868,23 @@ class AgentManager:
                 raise_if_workspace_dir_outside_user_root,
             )
 
+            kind = spec.kind if spec.kind in {"expert", "team", "managed"} else "expert"
+            if kind == "managed":
+                from octop.infra.agents.managed import (  # noqa: PLC0415
+                    apply_managed_backend,
+                    managed_default_workspace,
+                    pin_managed_runtime,
+                    require_managed_fields,
+                )
+
+                apply_managed_backend(config)
+                pin_managed_runtime(config)
+                raw_workspace = config.get("workspace_dir")
+                if not isinstance(raw_workspace, str) or not raw_workspace.strip():
+                    config["workspace_dir"] = managed_default_workspace(agent_id)
+                require_managed_fields(config)
             if spec.user_id is not None:
-                kind = spec.kind if spec.kind in {"expert", "team"} else "expert"
-                if kind == "expert":
+                if kind != "team":
                     assert_agent_quota_available(
                         self._repos.user_policy_repo,
                         self._repos.agent_repo,
@@ -893,6 +923,12 @@ class AgentManager:
             # be user-configurable. New agents always use the default prefix.
             config.pop("system_files_path", None)
             config["system_files_path"] = DEFAULT_SYSTEM_FILES_PATH
+            if kind == "managed":
+                from octop.infra.agents.managed import managed_project_root  # noqa: PLC0415
+
+                runner = config.get("managed_runner")
+                if isinstance(runner, str) and runner.strip():
+                    config["system_files_path"] = managed_project_root(runner)
             if spec.is_shared and spec.kind == "team":
                 raise OctopError(
                     ErrorCode.TEAM_NOT_SHAREABLE,
@@ -949,7 +985,7 @@ class AgentManager:
                 ),
                 knowledge_base_ids=knowledge_ids_json,
                 mcp_servers=mcp_servers_json,
-                kind=spec.kind if spec.kind in {"expert", "team"} else "expert",
+                kind=kind,
             )
             row = self._repos.agent_repo.get(agent_id)
             assert row is not None
@@ -1093,7 +1129,9 @@ class AgentManager:
         runtime_updates = {
             key: kwargs.pop(key) for key in AGENT_RUNTIME_CONFIG_KEYS if key in kwargs
         }
-        if runtime_updates:
+        compaction_set = COMPACTION_CONFIG_KEY in kwargs
+        compaction_value = kwargs.pop(COMPACTION_CONFIG_KEY, None)
+        if runtime_updates or compaction_set:
             raw_config = kwargs.get("config_json")
             if raw_config is None:
                 current_row = self._repos.agent_repo.get(agent_id)
@@ -1106,9 +1144,11 @@ class AgentManager:
                 parsed_config = {}
             if not isinstance(parsed_config, dict):
                 parsed_config = {}
-            kwargs["config_json"] = json.dumps(
-                merge_agent_runtime_values(parsed_config, runtime_updates),
-            )
+            if runtime_updates:
+                parsed_config = merge_agent_runtime_values(parsed_config, runtime_updates)
+            if compaction_set:
+                parsed_config = apply_compaction_update(parsed_config, compaction_value)
+            kwargs["config_json"] = json.dumps(parsed_config)
         if "config_json" in kwargs:
             parsed_profile_cfg = parse_config_json(
                 kwargs["config_json"] if isinstance(kwargs["config_json"], str) else None
@@ -1117,6 +1157,21 @@ class AgentManager:
                 agent_id, parsed_profile_cfg, pin_workspace_dir=True
             )
             owner_row = self._repos.agent_repo.get(agent_id)
+            if owner_row is not None and getattr(owner_row, "kind", None) == "managed":
+                from octop.infra.agents.managed import preserve_managed_config  # noqa: PLC0415
+
+                preserve_managed_config(
+                    parsed_profile_cfg,
+                    parse_config_json(owner_row.config_json),
+                )
+            if (
+                not compaction_set
+                and COMPACTION_CONFIG_KEY not in parsed_profile_cfg
+                and owner_row is not None
+            ):
+                previous = parse_config_json(owner_row.config_json).get(COMPACTION_CONFIG_KEY)
+                if isinstance(previous, dict):
+                    parsed_profile_cfg[COMPACTION_CONFIG_KEY] = previous
             if owner_row is not None and owner_row.user_id is not None:
                 from octop.infra.users.resource_policy import (
                     POLICY_WORKSPACE_ROOT_DIR,
@@ -2040,10 +2095,49 @@ class AgentManager:
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+                self._turn_model_access_from_request(req),
             ):
-                async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                    yield chunk
+                chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
+
+    def _turn_model_access_from_request(self, request: dict[str, Any]) -> Any:
+        raw = request.get("user")
+        if isinstance(raw, bool) or not isinstance(raw, int | str):
+            return nullcontext()
+        try:
+            user_id = int(raw)
+        except ValueError:
+            return nullcontext()
+        return self._turn_model_access_for_user(user_id)
+
+    def _turn_model_access_for_thread(self, thread_id: str) -> Any:
+        repos = getattr(self, "_repos", None)
+        thread_repo = getattr(repos, "thread_repo", None) if repos is not None else None
+        if thread_repo is None:
+            return nullcontext()
+        row = thread_repo.get(thread_id)
+        user_id = row.user_id if row is not None else 0
+        return self._turn_model_access_for_user(user_id)
+
+    def _turn_model_access_for_user(self, user_id: int) -> Any:
+        from octop.infra.agents.providers.turn_access import turn_model_access
+
+        if user_id <= 0:
+            return nullcontext()
+        return turn_model_access(user_id, is_admin=self._user_is_admin(user_id))
+
+    def _auto_route_candidates(self, *, needs_multimodal: bool) -> list[Any]:
+        from octop.infra.agents.providers.turn_access import filter_auto_route_candidates
+
+        return filter_auto_route_candidates(
+            self._providers.list_auto_route_candidates(needs_multimodal=needs_multimodal),
+            repos=self._repos,
+        )
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
         """Non-streaming harness invocation (one-shot agent call)."""
@@ -2056,6 +2150,7 @@ class AgentManager:
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
+                self._turn_model_access_from_request(req),
             ):
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
@@ -2080,11 +2175,14 @@ class AgentManager:
             with (
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
+                self._turn_model_access_for_thread(thread_id),
             ):
-                async for chunk in self._harness_manager.resume_hitl(
-                    agent_id, thread_id, decisions
-                ):
-                    yield chunk
+                chunk_stream = self._harness_manager.resume_hitl(agent_id, thread_id, decisions)
+                try:
+                    async for chunk in chunk_stream:
+                        yield chunk
+                finally:
+                    await close_event_stream(chunk_stream)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -3688,8 +3786,13 @@ class AgentManager:
 
                 cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
                 # Team hosts already have AGENTS/SOUL/MEMORY from seed_team_template.
-                # Never let harness copy builtin skills just to strip them later.
-                seed_workspace = init_workspace and not is_team_agent(row)
+                # Managed agents only keep AGENTS.md; the ACP runner owns skills
+                # and subagents under its own project directory.
+                seed_workspace = (
+                    init_workspace
+                    and not is_team_agent(row)
+                    and getattr(row, "kind", None) != "managed"
+                )
                 entry = await self._harness_manager.acreate_agent(
                     cfg,
                     agent_id=row.agent_id,
@@ -3751,7 +3854,7 @@ class AgentManager:
             len(tool_set),
             sorted(tool_set)[:8],
         )
-        if not team_host:
+        if not team_host and getattr(row, "kind", None) != "managed":
             ws = agent.workspace
             try:
                 from octop.infra.agents.builtin_skills import (  # noqa: PLC0415
@@ -3864,7 +3967,8 @@ class AgentManager:
         )
         # Windows: the dashboard defaults local backends to root_dir "/", which
         # resolves to a drive other than the workspace and breaks path checks.
-        return windows_neutralize_host_root(resolved, workspace_dir=workspace_dir)
+        resolved = windows_neutralize_host_root(resolved, workspace_dir=workspace_dir)
+        return omit_docker_volumes(resolved)
 
     def resolved_backend_spec(self, agent_id: str) -> Any:
         """Backend spec for *agent_id* with Octop docker enrichments applied."""
@@ -4146,7 +4250,14 @@ class AgentManager:
             host = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
         except Exception:
             return extra
-        for rel in (Path(".octop") / "manifest.json", Path("manifest.json")):
+        from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
+
+        prefix = system_files_path_from_config(self.get_config(agent_id)) or ".octop"
+        for rel in (
+            Path(prefix) / "manifest.json",
+            Path(".octop") / "manifest.json",
+            Path("manifest.json"),
+        ):
             path = host / rel
             if not path.is_file():
                 continue
@@ -4215,6 +4326,68 @@ class AgentManager:
                 return str(row.default_model).strip()
         return ""
 
+    def _managed_harness_config(
+        self,
+        row: AgentRow,
+        *,
+        cfg: dict[str, Any],
+        harness_workspace: Path,
+        backend: Any,
+    ) -> HarnessAgentConfig:
+        """Harness config for an ACP-backed agent.
+
+        Chat, workspace files, skills, and subagents still go through the
+        same surfaces as an expert. Bootstrap, memory, and the model tool
+        stack stay off: the connected runner executes the turn.
+        """
+        from octop_harness.acp.models import ACPConfig  # noqa: PLC0415
+
+        from octop.infra.agents.managed import (  # noqa: PLC0415
+            managed_skill_dir,
+            managed_subagent_dir,
+        )
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+            system_files_path_from_config,
+        )
+
+        acp_user_id = row.user_id
+        if acp_user_id is None:
+            acp_user_id = self._connector_user_override.get(row.agent_id)
+        runners = self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
+        acp_config = ACPConfig.from_dict({"runners": runners})
+        runner = cfg.get("managed_runner")
+        runner_id = runner.strip() if isinstance(runner, str) else ""
+        off: dict[str, Any] = {}
+        for key in (
+            "memory_capture_enabled",
+            "memory_recall_inject_enabled",
+            "memory_extract_on_session_end",
+        ):
+            if key in _HARNESS_AGENT_CONFIG_FIELDS:
+                off[key] = False
+        built = HarnessAgentConfig(
+            name=_memory_namespace(row.agent_id),
+            workspace_dir=harness_workspace,
+            system_files_path=system_files_path_from_config(cfg),
+            language=resolve_user_locale(
+                user_repo=self._repos.user_repo,
+                user_id=row.user_id or 0,
+            ),
+            backend=backend,
+            bootstrap_enabled=False,
+            memory_enabled=False,
+            acp_runners=acp_config.runners,
+            acp_delegate_enabled=False,
+            default_timezone=self._config.default_timezone,
+            **off,
+        )
+        if runner_id and "managed_runner" in _HARNESS_AGENT_CONFIG_FIELDS:
+            built.managed_runner = runner_id
+            built.skills_dir = managed_skill_dir(runner_id)
+            if "subagents_path" in _HARNESS_AGENT_CONFIG_FIELDS:
+                built.subagents_path = managed_subagent_dir(runner_id)
+        return built
+
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
         from octop_harness.middleware.bootstrap import bootstrap_marker_exists  # noqa: PLC0415
@@ -4255,6 +4428,15 @@ class AgentManager:
                 cfg = persisted
 
         backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
+        if getattr(row, "kind", None) == "managed":
+            # The ACP runner is the agent. Reuse the workspace and runner
+            # binding; do not assemble the expert tool, memory, or bootstrap stack.
+            return self._managed_harness_config(
+                row,
+                cfg=cfg,
+                harness_workspace=harness_workspace,
+                backend=backend,
+            )
         ws = self._backend_workspace_for_row(
             row,
             cfg=cfg,
@@ -4367,6 +4549,7 @@ class AgentManager:
         )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.agents.middleware.team_dispatch import TeamDispatchBriefingMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
@@ -4388,6 +4571,7 @@ class AgentManager:
                 usage_repo=self._repos.usage_repo,
             ),
             ReasoningRequestMiddleware(),
+            TeamDispatchBriefingMiddleware(),
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
@@ -4555,6 +4739,7 @@ class AgentManager:
             **harness_fields,
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
+            **harness_summarization_kwargs(cfg, supported_fields=_HARNESS_AGENT_CONFIG_FIELDS),
         )
         if "tools_disabled" in _HARNESS_AGENT_CONFIG_FIELDS:
             from octop.infra.agents.settings.tool_catalog import effective_tools_disabled
@@ -4576,7 +4761,9 @@ class AgentManager:
         interrupt_on = apply_session_bypass(applied.interrupt_on, self._hitl_session_store)
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
-        if applied.model_retry_enabled:
+        model_retry = resolve_model_retry(cfg)
+        prefix: list[Any] = call_guard_middleware(cfg)
+        if model_retry.enabled and applied.model_retry_enabled:
             factory = (
                 self._harness_manager.shared_factory if self._harness_manager is not None else None
             )
@@ -4586,37 +4773,36 @@ class AgentManager:
                     SafeModelFailoverMiddleware,
                 )
 
-                retry_middleware: Any = SafeModelFailoverMiddleware(
-                    health=self._model_health,
-                    candidates=lambda _current_ref, needs_multimodal: (
-                        self._providers.list_auto_route_candidates(
-                            needs_multimodal=needs_multimodal
-                        )
-                    ),
-                    model_for_ref=get_chat_model,
-                    max_retries=applied.model_retry_max_retries,
-                    initial_delay=applied.model_retry_initial_delay,
-                    max_delay=applied.model_retry_max_delay,
-                    on_failure="error",
+                prefix.append(
+                    SafeModelFailoverMiddleware(
+                        health=self._model_health,
+                        candidates=lambda _current_ref, needs_multimodal: (
+                            self._auto_route_candidates(needs_multimodal=needs_multimodal)
+                        ),
+                        model_for_ref=get_chat_model,
+                        max_retries=model_retry.max_retries,
+                        initial_delay=model_retry.initial_delay,
+                        max_delay=model_retry.max_delay,
+                        on_failure="error",
+                    )
                 )
             else:
                 from langchain.agents.middleware import ModelRetryMiddleware
 
-                retry_middleware = ModelRetryMiddleware(
-                    max_retries=applied.model_retry_max_retries,
-                    initial_delay=applied.model_retry_initial_delay,
-                    max_delay=applied.model_retry_max_delay,
-                    on_failure="error",
+                prefix.append(
+                    ModelRetryMiddleware(
+                        max_retries=model_retry.max_retries,
+                        initial_delay=model_retry.initial_delay,
+                        max_delay=model_retry.max_delay,
+                        on_failure="error",
+                    )
                 )
-
-            applied = replace(
-                applied,
-                model_retry_enabled=False,
-                middleware=[
-                    retry_middleware,
-                    *(applied.middleware or []),
-                ],
-            )
+        # The host owns model retry, so harness must not mount a second copy.
+        applied = replace(
+            applied,
+            model_retry_enabled=False,
+            middleware=[*prefix, *(applied.middleware or [])],
+        )
         self._tool_guard_rules.ensure_seeded()
         return replace(
             applied,

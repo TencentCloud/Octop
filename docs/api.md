@@ -126,7 +126,7 @@ does not set these headers itself.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, ...}]` |
+| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, last_active, ...}]` — `last_active` is this user's latest thread touch (unix seconds), or `null` |
 | `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201` |
 | `GET`    | `/agents/{id}` | owner | full agent row |
 | `PATCH`  | `/agents/{id}` | owner | body subset of create body |
@@ -140,6 +140,19 @@ does not set these headers itself.
 | `GET`    | `/agents/{id}/tool-settings` | owner | built-in + installed plugin tools with enable / disableable / available flags |
 | `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
 | `PATCH`  | `/agents/{id}/tool-settings/{tool_name}` | owner | body `{enabled, source, plugin_id?}` — toggle one tool (hot-sync) |
+
+Create and patch accept the same per-expert runtime fields the dashboard shows
+under advanced options (`max_iters`, sampling, `compaction`, tool-call limit,
+model retry, tool retry). They are stored on the agent and returned as
+top-level fields, not inside `config`. Omit a field to keep its default;
+send `null` to clear a stored override.
+
+Tool calls in one user turn default to 40 (`tool_call_run_limit`). Reaching
+the cap ends that turn. `tool_call_limit_enabled: false` removes the cap.
+Model retry defaults to on, 2 extra attempts, 1s–60s, and fails the turn when
+exhausted. Tool retry defaults to on, 5 extra attempts, 1s–60s, and only
+retries a tool that raises; the error is then handed back to the model.
+These middleware settings apply the next time the expert starts.
 
 ## Skills and skill packages
 
@@ -288,7 +301,10 @@ in the list. If the process is down for more than 24 hours past that
 time and the job never ran, `last_status` is `missed` and the job is
 disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
 an optional display label; when omitted, the server derives one from
-`prompt`.
+`prompt`. `session_key` omitted or `latest` uses the owner's Dashboard
+channel and, on each run, that channel's most recent conversation.
+`thread:{thread_id}` pins the job to that conversation. `fresh_thread`
+starts a new conversation on the channel and ignores the history pin.
 
 ## Providers
 
@@ -299,6 +315,8 @@ an optional display label; when omitted, the server derives one from
 | `PATCH`  | `/providers/{id}` | owner | body subset → updated row |
 | `DELETE` | `/providers/{id}` | owner | `204` (refuses if any agent references it) |
 | `POST`   | `/providers/{id}/test` | user | `{ok, latency_ms?, error?}` (one-token ping with 10 s timeout) |
+| `GET`    | `/admin/providers/magpie/discovery` | providers | Local Magpie hello on the Octop host. `{available, base_url, version}`. Misses stay `available: false` and omit the upstream body. No URL parameter. |
+| `POST`   | `/admin/providers/fetch-models` | providers | OpenAI-compatible `GET /models` for a draft. Magpie responses keep model ids and optional capability fields. |
 | `POST`   | `/admin/providers` | admin | same body as user POST; row has `user_id = NULL` |
 | `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
 | `DELETE` | `/admin/providers/{id}` | admin | `204` |
@@ -493,6 +511,9 @@ this gate at production: it creates test namespaces and a temporary failure trig
 |--------|------|------|-------|
 | `GET`    | `/acp` | user | current user's global runner list |
 | `PUT`    | `/acp` | user | replace global runners |
+| `POST`   | `/acp/probe` | admin | probe command + ACP initialize; returns host install script and Octop prompt |
+| `POST`   | `/acp/ask` | admin | send `who are you?` over ACP and return the reply text |
+| `POST`   | `/acp/install` | admin | best-effort install of a built-in runner, then probe again |
 | `GET`    | `/acp/{runner_name}` | user | one runner |
 | `PUT`    | `/acp/{runner_name}` | user | upsert one runner |
 | `DELETE` | `/acp/{runner_name}` | user | delete a custom runner (built-ins are protected) |

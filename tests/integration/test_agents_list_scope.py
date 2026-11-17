@@ -57,6 +57,37 @@ async def test_admin_scope_all_lists_every_user(env) -> None:
     assert guest_agent_id in ids
 
 
+async def test_admin_can_update_another_users_agent(env) -> None:
+    c, _srv, admin_auth = env
+    guest_auth = await create_user(c, admin_auth, username="guest_manage")
+    other_auth = await create_user(c, admin_auth, username="peer_manage")
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=guest_auth,
+        json={"name": "guest-manage-bot"},
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    owner_id = created.json()["user_id"]
+
+    denied = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=other_auth,
+        json={"description": "nope"},
+    )
+    assert denied.status_code == 403
+
+    renamed = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=admin_auth,
+        json={"name": "renamed-by-admin", "description": "admin edit"},
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["name"] == "renamed-by-admin"
+    assert renamed.json()["description"] == "admin edit"
+    assert renamed.json()["user_id"] == owner_id
+
+
 async def test_non_admin_cannot_use_scope_all(env) -> None:
     c, _srv, admin_auth = env
     user_auth = await create_user(c, admin_auth, username="scope_user")

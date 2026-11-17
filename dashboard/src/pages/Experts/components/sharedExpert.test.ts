@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canManageExpert,
   canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isOwnedExpert,
@@ -21,6 +22,16 @@ describe("canReadAgentRuntimeStatus", () => {
         { role: "user" },
       ),
     ).toBe(true);
+  });
+});
+
+describe("canManageExpert", () => {
+  const others = { is_shared: false, is_owner: false };
+
+  it("lets an admin manage another user's expert", () => {
+    expect(canManageExpert(others, { role: "admin" })).toBe(true);
+    expect(canManageExpert(others, { role: "user" })).toBe(false);
+    expect(canManageExpert({ is_owner: true }, { role: "user" })).toBe(true);
   });
 });
 

@@ -89,6 +89,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
@@ -602,8 +603,11 @@ class GlobalProcessor:
                 history_finalize=_finalize,
                 member_hitl=self.teams.deliver_member_hitl,
             )
-        async for ev in stream:
-            yield ev
+        try:
+            async for ev in stream:
+                yield ev
+        finally:
+            await close_event_stream(stream)
         if not slash_outcome.completed_turn:
             return
         thread_id = self._thread_registry.get_bound_thread_id(session_key)
@@ -909,7 +913,7 @@ class GlobalProcessor:
                 usage_tracker = UsageTracker()
                 history_tracker = TurnHistoryTracker.from_request({})
                 answer_outcome = HitlAnswerOutcome()
-                async for ev in self._hitl.iter_answer_resolution(
+                answer_stream = self._hitl.iter_answer_resolution(
                     ask_record,
                     msg.text,
                     agent_manager=self._agent_manager,
@@ -918,8 +922,12 @@ class GlobalProcessor:
                     history_tracker=history_tracker,
                     outcome=answer_outcome,
                     member_hitl=self.teams.deliver_member_hitl,
-                ):
-                    yield ev
+                )
+                try:
+                    async for ev in answer_stream:
+                        yield ev
+                finally:
+                    await close_event_stream(answer_stream)
                 if answer_outcome.completed_turn:
                     self._touch_thread_after_turn(ask_record.thread_id, msg.text)
                     if usage_tracker.usage:
@@ -1072,7 +1080,7 @@ class GlobalProcessor:
         history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
         try:
-            async for ev in project_stream(
+            turn_stream = project_stream(
                 self._agent_manager,
                 agent_id,
                 request,
@@ -1089,8 +1097,12 @@ class GlobalProcessor:
                     session_key=session_key,
                     channel_type=channel_type,
                 ),
-            ):
-                yield ev
+            )
+            try:
+                async for ev in turn_stream:
+                    yield ev
+            finally:
+                await close_event_stream(turn_stream)
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
@@ -1187,7 +1199,7 @@ class GlobalProcessor:
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
+            slash_stream = self._hitl.iter_slash_resolution(
                 cmd,
                 self._slash_ctx(
                     agent_id=agent_id,
@@ -1202,9 +1214,13 @@ class GlobalProcessor:
                 outcome=slash_outcome,
                 history_finalize=self._complete_resumed_history,
                 member_hitl=self.teams.deliver_member_hitl,
-            ):
-                for frame in message_event_to_cli_chunks(ev):
-                    yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            )
+            try:
+                async for ev in slash_stream:
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            finally:
+                await close_event_stream(slash_stream)
             thread_id = self._thread_registry.get_bound_thread_id(session_key)
             if thread_id is None:
                 thread_id = await self._thread_registry.get_or_create_by_key(

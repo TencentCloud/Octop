@@ -24,6 +24,7 @@ import { Input, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
+  Cable,
   Cloudy,
   GraduationCap,
   LayoutGrid,
@@ -36,6 +37,7 @@ import {
 } from "lucide-react";
 import cx from "classnames";
 import PageShell from "../../layouts/PageShell";
+import BetaBadge from "../../components/BetaBadge";
 import TabLabel from "../../components/TabLabel";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -54,6 +56,7 @@ import EditAgentDrawer from "./components/EditAgentDrawer";
 import CreateFromExpertDrawer, {
   type CreateFromTemplateSource,
 } from "./components/CreateFromExpertDrawer";
+import ManagedDrawer from "./components/ManagedDrawer";
 import TeamDrawer from "./components/TeamDrawer";
 import type { TeamRecord } from "../../api/modules/teams";
 import { TeamCard } from "./components/TeamCard";
@@ -74,6 +77,7 @@ type TabKey = "my" | "teams" | "market";
 
 function tabFromQuery(raw: string | null): TabKey | null {
   if (raw === "library" || raw === "market") return "market";
+  if (raw === "managed") return "my";
   if (raw === "my" || raw === "teams") return raw;
   return null;
 }
@@ -132,17 +136,10 @@ export default function ExpertsPage() {
   // Deep links may arrive as ?tab=. Apply once, then drop the param so the
   // address bar stays /experts while the user switches tabs.
   const [searchParams, setSearchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabKey>(
-    () => tabFromQuery(searchParams.get("tab")) ?? "my",
-  );
-  useEffect(() => {
-    if (!searchParams.has("tab")) return;
-    const nextTab = tabFromQuery(searchParams.get("tab"));
-    if (nextTab) setActiveTab(nextTab);
-    const next = new URLSearchParams(searchParams);
-    next.delete("tab");
-    setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    if (searchParams.get("create") === "team") return "teams";
+    return tabFromQuery(searchParams.get("tab")) ?? "my";
+  });
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
@@ -320,6 +317,7 @@ export default function ExpertsPage() {
   const [teamDrawer, setTeamDrawer] = useState<
     { mode: "create" } | { mode: "edit"; team: OctopAgent } | null
   >(null);
+  const [managedOpen, setManagedOpen] = useState(false);
 
   const handleEditSaved = useCallback(
     (
@@ -383,6 +381,23 @@ export default function ExpertsPage() {
       setDefaultCreating(false);
     }
   }, [t]);
+
+  // Chat nav deep links: ?tab= and ?create=expert|team. Drop them after apply.
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    const create = searchParams.get("create");
+    if (!tab && !create) return;
+    const nextTab = tabFromQuery(tab);
+    if (create === "team") setActiveTab("teams");
+    else if (create === "expert") setActiveTab("my");
+    else if (nextTab) setActiveTab(nextTab);
+    if (create === "team") setTeamDrawer({ mode: "create" });
+    if (create === "expert") void openDefaultCreate();
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [openDefaultCreate, searchParams, setSearchParams]);
 
   const openExpertMarket = useCallback(() => {
     setActiveTab("market");
@@ -483,6 +498,19 @@ export default function ExpertsPage() {
                   }
                 : undefined
             }
+            moreActions={[
+              {
+                label: (
+                  <span className={styles.titleWithBeta}>
+                    {t("experts.managed.createTitle")}
+                    <BetaBadge />
+                  </span>
+                ),
+                onClick: () => setManagedOpen(true),
+                icon: <Cable size={14} />,
+                type: "default",
+              },
+            ]}
           />
         </div>
       );
@@ -537,6 +565,17 @@ export default function ExpertsPage() {
                 </button>
               </Tooltip>
             ) : null}
+            <button
+              className={styles.toolbarBtn}
+              type="button"
+              onClick={() => setManagedOpen(true)}
+            >
+              <Cable size={14} />
+              <span className={styles.titleWithBeta}>
+                {t("experts.managed.createTitle")}
+                <BetaBadge />
+              </span>
+            </button>
             <button
               className={styles.toolbarBtnPrimary}
               type="button"
@@ -809,6 +848,18 @@ export default function ExpertsPage() {
         lang={lang}
         onClose={() => setCreateSource(null)}
         onCreated={handleCreated}
+      />
+
+      <ManagedDrawer
+        open={managedOpen}
+        onClose={() => setManagedOpen(false)}
+        onCreated={(agentId) => {
+          setManagedOpen(false);
+          setActiveTab("my");
+          setNewAgentId(agentId);
+          void refreshAgents({ silent: true, force: true });
+          setTimeout(() => setNewAgentId(null), 1000);
+        }}
       />
 
       <TeamDrawer
