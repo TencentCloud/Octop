@@ -12,7 +12,7 @@ import pytest
 from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.gateway.process.processor import GlobalProcessor, _stream_error
+from octop.infra.gateway.process.processor import GlobalProcessor, stream_error
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 from octop.infra.history.projection import _wire_text
@@ -66,10 +66,40 @@ def test_stream_error_preserves_resource_error_code() -> None:
         details={"used": 12, "quota": 10},
     )
 
-    message, code = _stream_error(error, "zh")
+    message, code = stream_error(error, "zh")
 
     assert code == "TOKEN_QUOTA_EXCEEDED"
     assert "12/10" in message
+
+
+@pytest.mark.asyncio
+async def test_mcp_load_failure_keeps_servers_and_code() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "done"}
+
+    processor, _msg, _appended = _processor_with_stream(stream)
+    row = MagicMock()
+    row.user_id = 1
+    row.config_json = "{}"
+    processor._agent_manager.get_row = MagicMock(return_value=row)
+    processor._agent_manager.default_mcp_servers = MagicMock(return_value=None)
+    processor._agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["github"])
+    processor._agent_manager.prepare_chat_mcp = AsyncMock(return_value=["github"])
+    processor._agent_manager.connector_auth_blocked = AsyncMock(return_value=[])
+
+    with pytest.raises(OctopError) as exc_info:
+        await processor._resolve_turn_mcp_servers(
+            agent_id="agent-1",
+            user_id=1,
+            explicit=None,
+            apply_defaults=True,
+        )
+
+    message, code = stream_error(exc_info.value, "en")
+
+    assert code == "CONNECTOR_MCP_LOAD_FAILED"
+    assert "github" in message
+    assert "{servers}" not in message
 
 
 def _processor_with_stream(

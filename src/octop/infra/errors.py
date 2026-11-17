@@ -7,6 +7,7 @@ from enum import StrEnum
 from typing import Any
 
 from octop.i18n import error_message as i18n_error_message
+from octop.i18n.domains.stream import format_stream_error
 from octop.infra.utils.locale import Locale, normalize_locale
 
 
@@ -403,6 +404,18 @@ class OctopError(Exception):
                 "details": self.details,
             }
         }
+
+
+def stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
+    """Message and error code for a failed stream/turn.
+
+    ``OctopError`` keeps its localized ``errors.<CODE>`` text and code so
+    channels can surface machine-readable failures; everything else falls back
+    to the generic stream-error formatting without a code.
+    """
+    if isinstance(exc, OctopError):
+        return exc.localized_message(locale), exc.code.value
+    return format_stream_error(exc, locale), None
 
 
 def corrupt_config_error(path: object, detail: str) -> OctopError:

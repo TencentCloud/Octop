@@ -19,7 +19,7 @@ from octop_gateway.models import (
     VideoContent,
 )
 
-from octop.i18n.domains.stream import format_stream_error
+from octop.infra.errors import stream_error
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws.ws_hub import WebSocketHub
 from octop.infra.utils.locale import resolve_locale
@@ -119,10 +119,11 @@ class CliChannel(BaseChannel):
                 channel_type=str(getattr(message, "channel_type", "") or ""),
                 metadata=meta,
             )
-            await self._hub.push(
-                conn_id,
-                {"type": "error", "message": format_stream_error(exc, locale)},
-            )
+            error_message, error_code = stream_error(exc, locale)
+            frame: dict[str, object] = {"type": "error", "message": error_message}
+            if error_code:
+                frame["error_code"] = error_code
+            await self._hub.push(conn_id, frame)
             await self._hub.push(conn_id, {"type": "done"})
 
     async def _send_text(self, subject: ChannelSubject, text: str) -> None:
