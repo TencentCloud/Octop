@@ -137,3 +137,156 @@ def test_models_active_explains_an_unset_default(fake_home: Path) -> None:
     runner.invoke(cli, ["models", "active", "--provider", "acme", "--model", "small"])
     shown = runner.invoke(cli, ["models", "active"])
     assert shown.output.strip() == "acme / small"
+
+
+# ── P0: _pg0param type-to-cast mapping ──────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "col_type,expected",
+    [
+        ("REAL", "%s::double precision"),
+        ("real", "%s::double precision"),
+        ("FLOAT", "%s::double precision"),
+        ("float", "%s::double precision"),
+        ("DOUBLE", "%s::double precision"),
+        ("double", "%s::double precision"),
+        ("INTEGER", "%s::bigint"),
+        ("integer", "%s::bigint"),
+        ("INT", "%s::bigint"),
+        ("int", "%s::bigint"),
+        ("BIGINT", "%s::bigint"),
+        ("bigint", "%s::bigint"),
+        ("BLOB", "%s::bytea"),
+        ("blob", "%s::bytea"),
+        ("JSON", "%s::jsonb"),
+        ("json", "%s::jsonb"),
+        # unknown / fallback
+        ("TEXT", "%s"),
+        ("text", "%s"),
+        ("VARCHAR", "%s"),
+        ("BOOLEAN", "%s"),
+        ("TIMESTAMP", "%s"),
+        ("", "%s"),
+    ],
+)
+def test_pg0param_returns_correct_cast(col_type: str, expected: str) -> None:
+    from octop.cli.commands.db import _pg0param
+
+    assert _pg0param(col_type) == expected
+
+
+# ── P0: _convert_value type dispatch ──────────────────────────────────
+
+
+class TestConvertValueNull:
+    def test_none_is_none_regardless_of_type(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        for t in ("INTEGER", "REAL", "TEXT", "BLOB", "JSON", "BOOLEAN", ""):
+            assert _convert_value(None, t) is None
+
+
+class TestConvertValueNumeric:
+    def test_real_types_produce_float(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        for t in ("REAL", "real", "FLOAT", "float", "DOUBLE", "double"):
+            assert _convert_value(3.14, t) == 3.14
+            assert isinstance(_convert_value(3.14, t), float)
+            assert _convert_value(42, t) == 42.0
+            assert isinstance(_convert_value(42, t), float)
+
+    def test_integer_types_produce_int(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        for t in ("INTEGER", "integer", "INT", "int", "BIGINT", "bigint"):
+            assert _convert_value(42, t) == 42
+            assert isinstance(_convert_value(42, t), int)
+            assert _convert_value(0, t) == 0
+            assert _convert_value(-1, t) == -1
+
+
+class TestConvertValueBlob:
+    def test_blob_produces_bytes(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        result = _convert_value(b"hello", "BLOB")
+        assert result == b"hello"
+        assert isinstance(result, bytes)
+
+    def test_blob_empty(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value(b"", "BLOB") == b""
+
+
+class TestConvertValueJson:
+    def test_json_string_roundtrips(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        result = _convert_value('{"a":1}', "JSON")
+        assert result == '{"a": 1}'
+        import json
+
+        json.loads(result)  # must be valid JSON
+
+    def test_json_dict_is_serialised(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        result = _convert_value({"key": [1, 2]}, "JSON")
+        assert result == '{"key": [1, 2]}'
+
+    def test_json_list_is_serialised(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        result = _convert_value([1, "two", 3.0], "JSON")
+        assert result == '[1, "two", 3.0]'
+
+    def test_json_empty_string_yields_empty_array(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value("", "JSON") == "[]"
+
+    def test_json_whitespace_string_passed_through(self) -> None:
+        """Whitespace-only string is truthy, so the final fallback
+        ``return str(val) if val else "[]"`` returns it as-is."""
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value("  ", "JSON") == "  "
+
+    def test_json_plain_string_raises_decode_error(self) -> None:
+        """json.loads('hello') raises JSONDecodeError — the function
+        does not catch this; callers must ensure only valid JSON strings
+        are stored in JSON-typed columns."""
+        import json
+
+        from octop.cli.commands.db import _convert_value
+
+        with pytest.raises(json.JSONDecodeError):
+            _convert_value("hello", "JSON")
+
+
+class TestConvertValueFallback:
+    """When col_type is unknown, infer from Python value type."""
+
+    def test_fallback_float_stays_float(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value(3.14, "TEXT") == 3.14
+
+    def test_fallback_int_stays_int(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value(42, "VARCHAR") == 42
+
+    def test_fallback_str_stays_str(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value("hello", "UNKNOWN") == "hello"
+        assert _convert_value("你好", "") == "你好"
+
+    def test_fallback_none_is_none(self) -> None:
+        from octop.cli.commands.db import _convert_value
+
+        assert _convert_value(None, "UNKNOWN") is None
