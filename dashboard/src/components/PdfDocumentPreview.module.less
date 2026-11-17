@@ -193,16 +193,22 @@
   overscroll-behavior: contain;
 }
 
+/*
+ * Start-align and centre each page with auto margins: `align-items: center`
+ * would push a zoomed-in page past the left edge, where it can't be scrolled.
+ */
 .pdfDocument {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
 }
 
 .pdfPageSlot {
   position: relative;
   flex: 0 0 auto;
+  margin-left: auto;
+  margin-right: auto;
   overflow: hidden;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   background: #fff;
