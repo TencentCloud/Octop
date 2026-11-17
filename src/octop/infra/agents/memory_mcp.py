@@ -41,10 +41,12 @@ capture is recorded and extraction is skipped until the expert runs.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import threading
 from collections.abc import AsyncIterator, Callable
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from contextvars import ContextVar
 from typing import Any, get_args
 
@@ -83,6 +85,63 @@ _EXTRACT_TASKS: set[asyncio.Task[None]] = set()
 one, so an unreferenced task may be garbage-collected mid-flight)."""
 
 _EXTRACT_LOCKS: dict[str, asyncio.Lock] = {}
+
+_CAPTURE_MAX_EVENTS = 200
+"""(default) per-request event limit for ``memory_capture(events=...)``.
+
+Clients batch below this size and only advance their transcript offset after a
+batch is accepted, so a too-large request is rejected instead of being
+silently truncated."""
+with suppress(ValueError):  # bad env keeps the default
+    _CAPTURE_MAX_EVENTS = max(
+        1,
+        min(1000, int(os.environ.get("OCTOP_MEMORY_CAPTURE_MAX_EVENTS") or _CAPTURE_MAX_EVENTS)),
+    )
+
+_CAPTURE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+_CAPTURE_LOCKS_GUARD = threading.Lock()
+
+
+def _capture_lock(agent_id: str, session_id: str) -> threading.Lock:
+    """Serialize dedupe+write for one (expert, session) so retries cannot race."""
+    with _CAPTURE_LOCKS_GUARD:
+        return _CAPTURE_LOCKS.setdefault((agent_id, session_id), threading.Lock())
+
+
+def _event_dedupe_key(payload: dict[str, Any] | None, event: dict[str, Any]) -> str:
+    """Stable per-event id scoped by caller/session/expert (checked by caller).
+
+    Prefers the client's parser ``src_key``; falls back to a content hash so
+    older clients still get retry idempotency.
+    """
+    src_key = str((payload or {}).get("src_key") or "").strip()
+    if src_key:
+        return f"src:{src_key}"
+    digest = hashlib.sha256()
+    digest.update(str(event.get("event_type") or "").encode("utf-8", "replace"))
+    digest.update(b"\x00")
+    digest.update(str(event.get("content") or "").encode("utf-8", "replace"))
+    digest.update(b"\x00")
+    digest.update(str(event.get("timestamp_iso") or "").encode("utf-8", "replace"))
+    return f"hash:{digest.hexdigest()}"
+
+
+def _raw_dedupe_key(raw: Any) -> str:
+    """Dedupe key of an already-stored L0 event (same rules as the writer)."""
+    payload = raw.payload if isinstance(getattr(raw, "payload", None), dict) else {}
+    stored = str(payload.get("octop_event_key") or "").strip()
+    if stored:
+        return stored
+    return _event_dedupe_key(
+        payload,
+        {
+            "event_type": raw.event_type,
+            "content": raw.content,
+            "timestamp_iso": raw.timestamp.isoformat() if raw.timestamp else "",
+        },
+    )
+
+
 """One lock per expert: extraction must never run twice in parallel for the same
 expert (the harness memory middleware may extract the same session concurrently)."""
 
@@ -561,13 +620,19 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
         def _run() -> dict[str, Any]:
             # ---- pre-parsed events (client-side parsers): straight to the runtime
             if events is not None:
+                if len(events) > _CAPTURE_MAX_EVENTS:
+                    raise ValueError(
+                        f"[batch_too_large] events={len(events)} limit={_CAPTURE_MAX_EVENTS}; "
+                        "send smaller batches and advance the client offset per accepted batch"
+                    )
                 payload: dict[str, Any] = {
                     "source": source,
                     "source_host": _current_token_name.get() or source,
                     "caller": caller,
                 }
                 normalized: list[dict[str, Any]] = []
-                for item in events[:500]:
+                seen_keys: set[str] = set()
+                for item in events:
                     if not isinstance(item, dict):
                         continue
                     body = item.get("content")
@@ -581,6 +646,11 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                     timestamp_iso = item.get("timestamp_iso")
                     if isinstance(timestamp_iso, str) and timestamp_iso:
                         event["timestamp_iso"] = timestamp_iso
+                    key = _event_dedupe_key(event["payload"], event)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    event["payload"]["octop_event_key"] = key
                     normalized.append(event)
                 if not normalized:
                     raise ValueError("events is empty after dropping blank entries")
@@ -591,6 +661,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                         "recorded": False,
                         "dry_run": True,
                         "session_id": effective_session,
+                        "limit": _CAPTURE_MAX_EVENTS,
                         "events": [
                             {
                                 "event_type": e["event_type"],
@@ -601,15 +672,42 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                         ],
                         "note": "dry run: parsed only, nothing written",
                     }
-                result = _memory_runtime(server, agent_id).capture(
-                    {
-                        "session_id": effective_session,
-                        "thread_id": thread_id,
-                        "user": caller,
-                        "host": source or "mcp-external",
-                        "events": normalized,
+                # Retry idempotency: scope is (expert via token, caller, session);
+                # ``src_key`` from the client is only trusted inside that scope.
+                memory = _open_memory(server, agent_id)
+                with _capture_lock(agent_id, effective_session):
+                    known = {
+                        _raw_dedupe_key(raw)
+                        for raw in memory.list_raw(
+                            session_id=effective_session, user=caller, limit=5000
+                        )
                     }
-                )
+                    fresh = [
+                        event
+                        for event in normalized
+                        if event["payload"]["octop_event_key"] not in known
+                    ]
+                    duplicates = len(normalized) - len(fresh)
+                    if not fresh:
+                        return {
+                            "marker": "[octop memory capture]",
+                            "recorded": False,
+                            "session_id": effective_session,
+                            "source": source,
+                            "caller": caller,
+                            "accepted": 0,
+                            "skipped_duplicates": duplicates,
+                            "note": "all events already recorded for this session; retry is idempotent",
+                        }
+                    result = _memory_runtime(server, agent_id).capture(
+                        {
+                            "session_id": effective_session,
+                            "thread_id": thread_id,
+                            "user": caller,
+                            "host": source or "mcp-external",
+                            "events": fresh,
+                        }
+                    )
                 accepted = int(result.get("accepted") or 0)
                 return {
                     "marker": "[octop memory capture]",
@@ -618,6 +716,8 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
                     "source": source,
                     "caller": caller,
                     "accepted": accepted,
+                    "skipped_duplicates": duplicates,
+                    "limit": _CAPTURE_MAX_EVENTS,
                     "skipped": {
                         key.removeprefix("skipped_"): value
                         for key, value in result.items()

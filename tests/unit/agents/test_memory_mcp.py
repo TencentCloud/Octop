@@ -680,6 +680,114 @@ def test_capture_events_honours_dry_run(bind_agent, bind_user, monkeypatch, tmp_
     assert not list(memory.list_raw(limit=5))
 
 
+def test_capture_rejects_events_over_batch_limit(bind_agent, bind_user, monkeypatch, tmp_path):
+    """Review ask: never silently truncate; reject the batch instead."""
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    mcp = mm.build_memory_mcp(_server())
+    events = [{"event_type": "user_message", "content": f"事件 {i}"} for i in range(201)]
+
+    with pytest.raises(ValueError, match="batch_too_large"):
+        _call_tool(
+            mcp,
+            "memory_capture",
+            events=events,
+            source="claude-code",
+            extract=False,
+        )
+    assert not list(memory.list_raw(limit=5))
+
+
+def test_capture_events_retry_is_idempotent(bind_agent, bind_user, monkeypatch, tmp_path):
+    """Review ask: same batch retried must keep exactly one copy of each L0 event."""
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
+    mcp = mm.build_memory_mcp(_server())
+    events = [
+        {
+            "event_type": "user_message",
+            "content": "幂等测试的用户发言",
+            "payload": {"src_key": "f1:10"},
+        },
+        {
+            "event_type": "assistant_message",
+            "content": "幂等测试的助手回复",
+            "payload": {"src_key": "f1:20"},
+        },
+    ]
+
+    first = _call_tool(
+        mcp,
+        "memory_capture",
+        events=events,
+        source="claude-code",
+        session_id="idem-1",
+        extract=False,
+    )
+    second = _call_tool(
+        mcp,
+        "memory_capture",
+        events=events,
+        source="claude-code",
+        session_id="idem-1",
+        extract=False,
+    )
+
+    assert first["accepted"] == 2
+    assert second["accepted"] == 0
+    assert second["skipped_duplicates"] == 2
+    assert len(list(memory.list_raw(session_id="idem-1", limit=50))) == 2
+
+
+def test_capture_events_idempotency_is_scoped_by_session(
+    bind_agent, bind_user, monkeypatch, tmp_path
+):
+    """Same src_key in another session is a different event, not a duplicate."""
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
+    mcp = mm.build_memory_mcp(_server())
+    events = [
+        {"event_type": "user_message", "content": "同一个 key", "payload": {"src_key": "f1:1"}}
+    ]
+
+    for session in ("scope-a", "scope-b"):
+        result = _call_tool(
+            mcp,
+            "memory_capture",
+            events=events,
+            source="claude-code",
+            session_id=session,
+            extract=False,
+        )
+        assert result["accepted"] == 1
+
+    assert len(list(memory.list_raw(limit=10))) == 2
+
+
+def test_capture_events_without_src_key_dedupes_by_content_hash(
+    bind_agent, bind_user, monkeypatch, tmp_path
+):
+    """Older clients without src_key still get retry idempotency."""
+    memory = _real_memory(tmp_path)
+    monkeypatch.setattr(mm, "_open_memory", lambda server, agent_id: memory)
+    monkeypatch.setattr(mm, "_schedule_extract", lambda *a, **k: False)
+    mcp = mm.build_memory_mcp(_server())
+    events = [{"event_type": "user_message", "content": "没有 src_key 的事件"}]
+
+    first = _call_tool(
+        mcp, "memory_capture", events=events, source="codex", session_id="hash-1", extract=False
+    )
+    second = _call_tool(
+        mcp, "memory_capture", events=events, source="codex", session_id="hash-1", extract=False
+    )
+
+    assert first["accepted"] == 1
+    assert second["accepted"] == 0
+    assert len(list(memory.list_raw(session_id="hash-1", limit=10))) == 1
+
+
 # ─── capture: provenance ─────────────────────────────────────────────────
 
 

@@ -126,7 +126,7 @@ irm https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/har
 | `memory_search(query, max_results=5, corpus="all")` | 检索记忆，返回带虚拟 `path` 的命中（`corpus=raw` 只看原始事件） |
 | `memory_get(path, start=None, lines=None)` | 把命中里的 `path` 解析成 markdown 全文 |
 | `memory_save(content, source, topic=None, supersedes=None)` | 显式保存一条事实（跳过提炼，立即可召回；`supersedes` 用于更正） |
-| `memory_capture(content="", source="", session_id=None, assistant=None, thread_id=None, dry_run=False, extract=True, events=None)` | 写原始事件（L0），交给提炼管线；默认**不自动晋升**。`events` 可传客户端已解析好的事件列表 |
+| `memory_capture(content="", source="", session_id=None, assistant=None, thread_id=None, dry_run=False, extract=True, events=None)` | 写原始事件（L0），交给提炼管线；默认**不自动晋升**。`events` 可传客户端已解析好的事件列表，单次最多 **200 条**（`OCTOP_MEMORY_CAPTURE_MAX_EVENTS` 可调），超限直接报错，客户端需分批并只在成功后推进 offset；同一 `(专家, 调用者, 会话)` 内按 `payload.src_key`（缺失时用内容哈希）去重，重试不会重复写 L0 |
 
 ### 3.2 审核 / 运维工具（**仅专家所有者**）
 
