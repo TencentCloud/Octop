@@ -57,6 +57,8 @@ class AutoBackupSettingsBody(BaseModel):
     include_plugins: bool = True
     include_knowledge: bool = True
     include_chats: bool = False
+    remote_enabled: bool = False
+    remote_backend_id: int | None = None
 
 
 class CreateBackupBody(BaseModel):
@@ -90,6 +92,8 @@ def _auto_settings_payload(server: Any) -> dict[str, Any]:
         "include_plugins": backup.include_plugins,
         "include_knowledge": backup.include_knowledge,
         "include_chats": backup.include_chats,
+        "remote_enabled": backup.remote_enabled,
+        "remote_backend_id": backup.remote_backend_id,
         "scheduled": scheduled,
     }
 

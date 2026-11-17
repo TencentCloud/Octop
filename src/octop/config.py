@@ -103,6 +103,8 @@ class BackupConfig:
     include_plugins: bool = True
     include_knowledge: bool = True
     include_chats: bool = False
+    remote_enabled: bool = False
+    remote_backend_id: int | None = None
 
 
 _VALID_MOBILE_BACKENDS = frozenset({"physical", "redroid", "emulator", "none"})
@@ -223,6 +225,10 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         raise ValueError("config.backup.retention_count must be an integer") from exc
     if retention < 1:
         raise ValueError("config.backup.retention_count must be >= 1")
+    remote_backend_id = _parse_optional_int(
+        raw.get("remote_backend_id", defaults.remote_backend_id),
+        field="config.backup.remote_backend_id",
+    )
     return BackupConfig(
         auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
@@ -235,6 +241,8 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         include_plugins=bool(raw.get("include_plugins", defaults.include_plugins)),
         include_knowledge=bool(raw.get("include_knowledge", defaults.include_knowledge)),
         include_chats=bool(raw.get("include_chats", defaults.include_chats)),
+        remote_enabled=bool(raw.get("remote_enabled", defaults.remote_enabled)),
+        remote_backend_id=remote_backend_id,
     )
 
 
@@ -291,6 +299,25 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
     # sensitive by CodeQL (py/clear-text-logging-sensitive-data).
     logger.warning("env %s is not bool; using %s", name, default)
     return default
+
+
+def _parse_optional_int(raw: object, *, field: str) -> int | None:
+    """Parse an optional JSON integer; empty string / null → None."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError(f"{field} must be an integer or null")
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an integer or null") from exc
+    raise ValueError(f"{field} must be an integer or null")
 
 
 def _parse_database_url(url: str) -> dict[str, Any]:
@@ -713,6 +740,20 @@ def load_config(path: Path) -> OctopConfig:
             backup,
             include_chats=_coerce_bool("OCTOP_BACKUP_INCLUDE_CHATS", v, backup.include_chats),
         )
+    if v := os.environ.get("OCTOP_BACKUP_REMOTE_ENABLED"):
+        backup = replace(
+            backup,
+            remote_enabled=_coerce_bool("OCTOP_BACKUP_REMOTE_ENABLED", v, backup.remote_enabled),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_REMOTE_BACKEND_ID"):
+        text = v.strip()
+        if not text:
+            backup = replace(backup, remote_backend_id=None)
+        else:
+            parsed = _coerce_int(
+                "OCTOP_BACKUP_REMOTE_BACKEND_ID", text, backup.remote_backend_id or 0
+            )
+            backup = replace(backup, remote_backend_id=parsed if parsed > 0 else None)
 
     return OctopConfig(
         bind_host=merged["bind_host"],

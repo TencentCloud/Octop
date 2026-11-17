@@ -114,6 +114,8 @@ def persist_backup_config(config_path: Path, backup: BackupConfig) -> OctopConfi
         "include_plugins": backup.include_plugins,
         "include_knowledge": backup.include_knowledge,
         "include_chats": backup.include_chats,
+        "remote_enabled": backup.remote_enabled,
+        "remote_backend_id": backup.remote_backend_id,
     }
     _atomic_write_json(config_path, raw)
     return load_config(config_path)
@@ -133,6 +135,25 @@ def backup_config_from_payload(payload: dict[str, Any]) -> BackupConfig:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "retention_count must be an integer") from exc
     if retention < 1:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "retention_count must be >= 1")
+    remote_backend_raw = payload.get("remote_backend_id", defaults.remote_backend_id)
+    remote_backend_id: int | None
+    if remote_backend_raw is None or remote_backend_raw == "":
+        remote_backend_id = None
+    else:
+        try:
+            remote_backend_id = int(remote_backend_raw)
+        except (TypeError, ValueError) as exc:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS, "remote_backend_id must be an integer or null"
+            ) from exc
+        if remote_backend_id < 1:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "remote_backend_id must be >= 1 when set")
+    remote_enabled = bool(payload.get("remote_enabled", defaults.remote_enabled))
+    if remote_enabled and remote_backend_id is None:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            "remote_enabled requires a remote_backend_id",
+        )
     return BackupConfig(
         auto_enabled=bool(payload.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
@@ -145,6 +166,8 @@ def backup_config_from_payload(payload: dict[str, Any]) -> BackupConfig:
         include_plugins=bool(payload.get("include_plugins", defaults.include_plugins)),
         include_knowledge=bool(payload.get("include_knowledge", defaults.include_knowledge)),
         include_chats=bool(payload.get("include_chats", defaults.include_chats)),
+        remote_enabled=remote_enabled,
+        remote_backend_id=remote_backend_id,
     )
 
 
