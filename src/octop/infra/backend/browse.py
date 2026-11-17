@@ -332,3 +332,40 @@ def _entry_to_dict(info: Any) -> dict[str, Any]:
     if (modified_at := get("modified_at")) is not None:  # type: ignore[no-untyped-call]
         out["modified_at"] = modified_at
     return out
+
+
+async def download_storage_backend_file_capped(row: BackendRow, path: str, max_bytes: int) -> bytes:
+    """Bounded Office source read; never fall back to the legacy full download."""
+    from functools import partial
+    from importlib import import_module
+    from typing import cast
+
+    from octop.infra.errors import ErrorCode, OctopError
+    from octop.infra.office_preview.read import too_large_error
+
+    try:
+        bounded = import_module("octop_harness.backends.bounded")
+    except ImportError as exc:
+        raise OctopError(
+            ErrorCode.OFFICE_PREVIEW_UNAVAILABLE, "bounded storage reads require a newer harness"
+        ) from exc
+    path = normalize_browse_path(path)
+    if path == "/":
+        raise FileNotFoundError("cannot read '/'")
+
+    async def _op(backend: Any) -> bytes:
+        try:
+            result = await asyncio.get_running_loop().run_in_executor(
+                None, partial(bounded.download_bytes_capped, backend, path, max_bytes)
+            )
+        except bounded.DownloadTooLargeError as exc:
+            raise too_large_error() from exc
+        except NotImplementedError as exc:
+            raise OctopError(
+                ErrorCode.OFFICE_PREVIEW_UNAVAILABLE, "bounded storage download is unsupported"
+            ) from exc
+        if result is None:
+            raise FileNotFoundError(f"cannot read {path!r}")
+        return cast(bytes, result)
+
+    return await _with_browse_backend(row, _op)

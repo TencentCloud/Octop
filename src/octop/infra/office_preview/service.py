@@ -6,12 +6,13 @@ import asyncio
 import contextlib
 import hashlib
 import shutil
+import struct
 import tempfile
 import time
 import zipfile
+import zlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from io import BytesIO
 from pathlib import Path
 from typing import Any, cast
 
@@ -119,7 +120,9 @@ class OfficePreviewService:
             if cancel_local.is_set():
                 raise asyncio.CancelledError
             data = await load_bytes()
-            self._assert_input_bounds(filename, data)
+            await asyncio.get_running_loop().run_in_executor(
+                None, self._assert_input_bounds, filename, data
+            )
             digest = hashlib.sha256(data).hexdigest()
             key = f"{cache_scope}|{source_id}|{digest}|{ENGINE_ID}"
             cached = self._cache_get(key)
@@ -284,8 +287,10 @@ class OfficePreviewService:
         if not is_zip_container(filename):
             return
         try:
-            uncompressed = _zip_uncompressed_size(data)
-        except (zipfile.BadZipFile, OSError, ValueError) as exc:
+            from octop.infra.office_preview.archive import expanded_size
+
+            uncompressed = expanded_size(data, MAX_ZIP_UNCOMPRESSED_BYTES)
+        except (zipfile.BadZipFile, OSError, ValueError, zlib.error, struct.error) as exc:
             raise OctopError(
                 ErrorCode.OFFICE_PREVIEW_CORRUPT,
                 "office document could not be converted",
@@ -315,11 +320,6 @@ class OfficePreviewService:
             )
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
-
-
-def _zip_uncompressed_size(data: bytes) -> int:
-    with zipfile.ZipFile(BytesIO(data)) as zf:
-        return int(sum(info.file_size for info in zf.infolist()))
 
 
 async def _watch_disconnect(is_disconnected: DisconnectedFn, cancel_event: asyncio.Event) -> None:

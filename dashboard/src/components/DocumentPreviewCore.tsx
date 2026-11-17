@@ -21,7 +21,6 @@ import styles from "./DocumentPreviewCore.module.less";
 import DocumentPreviewLoading from "./DocumentPreviewLoading";
 import PdfDocumentPreview, { PdfViewerSkeleton } from "./PdfDocumentPreview";
 
-import { parseExcel } from "./excelPreview/parse";
 import type { ExcelPreview as ExcelPreviewData } from "./excelPreview/model";
 
 const ExcelPreview = lazy(() => import("./excelPreview/ExcelPreview"));
@@ -279,6 +278,7 @@ export default function DocumentPreviewCore({
             }
           }
         } else if (kind === "excel") {
+          const { parseExcel } = await import("./excelPreview/parse");
           const workbook = await parseExcel(
             new Uint8Array(buf),
             /\.xls$/i.test(filename) ? "xls" : "xlsx",

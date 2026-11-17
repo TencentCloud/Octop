@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from octop.infra.office_preview.runtime import probe_runtime
+from octop.infra.office_preview.runtime import probe_runtime, runtime_fingerprint
 from octop.infra.utils.paths import PathLayout
 
 
@@ -22,7 +22,7 @@ def test_probe_ok_when_helper_and_kit_present(monkeypatch, tmp_path: Path) -> No
     helper = tmp_path / "office-preview"
     kit = helper / "node_modules" / "@deepseek-ai" / "libreoffice-kit"
     kit.mkdir(parents=True)
-    (helper / ".kit-version").write_text("0.2.3", encoding="ascii")
+    (helper / ".kit-version").write_text(runtime_fingerprint(), encoding="ascii")
     (helper / "convert.mjs").write_text("export {}\n", encoding="utf-8")
     monkeypatch.setenv("OCTOP_OFFICE_PREVIEW_NODE", str(node))
     monkeypatch.setenv("OCTOP_OFFICE_PREVIEW_RUNTIME", str(helper))
@@ -52,3 +52,26 @@ def test_probe_rejects_partial_install(monkeypatch, tmp_path: Path) -> None:  # 
     monkeypatch.setattr(runtime, "resolve_node_bin", lambda: "node")
     monkeypatch.setattr(runtime, "_node_version_string", lambda _node: "v22.19.0")
     assert probe_runtime(PathLayout(tmp_path)).reason == "kit_missing"
+
+
+def test_install_copies_lockfile_and_uses_ci(monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    from types import SimpleNamespace
+
+    from octop.infra.office_preview import runtime
+
+    monkeypatch.delenv("OCTOP_OFFICE_PREVIEW_RUNTIME", raising=False)
+    monkeypatch.setattr(runtime, "resolve_node_bin", lambda: "node")
+    monkeypatch.setattr(runtime, "_node_version_string", lambda _node: "v22.19.0")
+    monkeypatch.setattr(runtime, "probe_runtime", lambda _paths: SimpleNamespace(available=True))
+    calls = []
+
+    def run(args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(args)
+        assert (kwargs["cwd"] / "package-lock.json").read_bytes() == (
+            runtime.packaged_helper_dir() / "package-lock.json"
+        ).read_bytes()
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(runtime.subprocess, "run", run)
+    runtime.install_runtime(paths=PathLayout(tmp_path), npm_bin="test-npm")
+    assert calls == [["test-npm", "ci", "--omit=dev", "--no-audit", "--no-fund"]]

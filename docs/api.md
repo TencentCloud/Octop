@@ -749,3 +749,10 @@ dashboard mirrors every code under `apiErrors.*` in
 | `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
 | `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |
 | `INTERNAL_ERROR` | 500 | Unhandled exception (logged with traceback) |
+
+
+### Office preview runtime limitations
+
+Workspace/storage Office conversion requires the harness bounded-download API. Older harness versions or unsupported transports (including TOS) return `OFFICE_PREVIEW_UNAVAILABLE` before downloading; they never use the unbounded path. Deployment must use a harness release containing the bounded-download change. OOXML entries are inflated with a hard aggregate expansion budget and checked against CRC/size declarations. Helper installation uses the packaged lockfile with `npm ci`.
+
+Conversion is **not sandboxed**. Neither ZIP validation nor the input/time/concurrency limits provide an aggregate native-process memory limit; binary DOC/XLS/PPT and embedded content can expand inside LibreOffice. Only enable conversion for trusted documents. Process isolation and a restricted environment do not prevent code execution under the service account if the engine has a parsing vulnerability. A sandbox and an OS-enforced aggregate memory limit remain unimplemented.

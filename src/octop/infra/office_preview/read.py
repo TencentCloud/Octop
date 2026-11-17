@@ -53,3 +53,27 @@ def read_path_capped(path: Path, max_bytes: int = MAX_INPUT_BYTES) -> bytes:
         assert_not_too_large(size, max_bytes=max_bytes)
     with path.open("rb") as fh:
         return read_stream_capped(fh, max_bytes)
+
+
+async def read_workspace_capped(
+    workspace: object, path: str, max_bytes: int = MAX_INPUT_BYTES
+) -> bytes | None:
+    """Require harness bounded I/O; old harness versions must never buffer the source."""
+    read = getattr(workspace, "adownload_bytes_capped", None)
+    if read is None:
+        raise OctopError(
+            ErrorCode.OFFICE_PREVIEW_UNAVAILABLE, "bounded workspace reads require a newer harness"
+        )
+    try:
+        return await read(path, max_bytes)  # type: ignore[no-any-return]
+    except ValueError as exc:
+        from importlib import import_module
+
+        bounded = import_module("octop_harness.backends.bounded")
+        if isinstance(exc, bounded.DownloadTooLargeError):
+            raise too_large_error() from exc
+        raise
+    except NotImplementedError as exc:
+        raise OctopError(
+            ErrorCode.OFFICE_PREVIEW_UNAVAILABLE, "bounded download is unsupported"
+        ) from exc

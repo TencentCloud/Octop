@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ from octop.infra.utils.paths import PathLayout
 KIT_VERSION = "0.2.3"
 MIN_NODE = (22, 19, 0)
 
-_HELPER_NAMES = ("convert.mjs", "package.json")
+_HELPER_NAMES = ("convert.mjs", "package.json", "package-lock.json")
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,12 @@ class RuntimeProbe:
 
 def packaged_helper_dir() -> Path:
     return Path(__file__).resolve().parent / "helper"
+
+
+def runtime_fingerprint() -> str:
+    """Invalidate pre-lockfile installations when the pinned dependency graph changes."""
+    digest = hashlib.sha256((packaged_helper_dir() / "package-lock.json").read_bytes()).hexdigest()
+    return f"{KIT_VERSION}:{digest}"
 
 
 def runtime_dir(paths: PathLayout | None = None) -> Path:
@@ -95,7 +102,11 @@ def probe_runtime(paths: PathLayout | None = None) -> RuntimeProbe:
     if not script.is_file():
         return RuntimeProbe(False, node_bin, version, helper, "helper_missing")
     marker = helper / ".kit-version"
-    if not kit_dir.is_dir() or not marker.is_file() or marker.read_text().strip() != KIT_VERSION:
+    if (
+        not kit_dir.is_dir()
+        or not marker.is_file()
+        or marker.read_text().strip() != runtime_fingerprint()
+    ):
         return RuntimeProbe(False, node_bin, version, helper, "kit_missing")
     return RuntimeProbe(True, node_bin, version, helper, "ok")
 
@@ -122,7 +133,7 @@ def install_runtime(
     paths: PathLayout | None = None,
     npm_bin: str | None = None,
 ) -> Path:
-    """Copy the helper and ``npm install`` the pinned kit into the runtime dir.
+    """Copy the helper and ``npm ci`` the pinned kit into the runtime dir.
 
     Never called from a preview request.
     """
@@ -147,7 +158,7 @@ def install_runtime(
         "HOME": os.environ.get("HOME", ""),
     }
     proc = subprocess.run(
-        [npm, "install", "--omit=dev", "--no-audit", "--no-fund"],
+        [npm, "ci", "--omit=dev", "--no-audit", "--no-fund"],
         cwd=dest,
         check=False,
         capture_output=True,
@@ -157,7 +168,7 @@ def install_runtime(
     )
     if proc.returncode != 0:
         raise RuntimeError("npm install of libreoffice-kit failed")
-    (dest / ".kit-version").write_text(KIT_VERSION, encoding="ascii")
+    (dest / ".kit-version").write_text(runtime_fingerprint(), encoding="ascii")
     probe = probe_runtime(paths)
     if not probe.available:
         raise RuntimeError(f"office preview runtime still unavailable: {probe.reason}")

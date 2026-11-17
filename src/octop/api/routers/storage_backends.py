@@ -414,7 +414,7 @@ async def office_preview_storage_backend_file(
         storage_backend_file_size,
     )
     from octop.infra.backend.browse import (
-        download_storage_backend_file as _download_file,
+        download_storage_backend_file_capped as _download_file,
     )
     from octop.infra.office_preview.limits import MAX_INPUT_BYTES
     from octop.infra.office_preview.read import too_large_error
@@ -424,7 +424,7 @@ async def office_preview_storage_backend_file(
 
     async def _load() -> bytes:
         try:
-            data = await _download_file(row, path, preview=True)
+            data = await _download_file(row, path, MAX_INPUT_BYTES)
         except FileNotFoundError as exc:
             raise OctopError(ErrorCode.NOT_FOUND, str(exc)) from exc
         except (StorageBrowseError, ValueError) as exc:

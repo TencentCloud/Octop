@@ -409,7 +409,9 @@ async def office_preview_file(
 
     async def _load() -> bytes:
         try:
-            blob = await ws.adownload_bytes(io_path)
+            from octop.infra.office_preview.read import read_workspace_capped
+
+            blob = await read_workspace_capped(ws, io_path)
         except PermissionError as exc:
             raise OctopError(ErrorCode.NOT_FOUND, f"cannot preview {path!r}") from exc
         if blob is None:
