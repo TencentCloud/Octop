@@ -66,9 +66,9 @@ describe("canRichPreviewKnowledgeDocument", () => {
   it("requires original and a supported office/pdf extension", () => {
     expect(canRichPreviewKnowledgeDocument({ filename: "a.pdf" })).toBe(true);
     expect(canRichPreviewKnowledgeDocument({ filename: "a.docx" })).toBe(true);
-    expect(canRichPreviewKnowledgeDocument({ filename: "a.doc" })).toBe(false);
+    expect(canRichPreviewKnowledgeDocument({ filename: "a.doc" })).toBe(true);
     expect(canRichPreviewKnowledgeDocument({ filename: "a.xls" })).toBe(true);
-    expect(canRichPreviewKnowledgeDocument({ filename: "a.ppt" })).toBe(false);
+    expect(canRichPreviewKnowledgeDocument({ filename: "a.ppt" })).toBe(true);
     expect(
       canRichPreviewKnowledgeDocument({
         filename: "a.pdf",
@@ -79,7 +79,7 @@ describe("canRichPreviewKnowledgeDocument", () => {
 
   it("treats unknown has_original as attemptable for citation preview", () => {
     expect(isRichPreviewFilename("a.pdf")).toBe(true);
-    expect(isRichPreviewFilename("a.doc")).toBe(false);
+    expect(isRichPreviewFilename("a.doc")).toBe(true);
     expect(isRichPreviewFilename("a.docx")).toBe(true);
     expect(canRichPreviewKnowledgeDocument({ filename: "a.pdf" })).toBe(true);
   });

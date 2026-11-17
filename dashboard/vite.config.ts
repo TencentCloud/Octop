@@ -315,7 +315,14 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       // TokenUsage lazy-loads recharts; without pre-bundling the first request
       // often 504s while Vite optimizes on demand.
-      include: ["recharts"],
+      include: [
+        "recharts",
+        "@fortune-sheet/react",
+        "exceljs",
+        "xlsx",
+        "fflate",
+        "fast-xml-parser",
+      ],
     },
   };
 });

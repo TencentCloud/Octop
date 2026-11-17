@@ -8,7 +8,11 @@ import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import styles from "./DocumentPreviewLoading.module.less";
 
-export type DocumentPreviewLoadingPhase = "file" | "parse" | "render";
+export type DocumentPreviewLoadingPhase =
+  | "file"
+  | "parse"
+  | "render"
+  | "convert";
 
 interface DocumentPreviewLoadingProps {
   phase?: DocumentPreviewLoadingPhase;
@@ -31,9 +35,13 @@ export default function DocumentPreviewLoading({
       ? t("workspace.previewParsingDocument", "Parsing document…")
       : phase === "render"
       ? t("workspace.previewRenderingPages", "Loading document…")
+      : phase === "convert"
+      ? t("workspace.previewConvertingDocument", "Converting document…")
       : t("workspace.previewLoadingFile", "Loading file…");
   const showPercent =
-    phase === "file" && typeof percent === "number" && Number.isFinite(percent);
+    (phase === "file" || phase === "convert") &&
+    typeof percent === "number" &&
+    Number.isFinite(percent);
 
   return (
     <div

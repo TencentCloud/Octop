@@ -117,6 +117,7 @@ include = [
     "src/octop/**/*.md",
     "src/octop/**/*.sql",
     "src/octop/**/*.sh",
+    "src/octop/**/*.mjs",
     "src/octop/**/*.png",
     "src/octop/dashboard/**/*",
     "src/octop/infra/agents/experts/library/**/*",

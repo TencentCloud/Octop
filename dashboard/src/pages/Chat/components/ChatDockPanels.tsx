@@ -31,6 +31,7 @@ interface ChatDockPanelsProps {
     direction: "horizontal" | "vertical",
   ) => void;
   addTab?: ChatDockAddTabHandlers;
+  filePreviewRevision?: number;
 }
 
 /**
@@ -65,6 +66,7 @@ export default function ChatDockPanels({
   onClose,
   onResizeStart,
   addTab,
+  filePreviewRevision = 0,
 }: ChatDockPanelsProps) {
   const keepAlive = openTabs.length > 0;
   const visible = dockOpen && keepAlive;
@@ -102,6 +104,7 @@ export default function ChatDockPanels({
       isStreamingTurn={isStreamingTurn}
       surfaceVisible={visible}
       addTab={addTab}
+      filePreviewRevision={filePreviewRevision}
     />
   );
 

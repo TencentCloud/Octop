@@ -391,6 +391,11 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
 | `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
+| `GET`    | `/agents/{aid}/workspace/office-preview` | owner | convert Office → PDF preview (`docx/xlsx/xls/pptx/doc/ppt`; optional LibreOffice Kit runtime) |
+| `GET`    | `/office-preview/status` | user | probe whether the Office-to-PDF helper is installed |
+| `GET`    | `/knowledge-bases/{kb}/documents/{doc}/office-preview` | reader | convert a knowledge original to PDF |
+| `GET`    | `/admin/storage-backends/{id}/office-preview` | admin | convert a browsed storage file to PDF |
+| `GET`    | `/skill-packages/{id}/skills/{slug}/office-preview` | `skill_packages` | convert a package skill file to PDF |
 | `GET`    | `/agents/{aid}/workspace/mention-index` | owner | bounded `@` file names via the workspace backend (`truncated` when capped; short cache) |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
@@ -419,6 +424,8 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+The HTTP server installs the pinned LibreOffice Kit runtime in the background on first startup, into `~/.octop/office-preview` (or `$OCTOP_HOME/office-preview`). The engine is downloaded after startup and is not bundled in the wheel/image. Node >= 22.19 and npm are required. Existing installations are reused; a failed download leaves the fallback viewers available and is retried on the next startup. Refresh the preview after installation completes. Embedded CLI operations do not trigger downloads. Use `octop office-preview status` to check readiness and `octop office-preview install` to retry manually.
 
 The extraction-config API accepts independent `memory_capture_enabled` and
 `memory_recall_inject_enabled` booleans. Both default to `true`: set the first to
@@ -763,3 +770,10 @@ dashboard mirrors every code under `apiErrors.*` in
 | `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
 | `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |
 | `INTERNAL_ERROR` | 500 | Unhandled exception (logged with traceback) |
+
+
+### Office preview runtime limitations
+
+Workspace/storage Office conversion requires the harness bounded-download API. Older harness versions or unsupported transports (including TOS) return `OFFICE_PREVIEW_UNAVAILABLE` before downloading; they never use the unbounded path. Deployment must use a harness release containing the bounded-download change. OOXML entries are inflated with a hard aggregate expansion budget and checked against CRC/size declarations. Helper installation uses the packaged lockfile with `npm ci`.
+
+Conversion is **not sandboxed**. Neither ZIP validation nor the input/time/concurrency limits provide an aggregate native-process memory limit; binary DOC/XLS/PPT and embedded content can expand inside LibreOffice. Only enable conversion for trusted documents. Process isolation and a restricted environment do not prevent code execution under the service account if the engine has a parsing vulnerability. A sandbox and an OS-enforced aggregate memory limit remain unimplemented.

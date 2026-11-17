@@ -20,7 +20,11 @@ import DocumentPreviewLoading from "../../../components/DocumentPreviewLoading";
 import Markdown from "../../../components/Markdown";
 import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
-import { getDocKind, type DocKind } from "../../../utils/docKind";
+import {
+  canConvertOfficeToPdf,
+  getDocKind,
+  type DocKind,
+} from "../../../utils/docKind";
 import { knowledgeCitationHref } from "../../../utils/knowledgeCitationDisplay";
 import {
   isEditableKnowledgeDocument,
@@ -232,6 +236,31 @@ export default function KnowledgeCitationPanelContent({
     [citation.docId, citation.kbId],
   );
 
+  const fetchPdfPreview = useCallback(
+    async (
+      onProgress?: (loaded: number, total: number) => void,
+      signal?: AbortSignal,
+    ) => {
+      try {
+        const preview = await knowledgeBasesApi.fetchOfficePreview(
+          citation.kbId,
+          citation.docId,
+          onProgress,
+          signal,
+        );
+        setCanDownload(true);
+        return preview;
+      } catch (error) {
+        if (isNotFoundApiError(error)) {
+          setRichMissing(true);
+          setCanDownload(false);
+        }
+        throw error;
+      }
+    },
+    [citation.docId, citation.kbId],
+  );
+
   const downloadOriginal = useCallback(async () => {
     if (!canDownload) return;
     try {
@@ -330,6 +359,11 @@ export default function KnowledgeCitationPanelContent({
             kind={kind}
             filename={filename || citation.filename || ""}
             fetchBlob={fetchBlob}
+            fetchPdfPreview={
+              canConvertOfficeToPdf(filename || citation.filename || "")
+                ? fetchPdfPreview
+                : undefined
+            }
             onDownload={canDownload ? () => void downloadOriginal() : undefined}
           />
         </div>

@@ -21,7 +21,10 @@ import {
   DEFAULT_SKILL_EMOJI,
 } from "../skillMarkdown";
 import FileViewer from "../../Workspace/components/FileViewer";
-import { getDocKind } from "../../Workspace/utils/docKind";
+import {
+  canConvertOfficeToPdf,
+  getDocKind,
+} from "../../Workspace/utils/docKind";
 import { getMediaKind } from "../../Workspace/utils/mediaKind";
 import { packageSkillRelativePath, SkillFileTree } from "./SkillFileTree";
 import styles from "./SkillDrawer.module.less";
@@ -895,6 +898,22 @@ export function SkillDrawer({
           ),
         )}`
       : undefined;
+  const packageSiblingOfficePreviewUrl =
+    packageId &&
+    editingSkill &&
+    selectedFilePath &&
+    canConvertOfficeToPdf(selectedFilePath)
+      ? `/skill-packages/${encodeURIComponent(
+          packageId,
+        )}/skills/${encodeURIComponent(
+          editingSkill.slug,
+        )}/office-preview?path=${encodeURIComponent(
+          packageSkillRelativePath(
+            selectedFilePath,
+            skillDirectoryPath(editingSkill),
+          ),
+        )}`
+      : undefined;
 
   const siblingFileBlock = (
     <div className={styles.contentViewBlock}>
@@ -923,6 +942,7 @@ export function SkillDrawer({
             path={selectedFilePath}
             fromWorkspace={!packageId}
             fetchUrl={packageSiblingFetchUrl}
+            officePreviewUrl={packageSiblingOfficePreviewUrl}
             editMode={false}
             value={siblingContent}
             onChange={() => {}}

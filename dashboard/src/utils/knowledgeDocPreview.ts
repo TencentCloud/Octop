@@ -53,7 +53,9 @@ function knowledgeDocumentExt(filename: string | undefined): string {
 const RICH_PREVIEW_EXTS = new Set([
   "pdf",
   "docx",
+  "doc",
   "pptx",
+  "ppt",
   "xls",
   "xlsx",
   "xlsm",
@@ -73,10 +75,6 @@ const TEXT_PREVIEW_EXTS = new Set([
   "yml",
   "csv",
   "tsv",
-  // Legacy PowerPoint: no in-browser slide renderer — use extracted text.
-  "ppt",
-  // Legacy Word (OLE compound document): docx-preview only parses OOXML.
-  "doc",
 ]);
 
 /** Whether the Eye action should be enabled for this knowledge document. */

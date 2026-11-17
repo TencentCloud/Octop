@@ -81,6 +81,8 @@ interface ChatDockPanelProps {
   surfaceVisible?: boolean;
   /** Open workspace / browser / terminal / file-list tabs from the title-bar +. */
   addTab?: ChatDockAddTabHandlers;
+  /** Incremented when session artifacts refresh so open file tabs reload. */
+  filePreviewRevision?: number;
 }
 
 function hasOpenKind(tabs: readonly DockTab[], kind: DockTab["kind"]): boolean {
@@ -208,6 +210,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   isStreamingTurn = false,
   surfaceVisible = true,
   addTab,
+  filePreviewRevision = 0,
 }) => {
   const { t } = useTranslation();
   const currentUser = useCurrentUser();
@@ -557,6 +560,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               <FilePanelContent
                 agentId={fileAgent}
                 filePath={tab.path}
+                previewRevision={filePreviewRevision}
                 onActionsChange={getFileActionsHandler(tab.id)}
               />
             </div>

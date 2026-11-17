@@ -358,6 +358,7 @@ function ChatPageInner() {
       }
       if (!isFileToolName(event.toolName)) return;
       void fetchAndSyncSessionArtifacts(resolvedAgentId, key);
+      setFilePreviewRevision((n) => n + 1);
     });
   }, [activeThreadId, resolvedAgentId]);
 
@@ -441,6 +442,7 @@ function ChatPageInner() {
     closeTab: closeDockTab,
     setActiveTab: setDockActiveTab,
   } = useChatDockPanel(isMobile, resolvedAgentId);
+  const [filePreviewRevision, setFilePreviewRevision] = useState(0);
 
   const chromeCheckInFlightRef = useRef(false);
   const bridgeConnectionId =
@@ -2031,6 +2033,7 @@ function ChatPageInner() {
             onClose={handleDockClose}
             onResizeStart={dockHandleResizeStart}
             addTab={dockAddTab}
+            filePreviewRevision={filePreviewRevision}
           />
 
           {!sharedExpertViewer && (

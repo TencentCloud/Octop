@@ -76,7 +76,7 @@ Compose 可在 `deploy/docker/.env` 中配置上述变量。注意：`.env` 只�
 
 ### Node.js
 
-运行镜像带 Node.js 20（`node` / `npm` / `npx`），与构建前端时使用的版本相同，供依赖 Node 的技能和专家 shell 使用。工具链从构建阶段的 `node:20-slim` 复用。已有部署需要重新构建或升级镜像后才会带上 Node.js；仅重启旧镜像无效。`npm install -g` 装进容器可写层，重建容器后需要重装。
+运行镜像带 Node.js 22（`node` / `npm` / `npx`），与构建前端时使用的版本相同，供依赖 Node 的技能和专家 shell 使用。工具链从构建阶段的 `node:22-slim` 复用。已有部署需要重新构建或升级镜像后才会带上 Node.js；仅重启旧镜像无效。`npm install -g` 装进容器可写层，重建容器后需要重装。 Office 转 PDF 预览需要 Node >= 22.19 和 npm；服务首次启动时会在后台安装 LibreOffice Kit，安装失败时保留原查看器，下次启动重试，也可运行 `octop office-preview install` 手动重试。引擎不随镜像分发，应持久化 `$OCTOP_HOME` 以保留安装。
 
 ### 知识库依赖
 

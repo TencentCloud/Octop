@@ -12,7 +12,8 @@ import { requestBlob } from "../../../../api/request";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { saveBlobAsFile } from "../../../../utils/saveBlobAsFile";
 import { withFromWorkspace } from "../../../../utils/fromWorkspace";
-import type { DocKind } from "../utils/docKind";
+import { fetchOfficePdf } from "../../../../utils/officePreview";
+import { canConvertOfficeToPdf, type DocKind } from "../utils/docKind";
 import styles from "../index.module.less";
 
 interface DocumentPreviewProps {
@@ -22,6 +23,8 @@ interface DocumentPreviewProps {
   /** Workspace UI paths use true; chat/tool paths use false. */
   fromWorkspace?: boolean;
   fetchUrl?: string;
+  /** Authorized Office → PDF endpoint; constructed from agentId when omitted. */
+  officePreviewUrl?: string;
 }
 
 function documentDownloadUrl(
@@ -35,18 +38,35 @@ function documentDownloadUrl(
   return fromWorkspace ? withFromWorkspace(url) : `${url}&from_workspace=false`;
 }
 
+function documentOfficePreviewUrl(
+  agentId: string,
+  path: string,
+  fromWorkspace: boolean,
+): string {
+  const url = `/agents/${encodeURIComponent(
+    agentId,
+  )}/workspace/office-preview?path=${encodeURIComponent(path)}`;
+  return fromWorkspace ? withFromWorkspace(url) : `${url}&from_workspace=false`;
+}
+
 export default function DocumentPreview({
   agentId,
   path,
   kind,
   fromWorkspace = true,
   fetchUrl,
+  officePreviewUrl,
 }: DocumentPreviewProps) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const apiPath =
     fetchUrl || documentDownloadUrl(agentId ?? "", path, fromWorkspace);
   const filename = path.split("/").filter(Boolean).pop() || path;
+  const pdfUrl =
+    officePreviewUrl ||
+    (agentId && canConvertOfficeToPdf(path)
+      ? documentOfficePreviewUrl(agentId, path, fromWorkspace)
+      : undefined);
 
   const fetchBlob = useCallback(
     (
@@ -54,6 +74,19 @@ export default function DocumentPreview({
       signal?: AbortSignal,
     ) => requestBlob(apiPath, { signal }, onProgress),
     [apiPath],
+  );
+
+  const fetchPdfPreview = useCallback(
+    (
+      onProgress?: (loaded: number, total: number) => void,
+      signal?: AbortSignal,
+    ) => {
+      if (!pdfUrl) {
+        return Promise.reject(new Error("office preview url missing"));
+      }
+      return fetchOfficePdf(pdfUrl, onProgress, signal);
+    },
+    [pdfUrl],
   );
 
   const onDownload = useCallback(async () => {
@@ -71,6 +104,7 @@ export default function DocumentPreview({
         kind={kind}
         filename={filename}
         fetchBlob={fetchBlob}
+        fetchPdfPreview={pdfUrl ? fetchPdfPreview : undefined}
         onDownload={onDownload}
       />
     </div>

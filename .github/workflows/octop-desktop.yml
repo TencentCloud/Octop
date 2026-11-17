@@ -74,9 +74,9 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          # Dashboard stays on Node 20 (same as deploy/docker/Dockerfile + release.yml).
+          # Dashboard uses Node 22 (same as deploy/docker/Dockerfile + release.yml).
           # Node 24 is a desktop/electron-only pin and nothing here builds it.
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
