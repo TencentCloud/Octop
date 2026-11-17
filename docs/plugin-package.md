@@ -52,6 +52,33 @@ weather/
 
 安装时不会跑 `npm install`。带界面的插件把构建产物直接放进 `ui/dist/`。
 
+## 通用设置扩展（未发布）
+
+插件可声明独立设置界面，不需要向 Octop 添加插件 ID 分支或业务表单：
+
+```yaml
+settings_ui:
+  entry: ui/dist/settings.js
+```
+
+该自包含 ESM 导出 `createSettingsPanel(host)`，返回 React 组件；可选导出
+`css` 字符串。版本 1 的 host 提供 `version: 1`、共享 `React`、Ant Design
+组件 `ui`、主题通知 `message`、`locale`，以及已限定到本插件设置接口的
+`request(options?)`。不支持相对模块导入，React 由宿主共享以避免重复实例。
+入口通过现有认证静态资源接口加载，模块执行与已安装插件代码属于同一信任边界。
+
+Python 入口通过 SDK `ctx.settings(provider)` 注册配置提供者。通用
+`GET/PUT /api/plugins/{plugin_id}/settings` 要求 `plugins` 管理权限，调用插件的
+`get_settings(context)` / `save_settings(context, values)`；插件负责字段校验和
+存储，`ValueError` 返回 400，`LookupError` 返回 404。通用 context 包含无凭据的
+channels/groups 目录、通道声明的布尔插件开关及决策模型可用状态。保存时不查询群名。
+只有正常加载的提供者可以被访问，禁用/卸载后不再提供该配置服务。
+
+宿主还支持可选入站 `render_inbound_text` 扩展，将处理好的当前正文、附件提示、
+背景片段和语言交给入站插件组装文本；插件返回 None 时沿用宿主默认。宿主仍负责
+权限、命令、媒体块和派发。业务前缀、默认文案、自定义设置均留在插件内。
+
+
 ## plugin.yaml
 
 必填的是 `id` 和 `version`，去掉首尾空白后不能为空。`id` 就是安装目录名 `~/.octop/plugins/<id>`，别带路径分隔符。`version` 按字符串逐字比较，不按语义化版本解析。

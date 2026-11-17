@@ -7496,6 +7496,7 @@
     "tabAgentTools": "工具管理",
     "tabMarket": "插件市场",
     "marketTitle": "插件市场",
+    "settingsLoadFailed": "无法加载插件设置，请重试或检查插件是否兼容。",
     "marketHint": "浏览精选插件，一键安装到本机。",
     "marketLoadError": "加载插件市场失败",
     "marketUnavailable": "插件市场暂时不可用，请稍后重试。",

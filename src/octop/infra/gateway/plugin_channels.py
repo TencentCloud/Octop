@@ -16,6 +16,7 @@ Only successfully applied registrations enter the API catalogue.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,6 +27,67 @@ _CLASSES: dict[str, tuple[str, Any]] = {}
 _ERRORS: dict[str, str] = {}
 _KIND_ERRORS: dict[str, tuple[str, str]] = {}
 _CURRENT_ERRORS: dict[str, str] = {}
+
+
+_QQ_GROUP_RESERVED = frozenset(
+    {
+        "enabled",
+        "visibility",
+        "activation",
+        "history",
+        "history_limit",
+        "history_ttl_seconds",
+        "clear_after_reply",
+        "owner_commands_only",
+        "owner_tools_only",
+        "owner_ids",
+        "groups",
+    }
+)
+
+
+def plugin_channel_settings(registry: Any) -> list[dict[str, Any]]:
+    """Expose switch declarations from loaded inbound handlers for QQ group policy."""
+    settings: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for plugin in registry.list_plugins():
+        for handler in getattr(plugin, "inbound", ()):
+            declarations = getattr(handler, "channel_settings", ())
+            if not isinstance(declarations, (list, tuple)):
+                continue
+            for field in declarations:
+                if not isinstance(field, dict):
+                    continue
+                name = field.get("name")
+                label, help_text = field.get("label"), field.get("help")
+                if (
+                    field.get("channel_kind") != "qq"
+                    or field.get("section") != "group_context"
+                    or field.get("type") != "switch"
+                    or not isinstance(name, str)
+                    or not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", name)
+                    or name in _QQ_GROUP_RESERVED
+                    or name in seen
+                    or not isinstance(field.get("default"), bool)
+                    or not isinstance(label, dict)
+                    or not isinstance(help_text, dict)
+                    or not all(isinstance(value, str) for value in label.values())
+                    or not all(isinstance(value, str) for value in help_text.values())
+                    or not isinstance(label.get("zh"), str)
+                    or not isinstance(label.get("en"), str)
+                ):
+                    continue
+                seen.add(name)
+                settings.append(
+                    {
+                        "plugin_id": plugin.manifest.id,
+                        "name": name,
+                        "default": field["default"],
+                        "label": {key: label[key] for key in ("zh", "en")},
+                        "help": {key: help_text.get(key, "") for key in ("zh", "en")},
+                    }
+                )
+    return settings
 
 
 def current_registration_errors() -> dict[str, str]:

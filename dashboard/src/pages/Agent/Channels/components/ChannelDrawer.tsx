@@ -139,6 +139,14 @@ type QrPhase =
   | { phase: "yuanbao_done"; appKey: string; appSecret: string }
   | { phase: "error"; reason: string };
 
+export interface PluginChannelSetting {
+  plugin_id: string;
+  name: string;
+  default: boolean;
+  label: { zh: string; en: string };
+  help: { zh: string; en: string };
+}
+
 interface ChannelDrawerProps {
   open: boolean;
   editing: ChannelRow | null;
@@ -159,6 +167,7 @@ interface ChannelDrawerProps {
   onTest?: () => void;
   testing?: boolean;
   agentId: string;
+  pluginChannelSettings?: PluginChannelSetting[];
 }
 
 function FormItemForField({
@@ -326,10 +335,13 @@ function PolicyTagGroup<T extends string>({
 
 function QqGroupContextPolicyFields({
   form,
+  pluginChannelSettings,
 }: {
   form: FormInstance<ChannelFormValues>;
+  pluginChannelSettings: PluginChannelSetting[];
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = i18n?.resolvedLanguage?.startsWith("zh") ? "zh" : "en";
   useEffect(() => {
     form.setFieldValue(
       "group_context",
@@ -456,6 +468,27 @@ function QqGroupContextPolicyFields({
             </Form.Item>
           </div>
 
+          {pluginChannelSettings.map((field) => (
+            <Form.Item
+              key={`${field.plugin_id}:${field.name}`}
+              name={["group_context", field.name]}
+              label={field.label[language]}
+              extra={field.help[language]}
+              initialValue={
+                (
+                  form.getFieldValue("group_context") as
+                    | Record<string, unknown>
+                    | undefined
+                )?.[field.name] === undefined
+                  ? field.default
+                  : undefined
+              }
+              valuePropName="checked"
+            >
+              <Switch aria-label={field.label[language]} />
+            </Form.Item>
+          ))}
+
           <Form.Item
             name={["group_context", "clear_after_reply"]}
             label={t("channels.qqGroupClearAfterReply")}
@@ -556,6 +589,7 @@ export function ChannelDrawer({
   onTest,
   testing,
   agentId,
+  pluginChannelSettings = [],
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
   const allowAllDiscordChannels =
@@ -1279,6 +1313,7 @@ export function ChannelDrawer({
       show_tool_hints:
         show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
     };
+    if (kind === "qq") config.group_context = getQqGroupContextConfig();
     applyQqChannelSaveConfig(config, kind);
     void (async () => {
       const ok = await onSubmit(kind, kind, config, values.enabled ?? false);
@@ -2024,7 +2059,12 @@ export function ChannelDrawer({
           )}
 
           <DisplaySettingsFields />
-          {selectedKind === "qq" && <QqGroupContextPolicyFields form={form} />}
+          {selectedKind === "qq" && (
+            <QqGroupContextPolicyFields
+              form={form}
+              pluginChannelSettings={pluginChannelSettings}
+            />
+          )}
         </Form>
       )}
     </Drawer>

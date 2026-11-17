@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
+from octop.api.routers.plugin_settings import router as settings_router
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.plugins.plugin_tool_defaults import (
     agent_plugin_enabled,
@@ -591,3 +592,6 @@ async def patch_agent_plugin_tools(
     merged = merge_plugins_tool_settings(cfg.get("plugins"), body.plugins)
     await registry.persist_plugin_tools_config(agent_id, merged)
     return {"status": "ok"}
+
+
+router.include_router(settings_router)

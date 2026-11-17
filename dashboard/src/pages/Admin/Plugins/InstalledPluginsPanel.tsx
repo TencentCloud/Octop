@@ -52,6 +52,7 @@ import styles from "./index.module.less";
 import { PluginIconView } from "./PluginIconView";
 import { PluginGroupTag } from "./PluginGroupTag";
 import { PluginCardMeta } from "./PluginCardMeta";
+import { PluginSettingsPanel } from "./PluginSettingsPanel";
 import { notifyPluginsChanged, PLUGINS_CHANGED_EVENT } from "./pluginsEvents";
 
 const { Text, Paragraph } = Typography;
@@ -209,6 +210,7 @@ export function InstalledPluginsPanel() {
       message.success(
         enabled ? t("plugins.enabledSuccess") : t("plugins.disabledSuccess"),
       );
+      notifyPluginsChanged();
       await fetchPlugins();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.enableFailed"), t));
@@ -615,6 +617,10 @@ export function InstalledPluginsPanel() {
                 }
               />
             </div>
+
+            {detail.enabled !== false && detail.settings_ui?.entry && (
+              <PluginSettingsPanel plugin={detail} />
+            )}
 
             <ResourceVisibilityCollapse
               allowOwner={false}

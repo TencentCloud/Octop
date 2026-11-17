@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from typing import Any
 
@@ -28,6 +29,52 @@ from octop.infra.utils.anydoc_convert import (
     truncate_for_chat,
 )
 from octop.infra.utils.locale import Locale, normalize_locale
+
+logger = logging.getLogger(__name__)
+
+
+def _plugin_inbound_text(
+    message: InboundMessage, current_text: str, *, workspace: Any, locale: str | Locale
+) -> str | None:
+    """Optional inbound-plugin text renderer; routing and media remain host-owned."""
+    from octop_harness.plugins import PluginRegistry
+
+    background: list[dict[str, Any]] | None = None
+    for handler in getattr(PluginRegistry(), "all_inbound", lambda: [])():
+        render = getattr(handler, "render_inbound_text", None)
+        if not callable(render):
+            continue
+        if background is None:
+            background = []
+            for item in message.group_context.messages if message.group_context else []:
+                segments = [item.text] if item.text else []
+                segments.extend(
+                    hints_from_content_parts(
+                        item.content, workspace=workspace, locale=locale, skip_vision_images=False
+                    )
+                )
+                background.append(
+                    {
+                        "sender_id": item.sender_id,
+                        "sender_name": item.sender_name,
+                        "segments": segments,
+                    }
+                )
+        try:
+            result = render(
+                message,
+                current_text,
+                background=background,
+                locale=str(normalize_locale(str(locale))),
+            )
+            if result is None:
+                continue
+            if not isinstance(result, str):
+                raise TypeError("inbound renderer must return text or None")
+            return result
+        except Exception:
+            logger.warning("Plugin inbound text renderer failed; using host defaults")
+    return None
 
 
 def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
@@ -191,15 +238,21 @@ async def build_content_from_message(
 
     extracted = await _extracted_document_texts(msg, media_backend=media_backend, locale=locale)
     current_text = "\n\n".join(part for part in [msg.text or "", *file_hints, *extracted] if part)
-    # Commands and HITL answers are consumed before request assembly. Keep their
-    # control text intact and add quoted context only to the model's user turn.
-    if msg.channel_type in ("telegram", "qq"):
-        quote = msg.metadata.get("reply_quote_text") or (
-            None if msg.metadata.get("reply_to_is_own_bot") else msg.metadata.get("reply_to_text")
-        )
-        if isinstance(quote, str) and quote:
-            current_text = telegram_quote_prompt(quote, locale) + current_text
-    combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
+    rendered = _plugin_inbound_text(msg, current_text, workspace=workspace, locale=locale)
+    if rendered is not None:
+        combined_text = rendered
+    else:
+        # Commands and HITL answers are consumed before request assembly. Keep their
+        # control text intact and add quoted context only to the model's user turn.
+        if msg.channel_type in ("telegram", "qq"):
+            quote = msg.metadata.get("reply_quote_text") or (
+                None
+                if msg.metadata.get("reply_to_is_own_bot")
+                else msg.metadata.get("reply_to_text")
+            )
+            if isinstance(quote, str) and quote:
+                current_text = telegram_quote_prompt(quote, locale) + current_text
+        combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
 
     if not image_blocks:
         return combined_text or attachment_empty_message(locale)

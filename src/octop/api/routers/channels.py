@@ -152,6 +152,18 @@ async def list_plugin_channel_kinds(
     return [info.to_dict() for info in plugin_channel_kinds()]
 
 
+@router.get("/channels/plugin-settings", summary="List loaded plugin channel settings")
+async def list_plugin_channel_settings(
+    _user: Any = Depends(current_user),
+) -> list[dict[str, Any]]:
+    """Return QQ group-policy switches declared by loaded inbound plugins."""
+    from octop_harness.plugins import PluginRegistry
+
+    from octop.infra.gateway.plugin_channels import plugin_channel_settings
+
+    return plugin_channel_settings(PluginRegistry())
+
+
 @router.get("/agents/{agent_id}/channels")
 async def list_channels(
     agent_id: str,

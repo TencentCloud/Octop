@@ -7496,6 +7496,7 @@
     "tabAgentTools": "Tool management",
     "tabMarket": "Plugin marketplace",
     "marketTitle": "Plugin marketplace",
+    "settingsLoadFailed": "Could not load plugin settings. Retry or check plugin compatibility.",
     "marketHint": "Browse curated plugins and install them to this server.",
     "marketLoadError": "Failed to load marketplace",
     "marketUnavailable": "The plugin marketplace is temporarily unavailable. Please try again later.",

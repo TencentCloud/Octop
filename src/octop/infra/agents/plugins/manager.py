@@ -237,7 +237,7 @@ def _read_plugin_yaml(plugin_dir: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
+def parse_plugin_ui_meta(plugin_dir: Path, *, key: str = "ui") -> dict[str, str] | None:
     """Return ``{entry, manifest}`` relative paths when ``plugin.yaml`` declares ``ui``.
 
     Missing entry file → ``None`` (treat as backend-only). Harness ignores the
@@ -247,7 +247,7 @@ def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
         data = _read_plugin_yaml(plugin_dir)
     except Exception:
         return None
-    ui = data.get("ui")
+    ui = data.get(key)
     if not isinstance(ui, dict):
         return None
     entry = str(ui.get("entry") or "ui/dist/index.js").strip()
@@ -821,6 +821,7 @@ class PluginManager:
                     "registration_error": self._channel_registration_error(manifest.id),
                     "enabled": enabled_map.get(manifest.id, True),
                     "ui": ui_meta,
+                    "settings_ui": parse_plugin_ui_meta(plugin_dir, key="settings_ui"),
                     "tools": tools_meta,
                 },
             )

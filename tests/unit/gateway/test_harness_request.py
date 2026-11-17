@@ -166,3 +166,24 @@ async def test_group_context_uses_anonymous_labels_instead_of_raw_ids() -> None:
     assert "[群成员2] 你怎么看？" in content
     assert "1468FCD" not in content
     assert "BD552189" not in content
+
+
+@pytest.mark.asyncio
+async def test_generic_inbound_text_extension_has_no_plugin_field_contract(monkeypatch):
+    from types import SimpleNamespace
+
+    from octop_harness.plugins import PluginRegistry
+
+    seen = []
+
+    def render(message, current_text, *, background, locale):
+        seen.append((current_text, background, locale))
+        return "custom-text: " + current_text
+
+    monkeypatch.setattr(
+        PluginRegistry, "all_inbound", lambda _: [SimpleNamespace(render_inbound_text=render)]
+    )
+    message = InboundMessage(channel_id="sample", content=[TextContent(text="hello")])
+    assert await build_content_from_message(message, locale="zh") == "custom-text: hello"
+    assert seen == [("hello", [], "zh")]
+    assert message.text == "hello"
