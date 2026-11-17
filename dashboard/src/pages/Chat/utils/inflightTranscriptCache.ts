@@ -38,6 +38,7 @@ function slimMessage(message: ChatMessage): ChatMessage {
         ? Math.round(message.durationMs)
         : undefined,
     speakerAgentId: message.speakerAgentId,
+    turnId: message.turnId,
     author: message.author,
     teamWrapup: message.teamWrapup,
     errorInfo: message.errorInfo,
@@ -120,6 +121,10 @@ function parseTail(raw: string): ChatMessage[] | null {
         speakerAgentId:
           typeof row.speakerAgentId === "string"
             ? row.speakerAgentId
+            : undefined,
+        turnId:
+          typeof row.turnId === "string" && row.turnId.trim()
+            ? row.turnId
             : undefined,
         author: parseCachedAuthor(row.author),
         teamWrapup: row.teamWrapup === true ? true : undefined,

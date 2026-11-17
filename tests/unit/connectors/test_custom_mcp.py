@@ -603,7 +603,7 @@ async def test_ensure_fresh_custom_servers_marks_reauth_when_refresh_fails_expir
     preview = svc.get_custom_servers_for_api(uid)
     assert preview["srv"]["oauth"] == {"configured": False, "required": True}
     stored = svc.get_custom_servers(uid)["srv"]["oauth"]
-    assert stored == {"required": True}
+    assert stored == {"required": True, "expired": True}
 
 
 @pytest.mark.asyncio

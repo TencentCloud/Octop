@@ -43,7 +43,7 @@ from octop.infra.gateway.media.inbound_store import display_name_from_stored
 
 logger = logging.getLogger(__name__)
 
-_MEDIA_BLOCK_TYPES = frozenset({"image", "video", "audio", "file"})
+_MEDIA_BLOCK_TYPES = ("image", "video", "audio", "file")
 # Only these tools may push media to the user (dashboard attachments / IM).
 # write_file / read_file / browser dumps often look like media and would re-push
 # prior outbound files if every tool_result were treated as a delivery.

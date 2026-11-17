@@ -166,3 +166,4 @@ checkpoint and are pushed to the dashboard / IM channel by
   [agent call](agent-call-agent.md),
   [agent delegation](agent-delegation.md)
 - [Agent backend file I/O](agent-backend-file-io.md) — content file rules
+- [Deployment](../deploy/README.md) — Docker image/Compose and Kubernetes manifests
