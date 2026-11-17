@@ -47,6 +47,7 @@ def test_inject_local_shell_uses_octop_auth_for_new_layout(tmp_path: Path, monke
     )
     env = spec["env"]
     assert env["OCTOP_AGENT_ID"] == "agent-1"
+    assert env["OCTOP_TCCLI_PROFILE"] == "octop-1"
     assert (ws / ".octop" / "auth").is_dir()
     assert env["OCTOP_AUTH_DIR"] == str(ws / ".octop" / "auth")
     assert env["OCTOP_HOME"] == str(paths.root)
@@ -162,4 +163,5 @@ def test_inject_docker_only_sets_platform_defaults(tmp_path: Path, monkeypatch) 
     env = spec["env"]
     assert env["OCTOP_AGENT_ID"] == "agent-2"
     assert env["OCTOP_AUTH_DIR"] == str(ws / ".octop" / "auth")
+    assert spec["environment"]["OCTOP_TCCLI_PROFILE"] == "octop-1"
     assert "GLOBAL_KEY" not in env

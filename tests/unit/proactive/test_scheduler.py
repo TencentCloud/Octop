@@ -558,6 +558,26 @@ async def test_scheduler_start_all_includes_default_on_agent(
 
 
 @pytest.mark.asyncio
+async def test_scheduler_skips_managed_agents(
+    db: SqlitePool,
+    config_repo: ProactiveCareConfigRepo,
+) -> None:
+    from octop.infra.db.repos.sessions import SessionRepo
+
+    uid = UserRepo(db).create(username="bob", password_hash="h", role="admin")
+    managed_id = new_ulid()
+    AgentRepo(db).create(agent_id=managed_id, user_id=uid, name="coder", kind="managed")
+    scheduler = ProactiveCareScheduler(
+        care_service=AsyncMock(),
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+        agent_repo=AgentRepo(db),
+    )
+    scheduler.ensure_scheduled(managed_id)
+    assert managed_id not in scheduler._tasks
+
+
+@pytest.mark.asyncio
 async def test_shutdown_cancels_long_sleep_quickly(
     agent_id: str,
     config_repo: ProactiveCareConfigRepo,
