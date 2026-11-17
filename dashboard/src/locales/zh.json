@@ -199,7 +199,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
     "SKILL_PACKAGE_NAME_TAKEN": "技能包 {{name}} 已存在。",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录须为 /（POSIX）或专家的工作区根目录（Windows 默认）。",
-    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部 Runner。启用向外委托（acp_runner）不受影响；通过 IDE / octop acp 接入也不受影响。",
+    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部智能体。在当前专家中启用外部智能体协作不受影响；通过 IDE / octop acp 接入也不受影响。",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{{slug}}。",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{{name}}」，请改为刷新已发布模板。",
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{{detail}}",
@@ -283,7 +283,7 @@
     "tasks": "自动化",
     "connectors": "连接器",
     "bridge": "云端协同",
-    "acp": "ACP 协作",
+    "acp": "智能体协作",
     "agents": "专家",
     "providers": "供应商",
     "models": "模型配置",
@@ -1171,6 +1171,7 @@
     "defaultModeHint": "新建对话时使用的 Ask / Plan / Craft 模式；Craft 为完整执行模式。已有对话不受影响。",
     "skillPackagesLabel": "可选技能包",
     "skillPackagesHint": "创建时挂载选中的技能包（需本地存储，且根目录为 /）。",
+    "managedSkillPackagesHint": "选中的技能包会放进这个智能体的技能目录。同名技能以先选中的包为准。",
     "skillPackagesUnsupportedHint": "当前沙箱无法直接挂载技能包目录，但仍可使用“复制技能”在工作区创建独立副本。",
     "skillPackagesClearFailed": "已保存后端设置，但清除已挂载技能包失败",
     "skillPackagesPlaceholder": "选择技能包",
@@ -1240,8 +1241,8 @@
     "backendRootDirPlaceholder": "浏览并选择目录",
     "backendRootDirDesc": "默认使用文件系统的根目录（POSIX 为 `/`，Windows 为所在盘符）。也可浏览并选择其他目录。",
     "backendRootDirDescContainer": "当前运行在容器环境中，默认使用文件系统根目录 `/`（容器本身已是隔离边界）。也可浏览并选择其他目录。",
-    "backendRootDirJailHint": "保存至非根目录时，会启用沙箱环境并将 AI 文件系统限制在该目录内。此配置下无法调用外部 ACP Runner；通过 IDE / octop acp 接入不受影响。",
-    "backendRootDirPathLimitHint": "保存至非根目录时，会将 AI 的文件访问限制在该目录内；但当前系统未提供操作系统级沙箱，AI 进程仍以服务账号自身的权限运行。此配置下无法调用外部 ACP Runner；通过 IDE / octop acp 接入不受影响。",
+    "backendRootDirJailHint": "保存至非根目录时，会启用沙箱环境并将 AI 文件系统限制在该目录内。此配置下无法调用外部智能体；通过 IDE / octop acp 接入不受影响。",
+    "backendRootDirPathLimitHint": "保存至非根目录时，会将 AI 的文件访问限制在该目录内；但当前系统未提供操作系统级沙箱，AI 进程仍以服务账号自身的权限运行。此配置下无法调用外部智能体；通过 IDE / octop acp 接入不受影响。",
     "backendRootDirImmutableHint": "创建后不可更改。",
     "workspaceDir": "工作区目录",
     "workspaceDirDesc": "已填入系统为这位专家分配的默认目录，也可以改成其他目录。",
@@ -1289,7 +1290,7 @@
     },
     "backendPathMappings": "路径映射（可选）",
     "addPathMapping": "添加路径映射",
-    "advancedOptions": "高级选项",
+    "advancedOptions": "运行参数",
     "temperature": "温度 (temperature)",
     "temperatureTooltip": "采样温度，越高输出越随机",
     "topP": "Top P",
@@ -1344,20 +1345,24 @@
     "managed": {
       "create": "创建",
       "createTitle": "新建托管专家",
+      "editTitle": "编辑托管专家",
       "badge": "托管",
       "name": "名称",
       "nameRequired": "请填写名称",
       "runner": "托管智能体",
-      "manageAcp": "管理 ACP",
+      "manageAcp": "管理智能体协作",
       "runnerRequired": "请选择一个托管智能体",
-      "noRunners": "请先在 ACP 页面启用一个 Runner。",
+      "noRunners": "请先在智能体协作页面启用一个智能体。",
       "runnerSearch": "搜索托管智能体",
       "runnerSearchEmpty": "没有匹配的托管智能体",
       "workspaceRequired": "请选择工作目录",
       "description": "描述",
-      "loadFailed": "无法加载 ACP Runner",
+      "loadFailed": "无法加载外部智能体",
       "templateFailed": "默认提示词加载失败，创建时仍会写入内置内容",
-      "createFailed": "创建托管专家失败"
+      "createFailed": "创建托管专家失败",
+      "yolo": "YOLO",
+      "yoloHint": "新会话默认不审批。底层智能体会直接执行，包括改文件和运行命令。对话里仍可改回每次审批。",
+      "sessionModeHint": "按当前托管智能体提供的模式。新对话默认用这里的选择，单个对话里还可以改。"
     }
   },
   "subagents": {
@@ -1450,6 +1455,7 @@
     "insufficient_balance": "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。",
     "context_length": "对话上下文过长，超出模型限制。请新开会话，或精简历史后再试。",
     "recursion_limit": "智能体已达到最大迭代次数（递归上限），任务尚未完成。请前往「运行配置」调高「最大迭代次数」后重试。",
+    "tool_call_repeat": "工具「{{tool}}」带着相同参数已连续调用 {{count}} 次，达到上限 {{limit}}，本轮已停止。请换一种做法，或前往「运行配置」调高「连续相同调用上限」，保存后重新加载该专家。",
     "timeout_network": "连接模型服务超时或网络异常。请检查网络后重试；若使用代理或自建服务，请确认其可达。",
     "provider_unavailable": "模型服务暂时不可用。请稍后重试，或切换其他模型。",
     "invalid_request": "该接口可能不接受用量字段。可关闭「聊天里显示实时 Token」后重试；若仍失败，请确认模型是否支持工具调用。",
@@ -1468,7 +1474,7 @@
       "manageToast": "当前是对端专家，技能 / 模型 / 知识库等请在对端 Octop 上管理",
       "editBanner": "正在编辑对端专家，改动会保存到对端 Octop。",
       "editSkillPackages": "技能包属于本机用户资源，无法安装到对端专家，该页签已隐藏。",
-      "editTools": "ACP 运行器在对端执行。插件图标若是对端本地文件，这里可能无法预览。",
+      "editTools": "外部智能体在对端执行。插件图标若是对端本地文件，这里可能无法预览。",
       "editPlugins": "此处只能开关对端已安装的插件；安装、卸载和市场请在对端进行。",
       "editChannels": "扫码登录和机器人创建会在对端机器上执行，而不是这台浏览器。",
       "editTasks": "任务按对端时区运行。模型与连接器选项来自对端，新增连接器请在对端安装。",
@@ -1480,7 +1486,7 @@
       "reconnect": "去重连",
       "openBridge": "查看连接",
       "peerOnlyTitle": "此页只管理本机",
-      "peerOnlyAcp": "这里的 ACP 运行器属于本机 Octop。要开关对端专家的 ACP 工具，请打开该专家的「工具」页签。",
+      "peerOnlyAcp": "这里的外部智能体属于本机 Octop。要开关对端专家的外部智能体协作工具，请打开该专家的「工具」页签。",
       "peerOnlyBrowser": "此页控制本机浏览器。对端专家请在聊天侧栏打开浏览器面板。"
     },
     "pushToast": {
@@ -1612,6 +1618,13 @@
       "execute": "按计划执行",
       "executeUtterance": "请按 {{path}} 执行",
       "keepEditing": "继续改计划"
+    },
+    "managedApproval": {
+      "picker": "审批模式",
+      "ask": "每次审批",
+      "askHint": "底层智能体每次执行操作前都需要确认。",
+      "yolo": "YOLO",
+      "yoloHint": "不需要审批。底层智能体会直接执行，包括改文件和运行命令。"
     },
     "errorOccurred": "出现错误",
     "imageLoadFailed": "图片加载失败",
@@ -2067,7 +2080,7 @@
     "ask_agent": "咨询专家",
     "call_agent": "调用专家",
     "call_deferred_tool": "按需调用",
-    "acp_runner": "ACP 外部专家",
+    "acp_runner": "外部智能体协作",
     "external-agent": "托管智能体",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
@@ -2089,6 +2102,7 @@
   "toolSettings": {
     "title": "工具设置",
     "hint": "关闭后模型将无法调用该内置工具。系统必需工具不可关闭。",
+    "hintManaged": "这里只列出 Octop 能挂上的工具。文件、命令和网页由外部智能体自己提供。记忆未开启、没有知识库或没有其他专家时，对应开关不可用。",
     "hintPlugin": "关闭后模型将无法调用该插件工具。未挂载的插件需先在「插件管理」中启用。",
     "empty": "暂无工具",
     "emptyPlugin": "暂无插件工具。请先在「插件」页为当前智能体启用插件。",
@@ -2104,7 +2118,7 @@
     "pluginToolCount": "{{count}} 个工具",
     "tabs": {
       "builtin": "内置工具",
-      "acp": "ACP 协作工具",
+      "acp": "智能体协作",
       "plugin": "插件工具"
     },
     "categories": {
@@ -4236,10 +4250,10 @@
     "noActiveAgent": "请先选择一个专家",
     "retryDelayBelowInitial": "最大间隔不能小于初始间隔",
     "toolCallLimit": {
-      "enabled": "限制单轮工具调用",
-      "enabledTooltip": "限制一次用户请求里工具被调用的总次数。达到上限后结束本轮。关闭后不限制。保存后重新加载该专家。",
-      "runLimit": "单轮工具调用上限",
-      "runLimitTooltip": "一次用户请求里最多调用多少次工具。留空为 40。",
+      "enabled": "限制连续相同工具调用",
+      "enabledTooltip": "同一个工具带着相同参数连续调用时计数。换成别的工具或参数后重新计数。达到上限后结束本轮。关闭后不限制。保存后重新加载该专家。",
+      "runLimit": "连续相同调用上限",
+      "runLimitTooltip": "同一个工具、同一组参数最多连续调用多少次。不同工具或不同参数不累计。留空为 40。",
       "runLimitPlaceholder": "40"
     },
     "modelRetry": {
@@ -4413,6 +4427,7 @@
   },
   "upload": {
     "tooltip": "上传文件或文件夹。也可拖到输入框。",
+    "action": "上传",
     "files": "文件",
     "folder": "文件夹",
     "dropHint": "松开以上传文件或文件夹",
@@ -6244,6 +6259,7 @@
     "remoteKindGroup": "{{name}}·{{kind}}",
     "more": "更多",
     "teamNeedsExpert": "当前是团队「{{name}}」，此页请选择专家",
+    "managedNeedsExpert": "当前是托管专家「{{name}}」，此页请选择其他专家",
     "expertsRequired": "此页需要专家"
   },
   "login": {
@@ -7304,11 +7320,11 @@
     "pickAgent": "请先选择一个专家"
   },
   "acp": {
-    "description": "连接支持 ACP 协议的外部编程专家。Runner 配置对该账号下所有专家共享；可在下方按专家单独开启 acp_runner 工具。",
-    "globalRunnersHint": "以下 Runner 配置对该账号下所有专家生效。",
-    "toolEnabledHint": "acp_runner 工具需按专家单独开启，切换上方专家后为当前专家配置。",
-    "toolEnabled": "启用向外委托（acp_runner）",
-    "outboundBlockedHint": "当前专家已启用沙箱环境，不可启用或编辑外部 Runner。启用向外委托（acp_runner）不受影响；通过 IDE / octop acp 接入也不受影响。",
+    "description": "连接支持 ACP 协议的外部编程智能体。智能体配置对该账号下所有专家共享；可在下方为当前专家启用外部智能体协作。",
+    "globalRunnersHint": "以下智能体配置对该账号下所有专家生效。",
+    "toolEnabledHint": "外部智能体协作工具需按专家单独开启，切换上方专家后为当前专家配置。",
+    "toolEnabled": "在当前专家中启用外部智能体协作",
+    "outboundBlockedHint": "当前专家已启用沙箱环境，不可启用或编辑外部智能体。在当前专家中启用外部智能体协作不受影响；通过 IDE / octop acp 接入也不受影响。",
     "outboundBlockedTooltip": "沙箱环境下不可启用或编辑",
     "runnerUnavailable": "不可用",
     "builtin": "内置",
@@ -7327,16 +7343,16 @@
     "intro_kimi_code": "月之暗面 Kimi Code CLI，先 kimi 登录后使用 kimi acp 启动。",
     "intro_cursor_cli": "Cursor CLI agent，先 agent login 或设置 CURSOR_API_KEY 后使用 agent acp 启动。",
     "intro_pi": "Pi 编程专家，通过 pi-acp 桥接（npx -y pi-acp）接入 ACP。",
-    "intro_custom": "自定义 Runner：{{command}}",
+    "intro_custom": "自定义智能体：{{command}}",
     "runnerNeedsConfig": "已启用，待配置命令",
     "clickCardToConfigure": "请先点击卡片配置启动命令",
-    "create": "添加 Runner",
-    "createTitle": "添加 ACP Runner",
-    "editTitle": "编辑 Runner",
-    "runnerKey": "Runner ID",
-    "runnerKeyRequired": "请填写 Runner ID",
+    "create": "添加智能体",
+    "createTitle": "添加外部智能体",
+    "editTitle": "编辑智能体",
+    "runnerKey": "智能体 ID",
+    "runnerKeyRequired": "请填写智能体 ID",
     "runnerKeyInvalid": "仅允许字母、数字、下划线和连字符",
-    "runnerKeyExists": "该 Runner ID 已被占用。请打开对应卡片编辑；自定义 Runner 可在编辑里删除。",
+    "runnerKeyExists": "该智能体 ID 已被占用。请打开对应卡片编辑；自定义智能体可在编辑里删除。",
     "command": "启动命令",
     "commandRequired": "请填写启动命令",
     "args": "参数",
@@ -7347,7 +7363,7 @@
     "askHint": "向 ACP 发送 who are you?，回复显示在按钮上方。",
     "askResult": "who are you? 的回复",
     "askFailed": "探测没有得到回复",
-    "trusted": "受信任 Runner",
+    "trusted": "受信任智能体",
     "toolParseMode": "工具解析模式",
     "stdioBufferLimit": "Stdio 缓冲上限（字节）",
     "notSet": "未设置",
@@ -7356,13 +7372,13 @@
     "configFailed": "保存 ACP 配置失败",
     "saveNeedsInstall": "未保存：{{status}}",
     "saveNeedsInstallDetail": "未保存：{{status}}。{{detail}}",
-    "createSuccess": "Runner 已创建",
+    "createSuccess": "智能体已创建",
     "deleteTitle": "删除 {{name}}？",
-    "deleteConfirm": "将移除此自定义 Runner。",
-    "deleteSuccess": "Runner 已删除",
-    "docsHint": "请先在本地安装并配置好 ACP 专家（如 opencode、codebuddy --acp）后再启用 Runner。",
+    "deleteConfirm": "将移除此自定义智能体。",
+    "deleteSuccess": "智能体已删除",
+    "docsHint": "请先在本地安装并配置好外部智能体（如 opencode、codebuddy --acp）后再启用。",
     "chatPermissionTitle": "外部专家需要权限确认",
-    "runnerReenabled": "该 Runner 之前是关闭状态，已按本次填写更新并重新启用。",
+    "runnerReenabled": "该智能体之前是关闭状态，已按本次填写更新并重新启用。",
     "installOnHost": "在运行 Octop 的机器上安装",
     "host": {
       "title": "本机探测",
@@ -7411,7 +7427,7 @@
       }
     },
     "advanced": "高级设置",
-    "disableKeepsRunner": "卡片上的开关只是关闭，配置仍保留，ID 也不会释放。要腾出 ID，请在此删除自定义 Runner。"
+    "disableKeepsRunner": "卡片上的开关只是关闭，配置仍保留，ID 也不会释放。要腾出 ID，请在此删除自定义智能体。"
   },
   "plugins": {
     "loadError": "加载插件失败",
@@ -7569,8 +7585,8 @@
       "subtitle": "连接文档、网盘与邮箱，并在对话中按需使用"
     },
     "acp": {
-      "title": "ACP 协作",
-      "subtitle": "配置外部编程专家 Runner，并按专家开启协作"
+      "title": "智能体协作",
+      "subtitle": "配置外部智能体，并在当前专家中开启协作"
     },
     "skills": {
       "title": "技能",

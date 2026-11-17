@@ -369,6 +369,7 @@ export default function AgentBackendFields({
               <p
                 style={{
                   fontSize: 12,
+                  lineHeight: 1.5,
                   color: "var(--fn-text-tertiary)",
                   margin: 0,
                 }}
@@ -380,6 +381,7 @@ export default function AgentBackendFields({
                 <p
                   style={{
                     fontSize: 12,
+                    lineHeight: 1.5,
                     color: "var(--fn-text-tertiary)",
                     margin: 0,
                   }}
@@ -391,6 +393,7 @@ export default function AgentBackendFields({
                 <p
                   style={{
                     fontSize: 12,
+                    lineHeight: 1.5,
                     color: "var(--fn-text-tertiary)",
                     margin: "4px 0 0",
                   }}
@@ -411,6 +414,7 @@ export default function AgentBackendFields({
                 <p
                   style={{
                     fontSize: 12,
+                    lineHeight: 1.5,
                     color: "var(--fn-text-tertiary)",
                     margin: 0,
                   }}
@@ -458,6 +462,7 @@ export default function AgentBackendFields({
             <p
               style={{
                 fontSize: 12,
+                lineHeight: 1.5,
                 color: "var(--fn-text-tertiary)",
                 margin: "0 0 8px",
               }}
