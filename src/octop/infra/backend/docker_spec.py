@@ -6,12 +6,14 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
+from octop.infra.utils.host_dirs import running_in_container
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_SANDBOX_PREFIX = "octop_sandbox"
 
-# ``volumes`` is intentionally absent. Host bind mounts run as the Docker
-# daemon and are not covered by the local-backend root policy.
+# ``volumes`` stays in the stored spec. ``omit_docker_volumes`` drops it only
+# when Octop itself is not running in a container.
 _DOCKER_PASSTHROUGH_KEYS = (
     "allow_network",
     "memory",
@@ -21,6 +23,7 @@ _DOCKER_PASSTHROUGH_KEYS = (
     "max_output_bytes",
     "auto_remove",
     "workspace_path",
+    "volumes",
     "environment",
     "environment_file",
     "agent_id",
@@ -41,11 +44,20 @@ def apply_docker_cfg_keys(spec: dict[str, Any], cfg: dict[str, Any]) -> None:
 
 
 def omit_docker_volumes(spec: Any) -> Any:
-    """Drop ``volumes`` from docker specs, including composite children.
+    """Drop ``volumes`` from docker specs outside a container deployment.
+
+    Docker-deployed Octop keeps the mounts. The operator already chose which
+    host directories the container can see, and a Docker expert only reaches
+    those paths when ``volumes`` is passed to the daemon. A host install still
+    drops them, including on composite children, so a normal user cannot bind
+    arbitrary host paths into a sandbox.
 
     A returned docker or composite dict is a shallow copy when a mount was
-    removed. Other specs are returned unchanged.
+    removed. Other specs, and every spec when Octop is in a container, are
+    returned unchanged.
     """
+    if running_in_container():
+        return spec
     if not isinstance(spec, dict):
         return spec
     kind = str(spec.get("type") or "").strip().lower()

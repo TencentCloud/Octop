@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from langchain.agents.middleware import ToolCallLimitMiddleware, ToolRetryMiddleware
+from langchain.agents.middleware import ToolRetryMiddleware
 
+from octop.infra.agents.middleware.consecutive_tool_call import ConsecutiveToolCallMiddleware
 from octop.infra.agents.settings.runtime_limits import (
     CONFIGURABLE_MAX_INPUT_TOKENS,
     CONFIGURABLE_MODEL_SETTINGS,
@@ -80,7 +81,7 @@ def test_apply_agent_runtime_to_stream_request_merges_configurable() -> None:
     assert req["configurable"][CONFIGURABLE_MAX_INPUT_TOKENS] == 32000
 
 
-def test_call_guard_defaults_cap_tool_calls_and_retry_tool_exceptions() -> None:
+def test_call_guard_defaults_cap_repeated_tool_calls_and_retry_tool_exceptions() -> None:
     assert resolve_tool_call_run_limit({}) == DEFAULT_TOOL_CALL_RUN_LIMIT
     assert resolve_model_retry({}).enabled is True
     assert resolve_model_retry({}).max_retries == DEFAULT_MODEL_RETRY_MAX_RETRIES
@@ -88,11 +89,9 @@ def test_call_guard_defaults_cap_tool_calls_and_retry_tool_exceptions() -> None:
     assert resolve_tool_retry({}).max_retries == DEFAULT_TOOL_RETRY_MAX_RETRIES
 
     middleware = call_guard_middleware({})
-    limit = next(item for item in middleware if isinstance(item, ToolCallLimitMiddleware))
+    limit = next(item for item in middleware if isinstance(item, ConsecutiveToolCallMiddleware))
     tool_retry = next(item for item in middleware if isinstance(item, ToolRetryMiddleware))
-    assert limit.run_limit == DEFAULT_TOOL_CALL_RUN_LIMIT
-    assert limit.thread_limit is None
-    assert limit.exit_behavior == "end"
+    assert limit.limit == DEFAULT_TOOL_CALL_RUN_LIMIT
     assert tool_retry.max_retries == DEFAULT_TOOL_RETRY_MAX_RETRIES
     assert tool_retry.initial_delay == 1.0
     assert tool_retry.max_delay == 60.0
