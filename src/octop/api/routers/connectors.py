@@ -75,6 +75,7 @@ from octop.infra.users.groups import (
     RESOURCE_CONNECTOR,
     GroupAccess,
 )
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -292,7 +293,9 @@ async def _begin_oauth_flow(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
                 f"OAuth for {kind} is not available",
             )
-    elif target_type != "custom_mcp":
+    elif target_type == "custom_mcp":
+        _assert_custom_mcp_permission(user)
+    else:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "unsupported oauth target")
 
     state = secrets.token_urlsafe(24)
@@ -607,6 +610,15 @@ def _assert_can_manage_connector(inst: Any, user: Any) -> None:
         raise OctopError(ErrorCode.FORBIDDEN, "not your connector instance")
 
 
+def _assert_custom_mcp_permission(user: Any) -> None:
+    if not user_has_permission(user, "connector_custom"):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "permission required",
+            details={"permission": "connector_custom"},
+        )
+
+
 def _raise_name_taken(name: str) -> None:
     raise OctopError(
         ErrorCode.CONNECTOR_NAME_TAKEN,
@@ -704,7 +716,7 @@ async def list_instances(
 
 @router.get("/connectors/custom-mcp", summary="Get custom MCP servers")
 async def get_custom_mcp(
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return the user's custom MCP server map (langchain-mcp-adapters shape)."""
@@ -715,7 +727,7 @@ async def get_custom_mcp(
 @router.put("/connectors/custom-mcp", summary="Save custom MCP servers")
 async def put_custom_mcp(
     body: CustomMcpPutBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Replace the user's custom MCP servers document and reload agents."""
@@ -749,7 +761,7 @@ async def put_custom_mcp(
 async def patch_custom_mcp_server(
     server_name: str,
     body: CustomMcpServerPatchBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Update ``enabled`` and/or ``default_open`` for one custom MCP server."""
@@ -775,7 +787,7 @@ async def patch_custom_mcp_server(
 @router.post("/connectors/custom-mcp/test", summary="Probe a custom MCP server")
 async def test_custom_mcp(
     body: CustomMcpTestBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Probe connectivity for one custom MCP server (saved name or inline spec)."""
@@ -939,6 +951,7 @@ async def patch_instance(
     """Edit a connector instance without replacing its identity."""
     custom_target = _resolve_custom_target(instance_id, user=user, server=server)
     if custom_target is not None:
+        _assert_custom_mcp_permission(user)
         custom_user_id, synthetic_name = custom_target
         svc = _connector_service(server)
         if body.status is None and body.default_open is None and body.shared is None:
@@ -1081,6 +1094,7 @@ async def delete_instance(
     """Disconnect and delete stored credentials for a connector instance."""
     custom_target = _resolve_custom_target(instance_id, user=user, server=server)
     if custom_target is not None:
+        _assert_custom_mcp_permission(user)
         custom_user_id, synthetic_name = custom_target
         svc = _connector_service(server)
         servers = dict(svc.get_custom_servers(custom_user_id))
@@ -1161,6 +1175,7 @@ async def test_instance(
     """Probe the connector with stored credentials and return success or error details."""
     custom_target = _resolve_custom_target(instance_id, user=user, server=server)
     if custom_target is not None:
+        _assert_custom_mcp_permission(user)
         custom_user_id, synthetic_name = custom_target
         svc = _connector_service(server)
         saved = svc.get_custom_servers(custom_user_id)

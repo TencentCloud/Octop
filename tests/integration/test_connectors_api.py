@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from html import escape
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -661,6 +662,135 @@ async def test_patch_custom_mcp_server_default_open_only(env):
     )
     assert patch_off.status_code == 200
     assert "default_open" not in patch_off.json()["servers"]["linear"]
+
+
+async def test_custom_mcp_routes_require_connector_custom_permission(env):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(
+        c,
+        admin_auth,
+        username="custom_mcp_routes_denied",
+        permissions=[],
+    )
+
+    listed = await c.get("/api/connectors/custom-mcp", headers=user_auth)
+    oauth = await c.post(
+        "/api/connectors/oauth/start",
+        headers=user_auth,
+        json={"target": {"type": "custom_mcp", "server_name": "linear"}},
+    )
+    saved = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=user_auth,
+        json={
+            "servers": {
+                "linear": {
+                    "transport": "streamable_http",
+                    "url": "https://mcp.example.com/mcp",
+                }
+            }
+        },
+    )
+
+    assert [listed.status_code, oauth.status_code, saved.status_code] == [403, 403, 403]
+
+
+async def test_custom_mcp_patch_and_delete_require_connector_custom_permission(env):
+    c, server, admin_auth, _ = env
+    user_auth = await create_user(
+        c,
+        admin_auth,
+        username="custom_mcp_mutation_denied",
+        permissions=[],
+    )
+    user_id = await resolve_user_id(c, admin_auth, "custom_mcp_mutation_denied")
+    svc = _connector_service(server)
+    svc.put_custom_servers(
+        user_id,
+        {
+            "linear": {
+                "transport": "streamable_http",
+                "url": "https://mcp.example.com/mcp",
+            }
+        },
+    )
+
+    direct_patch = await c.patch(
+        "/api/connectors/custom-mcp/servers/linear",
+        headers=user_auth,
+        json={"enabled": False},
+    )
+    instance_patch = await c.patch(
+        "/api/connector-instances/custom:linear",
+        headers=user_auth,
+        json={"status": "disabled"},
+    )
+    deleted = await c.delete("/api/connector-instances/custom:linear", headers=user_auth)
+
+    assert [direct_patch.status_code, instance_patch.status_code, deleted.status_code] == [
+        403,
+        403,
+        403,
+    ]
+    assert "linear" in svc.get_custom_servers(user_id)
+
+
+async def test_custom_mcp_probe_requires_permission_before_starting_stdio(env, tmp_path: Path):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(
+        c,
+        admin_auth,
+        username="custom_mcp_probe_denied",
+        permissions=[],
+    )
+    marker = tmp_path / "stdio-started"
+    script = f"from pathlib import Path; Path({str(marker)!r}).write_text('started')"
+
+    response = await c.post(
+        "/api/connectors/custom-mcp/test",
+        headers=user_auth,
+        json={
+            "server": {
+                "transport": "stdio",
+                "command": sys.executable,
+                "args": ["-c", script],
+            }
+        },
+    )
+
+    assert (response.status_code, marker.exists()) == (403, False)
+
+
+async def test_custom_mcp_instance_probe_requires_permission_before_starting_stdio(
+    env, tmp_path: Path
+):
+    c, server, admin_auth, _ = env
+    user_auth = await create_user(
+        c,
+        admin_auth,
+        username="custom_mcp_instance_probe_denied",
+        permissions=[],
+    )
+    user_id = await resolve_user_id(c, admin_auth, "custom_mcp_instance_probe_denied")
+    marker = tmp_path / "instance-stdio-started"
+    script = f"from pathlib import Path; Path({str(marker)!r}).write_text('started')"
+    _connector_service(server).put_custom_servers(
+        user_id,
+        {
+            "linear": {
+                "transport": "stdio",
+                "command": sys.executable,
+                "args": ["-c", script],
+            }
+        },
+    )
+
+    response = await c.post(
+        "/api/connector-instances/custom:linear/test",
+        headers=user_auth,
+    )
+
+    assert (response.status_code, marker.exists()) == (403, False)
 
 
 async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
