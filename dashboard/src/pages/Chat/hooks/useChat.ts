@@ -24,6 +24,7 @@ import {
   type ContentBlock,
 } from "../../../utils/messageParser";
 import { normalizeComposerContext } from "../utils/chatMessages";
+import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { resolveMessageTimestampMs } from "../../../utils/formatMessageTime";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import {
@@ -533,8 +534,30 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   for (const cur of raw) {
     const { _toolKind, ...current } = cur;
     if (_toolKind === "call") {
-      merged.push(current);
       const callId = current.toolData?.callId;
+      const existingIdx = callId ? callIdToMergedIndex[callId] : undefined;
+      if (existingIdx !== undefined) {
+        const existing = merged[existingIdx];
+        const name = preferToolName(
+          current.toolData?.name,
+          existing.toolData?.name,
+        );
+        if (name && name !== existing.toolData?.name) {
+          merged[existingIdx] = {
+            ...existing,
+            toolData: {
+              ...existing.toolData,
+              name,
+              displayName: isPlaceholderToolName(current.toolData?.name)
+                ? existing.toolData?.displayName
+                : current.toolData?.displayName ||
+                  existing.toolData?.displayName,
+            },
+          };
+        }
+        continue;
+      }
+      merged.push(current);
       if (callId) callIdToMergedIndex[callId] = merged.length - 1;
       continue;
     }

@@ -142,6 +142,8 @@ interface ChatInputProps {
   contextUsedTokens?: number | null;
   contextMaxTokens?: number;
   decisionSaved?: number;
+  /** Managed experts hide model, connectors, knowledge, and expert pickers. */
+  managed?: boolean;
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -199,6 +201,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       contextUsedTokens = null,
       contextMaxTokens = 128_000,
       decisionSaved = 0,
+      managed = false,
     },
     ref,
   ) {
@@ -501,7 +504,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       locale: i18n.language,
       availableSkills,
       availableConnectors,
-      availableExperts,
+      availableExperts: managed ? [] : availableExperts,
       availableSubagents,
       agentId,
       selectedConnectors,
@@ -1043,15 +1046,18 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
             availableSkills={availableSkills}
             onInsertSkillCommand={insertSkillCommand}
-            availableExperts={availableExperts.filter(
-              (a) => a.agent_id !== agentId,
-            )}
+            availableExperts={
+              managed
+                ? []
+                : availableExperts.filter((a) => a.agent_id !== agentId)
+            }
             onInsertExpertMention={insertExpertMention}
             availableSubagents={availableSubagents}
             onInsertSubagentMention={insertSubagentMention}
             slashPickerGroups={slashPickerGroups}
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}
+            managed={managed}
             onFileSelect={handleFileSelect}
             onFolderSelect={handleFolderSelect}
             onNewChat={onNewChat}

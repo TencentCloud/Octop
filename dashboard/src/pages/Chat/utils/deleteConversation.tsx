@@ -34,17 +34,20 @@ export async function deleteConversation(
   threadId: string,
   compact: boolean,
   t: TFunction,
+  isActive: () => boolean = () => true,
 ): Promise<DeleteConversationResult> {
+  if (!isActive()) return false;
   const closeLoading = compact
     ? antMessage.loading(t("chat.deleteSessionCompacting"), 0)
     : undefined;
   try {
     const result = await octopThreadsApi.delete(agentId, threadId, compact);
     if (typeof closeLoading === "function") closeLoading();
-    antMessage.success(deleteResultText(t, compact, result));
+    if (isActive()) antMessage.success(deleteResultText(t, compact, result));
     return true;
   } catch (error) {
     if (typeof closeLoading === "function") closeLoading();
+    if (!isActive()) return false;
     if (parseApiError(error)?.code === "THREAD_TURN_ACTIVE") {
       antMessage.error(t("apiErrors.THREAD_TURN_ACTIVE"));
       return null;
@@ -68,7 +71,7 @@ export function confirmDeleteConversation(
     | DeleteConversationResult
     | void
     | Promise<DeleteConversationResult | void>,
-): void {
+): ReturnType<typeof modal.confirm> {
   const mobile =
     typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT;
   let inflight = false;
@@ -133,4 +136,5 @@ export function confirmDeleteConversation(
     ),
   });
   handle.destroy = opened.destroy;
+  return opened;
 }

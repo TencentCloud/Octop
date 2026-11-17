@@ -25,7 +25,8 @@ import {
   presetToCron,
 } from "./constants";
 import { CRON_NAME_MAX_LEN, CRON_PROMPT_MAX_LEN } from "../constants";
-import { channelFromSessionKey } from "../cronDisplay";
+import { CHANNEL_LABEL_KEYS } from "../../../Agent/Channels/components/constants";
+import { LATEST_SESSION_TARGET, channelFromSessionKey } from "../cronDisplay";
 import { defaultOnceRunAt, isFutureWallClock } from "../onceSchedule";
 import type { CronJobFormValues } from "../useCronJobs";
 import {
@@ -94,10 +95,11 @@ export function JobDrawer({
   const remote = isBridgeAgentId(activeAgentId);
   const scheduleMode = Form.useWatch("_scheduleMode", form);
   const freshThread = Form.useWatch("fresh_thread", form);
+  const sessionTarget = Form.useWatch("session_target", form);
 
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [sessionOptions, setSessionOptions] = useState<
+  const [historyOptions, setHistoryOptions] = useState<
     Array<{ label: string; value: string }>
   >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -117,6 +119,31 @@ export function JobDrawer({
       })),
     [t],
   );
+
+  const sessionSelectOptions = useMemo(() => {
+    const history = [...historyOptions];
+    if (
+      sessionTarget &&
+      sessionTarget !== LATEST_SESSION_TARGET &&
+      !history.some((option) => option.value === sessionTarget)
+    ) {
+      history.unshift({
+        value: sessionTarget,
+        label: `${t("cronJobs.form.sessionKeyHistory")} · ${sessionTarget.slice(
+          -6,
+        )}`,
+      });
+    }
+    const latest = {
+      value: LATEST_SESSION_TARGET,
+      label: t("cronJobs.form.sessionKeyLatest"),
+    };
+    if (history.length === 0) return [latest];
+    return [
+      latest,
+      { label: t("cronJobs.form.sessionKeyHistory"), options: history },
+    ];
+  }, [historyOptions, sessionTarget, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -154,32 +181,34 @@ export function JobDrawer({
 
   useEffect(() => {
     if (!open || !activeAgentId) {
-      setSessionOptions([]);
+      setHistoryOptions([]);
       return;
     }
     setSessionsLoading(true);
     octopThreadsApi
       .list(activeAgentId, 100)
       .then((threads) => {
-        const seen = new Set<string>();
         const options: Array<{ label: string; value: string }> = [];
         for (const th of threads || []) {
-          if (!th.session_key || seen.has(th.session_key)) continue;
-          seen.add(th.session_key);
-          const channel = channelFromSessionKey(th.session_key);
+          if (th.owned === false) continue;
           const title = th.title?.trim();
+          if (!title && !(th.last_active > 0)) continue;
+          const channel = channelFromSessionKey(th.session_key);
+          const labelKey =
+            CHANNEL_LABEL_KEYS[channel as keyof typeof CHANNEL_LABEL_KEYS];
+          const channelName = labelKey ? t(labelKey) : channel;
           options.push({
-            value: th.session_key,
+            value: th.thread_id,
             label: title
-              ? `${channel} · ${title}`
-              : `${channel} · ${th.session_key}`,
+              ? `${channelName} · ${title}`
+              : `${channelName} · ${th.thread_id.slice(-6)}`,
           });
         }
-        setSessionOptions(options);
+        setHistoryOptions(options);
       })
-      .catch(() => setSessionOptions([]))
+      .catch(() => setHistoryOptions([]))
       .finally(() => setSessionsLoading(false));
-  }, [open, activeAgentId]);
+  }, [open, activeAgentId, t]);
 
   useEffect(() => {
     if (!open) {
@@ -549,13 +578,7 @@ export function JobDrawer({
           valuePropName="checked"
           tooltip={t("cronJobs.form.freshThreadTooltip")}
         >
-          <Switch
-            onChange={(checked) => {
-              if (checked) {
-                form.setFieldValue("session_key", undefined);
-              }
-            }}
-          />
+          <Switch />
         </Form.Item>
 
         {!freshThread && (
@@ -566,9 +589,10 @@ export function JobDrawer({
             />
 
             <Form.Item
-              name="session_key"
+              name="session_target"
               label={t("cronJobs.form.sessionKey")}
               tooltip={t("cronJobs.form.sessionKeyTooltip")}
+              initialValue={LATEST_SESSION_TARGET}
               extra={
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   {t("cronJobs.form.sessionKeyDefault")}
@@ -576,16 +600,10 @@ export function JobDrawer({
               }
             >
               <Select
-                allowClear
                 showSearch
                 loading={sessionsLoading}
-                placeholder={t("cronJobs.form.sessionKeyPlaceholder")}
-                options={sessionOptions}
-                filterOption={(input, option) =>
-                  (option?.label?.toString() || "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
+                options={sessionSelectOptions}
+                optionFilterProp="label"
               />
             </Form.Item>
           </>

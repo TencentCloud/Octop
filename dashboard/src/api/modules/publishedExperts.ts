@@ -1,4 +1,5 @@
 import { request } from "../request";
+import type { AgentRuntimeApiFields } from "../../utils/agentRuntimeConfig";
 
 export interface PublishedExpert {
   id: string;
@@ -33,7 +34,7 @@ export interface PublishExpertBody {
 
 export type RefreshPublishedExpertBody = PublishExpertBody;
 
-export interface InstallPublishedExpertBody {
+export interface InstallPublishedExpertBody extends AgentRuntimeApiFields {
   name: string;
   description?: string;
   providers?: string[];
@@ -44,11 +45,12 @@ export interface InstallPublishedExpertBody {
   mcp_servers?: string[];
   color?: string;
   welcome_message?: string;
-  max_iters?: number | null;
-  max_input_length?: number | null;
-  temperature?: number | null;
-  top_p?: number | null;
-  max_tokens?: number | null;
+  compaction?: {
+    enabled?: boolean | null;
+    trigger_fraction?: number | null;
+    keep_fraction?: number | null;
+    trim_tokens?: number | null;
+  } | null;
   enable_trajectory?: boolean;
   file_overrides?: { name: string; content: string }[];
   omit_files?: string[];
