@@ -19,7 +19,14 @@ export function diffComposerFiles(
   const file_overrides: ComposerFileOverride[] = [];
   const omit_files: string[] = [];
   for (const [name, content] of currMap) {
-    if (origMap.get(name) !== content) {
+    const previous = origMap.get(name);
+    // An empty file with no baseline counterpart is an editor placeholder
+    // (see ensurePromptFiles), not a user change. Shipping it as an override
+    // would clobber the same file seeded from the expert template with "".
+    if (previous === undefined && content === "") {
+      continue;
+    }
+    if (previous !== content) {
       file_overrides.push({ name, content });
     }
   }

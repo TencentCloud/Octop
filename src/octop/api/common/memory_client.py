@@ -126,6 +126,11 @@ def _open_memory_for_agent(server: Any, agent_id: str) -> tuple[Any, Any]:
         workspace_dir=workspace,
     )
     fingerprint = f"{ns}:{backend}:{backend_config}"
+    runtime = getattr(server, "app_runtime", None)
+    if runtime is not None:
+        status = runtime.agent_registry.memory_slim.status(agent_id)
+        if isinstance(status, dict) and status.get("operation") == "restore":
+            fingerprint += f":restore:{status.get('job_id')}:{status.get('phase')}"
     if backend == "sqlite":
         db_path = Path(
             (backend_config or {}).get("db_path") or memory_db_path_for_cfg(workspace, cfg)
@@ -159,13 +164,33 @@ def call_memory_rpc(
         status = coordinator.status(agent_id)
         if isinstance(status, dict) and status.get("phase") in {
             "backing_up",
+            "inspecting",
+            "cleaning",
             "deduplicating",
             "compacting",
+            "draining",
+            "validating",
+            "backing_up_current",
+            "restoring",
+            "restarting",
         }:
             # Avoid synchronous dashboard writes holding the event loop in a
             # SQLite busy wait while maintenance status needs to remain visible.
             raise OctopError.localized(ErrorCode.AGENT_BUSY)
     _memory, bridge = _open_memory_for_agent(server, agent_id)
+    if method == "promote_candidate":
+        candidate = _memory.get_candidate((params or {}).get("candidate_id", ""))
+        if candidate is not None and candidate.payload.get("manual_revision"):
+            workspace = runtime.agent_registry.workspace_for_agent(agent_id)
+            if workspace is None:
+                raise OctopError.localized(ErrorCode.AGENT_BUSY)
+            params = {
+                **(params or {}),
+                "manual_documents": {
+                    name: (workspace.download_bytes(name) or b"").decode("utf-8")
+                    for name in ("USER.md", "MEMORY.md")
+                },
+            }
     payload = {
         "jsonrpc": "2.0",
         "id": 1,

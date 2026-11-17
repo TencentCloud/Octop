@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   edit: vi.fn(),
   deprecate: vi.fn(),
   destroyAction: vi.fn(),
+  confirmDelete: vi.fn(),
   error: vi.fn(),
   success: vi.fn(),
   createProps: null as null | {
@@ -48,6 +49,9 @@ vi.mock("../../../hooks/useServerTimezone", () => ({
 }));
 vi.mock("../../../utils/antdMessage", () => ({
   message: { error: mocks.error, success: mocks.success },
+}));
+vi.mock("../../../utils/antdModal", () => ({
+  modal: { confirm: mocks.confirmDelete },
 }));
 vi.mock("../../../api/modules/memoryDashboard", () => ({
   memoryDashboardApi: {
@@ -318,6 +322,7 @@ beforeEach(() => {
   mocks.createProps = null;
   mocks.edit.mockReturnValue({ destroy: mocks.destroyAction });
   mocks.deprecate.mockReturnValue({ destroy: mocks.destroyAction });
+  mocks.confirmDelete.mockReturnValue({ destroy: mocks.destroyAction });
 });
 
 describe.each(cases)("$name list request ownership", (testCase) => {
@@ -762,7 +767,13 @@ describe("Conversation list actions", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     fireEvent.click(screen.getByText("page 2"));
     expect(screen.getByTestId("page")).toHaveTextContent(/^2$/);
-    fireEvent.click(screen.getByText("confirm action"));
+    fireEvent.click(screen.getByRole("button", { name: "common.delete" }));
+    render(<>{mocks.confirmDelete.mock.calls[0][0].footer}</>);
+    await act(async () =>
+      fireEvent.click(
+        screen.getByRole("button", { name: "chat.deleteSessionOnly" }),
+      ),
+    );
     await act(async () => rerender(<ConversationRecords agentId="B" />));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByTestId("page")).toHaveTextContent(/^1$/);

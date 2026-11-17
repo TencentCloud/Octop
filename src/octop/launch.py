@@ -8,9 +8,20 @@ import sys
 from contextlib import suppress
 from typing import Any
 
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.server import OctopServer
+from octop.infra.utils.accept_errors import coalesce_accept_errors
 
 logger = logging.getLogger(__name__)
+
+# uvicorn's default ping_timeout is 20s. A busy peer — demo.octop.chat runs
+# dozens of agents on one event loop — often reads the pong later than that
+# and then closes the socket with 1011 "keepalive ping timeout". The dialer
+# redials at once, so cloud collab looks like it is flapping. Keep sending
+# pings; do not drop the connection on a late pong. BridgeSession's
+# application heartbeat still detects a half-open link.
+_WS_PING_INTERVAL = 20.0
+_WS_PING_TIMEOUT: float | None = None
 
 
 def _ensure_linux_bubblewrap() -> None:
@@ -67,6 +78,7 @@ async def run_foreground(
     import uvicorn
 
     from octop.api.app import build_app
+    from octop.infra.bridge.transport import BRIDGE_WS_MAX_BYTES
     from octop.infra.setup.tls.http_companion import build_http_companion_app
     from octop.infra.setup.tls.listeners import build_listen_plan
     from octop.infra.setup.tls.store import resolve_tls_paths
@@ -79,7 +91,12 @@ async def run_foreground(
     assert cfg is not None
     bind_host = host or cfg.bind_host
     bind_port = port or cfg.port
-    if ssl_certfile is None and ssl_keyfile is None:
+    if desktop_shell_enabled():
+        # Desktop-hosted sidecar always serves one loopback HTTP listener; it
+        # must ignore any persisted TLS / dual-port configuration.
+        ssl_certfile = None
+        ssl_keyfile = None
+    elif ssl_certfile is None and ssl_keyfile is None:
         ssl_certfile, ssl_keyfile = resolve_tls_paths(srv.paths.root, cfg.tls)
 
     plan = build_listen_plan(
@@ -112,6 +129,9 @@ async def run_foreground(
             reload=False,
             ssl_certfile=plan.ssl_certfile,
             ssl_keyfile=plan.ssl_keyfile,
+            ws_max_size=BRIDGE_WS_MAX_BYTES,
+            ws_ping_interval=_WS_PING_INTERVAL,
+            ws_ping_timeout=_WS_PING_TIMEOUT,
         )
         companion = build_http_companion_app(https_port=plan.https_port)
         http_config = uvicorn.Config(
@@ -141,19 +161,23 @@ async def run_foreground(
             reload=reload,
             ssl_certfile=plan.ssl_certfile,
             ssl_keyfile=plan.ssl_keyfile,
+            ws_max_size=BRIDGE_WS_MAX_BYTES,
+            ws_ping_interval=_WS_PING_INTERVAL,
+            ws_ping_timeout=_WS_PING_TIMEOUT,
         )
         servers.append(uvicorn.Server(single_config))
 
     from octop.infra.agents.memory.slim_control import MemorySlimControl
 
     memory_control = MemorySlimControl(srv)
-    try:
-        await memory_control.start()
-        await asyncio.gather(*(_serve(s) for s in servers))
-    finally:
-        await memory_control.close()
-        await _cancel_background_task(bwrap_task)
-        await srv.stop()
+    with coalesce_accept_errors(asyncio.get_running_loop()):
+        try:
+            await memory_control.start()
+            await asyncio.gather(*(_serve(s) for s in servers))
+        finally:
+            await memory_control.close()
+            await _cancel_background_task(bwrap_task)
+            await srv.stop()
 
 
 def run_foreground_blocking(**kwargs: Any) -> None:

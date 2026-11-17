@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import pytest
@@ -12,12 +13,15 @@ from octop_gateway.models import (
     MessageEventType,
     TextContent,
 )
+from octop_gateway.utils import close_event_stream
 
 from octop.infra.gateway.process.response_mode import (
     collapse_to_invoke_response,
     normalize_channel_response_mode,
     processor_for_response_mode,
     qq_channel_response_mode,
+    withhold_weixin_stream_preamble,
+    wrap_weixin_stream_processor,
 )
 
 
@@ -101,7 +105,30 @@ async def test_invoke_forwards_error_without_partial_text() -> None:
 
     result = [event async for event in collapse_to_invoke_response(source)]
 
-    assert result == [error, MessageEvent.completed()]
+    assert result == [error]
+
+
+@pytest.mark.parametrize("mode", ["invoke", "weixin-stream"])
+async def test_terminal_error_closes_underlying_processor_through_response_wrapper(mode):
+    closed = False
+
+    async def source(_message):
+        nonlocal closed
+        try:
+            yield MessageEvent.error_event("simulated failure")
+            await asyncio.Event().wait()
+        finally:
+            closed = True
+
+    processor = (
+        processor_for_response_mode(source, "invoke")
+        if mode == "invoke"
+        else wrap_weixin_stream_processor(source)
+    )
+    stream = processor(InboundMessage(channel_id="test", content=[TextContent(text="test")]))
+    assert (await anext(stream)).type == MessageEventType.ERROR
+    await close_event_stream(stream)
+    assert closed
 
 
 @pytest.mark.asyncio
@@ -153,6 +180,53 @@ def test_stream_mode_uses_original_processor() -> None:
 
     assert processor_for_response_mode(processor, "stream") is processor
     assert processor_for_response_mode(processor, "invoke") is not processor
+
+
+@pytest.mark.asyncio
+async def test_weixin_stream_drops_preamble_but_keeps_ask_agent() -> None:
+    source = _events(
+        MessageEvent.delta("我先查一下。"),
+        MessageEvent.flush(),
+        MessageEvent.tool_start("web_fetch", tool_key="web_fetch"),
+        MessageEvent.delta("结果"),
+        MessageEvent.tool_start("ask_agent", tool_key="ask_agent"),
+        MessageEvent.completed(),
+    )
+    result = [event async for event in withhold_weixin_stream_preamble(source)]
+    texts = [
+        part.text
+        for event in result
+        if event.type == MessageEventType.DELTA
+        for part in event.content
+        if isinstance(part, TextContent)
+    ]
+    assert "我先查一下。" not in texts
+    assert "结果" in texts
+    assert any(
+        event.type == MessageEventType.TOOL_START and event.metadata.get("tool_key") == "ask_agent"
+        for event in result
+    )
+
+
+def test_newer_weixin_token_is_kept() -> None:
+    from octop.infra.utils.weixin_context import (
+        WEIXIN_CONTEXT_TOKEN_KEY,
+        WEIXIN_CONTEXT_TOKEN_MS_KEY,
+        merge_weixin_context_token,
+    )
+
+    kept = merge_weixin_context_token(
+        {WEIXIN_CONTEXT_TOKEN_KEY: "new", WEIXIN_CONTEXT_TOKEN_MS_KEY: 20, "account_id": "a"},
+        {WEIXIN_CONTEXT_TOKEN_KEY: "old", WEIXIN_CONTEXT_TOKEN_MS_KEY: 10, "account_id": "b"},
+    )
+    assert kept[WEIXIN_CONTEXT_TOKEN_KEY] == "new"
+    assert kept["account_id"] == "b"
+
+    empty = merge_weixin_context_token(
+        {WEIXIN_CONTEXT_TOKEN_KEY: "keep", WEIXIN_CONTEXT_TOKEN_MS_KEY: 5, "account_id": "a"},
+        {"account_id": "a"},
+    )
+    assert empty[WEIXIN_CONTEXT_TOKEN_KEY] == "keep"
 
 
 def test_qq_channel_streams_by_default() -> None:

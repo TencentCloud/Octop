@@ -7,6 +7,8 @@ file listing:
 
   GET    /api/agents/{aid}/skills                 → summaries
   GET    /api/agents/{aid}/skills/{name}          → full detail (frontmatter + body)
+  GET    /api/agents/{aid}/skills/{name}/export   → ZIP of one workspace skill
+  POST   /api/agents/{aid}/skills/export         → ZIP of selected workspace skills
   POST   /api/agents/{aid}/skills                 → body { name, content }
   DELETE /api/agents/{aid}/skills/{name}          → remove SKILL.md
   POST   /api/agents/{aid}/skills/{name}/enable
@@ -31,20 +33,16 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-import logging
-import os
-import shutil
-import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, cast
 
-import yaml
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row, require_agent_row
+from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.manager import (
     skill_package_ids_list,
@@ -54,11 +52,11 @@ from octop.infra.agents.manager import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.presentation import apply_skill_presentation
+from octop.infra.skills.skill_archive import build_skill_zip, build_skills_zip
 from octop.infra.skills.skill_package_store import SkillPackageStore, normalize_copy_policy
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
     SkillPackageTooLarge,
-    read_cli_skill_install,
     resolve_skill_package,
     validate_skill_slug,
 )
@@ -68,14 +66,10 @@ from octop.infra.skills.skill_transfer import (
     copy_package_skills_to_workspace,
     copy_workspace_skill_to_package,
     copy_workspace_skill_to_workspace,
+    read_workspace_skill_files,
 )
+from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale, resolve_request_locale
-
-logger = logging.getLogger(__name__)
-
-_SKILLHUB_INSTALL_URL = (
-    "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh"
-)
 
 router = APIRouter()
 
@@ -105,31 +99,6 @@ async def _ctx(
     cfg = registry.get_config(agent_id)
     agent = registry.get_agent(agent_id)
     return _AgentCtx(runtime=row, workspace=agent.workspace, config=cfg)
-
-
-def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    """Split a markdown file with optional YAML frontmatter.
-
-    Accepts both ``---``-delimited and ``+++`` (TOML) blocks; we only
-    handle YAML for simplicity since finnie's skills all use YAML.
-    Returns ``(metadata_dict, body)``. Malformed frontmatter is treated
-    as no-frontmatter (the file is its own body).
-    """
-    if not text.startswith("---\n"):
-        return {}, text
-    # Find the closing delimiter
-    end = text.find("\n---", 4)
-    if end == -1:
-        return {}, text
-    raw = text[4:end]
-    body = text[end + 4 :].lstrip("\n")
-    try:
-        meta = yaml.safe_load(raw) or {}
-        if not isinstance(meta, dict):
-            return {}, text
-        return meta, body
-    except yaml.YAMLError:
-        return {}, text
 
 
 async def _aread_text(workspace: Any, path: str) -> str | None:
@@ -192,7 +161,7 @@ async def _resolve_skill(
         manifest = await _aread_text(workspace, manifest_path)
         if manifest is None:
             continue
-        meta, body = _parse_frontmatter(manifest)
+        meta, body = parse_frontmatter(manifest)
         if meta.get("removed"):
             continue
         return manifest_path, kind, body
@@ -214,14 +183,11 @@ async def _guard_package_only_skill_write(
     """
     workspace_manifest = await _aread_text(workspace, f"{_SKILLS_ROOT}/{slug}/SKILL.md")
     if workspace_manifest is not None:
-        metadata, _body = _parse_frontmatter(workspace_manifest)
+        metadata, _body = parse_frontmatter(workspace_manifest)
         if not metadata.get("removed"):
             origin = str(metadata.get("origin") or "").strip()
             if metadata.get("locked") and origin and server.services is not None:
-                store = SkillPackageStore(
-                    repo=server.services.skill_package_repo,
-                    root=server.paths.skill_packages_dir,
-                )
+                store = _skill_package_store(server)
                 origin_row = store.repo.get(origin)
                 # Unknown origin stays locked for regular users (fail-safe)
                 # but admins keep an escape hatch for orphaned copies.
@@ -238,208 +204,13 @@ async def _guard_package_only_skill_write(
             return
 
     assert server.services is not None
-    store = SkillPackageStore(
-        repo=server.services.skill_package_repo,
-        root=server.paths.skill_packages_dir,
-    )
+    store = _skill_package_store(server)
     for package_id in skill_package_ids_list(config):
         if any(skill["slug"] == slug for skill in store.list_skill_summaries(package_id)):
             raise OctopError(
                 ErrorCode.FORBIDDEN,
                 f"skill {slug!r} is supplied by a mounted package",
             )
-
-
-def _resolve_skillhub_bin() -> str | None:
-    """Return the skillhub binary path from PATH or common install locations."""
-    skillhub_bin = shutil.which("skillhub")
-    if skillhub_bin:
-        return skillhub_bin
-    home = os.path.expanduser("~")
-    for candidate in [
-        os.path.join(home, ".local", "bin", "skillhub"),
-        os.path.join(home, ".skillhub", "bin", "skillhub"),
-        "/usr/local/bin/skillhub",
-    ]:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    return None
-
-
-async def _close_subprocess(proc: asyncio.subprocess.Process) -> None:
-    """Kill and drain ``proc`` while the event loop is still alive.
-
-    Leaving a live ``asyncio`` subprocess after ``wait_for`` times out (or after
-    the caller abandons it) keeps pipe transports open; when the loop later
-    closes, ``BaseSubprocessTransport.__del__`` raises
-    ``RuntimeError: Event loop is closed`` as an unraisable warning.
-    """
-    if proc.returncode is not None:
-        return
-    try:
-        proc.kill()
-    except ProcessLookupError:
-        return
-    try:
-        await proc.communicate()
-    except Exception:
-        with contextlib.suppress(Exception):
-            await proc.wait()
-
-
-async def _install_skillhub_cli() -> str:
-    """Download and run the official install script; return the binary path."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
-    logger.info("skillhub CLI not found, attempting auto-install...")
-    curl_proc: asyncio.subprocess.Process | None = None
-    bash_proc: asyncio.subprocess.Process | None = None
-    try:
-        curl_proc = await asyncio.create_subprocess_exec(
-            "curl",
-            "-fsSL",
-            _SKILLHUB_INSTALL_URL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        script_stdout, curl_stderr = await asyncio.wait_for(curl_proc.communicate(), timeout=30)
-        if curl_proc.returncode != 0:
-            raise RuntimeError(
-                curl_stderr.decode("utf-8", errors="replace").strip() or "curl failed"
-            )
-        bash_proc = await asyncio.create_subprocess_exec(
-            "bash",
-            "-s",
-            "--",
-            "--no-skills",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "HOME": os.path.expanduser("~")},
-        )
-        _, bash_stderr = await asyncio.wait_for(
-            bash_proc.communicate(input=script_stdout), timeout=60
-        )
-        if bash_proc.returncode != 0:
-            raise RuntimeError(
-                bash_stderr.decode("utf-8", errors="replace").strip() or "install script failed"
-            )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="skillhub auto-install timed out") from None
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Failed to auto-install skillhub CLI: {exc}"
-        ) from exc
-    finally:
-        if curl_proc is not None:
-            await _close_subprocess(curl_proc)
-        if bash_proc is not None:
-            await _close_subprocess(bash_proc)
-
-    skillhub_bin = _resolve_skillhub_bin()
-    if not skillhub_bin:
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "skillhub CLI not found after install. "
-                f"Install manually: curl -fsSL {_SKILLHUB_INSTALL_URL} | sh"
-            ),
-        )
-    return skillhub_bin
-
-
-async def _ensure_skillhub_cli() -> str:
-    """Return path to the ``skillhub`` binary, auto-installing it if needed."""
-    skillhub_bin = _resolve_skillhub_bin()
-    if skillhub_bin is None:
-        skillhub_bin = await _install_skillhub_cli()
-    return skillhub_bin
-
-
-async def _run_skillhub_cmd(
-    skillhub_bin: str,
-    args: list[str],
-    *,
-    timeout: float,
-) -> tuple[int, str, str]:
-    """Run skillhub CLI and return ``(returncode, stdout, stderr)``."""
-    proc = await asyncio.create_subprocess_exec(
-        skillhub_bin,
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except (TimeoutError, asyncio.CancelledError):
-        await _close_subprocess(proc)
-        raise
-    return (
-        proc.returncode or 0,
-        stdout_b.decode("utf-8", errors="replace"),
-        stderr_b.decode("utf-8", errors="replace"),
-    )
-
-
-async def _upgrade_skillhub_cli(skillhub_bin: str) -> bool:
-    """Best-effort ``skillhub self-upgrade`` before install."""
-    try:
-        rc, _stdout, stderr = await _run_skillhub_cmd(
-            skillhub_bin,
-            ["self-upgrade"],
-            timeout=120,
-        )
-        if rc != 0:
-            logger.warning("skillhub self-upgrade failed (rc=%s): %s", rc, stderr.strip())
-            return False
-        return True
-    except Exception:
-        logger.warning("skillhub self-upgrade failed", exc_info=True)
-        return False
-
-
-def _map_skillhub_install_error(err_msg: str, skill_name: str) -> Any | None:
-    """Map skillhub stderr to an HTTPException when the failure is user-actionable."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
-    from octop.i18n import error_message  # noqa: PLC0415
-    from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
-
-    lower = err_msg.lower()
-    if looks_like_ssl_error(err_msg):
-        return HTTPException(
-            status_code=502,
-            detail=error_message("SKILLHUB_SSL_FAILED", "en"),
-        )
-    if "http 404" in lower or ("download failed" in lower and "404" in lower):
-        return HTTPException(
-            status_code=404,
-            detail=f"Skill '{skill_name}' not found in SkillHub",
-        )
-    if "not found" in lower or "no such" in lower:
-        return HTTPException(
-            status_code=404,
-            detail=f"Skill '{skill_name}' not found in SkillHub",
-        )
-    return None
-
-
-def _skillhub_cli_failure_detail(action: str, stderr: str, *, locale: str = "en") -> str:
-    """Build a 502 detail for a failed skillhub CLI invocation."""
-    from octop.i18n import error_message  # noqa: PLC0415
-    from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
-
-    err = stderr.strip() or "unknown error"
-    if looks_like_ssl_error(err):
-        return error_message("SKILLHUB_SSL_FAILED", locale)
-    return f"skillhub {action} failed: {err}"
-
-
-def _skillhub_stderr_suggests_upgrade(err_msg: str) -> bool:
-    lower = err_msg.lower()
-    return "self-upgrade" in lower or "新版本" in err_msg
 
 
 async def _enabled_skill_names(
@@ -530,10 +301,7 @@ async def list_skill_package_mounts(
     assert server.app_runtime is not None
     package_ids = skill_package_ids_list(server.app_runtime.agent_registry.get_config(agent_id))
     assert server.services is not None
-    store = SkillPackageStore(
-        repo=server.services.skill_package_repo,
-        root=server.paths.skill_packages_dir,
-    )
+    store = _skill_package_store(server)
     locale = resolve_request_locale(request)
     packages: list[dict[str, Any]] = []
     for package_id in package_ids:
@@ -558,6 +326,7 @@ async def list_skill_package_mounts(
 async def replace_skill_package_mounts(
     agent_id: str,
     body: SkillPackageMountBody,
+    request: Request,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -565,16 +334,45 @@ async def replace_skill_package_mounts(
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
     package_ids = skill_package_ids_list({"skill_package_ids": body.package_ids})
+    store = _skill_package_store(server)
+    locale = resolve_request_locale(request)
+    for package_id in package_ids:
+        package_row = store.repo.get(package_id)
+        if package_row is None:
+            raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
+        store.assert_can_view(package_row, user)
     await server.app_runtime.agent_registry.persist_skill_package_ids(agent_id, package_ids)
     return {"package_ids": package_ids}
+
+
+def _assert_skill_package_group(server: Any, user: Any, row: Any, locale: str) -> None:
+    """Groups narrow a shared package. They do not open a private one."""
+    services = getattr(server, "services", None)
+    repos = getattr(services, "repos", None) if services is not None else None
+    if repos is None:
+        return
+    from octop.infra.users.groups import RESOURCE_SKILL_PACKAGE, GroupAccess
+
+    if GroupAccess(repos).allows(
+        user_id=user.id,
+        is_admin=bool(getattr(user, "is_admin", False)),
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        resource_key=row.id,
+        is_owner=str(user.id) == str(row.created_by),
+    ):
+        return
+    raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
 
 
 def _skill_package_store(server: Any) -> SkillPackageStore:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "skill package store not initialized")
+    config = getattr(server.services, "config", None)
+    database = getattr(config, "database", None) if config is not None else None
     return SkillPackageStore(
         repo=server.services.skill_package_repo,
         root=server.paths.skill_packages_dir,
+        database=database,
     )
 
 
@@ -612,6 +410,7 @@ async def copy_skill_package_to_workspace(
             resolve_request_locale(request),
         )
     store.assert_can_copy(package_row, user)
+    _assert_skill_package_group(server, user, package_row, resolve_request_locale(request))
     try:
         requested_slugs = list(
             dict.fromkeys(validate_skill_slug(slug) for slug in body.skill_slugs)
@@ -713,7 +512,7 @@ async def get_skill(
     manifest_path, kind, _body = resolved
     manifest = await _aread_text(ctx.workspace, manifest_path)
     assert manifest is not None
-    meta, body = _parse_frontmatter(manifest)
+    meta, body = parse_frontmatter(manifest)
     disabled = _disabled_set(ctx.config)
     return {
         **_summary_dict(
@@ -727,6 +526,83 @@ async def get_skill(
         "body": body,
         "raw": manifest,
     }
+
+
+@router.get(
+    "/agents/{agent_id}/skills/{name}/export",
+    summary="Download a workspace skill as a ZIP",
+    description=(
+        "Pack one self-built workspace skill (SKILL.md and sibling files) into a ZIP "
+        "whose top-level folder is the skill slug. Built-in skills are not included. "
+        "The archive matches the dashboard ZIP importer, so it can be imported onto "
+        "another agent or into a skill package."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_skill_zip(
+    agent_id: str,
+    name: str,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("skills")),
+    server: Any = Depends(get_server),
+) -> Response:
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    locale = resolve_request_locale(request)
+    try:
+        files = await read_workspace_skill_files(ctx.workspace, name)
+        safe_slug = validate_skill_slug(name)
+        payload = await asyncio.to_thread(build_skill_zip, safe_slug, files)
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(exc, locale=locale) from exc
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": content_disposition(f"{safe_slug}.zip")},
+    )
+
+
+class ExportSkillsBody(BaseModel):
+    slugs: list[str] = Field(min_length=1)
+
+
+@router.post(
+    "/agents/{agent_id}/skills/export",
+    summary="Download workspace skills as one ZIP",
+    description=(
+        "Pack the selected workspace skills into one ZIP. Each skill is a top-level "
+        "folder containing SKILL.md, which is the layout the dashboard ZIP importer "
+        "already accepts."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_skills_zip(
+    agent_id: str,
+    body: ExportSkillsBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("skills")),
+    server: Any = Depends(get_server),
+) -> Response:
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    locale = resolve_request_locale(request)
+    slugs = list(dict.fromkeys(body.slugs))
+    try:
+        packed: list[tuple[str, list[tuple[str, bytes]]]] = []
+        for slug in slugs:
+            files = await read_workspace_skill_files(ctx.workspace, slug)
+            packed.append((validate_skill_slug(slug), files))
+        payload = await asyncio.to_thread(build_skills_zip, packed)
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(exc, locale=locale) from exc
+    filename = f"{packed[0][0]}.zip" if len(packed) == 1 else "skills.zip"
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
 
 
 # --- write endpoints --------------------------------------------------------
@@ -798,7 +674,7 @@ async def create_skill(
     agent_id: str,
     body: CreateSkillBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -818,7 +694,7 @@ async def create_skill(
     # and soft-delete only marks the manifest (leaving sibling files behind).
     existing = await _aread_text(ctx.workspace, f"skills/{name}/SKILL.md")
     if existing is not None:
-        meta, _ = _parse_frontmatter(existing)
+        meta, _ = parse_frontmatter(existing)
         if not meta.get("removed") and not body.overwrite:
             raise OctopError(ErrorCode.SKILL_ALREADY_EXISTS, f"skill {name!r} already exists")
     with contextlib.suppress(Exception):
@@ -834,7 +710,7 @@ async def create_skill(
         (content for path, content in package.files if path == "SKILL.md"),
         body.content.encode("utf-8"),
     )
-    meta, _body = _parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+    meta, _body = parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
     return _summary_dict(name, meta, enabled=True, kind="workspace")
 
 
@@ -844,7 +720,7 @@ async def update_skill(
     name: str,
     body: UpdateSkillBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite an installed workspace skill via BackendWorkspace only.
@@ -871,7 +747,7 @@ async def update_skill(
     existing = await _aread_text(ctx.workspace, f"skills/{slug}/SKILL.md")
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
-    meta_existing, _ = _parse_frontmatter(existing)
+    meta_existing, _ = parse_frontmatter(existing)
     if meta_existing.get("removed"):
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
 
@@ -890,7 +766,7 @@ async def update_skill(
         (content for path, content in package.files if path == "SKILL.md"),
         body.content.encode("utf-8"),
     )
-    meta, _body = _parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+    meta, _body = parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
     disabled = _disabled_set(ctx.config)
     return _summary_dict(
         slug,
@@ -943,7 +819,7 @@ async def copy_skill_from_agent(
     body: CopyWorkspaceSkillBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     dest = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -978,7 +854,7 @@ async def import_skill_from_url(
     body: ImportSkillBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Import a skill bundle from a supported external URL into the agent workspace."""
@@ -1054,7 +930,7 @@ async def import_skill_from_url(
         (content for path, content in package.files if path == "SKILL.md"),
         b"",
     )
-    meta, _body = _parse_frontmatter(skill_md.decode("utf-8"))
+    meta, _body = parse_frontmatter(skill_md.decode("utf-8"))
     return _summary_dict(
         package.slug,
         meta,
@@ -1068,7 +944,7 @@ async def delete_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     """Soft-delete via marker — see module docstring for rationale."""
@@ -1115,7 +991,7 @@ async def _skill_disable_keys(ctx: _AgentCtx, name: str) -> set[str]:
     manifest = await _aread_text(ctx.workspace, manifest_path)
     if manifest is None:
         return keys
-    meta, _ = _parse_frontmatter(manifest)
+    meta, _ = parse_frontmatter(manifest)
     summary = _summary_dict(slug, meta, enabled=False, kind=kind)
     keys |= skill_identity_keys(
         {
@@ -1132,7 +1008,7 @@ async def enable_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1148,7 +1024,7 @@ async def disable_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1171,165 +1047,27 @@ class HubInstallBody(BaseModel):
     summary: LocalizedSkillCopy | None = None
 
 
-async def _download_skillhub_package_via_cli(
-    skill_name: str,
-) -> list[tuple[str, bytes]]:
-    """Compatibility fallback for registries unsupported by the public HTTP path."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
-    skillhub_bin = await _ensure_skillhub_cli()
-    await _upgrade_skillhub_cli(skillhub_bin)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        install_args = ["--dir", tmpdir, "install", skill_name]
-        try:
-            rc, _stdout, stderr = await _run_skillhub_cmd(
-                skillhub_bin,
-                install_args,
-                timeout=120,
-            )
-        except TimeoutError:
-            raise HTTPException(
-                status_code=504, detail=f"skillhub install timed out for '{skill_name}'"
-            ) from None
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-            ) from exc
-
-        if (
-            rc != 0
-            and _skillhub_stderr_suggests_upgrade(stderr)
-            and await _upgrade_skillhub_cli(skillhub_bin)
-        ):
-            try:
-                rc, _stdout, stderr = await _run_skillhub_cmd(
-                    skillhub_bin,
-                    install_args,
-                    timeout=120,
-                )
-            except TimeoutError:
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"skillhub install timed out for '{skill_name}'",
-                ) from None
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-                ) from exc
-
-        if rc != 0:
-            err_msg = stderr.strip()
-            mapped = _map_skillhub_install_error(err_msg, skill_name)
-            if mapped is not None:
-                raise mapped
-            raise HTTPException(
-                status_code=502,
-                detail=_skillhub_cli_failure_detail("install", err_msg, locale="en"),
-            )
-
-        return read_cli_skill_install(Path(tmpdir))
-
-
-def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
-    """Parse the plain-text output of ``skillhub search`` into a list of dicts.
-
-    The CLI emits one block per skill:
-        You can use "skillhub install [skill]" to install.
-          <slug>  <Display Name>
-            - <description line 1>
-        <description line 2 (optional bilingual)>
-            - version: <ver>
-
-    We identify skill blocks by the leading two-space indent on the slug line,
-    then collect description lines until the version line.
-    """
-    import re  # noqa: PLC0415
-
-    results: list[dict[str, Any]] = []
-    lines = text.splitlines()
-
-    # Each skill entry starts with a line like "  slug  Name" (2-space indent,
-    # slug contains no spaces, followed by at least one space, then the display name).
-    slug_re = re.compile(r"^  (\S+)\s{2,}(.+)$")
-
-    i = 0
-    while i < len(lines):
-        m = slug_re.match(lines[i])
-        if m:
-            slug = m.group(1).strip()
-            name = m.group(2).strip()
-            desc_parts: list[str] = []
-            version = ""
-            i += 1
-            while i < len(lines):
-                line = lines[i]
-                # Version line ends the block
-                ver_m = re.match(r"^\s+-\s+version:\s*(.+)$", line)
-                if ver_m:
-                    version = ver_m.group(1).strip()
-                    i += 1
-                    break
-                # Desc line (may start with "    - " or be a raw continuation)
-                stripped = line.strip()
-                if stripped and not stripped.startswith("You can use"):
-                    # Remove leading "- " prefix if present
-                    cleaned = re.sub(r"^-\s+", "", stripped)
-                    if cleaned:
-                        desc_parts.append(cleaned)
-                i += 1
-            results.append(
-                {
-                    "slug": slug,
-                    "name": name,
-                    "description": " ".join(desc_parts),
-                    "version": version,
-                }
-            )
-        else:
-            i += 1
-
-    return results
-
-
 _RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending", "paid"}
 
 
-async def _hub_search(request: Request, *, q: str, limit: int) -> list[dict[str, Any]]:
+async def _hub_search(*, q: str, limit: int) -> list[dict[str, Any]]:
     from fastapi import HTTPException  # noqa: PLC0415
 
-    locale = resolve_request_locale(request)
     query = q.strip() or "a"
     effective_limit = max(1, min(limit, 100))
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         search_skillhub,
+        skill_market_failure_status,
     )
 
     try:
         return await search_skillhub(query, limit=effective_limit)
     except SkillHubMarketError as exc:
-        logger.warning("SkillHub HTTP search failed; using CLI fallback: %s", exc)
-
-    skillhub_bin = await _ensure_skillhub_cli()
-    try:
-        rc, stdout, stderr = await _run_skillhub_cmd(
-            skillhub_bin,
-            ["search", "--search-limit", str(effective_limit), query],
-            timeout=30,
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="skillhub search timed out") from None
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to run skillhub CLI: {exc}") from exc
-
-    if rc != 0:
         raise HTTPException(
-            status_code=502,
-            detail=_skillhub_cli_failure_detail("search", stderr, locale=locale),
-        )
-
-    return _parse_skillhub_search_output(stdout)
+            status_code=skill_market_failure_status(exc),
+            detail=str(exc),
+        ) from exc
 
 
 async def _hub_rankings(ranking_type: str) -> dict[str, Any]:
@@ -1352,13 +1090,12 @@ async def _hub_rankings(ranking_type: str) -> dict[str, Any]:
 
 @router.get("/skills/hub/search", summary="Search SkillHub without an agent")
 async def hub_search_skills_global(
-    request: Request,
     q: str = "",
     limit: int = 50,
     _user: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
     """Browse SkillHub while composing a new expert (no agent exists yet)."""
-    return await _hub_search(request, q=q, limit=limit)
+    return await _hub_search(q=q, limit=limit)
 
 
 @router.get("/skills/hub/rankings", summary="SkillHub rankings without an agent")
@@ -1373,20 +1110,19 @@ async def hub_rankings_global(
 @router.get("/agents/{agent_id}/skills/hub/search")
 async def hub_search_skills(
     agent_id: str,
-    request: Request,
     q: str = "",
     limit: int = 50,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Search Tencent SkillHub over HTTP, with CLI compatibility fallback.
+    """Search the skill market over HTTP.
 
     The agent_id param is accepted for auth/routing symmetry with
     the install endpoint but is not used for the search itself.
     """
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
-    return await _hub_search(request, q=q, limit=limit)
+    return await _hub_search(q=q, limit=limit)
 
 
 @router.get("/agents/{agent_id}/skills/hub/rankings")
@@ -1402,9 +1138,9 @@ async def hub_rankings(
     Returns the same payload shape previously produced by
     ``skillhub skill rankings`` (typically ``section``, ``skills``, ``total``).
     ``type`` selects a section (all / hot / recommended / trending / newest /
-    featured / paid). The host is resolved from the server-side ``SKILLHUB_HOST``
-    env var, else https://api.skillhub.cn. The agent_id is accepted for
-    auth/routing symmetry with search/install; rankings are global.
+    featured / paid). The host is ``SKILL_MARKET_ORIGIN``, else
+    https://api.skillhub.cn. The agent_id is accepted for auth/routing
+    symmetry with search/install; rankings are global.
     """
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     return await _hub_rankings(type)
@@ -1415,13 +1151,12 @@ async def hub_install_skill(
     agent_id: str,
     body: HubInstallBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Install a SkillHub skill into the specified agent's workspace.
 
-    Public skills are downloaded and validated directly over HTTP. The CLI is
-    retained as a compatibility fallback for unsupported registry flows.
+    The package is downloaded and validated over HTTP.
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
@@ -1435,6 +1170,7 @@ async def hub_install_skill(
         SkillHubPackageError,
         SkillHubPackageTooLarge,
         download_skillhub_package,
+        skill_market_failure_status,
     )
 
     try:
@@ -1480,18 +1216,10 @@ async def hub_install_skill(
     except SkillHubPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except SkillHubMarketError as exc:
-        logger.warning(
-            "SkillHub HTTP install failed for %s; using CLI fallback: %s",
-            skill_name,
-            exc,
-        )
-        transport = "cli"
-        try:
-            files = await _download_skillhub_package_via_cli(skill_name)
-        except (SkillHubPackageTooLarge, SkillPackageTooLarge) as package_exc:
-            raise HTTPException(status_code=413, detail=str(package_exc)) from package_exc
-        except (SkillHubPackageError, SkillPackageError) as package_exc:
-            raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
+        raise HTTPException(
+            status_code=skill_market_failure_status(exc),
+            detail=str(exc),
+        ) from exc
 
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, skill_name, user)
     try:

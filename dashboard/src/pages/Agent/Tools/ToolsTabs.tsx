@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from "react";
 import { Puzzle, Share2, Wrench } from "lucide-react";
+import cx from "classnames";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { canAccessKeys } from "../../../utils/permissions";
@@ -43,9 +44,10 @@ export default function ToolsTabs({ agentId }: ToolsTabsProps) {
       <TabBar tabs={tabs} activeKey={resolvedTab} onChange={setActiveTab} />
 
       <div
-        className={`${styles.toolsTabsContent}${
-          resolvedTab === "acp" ? ` ${styles.toolsTabsContentPadded}` : ""
-        }`}
+        className={cx(
+          styles.toolsTabsContent,
+          resolvedTab === "acp" && styles.toolsTabsContentPadded,
+        )}
       >
         {resolvedTab === "builtin" ? (
           <ToolsPanel agentId={agentId} source="builtin" />

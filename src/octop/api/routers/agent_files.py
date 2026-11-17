@@ -6,6 +6,8 @@ row:
 
   GET  /api/agents/{aid}/heartbeat-config
   PUT  /api/agents/{aid}/heartbeat-config
+  GET/PUT /api/agents/{aid}/memory/strong
+  GET/PUT /api/agents/{aid}/memory/user
   GET  /api/agents/{aid}/memory/daily
   GET  /api/agents/{aid}/memory/daily/{filename}
   DELETE /api/agents/{aid}/memory/daily/{filename}
@@ -23,32 +25,194 @@ delete falls back to the filesystem path because
 filesystem-rooted (S3 etc.) delete will raise — that's acceptable for
 the v1 dashboard which only ever runs against ``local_shell``.
 
-The ``HEARTBEAT.md`` and ``MEMORY.md`` text files themselves are NOT
-served here — the dashboard reuses the existing
-``GET/PUT /api/agents/{aid}/workspace/file?path=…`` endpoints from
-``routers/workspace.py`` so we don't grow a second copy of the same
-read/write logic.
+``MEMORY.md`` and ``USER.md`` are user-maintained documents exposed through
+owner-only ``memory/strong`` and ``memory/user`` endpoints, including stopped agents.
+The full file is snapshotted once per session; edits apply to new sessions. ``HEARTBEAT.md`` uses
+the general workspace file endpoints.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
-from octop.api.common.workspace import require_running_workspace
-from octop.api.deps import current_user, get_server
+from octop.api.common.memory_client import call_memory_rpc
+from octop.api.common.workspace import require_agent_workspace, require_running_workspace
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class StrongMemoryBody(BaseModel):
+    content: str = Field(
+        description="Complete user-maintained MEMORY.md content; an empty string clears it."
+    )
+
+
+class StrongMemoryFile(StrongMemoryBody):
+    exists: bool = Field(description="Whether MEMORY.md exists in this agent's workspace.")
+
+
+class UserProfileBody(BaseModel):
+    content: str = Field(
+        description="Complete user-maintained USER.md content; an empty string clears it."
+    )
+
+
+class UserProfileFile(UserProfileBody):
+    exists: bool = Field(description="Whether USER.md exists in this agent's workspace.")
+
+
+@router.get(
+    "/agents/{agent_id}/memory/strong",
+    response_model=StrongMemoryFile,
+    summary="Read strong memory",
+    description="Read the current user-maintained MEMORY.md. New sessions snapshot its full content once; existing sessions keep their snapshot. Available to the owner even when the agent is stopped.",
+)
+async def get_strong_memory(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("memory")),
+    server: Any = Depends(get_server),
+) -> StrongMemoryFile:
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    data = await ws.adownload_bytes("MEMORY.md")
+    return StrongMemoryFile(
+        content=data.decode("utf-8") if data is not None else "", exists=data is not None
+    )
+
+
+@router.put(
+    "/agents/{agent_id}/memory/strong",
+    response_model=StrongMemoryFile,
+    summary="Save strong memory",
+    description="Replace the owner's MEMORY.md with the supplied text. Edits apply to new sessions; existing sessions keep their snapshot. Ordinary remember requests are saved separately to octop-memory.",
+)
+async def put_strong_memory(
+    agent_id: str,
+    body: StrongMemoryBody,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("memory")),
+    server: Any = Depends(get_server),
+) -> StrongMemoryFile:
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    await server.app_runtime.agent_registry.save_manual_memory_document(
+        agent_id, "MEMORY.md", body.content
+    )
+    return StrongMemoryFile(content=body.content, exists=True)
+
+
+@router.get(
+    "/agents/{agent_id}/memory/user",
+    response_model=UserProfileFile,
+    summary="Read user-maintained profile",
+    description="Read USER.md for manual editing, including stopped agents. New sessions load its full content once; existing sessions keep their snapshot.",
+)
+async def get_user_profile(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("memory")),
+    server: Any = Depends(get_server),
+) -> UserProfileFile:
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    data = await ws.adownload_bytes("USER.md")
+    return UserProfileFile(
+        content=data.decode("utf-8") if data is not None else "", exists=data is not None
+    )
+
+
+@router.put(
+    "/agents/{agent_id}/memory/user",
+    response_model=UserProfileFile,
+    summary="Save user-maintained profile",
+    description="Replace the owner's USER.md. Agents cannot edit this document. Edits apply to new sessions; remember requests use octop-memory.",
+)
+async def put_user_profile(
+    agent_id: str,
+    body: UserProfileBody,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("memory")),
+    server: Any = Depends(get_server),
+) -> UserProfileFile:
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    await server.app_runtime.agent_registry.save_manual_memory_document(
+        agent_id, "USER.md", body.content
+    )
+    return UserProfileFile(content=body.content, exists=True)
+
+
+class ManualMemoryReview(BaseModel):
+    status: str = Field(
+        description="complete / partial / uncertain / unavailable / failed / stale / disabled / too_large / not_checked"
+    )
+    conflicts: int = 0
+    duplicates: int = 0
+    checked: int = 0
+    remaining: int = 0
+    candidate_ids: list[str] = Field(default_factory=list)
+
+
+@router.post(
+    "/agents/{agent_id}/memory/manual-review",
+    response_model=ManualMemoryReview,
+    summary="Reconcile manual documents with ordinary memory",
+    description="Compare the current USER.md and MEMORY.md with ordinary memories. Manual documents take priority; conflicts become review candidates and old facts stop automatic recall. Duplicate facts remain stored and are suppressed against matching chat snapshots. Partial or unavailable semantic checks are reported explicitly.",
+)
+async def review_manual_memory(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("memory")),
+    server: Any = Depends(get_server),
+) -> ManualMemoryReview:
+    require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    result = await server.app_runtime.agent_registry.review_manual_memory_documents(agent_id)
+    return ManualMemoryReview.model_validate(result)
+
+
+@router.get(
+    "/agents/{agent_id}/memory/manual-review",
+    response_model=ManualMemoryReview,
+    summary="Read manual-document review status",
+    description="Read the last reconciliation status for the current documents without modifying memory or invoking a model.",
+)
+async def get_manual_memory_review(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("memory")),
+    server: Any = Depends(get_server),
+) -> ManualMemoryReview:
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    documents = {}
+    for filename in ("USER.md", "MEMORY.md"):
+        data = await ws.adownload_bytes(filename)
+        documents[filename] = data.decode("utf-8") if data is not None else ""
+    result = await asyncio.to_thread(
+        call_memory_rpc,
+        agent_id=agent_id,
+        method="manual_document_review_status",
+        params={"documents": documents},
+        user=user,
+        as_user=as_user,
+        server=server,
+    )
+    return ManualMemoryReview.model_validate(result)
 
 
 # --- shared agent resolution -----------------------------------------------
@@ -145,7 +309,7 @@ def _validate_filename(filename: str) -> str:
 async def list_daily_memory(
     agent_id: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     rt = _resolve_runtime(agent_id, user=user, as_user=as_user, server=server)
@@ -186,7 +350,7 @@ async def read_daily_memory(
     agent_id: str,
     filename: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     date = _validate_filename(filename)
@@ -204,7 +368,7 @@ async def delete_daily_memory(
     agent_id: str,
     filename: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> Response:
     _validate_filename(filename)

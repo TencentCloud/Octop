@@ -21,6 +21,7 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         # Memory
         "memory_search",
         "memory_get",
+        "memory_save",
         # Knowledge base
         "search_knowledge",
         # Cron
@@ -35,7 +36,10 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "agent_list",
         "ask_agent",
         "call_agent",
+        "call_deferred_tool",
         "acp_runner",
+        # Managed ACP permission fallback. It is not a built-in tool users toggle.
+        "external-agent",
     }
 )
 

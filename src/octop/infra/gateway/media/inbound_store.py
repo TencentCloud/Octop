@@ -52,6 +52,8 @@ INBOUND_EXTENSION_MEDIA_TYPES = {
     ".csv": "text/csv",
     ".tsv": "text/tab-separated-values",
     ".doc": "application/msword",
+    # WPS Writer binary docs are OLE Compound files (same family as classic .doc).
+    ".wps": "application/msword",
     ".xls": "application/vnd.ms-excel",
     ".ppt": "application/vnd.ms-powerpoint",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -190,6 +192,12 @@ _INBOUND_MEDIA_TYPE_ALIASES = {
     "application/x-ipynb+json": "application/json",
     "text/rtf": "application/rtf",
     "application/x-rtf": "application/rtf",
+    # WPS Office / Kingsoft registry types (Windows browsers often send these).
+    "application/wps-office.wps": "application/msword",
+    "application/kswps": "application/msword",
+    "application/vnd.wps-office.wps": "application/msword",
+    "application/x-msword": "application/msword",
+    "application/vnd.ms-works": "application/msword",
     "application/x-gzip": "application/gzip",
     "application/x-gtar": "application/x-tar",
     "application/x-rar-compressed": "application/vnd.rar",
@@ -273,19 +281,39 @@ def _backend_mount(workspace: BackendWorkspace) -> tuple[str | None, bool]:
     return (text or None), virtual
 
 
+def _cloud_facing_root(workspace: BackendWorkspace) -> str | None:
+    """Virtual folder remote backends use, or ``None`` for a local mount.
+
+    Postgres/S3/COS store the workspace at ``/.octop/workspaces/<id>``. The
+    on-disk ``workspace_dir`` is not a path ``read_file`` can open.
+    """
+    from octop_harness.backends.workspace import (
+        is_cloud_storage_backend,
+        remote_workspace_virtual_root,
+    )
+
+    backend = getattr(workspace.backend, "default", workspace.backend)
+    if not is_cloud_storage_backend(backend):
+        return None
+    return remote_workspace_virtual_root(Path(workspace.workspace_dir))
+
+
 def agent_facing_workspace_path(workspace: BackendWorkspace, path: str) -> str:
     """Return an agent-visible path for *path* (no host ``root_dir`` prefix).
 
     Relative keys are joined under the agent-facing workspace root. Absolute
-    host paths under the on-disk workspace are remapped the same way.
+    host paths under the on-disk workspace are remapped the same way. Remote
+    backends use ``/.octop/workspaces/<id>`` instead of the host directory.
     """
     raw = (path or "").strip().replace("\\", "/")
-    root_raw, virtual = _backend_mount(workspace)
-    facing_root = agent_facing_workspace_root(
-        workspace.workspace_dir,
-        root_dir=root_raw,
-        virtual_mode=virtual,
-    )
+    facing_root = _cloud_facing_root(workspace)
+    if facing_root is None:
+        root_raw, virtual = _backend_mount(workspace)
+        facing_root = agent_facing_workspace_root(
+            workspace.workspace_dir,
+            root_dir=root_raw,
+            virtual_mode=virtual,
+        )
     if raw.startswith("/") and facing_root and facing_root != "/":
         prefix = facing_root.rstrip("/")
         if raw == prefix or raw.startswith(prefix + "/"):

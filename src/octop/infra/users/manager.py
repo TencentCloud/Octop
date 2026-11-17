@@ -10,6 +10,7 @@ import re
 import shutil
 import sqlite3
 import time
+from pathlib import Path
 from typing import Any
 
 try:
@@ -31,6 +32,7 @@ from octop.infra.users.preferences import (
     RemoteBrowserBookmark,
     get_remote_browser_bookmarks_from_json,
     merge_model_preferences_json,
+    merge_onboarding_completed_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
 )
@@ -123,18 +125,29 @@ class UserManager:
         self,
         *,
         username: str,
-        password: str,
+        password: str | None = None,
         role: Role | str,
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
         role_name: str | None = None,
+        directory_provider_id: int | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
         loc = normalize_locale(locale)
-        validate_password_policy(password)
+        if directory_provider_id is not None:
+            # A directory reservation has no local secret. The directory bind is
+            # the only way in, so a password sent alongside it is ignored.
+            password_hash = None
+            sso_provider_id: int | None = directory_provider_id
+        else:
+            if not password:
+                raise OctopError(ErrorCode.PASSWORD_TOO_WEAK, "password is required")
+            validate_password_policy(password)
+            password_hash = hash_password(password)
+            sso_provider_id = None
         try:
             keys = validate_permission_keys(permissions or [])
         except ValueError as exc:
@@ -158,11 +171,12 @@ class UserManager:
             try:
                 uid = self._services.user_repo.create(
                     username=username,
-                    password_hash=hash_password(password),
+                    password_hash=password_hash,
                     role=role_id,
                     display_name=display_name,
                     locale=loc,
                     email=normalized_email,
+                    sso_provider_id=sso_provider_id,
                     permissions=keys,
                     role_name=role_name,
                 )
@@ -504,6 +518,7 @@ class UserManager:
                 permissions=list(row.permissions),
             )
             self._users[row.username] = user
+        self._services.user_repo.touch_last_login(row.id)
         self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 
@@ -566,11 +581,14 @@ class UserManager:
         workspace_root_dir: Any = UNSET,
         token_quota: Any = UNSET,
         max_agents: Any = UNSET,
+        allowed_backend_types: Any = UNSET,
     ) -> None:
         from octop.infra.users.resource_policy import (
+            POLICY_ALLOWED_BACKEND_TYPES,
             POLICY_MAX_AGENTS,
             POLICY_TOKEN_QUOTA,
             POLICY_WORKSPACE_ROOT_DIR,
+            normalize_allowed_backend_types,
             normalize_max_agents,
             normalize_token_quota,
             normalize_workspace_root_dir,
@@ -583,6 +601,7 @@ class UserManager:
         root_arg: Any = UNSET
         quota_arg: Any = UNSET
         max_agents_arg: Any = UNSET
+        backend_types_arg: Any = UNSET
         if workspace_root_dir is not UNSET:
             root_arg = normalize_workspace_root_dir(workspace_root_dir)
             updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
@@ -592,6 +611,9 @@ class UserManager:
         if max_agents is not UNSET:
             max_agents_arg = normalize_max_agents(max_agents)
             updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
+        if allowed_backend_types is not UNSET:
+            backend_types_arg = normalize_allowed_backend_types(allowed_backend_types)
+            updates[POLICY_ALLOWED_BACKEND_TYPES] = backend_types_arg
         if not updates:
             return
         self._services.user_policy_repo.merge(row.id, updates)
@@ -615,6 +637,13 @@ class UserManager:
                 action="user.set_max_agents",
                 target=username,
                 payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
+        if allowed_backend_types is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_allowed_backend_types",
+                target=username,
+                payload=backend_types_arg or "",
             )
 
     async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
@@ -727,6 +756,13 @@ class UserManager:
         )
         self._services.user_repo.set_preferences_json(row.id, merged)
 
+    async def set_onboarding_completed(self, username: str, completed: bool) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        merged = merge_onboarding_completed_json(row.preferences_json, completed)
+        self._services.user_repo.set_preferences_json(row.id, merged)
+
     async def disable(self, username: str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
@@ -762,17 +798,125 @@ class UserManager:
             actor=ACTOR_ADMIN, action="user.unlock_login", target=username
         )
 
-    async def remove(self, username: str) -> None:
+    async def remove(self, username: str, *, agent_manager: Any | None = None) -> None:
+        """Delete the user, their agents' workspaces, and checkpoint data.
+
+        Owned agent directories are removed before the user row, so a
+        filesystem failure leaves the account in place and retryable.
+        Threads this user opened on someone else's agent lose their
+        checkpoints first; the thread rows then follow the user delete.
+        ``agent_manager`` unloads a running harness before the workspace
+        is removed. Without it (CLI), only the on-disk store is cleaned.
+        """
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        owned = self._services.agent_repo.list_by_user(row.id)
+        owned_ids = {agent.agent_id for agent in owned}
+        if agent_manager is not None:
+            agent_manager.assert_agents_deletable([agent.agent_id for agent in owned])
+        await self._delete_foreign_checkpoints(row.id, owned_ids, agent_manager)
+        workspaces = self._owned_workspaces(owned)
+        if agent_manager is not None:
+            for agent in owned:
+                await agent_manager.delete(agent.agent_id)
+        else:
+            await asyncio.to_thread(self._purge_owned_stores, owned)
+            await asyncio.to_thread(self._remove_owned_dirs, owned)
+        await asyncio.to_thread(self._remove_paths, workspaces)
         async with self._lock:
             self._users.pop(username, None)
-        user_dir = self._services.paths.user_dir(row.username)
-        try:
-            if user_dir.exists():
-                shutil.rmtree(user_dir)
-        except OSError:
-            logger.exception("rmtree failed for %s; user removed from DB anyway", user_dir)
+        await asyncio.to_thread(self._remove_user_files, row.id, row.username)
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
+
+    def _purge_owned_stores(self, owned: builtins.list[Any]) -> None:
+        """CLI user delete has no harness. Still drop each agent's memory store."""
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_agent_memory_and_checkpoints,
+            workspace_for_agent_row,
+        )
+
+        for agent in owned:
+            delete_agent_memory_and_checkpoints(
+                agent_id=agent.agent_id,
+                thread_ids=self._services.thread_repo.list_ids_for_agent(agent.agent_id),
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+                paths=self._services.paths,
+            )
+
+    def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import remove_agent_host_dirs
+
+        for agent in owned:
+            remove_agent_host_dirs(
+                agent_config_from_row(agent),
+                paths=self._services.paths,
+                agent_id=agent.agent_id,
+            )
+
+    def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
+        from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row
+
+        return [workspace_for_agent_row(agent, paths=self._services.paths) for agent in owned]
+
+    async def _delete_foreign_checkpoints(
+        self,
+        user_id: int,
+        owned_ids: set[str],
+        agent_manager: Any | None,
+    ) -> None:
+        foreign = [
+            pair
+            for pair in self._services.thread_repo.list_for_user(user_id)
+            if pair[0] not in owned_ids
+        ]
+        if not foreign:
+            return
+        if agent_manager is not None:
+            for agent_id, thread_id in foreign:
+                await agent_manager.delete_thread_checkpoint(agent_id, thread_id)
+            return
+        await asyncio.to_thread(self._delete_foreign_checkpoints_offline, foreign)
+
+    def _delete_foreign_checkpoints_offline(self, foreign: builtins.list[tuple[str, str]]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_stored_thread,
+            workspace_for_agent_row,
+        )
+
+        for agent_id, thread_id in foreign:
+            agent = self._services.agent_repo.get(agent_id)
+            if agent is None:
+                continue
+            delete_stored_thread(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+            )
+
+    def _remove_paths(self, paths: builtins.list[Path]) -> None:
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                shutil.rmtree(path)
+            except OSError as exc:
+                logger.exception("rmtree failed for %s", path)
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not remove {path}",
+                ) from exc
+
+    def _remove_user_files(self, user_id: int, username: str) -> None:
+        from octop.infra.users.profile_avatar import delete_profile_avatar
+
+        self._remove_paths([self._services.paths.user_dir(username)])
+        delete_profile_avatar(self._services.avatars("user"), str(user_id))

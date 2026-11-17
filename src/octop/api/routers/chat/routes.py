@@ -25,7 +25,6 @@ from octop.infra.agents.experts.catalog import (
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
-from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
@@ -33,25 +32,11 @@ from octop.infra.gateway.hitl.coordinator import (
 )
 from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.store import HitlPendingRecord
-from octop.infra.utils.llm_text import ainvoke_text
+from octop.infra.text_assist import require_host_models, run_text_assist
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_POLISH_SYSTEM_PROMPT = (
-    "You are a prompt editor, not an assistant that answers questions.\n"
-    "The user message is a DRAFT PROMPT they will later send to another AI. "
-    "Your only job is to rewrite that draft so another AI can understand it more "
-    "clearly — improve clarity, specificity, structure, and actionable detail.\n"
-    "Hard rules:\n"
-    "- Do NOT answer the draft, solve the task, or provide the requested content.\n"
-    "- Do NOT add explanations, greetings, or meta commentary.\n"
-    "- Preserve the user's original intent and language (e.g. keep Chinese if the "
-    "draft is Chinese).\n"
-    "- Output ONLY the rewritten prompt text — no preamble, labels, quotes, "
-    "thinking blocks, or XML tags."
-)
 
 
 @router.get("/agents/{agent_id}/chat/welcome", summary="Chat welcome quick cards")
@@ -106,6 +91,7 @@ async def get_chat_welcome(
 
 async def iter_dashboard_hitl_resume_sse(
     *,
+    server: Any,
     processor: Any,
     hitl_coordinator: HitlChannelCoordinator,
     agent_id: str,
@@ -124,6 +110,32 @@ async def iter_dashboard_hitl_resume_sse(
     reload / refresh can reinject the approval card (same as the initial turn).
     """
     rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
+    if pending is not None and pending.resume_agent_id:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        teams = getattr(processor, "teams", None)
+        deliver = getattr(teams, "deliver_member_hitl", None) if teams is not None else None
+        handed = hitl_coordinator.hand_member_pause(
+            pending,
+            decisions,
+            deliver=deliver if callable(deliver) else None,
+            rejected=rejected,
+        )
+        if handed:
+            # The member job keeps streaming on the room socket. A normal
+            # ``done`` makes the dashboard reload history immediately, which
+            # drops the live member answer before fan-in has saved it.
+            yield format_sse(
+                "chunk",
+                {"type": "done", "team_member_continuing": True},
+            )
+            return
+        yield format_sse(
+            "chunk",
+            {"type": "error", "message": slash_tr("hitl.expired", normalize_locale(locale))},
+        )
+        return
     hitl_ctx = HitlStreamContext(
         thread_id=thread_id,
         agent_id=agent_id,
@@ -132,6 +144,7 @@ async def iter_dashboard_hitl_resume_sse(
         channel_type=channel_type,
     )
     disconnected = False
+    followup_pause = False
     # Clear the in-memory pause before the (possibly long) resume stream so
     # history reload cannot reinject the same card while the turn continues.
     if pending is not None:
@@ -149,6 +162,7 @@ async def iter_dashboard_hitl_resume_sse(
             if not disconnected:
                 disconnected = await is_disconnected()
             if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                followup_pause = True
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
                     request_payload = normalize_hitl_request(request_payload)
@@ -157,8 +171,32 @@ async def iter_dashboard_hitl_resume_sse(
                     chunk["request"] = request_payload
             if not disconnected:
                 yield format_sse("chunk", chunk)
+        # A new approval card is still pending. Draining now would start a
+        # turn that expires that card. Keep the queue until a resume finishes
+        # without another pause. A plain ``done`` would also make the
+        # dashboard flush locally queued messages and reload history.
+        if followup_pause:
+            if not disconnected:
+                yield format_sse("chunk", {"type": "done", "hitl_paused": True})
+            return
         if not disconnected:
             yield format_sse("chunk", {"type": "done"})
+        # Steers parked across the HITL pause drain at this
+        # boundary and continue through a normal WS turn — also when the SSE
+        # client disconnected, because the resume itself completed here.
+        from octop.infra.gateway.ws.ws_channel import resume_parked_steers  # noqa: PLC0415
+
+        try:
+            await resume_parked_steers(
+                server,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                session_key=session_key,
+                channel_type=channel_type,
+                user_id=user_id,
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("steer resume drain failed thread=%s", thread_id)
     except Exception as exc:
         # Resume failed after we cleared the pause for reinject safety — do not
         # leave the record looking like a successful approve/reject.
@@ -195,14 +233,31 @@ async def resume_hitl(
     server: Any = Depends(get_server),
 ) -> StreamingResponse:
     """Resume a paused human-in-the-loop tool approval and stream subsequent chunks."""
-    assert_agent_access(server, agent_id, user)
+    from octop.api.routers.chat.history import _require_thread  # noqa: PLC0415
+
+    thread_row = _require_thread(server, agent_id, body.thread_id, user, None)
     processor = server.app_runtime.gateway.processor
     hitl_coordinator = processor.hitl_coordinator
+    requested_id = (body.pending_id or "").strip()
     pending = hitl_coordinator.store.resolve_pending_for_thread(
         body.thread_id,
         agent_id=agent_id,
-        user_id=user.id,
+        user_id=None if thread_row.contributed else user.id,
+        pending_id=requested_id or None,
     )
+    if requested_id and pending is None:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        locale = normalize_locale(resolve_request_locale(request))
+
+        async def missing() -> AsyncIterator[str]:
+            yield format_sse(
+                "chunk",
+                {"type": "error", "message": slash_tr("hitl.expired", locale)},
+            )
+
+        return StreamingResponse(missing(), media_type="text/event-stream")
     session_key, channel_type = _dashboard_hitl_stream_context(
         server,
         agent_id=agent_id,
@@ -215,11 +270,12 @@ async def resume_hitl(
         if reason is not None:
             raise HTTPException(status_code=400, detail=reason)
 
-    if body.hitl_policy is not None:
+    if body.hitl_policy is not None and thread_row.user_id == user.id:
         hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
 
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
+            server=server,
             processor=processor,
             hitl_coordinator=hitl_coordinator,
             agent_id=agent_id,
@@ -237,45 +293,25 @@ async def resume_hitl(
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
-@router.post("/agents/{agent_id}/chat/polish", summary="Polish prompt")
+@router.post(
+    "/agents/{agent_id}/chat/polish",
+    summary="Polish prompt (compat)",
+    deprecated=True,
+)
 async def polish_prompt(
     agent_id: str,
     body: PolishBody,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
-    """One-shot prompt refinement without touching thread history."""
-    from langchain_core.messages import HumanMessage, SystemMessage  # noqa: PLC0415
-
+    """Compat alias for ``POST /api/text/assist`` with ``kind=chat.prompt``."""
     assert_agent_access(server, agent_id, user)
-
-    draft = body.text.strip()
-    if not draft:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "text is required")
-
-    harness = server.app_runtime.agent_registry.get_agent(agent_id)
-    model_ref = (body.default_model or "").strip() or harness.config.pick_default_model_ref()
-    llm = harness.model_factory.get(model_ref)
-    try:
-        polished = await ainvoke_text(
-            llm,
-            [
-                SystemMessage(content=_POLISH_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=(
-                        "Rewrite the following draft prompt. Do not answer it.\n\n"
-                        f"---\n{draft}\n---"
-                    ),
-                ),
-            ],
-            timeout=30.0,
-        )
-    except TimeoutError:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
-    except Exception:
-        logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
-
-    if not polished:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")
+    polished = await run_text_assist(
+        models=require_host_models(server),
+        kind="chat.prompt",
+        text=body.text,
+        locale=resolve_request_locale(request),
+        default_model=body.default_model,
+    )
     return {"text": polished}

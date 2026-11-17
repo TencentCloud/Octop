@@ -32,6 +32,9 @@ class _ThreadInFlight:
     #: Active turn id when harness chunks omit ``turn_id``.
     turn_id: str | None = None
     turn_seq: int = 0
+    #: System message already stored for ``model_system_turn_id``.
+    model_system_text: str | None = None
+    model_system_turn_id: str | None = None
     next_seq: int | None = None
     system_seen: bool | None = None
     last_publish_at: dict[str, float] = field(default_factory=dict)
@@ -103,6 +106,38 @@ class TrajectoryService:
 
     def get_event(self, event_id: str) -> TrajectoryEvent | None:
         return self._store.get(event_id)
+
+    def record_model_system_prompt(self, agent_id: str, thread_id: str, text: str) -> bool:
+        """Store this turn's model system message once, in full.
+
+        Returns true when the row exists. A later call in the same turn does
+        not write another copy.
+        """
+        from octop.infra.history.trajectory.turn_context import (  # noqa: PLC0415
+            MODEL_SYSTEM_LABEL,
+            MODEL_SYSTEM_SOURCE,
+        )
+
+        if not isinstance(text, str) or not text.strip():
+            return False
+        state = self._inflight.setdefault(thread_id, _ThreadInFlight())
+        turn_id = state.turn_id
+        if state.model_system_text and state.model_system_turn_id == turn_id:
+            return True
+        self.observe_chunk(
+            agent_id,
+            thread_id,
+            {
+                "type": "context",
+                "source": MODEL_SYSTEM_SOURCE,
+                "label": MODEL_SYSTEM_LABEL,
+                "content": text,
+                "content_chars": len(text),
+            },
+        )
+        state.model_system_text = text
+        state.model_system_turn_id = turn_id
+        return True
 
     def metrics(self, thread_id: str, *, refresh: bool = False) -> TrajectoryMetrics:
         now = time.monotonic()

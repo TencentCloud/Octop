@@ -1,0 +1,56 @@
+/*
+ * Square caption buttons for splash and the failure page. The dashboard draws
+ * the same rectangles once it mounts. Close turns red on hover.
+ */
+.controls {
+  position: fixed;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  display: flex;
+  direction: ltr;
+  height: 32px;
+
+  button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 46px;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    cursor: default;
+
+    &:not(.close) {
+      &:hover {
+        background: rgba(127, 127, 127, 0.2);
+      }
+
+      &:active {
+        background: rgba(127, 127, 127, 0.32);
+      }
+    }
+  }
+
+  svg {
+    display: block;
+    width: 14px;
+    height: 14px;
+  }
+}
+
+.close {
+  &:hover,
+  &:active {
+    background: #e81123;
+    color: #fff;
+  }
+
+  &:active {
+    background: #c50f1f;
+  }
+}

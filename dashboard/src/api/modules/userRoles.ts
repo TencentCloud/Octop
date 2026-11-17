@@ -18,6 +18,7 @@ export interface UserRole {
   workspace_root_dir: string | null;
   token_quota: number | null;
   max_agents: number | null;
+  allowed_backend_types: string[] | null;
   created_at: number;
   updated_at: number;
   avatar_url?: string | null;
@@ -26,6 +27,7 @@ export interface UserRole {
 
 export interface UserRoleWriteBody {
   user_role_name: string;
+  user_role_id?: string;
   description?: string | null;
   permissions?: string[];
   policies?: RolePolicy[];
@@ -127,6 +129,7 @@ export function userRoleDrift(
     workspace_root_dir?: string | null;
     token_quota?: number | null;
     max_agents?: number | null;
+    allowed_backend_types?: string[] | null;
   },
   roles: UserRole[],
 ): UserRoleDrift | null {
@@ -155,5 +158,10 @@ export function userRoleDrift(
   if ((row.token_quota ?? null) !== (role.token_quota ?? null))
     return "changed";
   if ((row.max_agents ?? null) !== (role.max_agents ?? null)) return "changed";
+  const types = (values: string[] | null | undefined) =>
+    [...(values ?? [])].slice().sort().join("\0");
+  if (types(row.allowed_backend_types) !== types(role.allowed_backend_types)) {
+    return "changed";
+  }
   return null;
 }

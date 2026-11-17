@@ -36,7 +36,7 @@ describe("ProfileAvatar", () => {
     const img = container.querySelector("img");
     expect(img).toBeTruthy();
     expect(img?.getAttribute("src")).toBeTruthy();
-    expect(img?.className).toMatch(/presetPortraitImg/);
+    expect(img?.className).toMatch(/previewPortraitImg/);
     expect(container.querySelector("svg")).toBeNull();
   });
 

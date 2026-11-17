@@ -8,6 +8,43 @@ export function isBridgeAgentId(id: string | null | undefined): boolean {
   return Boolean(parseBridgeAgentId(id));
 }
 
+/** Cloud-collab shadow row. The expert itself lives on the peer. */
+export function isRemoteShadowAgent(agent: {
+  agent_id?: string | null;
+  bridge?: boolean | null;
+}): boolean {
+  return Boolean(agent.bridge) || isBridgeAgentId(agent.agent_id);
+}
+
+type Translate = (key: string, options?: Record<string, string>) => string;
+
+/** Confirm copy for deleting a local expert, or a peer expert via cloud collab. */
+export function expertDeleteConfirm(
+  agent: {
+    name: string;
+    agent_id?: string | null;
+    bridge?: boolean | null;
+    bridge_connection_name?: string | null;
+  },
+  t: Translate,
+): { title: string; description: string } {
+  if (!isRemoteShadowAgent(agent)) {
+    return {
+      title: t("experts.confirmDelete", { name: agent.name }),
+      description: t("experts.confirmDeleteHint"),
+    };
+  }
+  const connection = (agent.bridge_connection_name ?? "").trim();
+  return {
+    title: t("experts.confirmDeleteRemote", { name: agent.name }),
+    description: t("experts.confirmDeleteRemoteHint", {
+      connection: connection
+        ? t("experts.confirmDeleteRemoteWhere", { connection })
+        : "",
+    }),
+  };
+}
+
 export function parseBridgeAgentId(
   agentId: string | null | undefined,
 ): { connectionId: string; remoteAgentId: string } | null {
@@ -166,11 +203,17 @@ export interface BridgeShadowAgent {
 /**
  * Keep experts from cloud-collab links that dropped this session so the
  * picker can still show them offline instead of jumping to a local expert.
+ *
+ * ``resolvedConnectionIds`` are links whose agent list came back successfully,
+ * including an empty list. Those results replace the previous shadows. A live
+ * link that is absent from both ``next`` and ``resolvedConnectionIds`` failed
+ * to list, so its previous shadows stay pinned as disconnected.
  */
 export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
   prev: T[],
   next: T[],
   liveConnectionIds: ReadonlySet<string>,
+  resolvedConnectionIds: ReadonlySet<string> = new Set(),
 ): T[] {
   const connectedConnIds = new Set(
     next
@@ -184,6 +227,7 @@ export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
       if (!agent.bridge || !conn) return false;
       if (!liveConnectionIds.has(conn)) return false;
       if (connectedConnIds.has(conn)) return false;
+      if (resolvedConnectionIds.has(conn)) return false;
       return !nextIds.has(agent.agent_id);
     })
     .map((agent) => ({

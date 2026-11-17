@@ -17,7 +17,7 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from octop.api.deps import resolve_user_from_token
-from octop.infra.mobile.adb import find_adb, list_devices
+from octop.infra.control.mobile.adb import find_adb, list_devices
 from octop.infra.users.identity import User
 from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils import posix_compat

@@ -1,5 +1,4 @@
 import { Button, Result, Spin } from "antd";
-import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
@@ -9,17 +8,21 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
+import ModelConfigEmpty from "./ModelConfigEmpty";
 
 interface AgentNotReadyScreenProps {
   agent: OctopAgent | null;
   noAgents?: boolean;
   loading?: boolean;
+  /** Whether this user may open the model settings themselves. */
+  canConfigureModels?: boolean;
 }
 
 export default function AgentNotReadyScreen({
   agent,
   noAgents = false,
   loading = false,
+  canConfigureModels = true,
 }: AgentNotReadyScreenProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -67,6 +70,18 @@ export default function AgentNotReadyScreen({
   const errorText = formatAgentError(agent.last_error, t);
   const isModelError = isAgentModelConfigError(agent.last_error);
   const disconnected = Boolean(agent.bridge && agent.bridge_disconnected);
+
+  /**
+   * "No model configured" reaches us as an agent start failure, so this screen
+   * used to answer a setup step with a red cross and "专家启动失败" — the exact
+   * alarm reserved for a broken agent. Nothing failed here: the friendly
+   * prompt already exists for that case, so show it. A disconnected bridge
+   * still wins, because that is the state the user has to act on right now and
+   * last_error may only be a leftover.
+   */
+  if (state === "failed" && isModelError && !disconnected) {
+    return <ModelConfigEmpty canConfigure={canConfigureModels} />;
+  }
 
   let title = t("chat.agentNotRunning");
   let subTitle = t("chat.agentNotRunningHint");
@@ -118,14 +133,6 @@ export default function AgentNotReadyScreen({
                   ? "chat.remoteExpert.openBridge"
                   : "chat.remoteExpert.reconnect",
               )}
-            </Button>
-          ) : isModelError ? (
-            <Button
-              type="primary"
-              icon={<Settings size={14} />}
-              onClick={() => navigate("/admin/models")}
-            >
-              {t("modelConfig.configureButton")}
             </Button>
           ) : (
             <Button type="primary" onClick={() => navigate("/experts")}>

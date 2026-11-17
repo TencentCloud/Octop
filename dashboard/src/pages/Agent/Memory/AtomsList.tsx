@@ -151,6 +151,7 @@ export default function AtomsList({ agentId }: Props) {
     actionModal.current = confirmDeprecateAtom({
       agentId,
       atom,
+      isActive: entityGate.isActive,
       onSuccess: () => {
         if (!entityGate.isActive()) return;
         setSelected(null);
@@ -163,6 +164,7 @@ export default function AtomsList({ agentId }: Props) {
     actionModal.current = confirmEditAtom({
       agentId,
       atom,
+      isActive: entityGate.isActive,
       onSuccess: (next) => {
         if (!entityGate.isActive()) return;
         setSelected(next);
@@ -365,6 +367,7 @@ export default function AtomsList({ agentId }: Props) {
         open={createOpen}
         agentId={agentId}
         entities={entities}
+        isActive={entityGate.isActive}
         onClose={() => {
           if (entityGate.isActive()) setCreateOpen(false);
         }}

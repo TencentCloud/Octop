@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, map_rows, now_ts
+from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.users.groups import RESOURCE_BRIDGE, group_visibility_sql
 
 
 @dataclass(frozen=True)
@@ -27,6 +28,9 @@ class BridgeConnectionRow:
     auto_reconnect: bool
     created_at: int
     updated_at: int
+    peer_client_host: str | None = None
+    icon_url: str = ""
+    shared: bool = False
 
     @classmethod
     def from_row(cls, r: DbRow) -> BridgeConnectionRow:
@@ -35,7 +39,10 @@ class BridgeConnectionRow:
         keys = set(r.keys()) if hasattr(r, "keys") else set()
         raw_notes = r["notes"]
         raw_icon = r["icon_name"] if "icon_name" in keys else None
+        raw_icon_url = r["icon_url"] if "icon_url" in keys else ""
         auto_raw = r["auto_reconnect"] if "auto_reconnect" in keys else 1
+        raw_host = r["peer_client_host"] if "peer_client_host" in keys else None
+        shared_raw = r["shared"] if "shared" in keys else 0
         return cls(
             pk=int(r["id"]),
             connection_id=str(r["connection_id"]),
@@ -49,6 +56,7 @@ class BridgeConnectionRow:
                 if isinstance(raw_icon, str) and str(raw_icon).strip()
                 else None
             ),
+            icon_url=str(raw_icon_url or "").strip(),
             credential_blob=bytes(cred) if cred is not None else None,
             access_token_blob=bytes(token) if token is not None else None,
             token_expires_at=r["token_expires_at"],
@@ -58,6 +66,12 @@ class BridgeConnectionRow:
             auto_reconnect=bool(int(auto_raw or 0)),
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
+            peer_client_host=(
+                str(raw_host).strip()
+                if isinstance(raw_host, str) and str(raw_host).strip()
+                else None
+            ),
+            shared=bool(int(shared_raw or 0)),
         )
 
 
@@ -75,20 +89,24 @@ class BridgeConnectionRepo:
         display_name: str,
         notes: str | None = None,
         icon_name: str | None = None,
+        icon_url: str = "",
+        shared: bool = False,
         credential_blob: bytes | None = None,
         access_token_blob: bytes | None = None,
         token_expires_at: int | None = None,
         status: str = "disconnected",
         auto_reconnect: bool = True,
+        peer_client_host: str | None = None,
     ) -> BridgeConnectionRow:
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO bridge_connections("
                 "connection_id, owner_user_id, peer_base_url, peer_username, display_name, "
-                "notes, icon_name, credential_blob, access_token_blob, token_expires_at, status, "
-                "auto_reconnect, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "notes, icon_name, icon_url, shared, credential_blob, access_token_blob, "
+                "token_expires_at, status, "
+                "auto_reconnect, peer_client_host, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     connection_id,
                     owner_user_id,
@@ -97,11 +115,14 @@ class BridgeConnectionRepo:
                     display_name,
                     notes,
                     (icon_name or "").strip() or None,
+                    (icon_url or "").strip(),
+                    bool_int(shared),
                     credential_blob,
                     access_token_blob,
                     token_expires_at,
                     status,
                     1 if auto_reconnect else 0,
+                    (peer_client_host or "").strip() or None,
                     ts,
                     ts,
                 ),
@@ -145,6 +166,48 @@ class BridgeConnectionRepo:
                 (owner_user_id,),
             ).fetchall()
         return map_rows(rows, BridgeConnectionRow)
+
+    def list_all(self) -> list[BridgeConnectionRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM bridge_connections ORDER BY updated_at DESC, id DESC"
+            ).fetchall()
+        return map_rows(rows, BridgeConnectionRow)
+
+    def list_visible(self, user_id: int) -> list[BridgeConnectionRow]:
+        """Owned links plus shared ones that pass the group layer."""
+        with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_BRIDGE, "b.connection_id")
+            rows = conn.execute(
+                "SELECT b.* FROM bridge_connections b "
+                "WHERE (b.owner_user_id = ? OR b.shared = 1) "
+                f"AND (b.owner_user_id = ? OR {clause}) "
+                "ORDER BY b.updated_at DESC, b.id DESC",
+                (user_id, user_id, user_id),
+            ).fetchall()
+        return map_rows(rows, BridgeConnectionRow)
+
+    def get_visible(self, connection_id: str, user_id: int) -> BridgeConnectionRow | None:
+        """One connection the user owns or may use because it was shared."""
+        with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_BRIDGE, "b.connection_id")
+            row = conn.execute(
+                "SELECT b.* FROM bridge_connections b "
+                "WHERE b.connection_id = ? "
+                "AND (b.owner_user_id = ? OR b.shared = 1) "
+                f"AND (b.owner_user_id = ? OR {clause}) ",
+                (connection_id, user_id, user_id, user_id),
+            ).fetchone()
+        return BridgeConnectionRow.from_row(row) if row else None
+
+    def set_shared(self, connection_id: str, shared: bool) -> BridgeConnectionRow | None:
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE bridge_connections SET shared = ?, updated_at = ? WHERE connection_id = ?",
+                (bool_int(shared), ts, connection_id),
+            )
+        return self.get(connection_id)
 
     def list_auto_reconnect(self) -> list[BridgeConnectionRow]:
         with self._db.connect() as conn:
@@ -277,6 +340,17 @@ class BridgeConnectionRepo:
                 )
         return self.get(connection_id)
 
+    def set_icon_url(self, connection_id: str, icon_url: str | None) -> BridgeConnectionRow | None:
+        """Set or clear the uploaded portrait URL only."""
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE bridge_connections SET icon_url = ?, updated_at = ? "
+                "WHERE connection_id = ?",
+                ((icon_url or "").strip(), ts, connection_id),
+            )
+        return self.get(connection_id)
+
     def upsert_reverse(
         self,
         *,
@@ -287,9 +361,11 @@ class BridgeConnectionRepo:
         display_name: str,
         notes: str | None = None,
         status: str = "connected",
+        peer_client_host: str | None = None,
     ) -> BridgeConnectionRow:
         existing = self.get(connection_id)
         ts = now_ts()
+        host = (peer_client_host or "").strip() or None
         if existing is None:
             return self.create(
                 connection_id=connection_id,
@@ -300,15 +376,17 @@ class BridgeConnectionRepo:
                 notes=notes,
                 status=status,
                 auto_reconnect=False,
+                peer_client_host=host,
             )
         with self._db.transaction() as conn:
             # Keep the owner's chosen display_name / notes on reverse reconnect.
             # Reverse rows cannot dial out — never enable auto-reconnect.
+            # Refresh the observed client address; do not touch the local name.
             conn.execute(
                 "UPDATE bridge_connections SET "
                 "owner_user_id = ?, peer_base_url = ?, peer_username = ?, "
                 "status = ?, last_error = NULL, last_seen_at = ?, updated_at = ?, "
-                "auto_reconnect = 0 "
+                "auto_reconnect = 0, peer_client_host = COALESCE(?, peer_client_host) "
                 "WHERE connection_id = ?",
                 (
                     owner_user_id,
@@ -317,6 +395,7 @@ class BridgeConnectionRepo:
                     status,
                     ts,
                     ts,
+                    host,
                     connection_id,
                 ),
             )

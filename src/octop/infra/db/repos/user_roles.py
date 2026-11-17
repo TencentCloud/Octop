@@ -74,6 +74,12 @@ def _is_unique_violation(exc: BaseException) -> bool:
     return pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation)
 
 
+def _unique_conflict(exc: BaseException) -> str:
+    if "user_role_id" in str(exc).lower():
+        return "id_taken"
+    return "name_taken"
+
+
 @dataclass(frozen=True)
 class UserRoleRow:
     id: int
@@ -156,6 +162,8 @@ class UserRoleRepo:
     ) -> UserRoleRow:
         ts = now_ts()
         public_id = user_role_id or new_ulid()
+        if user_role_id is not None and self.get(user_role_id) is not None:
+            raise ValueError("id_taken")
         try:
             with self._db.transaction() as conn:
                 insert_returning_id(
@@ -176,7 +184,7 @@ class UserRoleRepo:
                 )
         except Exception as exc:
             if _is_unique_violation(exc):
-                raise ValueError("name_taken") from exc
+                raise ValueError(_unique_conflict(exc)) from exc
             raise
         row = self.get(public_id)
         assert row is not None

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from octop.cli.support.db import (
 )
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.cron.session_target import thread_target_key
 from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
@@ -150,6 +150,19 @@ def set_user_password_offline(username: str, password: str, *, home: Path | None
         svc.user_repo.set_password_hash(uid, hash_password(password))
 
 
+def reset_user_mfa_offline(username: str, *, home: Path | None = None) -> None:
+    """Clear TOTP, passkeys, and recovery codes; bump ``mfa_version``.
+
+    Local failsafe when a user is locked out of MFA (mirrors admin
+    ``DELETE /api/users/{id}/mfa``). Does not change the password.
+    """
+    from octop.infra.auth.mfa.service import MfaService
+
+    with open_cli_services(home) as svc:
+        uid = _require_username(svc, username)
+        MfaService(svc).admin_reset(target_user_id=uid, actor="cli")
+
+
 def set_user_role_offline(username: str, role: str, *, home: Path | None = None) -> None:
     with open_cli_services(home) as svc:
         uid = _require_username(svc, username)
@@ -163,16 +176,23 @@ def disable_user_offline(username: str, *, home: Path | None = None) -> None:
 
 
 def delete_user_offline(username: str, *, home: Path | None = None) -> None:
+    from octop.infra.users.manager import UserManager
+
     with open_cli_services(home) as svc:
-        uid = _require_username(svc, username)
-        svc.user_repo.delete(uid)
+        _require_username(svc, username)
+        asyncio.run(UserManager(svc).remove(username))
 
 
 # ── Cron ─────────────────────────────────────────────────────────────────────
 
 
 async def _ensure_dashboard_session(
-    services: Any, *, agent_id: str, user_id: int, session_key: str
+    services: Any,
+    *,
+    agent_id: str,
+    user_id: int,
+    session_key: str,
+    channel_type: str = ThreadRegistry.CHANNEL_DASHBOARD,
 ) -> None:
     registry = ThreadRegistry(
         session_repo=services.session_repo,
@@ -182,7 +202,7 @@ async def _ensure_dashboard_session(
         session_key=session_key,
         agent_id=agent_id,
         user_id=user_id,
-        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        channel_type=channel_type,
     )
 
 
@@ -200,19 +220,38 @@ def create_cron_offline(
     prompt: str,
     fresh_thread: bool = False,
     task_type: str = "agent",
+    thread_id: str | None = None,
     home: Path | None = None,
 ) -> dict[str, Any]:
     build_trigger(trigger)
     cleaned_prompt = require_cron_prompt(prompt)
+    pinned = (thread_id or "").strip()
     session_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+    channel_type = ThreadRegistry.CHANNEL_DASHBOARD
     with open_cli_services(home) as svc:
         if svc.agent_repo.get(agent_id) is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        asyncio.run(
-            _ensure_dashboard_session(
-                svc, agent_id=agent_id, user_id=user_id, session_key=session_key
+        if pinned:
+            thread = svc.thread_repo.get(pinned)
+            if thread is None or thread.agent_id != agent_id:
+                raise OctopError(ErrorCode.NOT_FOUND, f"thread {pinned!r} not found")
+            if thread.user_id != user_id:
+                raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
+            session_key = thread_target_key(pinned)
+            channel_type = thread.channel_type
+            ensure_key = thread.session_key
+        else:
+            ensure_key = session_key
+        if svc.session_repo.get(ensure_key) is None:
+            asyncio.run(
+                _ensure_dashboard_session(
+                    svc,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    session_key=ensure_key,
+                    channel_type=channel_type,
+                )
             )
-        )
         cron_id = new_cron_id()
         svc.cron_repo.create(
             cron_id=cron_id,
@@ -260,6 +299,10 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.memory.thread_cleanup import (
+        agent_config_from_row,
+        delete_agent_memory_and_checkpoints,
+    )
     from octop.infra.agents.workspace.dir import workspace_dir_from_config_json
 
     with open_cli_services(home) as svc:
@@ -269,9 +312,19 @@ def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
         workspace_dir = workspace_dir_from_config_json(
             row.config_json, paths=svc.paths, agent_id=agent_id
         )
+        cfg = agent_config_from_row(row)
+        delete_agent_memory_and_checkpoints(
+            agent_id=agent_id,
+            thread_ids=svc.thread_repo.list_ids_for_agent(agent_id),
+            cfg=cfg,
+            octop_config=svc.config,
+            workspace_dir=workspace_dir,
+            paths=svc.paths,
+        )
         try:
-            if workspace_dir.exists():
-                shutil.rmtree(workspace_dir)
+            from octop.infra.agents.workspace.dir import remove_agent_host_dirs
+
+            remove_agent_host_dirs(cfg, paths=svc.paths, agent_id=agent_id)
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         svc.agent_repo.delete(agent_id)
@@ -557,10 +610,29 @@ def update_thread_offline(
 
 
 def delete_thread_offline(agent_id: str, thread_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.memory.thread_cleanup import (
+        agent_config_from_row,
+        delete_thread_from_agent_stores,
+        workspace_for_agent_row,
+    )
+
     with open_cli_services(home) as svc:
         row = svc.thread_repo.get(thread_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
+        agent = svc.agent_repo.get(agent_id)
+        if agent is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        cfg = agent_config_from_row(agent)
+        workspace = workspace_for_agent_row(agent, paths=svc.paths)
+        delete_thread_from_agent_stores(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            cfg=cfg,
+            octop_config=svc.config,
+            workspace_dir=workspace,
+            paths=svc.paths,
+        )
         try:
             svc.trajectory_event_repo.delete_for_thread(thread_id)
         except Exception:

@@ -71,7 +71,7 @@ async def test_im_call_merges_default_open_mcp_servers() -> None:
 
     assert events
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        7, None, apply_defaults=True, extra_defaults=[]
+        7, None, apply_defaults=True, extra_defaults=[], agent_owner_id=None
     )
     agent_manager.prepare_chat_mcp.assert_awaited_once()
     assert captured["request"]["mcp_servers"] == ["docs__1"]
@@ -233,7 +233,7 @@ async def test_dashboard_request_trusts_explicit_opt_out() -> None:
     )
     assert "mcp_servers" not in request
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        1, [], apply_defaults=False, extra_defaults=[]
+        1, [], apply_defaults=False, extra_defaults=[], agent_owner_id=None
     )
 
 
@@ -291,7 +291,7 @@ async def test_dashboard_request_attaches_knowledge_base_ids_without_prepending(
         meta=msg.metadata or {},
     )
 
-    content = request["messages"][0]["content"]
+    content = request["messages"][0].content
     assert content == "question"
     configurable = request.get("configurable") or {}
     assert configurable["knowledge_base_ids"] == ["kb-1"]
@@ -312,6 +312,7 @@ async def test_resolve_turn_mcp_servers_raises_when_prepare_fails() -> None:
     agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["bad__1"])
     agent_manager.prepare_chat_mcp = AsyncMock(return_value=["bad__1"])
     agent_manager.default_mcp_servers = MagicMock(return_value=[])
+    agent_manager.connector_auth_blocked = AsyncMock(return_value=[])
 
     processor = GlobalProcessor(
         agent_manager=agent_manager,
@@ -332,3 +333,42 @@ async def test_resolve_turn_mcp_servers_raises_when_prepare_fails() -> None:
             explicit=None,
         )
     assert ei.value.code == ErrorCode.CONNECTOR_MCP_LOAD_FAILED
+
+
+@pytest.mark.asyncio
+async def test_resolve_turn_mcp_servers_names_connectors_that_need_authorization() -> None:
+    blocked = [
+        {
+            "server": "notion__1",
+            "display_name": "Notion",
+            "auth_status": "expired",
+            "can_authorize": True,
+            "target": {"type": "catalog", "kind": "notion", "instance_id": "1"},
+        }
+    ]
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=["notion__1", "ok"])
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=["notion__1"])
+    agent_manager.default_mcp_servers = MagicMock(return_value=[])
+    agent_manager.connector_auth_blocked = AsyncMock(return_value=blocked)
+
+    processor = GlobalProcessor(
+        agent_manager=agent_manager,
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=SlashDispatcher(),
+        usage_repo=None,
+        gateway=None,
+    )
+
+    with pytest.raises(OctopError) as ei:
+        await processor._resolve_turn_mcp_servers(agent_id="a1", user_id=1, explicit=None)
+
+    assert ei.value.code == ErrorCode.CONNECTOR_AUTH_REQUIRED
+    assert ei.value.status == 409
+    assert ei.value.details["connectors"] == blocked
+    agent_manager.connector_auth_blocked.assert_awaited_once_with(1, ["notion__1"])
+    assert ei.value.localized_message("zh") == "以下连接器需要授权后才能使用：Notion"

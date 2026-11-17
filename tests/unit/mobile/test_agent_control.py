@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.mobile.agent_control import (
+from octop.infra.control.mobile.agent_control import (
     clear_mobile_agent_control_if_device,
     get_mobile_agent_control,
     set_mobile_agent_control,

@@ -57,9 +57,10 @@ export function partitionPinnedTools(split: AssistantTurnSplit): {
       tools: split.tools.filter((m) => !pinnedIds.has(m.id)),
       thinkings: split.thinkings,
       processSteps: split.processSteps.filter(
-        (s) => s.kind === "thinking" || !pinnedIds.has(s.message.id),
+        (step) => step.kind !== "tool" || !pinnedIds.has(step.message.id),
       ),
       answerMessage: split.answerMessage,
+      errorMessages: split.errorMessages,
     },
   };
 }

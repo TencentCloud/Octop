@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Image, Button } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { builtinToolIcon } from "../../../utils/builtinToolIcons";
 import {
   collectToolMediaFromToolData,
@@ -10,6 +11,8 @@ import {
 import { formatToolArguments } from "../../../utils/formatToolArguments";
 import {
   useToolDisplayNames,
+  deferredCallTargetName,
+  resolveDeferredToolLabel,
   resolveToolLabel,
 } from "../../../pages/Chat/hooks/toolDisplayNames";
 import {
@@ -135,15 +138,20 @@ export function DefaultToolRenderer({
     : running
     ? t("common.running", "Running")
     : t("common.pending", "Pending");
-  const ToolIcon = builtinToolIcon(toolName);
+  const deferredLabel = resolveDeferredToolLabel(toolName, args, displayName);
+  const deferredTarget = deferredCallTargetName(args);
+  const ToolIcon = builtinToolIcon(
+    deferredLabel && deferredTarget ? deferredTarget : toolName,
+  );
 
   return (
     <div className={styles.inlineToolBlock}>
       <button
         type="button"
-        className={`${styles.inlineToolSummary}${
-          running ? ` ${styles.inlineToolSummaryRunning}` : ""
-        }`}
+        className={cx(
+          styles.inlineToolSummary,
+          running && styles.inlineToolSummaryRunning,
+        )}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         aria-busy={running || undefined}
@@ -155,23 +163,25 @@ export function DefaultToolRenderer({
           <ToolIcon size={14} strokeWidth={2.2} aria-hidden />
         </span>
         <code className={styles.inlineToolName}>
-          {resolveToolLabel(toolName, displayNameProp, displayName)}
+          {deferredLabel ??
+            resolveToolLabel(toolName, displayNameProp, displayName)}
         </code>
         {running ? (
-          <span className={styles.inlineToolStatusLive} aria-live="polite">
+          <span className={styles.inlineToolLiveDots} aria-hidden>
             <span className={styles.thinkingDot} />
             <span className={styles.thinkingDot} />
             <span className={styles.thinkingDot} />
-            <span>{statusLabel}</span>
           </span>
-        ) : (
-          <span className={styles.inlineToolStatus}>{statusLabel}</span>
-        )}
+        ) : null}
+        <span className={styles.inlineToolStatus} aria-live="polite">
+          {statusLabel}
+        </span>
         <ChevronRight
           size={14}
-          className={`${styles.inlineToolChevron} ${
-            expanded ? styles.inlineToolChevronOpen : ""
-          }`}
+          className={cx(
+            styles.inlineToolChevron,
+            expanded && styles.inlineToolChevronOpen,
+          )}
         />
       </button>
 

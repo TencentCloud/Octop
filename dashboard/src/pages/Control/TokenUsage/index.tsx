@@ -2,8 +2,8 @@
  * Token Usage — account-level analytics.
  *
  * Views (peer Segmented): summary | by day | by expert | by model.
- * Summary composes totals + donut/pie charts from existing
- * ``GET /api/usage/summary`` granularities (no backend changes).
+ * Summary composes totals + donut charts from
+ * ``GET /api/usage/summary`` granularities (including ``by_user``).
  * Dimension views: stacked bar + sortable table.
  */
 
@@ -36,6 +36,7 @@ import {
 import dayjs, { type Dayjs } from "dayjs";
 import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import PageShell from "../../../layouts/PageShell";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { UsageStats, type UsageStatItem } from "./UsageStats";
@@ -45,6 +46,12 @@ import { useAgent } from "../../../context/AgentContext";
 import { useTheme } from "../../../context/ThemeContext";
 import { brandPrimary } from "../../../styles/themePalettes";
 import { message } from "../../../utils/antdMessage";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
+import {
+  formatCompactCount,
+  formatExactCount,
+  usageCountDisplay,
+} from "./formatUsageCount";
 import styles from "./index.module.less";
 
 interface UsageUserOption {
@@ -130,10 +137,6 @@ const CHART_HEIGHT = {
   bar: 280,
 } as const;
 
-function formatNumber(n: number): string {
-  return n.toLocaleString();
-}
-
 function formatDayTick(label: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(label)) return label.slice(5);
   return label;
@@ -168,13 +171,11 @@ function UsageBarChart({
   showLegend?: boolean;
   tickFormatter?: (label: string) => string;
 }) {
+  const { i18n } = useTranslation();
+  const locale = i18n.language;
   return (
     <div
-      className={
-        fillParent
-          ? `${styles.chartFrame} ${styles.chartFrameFill}`
-          : styles.chartFrame
-      }
+      className={cx(styles.chartFrame, fillParent && styles.chartFrameFill)}
       style={fillParent ? undefined : { height }}
     >
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
@@ -202,10 +203,16 @@ function UsageBarChart({
             tick={AXIS_TICK}
             tickLine={false}
             axisLine={AXIS_LINE}
-            width={44}
+            width={60}
             allowDecimals={false}
+            tickFormatter={(value: number) =>
+              formatCompactCount(Number(value), locale)
+            }
           />
-          <RechartsTooltip contentStyle={CHART_TOOLTIP_STYLE} />
+          <RechartsTooltip
+            formatter={(value) => formatExactCount(Number(value ?? 0), locale)}
+            contentStyle={CHART_TOOLTIP_STYLE}
+          />
           {showLegend ? (
             <Legend
               verticalAlign="top"
@@ -240,38 +247,44 @@ function UsageBarChart({
 function usageStatItems(
   totals: UsageSummary,
   t: (key: string) => string,
+  locale: string,
 ): UsageStatItem[] {
+  const count = (n: number) => usageCountDisplay(n, locale);
   return [
     {
       key: "total",
       label: t("tokenUsage.totalTokens"),
-      value: formatNumber(totals.total_tokens),
+      ...count(totals.total_tokens),
     },
     {
       key: "input",
       label: t("tokenUsage.input"),
-      value: formatNumber(totals.input_tokens),
+      ...count(totals.input_tokens),
     },
     {
       key: "output",
       label: t("tokenUsage.output"),
-      value: formatNumber(totals.output_tokens),
+      ...count(totals.output_tokens),
     },
     {
       key: "cacheRead",
       label: t("tokenUsage.cacheRead"),
-      value: formatNumber(totals.cache_read_tokens),
+      ...count(totals.cache_read_tokens),
     },
     {
       key: "cacheHit",
       label: t("tokenUsage.cacheHit"),
       value: `${totals.cache_hit_percent.toFixed(1)}%`,
     },
-    { key: "turns", label: t("tokenUsage.turns"), value: totals.turns },
+    {
+      key: "turns",
+      label: t("tokenUsage.turns"),
+      ...count(totals.turns),
+    },
     {
       key: "avg",
       label: t("tokenUsage.avgPerTurn"),
-      value: formatNumber(totals.avg_per_turn),
+      ...count(totals.avg_per_turn),
     },
   ];
 }
@@ -322,7 +335,7 @@ function DailyTrendCharts({
       <Card
         size="small"
         title={tokensTitle}
-        className={`${styles.chartCard} ${styles.trendCard}`}
+        className={cx(styles.chartCard, styles.trendCard)}
       >
         {empty ? (
           <Empty
@@ -358,7 +371,7 @@ function DailyTrendCharts({
       <Card
         size="small"
         title={turnsTitle}
-        className={`${styles.chartCard} ${styles.trendCard}`}
+        className={cx(styles.chartCard, styles.trendCard)}
       >
         {empty ? (
           <Empty
@@ -494,6 +507,8 @@ function DonutCard({
   emptyText: string;
   colors?: string[] | Record<string, string>;
 }) {
+  const { i18n } = useTranslation();
+  const locale = i18n.language;
   const colorFor = (name: string, index: number) => {
     if (Array.isArray(colors)) return colors[index % colors.length];
     return colors[name] ?? CHART_COLORS[index % CHART_COLORS.length];
@@ -505,7 +520,7 @@ function DonutCard({
     <Card
       size="small"
       title={title}
-      className={`${styles.chartCard} ${styles.donutCard}`}
+      className={cx(styles.chartCard, styles.donutCard)}
     >
       {empty ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={emptyText} />
@@ -531,7 +546,9 @@ function DonutCard({
                   ))}
                 </Pie>
                 <RechartsTooltip
-                  formatter={(value) => formatNumber(Number(value ?? 0))}
+                  formatter={(value) =>
+                    formatExactCount(Number(value ?? 0), locale)
+                  }
                   contentStyle={CHART_TOOLTIP_STYLE}
                 />
               </PieChart>
@@ -557,18 +574,22 @@ function DonutCard({
 
 function SummaryView({
   totals,
+  byUser,
   byExpert,
   byModel,
   byDay,
   isMobile,
+  showUsers,
 }: {
   totals: UsageSummary;
+  byUser: UsageBucket[];
   byExpert: UsageBucket[];
   byModel: UsageBucket[];
   byDay: UsageBucket[];
   isMobile: boolean;
+  showUsers: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const ioData = useMemo(
     () => [
@@ -578,6 +599,7 @@ function SummaryView({
     [totals.input_tokens, totals.output_tokens, t],
   );
 
+  const userPie = useMemo(() => toPieData(byUser), [byUser]);
   const expertPie = useMemo(() => toPieData(byExpert), [byExpert]);
   const modelPie = useMemo(() => toPieData(byModel), [byModel]);
   const dayBars = useMemo(() => [...byDay].reverse().slice(-14), [byDay]);
@@ -585,15 +607,16 @@ function SummaryView({
   return (
     <div className={styles.summaryBody}>
       <UsageStats
-        items={usageStatItems(totals, t)}
+        items={usageStatItems(totals, t, i18n.language)}
         overflowEnabled={!isMobile}
       />
 
       <div
-        className={styles.pieGrid}
-        style={{
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-        }}
+        className={
+          showUsers
+            ? `${styles.pieGrid} ${styles.pieGridUsers}`
+            : styles.pieGrid
+        }
       >
         <DonutCard
           title={t("tokenUsage.ioBreakdown")}
@@ -604,6 +627,13 @@ function SummaryView({
             [t("tokenUsage.output")]: IO_COLORS.output,
           }}
         />
+        {showUsers ? (
+          <DonutCard
+            title={t("tokenUsage.userBreakdown")}
+            data={userPie}
+            emptyText={t("tokenUsage.noRecordsInRange")}
+          />
+        ) : null}
         <DonutCard
           title={t("tokenUsage.expertBreakdown")}
           data={expertPie}
@@ -619,7 +649,7 @@ function SummaryView({
       <Card
         size="small"
         title={t("tokenUsage.dailyTrend")}
-        className={`${styles.chartCard} ${styles.summaryTrendCard}`}
+        className={cx(styles.chartCard, styles.summaryTrendCard)}
       >
         {dayBars.length === 0 ? (
           <Empty
@@ -665,7 +695,8 @@ function DimensionView({
   totals: UsageSummary;
   isMobile: boolean;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language;
 
   const chartBuckets = useMemo(() => {
     if (granularity === "by_day") return [...buckets].reverse();
@@ -681,7 +712,7 @@ function DimensionView({
   return (
     <div className={styles.summaryBody}>
       <UsageStats
-        items={usageStatItems(totals, t)}
+        items={usageStatItems(totals, t, locale)}
         overflowEnabled={!isMobile}
       />
 
@@ -704,7 +735,7 @@ function DimensionView({
           <Card
             size="small"
             title={t("tokenUsage.ioBarChart")}
-            className={`${styles.chartCard} ${styles.dimBarCard}`}
+            className={cx(styles.chartCard, styles.dimBarCard)}
           >
             <UsageBarChart
               data={chartBuckets}
@@ -745,7 +776,7 @@ function DimensionView({
       <Card
         size="small"
         title={t("tokenUsage.detail")}
-        className={`${styles.chartCard} ${styles.dimTableCard}`}
+        className={cx(styles.chartCard, styles.dimTableCard)}
         styles={{ body: { padding: isMobile ? 0 : 16 } }}
       >
         {buckets.length === 0 ? (
@@ -760,15 +791,17 @@ function DimensionView({
                 <div className={styles.mobileRowTop}>
                   <Tag style={{ margin: 0 }}>{b.label}</Tag>
                   <span className={styles.mobileTotal}>
-                    {formatNumber(b.total_tokens)}
+                    {formatExactCount(b.total_tokens, locale)}
                   </span>
                 </div>
                 <div className={styles.mobileMeta}>
                   <span>
-                    {t("tokenUsage.input")} {formatNumber(b.input_tokens)}
+                    {t("tokenUsage.input")}{" "}
+                    {formatExactCount(b.input_tokens, locale)}
                   </span>
                   <span>
-                    {t("tokenUsage.output")} {formatNumber(b.output_tokens)}
+                    {t("tokenUsage.output")}{" "}
+                    {formatExactCount(b.output_tokens, locale)}
                   </span>
                   <span>{t("tokenUsage.turnsCount", { count: b.turns })}</span>
                 </div>
@@ -793,21 +826,21 @@ function DimensionView({
               {
                 title: t("tokenUsage.input"),
                 dataIndex: "input_tokens",
-                render: formatNumber,
+                render: (value: number) => formatExactCount(value, locale),
                 sorter: (a, b) => a.input_tokens - b.input_tokens,
                 align: "right",
               },
               {
                 title: t("tokenUsage.output"),
                 dataIndex: "output_tokens",
-                render: formatNumber,
+                render: (value: number) => formatExactCount(value, locale),
                 sorter: (a, b) => a.output_tokens - b.output_tokens,
                 align: "right",
               },
               {
                 title: t("tokenUsage.total"),
                 dataIndex: "total_tokens",
-                render: formatNumber,
+                render: (value: number) => formatExactCount(value, locale),
                 sorter: (a, b) => a.total_tokens - b.total_tokens,
                 defaultSortOrder: "descend",
                 align: "right",
@@ -843,6 +876,7 @@ export default function TokenUsagePage() {
 
   const [totals, setTotals] = useState<UsageSummary | null>(null);
   const [dimBuckets, setDimBuckets] = useState<UsageBucket[]>([]);
+  const [summaryUser, setSummaryUser] = useState<UsageBucket[]>([]);
   const [summaryExpert, setSummaryExpert] = useState<UsageBucket[]>([]);
   const [summaryModel, setSummaryModel] = useState<UsageBucket[]>([]);
   const [summaryDay, setSummaryDay] = useState<UsageBucket[]>([]);
@@ -960,12 +994,18 @@ export default function TokenUsagePage() {
     setError(null);
     try {
       if (view === "summary") {
-        const [expertRes, modelRes, dayRes] = await Promise.all([
+        const userPromise =
+          adminUserFilter !== null
+            ? fetchSummary(windowKey, "by_user", agentFilter, adminUserFilter)
+            : Promise.resolve(null);
+        const [userRes, expertRes, modelRes, dayRes] = await Promise.all([
+          userPromise,
           fetchSummary(windowKey, "by_agent", agentFilter, adminUserFilter),
           fetchSummary(windowKey, "by_model", agentFilter, adminUserFilter),
           fetchSummary(windowKey, "by_day", agentFilter, adminUserFilter),
         ]);
         setTotals(expertRes);
+        setSummaryUser(userRes?.buckets ?? []);
         setSummaryExpert(resolveAgentLabels(expertRes.buckets, agentNameById));
         setSummaryModel(modelRes.buckets);
         setSummaryDay(dayRes.buckets);
@@ -1002,15 +1042,10 @@ export default function TokenUsagePage() {
       const blob = await requestBlob(
         usageExportPath(windowKey, agentFilter, adminUserFilter),
       );
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = usageExportFilename(
-        t("tokenUsage.exportFilenamePrefix"),
-        windowKey,
+      await saveBlobAsFile(
+        blob,
+        usageExportFilename(t("tokenUsage.exportFilenamePrefix"), windowKey),
       );
-      link.click();
-      URL.revokeObjectURL(url);
     } catch {
       message.error(t("tokenUsage.exportFailed"));
     } finally {
@@ -1110,10 +1145,12 @@ export default function TokenUsagePage() {
             view === "summary" ? (
               <SummaryView
                 totals={totals}
+                byUser={summaryUser}
                 byExpert={summaryExpert}
                 byModel={summaryModel}
                 byDay={summaryDay}
                 isMobile={isMobile}
+                showUsers={isAdmin}
               />
             ) : (
               <DimensionView

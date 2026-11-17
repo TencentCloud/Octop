@@ -5,7 +5,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
@@ -47,7 +47,10 @@ def _host_resolves_blocked(host: str) -> bool:
     return False
 
 
-def normalize_peer_base_url(raw: str) -> str:
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
+def _parse_peer_url(raw: str) -> Any:
     text = (raw or "").strip().rstrip("/")
     if not text:
         raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, "peer base URL required")
@@ -56,6 +59,40 @@ def normalize_peer_base_url(raw: str) -> str:
         raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, "peer URL must be http or https")
     if not parsed.netloc:
         raise OctopError(ErrorCode.BRIDGE_PEER_UNREACHABLE, "peer URL host required")
+    return parsed
+
+
+def peer_url_identity(raw: str) -> str:
+    """Canonical host/port/path so localhost and 127.0.0.1 compare equal.
+
+    Syntax only — no DNS. Used for duplicate / self-link checks.
+    """
+    parsed = _parse_peer_url(raw)
+    host = (parsed.hostname or "").lower().strip("[]")
+    if host in _LOOPBACK_HOSTS:
+        host = "127.0.0.1"
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    path = (parsed.path or "").rstrip("/")
+    return f"{parsed.scheme}://{host}:{port}{path}"
+
+
+def peer_identity_key(base_url: str, username: str) -> tuple[str, str]:
+    return (peer_url_identity(base_url), username.strip().casefold())
+
+
+def is_self_peer_url(peer_base_url: str, advertise_base_url: str) -> bool:
+    """True when *peer_base_url* is this Octop instance's advertised URL."""
+    advertise = (advertise_base_url or "").strip()
+    if not advertise:
+        return False
+    try:
+        return peer_url_identity(peer_base_url) == peer_url_identity(advertise)
+    except OctopError:
+        return False
+
+
+def normalize_peer_base_url(raw: str) -> str:
+    parsed = _parse_peer_url(raw)
     host = parsed.hostname or ""
     if _host_resolves_blocked(host):
         raise OctopError(
@@ -70,7 +107,7 @@ def peer_ws_url(base_url: str, *, token: str) -> str:
     parsed = urlparse(base)
     scheme = "wss" if parsed.scheme == "https" else "ws"
     root = f"{scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
-    return f"{root}/api/bridge/ws?token={token}"
+    return f"{root}/api/bridge/ws?token={quote(token, safe='')}"
 
 
 async def login_peer(

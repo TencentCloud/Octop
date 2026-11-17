@@ -1,5 +1,6 @@
 import { Maximize2, SlidersHorizontal } from "lucide-react";
 import { Tooltip } from "antd";
+import cx from "classnames";
 
 import styles from "./StreamEdgeControls.module.less";
 
@@ -30,9 +31,7 @@ export default function StreamEdgeControls({
 
   return (
     <div
-      className={`${styles.topHoverZone} ${
-        isMobile ? styles.topHoverZoneMobile : ""
-      }`}
+      className={cx(styles.topHoverZone, isMobile && styles.topHoverZoneMobile)}
     >
       <div className={styles.hud}>
         <div className={styles.hudSide}>
@@ -59,7 +58,7 @@ export default function StreamEdgeControls({
           ) : null}
         </div>
 
-        <div className={`${styles.hudSide} ${styles.hudSideRight}`}>
+        <div className={cx(styles.hudSide, styles.hudSideRight)}>
           <Tooltip title={controlsLabel} placement="bottom">
             <button
               type="button"

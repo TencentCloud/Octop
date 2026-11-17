@@ -24,6 +24,7 @@ memory sqlite path, etc.) when the persisted value is the agent-facing
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -42,6 +43,18 @@ _WINDOWS_DRIVE_ROOT_RE = re.compile(r"^[A-Za-z]:[/\\]?$")
 
 def _running_on_windows() -> bool:
     return os.name == "nt"
+
+
+def is_explicit_host_root(root: str) -> bool:
+    """True for POSIX ``/`` and a Windows drive root such as ``C:/``.
+
+    Empty strings are not a host root. A path below the drive (``C:/data``)
+    is a scoped jail.
+    """
+    text = root.strip()
+    if text in {"/", "\\"}:
+        return True
+    return bool(_WINDOWS_DRIVE_ROOT_RE.match(text))
 
 
 def _is_host_root_sentinel(root: str | Path | None) -> bool:
@@ -124,9 +137,109 @@ def neutralize_unwritable_local_root(cfg: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def agent_host_data_dirs(
+    cfg: dict[str, Any] | None,
+    *,
+    paths: PathLayout,
+    agent_id: str,
+) -> list[Path]:
+    """Every on-disk directory that belongs to this agent and may be removed.
+
+    Covers the persisted workspace, ``~/.octop/agents/<id>``, a scoped jail
+    workspace, and ``~/.octop/workspaces/<id>``. Roots such as ``/``, the
+    home directory, and ``OCTOP_HOME`` itself are never included.
+    """
+    candidates: list[Path] = []
+    raw = (cfg or {}).get("workspace_dir")
+    if isinstance(raw, str) and raw.strip():
+        with contextlib.suppress(ValueError):
+            candidates.append(resolve_workspace_host_path(raw, cfg))
+    candidates.append(paths.agent_workspace(agent_id))
+    candidates.append(paths.root / SCOPED_WORKSPACE_DIRNAME / agent_id)
+    root_raw = local_backend_root_dir(cfg)
+    if root_raw is not None and not _is_host_root_sentinel(root_raw):
+        try:
+            root = Path(root_raw).expanduser().resolve()
+        except OSError:
+            root = None
+        if root is not None:
+            candidates.append(
+                root / DEFAULT_SYSTEM_FILES_PATH / SCOPED_WORKSPACE_DIRNAME / agent_id
+            )
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if not _safe_agent_dir(candidate, paths=paths):
+            continue
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            resolved = candidate.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
+
+
+def remove_agent_host_dirs(
+    cfg: dict[str, Any] | None,
+    *,
+    paths: PathLayout,
+    agent_id: str,
+) -> None:
+    """Delete every host directory returned by :func:`agent_host_data_dirs`."""
+    import logging
+    import shutil
+
+    log = logging.getLogger(__name__)
+    for directory in agent_host_data_dirs(cfg, paths=paths, agent_id=agent_id):
+        if not directory.exists():
+            continue
+        try:
+            shutil.rmtree(directory)
+        except OSError:
+            log.exception("failed to remove agent directory %s", directory)
+
+
+def _safe_agent_dir(path: Path, *, paths: PathLayout) -> bool:
+    """Refuse to delete a filesystem root, the home directory, or OCTOP_HOME."""
+    try:
+        resolved = path.expanduser().resolve()
+    except OSError:
+        resolved = path.expanduser()
+    if not resolved.is_absolute():
+        return False
+    home = Path.home().resolve()
+    root = paths.root.expanduser().resolve()
+    blocked = {
+        Path("/").resolve(),
+        home,
+        root,
+        (root / "agents").resolve(),
+        (root / SCOPED_WORKSPACE_DIRNAME).resolve(),
+    }
+    if resolved in blocked:
+        return False
+    for parent in (root, home):
+        try:
+            parent.relative_to(resolved)
+        except ValueError:
+            continue
+        return False
+    return True
+
+
 def scoped_workspace_dir_str(agent_id: str) -> str:
     """Agent-facing / harness workspace path for scoped-root create defaults."""
     return f"/{DEFAULT_SYSTEM_FILES_PATH}/{SCOPED_WORKSPACE_DIRNAME}/{agent_id}"
+
+
+def default_workspace_parent_dir() -> str:
+    """Host path of ``{OCTOP_HOME}/agents``, parent of the create-time default."""
+    from octop.infra.utils.host_dirs import host_path_text  # noqa: PLC0415
+
+    return host_path_text(PathLayout.from_env().agents_dir)
 
 
 def default_agent_workspace_dir(
@@ -155,6 +268,30 @@ def default_agent_workspace_dir(
     if ensure:
         return paths.ensure_agent_workspace(agent_id)
     return paths.agent_workspace(agent_id)
+
+
+def apply_explicit_workspace_dir(config: dict[str, Any], workspace_dir: str | None) -> None:
+    """Copy a user-chosen workspace onto *config* for a host-rooted local backend.
+
+    ``local_shell`` / ``filesystem`` rooted at the filesystem root (or with
+    ``root_dir`` omitted) keep *workspace_dir*. Scoped roots and other backends
+    ignore it so create still uses the agent-facing default. Blank input is
+    ignored.
+    """
+    text = (workspace_dir or "").strip()
+    if not text:
+        return
+    backend = config.get("backend")
+    if not isinstance(backend, dict):
+        return
+    kind = str(backend.get("type") or "").lower()
+    if kind not in {"local_shell", "filesystem"}:
+        return
+    raw = backend.get("root_dir")
+    root = str(raw).strip() if raw is not None and str(raw).strip() else ""
+    if root and not _is_host_root_sentinel(root):
+        return
+    config["workspace_dir"] = text
 
 
 def seed_workspace_dir_on_create(
@@ -416,8 +553,12 @@ __all__ = [
     "SCOPED_WORKSPACE_DIRNAME",
     "agent_auth_dir",
     "agent_facing_workspace_dir_from_config",
+    "apply_explicit_workspace_dir",
+    "agent_host_data_dirs",
+    "remove_agent_host_dirs",
     "agent_facing_workspace_root",
     "default_agent_workspace_dir",
+    "default_workspace_parent_dir",
     "harness_workspace_path",
     "host_system_dir",
     "join_agent_facing",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import stat
+import urllib.error
 import urllib.parse
 import zipfile
 from typing import Any
@@ -122,6 +123,27 @@ def test_download_skillhub_package_follows_endpoint_and_strips_wrapper(
         "SKILL.md": b"---\nname: demo\n---\n",
         "references/readme.txt": b"hello",
     }
+
+
+def test_download_http_404_is_a_missing_skill(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_urlopen(request: Any, timeout: float) -> _BytesResponse:
+        del timeout
+        raise urllib.error.HTTPError(
+            request.full_url,
+            404,
+            "Not Found",
+            hdrs=None,  # type: ignore[arg-type]
+            fp=io.BytesIO(b"missing"),
+        )
+
+    monkeypatch.setattr(skillhub_market.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(skillhub_market.SkillHubSkillNotFound):
+        skillhub_market._download_skillhub_package(
+            "https://api.example.com",
+            "content-writer",
+            timeout=9,
+        )
 
 
 def test_parse_skillhub_package_repairs_invalid_utf8_in_skill_md() -> None:

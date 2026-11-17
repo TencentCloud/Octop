@@ -9,7 +9,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from octop.infra.cron.trigger import build_trigger
+from octop.infra.cron.trigger import build_trigger, one_shot_disposition
 from octop.infra.errors import ErrorCode, OctopError
 
 
@@ -151,3 +151,40 @@ def test_interval_one_second_is_accepted() -> None:
     trig = build_trigger("interval:1")
     assert isinstance(trig, IntervalTrigger)
     assert trig.interval == dt.timedelta(seconds=1)
+
+
+def test_one_shot_future_is_scheduled() -> None:
+    run_at = dt.datetime(2026, 10, 18, 9, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    assert one_shot_disposition(run_at, now=now, last_run_at=None) == "schedule"
+
+
+def test_one_shot_within_grace_and_never_run_is_scheduled() -> None:
+    run_at = dt.datetime(2026, 10, 17, 8, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    assert one_shot_disposition(run_at, now=now, last_run_at=None) == "schedule"
+
+
+def test_one_shot_past_grace_and_never_run_is_missed() -> None:
+    run_at = dt.datetime(2026, 10, 1, 9, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    assert one_shot_disposition(run_at, now=now, last_run_at=None) == "miss"
+
+
+def test_one_shot_already_ran_for_slot_is_closed() -> None:
+    run_at = dt.datetime(2026, 10, 17, 8, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    assert one_shot_disposition(run_at, now=now, last_run_at=int(run_at.timestamp())) == "close"
+
+
+def test_one_shot_early_run_closes_after_the_slot_passes() -> None:
+    run_at = dt.datetime(2026, 10, 17, 8, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    early = int(dt.datetime(2026, 10, 17, 7, tzinfo=dt.UTC).timestamp())
+    assert one_shot_disposition(run_at, now=now, last_run_at=early) == "close"
+
+
+def test_one_shot_early_run_can_be_rearmed_while_the_slot_is_still_future() -> None:
+    run_at = dt.datetime(2026, 10, 18, 9, tzinfo=dt.UTC)
+    now = dt.datetime(2026, 10, 17, 9, tzinfo=dt.UTC)
+    assert one_shot_disposition(run_at, now=now, last_run_at=int(now.timestamp())) == "schedule"

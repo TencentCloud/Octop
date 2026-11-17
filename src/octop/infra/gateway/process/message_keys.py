@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
+from urllib.parse import quote
 
 from octop_gateway.models import ImageContent, InboundMessage
 
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.utils.weixin_context import with_weixin_send_token
 
 # Persisted on HumanMessage.additional_kwargs for dashboard history UI.
 COMPOSER_CTX_KEY = "octop_composer_context"
 INBOUND_ATTACHMENTS_KEY = "octop_inbound_attachments"
+# Who sent this user turn. Shared conversations render a different portrait per person.
+AUTHOR_USER_ID_KEY = "octop_author_user_id"
 # Must match octop_harness.messages.CHECKPOINT_TS_KEY (epoch-ms).
 CHECKPOINT_TS_KEY = "checkpoint_ts"
 # Persisted on AIMessage.additional_kwargs when a stream fails mid-turn.
@@ -92,6 +97,7 @@ def resolve_user_id_for_message(
     if msg.channel_type in (
         ThreadRegistry.CHANNEL_DASHBOARD,
         ThreadRegistry.CHANNEL_CLI,
+        ThreadRegistry.CHANNEL_MCP,
     ):
         sid = subject_id_from_message(msg)
         try:
@@ -126,10 +132,24 @@ def session_key_from_message(msg: InboundMessage, *, agent_id: str) -> str:
     explicit = meta.get("session_key")
     if isinstance(explicit, str) and explicit.strip():
         return explicit.strip()
+    subject_id = subject_id_from_message(msg)
+    if (
+        msg.channel_type == "telegram"
+        and meta.get("topic_isolation") is True
+        and meta.get("message_thread_id") is not None
+    ):
+        # Keep the four-part key shape used by peer-session routing. Escaping
+        # prevents separators in a channel instance ID from creating collisions.
+        chat_id = meta.get("chat_id", subject_id)
+        topic_id = meta.get("message_thread_id")
+        subject_id = "/".join(
+            quote(str(part), safe="")
+            for part in (msg.channel_id, chat_id, topic_id if topic_id is not None else 0)
+        )
     return ThreadRegistry.make_key(
         agent_id=agent_id,
         channel_type=msg.channel_type or "unknown",
-        channel_subject_id=subject_id_from_message(msg),
+        channel_subject_id=subject_id,
         channel_chat_type=chat_type_from_message(msg),
     )
 
@@ -145,6 +165,8 @@ _PERSISTED_META_KEYS = (
     "message_type",
     "chat_type",
     "chat_id",
+    "message_thread_id",
+    "topic_isolation",
     "chatid",
     "conversation_id",
     "user_openid",
@@ -161,6 +183,21 @@ _PERSISTED_META_KEYS = (
     "session_id",
     "task_id",
 )
+
+
+def session_metadata_from_message(msg: InboundMessage) -> dict[str, object]:
+    """Durable routing fields for a session row.
+
+    ``context_token`` stays ephemeral for every channel. WeChat also keeps a
+    separate copy so a later cron push can still address the conversation.
+    """
+    meta = sanitize_im_metadata(msg)
+    if (msg.channel_type or "") != "weixin":
+        return meta
+    token = str((msg.metadata or {}).get("context_token") or "").strip()
+    if not token:
+        return meta
+    return with_weixin_send_token(meta, token, int(time.time() * 1000))
 
 
 def sanitize_im_metadata(msg: InboundMessage) -> dict[str, object]:

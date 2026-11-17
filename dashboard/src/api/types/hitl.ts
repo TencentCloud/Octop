@@ -10,6 +10,7 @@ export type HitlDecision = { type: string; message?: string };
 export type HitlDecisionHandler = (
   decisions: HitlDecision[],
   policy?: HitlSessionPolicy,
+  pendingId?: string,
 ) => void;
 
 export interface HitlActionRequest {

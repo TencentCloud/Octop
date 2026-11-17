@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Empty, Segmented, Spin, Switch, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import {
   agentToolsApi,
@@ -377,9 +378,10 @@ export default function ToolsPanel({
               return (
                 <article
                   key={group.id}
-                  className={`${pluginStyles.card}${
-                    anyUnavailable ? ` ${pluginStyles.cardDisabled}` : ""
-                  }`}
+                  className={cx(
+                    pluginStyles.card,
+                    anyUnavailable && pluginStyles.cardDisabled,
+                  )}
                 >
                   <div className={pluginStyles.cardBody}>
                     <div className={pluginStyles.cardTop}>
@@ -415,11 +417,11 @@ export default function ToolsPanel({
                         return (
                           <div
                             key={key}
-                            className={`${pluginStyles.detailToolItem}${
-                              tool.available === false
-                                ? ` ${pluginStyles.detailToolItemOff}`
-                                : ""
-                            }`}
+                            className={cx(
+                              pluginStyles.detailToolItem,
+                              tool.available === false &&
+                                pluginStyles.detailToolItemOff,
+                            )}
                           >
                             <div className={pluginStyles.detailToolMeta}>
                               <div className={pluginStyles.detailToolNameRow}>
@@ -484,11 +486,10 @@ export default function ToolsPanel({
                 return (
                   <div
                     key={key}
-                    className={`${styles.card}${
-                      tool.available === false
-                        ? ` ${styles.cardUnavailable}`
-                        : ""
-                    }`}
+                    className={cx(
+                      styles.card,
+                      tool.available === false && styles.cardUnavailable,
+                    )}
                     style={
                       {
                         "--tool-accent": accent,

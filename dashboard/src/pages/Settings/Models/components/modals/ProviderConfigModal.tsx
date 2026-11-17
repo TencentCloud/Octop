@@ -33,9 +33,20 @@ import {
   setOnnxDownloadProgressHandler,
   watchOnnxDownload,
 } from "../../../../../api/modules/onnxDownloadWatcher";
-import { isOllamaProviderRow, isOnnxProviderRow } from "../../presetUtils";
+import { looksLikeOllamaProvider, isOnnxProviderRow } from "../../presetUtils";
+import {
+  isMagpieProvider,
+  magpieIntegrationExtra,
+  magpieRefreshBody,
+  magpieRefreshConnectionChanged,
+  magpieRefreshLeavesDirty,
+  planMagpieSync,
+} from "../../magpie";
 import { expandOllamaDownloadedIds } from "../../ollamaNames";
+import { MagpieServerNotice } from "../MagpieServerNotice";
 import { ModelListEditor } from "./ModelListEditor";
+import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
+import { TestStreamHint } from "../TestStreamHint";
 import styles from "../../index.module.less";
 
 const POLL_INTERVAL_MS = 3000;
@@ -61,6 +72,7 @@ interface ProviderConfigForm {
   model?: string;
   note?: string;
   kind: string;
+  stream_usage?: boolean;
 }
 
 interface ProviderConfigModalProps {
@@ -96,8 +108,9 @@ export function ProviderConfigModal({
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
 
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
-  const isOllama = isOllamaProviderRow(provider);
+  const isOllama = looksLikeOllamaProvider(provider);
   const isOnnx = isOnnxProviderRow(provider);
+  const isMagpie = isMagpieProvider(provider);
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const [downloadingIds, setDownloadingIds] = useState<string[]>([]);
   const [onnxSizeById, setOnnxSizeById] = useState<Record<string, number>>({});
@@ -654,16 +667,18 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    const savedModel = (provider.model ?? "").trim();
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
       api_key: undefined,
-      model: currentDefaultModel,
       note: provider.note ?? "",
+      stream_usage: provider.stream_usage !== false,
     });
+    // undefined is skipped by setFieldsValue, so an empty default has to be
+    // reset or the previous provider's model stays selected.
+    if (savedModel) form.setFieldValue("model", savedModel);
+    else form.resetFields(["model"]);
     setDraftModels(
       (provider.models ?? []).map((m) => ({
         ...m,
@@ -691,22 +706,37 @@ export function ProviderConfigModal({
         payload.api_key = values.api_key.trim();
       if ((values.note ?? "") !== (provider.note ?? ""))
         payload.note = values.note?.trim() || null;
+      const embeddingLane = provider.purpose === "embedding" || isOnnx;
+      if (
+        !isOnnx &&
+        !embeddingLane &&
+        provider.kind === "openai" &&
+        Boolean(values.stream_usage) !== (provider.stream_usage !== false)
+      ) {
+        payload.stream_usage = Boolean(values.stream_usage);
+      }
       // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
-      if ((values.model ?? "") !== existingDefault)
+      const existingDefault = (provider.model ?? "").trim();
+      if ((values.model ?? "").trim() !== existingDefault)
         payload.model = values.model?.trim() || null;
 
+      const modelsForSave =
+        embeddingLane && !isOnnx
+          ? draftModels.map((m) => ({
+              ...m,
+              embedding: true,
+              task: "embedding",
+            }))
+          : draftModels;
       const modelsChanged =
         JSON.stringify(
           (provider.models ?? []).map((m) => ({
             ...m,
             enabled: m.enabled !== false,
           })),
-        ) !== JSON.stringify(draftModels);
+        ) !== JSON.stringify(modelsForSave);
       if (modelsChanged) {
-        payload.models = draftModels;
+        payload.models = modelsForSave;
       }
 
       if (Object.keys(payload).length === 0) {
@@ -813,9 +843,13 @@ export function ProviderConfigModal({
         return;
       }
 
-      const embedding = isEmbeddingModel(
-        draftModels.find((m) => m.id === modelId),
-      );
+      const embedding =
+        provider.purpose === "embedding" ||
+        isOnnx ||
+        isEmbeddingModel(draftModels.find((m) => m.id === modelId));
+      const apiMode = draftModels.find((m) => m.id === modelId)?.api_mode;
+      const apiFallback = draftModels.find((m) => m.id === modelId)
+        ?.api_fallback;
       const result =
         useDraft || !hasApiKey
           ? await testProviderDraft({
@@ -824,28 +858,41 @@ export function ProviderConfigModal({
               api_key: draftApiKey || provider.api_key || undefined,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
+              api_mode: apiMode,
+              api_fallback: apiFallback,
               embedding,
             })
           : await request<{
               ok: boolean;
               latency_ms?: number;
               error?: string;
+              fallback_used?: boolean;
+              api_mode_used?: ProviderModel["api_mode"];
             }>(`${apiPrefix}/${provider.id}/test`, {
               method: "POST",
-              body: JSON.stringify({ model_id: modelId, embedding }),
+              body: JSON.stringify({
+                model_id: modelId,
+                api_mode: apiMode,
+                api_fallback: apiFallback,
+                embedding,
+              }),
             });
 
       if (result.ok) {
-        const latency =
-          result.latency_ms != null
-            ? t("models.testConnectionLatency", { time: result.latency_ms })
-            : "";
-        message.success(
-          t("models.testConnectionSuccess", {
-            name: provider.name,
-            latency,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          const latency =
+            result.latency_ms != null
+              ? t("models.testConnectionLatency", { time: result.latency_ms })
+              : "";
+          message.success(
+            t("models.testConnectionSuccess", {
+              name: provider.name,
+              latency,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testConnectionFailed", {
@@ -915,6 +962,7 @@ export function ProviderConfigModal({
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,
+        extra_json: isMagpie ? magpieIntegrationExtra() : undefined,
       });
       if (!result.ok) {
         message.error(
@@ -922,6 +970,77 @@ export function ProviderConfigModal({
             error: result.error ?? "unknown",
           }),
         );
+        return;
+      }
+      if (isMagpie) {
+        const plan = planMagpieSync(draftModels, result.models ?? []);
+        if (plan.added.length === 0 && plan.removed.length === 0) {
+          message.info(t("models.magpieRefreshUnchanged"));
+          return;
+        }
+        const refreshBody = magpieRefreshBody({
+          models: plan.models,
+          savedBaseUrl: provider.base_url,
+          draftBaseUrl,
+          draftApiKey,
+        });
+        const lines = [
+          plan.removed.length > 0 &&
+          plan.added.length === 0 &&
+          plan.models.length === 0
+            ? t("models.magpieRefreshRemoveAll")
+            : "",
+          plan.added.length > 0
+            ? t("models.magpieRefreshAdded", { models: plan.added.join(", ") })
+            : "",
+          plan.removed.length > 0
+            ? t("models.magpieRefreshRemoved", {
+                models: plan.removed.join(", "),
+              })
+            : "",
+          plan.removed.length > 0 ? t("models.magpieRefreshPins") : "",
+          magpieRefreshConnectionChanged(refreshBody)
+            ? t("models.magpieRefreshConnection")
+            : "",
+        ].filter(Boolean);
+        modal.confirm({
+          title: t("models.magpieRefreshTitle"),
+          content: lines.join("\n"),
+          okText: t("common.confirm"),
+          cancelText: t("common.cancel"),
+          onOk: async () => {
+            // Keep the catalog tied to the connection used for its fetch.
+            const body = refreshBody;
+            await request(`${apiPrefix}/${provider.id}`, {
+              method: "PATCH",
+              body: JSON.stringify(body),
+            });
+            setDraftModels(plan.models);
+            const current = form.getFieldsValue();
+            setFormDirty(
+              magpieRefreshLeavesDirty(
+                body,
+                {
+                  base_url: provider.base_url,
+                  note: provider.note,
+                  model: provider.model,
+                  kind: provider.kind,
+                  stream_usage: provider.stream_usage,
+                },
+                {
+                  base_url: current.base_url as string | undefined,
+                  api_key: current.api_key as string | undefined,
+                  note: current.note as string | undefined,
+                  model: current.model as string | undefined,
+                  kind: current.kind as string | undefined,
+                  stream_usage: current.stream_usage as boolean | undefined,
+                },
+              ),
+            );
+            message.success(t("models.magpieRefreshSaved"));
+            await onSaved();
+          },
+        });
         return;
       }
       const fetched = result.models ?? [];
@@ -963,12 +1082,31 @@ export function ProviderConfigModal({
     }
   };
 
+  const savedDefaultModel = (provider.model ?? "").trim();
+  const defaultModelOptions = useMemo(() => {
+    const source =
+      isOllama || isOnnx
+        ? draftModels.filter((m) => downloadedIds.includes(m.id))
+        : draftModels;
+    const options = source.map((m) => ({
+      value: m.id,
+      label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
+    }));
+    if (
+      savedDefaultModel &&
+      !options.some((option) => option.value === savedDefaultModel)
+    ) {
+      options.unshift({ value: savedDefaultModel, label: savedDefaultModel });
+    }
+    return options;
+  }, [draftModels, downloadedIds, isOllama, isOnnx, savedDefaultModel]);
+
   return (
     <Drawer
       title={t("models.configureProviderTitle", { name: provider.name })}
       open={open}
       onClose={onClose}
-      width={600}
+      width={640}
       placement="right"
       destroyOnHidden
       footer={
@@ -994,6 +1132,7 @@ export function ProviderConfigModal({
         </div>
       }
     >
+      {isMagpie ? <MagpieServerNotice /> : null}
       {/* ===== Provider connection form ===== */}
       <Form
         form={form}
@@ -1013,7 +1152,11 @@ export function ProviderConfigModal({
             <Form.Item
               name="base_url"
               label="Base URL"
-              extra={t("models.baseUrlExtra")}
+              extra={
+                isMagpie
+                  ? t("models.magpieAddressHint")
+                  : t("models.baseUrlExtra")
+              }
             >
               <Input placeholder="https://api.openai.com/v1" />
             </Form.Item>
@@ -1049,13 +1192,7 @@ export function ProviderConfigModal({
                   ? t("models.defaultModelDownloadedOnly")
                   : t("models.defaultModelPlaceholder")
               }
-              options={(isOllama || isOnnx
-                ? draftModels.filter((m) => downloadedIds.includes(m.id))
-                : draftModels
-              ).map((m) => ({
-                value: m.id,
-                label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,
-              }))}
+              options={defaultModelOptions}
               notFoundContent={
                 isOllama || isOnnx
                   ? t("models.defaultModelNeedDownload")
@@ -1070,6 +1207,8 @@ export function ProviderConfigModal({
         <Form.Item name="note" label={t("models.noteLabel")}>
           <Input.TextArea rows={2} placeholder={t("models.notePlaceholder")} />
         </Form.Item>
+
+        {!isOnnx && provider.kind === "openai" ? <StreamUsageAdvanced /> : null}
       </Form>
 
       <div style={{ marginBottom: 16 }}>
@@ -1088,8 +1227,9 @@ export function ProviderConfigModal({
           onClick={() => void handleFetchModels()}
           style={{ marginLeft: 8 }}
         >
-          {t("models.fetchModels")}
+          {isMagpie ? t("models.magpieRefresh") : t("models.fetchModels")}
         </Button>
+        {!isOnnx && provider.kind === "openai" ? <TestStreamHint /> : null}
       </div>
 
       {/* ===== Models section ===== */}
@@ -1102,6 +1242,9 @@ export function ProviderConfigModal({
         models={draftModels}
         onModelsChange={handleModelsChange}
         apiPrefix={apiPrefix}
+        forcePurpose={
+          provider.purpose === "embedding" || isOnnx ? "embedding" : undefined
+        }
         localDownload={
           isOllama || isOnnx
             ? {
