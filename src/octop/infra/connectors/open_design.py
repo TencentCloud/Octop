@@ -198,17 +198,22 @@ class OpenDesignRuntime(StdioRuntime):
                         raise ToolException(tr("connector.open_design.no_task", locale))
                     name, arguments = "get_run", {"runId": state["runId"]}
                 if name == "start_run":
-                    if state.get("status") not in _TERMINAL and state.get("requestId"):
-                        previous = state.get("arguments") or {}
-                        comparison = {**arguments, "requestId": state["requestId"]}
-                        comparison.pop("resume", None)
-                        original = {k: v for k, v in previous.items() if k != "resume"}
-                        if original != comparison:
-                            raise ToolException(tr("connector.open_design.task_running", locale))
+                    run_id = None
+                    previous = state.get("arguments") or {}
+                    comparison = {**arguments, "requestId": state.get("requestId")}
+                    comparison.pop("resume", None)
+                    original = {k: v for k, v in previous.items() if k != "resume"}
+                    retryable = state.get("requestId") and (
+                        state.get("status") not in _TERMINAL or not state.get("runId")
+                    )
+                    if retryable and original == comparison:
                         arguments = {
                             **previous,
                             **({"resume": True} if arguments.get("resume") is True else {}),
                         }
+                        run_id = state.get("runId")
+                    elif retryable and state.get("runId"):
+                        raise ToolException(tr("connector.open_design.task_running", locale))
                     else:
                         arguments["requestId"] = str(arguments.get("requestId") or uuid4())
                     state = {
@@ -217,6 +222,7 @@ class OpenDesignRuntime(StdioRuntime):
                         "requestId": arguments["requestId"],
                         "arguments": arguments,
                         "status": "submitting",
+                        **({"runId": run_id} if run_id else {}),
                         "updated_at": int(time.time()),
                     }
                     await asyncio.to_thread(
@@ -226,7 +232,15 @@ class OpenDesignRuntime(StdioRuntime):
                     return await client.list_resources(arguments.get("cursor"))
                 if name == "read_resource":
                     return await client.read_resource(str(arguments["uri"]))
-                result = await client.call_tool(name, arguments)
+                try:
+                    result = await client.call_tool(name, arguments)
+                except Exception:
+                    if name == "start_run" and not state.get("runId"):
+                        state["status"] = "failed"
+                        await asyncio.to_thread(
+                            self._repos.settings_repo.set, task_key, json.dumps(state)
+                        )
+                    raise
                 if wait_for_task and not result.isError:
                     try:
                         async with asyncio.timeout(60):

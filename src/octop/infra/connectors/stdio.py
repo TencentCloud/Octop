@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -124,7 +123,7 @@ class StdioRuntime:
         params = StdioServerParameters(
             command=spec["command"],
             args=spec.get("args") or [],
-            env={**os.environ, **(spec.get("env") or {})},
+            env=spec.get("env") or {},
             cwd=spec.get("cwd"),
         )
         definitions: list[types.Tool] = []

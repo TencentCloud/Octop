@@ -167,3 +167,32 @@ async def test_failed_stdio_connection_is_discarded_and_idle_session_closes():
     await runtime._expire(next(iter(runtime._clients)))
     healthy.aclose.assert_awaited_once()
     assert not runtime._clients and not runtime._timers
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured_env", [{}, {"MCP_EXPLICIT_TOKEN": "allowed"}])
+async def test_discovery_only_passes_configured_environment(monkeypatch, configured_env):
+    from contextlib import asynccontextmanager
+
+    from octop.infra.connectors import stdio
+
+    monkeypatch.setenv("OCTOP_DATABASE_SECRET", "must-not-leak")
+    runtime = StdioRuntime(None, None)
+    runtime._spec = AsyncMock(return_value={"command": "test-mcp", "env": configured_env})
+
+    @asynccontextmanager
+    async def transport(params):
+        assert params.env == configured_env
+        assert "OCTOP_DATABASE_SECRET" not in params.env
+        yield None, None
+
+    @asynccontextmanager
+    async def session(*args):
+        yield SimpleNamespace(
+            initialize=AsyncMock(),
+            list_tools=AsyncMock(return_value=SimpleNamespace(tools=[], nextCursor=None)),
+        )
+
+    monkeypatch.setattr(stdio, "stdio_client", transport)
+    monkeypatch.setattr(stdio, "ClientSession", session)
+    assert await runtime.build_tools(user_id=7, instance=instance("i"), agent_id="a") == []

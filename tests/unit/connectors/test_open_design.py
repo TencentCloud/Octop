@@ -258,3 +258,53 @@ async def test_open_design_authorization_survives_real_graph_hitl(tmp_path: Path
     finally:
         await agent.aclose()
         await runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change_prompt", [False, True])
+async def test_failed_submission_can_retry_without_run_id(monkeypatch, change_prompt):
+    from contextlib import asynccontextmanager
+    from unittest.mock import AsyncMock
+
+    from mcp import types
+
+    from octop.infra.connectors import open_design
+
+    stored = {}
+    inst = SimpleNamespace(instance_id="i", kind="open-design")
+    runtime = OpenDesignRuntime(
+        SimpleNamespace(
+            decrypt=lambda _: credentials(), list_user_instances=lambda *a, **k: [inst]
+        ),
+        SimpleNamespace(
+            agent_repo=SimpleNamespace(get=lambda _: SimpleNamespace(user_id=7)),
+            settings_repo=SimpleNamespace(get=stored.get, set=stored.__setitem__),
+        ),
+    )
+    monkeypatch.setattr(
+        open_design, "get_config", lambda: {"configurable": {"user": "7", "thread_id": "t"}}
+    )
+    result = types.CallToolResult(content=[], structuredContent={"runId": "r", "status": "running"})
+    client = SimpleNamespace(call_tool=AsyncMock(side_effect=[OSError("disconnected"), result]))
+
+    @asynccontextmanager
+    async def session(*args, **kwargs):
+        yield client
+
+    monkeypatch.setattr(runtime, "session", session)
+    args = {"project": "p", "prompt": "first"}
+    with pytest.raises(ToolException):
+        await runtime.call(7, "i", "a", "start_run", args)
+    failed = json.loads(next(iter(stored.values())))
+    assert failed["status"] == "failed"
+    assert not failed.get("runId")
+    assert failed["requestId"]
+    retry_args = {**args, "prompt": "second"} if change_prompt else args
+    await runtime.call(7, "i", "a", "start_run", retry_args)
+    submitted = client.call_tool.call_args.args[1]
+    assert (submitted["requestId"] != failed["requestId"]) == change_prompt
+    assert submitted["prompt"] == retry_args["prompt"]
+    assert json.loads(next(iter(stored.values())))["runId"] == "r"
+    with pytest.raises(ToolException):
+        await runtime.call(7, "i", "a", "start_run", {"project": "p", "prompt": "different"})
+    assert client.call_tool.await_count == 2
