@@ -1348,7 +1348,11 @@ def install_memory_mcp(app: Any, server: OctopServer) -> None:
     if not _memory_mcp_enabled():
         return
     services = server.services
-    assert services is not None, "server.services required for memory MCP mount"
+    if services is None:
+        # Greenfield deferral: /setup binds the database after this app is built.
+        # Skip the mount instead of failing startup; restart once setup completes.
+        logger.warning("memory MCP not mounted: server services not ready (finish /setup)")
+        return
 
     mcp = build_memory_mcp(server)
     # _session_manager is created lazily by streamable_http_app(); read it only
