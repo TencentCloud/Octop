@@ -168,9 +168,9 @@ async def patch_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    next_kind = (body.kind or row.kind or "").lower()
-    if body.enabled is True:
-        _ensure_opensandbox_sdk(next_kind)
+
+    # Refuse backup-remote mutations before side effects (SDK install, renames).
+    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
 
     new_name: str | None = None
     if body.name is not None:
@@ -183,15 +183,11 @@ async def patch_storage_backend(
                     f"name {candidate!r} already exists",
                 )
             new_name = candidate
-
-    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
-
-    if new_name is not None:
-        raise_if_backup_remote_backend(
-            config_path=server.paths.config,
-            backend_id=backend_id,
-            action="rename",
-        )
+            raise_if_backup_remote_backend(
+                config_path=server.paths.config,
+                backend_id=backend_id,
+                action="rename",
+            )
     if body.enabled is False:
         raise_if_backup_remote_backend(
             config_path=server.paths.config,
@@ -204,6 +200,10 @@ async def patch_storage_backend(
             backend_id=backend_id,
             action="change_kind",
         )
+
+    next_kind = (body.kind or row.kind or "").lower()
+    if body.enabled is True:
+        _ensure_opensandbox_sdk(next_kind)
 
     old_name = row.name
     if new_name is not None:
