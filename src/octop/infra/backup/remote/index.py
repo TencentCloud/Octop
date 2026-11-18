@@ -63,7 +63,7 @@ class MirrorIndex:
         try:
             raw = read_json_object(self._path)
         except JsonFileCorruptError as exc:
-            raise corrupt_config_error(self._path, str(exc)) from exc
+            raise corrupt_config_error(exc.path, exc.detail) from exc
         if raw is None:
             self._entries = {}
             return
