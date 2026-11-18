@@ -2339,6 +2339,8 @@
     "remoteUsername": "Username",
     "remotePassword": "Password",
     "remotePasswordHint": "Leave blank when editing to keep the stored password.",
+    "remotePasswordKeep": "Stored password (leave blank to keep)",
+    "remoteStatusNotMirrored": "Not mirrored",
     "remoteBaseDir": "Base directory",
     "remoteVerifySsl": "Verify TLS certificates",
     "remoteAllowInsecure": "Allow http:// (credentials travel in cleartext)",

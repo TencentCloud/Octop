@@ -243,7 +243,8 @@ export default function BackupRestorePanel() {
   const [remoteToggling, setRemoteToggling] = useState(false);
   const [mirroring, setMirroring] = useState<string | null>(null);
 
-  const busy = opBusy || isRestarting || autoSaving || mirroring !== null || remoteToggling;
+  const busy =
+    opBusy || isRestarting || autoSaving || mirroring !== null || remoteToggling;
   const backingUp = creating || autoRunning || kind === "export";
   const restoringThisName = restoring ? restoreTarget : null;
 

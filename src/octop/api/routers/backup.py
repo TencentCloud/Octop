@@ -631,18 +631,19 @@ async def test_remote_backup(
         stored = None
         if config.backup.remote_backend_id is not None:
             stored = _get_backend(server, config.backup.remote_backend_id)
-        # Blank draft password falls back to the linked backend secret so Edit →
-        # Test works without re-typing credentials.
-        password = body.password
-        if password is None or password == "":
-            password = (stored.secret_key if stored is not None else None) or ""
-        username = body.username
-        if not username and stored is not None and stored.access_key:
-            username = stored.access_key
+        password = body.password or ""
+        # Reuse the linked secret only when the draft still targets the same
+        # endpoint (blank password = keep). Never send stored creds to a new URL.
+        if (
+            not password
+            and stored is not None
+            and (stored.endpoint or "").rstrip("/") == body.url.strip().rstrip("/")
+        ):
+            password = stored.secret_key or ""
         provider = get_provider(
             "webdav",
             url=body.url,
-            username=username,
+            username=body.username,
             password=password,
             base_dir=body.base_dir,
             verify_ssl=body.verify_ssl,

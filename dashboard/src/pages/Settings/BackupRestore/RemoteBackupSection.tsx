@@ -108,7 +108,7 @@ export function RemoteBackupSection({
       const values = await form.validateFields();
       const passwordEntered =
         typeof values.password === "string" && values.password.length > 0;
-      // Server merges a blank password with the linked backend secret.
+      // Blank password reuses the linked secret only for the same endpoint.
       await backupApi.testRemote({
         url: values.url.trim(),
         username: values.username?.trim() ?? "",
@@ -292,9 +292,20 @@ export function RemoteBackupSection({
           <Form.Item
             name="password"
             label={t("backup.remotePassword")}
-            extra={t("backup.remotePasswordHint")}
+            extra={
+              summary?.has_password
+                ? t("backup.remotePasswordHint")
+                : undefined
+            }
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password
+              autoComplete="new-password"
+              placeholder={
+                summary?.has_password
+                  ? t("backup.remotePasswordKeep")
+                  : undefined
+              }
+            />
           </Form.Item>
           <Form.Item name="base_dir" label={t("backup.remoteBaseDir")}>
             <Input placeholder="octop-backups" />
@@ -345,7 +356,7 @@ export function RemoteBackupSection({
                       ) : null}
                       <MirrorStatusTag
                         status={item.remote_status}
-                        emptyKey="backup.remoteStatusNone"
+                        emptyKey="backup.remoteStatusNotMirrored"
                       />
                     </div>
                   </div>

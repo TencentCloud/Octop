@@ -2339,6 +2339,8 @@
     "remoteUsername": "用户名",
     "remotePassword": "密码",
     "remotePasswordHint": "编辑时留空表示保留已保存的密码。",
+    "remotePasswordKeep": "已保存密码（留空保留）",
+    "remoteStatusNotMirrored": "未同步",
     "remoteBaseDir": "基础目录",
     "remoteVerifySsl": "校验 TLS 证书",
     "remoteAllowInsecure": "允许 http://（凭据将明文传输）",
