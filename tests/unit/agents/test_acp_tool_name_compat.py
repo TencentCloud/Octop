@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from octop_harness.acp.client import ACPHostedClient
 from octop_harness.acp.models import ACPRunnerConfig
 
-from octop.infra.agents.acp_tool_name_compat import install_acp_tool_titles
+from octop.infra.agents.acp.tool_names import install_acp_tool_titles
 
 _CALL = "call-0\nfc_0"
 

@@ -76,6 +76,10 @@ import { useIsMobile } from "../../../hooks/useIsMobile";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import {
+  ManagedAvatarMark,
+  managedRunnerId,
+} from "../../Experts/components/ManagedAvatarMark";
+import {
   bridgeApi,
   type BridgeConnection,
   type BridgeProbeAgent,
@@ -388,25 +392,29 @@ function AgentAvatar({
   iconUrl,
   iconName,
   color,
+  managedRunner,
 }: {
   name: string;
   iconUrl?: string | null;
   iconName?: string | null;
   color?: string | null;
+  managedRunner?: string | null;
 }) {
   return (
-    <span
-      className={styles.probeAvatar}
-      style={{ color: color || "var(--fn-color-brand, #e85d75)" }}
-      aria-label={name}
-    >
-      <ExpertIcon
-        iconUrl={iconUrl}
-        iconName={iconName}
-        size={40}
-        className={styles.probeAvatarImg}
-      />
-    </span>
+    <ManagedAvatarMark runner={managedRunner}>
+      <span
+        className={styles.probeAvatar}
+        style={{ color: color || "var(--fn-color-brand, #e85d75)" }}
+        aria-label={name}
+      >
+        <ExpertIcon
+          iconUrl={iconUrl}
+          iconName={iconName}
+          size={40}
+          className={styles.probeAvatarImg}
+        />
+      </span>
+    </ManagedAvatarMark>
   );
 }
 
@@ -430,6 +438,7 @@ function AgentListItem({
   iconName,
   color,
   kind,
+  managedRunner,
   onClick,
   flat,
 }: {
@@ -440,6 +449,7 @@ function AgentListItem({
   iconName?: string | null;
   color?: string | null;
   kind?: string | null;
+  managedRunner?: string | null;
   onClick?: () => void;
   flat?: boolean;
 }) {
@@ -451,6 +461,7 @@ function AgentListItem({
         iconUrl={iconUrl}
         iconName={iconName}
         color={color}
+        managedRunner={managedRunner}
       />
       <div className={styles.probeBody}>
         <div className={styles.probeNameRow}>
@@ -578,6 +589,15 @@ function RemoteAgentsBlock({
               }
               color={typeof agent.color === "string" ? agent.color : null}
               kind={typeof agent.kind === "string" ? agent.kind : null}
+              managedRunner={managedRunnerId({
+                kind: typeof agent.kind === "string" ? agent.kind : null,
+                config:
+                  agent.config && typeof agent.config === "object"
+                    ? (agent.config as Record<string, unknown>)
+                    : typeof agent.managed_runner === "string"
+                    ? { managed_runner: agent.managed_runner }
+                    : null,
+              })}
               onClick={() => onOpen(agent.id)}
               flat
             />

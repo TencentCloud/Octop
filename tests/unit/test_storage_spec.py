@@ -273,12 +273,16 @@ def test_enrich_docker_backend_spec_defaults() -> None:
     assert "agent_id" not in fixed or fixed.get("agent_id") == "ZE6GR2"
 
 
-def test_omit_docker_volumes_drops_host_mounts() -> None:
+def test_omit_docker_volumes_drops_host_mounts(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.backend.docker_spec import (
         enrich_docker_backend_spec,
         omit_docker_volumes,
     )
 
+    monkeypatch.setattr(
+        "octop.infra.backend.docker_spec.running_in_container",
+        lambda: False,
+    )
     mounted = {
         "type": "docker",
         "image": "python:3.12-slim",
@@ -310,7 +314,28 @@ def test_omit_docker_volumes_drops_host_mounts() -> None:
     assert enriched["agent_id"] == "ZE6GR2"
 
 
-def test_row_to_backend_spec_docker_ignores_volumes() -> None:
+def test_omit_docker_volumes_keeps_mounts_in_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend.docker_spec import (
+        enrich_docker_backend_spec,
+        omit_docker_volumes,
+    )
+
+    monkeypatch.setattr(
+        "octop.infra.backend.docker_spec.running_in_container",
+        lambda: True,
+    )
+    mounted = {
+        "type": "docker",
+        "image": "python:3.12-slim",
+        "volumes": {"/var/lib/octop": {"bind": "/host", "mode": "rw"}},
+    }
+    assert omit_docker_volumes(mounted) is mounted
+    enriched = enrich_docker_backend_spec(mounted, agent_id="ZE6GR2")
+    assert enriched["volumes"] == mounted["volumes"]
+    assert enriched["agent_id"] == "ZE6GR2"
+
+
+def test_row_to_backend_spec_docker_keeps_volumes() -> None:
     row = BackendRow(
         id=1,
         name="sandbox",
@@ -329,7 +354,7 @@ def test_row_to_backend_spec_docker_ignores_volumes() -> None:
     spec = row_to_backend_spec(row)
     assert spec is not None
     assert spec["memory"] == "512m"
-    assert "volumes" not in spec
+    assert spec["volumes"] == {"/": {"bind": "/host", "mode": "rw"}}
 
 
 def test_inject_docker_global_environment_sets_file() -> None:
