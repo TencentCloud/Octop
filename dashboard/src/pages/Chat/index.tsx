@@ -93,7 +93,7 @@ import {
   dockTabIdForToolCall,
 } from "./ChatToolDockContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
-import ChatTitleBar from "./components/ChatTitleBar";
+import ChatTitleBar, { ChatSidePanelToggle } from "./components/ChatTitleBar";
 import SessionShareMark from "./components/SessionShareMark";
 import TeamChatBadge from "./components/TeamChatBadge";
 import RemoteExpertHint from "./components/RemoteExpertHint";
@@ -216,6 +216,7 @@ function ChatPageInner() {
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
   const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {}, user);
   const isTeamChat = isTeamAgent(activeAgent);
+  const isManagedChat = activeAgent?.kind === "managed";
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [profileAgentId, setProfileAgentId] = useState<string | null>(null);
   const profileAgent = useMemo(() => {
@@ -433,6 +434,7 @@ function ChatPageInner() {
     openTerminalTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
+    toggleSidePanel,
     toggleTerminalPanel,
     openToolUiTab,
     focusToolUiTab,
@@ -595,6 +597,9 @@ function ChatPageInner() {
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,
+    sessionModes,
+    sessionMode,
+    handleSessionModeChange,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
@@ -605,6 +610,7 @@ function ChatPageInner() {
     composerSession?.reasoningEffort,
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
+    composerSession?.sessionMode,
     composerSession?.owned !== false,
   );
 
@@ -740,6 +746,7 @@ function ChatPageInner() {
     reasoningMode,
     reasoningEffort,
     conversationMode,
+    sessionMode,
     hitlPolicy,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
@@ -1426,6 +1433,15 @@ function ChatPageInner() {
     />
   );
 
+  const sidePanelToggle = !sharedExpertViewer ? (
+    <ChatSidePanelToggle
+      open={dockOpen}
+      disabled={!agentChatReady}
+      disabledHint={t("workspace.requiresRunning")}
+      onToggle={toggleSidePanel}
+    />
+  ) : null;
+
   return (
     <ChatFilePreviewProvider
       openFilePreview={openFileAt}
@@ -1447,6 +1463,10 @@ function ChatPageInner() {
             styles.chatPage,
             dockIsResizing && styles.panelResizeActive,
             dockOpen && dockMode === "bottom" && styles.chatPageWithBottomDock,
+            dockOpen &&
+              dockMode === "right" &&
+              !isMobile &&
+              styles.chatPageWithRightDock,
           )}
         >
           {/* Main chat area */}
@@ -1553,11 +1573,14 @@ function ChatPageInner() {
                   forkDisabledHint={sessionForkDisabledHint}
                   isTeam={isTeamChat}
                   agent={activeAgent}
+                  sideSlot={sidePanelToggle}
                 />
               ) : (
                 /* Empty chat: same row, same bounds — the composer must not
                    jump up before the first message exists. */
-                <div className={styles.chatTitleBarEmpty} />
+                <div className={styles.chatTitleBarEmpty}>
+                  {sidePanelToggle}
+                </div>
               ))}
 
             {memoryMaintVisible && memoryMaint && (
@@ -1653,11 +1676,7 @@ function ChatPageInner() {
                       onOpenBrowser={
                         hasBrowserTool ? openBrowserTab : undefined
                       }
-                      onEditFile={
-                        !sharedExpertViewer && panelFilePaths.length > 0
-                          ? openFileList
-                          : undefined
-                      }
+                      onEditFile={sharedExpertViewer ? undefined : openFileList}
                     />
                   </ChatAgentProfileProvider>
                 </>
@@ -1698,7 +1717,12 @@ function ChatPageInner() {
                         mouseEnterDelay={0.35}
                         placement="left"
                       >
-                        <span className={styles.chatFloatBtnWrap}>
+                        <span
+                          className={cx(
+                            styles.chatFloatBtnWrap,
+                            styles.chatFloatHideNarrow,
+                          )}
+                        >
                           <button
                             type="button"
                             className={styles.chatFloatBtn}
@@ -1721,7 +1745,12 @@ function ChatPageInner() {
                       mouseEnterDelay={0.35}
                       placement="left"
                     >
-                      <span className={styles.chatFloatBtnWrap}>
+                      <span
+                        className={cx(
+                          styles.chatFloatBtnWrap,
+                          styles.chatFloatHideNarrow,
+                        )}
+                      >
                         <button
                           type="button"
                           className={styles.chatFloatBtn}
@@ -1749,7 +1778,12 @@ function ChatPageInner() {
                       mouseEnterDelay={0.35}
                       placement="left"
                     >
-                      <span className={styles.chatFloatBtnWrap}>
+                      <span
+                        className={cx(
+                          styles.chatFloatBtnWrap,
+                          styles.chatFloatHideNarrow,
+                        )}
+                      >
                         <button
                           type="button"
                           className={styles.terminalFloatBtn}
@@ -1879,7 +1913,10 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
-            {!showWelcome && modelsReady && availableModels.length === 0 ? (
+            {!showWelcome &&
+            !isManagedChat &&
+            modelsReady &&
+            availableModels.length === 0 ? (
               <div className={styles.modelConfigDock}>
                 <div className={styles.modelConfigDockInner}>
                   <Alert
@@ -1923,8 +1960,8 @@ function ChatPageInner() {
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||
-                !modelsReady ||
-                availableModels.length === 0
+                (!isManagedChat &&
+                  (!modelsReady || availableModels.length === 0))
               }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
@@ -1938,9 +1975,14 @@ function ChatPageInner() {
               onReasoningChange={handleReasoningChange}
               conversationMode={conversationMode}
               onConversationModeChange={handleConversationModeChange}
+              sessionModes={sessionModes}
+              sessionMode={sessionMode}
+              onSessionModeChange={handleSessionModeChange}
               hitlPolicy={hitlPolicy}
               onHitlPolicyChange={
-                hitlEnabled ? handleComposerHitlPolicyChange : undefined
+                hitlEnabled || isManagedChat
+                  ? handleComposerHitlPolicyChange
+                  : undefined
               }
               lockThreadSettings={composerSession?.owned === false}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
@@ -1965,6 +2007,7 @@ function ChatPageInner() {
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
+              managed={isManagedChat}
               defaultModel={activeAgent?.default_model ?? null}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}

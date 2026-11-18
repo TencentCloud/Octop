@@ -269,7 +269,9 @@ async def prepare_dashboard_turn(
         user=user,
         names=turn.skills,
     )
-    if mcp_servers:
+    from octop.infra.agents.managed import is_managed_agent  # noqa: PLC0415
+
+    if mcp_servers and not is_managed_agent(row):
         failed = await server.app_runtime.agent_registry.prepare_chat_mcp(
             agent_id,
             mcp_servers,
@@ -277,6 +279,17 @@ async def prepare_dashboard_turn(
         )
         if failed:
             locale = getattr(user, "locale", None) or "zh"
+            blocked = await server.app_runtime.agent_registry.connector_auth_blocked(
+                user.id, failed
+            )
+            if blocked:
+                names = ", ".join(str(item["display_name"]) for item in blocked)
+                raise OctopError.localized(
+                    ErrorCode.CONNECTOR_AUTH_REQUIRED,
+                    locale,
+                    details={"connectors": blocked, "servers": names},
+                    servers=names,
+                )
             raise OctopError.localized(
                 ErrorCode.CONNECTOR_MCP_LOAD_FAILED,
                 locale,
@@ -321,6 +334,9 @@ async def prepare_dashboard_turn(
         target_agent_ids=target_ids,
         model_ref=model_ref,
         default_model=default_model,
+        knowledge_base_ids=list(turn.knowledge_base_ids)
+        if isinstance(turn.knowledge_base_ids, list)
+        else None,
     )
     inbound_content = content_parts_from_dashboard_turn(turn)
     inbound_attachments = inbound_attachments_from_parts(inbound_content)
@@ -367,6 +383,8 @@ def build_dashboard_inbound(
         metadata["reasoning_effort"] = turn.reasoning_effort
     if turn.conversation_mode:
         metadata["conversation_mode"] = turn.conversation_mode
+    if turn.session_mode:
+        metadata["session_mode"] = turn.session_mode
     if turn.hitl_policy is not None:
         metadata["hitl_policy"] = turn.hitl_policy.model_dump()
     if prepared.composer_context:

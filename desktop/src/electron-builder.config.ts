@@ -47,7 +47,7 @@ export default {
   mac: {
     target: ["dmg", "zip"],
     category: "public.app-category.productivity",
-    // Full-bleed opaque icns. Transparent corners make Finder draw a gray plate.
+    // A full-bleed tile draws about 24% larger than other Dock and Launchpad icons.
     icon: "resources/icon.icns",
     // Releases are unsigned and not notarized. identity: null is required:
     // electron-builder otherwise takes the empty-password signing path and

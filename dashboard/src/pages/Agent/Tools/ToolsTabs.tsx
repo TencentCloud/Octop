@@ -25,11 +25,16 @@ const TOOL_TABS: TabBarItem<ToolsTab>[] = [
 
 interface ToolsTabsProps {
   agentId: string | null;
+  /** Managed experts only list tools Octop can attach, plus plugin tools. */
+  managed?: boolean;
 }
 
-export default function ToolsTabs({ agentId }: ToolsTabsProps) {
+export default function ToolsTabs({
+  agentId,
+  managed = false,
+}: ToolsTabsProps) {
   const user = useCurrentUser();
-  const canAcp = canAccessKeys(user, "admin");
+  const canAcp = canAccessKeys(user, "admin") && !managed;
   const [activeTab, setActiveTab] = useState<ToolsTab>("builtin");
 
   const tabs = useMemo(
@@ -50,7 +55,7 @@ export default function ToolsTabs({ agentId }: ToolsTabsProps) {
         )}
       >
         {resolvedTab === "builtin" ? (
-          <ToolsPanel agentId={agentId} source="builtin" />
+          <ToolsPanel agentId={agentId} source="builtin" managed={managed} />
         ) : resolvedTab === "plugin" ? (
           <ToolsPanel agentId={agentId} source="plugin" />
         ) : (

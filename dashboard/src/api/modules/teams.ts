@@ -9,6 +9,8 @@ export interface TeamMemberSummary {
   state?: string;
   is_shared?: boolean;
   user_id?: number | null;
+  kind?: string | null;
+  managed_runner?: string | null;
 }
 
 export interface TeamRecord {

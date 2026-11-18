@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import {
   Drawer,
   Form,
@@ -24,6 +30,7 @@ import {
   KeyRound,
   ShieldCheck,
   SlidersHorizontal,
+  Compass,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -38,6 +45,7 @@ import { apiErrorMessage } from "../utils/apiError";
 import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
 import { useUserRole } from "../hooks/useUserRole";
 import { useIsMobile } from "../hooks/useIsMobile";
+import AppVersionBadge from "./AppVersionBadge";
 import ThemeSwitcher from "./ThemeSwitcher";
 import PaletteSwitcher from "./PaletteSwitcher";
 import type { OctopUser } from "../api/modules/auth";
@@ -85,6 +93,8 @@ interface AvatarDropdownProps {
   onBeforeOpenSettings?: () => void;
   /** Opens the sidebar layout editor. Omitted when that editor is unavailable. */
   onCustomizeNav?: () => void;
+  /** Reopens the welcome guide. Omitted when the guide is not mounted. */
+  onOpenOnboarding?: () => void;
 }
 
 export default function AvatarDropdown({
@@ -94,6 +104,7 @@ export default function AvatarDropdown({
   compact = false,
   onBeforeOpenSettings,
   onCustomizeNav,
+  onOpenOnboarding,
 }: AvatarDropdownProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -245,6 +256,12 @@ export default function AvatarDropdown({
     deferOpen(() => onCustomizeNav?.());
   };
 
+  const openOnboarding = () => {
+    setMenuOpen(false);
+    onBeforeOpenSettings?.();
+    deferOpen(() => onOpenOnboarding?.());
+  };
+
   const closeSettings = () => setSettingsOpen(false);
 
   useEffect(() => {
@@ -333,6 +350,17 @@ export default function AvatarDropdown({
         <CircleHelp size={16} strokeWidth={1.8} />
         <span>{t("account.helpFeedback")}</span>
       </a>
+
+      {onOpenOnboarding ? (
+        <button
+          type="button"
+          className={styles.menuItem}
+          onClick={openOnboarding}
+        >
+          <Compass size={16} strokeWidth={1.8} />
+          <span>{t("account.onboarding")}</span>
+        </button>
+      ) : null}
 
       <a
         className={styles.menuItem}
@@ -668,21 +696,45 @@ export default function AvatarDropdown({
     </div>
   );
 
+  const stopUpgradeEvent = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+
   return (
     <>
-      <Popover
-        content={menuContent}
-        trigger="click"
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        placement="topLeft"
-        arrow={false}
-        overlayClassName={styles.menuPopover}
-        destroyOnHidden
-        getPopupContainer={() => document.body}
+      <div
+        className={cx(
+          placement === "sidebar" && styles.accountRow,
+          placement === "sidebar" && compact && styles.accountRowCompact,
+        )}
       >
-        {triggerButton}
-      </Popover>
+        <Popover
+          content={menuContent}
+          trigger="click"
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          placement="topLeft"
+          arrow={false}
+          overlayClassName={styles.menuPopover}
+          destroyOnHidden
+          getPopupContainer={() => document.body}
+        >
+          {triggerButton}
+        </Popover>
+        {placement === "sidebar" ? (
+          <div
+            className={cx(
+              styles.accountUpgrade,
+              compact && styles.accountUpgradeCompact,
+            )}
+            onClick={stopUpgradeEvent}
+            onMouseDown={stopUpgradeEvent}
+            onPointerDown={stopUpgradeEvent}
+          >
+            <AppVersionBadge isMobile={isMobile} />
+          </div>
+        ) : null}
+      </div>
 
       <Drawer
         title={t("account.settings")}

@@ -83,6 +83,20 @@ def is_media_push_tool(name: str | None) -> bool:
     return tool_name_base(name or "").lower() in MEDIA_PUSH_TOOL_BASES
 
 
+def _delivers_media(message: Any, *, chunk_name: str | None) -> bool:
+    """Allowlisted tool names, or the managed ``send_file_to_user`` marker.
+
+    An external ACP agent reports its own title for the MCP call. The loopback
+    result still carries ``octop_delivery`` so the file reaches the user.
+    """
+    if is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        return True
+    for block in iter_media_blocks(extract_message_content(message)):
+        if block.get("octop_delivery") == "send_file_to_user":
+            return True
+    return False
+
+
 def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | None:
     """Resolve tool name from a ToolMessage / dict, falling back to chunk.name."""
     if isinstance(message, dict):
@@ -761,7 +775,7 @@ async def attachment_frames_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             preview_url = block.get("preview_url")
@@ -966,7 +980,7 @@ async def media_events_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             try:

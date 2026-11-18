@@ -32,6 +32,7 @@ from octop.infra.agents.teams.team_manager import (
 from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
+from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
 from octop.infra.errors import OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
@@ -83,12 +84,12 @@ from octop.infra.history.projection import (
     message_inputs,
 )
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
@@ -602,8 +603,11 @@ class GlobalProcessor:
                 history_finalize=_finalize,
                 member_hitl=self.teams.deliver_member_hitl,
             )
-        async for ev in stream:
-            yield ev
+        try:
+            async for ev in stream:
+                yield ev
+        finally:
+            await close_event_stream(stream)
         if not slash_outcome.completed_turn:
             return
         thread_id = self._thread_registry.get_bound_thread_id(session_key)
@@ -909,7 +913,7 @@ class GlobalProcessor:
                 usage_tracker = UsageTracker()
                 history_tracker = TurnHistoryTracker.from_request({})
                 answer_outcome = HitlAnswerOutcome()
-                async for ev in self._hitl.iter_answer_resolution(
+                answer_stream = self._hitl.iter_answer_resolution(
                     ask_record,
                     msg.text,
                     agent_manager=self._agent_manager,
@@ -918,8 +922,12 @@ class GlobalProcessor:
                     history_tracker=history_tracker,
                     outcome=answer_outcome,
                     member_hitl=self.teams.deliver_member_hitl,
-                ):
-                    yield ev
+                )
+                try:
+                    async for ev in answer_stream:
+                        yield ev
+                finally:
+                    await close_event_stream(answer_stream)
                 if answer_outcome.completed_turn:
                     self._touch_thread_after_turn(ask_record.thread_id, msg.text)
                     if usage_tracker.usage:
@@ -1045,7 +1053,7 @@ class GlobalProcessor:
             reasoning_overrides=reasoning_overrides,
         )
         self.teams.stamp_host_runtime(request, agent_id)
-        self._attach_turn_knowledge_config(
+        knowledge_ids = self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
             is_admin=False,
@@ -1053,6 +1061,9 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        from octop.infra.gateway.process.message_keys import stamp_composer_fields  # noqa: PLC0415
+
+        stamp_composer_fields(request, knowledge_base_ids=knowledge_ids)
         request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
@@ -1072,7 +1083,7 @@ class GlobalProcessor:
         history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
         try:
-            async for ev in project_stream(
+            turn_stream = project_stream(
                 self._agent_manager,
                 agent_id,
                 request,
@@ -1089,8 +1100,12 @@ class GlobalProcessor:
                     session_key=session_key,
                     channel_type=channel_type,
                 ),
-            ):
-                yield ev
+            )
+            try:
+                async for ev in turn_stream:
+                    yield ev
+            finally:
+                await close_event_stream(turn_stream)
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
@@ -1187,7 +1202,7 @@ class GlobalProcessor:
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
+            slash_stream = self._hitl.iter_slash_resolution(
                 cmd,
                 self._slash_ctx(
                     agent_id=agent_id,
@@ -1202,9 +1217,13 @@ class GlobalProcessor:
                 outcome=slash_outcome,
                 history_finalize=self._complete_resumed_history,
                 member_hitl=self.teams.deliver_member_hitl,
-            ):
-                for frame in message_event_to_cli_chunks(ev):
-                    yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            )
+            try:
+                async for ev in slash_stream:
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            finally:
+                await close_event_stream(slash_stream)
             thread_id = self._thread_registry.get_bound_thread_id(session_key)
             if thread_id is None:
                 thread_id = await self._thread_registry.get_or_create_by_key(
@@ -1483,6 +1502,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
             failure_saved = True
@@ -1577,6 +1599,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             failure_saved = True
@@ -1703,7 +1728,7 @@ class GlobalProcessor:
             message_id=client_message_id if isinstance(client_message_id, str) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
-        self._attach_turn_knowledge_config(
+        knowledge_ids = self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
             is_admin=bool(meta.get("user_is_admin")),
@@ -1712,6 +1737,13 @@ class GlobalProcessor:
             else None,
             locale=locale,
             agent_id=agent_id,
+        )
+        from octop.infra.gateway.process.message_keys import stamp_composer_fields  # noqa: PLC0415
+
+        stamp_composer_fields(
+            request,
+            connectors=shown_mcp,
+            knowledge_base_ids=knowledge_ids,
         )
 
         if mcp_servers:
@@ -1786,6 +1818,10 @@ class GlobalProcessor:
     ) -> dict[str, Any]:
         from octop.infra.agents.conversation_mode import execute_user_message
 
+        if self._is_managed_agent(agent_id):
+            return self._stamp_managed_session_mode(
+                request, agent_id=agent_id, thread_id=thread_id, meta=meta
+            )
         mode, execute_path = self._sync_and_resolve_conversation_mode(
             agent_id, thread_id, meta=meta, user_text=user_text
         )
@@ -1797,6 +1833,54 @@ class GlobalProcessor:
             request["skills"] = []
         elif mcp_servers:
             request["mcp_servers"] = mcp_servers
+        return request
+
+    def _is_managed_agent(self, agent_id: str) -> bool:
+        getter = getattr(self._agent_manager, "get_row", None)
+        if not callable(getter):
+            return False
+        try:
+            row = getter(agent_id)
+        except Exception:
+            return False
+        from octop.infra.agents.managed import is_managed_agent
+
+        return is_managed_agent(row)
+
+    def _stamp_managed_session_mode(
+        self,
+        request: dict[str, Any],
+        *,
+        agent_id: str,
+        thread_id: str,
+        meta: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Keep the underlying agent's mode id. Do not apply Ask / Plan / Craft."""
+        from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+        explicit = (meta or {}).get("session_mode")
+        thread = self._thread_registry.get_thread(thread_id)
+        stored = thread.conversation_mode if thread is not None else None
+        config: dict[str, Any] = {}
+        getter = getattr(self._agent_manager, "get_config", None)
+        if callable(getter):
+            try:
+                loaded = getter(agent_id)
+            except Exception:
+                loaded = None
+            if isinstance(loaded, dict):
+                config = loaded
+        pinned = resolve_managed_session_mode(explicit=explicit, stored=None, config={})
+        if pinned:
+            self._thread_registry.update_composer(thread_id, conversation_mode=pinned)
+            stored = pinned
+        mode = resolve_managed_session_mode(explicit=explicit, stored=stored, config=config)
+        if mode:
+            configurable = request.get("configurable")
+            if not isinstance(configurable, dict):
+                configurable = {}
+                request["configurable"] = configurable
+            configurable["acp_session_mode"] = mode
         return request
 
     def _attach_conversation_mode(self, request: dict[str, Any], mode: Any) -> None:
@@ -1840,23 +1924,18 @@ class GlobalProcessor:
         explicit_ids: list[str] | None,
         locale: str,
         agent_id: str | None = None,
-    ) -> None:
+    ) -> list[str]:
         """Expose selected knowledge-base ids for the search_knowledge tool."""
         if self._knowledge_services is None:
-            return
-        bases = (
-            self._knowledge_services.knowledge_repo.list_all()
-            if is_admin
-            else self._knowledge_services.knowledge_repo.list_visible(user_id)
-        )
+            return []
         extra_ids = self._agent_manager.default_knowledge_base_ids(agent_id) if agent_id else None
-        stamp_turn_knowledge_config(
+        return attach_turn_knowledge(
             request,
-            visible_bases=bases,
-            explicit_ids=explicit_ids,
-            owner_user_id=user_id,
-            extra_ids=extra_ids,
+            knowledge_repo=self._knowledge_services.knowledge_repo,
+            user_id=user_id,
             is_admin=is_admin,
+            explicit_ids=explicit_ids,
+            extra_ids=extra_ids,
             locale=locale,
         )
 
@@ -1875,39 +1954,30 @@ class GlobalProcessor:
         client sees a clear MCP load error. IM ingress uses ``False`` so a
         flaky connector does not abort the whole message turn.
         """
-        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
         # Team hosts only dispatch — never attach MCP tools.
-        row = self._agent_manager.get_row(agent_id)
-        if is_team_agent(row):
-            return None
-        owner_raw = getattr(row, "user_id", None) if row is not None else None
-        owner_id = owner_raw if isinstance(owner_raw, int) else None
-
-        extra_defaults = self._agent_manager.default_mcp_servers(agent_id)
-        merged = self._agent_manager.merge_turn_mcp_servers(
-            user_id,
-            explicit,
+        resolved = await resolve_turn_mcp(
+            self._agent_manager,
+            agent_id=agent_id,
+            user_id=user_id,
+            explicit=explicit,
             apply_defaults=apply_defaults,
-            extra_defaults=extra_defaults,
-            agent_owner_id=owner_id,
         )
-        if not merged:
+        if resolved is None:
             return None
-        harness = list(merged)
-        shown = list(merged)
-        if owner_id is not None and owner_id != user_id:
-            harness = self._agent_manager.align_mcp_names_to_harness(owner_id, user_id, merged)
-            shown = self._agent_manager.mcp_names_for_chips(owner_id, user_id, merged, harness)
-        failed = await self._agent_manager.prepare_chat_mcp(
-            agent_id,
-            merged,
-            connector_user_id=user_id,
-        )
+        failed = resolved.failed
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
+                blocked = await self._agent_manager.connector_auth_blocked(user_id, failed)
+                if blocked:
+                    names = ", ".join(str(item["display_name"]) for item in blocked)
+                    raise OctopError(
+                        ErrorCode.CONNECTOR_AUTH_REQUIRED,
+                        f"connector authorization required: {names}",
+                        details={"connectors": blocked, "servers": names},
+                    )
                 raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
             logger.warning(
                 "skipping turn MCP for agent=%s user=%s (%s)",
@@ -1916,7 +1986,7 @@ class GlobalProcessor:
                 detail,
             )
             return None
-        return _ResolvedTurnMcp(harness=harness, shown=shown)
+        return _ResolvedTurnMcp(harness=resolved.harness, shown=resolved.shown)
 
     async def _record_stream_error(
         self,

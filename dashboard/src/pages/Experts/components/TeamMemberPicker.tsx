@@ -6,6 +6,11 @@ import cx from "classnames";
 import { isOwnedExpert } from "../../../utils/sharedExpert";
 import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark, managedRunnerId } from "./ManagedAvatarMark";
+import {
+  incomingShareProps,
+  SharedAvatarMark,
+} from "../../../components/SharedResourceBadge";
 import styles from "../index.module.less";
 
 export interface TeamMemberOption {
@@ -16,8 +21,11 @@ export interface TeamMemberOption {
   icon_name?: string | null;
   icon_url?: string | null;
   kind?: string;
+  config?: Record<string, unknown> | null;
   is_shared?: boolean;
   is_owner?: boolean;
+  user_id?: number | null;
+  owner_username?: string | null;
   bridge?: boolean | null;
 }
 
@@ -141,16 +149,20 @@ export default function TeamMemberPicker({
                     <Check size={11} strokeWidth={3} />
                   </span>
                 )}
-                <div
-                  className={styles.memberPickIcon}
-                  style={{ color: accent, background: `${accent}1a` }}
-                >
-                  <ExpertIcon
-                    iconUrl={expert.icon_url}
-                    iconName={expert.icon_name}
-                    size={expert.icon_url ? 36 : 18}
-                  />
-                </div>
+                <SharedAvatarMark {...incomingShareProps(expert)}>
+                  <ManagedAvatarMark runner={managedRunnerId(expert)}>
+                    <div
+                      className={styles.memberPickIcon}
+                      style={{ color: accent, background: `${accent}1a` }}
+                    >
+                      <ExpertIcon
+                        iconUrl={expert.icon_url}
+                        iconName={expert.icon_name}
+                        size={expert.icon_url ? 36 : 18}
+                      />
+                    </div>
+                  </ManagedAvatarMark>
+                </SharedAvatarMark>
                 <div className={styles.memberPickBody}>
                   <div className={styles.memberPickName}>{expert.name}</div>
                   <div className={styles.memberPickDesc}>

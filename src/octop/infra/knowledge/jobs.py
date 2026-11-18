@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from octop.infra.knowledge.blobs import KnowledgeBlobs
 from octop.infra.knowledge.chunk import chunk_text
 from octop.infra.knowledge.embed import embed_knowledge_texts
 from octop.infra.knowledge.gate import assert_knowledge_usable
+from octop.infra.knowledge.graph import enqueue_document_graph, mark_document_reindexed
 from octop.infra.knowledge.ocr import optional_ocr_extractor
 from octop.infra.knowledge.params import get_advanced_settings
 from octop.infra.knowledge.parse import parse_document
 from octop.infra.knowledge.plane import open_knowledge_index
+
+logger = logging.getLogger(__name__)
 
 # Parsing/OCR also consumes memory; only one document should be in flight.
 INDEX_CONCURRENCY = 1
@@ -38,9 +42,10 @@ def process_document(services: Any, kb_id: str, doc_id: str) -> None:
     assert_knowledge_usable(services.settings_repo.get, getattr(services, "provider_repo", None))
     document = repo.get_document(doc_id)
     base = repo.get_base(kb_id)
-    if document is None or document.kb_id != kb_id or base is None:
+    if document is None or base is None:
         raise LookupError("knowledge document or base not found")
-    if document.is_dir:
+    if document.kb_id != kb_id or document.is_dir:
+        # Moved to another base after this job was queued; the move queued it there.
         return
     repo.update_document(doc_id, status="processing", error_message="")
     try:
@@ -69,6 +74,16 @@ def enqueue_index_document(services: Any, kb_id: str, doc_id: str) -> asyncio.Ta
     async def _run() -> None:
         async with sem:
             await loop.run_in_executor(None, process_document, services, kb_id, doc_id)
+        # The document is searchable now; its graph is refreshed outside the index slot.
+        try:
+            stale = await loop.run_in_executor(
+                None, mark_document_reindexed, services, kb_id, doc_id
+            )
+        except Exception:
+            logger.warning("knowledge graph refresh skipped for %s", doc_id, exc_info=True)
+            return
+        if stale:
+            enqueue_document_graph(services, kb_id, doc_id)
 
     return asyncio.create_task(_run())
 

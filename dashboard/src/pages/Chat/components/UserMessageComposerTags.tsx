@@ -7,6 +7,7 @@ import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import ContextChip, { type ContextChipVariant } from "./ContextChip";
@@ -113,6 +114,8 @@ export default function UserMessageComposerTags({
             size={16}
             iconSize={9}
             muted
+            managedRunner={agent?.managed_runner}
+            {...incomingShareProps(agent)}
           />
         ),
         label: agent?.name || id,

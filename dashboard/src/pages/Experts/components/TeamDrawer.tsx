@@ -21,6 +21,7 @@ import {
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { apiErrorMessage } from "../../../utils/apiError";
 import {
   buildModelSelectOptions,
@@ -33,6 +34,7 @@ import ExpertAgentAvatar from "../../Chat/components/ExpertAgentAvatar";
 import {
   buildBackendSpec,
   DEFAULT_BACKEND,
+  defaultCreateBackendChoice,
   ensureBubblewrapAfterProbe,
   ensureBwrapMessage,
   ensureBwrapToastKind,
@@ -88,6 +90,11 @@ export default function TeamDrawer({
   onIconUrlChange,
 }: TeamDrawerProps) {
   const { t } = useTranslation();
+  const currentUser = useCurrentUser();
+  const allowedBackendTypes = currentUser?.allowed_backend_types;
+  const viewerIdRef = useRef(currentUser?.id);
+  viewerIdRef.current = currentUser?.id;
+  const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
   const [form] = Form.useForm<TeamFormValues>();
   const { models, modelsLoading, backends, backendsLoading } =
     useAgentFormResources(open);
@@ -172,9 +179,17 @@ export default function TeamDrawer({
               color: member.color,
               icon_name: member.icon_name,
               icon_url: member.icon_url,
-              kind: "expert",
+              kind: member.kind || "expert",
+              config:
+                member.kind === "managed" && member.managed_runner
+                  ? { managed_runner: member.managed_runner }
+                  : null,
               is_shared: member.is_shared,
-              is_owner: true,
+              user_id: member.user_id,
+              is_owner:
+                member.user_id != null && viewerIdRef.current != null
+                  ? Number(member.user_id) === Number(viewerIdRef.current)
+                  : undefined,
             })),
           );
         })
@@ -191,7 +206,7 @@ export default function TeamDrawer({
       default_model: MODEL_AUTO_VALUE,
       welcome_message: t("experts.teams.welcomeDefault"),
       member_ids: [],
-      backend_choice: DEFAULT_BACKEND,
+      backend_choice: createBackendChoice,
       composite_default: DEFAULT_BACKEND,
       root_dir: undefined,
       workspace_dir: "",
@@ -201,7 +216,7 @@ export default function TeamDrawer({
     setIconUrl(TEAM_AVATAR_URL);
     setAvatarFile(null);
     setRosterExtras([]);
-  }, [form, mode, open, t, team]);
+  }, [createBackendChoice, form, mode, open, t, team]);
 
   useEffect(() => {
     if (!open) return;
@@ -380,6 +395,8 @@ export default function TeamDrawer({
       onClose={onClose}
       width={600}
       destroyOnHidden
+      className={styles.expertDrawer}
+      rootClassName={styles.expertDrawerRoot}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button className={styles.drawerCancelBtn} onClick={onClose}>
@@ -566,7 +583,7 @@ export default function TeamDrawer({
           className={styles.textAssistField}
         >
           <Input.TextArea
-            autoSize={{ minRows: 2, maxRows: 5 }}
+            rows={3}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>

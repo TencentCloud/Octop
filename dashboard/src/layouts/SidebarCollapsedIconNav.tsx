@@ -41,6 +41,7 @@ export default function SidebarCollapsedIconNav({
           >
             <button
               type="button"
+              data-nav-key={item.key}
               className={
                 active
                   ? `${styles.collapsedNavBtn} ${styles.collapsedNavBtnActive}`
