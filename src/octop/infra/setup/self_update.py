@@ -24,6 +24,7 @@ from typing import Any
 from octop.i18n import lookup, tr
 from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.child_output import decode_child_output
 from octop.infra.utils.locale import DEFAULT_LOCALE
 from octop.infra.utils.paths import PathLayout
 
@@ -37,6 +38,46 @@ _GREEN_PACKAGES_ENV = "OCTOP_GREEN_PACKAGES"
 _STASH_SUFFIX = ".octop-old"
 _PROBE_TIMEOUT_S = 8
 _PROBE_PREFIX = "__OCTOP_PROBE__"
+# Imported while the service is starting (harness, gateway) or required for the
+# runtime the reporter lost (memory). A metadata version check does not import
+# them, so a half-finished upgrade can still look installed.
+_CRITICAL_MODULES = ("octop_harness", "octop_memory", "octop_gateway")
+_CRITICAL_IMPORT_SCRIPT = """\
+import importlib
+import site
+import sys
+from pathlib import Path
+
+target = sys.argv[1]
+root = Path(target).resolve() if target else None
+if root is not None:
+    sys.path.insert(0, str(root))
+    site.addsitedir(str(root))
+missing = []
+for name in sys.argv[2].split(","):
+    if not name:
+        continue
+    try:
+        module = importlib.import_module(name)
+    except Exception:
+        missing.append(name)
+        continue
+    if root is None:
+        continue
+    origin = getattr(module, "__file__", None)
+    if not isinstance(origin, str):
+        missing.append(name)
+        continue
+    try:
+        inside = Path(origin).resolve().is_relative_to(root)
+    except OSError:
+        inside = False
+    if not inside:
+        missing.append(name)
+if missing:
+    sys.stdout.write(",".join(missing))
+    raise SystemExit(1)
+"""
 _INSTALL_TIMEOUT_S = 90
 _TARGET_INSTALL_TIMEOUT_S = 900
 
@@ -435,12 +476,91 @@ def get_editable_path() -> str | None:
     return None
 
 
+def _decode_version_stdout(data: bytes | None) -> str | None:
+    """Strict UTF-8 for a machine-parsed version. Invalid bytes fail closed."""
+    if not data:
+        return None
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    stripped = text.strip()
+    return stripped or None
+
+
+def _version_from_probe_stdout(stdout: bytes | None) -> str | None:
+    """Read the probe payload. Noise bytes are ignored; the payload stays strict."""
+    if not stdout:
+        return None
+    prefix = _PROBE_PREFIX.encode("ascii")
+    payloads: list[str] = []
+    for line in stdout.splitlines():
+        if not line.startswith(prefix):
+            continue
+        try:
+            payloads.append(line[len(prefix) :].decode("utf-8"))
+        except UnicodeDecodeError:
+            return None
+    if len(payloads) != 1:
+        return None
+    try:
+        loaded = json.loads(payloads[0])
+    except json.JSONDecodeError:
+        return None
+    if isinstance(loaded, str) and loaded:
+        return loaded
+    return None
+
+
+def _missing_critical_imports(python_exe: str, target: Path | None) -> str | None:
+    """Return missing module names, or None when a fresh interpreter can import them.
+
+    Managed upgrades use ``python_exe``'s own site-packages. Portable and FPK
+    upgrades must load the modules from ``target`` (the same directory
+    ``launch.py`` adds with ``site.addsitedir``). ``PYTHONPATH`` is dropped so
+    an ambient checkout cannot hide a broken target or venv. The probe captures
+    bytes; a decode error in a reader thread must not erase the exit status.
+    """
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    try:
+        result = subprocess.run(
+            [
+                python_exe,
+                "-B",
+                "-c",
+                _CRITICAL_IMPORT_SCRIPT,
+                "" if target is None else str(target),
+                ",".join(_CRITICAL_MODULES),
+            ],
+            capture_output=True,
+            check=False,
+            env=env,
+            timeout=_PROBE_TIMEOUT_S,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        logger.debug("critical import probe failed: %s", exc)
+        return "unknown"
+    if result.returncode == 0:
+        return None
+    logger.debug(
+        "critical import probe stderr: %s",
+        decode_child_output(result.stderr)[:500],
+    )
+    try:
+        text = (result.stdout or b"").decode("utf-8").strip()
+    except UnicodeDecodeError:
+        return "unknown"
+    if text and all(part.isidentifier() for part in text.split(",")):
+        return text
+    return "unknown"
+
+
 def has_pip(python_exe: str) -> bool:
     try:
         result = subprocess.run(
             [python_exe, "-m", "pip", "--version"],
             capture_output=True,
-            text=True,
             check=False,
         )
         return result.returncode == 0
@@ -599,11 +719,10 @@ def get_installed_version(python_exe: str) -> str | None:
                 f"from importlib.metadata import version; print(version({_PACKAGE_NAME!r}))",
             ],
             capture_output=True,
-            text=True,
             check=False,
         )
         if result.returncode == 0:
-            return result.stdout.strip() or None
+            return _decode_version_stdout(result.stdout)
     except Exception:
         pass
     return None
@@ -632,20 +751,11 @@ def get_version_in_dir(python_exe: str, target: str, *, check_cli: bool = False)
         result = subprocess.run(
             [python_exe, "-B", "-c", code, target, "1" if check_cli else "0"],
             capture_output=True,
-            text=True,
             check=False,
             timeout=_PROBE_TIMEOUT_S,
         )
         if result.returncode == 0:
-            payloads = [
-                line.removeprefix(_PROBE_PREFIX)
-                for line in result.stdout.splitlines()
-                if line.startswith(_PROBE_PREFIX)
-            ]
-            if len(payloads) != 1:
-                return None
-            loaded_version = json.loads(payloads[0])
-            return loaded_version if isinstance(loaded_version, str) and loaded_version else None
+            return _version_from_probe_stdout(result.stdout)
     except Exception:
         pass
     return None
@@ -861,14 +971,17 @@ def _run_install_cmd(
             cmd,
             check=False,
             capture_output=not verbose,
-            text=True,
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         return None, f"timed out after {int(timeout)}s"
     if result.returncode == 0:
         return 0, ""
-    snippet = (result.stderr or result.stdout or "")[:300]
+    if verbose:
+        return result.returncode, ""
+    # Diagnostic text only. The return code is already known, so a bad byte
+    # must not discard it. Structured probes do not use this decoder.
+    snippet = (decode_child_output(result.stderr) or decode_child_output(result.stdout))[:300]
     return result.returncode, snippet
 
 
@@ -1162,6 +1275,7 @@ def _verify_upgrade(
 ) -> UpgradeResult:
     target = target if target is not None else green_packages_dir()
     actual_ver: str | None = None
+    missing_imports: str | None = None
     for attempt in range(3):
         actual_ver = (
             get_version_in_dir(venv_python, str(target), check_cli=True)
@@ -1173,16 +1287,23 @@ def _verify_upgrade(
             and is_newer(actual_ver, local_ver)
             and (version is None or parse_version(actual_ver) == parse_version(version))
         ):
-            return UpgradeResult(
-                success=True,
-                message=tr("update.completed", locale, version=actual_ver),
-                installed_version=actual_ver,
-                mirror_errors=mirror_errors,
-            )
+            missing_imports = _missing_critical_imports(venv_python, target)
+            if missing_imports is None:
+                return UpgradeResult(
+                    success=True,
+                    message=tr("update.completed", locale, version=actual_ver),
+                    installed_version=actual_ver,
+                    mirror_errors=mirror_errors,
+                )
+        else:
+            missing_imports = None
         if attempt < 2:
             time.sleep(0.5)
 
-    if actual_ver is None:
+    if missing_imports is not None:
+        logger.warning("upgrade left critical imports missing: %s", missing_imports)
+        error = tr("update.dependencies_missing", locale, modules=missing_imports)
+    elif actual_ver is None:
         error = tr("update.version_unavailable", locale)
     elif version is not None and parse_version(actual_ver) != parse_version(version):
         error = tr("update.version_mismatch", locale, actual=actual_ver, expected=version)

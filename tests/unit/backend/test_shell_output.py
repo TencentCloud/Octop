@@ -26,7 +26,7 @@ def _after_utf8(data: bytes) -> str:
     GBK form, so that console code page wins and GBK is not reached. Locales
     that reject the bytes (UTF-8, and cp1252 for ``_GBK_ONLY``) fall through.
     """
-    encoding = locale.getpreferredencoding(False)
+    encoding = locale.getencoding()
     if encoding:
         try:
             return data.decode(encoding)
@@ -62,7 +62,7 @@ def test_decode_child_output_chain() -> None:
 
 def test_cp1252_locale_accepts_gbk_text_but_not_every_gbk_byte(monkeypatch) -> None:
     """GitHub Windows is cp1252: that code page swallows ``中文测试``'s GBK bytes."""
-    monkeypatch.setattr(locale, "getpreferredencoding", lambda _do_setlocale=False: "cp1252")
+    monkeypatch.setattr(locale, "getencoding", lambda: "cp1252")
     text = "中文测试".encode("gbk")
     assert decode_child_output(text) == text.decode("cp1252")
     assert decode_child_output(_GBK_ONLY) == "丂"
