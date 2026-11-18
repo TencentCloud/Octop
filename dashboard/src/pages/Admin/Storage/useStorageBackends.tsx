@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Cloud, type LucideIcon } from "lucide-react";
 import { getStorageLogo } from "../../../assets/storage";
 import { request } from "../../../api/request";
 
@@ -18,6 +19,28 @@ function storageBrandIcon(kind: string): ReactNode {
       draggable={false}
       style={{ width: 36, height: 36, borderRadius: 8, objectFit: "cover" }}
     />
+  );
+}
+
+/** Lucide glyph on a brand tile (ISC; no hand-drawn asset). */
+function storageLucideIcon(Icon: LucideIcon, background: string): ReactNode {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        background,
+        color: "#fff",
+        flexShrink: 0,
+      }}
+    >
+      <Icon size={20} strokeWidth={2} />
+    </span>
   );
 }
 
@@ -449,8 +472,8 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     kind: "webdav",
     nameKey: "storage.kindWebdav",
     descKey: "storage.descWebdav",
-    color: "#0f766e",
-    icon: storageBrandIcon("webdav"),
+    color: "#1677ff",
+    icon: storageLucideIcon(Cloud, "#1677ff"),
     fields: [
       {
         key: "endpoint",
