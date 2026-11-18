@@ -1,0 +1,90 @@
+.shell {
+  position: fixed;
+  inset: 0;
+  overflow: auto;
+  background: var(--fn-bg-layout);
+  color: var(--fn-text-primary);
+}
+
+.column {
+  box-sizing: border-box;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 28px 20px 72px;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.agent {
+  margin: 6px 0 0;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+}
+
+.badge {
+  flex: none;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--fn-border-primary);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+}
+
+.note {
+  margin: 0 0 16px;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.speaker {
+  margin: 0 0 4px 46px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.speakerUser {
+  margin-right: 46px;
+  margin-left: 0;
+  text-align: right;
+}
+
+.state {
+  margin-top: 48px;
+  text-align: center;
+  color: var(--fn-text-secondary);
+}
+
+.footer {
+  margin-top: 36px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}

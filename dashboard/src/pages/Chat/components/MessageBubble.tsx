@@ -113,6 +113,8 @@ interface MessageBubbleProps {
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  /** Public transcripts hide this. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function formatElapsedSeconds(durationMs: number | undefined): string | null {
@@ -593,6 +595,7 @@ function MessageBubble({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -1142,7 +1145,7 @@ function MessageBubble({
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
-                  {!isUser && !isStreaming && speechText && (
+                  {!isUser && !isStreaming && readAloud && speechText && (
                     <>
                       <CopyButton text={textContent} />
                       <button
