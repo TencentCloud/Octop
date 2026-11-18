@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from datetime import UTC, datetime
@@ -52,7 +53,7 @@ class RemoteBackupEngine:
             result = MirrorResult(status="remote_failed", reason="local archive missing")
             self._record(name, result)
             return result
-        digest = sha256_file(path)
+        digest = await asyncio.to_thread(sha256_file, path)
         result = await self._provider.put(path, name)
         result = MirrorResult(
             status=result.status,
@@ -82,7 +83,7 @@ class RemoteBackupEngine:
             entry = self._index.get(name)
             size = tmp.stat().st_size
             if entry and entry.sha256:
-                digest = sha256_file(tmp)
+                digest = await asyncio.to_thread(sha256_file, tmp)
                 if digest != entry.sha256:
                     raise OctopError(
                         ErrorCode.NETWORK_ERROR,
@@ -110,7 +111,8 @@ class RemoteBackupEngine:
             keep = 0
         objects = await self._provider.list()
         autos = [o for o in objects if is_auto_backup_filename(o.name)]
-        autos.sort(key=lambda o: o.modified_at or o.name, reverse=True)
+        # Prefer filename stamp (YYYYMMDDTHHMMSSZ) over WebDAV RFC1123 dates.
+        autos.sort(key=lambda o: o.name, reverse=True)
         to_delete = autos[keep:]
         deleted: list[str] = []
         for obj in to_delete:

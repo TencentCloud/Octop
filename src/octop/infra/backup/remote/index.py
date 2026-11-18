@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
-import json
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from octop.infra.backup.remote.types import MirrorStatus
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
 from octop.infra.utils.paths import PathLayout
 
 INDEX_FILENAME = ".remote-mirror.json"
@@ -56,15 +60,14 @@ class MirrorIndex:
         return cls(paths.backups_dir / INDEX_FILENAME)
 
     def _load(self) -> None:
-        if not self._path.is_file():
-            self._entries = {}
-            return
         try:
-            raw = json.loads(self._path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            self._entries = {}
-            return
-        if not isinstance(raw, dict):
+            raw = read_json_object(self._path)
+        except JsonFileCorruptError as exc:
+            raise OctopError(
+                ErrorCode.CONFIG_FILE_CORRUPT,
+                f"corrupt remote mirror index: {self._path.name}",
+            ) from exc
+        if raw is None:
             self._entries = {}
             return
         entries: dict[str, MirrorIndexEntry] = {}
@@ -77,19 +80,17 @@ class MirrorIndex:
         return self._entries.get(name)
 
     def set(self, name: str, entry: MirrorIndexEntry) -> None:
+        prior = self._entries.get(name)
+        if entry.sha256 is None and prior is not None and prior.sha256:
+            entry = MirrorIndexEntry(
+                status=entry.status,
+                checked_at=entry.checked_at,
+                detail=entry.detail,
+                sha256=prior.sha256,
+            )
         self._entries[name] = entry
         self._save()
 
     def _save(self) -> None:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {name: entry.to_dict() for name, entry in self._entries.items()}
-        data = json.dumps(payload, indent=2, sort_keys=True)
-        with tempfile.NamedTemporaryFile(
-            "w",
-            encoding="utf-8",
-            dir=str(self._path.parent),
-            delete=False,
-        ) as tmp:
-            tmp.write(data)
-            tmp_path = Path(tmp.name)
-        tmp_path.replace(self._path)
+        payload = {name: entry.to_dict() for name, entry in sorted(self._entries.items())}
+        write_json_atomic(self._path, payload)
