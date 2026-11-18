@@ -12,6 +12,8 @@ import {
   Pencil,
   Trash2,
   GitFork,
+  Link2,
+  Share2,
 } from "lucide-react";
 import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
@@ -33,6 +35,10 @@ interface ChatTitleBarProps {
     id: string,
     compact: boolean,
   ) => void | Promise<boolean | null | void>;
+  /** Owner-only. Opens the read-only share-link dialog. */
+  onShare?: () => void;
+  /** Owner-only, when the expert can be shared with other users. */
+  onContribute?: (contributed: boolean) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   isTeam?: boolean;
@@ -91,6 +97,8 @@ export default function ChatTitleBar({
   onPin,
   onFork,
   onDelete,
+  onShare,
+  onContribute,
   forkDisabled,
   forkDisabledHint,
   isTeam = false,
@@ -125,6 +133,9 @@ export default function ChatTitleBar({
     setIsEditing(false);
   }, [editValue, session.id, session.name, onRename, title]);
 
+  const owned = session.owned !== false;
+  const canShare = Boolean(onShare) && owned;
+  const canContribute = Boolean(onContribute) && owned;
   const menuItems: MenuProps["items"] = useMemo(
     () => [
       {
@@ -142,6 +153,28 @@ export default function ChatTitleBar({
         onClick: () => setCollapseThinking(!collapseThinking),
       },
       { type: "divider" },
+      ...(canShare
+        ? [
+            {
+              key: "share",
+              label: t("chat.publicShare.action", "分享链接"),
+              icon: <Link2 size={14} />,
+              onClick: () => onShare?.(),
+            },
+          ]
+        : []),
+      ...(canContribute
+        ? [
+            {
+              key: "contribute",
+              label: session.contributed
+                ? t("chat.uncontribute", "取消共享")
+                : t("chat.contribute", "共享会话"),
+              icon: <Share2 size={14} />,
+              onClick: () => onContribute?.(!session.contributed),
+            },
+          ]
+        : []),
       {
         key: "pin",
         label: session.pinned
@@ -157,6 +190,12 @@ export default function ChatTitleBar({
         disabled: forkDisabled,
         title: forkDisabled && forkDisabledHint ? forkDisabledHint : undefined,
         onClick: () => onFork(session.id),
+      },
+      {
+        key: "rename",
+        label: t("common.rename"),
+        icon: <Pencil size={14} />,
+        onClick: () => setIsEditing(true),
       },
       {
         key: "delete",
@@ -178,6 +217,11 @@ export default function ChatTitleBar({
       onPin,
       onFork,
       onDelete,
+      canShare,
+      onShare,
+      canContribute,
+      onContribute,
+      session.contributed,
       forkDisabled,
       forkDisabledHint,
       t,
