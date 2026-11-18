@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, App, Button, Empty, Form, Switch } from "antd";
 
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
 import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
-import { acpApi } from "../../../api/modules/acp";
+import { acpApi, type AcpHostStatus } from "../../../api/modules/acp";
 import {
   ACP_DEFAULT_STDIO_BUFFER_LIMIT_BYTES,
   type ACPRunnerConfig,
@@ -23,6 +24,29 @@ import channelStyles from "../Channels/index.module.less";
 import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
+
+function probeFailureText(t: TFunction, status: AcpHostStatus): string {
+  const statusText = t(`acp.host.status.${status.status}`, {
+    defaultValue: t("acp.host.status.degraded"),
+  });
+  const detail = status.detail?.trim() ?? "";
+  if (!detail || detail === statusText) {
+    return t("acp.saveNeedsInstall", { status: statusText });
+  }
+  return t("acp.saveNeedsInstallDetail", { status: statusText, detail });
+}
+
+async function runnerIsInstalled(
+  runnerKey: string,
+  runner: ACPRunnerConfig,
+): Promise<AcpHostStatus> {
+  return acpApi.probeHost({
+    runner: runnerKey,
+    command: runner.command.trim(),
+    args: runner.args,
+    env: runner.env,
+  });
+}
 
 interface ACPPanelProps {
   /** When set (Experts tools drawer), use this agent instead of the chat selection. */
@@ -189,6 +213,13 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
     }
     setToggleLoadingKey(runnerKey);
     try {
+      if (checked) {
+        const probe = await runnerIsInstalled(runnerKey, runner);
+        if (probe.status !== "ready" && probe.status !== "installed") {
+          message.error(probeFailureText(t, probe));
+          return;
+        }
+      }
       const nextRunners = {
         ...runners,
         [runnerKey]: { ...runner, enabled: checked },
@@ -231,13 +262,26 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
   const handleSubmit = async (values: Record<string, unknown>) => {
     const targetKey = String(values.runnerKey || activeKey || "").trim();
     if (!targetKey) return;
-    if ((isCreateMode || targetKey !== activeKey) && runners[targetKey]) {
+    const existing = runners[targetKey];
+    const renaming =
+      !isCreateMode && activeKey !== null && targetKey !== activeKey;
+    if ((isCreateMode || renaming) && existing?.enabled) {
       message.error(t("acp.runnerKeyExists"));
       return;
     }
+    const reenable = Boolean(
+      (isCreateMode || renaming) && existing && !existing.enabled,
+    );
     const runner = formValuesToRunner(values);
     setSaving(true);
     try {
+      if (runner.enabled) {
+        const probe = await runnerIsInstalled(targetKey, runner);
+        if (probe.status !== "ready" && probe.status !== "installed") {
+          message.error(probeFailureText(t, probe));
+          return;
+        }
+      }
       const nextRunners = { ...runners };
       if (!isCreateMode && activeKey && activeKey !== targetKey) {
         delete nextRunners[activeKey];
@@ -246,7 +290,11 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
       await persistRunners(nextRunners);
       setDrawerOpen(false);
       message.success(
-        isCreateMode ? t("acp.createSuccess") : t("acp.configSaved"),
+        reenable && runner.enabled
+          ? t("acp.runnerReenabled")
+          : isCreateMode
+          ? t("acp.createSuccess")
+          : t("acp.configSaved"),
       );
     } catch {
       message.error(t("acp.configFailed"));

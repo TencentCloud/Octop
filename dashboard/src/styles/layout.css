@@ -511,6 +511,13 @@ html[data-theme="dark"] .octop-ant-modal-header {
 }
 
 /* Form */
+.octop-form-item-extra,
+.ant-form-item-extra {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.5;
+}
+
 html[data-theme="dark"] .ant-form-item-label > label,
 html[data-theme="dark"] .octop-ant-form-item-label > label {
   color: var(--fn-text-secondary) !important;

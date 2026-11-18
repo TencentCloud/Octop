@@ -6,6 +6,8 @@ import { partitionPinnedTools } from "../../../plugins/toolRenderers/isPinnedToo
 import { useToolRendererVersion } from "../../../plugins/toolRenderers";
 import AssistantProcessSummary from "./AssistantProcessSummary";
 import { ToolDetailsInline } from "./MessageBubble";
+import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import { ExpertMessageAvatar } from "./MessageSender";
 import { useAgent } from "../../../context/AgentContext";
 import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
@@ -88,6 +90,8 @@ export function TurnProcessBlocks({
                 iconUrl={expert?.icon_url}
                 tooltip={avatarTooltip}
                 profileAgentId={avatarProfileId}
+                managedRunner={managedRunnerId(expert)}
+                {...incomingShareProps(expert)}
               />
             </div>
           ) : null}

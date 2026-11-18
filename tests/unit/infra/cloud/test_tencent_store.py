@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from octop.infra.cloud.tencent import (
@@ -67,6 +68,26 @@ def test_shared_store_adopts_local_file_without_overwriting(tmp_path: Path) -> N
 
     assert shared.clear(7) is True
     assert shared.load(7) is None
+
+
+def test_shared_store_seals_credential_and_reads_legacy_plaintext(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "x.db")
+    run_migrations(pool)
+    secrets = SecretRepo(pool)
+    root = tmp_path / "home"
+    shared = CloudCredentialStore(root, secrets)
+    shared.save(4, _credential("AKID-sealed"))
+    blob = secrets.get("cloud.cred.4")
+    assert blob is not None
+    assert b"secret-key-value" not in blob
+    loaded = shared.load(4)
+    assert loaded is not None
+    assert loaded.secret_id == "AKID-sealed"
+
+    secrets.put("cloud.cred.5", json.dumps(_credential("AKID-legacy").to_dict()).encode())
+    legacy = shared.load(5)
+    assert legacy is not None
+    assert legacy.secret_id == "AKID-legacy"
 
 
 def test_open_uses_files_unless_postgresql(tmp_path: Path) -> None:

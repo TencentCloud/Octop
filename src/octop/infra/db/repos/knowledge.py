@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
@@ -498,6 +499,93 @@ class KnowledgeRepo:
         return self._relocate_document(
             document, normalize_kb_path(f"{target_folder}/{path_basename(document.path)}")
         )
+
+    def list_subtree(self, document: KnowledgeDocumentRow) -> list[KnowledgeDocumentRow]:
+        """The document itself plus, for a folder, everything below it."""
+        if not document.is_dir:
+            return [document]
+        prefix = f"{document.path}/"
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM knowledge_documents WHERE kb_id = ? AND "
+                "(path = ? OR substr(path, 1, ?) = ?) ORDER BY is_dir DESC, path",
+                (document.kb_id, document.path, len(prefix), prefix),
+            ).fetchall()
+        return map_rows(rows, KnowledgeDocumentRow)
+
+    def move_to_base(
+        self,
+        document: KnowledgeDocumentRow,
+        *,
+        target_kb_id: str,
+        target_folder: str,
+        max_documents: int,
+        reindex_ids: Sequence[str] = (),
+    ) -> KnowledgeDocumentRow | None:
+        """Move a document (and a folder's subtree) into ``target_folder`` of another base.
+
+        Document counts move with the files. ``max_documents`` > 0 caps the target;
+        exceeding it raises ``ValueError`` and changes nothing. Files in
+        ``reindex_ids`` go back to ``pending`` for the target to index again.
+        """
+        subtree = self.list_subtree(document)
+        file_count = sum(1 for row in subtree if not row.is_dir)
+        new_path = normalize_kb_path(f"{target_folder}/{path_basename(document.path)}")
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            if file_count:
+                if max_documents > 0:
+                    cursor = conn.execute(
+                        "UPDATE knowledge_bases SET doc_count = doc_count + ?, updated_at = ? "
+                        "WHERE knowledge_base_id = ? AND doc_count + ? <= ?",
+                        (file_count, ts, target_kb_id, file_count, max_documents),
+                    )
+                    if cursor.rowcount != 1:
+                        raise ValueError(
+                            f"knowledge bases support at most {max_documents} documents"
+                        )
+                else:
+                    conn.execute(
+                        "UPDATE knowledge_bases SET doc_count = doc_count + ?, updated_at = ? "
+                        "WHERE knowledge_base_id = ?",
+                        (file_count, ts, target_kb_id),
+                    )
+                conn.execute(
+                    "UPDATE knowledge_bases SET doc_count = CASE "
+                    "WHEN doc_count > ? THEN doc_count - ? ELSE 0 END, "
+                    "updated_at = ? WHERE knowledge_base_id = ?",
+                    (file_count, file_count, ts, document.kb_id),
+                )
+            if document.is_dir:
+                prefix = f"{document.path}/"
+                conn.execute(
+                    "UPDATE knowledge_documents SET "
+                    "kb_id = ?, path = ? || substr(path, ?), updated_at = ? "
+                    "WHERE kb_id = ? AND substr(path, 1, ?) = ?",
+                    (
+                        target_kb_id,
+                        new_path,
+                        len(document.path) + 1,
+                        ts,
+                        document.kb_id,
+                        len(prefix),
+                        prefix,
+                    ),
+                )
+            conn.execute(
+                "UPDATE knowledge_documents SET "
+                "kb_id = ?, filename = ?, path = ?, updated_at = ? "
+                "WHERE document_id = ?",
+                (target_kb_id, path_basename(new_path), new_path, ts, document.id),
+            )
+            for doc_id in reindex_ids:
+                conn.execute(
+                    "UPDATE knowledge_documents SET "
+                    "status = 'pending', error_message = '', chunk_count = 0, updated_at = ? "
+                    "WHERE document_id = ?",
+                    (ts, doc_id),
+                )
+        return self.get_document(document.id)
 
     def _relocate_document(
         self, document: KnowledgeDocumentRow, new_path: str

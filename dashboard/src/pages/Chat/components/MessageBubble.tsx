@@ -40,10 +40,17 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
+  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
+import {
+  ConnectorAuthAction,
+  isConnectorAuthError,
+} from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
+import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
@@ -741,7 +748,9 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const isError = message.status === "error";
+  const isError =
+    message.status === "error" ||
+    (!isUser && !hasToolData && isChatStreamError(textContent));
   const errorSource = isError
     ? message.errorInfo?.message?.trim() || textContent
     : textContent;
@@ -749,6 +758,8 @@ function MessageBubble({
     ? formatChatStreamError(errorSource, t)
     : textContent;
   const errorAction = isError ? chatStreamErrorAction(errorSource) : null;
+  const connectorAuthError =
+    isError && isConnectorAuthError(message.errorInfo?.code, errorSource);
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -840,6 +851,8 @@ function MessageBubble({
       iconUrl={expert?.icon_url}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
+      managedRunner={managedRunnerId(expert)}
+      {...incomingShareProps(expert)}
     />
   ) : null;
 
@@ -969,8 +982,18 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {(errorAction || onRegenerate) && (
+                {(errorAction || onRegenerate || connectorAuthError) && (
                   <div className={styles.errorActionRow}>
+                    {connectorAuthError ? (
+                      <ConnectorAuthAction
+                        details={message.errorInfo?.details}
+                        onAuthorized={
+                          onRegenerate
+                            ? () => onRegenerate(message.id)
+                            : undefined
+                        }
+                      />
+                    ) : null}
                     {errorAction?.fix === "disable_stream_usage" &&
                     onDisableStreamUsage ? (
                       <button
