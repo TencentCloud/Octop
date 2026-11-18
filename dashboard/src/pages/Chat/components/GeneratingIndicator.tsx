@@ -4,6 +4,7 @@ import { useAgent } from "../../../context/AgentContext";
 import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import { ExpertMessageAvatar } from "./MessageSender";
 import styles from "../index.module.less";
 
@@ -62,6 +63,7 @@ function GeneratingAvatar({ agentId }: { agentId?: string | null }) {
         tooltip={avatarTooltip}
         profileAgentId={avatarProfileId}
         managedRunner={managedRunnerId(expert)}
+        {...incomingShareProps(expert)}
       />
     </div>
   );

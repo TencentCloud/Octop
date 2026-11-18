@@ -89,6 +89,137 @@ describe("ChatInputActionsRow plus menu", () => {
     );
 
     expect(screen.queryByTestId("context-window-ring")).not.toBeInTheDocument();
+    expect(screen.getByTestId("managed-approval-picker")).toBeInTheDocument();
+    expect(screen.queryByTestId("hitl-policy-picker")).not.toBeInTheDocument();
+  });
+
+  it("keeps approval when the managed agent has no unattended mode", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          sessionMode="build"
+          onSessionModeChange={() => undefined}
+          sessionModes={[
+            {
+              id: "build",
+              name_zh: "构建",
+              name_en: "Build",
+              hint_zh: "",
+              hint_en: "",
+            },
+            {
+              id: "plan",
+              name_zh: "规划",
+              name_en: "Plan",
+              hint_zh: "",
+              hint_en: "",
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("managed-approval-picker")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.conversationMode.picker"),
+    ).toBeInTheDocument();
+  });
+
+  it("hides approval when a session mode already skips it", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          sessionMode="default"
+          onSessionModeChange={() => undefined}
+          sessionModes={[
+            {
+              id: "default",
+              name_zh: "默认",
+              name_en: "Default",
+              hint_zh: "",
+              hint_en: "",
+            },
+            {
+              id: "bypassPermissions",
+              name_zh: "YOLO",
+              name_en: "YOLO",
+              hint_zh: "",
+              hint_en: "",
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByTestId("managed-approval-picker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps connector and knowledge pickers for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          availableConnectors={[
+            { mcp_server_name: "notes", label: "Notes", kind: "custom" },
+          ]}
+          selectedConnectors={[]}
+          onConnectorsChange={() => undefined}
+          availableKnowledgeBases={[
+            {
+              id: "kb1",
+              owner_user_id: 1,
+              name: "手册",
+              description: "",
+              default_open: false,
+              shared: false,
+              icon_name: "book",
+              embedding_model: "",
+              embedding_dim: 0,
+              doc_count: 0,
+              max_documents: 1,
+              created_at: 0,
+              updated_at: 0,
+            },
+          ]}
+          selectedKnowledgeBaseIds={[]}
+          onKnowledgeBaseIdsChange={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("connectors.chatPicker")).toBeInTheDocument();
+    expect(screen.getByLabelText("chat.knowledgePicker")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+  });
+
+  it("keeps the expert picker for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          availableExperts={[
+            {
+              agent_id: "other",
+              name: "分析师",
+              description: "",
+              avatar_url: null,
+              kind: "expert",
+            },
+          ]}
+          onInsertExpertMention={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("chat.expertPicker")).toBeInTheDocument();
   });
 
   it("folds shortcut, upload, and polish into the plus menu when the composer is narrow", async () => {

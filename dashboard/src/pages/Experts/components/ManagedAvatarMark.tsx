@@ -34,7 +34,7 @@ export function ManagedAvatarMark({
   if (!id) return children;
   const label = isBuiltinRunner(id) ? t(runnerLabelKey(id)) : id;
   return (
-    <span className={styles.avatarWithMark}>
+    <span className={styles.avatarWithMark} data-managed-avatar-mark="">
       {children}
       <Tooltip title={label} mouseEnterDelay={0.3}>
         <span className={styles.managedMark} aria-label={label}>

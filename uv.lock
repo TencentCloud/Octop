@@ -2589,7 +2589,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "1.0.3b6"
+version = "1.0.3b7"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2706,9 +2706,9 @@ requires-dist = [
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
-    { name = "octop-gateway", specifier = ">=1.0.3" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.10" },
-    { name = "octop-memory", specifier = ">=1.0.4" },
+    { name = "octop-gateway", specifier = ">=1.0.4" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.11" },
+    { name = "octop-memory", specifier = ">=1.0.5" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "pillow", specifier = ">=13.0.0" },
@@ -2778,7 +2778,7 @@ wheels = [
 
 [[package]]
 name = "octop-gateway"
-version = "1.0.3"
+version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2796,14 +2796,14 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/7f/cc6d7f7af425fbcc2d999b3a187288fd99a9220acca4bf33e27026a58769/octop_gateway-1.0.3.tar.gz", hash = "sha256:ff679fe583ad13a66b680eee88708a1a9602054f9ecd461577bf7d521572895a", size = 642266, upload-time = "2026-10-16T09:18:50.867Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/34/8bd52235aabd4cf6945ec5e1c20c0cd711efd8ed3ceeb9564e20a0cddcb6/octop_gateway-1.0.4.tar.gz", hash = "sha256:a4b33a71bcb85b0a20dc2d48a30a51b7f04f31cdacf09096f572fc4c756ee316", size = 665814, upload-time = "2026-11-17T13:01:34.912Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/2a/367c124660188fbd3a230057f28e33bdb09950a6684fc8c3cbd4215d494d/octop_gateway-1.0.3-py3-none-any.whl", hash = "sha256:66d4942cc26b9b1d8653b007540e928e40541185803c560853fc0acdfa444d1e", size = 178059, upload-time = "2026-10-16T09:18:49.638Z" },
+    { url = "https://files.pythonhosted.org/packages/07/b9/1a77418edb3c0f0f1af84431f5607eb732ae72c2306830aca75788c9a564/octop_gateway-1.0.4-py3-none-any.whl", hash = "sha256:9e5209080f6db477b5f79842d99775aa2af6bce49f33be0c972b9a183c37a12e", size = 188945, upload-time = "2026-11-17T13:01:33.794Z" },
 ]
 
 [[package]]
 name = "octop-harness"
-version = "1.0.10"
+version = "1.0.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2821,9 +2821,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/22/d7/cc7ada944e0c5dec954fd5cad5c18acec6067dc113610ea68dde081f8962/octop_harness-1.0.10.tar.gz", hash = "sha256:1dbd95a0ce5c0dd2b24828df7763db86a6acbb1b6cfd719acf6bc31f264fd12b", size = 1031842, upload-time = "2026-11-15T11:49:28.761Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/70/d84beb04aaee40833a9ff09ee5799f08d1a968767b5b86f02c3922a8e1d8/octop_harness-1.0.11.tar.gz", hash = "sha256:8e6cf38731247b57fce81339aeda2dbf2c88afe7962a9879aa4ccf4471f942ac", size = 1040612, upload-time = "2026-11-17T13:50:10.653Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7b/17/6945030f10986dae0d1638c337b7ab23095590502be61c2a9c3cd8bab5ae/octop_harness-1.0.10-py3-none-any.whl", hash = "sha256:6c01f0604a2ceb9a8607dbb517b1e1d07f9f2751dcef6c0517042d5e3e8d28c4", size = 1230546, upload-time = "2026-11-15T11:49:27.298Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/8a/f780abb74552b0da7b5052dd503f2b19daa69cb0ae1fd943b0993e12f644/octop_harness-1.0.11-py3-none-any.whl", hash = "sha256:2972e5a345943c97eebf00ebfef067606c1ea172f245d54bd464a6ba3f401362", size = 1239294, upload-time = "2026-11-17T13:50:08.993Z" },
 ]
 
 [package.optional-dependencies]
@@ -2848,11 +2848,11 @@ all = [
 
 [[package]]
 name = "octop-memory"
-version = "1.0.4"
+version = "1.0.5"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/83/34/84bd86a2b4042322d23badba90f9ce47f5f96900d046c83708d271570d2a/octop_memory-1.0.4.tar.gz", hash = "sha256:c7375ac29fecf222b76ca738a9547ce1f34743d32a81d3287de230d4e7c9a566", size = 628000, upload-time = "2026-11-10T10:38:26.693Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/64/b6/d9f3bd989aea1fd799ad026338d662c59f65aeaa8e687b94b3f6e50c1080/octop_memory-1.0.5.tar.gz", hash = "sha256:c406870d598cd38bc9424817b51c4d69832e36c89c83d1b8c80698eef57ca55f", size = 647402, upload-time = "2026-11-17T12:15:12.763Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6b/97/54a6a30f227e54464326769f53568761cb12b90a7f31cdda976befd590d9/octop_memory-1.0.4-py3-none-any.whl", hash = "sha256:73e54ec492990fb5556da82808f7c65e690e717f02e3f8d06ea90a9669e1a3dc", size = 389426, upload-time = "2026-11-10T10:38:25.241Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/26/c95a66fe2d925391102d0b17fc8353e265dffc5f587bcdd83c76305b6388/octop_memory-1.0.5-py3-none-any.whl", hash = "sha256:aa17fa4c2576cc2f9bef15f61f2a8e103233bc86fd479d2c50208b11e2fc1ca9", size = 405810, upload-time = "2026-11-17T12:15:11.121Z" },
 ]
 
 [[package]]

@@ -51,7 +51,11 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 
 
 @pytest.fixture
-def manager(tmp_path: Path) -> AgentManager:
+def manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentManager:
+    from octop_harness.plugins.registry import PluginRegistry
+
+    # Other test modules can leave tools in the process-wide plugin registry.
+    monkeypatch.setattr(PluginRegistry, "_instance", None)
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
     db = SqlitePool(paths.db)
@@ -1817,10 +1821,10 @@ def test_host_model_sdk_errors_keep_original_retry_budget(
 
 
 def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: AgentManager) -> None:
-    from langchain.agents.middleware import (
-        ModelRetryMiddleware,
-        ToolCallLimitMiddleware,
-        ToolRetryMiddleware,
+    from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
+
+    from octop.infra.agents.middleware.consecutive_tool_call import (
+        ConsecutiveToolCallMiddleware,
     )
 
     cfg = manager._build_harness_config(
@@ -1835,15 +1839,16 @@ def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: Age
             )
         )
     )
-    limit = next(item for item in cfg.middleware or [] if isinstance(item, ToolCallLimitMiddleware))
+    limit = next(
+        item for item in cfg.middleware or [] if isinstance(item, ConsecutiveToolCallMiddleware)
+    )
     tool_retry = next(
         item for item in cfg.middleware or [] if isinstance(item, ToolRetryMiddleware)
     )
     model_retry = next(
         item for item in cfg.middleware or [] if isinstance(item, ModelRetryMiddleware)
     )
-    assert limit.run_limit == 12
-    assert limit.thread_limit is None
+    assert limit.limit == 12
     assert tool_retry.max_retries == 1
     assert model_retry.max_retries == 4
     assert model_retry.initial_delay == 0.25
@@ -1861,7 +1866,7 @@ def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: Age
         )
     )
     assert not any(
-        isinstance(item, ToolCallLimitMiddleware | ToolRetryMiddleware | ModelRetryMiddleware)
+        isinstance(item, ConsecutiveToolCallMiddleware | ToolRetryMiddleware | ModelRetryMiddleware)
         for item in (disabled.middleware or [])
     )
     assert not disabled.model_retry_enabled

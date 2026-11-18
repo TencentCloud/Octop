@@ -50,7 +50,11 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
-import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  incomingShareProps,
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
 import {
   canManageExpert,
   canReadAgentRuntimeStatus,
@@ -311,28 +315,30 @@ export default function AgentExpertsTable({
       fixed: isMobile ? undefined : "left",
       render: (name: string, row) => (
         <div className={styles.tableNameCell}>
-          <ManagedAvatarMark
-            runner={
-              row.kind === "managed" &&
-              typeof row.config?.managed_runner === "string"
-                ? row.config.managed_runner
-                : null
-            }
-          >
-            <span
-              className={styles.tableIcon}
-              style={{
-                color: row.color || "#6366f1",
-                background: `${row.color || "#6366f1"}1a`,
-              }}
+          <SharedAvatarMark {...incomingShareProps(row)}>
+            <ManagedAvatarMark
+              runner={
+                row.kind === "managed" &&
+                typeof row.config?.managed_runner === "string"
+                  ? row.config.managed_runner
+                  : null
+              }
             >
-              <ExpertIcon
-                iconUrl={row.icon_url}
-                iconName={row.icon_name}
-                size={row.icon_url ? 28 : 16}
-              />
-            </span>
-          </ManagedAvatarMark>
+              <span
+                className={styles.tableIcon}
+                style={{
+                  color: row.color || "#6366f1",
+                  background: `${row.color || "#6366f1"}1a`,
+                }}
+              >
+                <ExpertIcon
+                  iconUrl={row.icon_url}
+                  iconName={row.icon_name}
+                  size={row.icon_url ? 28 : 16}
+                />
+              </span>
+            </ManagedAvatarMark>
+          </SharedAvatarMark>
           <span className={styles.tableNameText}>{name}</span>
           <SharedResourceBadge
             shared={row.is_shared}
@@ -440,16 +446,19 @@ export default function AgentExpertsTable({
       title: t("experts.table.persona", "人格"),
       dataIndex: "persona_mbti",
       width: 120,
-      render: (value: string | null, row) => (
-        <MbtiPersonaTag
-          value={value}
-          onClick={
-            canManageExpert(row, user)
-              ? () => openMbtiCatalog(row.agent_id)
-              : undefined
-          }
-        />
-      ),
+      render: (value: string | null, row) =>
+        row.kind === "managed" ? (
+          "—"
+        ) : (
+          <MbtiPersonaTag
+            value={value}
+            onClick={
+              canManageExpert(row, user)
+                ? () => openMbtiCatalog(row.agent_id)
+                : undefined
+            }
+          />
+        ),
     },
     {
       title: t("experts.table.actions", "操作"),
@@ -536,6 +545,7 @@ export default function AgentExpertsTable({
                 )}
                 <AgentMoreActions
                   buttonClassName={styles.tableActionBtn}
+                  managed={row.kind === "managed"}
                   onSkills={() => setSkillCatalogAgentId(row.agent_id)}
                   onSubagents={() => openSubagentCatalog(row.agent_id)}
                   onTools={() => setToolSettingsAgentId(row.agent_id)}
@@ -606,6 +616,10 @@ export default function AgentExpertsTable({
       />
       <ToolCatalogDrawer
         agentId={toolSettingsAgentId ?? ""}
+        managed={
+          agents.find((row) => row.agent_id === toolSettingsAgentId)?.kind ===
+          "managed"
+        }
         open={toolSettingsAgentId !== null}
         onClose={() => setToolSettingsAgentId(null)}
       />

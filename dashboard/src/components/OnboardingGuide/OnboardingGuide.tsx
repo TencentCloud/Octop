@@ -6,7 +6,7 @@ import {
   type CSSProperties,
   type ComponentType,
 } from "react";
-import { Button, Modal, Tour, type TourStepProps } from "antd";
+import { Button, Modal, Tour, theme, type TourStepProps } from "antd";
 import {
   ArrowLeft,
   ArrowRight,
@@ -60,6 +60,20 @@ function navTarget(step: OnboardingStep): HTMLElement | null {
 }
 
 /**
+ * Side placement for a step's card. antd shifts an overflowing card back
+ * into view flush with the window edge, so align it to the top or bottom of
+ * targets near those edges instead.
+ */
+function sidePlacement(step: OnboardingStep): TourStepProps["placement"] {
+  const rect = navTarget(step)?.getBoundingClientRect();
+  if (!rect) return "right";
+  const middle = rect.top + rect.height / 2;
+  if (middle < window.innerHeight / 3) return "rightTop";
+  if (middle > (window.innerHeight * 2) / 3) return "rightBottom";
+  return "right";
+}
+
+/**
  * Welcome guide: an intro card, a spotlight tour that opens each page and
  * highlights its sidebar entry, then a short wrap-up.
  *
@@ -73,10 +87,13 @@ export default function OnboardingGuide({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const { token } = theme.useToken();
   const user = useCurrentUser();
   const steps = useMemo(() => buildOnboardingSteps(user), [user]);
   const [phase, setPhase] = useState<Phase>("intro");
   const [current, setCurrent] = useState(0);
+  // True once the wrap-up modal has finished opening.
+  const [doneSettled, setDoneSettled] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -137,7 +154,7 @@ export default function OnboardingGuide({
     return {
       // Mobile keeps the nav in a closed drawer, so the card stays centered.
       target: isMobile ? null : () => navTarget(s) as HTMLElement,
-      placement: isMobile ? "center" : "right",
+      placement: isMobile ? "center" : sidePlacement(s),
       title: (
         <div key={`title-${i}`} className={styles.stepHead}>
           <span className={styles.stepIcon} aria-hidden>
@@ -176,6 +193,9 @@ export default function OnboardingGuide({
         width={isMobile ? "calc(100vw - 32px)" : 560}
         centered
         destroyOnHidden
+        // The tour mask appears at once; fading this one out over it would
+        // briefly double the dim.
+        maskTransitionName={phase === "tour" ? "" : undefined}
         className={styles.modal}
       >
         <div className={styles.intro}>
@@ -230,6 +250,9 @@ export default function OnboardingGuide({
         steps={tourSteps}
         rootClassName={styles.tour}
         disabledInteraction
+        // Same dim as the intro and wrap-up modals, so switching between them
+        // does not flicker (Tour's own mask is a fixed 50% black).
+        mask={{ color: token.colorBgMask }}
         gap={{ offset: 6, radius: 10 }}
         indicatorsRender={(cur, total) => (
           <div className={styles.tourProgress}>
@@ -279,6 +302,10 @@ export default function OnboardingGuide({
         width={isMobile ? "calc(100vw - 32px)" : 440}
         centered
         destroyOnHidden
+        // The tour mask goes at once; fading this one in would flash the
+        // page. Closing still fades.
+        maskTransitionName={doneSettled ? undefined : ""}
+        afterOpenChange={setDoneSettled}
         className={styles.modal}
       >
         <div className={styles.done}>
