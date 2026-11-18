@@ -34,6 +34,7 @@ import {
   backupApi,
   type AutoBackupSettings,
   type BackupFileItem,
+  type RemoteBackupSummary,
 } from "../../../api/modules/backup";
 import { useBackupOperation } from "../../../context/BackupOperationContext";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
@@ -43,6 +44,10 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
+import {
+  MirrorStatusTag,
+  RemoteBackupSection,
+} from "./RemoteBackupSection";
 import styles from "./index.module.less";
 
 const SCHEDULE_DAILY = "cron:0 4 * * *";
@@ -91,22 +96,28 @@ interface BackupFileCardProps {
   row: BackupFileItem;
   downloading: boolean;
   restoringThis: boolean;
+  mirroringThis: boolean;
+  showMirror: boolean;
   busy: boolean;
   timeZone: string;
   onDownload: (row: BackupFileItem) => void;
   onRestore: (row: BackupFileItem) => void;
   onDelete: (row: BackupFileItem) => void;
+  onMirror: (row: BackupFileItem) => void;
 }
 
 function BackupFileCard({
   row,
   downloading,
   restoringThis,
+  mirroringThis,
+  showMirror,
   busy,
   timeZone,
   onDownload,
   onRestore,
   onDelete,
+  onMirror,
 }: BackupFileCardProps) {
   const { t } = useTranslation();
 
@@ -125,6 +136,7 @@ function BackupFileCard({
           {t("backup.colModified")}:{" "}
           {formatServerIsoDateTime(row.modified_at, timeZone)}
         </span>
+        <MirrorStatusTag status={row.remote_status} />
       </div>
       <BackupContentsTags row={row} />
       <div className={styles.backupCardActions}>
@@ -137,6 +149,16 @@ function BackupFileCard({
         >
           {t("common.download")}
         </Button>
+        {showMirror ? (
+          <Button
+            size="small"
+            loading={mirroringThis}
+            disabled={busy}
+            onClick={() => void onMirror(row)}
+          >
+            {t("backup.remoteMirrorNow")}
+          </Button>
+        ) : null}
         <Button
           size="small"
           icon={<RotateCcw size={14} />}
@@ -213,6 +235,13 @@ export default function BackupRestorePanel() {
   const [autoScheduled, setAutoScheduled] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
+  const [remoteEnabled, setRemoteEnabled] = useState(false);
+  const [remoteBackendId, setRemoteBackendId] = useState<number | null>(null);
+  const [remoteSummary, setRemoteSummary] = useState<RemoteBackupSummary | null>(
+    null,
+  );
+  const [remoteToggling, setRemoteToggling] = useState(false);
+  const [mirroring, setMirroring] = useState<string | null>(null);
 
   const busy = opBusy || isRestarting || autoSaving;
   const backingUp = creating || autoRunning || kind === "export";
@@ -231,6 +260,9 @@ export default function BackupRestorePanel() {
     setAutoIncludeKnowledge(data.include_knowledge);
     setAutoIncludeChats(data.include_chats);
     setAutoScheduled(Boolean(data.scheduled));
+    setRemoteEnabled(Boolean(data.remote_enabled));
+    setRemoteBackendId(data.remote_backend_id ?? null);
+    setRemoteSummary(data.remote ?? null);
     setSchedulePreset(
       PRESET_SCHEDULES.has(data.schedule) ? data.schedule : "custom",
     );
@@ -320,6 +352,8 @@ export default function BackupRestorePanel() {
         include_plugins: autoIncludePlugins,
         include_knowledge: autoIncludeKnowledge,
         include_chats: autoIncludeChats,
+        remote_enabled: remoteEnabled,
+        remote_backend_id: remoteBackendId,
       });
       applyAutoSettings(data);
       message.success(t("backup.autoSaveSuccess"));
@@ -373,6 +407,49 @@ export default function BackupRestorePanel() {
     });
   };
 
+  const onToggleRemoteEnabled = async (next: boolean) => {
+    setRemoteToggling(true);
+    try {
+      const data = await backupApi.updateAutoSettings({
+        auto_enabled: autoEnabled,
+        schedule: autoSchedule.trim() || SCHEDULE_DAILY,
+        retention_count: autoRetention,
+        include_config: autoIncludeConfig,
+        include_workspaces: autoIncludeWorkspaces,
+        include_skill_packages: autoIncludeSkillPackages,
+        include_plugins: autoIncludePlugins,
+        include_knowledge: autoIncludeKnowledge,
+        include_chats: autoIncludeChats,
+        remote_enabled: next,
+        remote_backend_id: remoteBackendId,
+      });
+      applyAutoSettings(data);
+      message.success(
+        next ? t("backup.remoteEnabledOn") : t("backup.remoteEnabledOff"),
+      );
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("backup.remoteEnableFailed"), t));
+    } finally {
+      setRemoteToggling(false);
+    }
+  };
+
+  const onMirrorNow = async (row: BackupFileItem) => {
+    setMirroring(row.name);
+    try {
+      const result = await backupApi.mirrorRemote(row.name);
+      message.success(
+        t("backup.remoteMirrorOk", { status: result.remote_status }),
+      );
+      await refresh();
+      await refreshAuto();
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("backup.remoteMirrorFailed"), t));
+    } finally {
+      setMirroring(null);
+    }
+  };
+
   const columns: ColumnsType<BackupFileItem> = [
     {
       title: t("backup.colName"),
@@ -395,16 +472,17 @@ export default function BackupRestorePanel() {
       render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
     {
-      title: t("backup.colModified"),
-      dataIndex: "modified_at",
-      key: "modified_at",
-      width: 160,
-      render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
+      title: t("backup.colRemote"),
+      key: "remote_status",
+      width: 120,
+      render: (_: unknown, row: BackupFileItem) => (
+        <MirrorStatusTag status={row.remote_status} />
+      ),
     },
     {
       title: t("backup.colContents"),
       key: "contents",
-      width: 220,
+      width: 200,
       render: (_: unknown, row: BackupFileItem) => (
         <BackupContentsTags row={row} />
       ),
@@ -412,7 +490,7 @@ export default function BackupRestorePanel() {
     {
       title: t("backup.colActions"),
       key: "actions",
-      width: 225,
+      width: remoteEnabled ? 280 : 225,
       render: (_: unknown, row) => (
         <div className={styles.rowActions}>
           <Button
@@ -425,6 +503,17 @@ export default function BackupRestorePanel() {
           >
             {t("common.download")}
           </Button>
+          {remoteEnabled ? (
+            <Button
+              type="link"
+              size="small"
+              loading={mirroring === row.name}
+              disabled={busy}
+              onClick={() => void onMirrorNow(row)}
+            >
+              {t("backup.remoteMirrorNow")}
+            </Button>
+          ) : null}
           <Button
             type="link"
             size="small"
@@ -458,6 +547,20 @@ export default function BackupRestorePanel() {
 
   return (
     <>
+      <RemoteBackupSection
+        summary={remoteSummary}
+        busy={busy}
+        timeZone={serverTimezone}
+        onChanged={async () => {
+          await refreshAuto();
+          await refresh();
+        }}
+        onToggleEnabled={onToggleRemoteEnabled}
+        togglingEnabled={remoteToggling}
+      />
+
+      <Divider style={{ margin: "40px 0" }} />
+
       <TabPanelHeader
         icon={<Archive size={22} />}
         title={t("backup.storedTitle")}
@@ -550,6 +653,8 @@ export default function BackupRestorePanel() {
                     row={row}
                     downloading={downloading === row.name}
                     restoringThis={restoringThisName === row.name}
+                    mirroringThis={mirroring === row.name}
+                    showMirror={remoteEnabled}
                     busy={busy}
                     timeZone={serverTimezone}
                     onDownload={onDownload}
@@ -559,6 +664,7 @@ export default function BackupRestorePanel() {
                       setRestoreOpen(true);
                     }}
                     onDelete={onDelete}
+                    onMirror={onMirrorNow}
                   />
                 ))}
               </div>
