@@ -112,7 +112,7 @@ def _get_backend(server: Any, backend_id: int) -> Any:
     return server.services.storage_backend_repo.get(backend_id)
 
 
-def _assert_remote_backend_resolvable(server: Any, backup: Any) -> None:
+def _assert_remote_backend_resolvable(server: Any, backup: BackupConfig) -> None:
     """Reject enabling remote without a backup-capable storage backend."""
     if not backup.remote_enabled:
         return
@@ -593,7 +593,14 @@ async def put_remote_backup_target(
         )
     else:
         backend_id = existing.id
-        secret = body.password if body.password is not None else existing.secret_key
+        if body.password is not None:
+            secret = body.password
+        elif not username:
+            # Clearing username without a new password must not leave a
+            # dangling Basic-auth secret paired with an empty user.
+            secret = ""
+        else:
+            secret = existing.secret_key
         # Write username unconditionally so "" clears a prior access_key
         # (partial_updates skips None, which would leave the old value).
         repo.update(
