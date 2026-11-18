@@ -41,6 +41,10 @@ export interface RemoteBackupSummary {
   kind?: string | null;
   endpoint?: string | null;
   base_dir?: string | null;
+  username?: string | null;
+  has_password?: boolean;
+  verify_ssl?: boolean;
+  allow_insecure?: boolean;
   backend_name?: string | null;
   backend_enabled?: boolean;
   last_mirror?: RemoteMirrorSummary | null;

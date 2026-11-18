@@ -2333,7 +2333,6 @@
     "remoteEnabledOff": "已关闭远端备份",
     "remoteEnableNeedsTarget": "请先保存 WebDAV 目标，再启用远端备份。",
     "remoteEnableFailed": "更新远端备份开关失败",
-    "remoteConnectivity": "状态",
     "remoteLastMirror": "最近同步",
     "remoteUrl": "WebDAV URL",
     "remoteUrlRequired": "请输入 WebDAV URL",

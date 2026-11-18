@@ -36,18 +36,27 @@ function statusColor(
 
 export function MirrorStatusTag({
   status,
+  emptyKey = "backup.remoteStatusLocalOnly",
 }: {
   status: RemoteMirrorStatus | undefined;
+  /** i18n key when status is missing (local list vs remote-only list). */
+  emptyKey?: string;
 }) {
   const { t } = useTranslation();
   if (!status) {
-    return <Tag>{t("backup.remoteStatusLocalOnly")}</Tag>;
+    return <Tag>{t(emptyKey)}</Tag>;
   }
   return (
     <Tag color={statusColor(status)}>
       {t(`backup.remoteStatus.${status}`, { defaultValue: status })}
     </Tag>
   );
+}
+
+function formatRemoteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 interface RemoteBackupSectionProps {
@@ -84,11 +93,11 @@ export function RemoteBackupSection({
   const openEdit = () => {
     form.setFieldsValue({
       url: summary?.endpoint ?? "",
-      username: "",
+      username: summary?.username ?? "",
       password: undefined,
       base_dir: summary?.base_dir ?? "",
-      verify_ssl: true,
-      allow_insecure: false,
+      verify_ssl: summary?.verify_ssl !== false,
+      allow_insecure: Boolean(summary?.allow_insecure),
     });
     setEditOpen(true);
   };
@@ -97,10 +106,13 @@ export function RemoteBackupSection({
     setTesting(true);
     try {
       const values = await form.validateFields();
+      const passwordEntered =
+        typeof values.password === "string" && values.password.length > 0;
+      // Server merges a blank password with the linked backend secret.
       await backupApi.testRemote({
         url: values.url.trim(),
         username: values.username?.trim() ?? "",
-        password: values.password ?? "",
+        password: passwordEntered ? values.password : null,
         base_dir: values.base_dir?.trim() ?? "",
         verify_ssl: values.verify_ssl !== false,
         allow_insecure: Boolean(values.allow_insecure),
@@ -118,10 +130,13 @@ export function RemoteBackupSection({
     setSaving(true);
     try {
       const values = await form.validateFields();
+      const passwordEntered =
+        typeof values.password === "string" && values.password.length > 0;
       await backupApi.saveRemoteWebDav({
         url: values.url.trim(),
         username: values.username?.trim() ?? "",
-        password: values.password ?? null,
+        // null keeps the stored secret on the server.
+        password: passwordEntered ? values.password : null,
         base_dir: values.base_dir?.trim() ?? "",
         verify_ssl: values.verify_ssl !== false,
         allow_insecure: Boolean(values.allow_insecure),
@@ -313,7 +328,7 @@ export function RemoteBackupSection({
         width={640}
       >
         <Spin spinning={remoteLoading}>
-          {remoteItems.length === 0 ? (
+          {!remoteLoading && remoteItems.length === 0 ? (
             <p className={styles.autoHint}>{t("backup.remoteListEmpty")}</p>
           ) : (
             <ul className={styles.remoteList}>
@@ -322,13 +337,16 @@ export function RemoteBackupSection({
                   <div>
                     <div className={styles.backupCardName}>{item.name}</div>
                     <div className={styles.backupCardMeta}>
-                      <span>{item.size} B</span>
+                      <span>{formatRemoteSize(item.size)}</span>
                       {item.modified_at ? (
                         <span>
                           {formatServerIsoDateTime(item.modified_at, timeZone)}
                         </span>
                       ) : null}
-                      <MirrorStatusTag status={item.remote_status} />
+                      <MirrorStatusTag
+                        status={item.remote_status}
+                        emptyKey="backup.remoteStatusNone"
+                      />
                     </div>
                   </div>
                   <Button

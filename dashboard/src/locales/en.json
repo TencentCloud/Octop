@@ -2333,7 +2333,6 @@
     "remoteEnabledOff": "Remote backup disabled",
     "remoteEnableNeedsTarget": "Save a WebDAV target before enabling remote backup.",
     "remoteEnableFailed": "Failed to update remote backup setting",
-    "remoteConnectivity": "Status",
     "remoteLastMirror": "Last mirror",
     "remoteUrl": "WebDAV URL",
     "remoteUrlRequired": "Enter a WebDAV URL",

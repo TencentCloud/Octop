@@ -172,6 +172,10 @@ def remote_summary(
             "kind": (row.kind or "").lower() or None,
             "endpoint": redact_endpoint(row.endpoint),
             "base_dir": str(cfg.get("base_dir") or "") or None,
+            "username": row.access_key or "",
+            "has_password": bool(row.secret_key),
+            "verify_ssl": bool(cfg.get("verify_ssl", True)),
+            "allow_insecure": bool(cfg.get("allow_insecure", False)),
             "backend_name": row.name,
             "backend_enabled": bool(row.enabled),
         }

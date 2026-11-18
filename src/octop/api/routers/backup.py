@@ -593,17 +593,15 @@ async def put_remote_backup_target(
         )
     else:
         backend_id = existing.id
+        # Empty password means "keep stored secret". Empty username means
+        # clear only when the client explicitly sent a blank after a prior
+        # username (UI prefills the stored username).
         if body.password is not None:
             secret = body.password
         elif not username and (existing.access_key or ""):
-            # Clearing a previously set username without a new password must
-            # not leave a dangling Basic-auth secret. Password-only targets
-            # (empty username already) keep the stored secret.
             secret = ""
         else:
-            secret = existing.secret_key
-        # Write username unconditionally so "" clears a prior access_key
-        # (partial_updates skips None, which would leave the old value).
+            secret = existing.secret_key or ""
         repo.update(
             backend_id,
             kind="webdav",
@@ -629,11 +627,23 @@ async def test_remote_backup(
     """Probe draft WebDAV settings or the currently linked remote backend."""
     assert server.services is not None
     if body is not None:
+        config = load_config(server.paths.config)
+        stored = None
+        if config.backup.remote_backend_id is not None:
+            stored = _get_backend(server, config.backup.remote_backend_id)
+        # Blank draft password falls back to the linked backend secret so Edit →
+        # Test works without re-typing credentials.
+        password = body.password
+        if password is None or password == "":
+            password = (stored.secret_key if stored is not None else None) or ""
+        username = body.username
+        if not username and stored is not None and stored.access_key:
+            username = stored.access_key
         provider = get_provider(
             "webdav",
             url=body.url,
-            username=body.username,
-            password=body.password or "",
+            username=username,
+            password=password,
             base_dir=body.base_dir,
             verify_ssl=body.verify_ssl,
             allow_insecure=body.allow_insecure,

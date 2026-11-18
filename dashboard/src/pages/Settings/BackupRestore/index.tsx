@@ -243,7 +243,7 @@ export default function BackupRestorePanel() {
   const [remoteToggling, setRemoteToggling] = useState(false);
   const [mirroring, setMirroring] = useState<string | null>(null);
 
-  const busy = opBusy || isRestarting || autoSaving;
+  const busy = opBusy || isRestarting || autoSaving || mirroring !== null || remoteToggling;
   const backingUp = creating || autoRunning || kind === "export";
   const restoringThisName = restoring ? restoreTarget : null;
 
@@ -439,7 +439,11 @@ export default function BackupRestorePanel() {
     try {
       const result = await backupApi.mirrorRemote(row.name);
       message.success(
-        t("backup.remoteMirrorOk", { status: result.remote_status }),
+        t("backup.remoteMirrorOk", {
+          status: t(`backup.remoteStatus.${result.remote_status}`, {
+            defaultValue: result.remote_status,
+          }),
+        }),
       );
       await refresh();
       await refreshAuto();
@@ -468,13 +472,20 @@ export default function BackupRestorePanel() {
       title: t("backup.colCreated"),
       dataIndex: "created_at",
       key: "created_at",
-      width: 160,
+      width: 150,
+      render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
+    },
+    {
+      title: t("backup.colModified"),
+      dataIndex: "modified_at",
+      key: "modified_at",
+      width: 150,
       render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
     {
       title: t("backup.colRemote"),
       key: "remote_status",
-      width: 120,
+      width: 110,
       render: (_: unknown, row: BackupFileItem) => (
         <MirrorStatusTag status={row.remote_status} />
       ),
