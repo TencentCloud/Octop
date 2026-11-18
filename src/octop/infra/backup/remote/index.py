@@ -76,6 +76,16 @@ class MirrorIndex:
     def get(self, name: str) -> MirrorIndexEntry | None:
         return self._entries.get(name)
 
+    def items(self) -> list[tuple[str, MirrorIndexEntry]]:
+        return list(self._entries.items())
+
+    def latest(self) -> tuple[str, MirrorIndexEntry] | None:
+        latest: tuple[str, MirrorIndexEntry] | None = None
+        for name, entry in self._entries.items():
+            if latest is None or entry.checked_at > latest[1].checked_at:
+                latest = (name, entry)
+        return latest
+
     def set(self, name: str, entry: MirrorIndexEntry) -> None:
         prior = self._entries.get(name)
         if entry.sha256 is None and prior is not None and prior.sha256:

@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from octop.config import BackupConfig, OctopConfig, load_config, parse_optional_int
+from octop.infra.backup.remote.resolve import (
+    raise_remote_mirror_failed,
+    resolve_remote_engine,
+)
 from octop.infra.backup.store import (
     BackupFileInfo,
     is_auto_backup_filename,
@@ -205,8 +209,58 @@ def create_and_store_auto_backup(
     return entry, deleted
 
 
+async def _mirror_auto_backup(
+    server: OctopServer,
+    *,
+    entry: BackupFileInfo,
+    retention: int,
+) -> dict[str, Any]:
+    """Mirror an auto archive when remote is enabled; prune remote only on ``remote_ok``."""
+    config = load_config(server.paths.config)
+    assert server.services is not None
+    engine = resolve_remote_engine(
+        paths=server.paths,
+        backup=config.backup,
+        get_backend=server.services.storage_backend_repo.get,
+    )
+    if engine is None:
+        return {"remote_status": None}
+    local_path = server.paths.backups_dir / entry.name
+    result = await engine.mirror(local_path, entry.name)
+    remote_pruned: list[str] = []
+    if result.status == "remote_ok":
+        remote_pruned = await engine.prune_auto(keep=retention, newest_status=result.status)
+    else:
+        detail = result.reason or result.status
+        try:
+            server.services.audit_repo.write(
+                actor=ACTOR_SYSTEM,
+                action="backup.auto_failed",
+                target=entry.name,
+                payload=json.dumps(
+                    {
+                        "remote_status": result.status,
+                        "detail": detail[:400],
+                    }
+                ),
+            )
+        except Exception:
+            logger.exception("failed to write backup.auto_failed audit (remote)")
+        raise_remote_mirror_failed(detail)
+    return {
+        "remote_status": result.status,
+        "remote_reason": result.reason,
+        "remote_pruned": remote_pruned,
+    }
+
+
 async def run_auto_backup(server: OctopServer) -> BackupFileInfo | None:
-    """Run one automatic backup cycle. Returns ``None`` when skipped (busy/disabled)."""
+    """Run one automatic backup cycle. Returns ``None`` when skipped (busy/disabled).
+
+    When remote mirroring is enabled, overall success requires ``remote_ok``; a
+    failed/unverified mirror raises ``BACKUP_REMOTE_FAILED`` after the local
+    archive is written (and local prune has already run).
+    """
     if _lock.locked():
         logger.info("auto backup skipped: another backup is already running")
         return None
@@ -250,21 +304,46 @@ async def run_auto_backup(server: OctopServer) -> BackupFileInfo | None:
                 logger.exception("failed to write backup.auto_failed audit")
             return None
 
+        remote_meta: dict[str, Any] = {"remote_status": None}
+        try:
+            remote_meta = await _mirror_auto_backup(server, entry=entry, retention=retention)
+        except OctopError:
+            raise
+        except Exception as exc:
+            logger.exception("auto backup remote mirror failed")
+            try:
+                server.services.audit_repo.write(
+                    actor=ACTOR_SYSTEM,
+                    action="backup.auto_failed",
+                    target=entry.name,
+                    payload=str(exc)[:500],
+                )
+            except Exception:
+                logger.exception("failed to write backup.auto_failed audit (remote)")
+            raise_remote_mirror_failed(str(exc))
+
         try:
             server.services.audit_repo.write(
                 actor=ACTOR_SYSTEM,
                 action="backup.auto_ok",
                 target=entry.name,
-                payload=json.dumps({"size": entry.size, "pruned": deleted}),
+                payload=json.dumps(
+                    {
+                        "size": entry.size,
+                        "pruned": deleted,
+                        **{k: v for k, v in remote_meta.items() if v is not None},
+                    }
+                ),
             )
         except Exception:
             logger.exception("failed to write backup.auto_ok audit")
 
         logger.info(
-            "auto backup wrote %s (%d bytes); pruned %d",
+            "auto backup wrote %s (%d bytes); pruned %d; remote=%s",
             entry.name,
             entry.size,
             len(deleted),
+            remote_meta.get("remote_status"),
         )
         return entry
 

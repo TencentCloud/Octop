@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import get_server, require_permission
-from octop.config import DatabaseConfig, load_config
+from octop.config import BackupConfig, DatabaseConfig, load_config
 from octop.infra.backup.auto import (
     AUTO_BACKUP_JOB_ID,
     backup_config_from_payload,
@@ -25,9 +25,21 @@ from octop.infra.backup.auto import (
     run_auto_backup,
     update_server_backup_config,
 )
+from octop.infra.backup.remote.index import MirrorIndex
+from octop.infra.backup.remote.registry import get_provider
+from octop.infra.backup.remote.resolve import (
+    BACKUP_REMOTE_BACKEND_NAME,
+    provider_from_backend,
+    raise_remote_mirror_failed,
+    remote_summary,
+    resolve_remote_engine,
+    webdav_config_json,
+)
 from octop.infra.backup.store import (
     BackupFileInfo,
+    backup_file_info,
     delete_backup_file,
+    is_auto_backup_filename,
     list_backup_files,
     normalize_backup_filename,
     place_backup_file,
@@ -70,9 +82,48 @@ class CreateBackupBody(BaseModel):
     include_chats: bool = False
 
 
+class RemoteWebDavBody(BaseModel):
+    """Draft or save payload for the Backup-managed WebDAV target."""
+
+    url: str = Field(min_length=1)
+    username: str = ""
+    password: str | None = None
+    base_dir: str = ""
+    verify_ssl: bool = True
+    allow_insecure: bool = False
+
+
+class RemotePullBody(BaseModel):
+    filename: str = Field(min_length=1)
+
+
+class RemoteMirrorBody(BaseModel):
+    filename: str = Field(min_length=1)
+
+
 def _agent_rows(server: Any) -> list[Any]:
     assert server.app_runtime is not None
     return cast(list[Any], server.app_runtime.agent_registry.list_rows())
+
+
+def _get_backend(server: Any, backend_id: int) -> Any:
+    assert server.services is not None
+    return server.services.storage_backend_repo.get(backend_id)
+
+
+def _assert_remote_backend_resolvable(server: Any, backup: BackupConfig) -> None:
+    """Reject enabling remote without a backup-capable storage backend."""
+    if not backup.remote_enabled:
+        return
+    assert server.services is not None
+    row = server.services.storage_backend_repo.get(backup.remote_backend_id)
+    if row is None:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            f"remote_backend_id {backup.remote_backend_id} not found",
+        )
+    # Validates kind + enabled; stubs raise BACKUP_REMOTE_UNSUPPORTED on use.
+    provider_from_backend(row)
 
 
 def _auto_settings_payload(server: Any) -> dict[str, Any]:
@@ -82,7 +133,7 @@ def _auto_settings_payload(server: Any) -> dict[str, Any]:
     runtime = getattr(server, "app_runtime", None)
     if runtime is not None and runtime.cron_manager is not None:
         scheduled = runtime.cron_manager.has_system_job(AUTO_BACKUP_JOB_ID)
-    return {
+    payload: dict[str, Any] = {
         "auto_enabled": backup.auto_enabled,
         "schedule": backup.schedule,
         "retention_count": backup.retention_count,
@@ -95,6 +146,46 @@ def _auto_settings_payload(server: Any) -> dict[str, Any]:
         "remote_enabled": backup.remote_enabled,
         "remote_backend_id": backup.remote_backend_id,
         "scheduled": scheduled,
+    }
+    if server.services is not None:
+        payload["remote"] = remote_summary(
+            paths=server.paths,
+            backup=backup,
+            get_backend=server.services.storage_backend_repo.get,
+        )
+    return payload
+
+
+async def _mirror_if_enabled(
+    server: Any,
+    *,
+    entry: BackupFileInfo,
+    prune_remote: bool,
+) -> dict[str, Any]:
+    """Mirror ``entry`` when remote is enabled; fail closed unless ``remote_ok``."""
+    config = load_config(server.paths.config)
+    assert server.services is not None
+    engine = resolve_remote_engine(
+        paths=server.paths,
+        backup=config.backup,
+        get_backend=server.services.storage_backend_repo.get,
+    )
+    if engine is None:
+        return {"remote_status": None}
+    local_path = server.paths.backups_dir / entry.name
+    result = await engine.mirror(local_path, entry.name)
+    remote_pruned: list[str] = []
+    if result.status == "remote_ok" and prune_remote:
+        remote_pruned = await engine.prune_auto(
+            keep=config.backup.retention_count,
+            newest_status=result.status,
+        )
+    elif result.status != "remote_ok":
+        raise_remote_mirror_failed(result.reason or result.status)
+    return {
+        "remote_status": result.status,
+        "remote_reason": result.reason,
+        "remote_pruned": remote_pruned,
     }
 
 
@@ -223,11 +314,25 @@ async def list_backups(
     """List ``.tar.gz`` files in ``~/.octop/backups/``.
 
     Disk/manifest peek runs in a worker thread so the event loop stays free.
+    When a remote mirror index exists, each item may include ``remote_status``.
     """
     files = await asyncio.to_thread(list_backup_files, server.paths)
+    index = MirrorIndex.for_paths(server.paths)
+    items: list[dict[str, Any]] = []
+    for entry in files:
+        payload: dict[str, Any] = dict(entry.to_dict())
+        mirror = index.get(entry.name)
+        if mirror is not None:
+            payload["remote_status"] = mirror.status
+            payload["remote_checked_at"] = mirror.checked_at
+            if mirror.detail:
+                payload["remote_detail"] = mirror.detail
+        else:
+            payload["remote_status"] = None
+        items.append(payload)
     return {
         "dir": str(server.paths.backups_dir),
-        "items": [f.to_dict() for f in files],
+        "items": items,
     }
 
 
@@ -256,6 +361,7 @@ async def put_auto_backup_settings(
 ) -> dict[str, Any]:
     """Persist auto-backup settings and reschedule the in-process system job."""
     backup = backup_config_from_payload(body.model_dump())
+    _assert_remote_backend_resolvable(server, backup)
     update_server_backup_config(server, backup)
     return {"ok": True, **_auto_settings_payload(server)}
 
@@ -273,7 +379,11 @@ async def run_auto_backup_now(
             ErrorCode.BACKUP_IN_PROGRESS,
             "auto backup skipped (busy or runtime not ready)",
         )
-    return {"ok": True, "item": entry.to_dict()}
+    item = dict(entry.to_dict())
+    mirror = MirrorIndex.for_paths(server.paths).get(entry.name)
+    if mirror is not None:
+        item["remote_status"] = mirror.status
+    return {"ok": True, "item": item}
 
 
 @router.post("/backup/create", summary="Create backup and save to backups dir")
@@ -282,7 +392,10 @@ async def create_backup(
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Create a selected-content backup and persist it under ``backups_dir``."""
+    """Create a selected-content backup and persist it under ``backups_dir``.
+
+    When remote mirroring is enabled, overall success requires ``remote_ok``.
+    """
     assert server.services is not None
     options = body or CreateBackupBody()
     _raise_if_backup_busy()
@@ -295,7 +408,11 @@ async def create_backup(
             db_config=server.services.config.database,
             options=options,
         )
-    return {"ok": True, "item": entry.to_dict()}
+        remote_meta = await _mirror_if_enabled(server, entry=entry, prune_remote=False)
+    item = dict(entry.to_dict())
+    if remote_meta.get("remote_status") is not None:
+        item["remote_status"] = remote_meta["remote_status"]
+    return {"ok": True, "item": item, **{k: v for k, v in remote_meta.items() if v is not None}}
 
 
 @router.get(
@@ -435,3 +552,222 @@ async def import_backup(
     safe = normalize_backup_filename(name)
     entry = await asyncio.to_thread(write_backup_file, server.paths, safe, raw)
     return {"ok": True, "item": entry.to_dict()}
+
+
+@router.put("/backup/remote", summary="Save Backup-managed WebDAV remote target")
+async def put_remote_backup_target(
+    body: RemoteWebDavBody,
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Create or update the dedicated WebDAV ``storage_backends`` row and link it.
+
+    Saving credentials does **not** enable remote mirroring; set
+    ``remote_enabled`` via ``PUT /backup/auto`` separately.
+    """
+    assert server.services is not None
+    # Validate draft settings before writing secrets.
+    get_provider(
+        "webdav",
+        url=body.url,
+        username=body.username,
+        password=body.password or "",
+        base_dir=body.base_dir,
+        verify_ssl=body.verify_ssl,
+        allow_insecure=body.allow_insecure,
+    )
+    repo = server.services.storage_backend_repo
+    existing = repo.get_by_name(BACKUP_REMOTE_BACKEND_NAME)
+    config_json = webdav_config_json(
+        base_dir=body.base_dir,
+        verify_ssl=body.verify_ssl,
+        allow_insecure=body.allow_insecure,
+    )
+    if existing is None:
+        backend_id = repo.create(
+            name=BACKUP_REMOTE_BACKEND_NAME,
+            kind="webdav",
+            endpoint=body.url.strip(),
+            access_key=body.username or None,
+            secret_key=body.password if body.password is not None else None,
+            config_json=config_json,
+            note="Managed by Backup → Remote",
+        )
+    else:
+        backend_id = existing.id
+        secret = body.password if body.password is not None else existing.secret_key
+        repo.update(
+            backend_id,
+            kind="webdav",
+            endpoint=body.url.strip(),
+            access_key=body.username or None,
+            secret_key=secret,
+            config_json=config_json,
+            enabled=True,
+            note="Managed by Backup → Remote",
+        )
+    config = load_config(server.paths.config)
+    backup = BackupConfig(
+        auto_enabled=config.backup.auto_enabled,
+        schedule=config.backup.schedule,
+        retention_count=config.backup.retention_count,
+        include_config=config.backup.include_config,
+        include_workspaces=config.backup.include_workspaces,
+        include_skill_packages=config.backup.include_skill_packages,
+        include_plugins=config.backup.include_plugins,
+        include_knowledge=config.backup.include_knowledge,
+        include_chats=config.backup.include_chats,
+        remote_enabled=config.backup.remote_enabled,
+        remote_backend_id=backend_id,
+    )
+    update_server_backup_config(server, backup)
+    return {"ok": True, **_auto_settings_payload(server)}
+
+
+@router.post("/backup/remote/test", summary="Test remote backup connectivity")
+async def test_remote_backup(
+    body: RemoteWebDavBody | None = None,
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Probe draft WebDAV settings or the currently linked remote backend."""
+    assert server.services is not None
+    if body is not None:
+        provider = get_provider(
+            "webdav",
+            url=body.url,
+            username=body.username,
+            password=body.password or "",
+            base_dir=body.base_dir,
+            verify_ssl=body.verify_ssl,
+            allow_insecure=body.allow_insecure,
+        )
+    else:
+        config = load_config(server.paths.config)
+        backend_id = config.backup.remote_backend_id
+        if backend_id is None:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "no remote backup backend configured; pass draft WebDAV settings",
+            )
+        row = _get_backend(server, backend_id)
+        if row is None:
+            raise OctopError(
+                ErrorCode.BACKUP_REMOTE_FAILED,
+                f"remote backup backend id {backend_id} not found",
+                details={"detail": f"backend {backend_id} not found"},
+            )
+        provider = provider_from_backend(row)
+    await provider.test()
+    return {"ok": True}
+
+
+@router.get("/backup/remote/list", summary="List remote backup archives")
+async def list_remote_backups(
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """List archives on the configured remote target (requires a linked backend)."""
+    assert server.services is not None
+    config = load_config(server.paths.config)
+    backend_id = config.backup.remote_backend_id
+    if backend_id is None:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "no remote backup backend configured")
+    row = _get_backend(server, backend_id)
+    if row is None:
+        raise OctopError(
+            ErrorCode.BACKUP_REMOTE_FAILED,
+            f"remote backup backend id {backend_id} not found",
+            details={"detail": f"backend {backend_id} not found"},
+        )
+    engine = resolve_remote_engine(
+        paths=server.paths,
+        # list/pull do not require remote_enabled; only a resolvable backend.
+        backup=BackupConfig(
+            remote_enabled=True,
+            remote_backend_id=backend_id,
+        ),
+        get_backend=server.services.storage_backend_repo.get,
+    )
+    assert engine is not None
+    objects = await engine.list_remote()
+    index = MirrorIndex.for_paths(server.paths)
+    items: list[dict[str, Any]] = []
+    for obj in objects:
+        payload: dict[str, Any] = {
+            "name": obj.name,
+            "size": obj.size,
+            "modified_at": obj.modified_at,
+        }
+        mirror = index.get(obj.name)
+        if mirror is not None:
+            payload["remote_status"] = mirror.status
+            payload["remote_checked_at"] = mirror.checked_at
+        items.append(payload)
+    return {"items": items}
+
+
+@router.post("/backup/remote/pull", summary="Pull a remote archive into backups dir")
+async def pull_remote_backup(
+    body: RemotePullBody,
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Download one remote archive into ``backups_dir`` (no overwrite)."""
+    assert server.services is not None
+    _raise_if_backup_busy()
+    safe = normalize_backup_filename(body.filename)
+    config = load_config(server.paths.config)
+    backend_id = config.backup.remote_backend_id
+    if backend_id is None:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "no remote backup backend configured")
+    async with hold_backup_lock("create"):
+        engine = resolve_remote_engine(
+            paths=server.paths,
+            backup=BackupConfig(remote_enabled=True, remote_backend_id=backend_id),
+            get_backend=server.services.storage_backend_repo.get,
+        )
+        assert engine is not None
+        dest = await engine.pull(safe)
+    entry = await asyncio.to_thread(backup_file_info, dest)
+    return {"ok": True, "item": entry.to_dict()}
+
+
+@router.post("/backup/remote/mirror", summary="Mirror a local archive to remote now")
+async def mirror_remote_backup(
+    body: RemoteMirrorBody,
+    _: Any = Depends(require_permission("backup")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Re-upload an existing local archive; overall success requires ``remote_ok``."""
+    assert server.services is not None
+    _raise_if_backup_busy()
+    safe = normalize_backup_filename(body.filename)
+    path = await asyncio.to_thread(resolve_backup_path, server.paths, safe)
+    config = load_config(server.paths.config)
+    if not config.backup.remote_enabled:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "remote backup is not enabled")
+    async with hold_backup_lock("create"):
+        engine = resolve_remote_engine(
+            paths=server.paths,
+            backup=config.backup,
+            get_backend=server.services.storage_backend_repo.get,
+        )
+        assert engine is not None
+        result = await engine.mirror(path, safe)
+        remote_pruned: list[str] = []
+        if result.status == "remote_ok":
+            if is_auto_backup_filename(safe):
+                remote_pruned = await engine.prune_auto(
+                    keep=config.backup.retention_count,
+                    newest_status=result.status,
+                )
+        else:
+            raise_remote_mirror_failed(result.reason or result.status)
+    return {
+        "ok": True,
+        "name": safe,
+        "remote_status": result.status,
+        "remote_reason": result.reason,
+        "remote_pruned": remote_pruned,
+    }

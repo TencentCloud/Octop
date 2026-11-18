@@ -9,6 +9,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
@@ -203,9 +204,10 @@ class WebDavBackupProvider:
     async def _put_bytes(self, client: httpx.AsyncClient, url: str, local_path: Path) -> int:
         size = local_path.stat().st_size
 
-        async def _body():
-            def _read_chunk(handle: object, n: int) -> bytes:
-                return handle.read(n)  # type: ignore[attr-defined]
+        async def _body() -> Any:
+            def _read_chunk(handle: Any, n: int) -> bytes:
+                data = handle.read(n)
+                return bytes(data) if data else b""
 
             with local_path.open("rb") as handle:
                 while True:
