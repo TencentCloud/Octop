@@ -147,6 +147,44 @@ _CATALOG: dict[str, tuple[AcpSessionMode, ...]] = {
             "Turns the sandbox off. This is the YOLO mode.",
         ),
     ),
+    # Ids advertised by ``qwen --acp`` session/new.
+    "qwen_code": (
+        _mode(
+            "plan",
+            "规划",
+            "Plan",
+            "只分析，不改文件、不执行命令。",
+            "Analyze only. No file edits or commands.",
+        ),
+        _mode(
+            "default",
+            "默认",
+            "Default",
+            "改文件和运行命令需要确认。",
+            "Asks before file edits and shell commands.",
+        ),
+        _mode(
+            "auto-edit",
+            "自动编辑",
+            "Auto edit",
+            "自动批准文件修改。",
+            "Automatically approves file edits.",
+        ),
+        _mode(
+            "auto",
+            "自动",
+            "Auto",
+            "安全操作自动通过，有风险的仍会询问。",
+            "Approves safe actions automatically. Risky ones still ask.",
+        ),
+        _mode(
+            "yolo",
+            "YOLO",
+            "YOLO",
+            "跳过全部审批。",
+            "Skips all approval prompts.",
+        ),
+    ),
 }
 
 

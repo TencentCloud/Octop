@@ -20,6 +20,17 @@ def test_opencode_modes_are_its_primary_agents() -> None:
     assert session_modes("cursor_cli") == []
 
 
+def test_qwen_code_modes_match_advertised_ids() -> None:
+    assert [mode.id for mode in session_modes("qwen_code")] == [
+        "plan",
+        "default",
+        "auto-edit",
+        "auto",
+        "yolo",
+    ]
+    assert yolo_session_mode_id("qwen_code") == "yolo"
+
+
 def test_explicit_plan_beats_a_yolo_expert_default() -> None:
     config = {
         "managed_runner": "codebuddy",

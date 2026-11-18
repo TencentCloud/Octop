@@ -191,6 +191,28 @@ _CATALOG: dict[str, _RunnerSpec] = {
             ),
         },
     ),
+    "qwen_code": _RunnerSpec(
+        command="qwen",
+        args=("--acp",),
+        requires=(),
+        docs_url="https://github.com/QwenLM/qwen-code",
+        label_zh="Qwen Code",
+        label_en="Qwen Code",
+        scripts={
+            "linux": _posix(
+                "npm install -g @qwen-code/qwen-code@latest\n"
+                "# Requires Node.js 20+. Install Node.js if npm is not on PATH."
+            ),
+            "darwin": _posix(
+                "npm install -g @qwen-code/qwen-code@latest\n"
+                "# Requires Node.js 20+. Install Node.js if npm is not on PATH."
+            ),
+            "win32": _win(
+                "npm install -g @qwen-code/qwen-code@latest\n"
+                "# Requires Node.js 20+. Install Node.js if npm is not on PATH."
+            ),
+        },
+    ),
 }
 
 
