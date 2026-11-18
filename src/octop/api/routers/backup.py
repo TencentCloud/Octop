@@ -596,14 +596,16 @@ async def put_remote_backup_target(
         backend_id = existing.id
         same_endpoint = (existing.endpoint or "").rstrip("/") == endpoint.rstrip("/")
         # Empty password means "keep stored secret" only for the same endpoint.
-        # Changing the URL without a new password must not re-bind the old secret.
+        # Changing the URL without a new password must not re-bind a stored secret.
         if body.password is not None:
             secret = body.password
-        elif not same_endpoint:
+        elif not same_endpoint and (existing.secret_key or ""):
             raise OctopError(
                 ErrorCode.SLASH_BAD_ARGS,
                 "password is required when changing the WebDAV URL",
             )
+        elif not same_endpoint:
+            secret = ""
         elif not username and (existing.access_key or ""):
             secret = ""
         else:

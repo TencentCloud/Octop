@@ -90,10 +90,20 @@ export function RemoteBackupSection({
 
   const configured = Boolean(summary?.remote_backend_id && summary.endpoint);
   const enabled = Boolean(summary?.remote_enabled);
+  const normalizeEndpoint = (value: string) => value.trim().replace(/\/+$/, "");
   const sameEndpoint =
-    (watchedUrl || "").trim().replace(/\/$/, "") ===
-    (summary?.endpoint || "").trim().replace(/\/$/, "");
+    normalizeEndpoint(watchedUrl || "") ===
+    normalizeEndpoint(summary?.endpoint || "");
   const keepPasswordHint = Boolean(summary?.has_password && sameEndpoint);
+  const passwordRequiredOnUrlChange = Boolean(
+    summary?.has_password && !sameEndpoint,
+  );
+  let passwordExtra: string | undefined;
+  if (keepPasswordHint) {
+    passwordExtra = t("backup.remotePasswordHint");
+  } else if (passwordRequiredOnUrlChange) {
+    passwordExtra = t("backup.remotePasswordRequiredOnUrlChange");
+  }
 
   const openEdit = () => {
     form.setFieldsValue({
@@ -297,15 +307,9 @@ export function RemoteBackupSection({
           <Form.Item
             name="password"
             label={t("backup.remotePassword")}
-            extra={
-              keepPasswordHint
-                ? t("backup.remotePasswordHint")
-                : summary?.has_password && !sameEndpoint
-                  ? t("backup.remotePasswordRequiredOnUrlChange")
-                  : undefined
-            }
+            extra={passwordExtra}
             rules={
-              summary?.has_password && !sameEndpoint
+              passwordRequiredOnUrlChange
                 ? [
                     {
                       required: true,
