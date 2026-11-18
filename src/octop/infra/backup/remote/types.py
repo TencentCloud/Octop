@@ -8,8 +8,8 @@ from typing import Literal, Protocol
 
 MirrorStatus = Literal["remote_ok", "unverified", "remote_failed"]
 
-# Registered now (stubs). ``webdav`` is added when its provider module registers.
-BACKUP_REMOTE_KINDS = frozenset({"s3", "dropbox"})
+# Kinds the remote backup engine knows about (stubs + WebDAV).
+BACKUP_REMOTE_KINDS = frozenset({"webdav", "s3", "dropbox"})
 
 
 @dataclass(frozen=True)

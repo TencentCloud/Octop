@@ -21,7 +21,7 @@ async def test_s3_and_dropbox_stubs_raise_not_implemented() -> None:
 
 def test_unknown_kind_raises() -> None:
     with pytest.raises(OctopError) as exc_info:
-        get_provider("webdav")
+        get_provider("not-a-real-provider")
     assert exc_info.value.code == ErrorCode.BACKUP_REMOTE_UNSUPPORTED
     assert "unsupported" in str(exc_info.value).lower()
 
@@ -43,12 +43,11 @@ def test_register_provider_overrides_factory() -> None:
         async def delete(self, remote_name) -> None:  # type: ignore[no-untyped-def]
             return None
 
-    register_provider("webdav", lambda **_kwargs: _Fake())
+    register_provider("webdav-test-override", lambda **_kwargs: _Fake())
     try:
-        provider = get_provider("webdav")
+        provider = get_provider("webdav-test-override")
         assert isinstance(provider, _Fake)
     finally:
-        # Leave webdav unregistered for later tasks that expect a real provider.
         from octop.infra.backup.remote import registry as reg
 
-        reg._REGISTRY.pop("webdav", None)
+        reg._REGISTRY.pop("webdav-test-override", None)
