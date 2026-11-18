@@ -177,4 +177,3 @@ async def test_create_backup_mirrors_when_enabled(
     assert result["ok"] is True
     assert result["item"]["remote_status"] == "remote_ok"
     mirror.assert_awaited_once()
-    assert mirror.await_args.kwargs["prune_remote"] is False

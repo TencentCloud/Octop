@@ -76,9 +76,6 @@ class MirrorIndex:
     def get(self, name: str) -> MirrorIndexEntry | None:
         return self._entries.get(name)
 
-    def items(self) -> list[tuple[str, MirrorIndexEntry]]:
-        return list(self._entries.items())
-
     def latest(self) -> tuple[str, MirrorIndexEntry] | None:
         latest: tuple[str, MirrorIndexEntry] | None = None
         for name, entry in self._entries.items():

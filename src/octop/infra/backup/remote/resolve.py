@@ -97,12 +97,14 @@ def require_remote_backend(
         raise OctopError(
             ErrorCode.BACKUP_REMOTE_FAILED,
             "remote backup is enabled but remote_backend_id is not set",
+            details={"detail": "remote_backend_id is not set"},
         )
     row = get_backend(backend_id)
     if row is None:
         raise OctopError(
             ErrorCode.BACKUP_REMOTE_FAILED,
             f"remote backup backend id {backend_id} not found",
+            details={"detail": f"backend id {backend_id} not found"},
         )
     return row
 

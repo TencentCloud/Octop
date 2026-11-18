@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
 
@@ -111,7 +112,7 @@ def _get_backend(server: Any, backend_id: int) -> Any:
     return server.services.storage_backend_repo.get(backend_id)
 
 
-def _assert_remote_backend_resolvable(server: Any, backup: BackupConfig) -> None:
+def _assert_remote_backend_resolvable(server: Any, backup: Any) -> None:
     """Reject enabling remote without a backup-capable storage backend."""
     if not backup.remote_enabled:
         return
@@ -160,9 +161,12 @@ async def _mirror_if_enabled(
     server: Any,
     *,
     entry: BackupFileInfo,
-    prune_remote: bool,
 ) -> dict[str, Any]:
-    """Mirror ``entry`` when remote is enabled; fail closed unless ``remote_ok``."""
+    """Mirror ``entry`` when remote is enabled; fail closed unless ``remote_ok``.
+
+    Manual create never auto-prunes the remote (only auto / Mirror-now for
+    auto-prefixed archives prune after ``remote_ok``).
+    """
     config = load_config(server.paths.config)
     assert server.services is not None
     engine = resolve_remote_engine(
@@ -174,18 +178,11 @@ async def _mirror_if_enabled(
         return {"remote_status": None}
     local_path = server.paths.backups_dir / entry.name
     result = await engine.mirror(local_path, entry.name)
-    remote_pruned: list[str] = []
-    if result.status == "remote_ok" and prune_remote:
-        remote_pruned = await engine.prune_auto(
-            keep=config.backup.retention_count,
-            newest_status=result.status,
-        )
-    elif result.status != "remote_ok":
+    if result.status != "remote_ok":
         raise_remote_mirror_failed(result.reason or result.status)
     return {
         "remote_status": result.status,
         "remote_reason": result.reason,
-        "remote_pruned": remote_pruned,
     }
 
 
@@ -408,7 +405,7 @@ async def create_backup(
             db_config=server.services.config.database,
             options=options,
         )
-        remote_meta = await _mirror_if_enabled(server, entry=entry, prune_remote=False)
+        remote_meta = await _mirror_if_enabled(server, entry=entry)
     item = dict(entry.to_dict())
     if remote_meta.get("remote_status") is not None:
         item["remote_status"] = remote_meta["remote_status"]
@@ -583,12 +580,13 @@ async def put_remote_backup_target(
         verify_ssl=body.verify_ssl,
         allow_insecure=body.allow_insecure,
     )
+    username = body.username.strip()
     if existing is None:
         backend_id = repo.create(
             name=BACKUP_REMOTE_BACKEND_NAME,
             kind="webdav",
             endpoint=body.url.strip(),
-            access_key=body.username or None,
+            access_key=username or None,
             secret_key=body.password if body.password is not None else None,
             config_json=config_json,
             note="Managed by Backup → Remote",
@@ -596,30 +594,20 @@ async def put_remote_backup_target(
     else:
         backend_id = existing.id
         secret = body.password if body.password is not None else existing.secret_key
+        # Write username unconditionally so "" clears a prior access_key
+        # (partial_updates skips None, which would leave the old value).
         repo.update(
             backend_id,
             kind="webdav",
             endpoint=body.url.strip(),
-            access_key=body.username or None,
+            access_key=username,
             secret_key=secret,
             config_json=config_json,
             enabled=True,
             note="Managed by Backup → Remote",
         )
     config = load_config(server.paths.config)
-    backup = BackupConfig(
-        auto_enabled=config.backup.auto_enabled,
-        schedule=config.backup.schedule,
-        retention_count=config.backup.retention_count,
-        include_config=config.backup.include_config,
-        include_workspaces=config.backup.include_workspaces,
-        include_skill_packages=config.backup.include_skill_packages,
-        include_plugins=config.backup.include_plugins,
-        include_knowledge=config.backup.include_knowledge,
-        include_chats=config.backup.include_chats,
-        remote_enabled=config.backup.remote_enabled,
-        remote_backend_id=backend_id,
-    )
+    backup = replace(config.backup, remote_backend_id=backend_id)
     update_server_backup_config(server, backup)
     return {"ok": True, **_auto_settings_payload(server)}
 
