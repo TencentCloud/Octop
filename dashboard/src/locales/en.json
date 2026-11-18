@@ -199,7 +199,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "Skill package not found.",
     "SKILL_PACKAGE_NAME_TAKEN": "Skill package {{name}} already exists.",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "Skill packages currently support only “Full local environment (filesystem + shell)” or “Local filesystem (no shell commands)”, with storage root / (POSIX) or the agent workspace root (Windows default).",
-    "ACP_BACKEND_UNSUPPORTED": "This agent has a sandbox enabled, so external runners can’t be enabled or edited here. The outbound acp_runner tool toggle is unaffected; connecting via IDE / octop acp is also unaffected.",
+    "ACP_BACKEND_UNSUPPORTED": "This agent has a sandbox enabled, so external agents can’t be enabled or edited here. External agent collaboration for this expert is unaffected; connecting via IDE / octop acp is also unaffected.",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {{slug}} already exists.",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{{name}}”. Refresh the published template instead.",
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {{detail}}",
@@ -284,7 +284,7 @@
     "tasks": "Automation",
     "connectors": "Connectors",
     "bridge": "Cloud collab",
-    "acp": "ACP Collaboration",
+    "acp": "Agent collaboration",
     "agents": "Agents",
     "providers": "Providers",
     "models": "Model Configuration",
@@ -1170,6 +1170,7 @@
     "defaultModeHint": "Ask / Plan / Craft mode for new conversations; Craft is the full-execution mode. Existing conversations are unaffected.",
     "skillPackagesLabel": "Optional Skill Packages",
     "skillPackagesHint": "Mount packages at create time (local storage with root /).",
+    "managedSkillPackagesHint": "Selected packages are linked into this agent's skill directory. If two packages share a skill name, the first one is kept.",
     "skillPackagesUnsupportedHint": "This sandbox cannot mount skill-package directories directly. You can still use Copy skills to create independent workspace copies.",
     "skillPackagesClearFailed": "Backend settings saved, but clearing mounted skill packages failed",
     "skillPackagesPlaceholder": "Select skill packages",
@@ -1238,8 +1239,8 @@
     "backendRootDirPlaceholder": "Browse and select a directory",
     "backendRootDirDesc": "Defaults to the filesystem root (`/` on POSIX, the home drive on Windows). You may also browse and pick another directory.",
     "backendRootDirDescContainer": "Running in a container: defaults to the filesystem root `/` (the container is already the isolation boundary). You may still browse and pick another directory.",
-    "backendRootDirJailHint": "Saving to a non-root directory enables a sandbox and confines the AI filesystem to that folder. External ACP runners can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
-    "backendRootDirPathLimitHint": "Saving to a non-root directory limits the AI’s file access to that folder, but this host provides no OS-level sandbox — the AI process still runs with the service account’s own permissions. External ACP runners can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
+    "backendRootDirJailHint": "Saving to a non-root directory enables a sandbox and confines the AI filesystem to that folder. External agents can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
+    "backendRootDirPathLimitHint": "Saving to a non-root directory limits the AI’s file access to that folder, but this host provides no OS-level sandbox — the AI process still runs with the service account’s own permissions. External agents can’t be used with this setup; connecting via IDE / octop acp is unaffected.",
     "backendRootDirImmutableHint": "Cannot be changed after creation.",
     "workspaceDir": "Workspace directory",
     "workspaceDirDesc": "Filled with this expert's server default directory. You can choose another one.",
@@ -1268,7 +1269,7 @@
     "backendAllowedEmpty": "Allowed: {{types}}. No storage connection of those types exists yet. Create one under Storage backends first.",
     "backendPathMappings": "Path Mappings (optional)",
     "addPathMapping": "Add path mapping",
-    "advancedOptions": "Advanced options",
+    "advancedOptions": "Runtime parameters",
     "temperature": "Temperature",
     "temperatureTooltip": "Sampling temperature — higher values produce more varied output",
     "topP": "Top P",
@@ -1343,20 +1344,24 @@
     "managed": {
       "create": "Create",
       "createTitle": "New managed expert",
+      "editTitle": "Edit managed expert",
       "badge": "Managed",
       "name": "Name",
       "nameRequired": "Enter a name",
       "runner": "Managed agent",
-      "manageAcp": "Manage ACP",
+      "manageAcp": "Manage agent collaboration",
       "runnerRequired": "Choose a managed agent",
-      "noRunners": "Enable a runner on the ACP page first.",
+      "noRunners": "Enable an agent on the Agent collaboration page first.",
       "runnerSearch": "Search managed agents",
       "runnerSearchEmpty": "No matching managed agents",
       "workspaceRequired": "Choose a working directory",
       "description": "Description",
-      "loadFailed": "Could not load ACP runners",
+      "loadFailed": "Could not load external agents",
       "templateFailed": "Could not load the default prompts. Built-in files are still copied on create.",
-      "createFailed": "Could not create the managed expert"
+      "createFailed": "Could not create the managed expert",
+      "yolo": "YOLO",
+      "yoloHint": "New chats skip approval. The underlying agent runs actions directly, including file edits and commands. A chat can still switch back to asking every time.",
+      "sessionModeHint": "Modes come from the managed agent. New chats start here, and a chat can still switch."
     }
   },
   "subagents": {
@@ -1449,6 +1454,7 @@
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
+    "tool_call_repeat": "\"{{tool}}\" was called {{count}} times in a row with the same arguments and reached the limit of {{limit}}, so this turn stopped. Try a different approach, or open Configuration, raise Repeated calls in a row, and reload the expert.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
     "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
     "invalid_request": "This endpoint may reject the live-token field. Turn off “Show live token count in chat” and retry. If it still fails, check whether the model supports tool calling.",
@@ -1467,7 +1473,7 @@
       "manageToast": "This is a peer expert. Manage skills, models, knowledge bases, and related settings on the peer Octop.",
       "editBanner": "You are editing a peer expert. Changes are saved on the peer Octop.",
       "editSkillPackages": "Skill packages stay on this instance and cannot be installed onto a peer expert. That tab is hidden.",
-      "editTools": "ACP runners execute on the peer. Plugin icons that are local files on the peer may not preview here.",
+      "editTools": "External agents run on the peer. Plugin icons that are local files on the peer may not preview here.",
       "editPlugins": "You can toggle plugins already installed on the peer. Install, uninstall, and marketplace stay on the peer Octop.",
       "editChannels": "QR login and bot-creator flows run on the peer machine, not this browser.",
       "editTasks": "Tasks use the peer timezone. Model and connector options come from the peer; install new connectors there.",
@@ -1479,7 +1485,7 @@
       "reconnect": "Reconnect",
       "openBridge": "View connection",
       "peerOnlyTitle": "This page stays on this instance",
-      "peerOnlyAcp": "ACP runners listed here belong to this Octop. Pick a local expert to toggle its ACP tool, or open the peer expert’s Tools tab to manage the peer.",
+      "peerOnlyAcp": "External agents listed here belong to this Octop. Open the peer expert’s Tools tab to toggle external agent collaboration.",
       "peerOnlyBrowser": "This page controls the browser on this host. For a peer expert, open the browser dock in chat instead."
     },
     "pushToast": {
@@ -1611,6 +1617,13 @@
       "execute": "Execute plan",
       "executeUtterance": "Execute {{path}}",
       "keepEditing": "Keep editing"
+    },
+    "managedApproval": {
+      "picker": "Approval mode",
+      "ask": "Ask every time",
+      "askHint": "Confirm each action from the underlying agent before it runs.",
+      "yolo": "YOLO",
+      "yoloHint": "Skip approval. The underlying agent runs actions directly, including file edits and commands."
     },
     "errorOccurred": "An error occurred",
     "imageLoadFailed": "Image failed to load",
@@ -2066,7 +2079,7 @@
     "ask_agent": "Ask expert",
     "call_agent": "Call expert",
     "call_deferred_tool": "Call on demand",
-    "acp_runner": "ACP external agent",
+    "acp_runner": "External agent collaboration",
     "external-agent": "Managed agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
@@ -2088,6 +2101,7 @@
   "toolSettings": {
     "title": "Tool settings",
     "hint": "Turn off built-in tools you do not want the model to call. Required system tools cannot be disabled.",
+    "hintManaged": "Only tools Octop can attach are listed. Files, shell, and web tools belong to the external agent. A switch stays off until memory is enabled, a knowledge base is selected, or another expert can be called.",
     "hintPlugin": "Turn off plugin tools you do not want the model to call. Unloaded plugins must be enabled under Plugins first.",
     "empty": "No tools available",
     "emptyPlugin": "No plugin tools yet. Enable plugins for this agent on the Plugins tab first.",
@@ -2103,7 +2117,7 @@
     "pluginToolCount": "{{count}} tools",
     "tabs": {
       "builtin": "Built-in tools",
-      "acp": "ACP Collaboration tools",
+      "acp": "Agent collaboration",
       "plugin": "Plugin tools"
     },
     "categories": {
@@ -4234,10 +4248,10 @@
     "noActiveAgent": "Select an agent first",
     "retryDelayBelowInitial": "Maximum delay must be at least the initial delay",
     "toolCallLimit": {
-      "enabled": "Limit tool calls per turn",
-      "enabledTooltip": "Cap how many times tools can be called in one user turn. The turn ends when the cap is reached. Turn this off for no cap. Saving reloads this expert.",
-      "runLimit": "Tool calls per turn",
-      "runLimitTooltip": "Maximum tool calls in one user turn. Empty uses 40.",
+      "enabled": "Limit repeated tool calls",
+      "enabledTooltip": "Count a streak of the same tool called with the same arguments. A different tool or different arguments starts the count over. The turn ends when the streak reaches the limit. Turn this off for no cap. Saving reloads this expert.",
+      "runLimit": "Repeated calls in a row",
+      "runLimitTooltip": "How many times the same tool may be called in a row with the same arguments. Other tools and other arguments are not counted. Empty uses 40.",
       "runLimitPlaceholder": "40"
     },
     "modelRetry": {
@@ -4411,6 +4425,7 @@
   },
   "upload": {
     "tooltip": "Upload files or a folder. You can also drop them on the input.",
+    "action": "Upload",
     "files": "Files",
     "folder": "Folder",
     "dropHint": "Drop files or a folder to upload",
@@ -6317,6 +6332,7 @@
     "remoteKindGroup": "{{name}}·{{kind}}",
     "more": "More",
     "teamNeedsExpert": "\"{{name}}\" is a team. Choose an expert for this page.",
+    "managedNeedsExpert": "\"{{name}}\" is a managed expert. Choose another expert for this page.",
     "expertsRequired": "This page needs an expert"
   },
   "login": {
@@ -7377,11 +7393,11 @@
     "pickAgent": "Select an Agent first"
   },
   "acp": {
-    "description": "Connect external ACP-compatible coding agents. Runner settings are shared across all your agents; enable the acp_runner tool per agent below.",
-    "globalRunnersHint": "Runner configuration below applies to all agents for your account.",
-    "toolEnabledHint": "The acp_runner tool is enabled per agent — switch the agent above to configure the current one.",
-    "toolEnabled": "Enable outbound delegation (acp_runner)",
-    "outboundBlockedHint": "This agent has a sandbox enabled, so external runners can’t be enabled or edited here. The outbound acp_runner tool toggle is unaffected; connecting via IDE / octop acp is also unaffected.",
+    "description": "Connect external ACP-compatible coding agents. Agent settings are shared across all your experts; enable external agent collaboration for the current expert below.",
+    "globalRunnersHint": "The agent configuration below applies to every expert on this account.",
+    "toolEnabledHint": "The external agent collaboration tool is enabled per expert. Switch the expert above to configure the current one.",
+    "toolEnabled": "Enable external agent collaboration for this expert",
+    "outboundBlockedHint": "This expert has a sandbox enabled, so external agents can’t be enabled or edited here. External agent collaboration for this expert is unaffected; connecting via IDE / octop acp is also unaffected.",
     "outboundBlockedTooltip": "Unavailable to enable or edit in sandbox",
     "runnerUnavailable": "Unavailable",
     "builtin": "Built-in",
@@ -7400,16 +7416,16 @@
     "intro_kimi_code": "Moonshot Kimi Code CLI — run kimi acp after kimi login.",
     "intro_cursor_cli": "Cursor CLI agent — run agent acp after agent login or set CURSOR_API_KEY.",
     "intro_pi": "Pi coding agent via pi-acp bridge (npx -y pi-acp).",
-    "intro_custom": "Custom runner: {{command}}",
+    "intro_custom": "Custom agent: {{command}}",
     "runnerNeedsConfig": "Enabled — configure command",
     "clickCardToConfigure": "Click the card to set the launch command first",
-    "create": "Add runner",
-    "createTitle": "Add ACP runner",
-    "editTitle": "Edit runner",
-    "runnerKey": "Runner ID",
-    "runnerKeyRequired": "Runner ID is required",
+    "create": "Add agent",
+    "createTitle": "Add external agent",
+    "editTitle": "Edit agent",
+    "runnerKey": "Agent ID",
+    "runnerKeyRequired": "Agent ID is required",
     "runnerKeyInvalid": "Use letters, numbers, underscore or hyphen only",
-    "runnerKeyExists": "This runner ID is already in use. Open that card to edit it. A custom runner can be deleted from its editor.",
+    "runnerKeyExists": "This agent ID is already in use. Open that card to edit it. A custom agent can be deleted from its editor.",
     "command": "Command",
     "commandRequired": "Command is required",
     "args": "Arguments",
@@ -7420,7 +7436,7 @@
     "askHint": "Sends who are you? over ACP and shows the reply above the buttons.",
     "askResult": "Reply to who are you?",
     "askFailed": "The probe did not return a reply",
-    "trusted": "Trusted runner",
+    "trusted": "Trusted agent",
     "toolParseMode": "Tool parse mode",
     "stdioBufferLimit": "Stdio buffer limit (bytes)",
     "notSet": "Not set",
@@ -7429,13 +7445,13 @@
     "saveNeedsInstall": "Not saved: {{status}}",
     "saveNeedsInstallDetail": "Not saved: {{status}}. {{detail}}",
     "configFailed": "Failed to save ACP config",
-    "createSuccess": "Runner created",
+    "createSuccess": "Agent created",
     "deleteTitle": "Delete {{name}}?",
-    "deleteConfirm": "This custom runner will be removed.",
-    "deleteSuccess": "Runner deleted",
-    "docsHint": "Install an ACP-compatible agent locally (opencode, codebuddy --acp, etc.) before enabling a runner.",
+    "deleteConfirm": "This custom agent will be removed.",
+    "deleteSuccess": "Agent deleted",
+    "docsHint": "Install an ACP-compatible agent locally (opencode, codebuddy --acp, etc.) before enabling it.",
     "chatPermissionTitle": "External agent permission required",
-    "runnerReenabled": "This runner was disabled. It has been updated and turned back on.",
+    "runnerReenabled": "This agent was disabled. It has been updated and turned back on.",
     "installOnHost": "Install on the machine that runs Octop",
     "host": {
       "title": "Host probe",
@@ -7484,7 +7500,7 @@
       }
     },
     "advanced": "Advanced",
-    "disableKeepsRunner": "Turning a runner off keeps its settings. The ID stays reserved. Delete a custom runner from this editor to free the ID."
+    "disableKeepsRunner": "Turning an agent off keeps its settings. The ID stays reserved. Delete a custom agent from this editor to free the ID."
   },
   "plugins": {
     "loadError": "Failed to load plugins",
@@ -7642,8 +7658,8 @@
       "subtitle": "Connect docs, cloud storage, and email, then use them in chat as needed"
     },
     "acp": {
-      "title": "ACP Collaboration",
-      "subtitle": "Configure external coding-agent runners and enable them per expert"
+      "title": "Agent collaboration",
+      "subtitle": "Configure external agents and enable collaboration on this expert"
     },
     "skills": {
       "title": "Skills",

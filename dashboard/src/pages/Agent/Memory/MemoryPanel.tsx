@@ -35,6 +35,7 @@ import MemorySettings from "./MemorySettings";
 import StrongMemory from "./StrongMemory";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
+import { useAgent } from "../../../context/AgentContext";
 import styles from "./index.module.less";
 
 type MemoryTab =
@@ -138,11 +139,24 @@ export interface MemoryPanelProps {
   /** Show the user-level "MCP access" tab (personal memory page only). */
 }
 
+/** Memory tabs. Managed experts use the same pages; memory stays off until enabled. */
+export function memoryTabsForKind(
+  kind: string | null | undefined,
+): readonly TabDef[] {
+  void kind;
+  return TABS;
+}
+
 export default function MemoryPanel({
   agentId,
   fill = true,
 }: MemoryPanelProps) {
   const { t } = useTranslation();
+  const { agents } = useAgent();
+  const agentKind = agents.find((agent) => agent.agent_id === agentId)?.kind;
+  const tabs = useMemo(() => memoryTabsForKind(agentKind), [agentKind]);
+  const conversationsOnly =
+    tabs.length === 1 && tabs[0]?.key === "conversations";
 
   const [activeTab, setActiveTab] = useState<MemoryTab>("overview");
   const [libraryView, setLibraryView] = useState<LibraryView>("tree");
@@ -153,7 +167,7 @@ export default function MemoryPanel({
   const [expandKey, setExpandKey] = useState(0);
 
   useEffect(() => {
-    if (!agentId) {
+    if (!agentId || conversationsOnly) {
       setPendingCount(0);
       return;
     }
@@ -169,7 +183,7 @@ export default function MemoryPanel({
     return () => {
       cancelled = true;
     };
-  }, [agentId, activeTab]);
+  }, [agentId, activeTab, conversationsOnly]);
 
   const tabItems = useMemo(() => {
     if (!agentId) return [];
@@ -226,7 +240,7 @@ export default function MemoryPanel({
       </div>
     );
 
-    return TABS.map((tab) => {
+    return tabs.map((tab) => {
       const showBadge = tab.showPendingBadge && pendingCount > 0;
       const label = (
         <TabLabel icon={tab.icon}>
@@ -312,7 +326,7 @@ export default function MemoryPanel({
 
       return { key: tab.key, label, children };
     });
-  }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t]);
+  }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t, tabs]);
 
   if (!agentId) {
     return (
@@ -327,7 +341,7 @@ export default function MemoryPanel({
     <Tabs
       className={styles.memoryTabs}
       style={fill ? undefined : { height: "auto" }}
-      activeKey={activeTab}
+      activeKey={conversationsOnly ? "conversations" : activeTab}
       onChange={(k) => setActiveTab(k as MemoryTab)}
       destroyOnHidden
       items={tabItems}

@@ -50,6 +50,29 @@ class BuiltinToolEntry:
     category: str
 
 
+# Octop tools a managed expert can actually turn on. The runner keeps its own
+# file, shell, and web tools; these are the loopback tools Octop attaches.
+MANAGED_FILE_TOOLS: tuple[str, ...] = ("send_file_to_user",)
+MANAGED_MEMORY_TOOLS: tuple[str, ...] = ("memory_search", "memory_get", "memory_save")
+MANAGED_CRON_TOOLS: tuple[str, ...] = (
+    "cronjob_list",
+    "cronjob_get",
+    "cronjob_create",
+    "cronjob_update",
+    "cronjob_delete",
+    "cronjob_run_now",
+)
+MANAGED_KNOWLEDGE_TOOLS: tuple[str, ...] = ("search_knowledge",)
+MANAGED_AGENT_TOOLS: tuple[str, ...] = ("agent_list", "ask_agent")
+MANAGED_BUILTIN_TOOLS: frozenset[str] = frozenset(
+    MANAGED_FILE_TOOLS
+    + MANAGED_MEMORY_TOOLS
+    + MANAGED_CRON_TOOLS
+    + MANAGED_KNOWLEDGE_TOOLS
+    + MANAGED_AGENT_TOOLS
+)
+
+
 # Runtime tool names exposed in the tool-settings dialog (MCP excluded).
 BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     # filesystem / orchestration (critical ones still listed, disableable=false)
@@ -187,6 +210,23 @@ def effective_tools_disabled(
     return disabled - CRITICAL_TOOLS
 
 
+def managed_builtin_available(
+    name: str,
+    *,
+    agent_cfg: Mapping[str, Any],
+    knowledge_base_ids: list[str],
+    has_peers: bool,
+) -> bool:
+    """Whether a managed catalog tool can attach on the next turn."""
+    if name in MANAGED_MEMORY_TOOLS:
+        return builtin_tool_available(name, agent_cfg=agent_cfg)
+    if name in MANAGED_KNOWLEDGE_TOOLS:
+        return bool(knowledge_base_ids)
+    if name in MANAGED_AGENT_TOOLS:
+        return has_peers
+    return True
+
+
 def builtin_tool_available(
     name: str,
     *,
@@ -218,6 +258,13 @@ def builtin_tool_available(
 
 __all__ = [
     "BUILTIN_TOOL_CATALOG",
+    "MANAGED_AGENT_TOOLS",
+    "MANAGED_BUILTIN_TOOLS",
+    "MANAGED_CRON_TOOLS",
+    "MANAGED_FILE_TOOLS",
+    "MANAGED_KNOWLEDGE_TOOLS",
+    "MANAGED_MEMORY_TOOLS",
+    "managed_builtin_available",
     "BuiltinToolEntry",
     "CRITICAL_TOOLS",
     "agent_plugin_enabled",

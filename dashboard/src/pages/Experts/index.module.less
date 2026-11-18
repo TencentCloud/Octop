@@ -1771,6 +1771,20 @@
 
 /* ── Drawer shared styles ──────────────────────────────────────── */
 
+.expertDrawerRoot,
+.expertDrawer,
+.drawerSection,
+.moreConfig {
+  :global(.octop-form-item-extra),
+  :global(.ant-form-item-extra) {
+    min-height: unset;
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--fn-text-tertiary);
+  }
+}
+
 .textAssistField {
   margin-bottom: 4px !important;
 }

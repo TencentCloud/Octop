@@ -57,6 +57,7 @@ export interface OctopThread {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
   pending_plan_path?: string | null;
   hitl_policy?: HitlSessionPolicy | null;
   /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
@@ -92,6 +93,7 @@ export interface OctopThreadHistory {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
   pending_plan_path?: string | null;
   hitl_policy?: HitlSessionPolicy | null;
   has_more?: boolean;
@@ -126,6 +128,7 @@ export interface OctopThreadPatch {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
   hitl_policy?: HitlSessionPolicy | null;
 }
 
@@ -251,6 +254,7 @@ export const octopThreadsApi = {
       reasoning_mode?: "auto" | "enabled" | "disabled" | null;
       reasoning_effort?: string | null;
       conversation_mode?: "ask" | "plan" | "craft" | null;
+      session_mode?: string | null;
       pending_plan_path?: string | null;
       hitl_policy?: HitlSessionPolicy | null;
     }>(

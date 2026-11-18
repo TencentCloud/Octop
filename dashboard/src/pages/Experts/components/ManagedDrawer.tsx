@@ -1,10 +1,27 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Collapse, Drawer, Form, Input } from "antd";
+import {
+  Alert,
+  Button,
+  Collapse,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Switch,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { acpApi } from "../../../api/modules/acp";
+import {
+  acpApi,
+  acpSessionModeText,
+  catalogOffersUnattendedMode,
+  isUnattendedSessionMode,
+  permissionForSessionMode,
+} from "../../../api/modules/acp";
+import { useAcpSessionModes } from "../../../hooks/useAcpSessionModes";
+import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import {
   managedAgentsApi,
   managedWorkspaceDir,
@@ -29,6 +46,7 @@ import {
 } from "../../../styles/themePalettes";
 import AgentTrajectoryField from "./AgentTrajectoryField";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
+import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import FileEditModal from "./FileEditModal";
 import { metaForFile } from "./iconForName";
 import ManagedRunnerPicker from "./ManagedRunnerPicker";
@@ -55,6 +73,11 @@ interface FormValues {
   welcome_message?: string;
   agent_id?: string;
   enable_trajectory?: boolean;
+  skill_package_ids?: string[];
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
+  permission_mode?: boolean;
+  session_mode?: string;
 }
 
 function storedColor(palette: string): string {
@@ -94,9 +117,13 @@ export default function ManagedDrawer({
   onClose,
   onCreated,
 }: ManagedDrawerProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [form] = Form.useForm<FormValues>();
   const [runners, setRunners] = useState<string[]>([]);
+  const [skillPackages, setSkillPackages] = useState<
+    { id: string; name: string }[]
+  >([]);
+  const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [colorPalette, setColorPalette] = useState<string>(DEFAULT_PALETTE);
   const [visibility, setVisibility] = useState<ResourceVisibilityMode>("owner");
@@ -117,12 +144,27 @@ export default function ManagedDrawer({
   const workspaceTouched = useRef(false);
   const welcomeRef = useRef<WelcomeConfigRef>(null);
   const watchedAgentId = Form.useWatch("agent_id", form);
+  const watchedRunner = Form.useWatch("runner", form);
+  const sessionModes = useAcpSessionModes(watchedRunner);
+
+  useEffect(() => {
+    if (!open || sessionModes.length === 0) return;
+    const current = String(form.getFieldValue("session_mode") ?? "");
+    if (sessionModes.some((mode) => mode.id === current)) return;
+    const yolo = form.getFieldValue("permission_mode") === true;
+    const preferred = yolo
+      ? sessionModes.find((mode) => isUnattendedSessionMode(mode.id))
+      : undefined;
+    form.setFieldValue("session_mode", (preferred ?? sessionModes[0]).id);
+  }, [form, open, sessionModes]);
 
   useEffect(() => {
     if (!open) return;
     form.resetFields();
     form.setFieldsValue({
       enable_trajectory: true,
+      permission_mode: false,
+      session_mode: "",
     });
     setColorPalette(DEFAULT_PALETTE);
     setVisibility("owner");
@@ -173,6 +215,18 @@ export default function ManagedDrawer({
             apiErrorMessage(err, t("experts.managed.loadFailed"), t),
           );
         }
+      });
+    setSkillPackagesLoading(true);
+    skillPackagesApi
+      .list()
+      .then((packages) => {
+        if (!cancelled) setSkillPackages(packages);
+      })
+      .catch(() => {
+        if (!cancelled) setSkillPackages([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSkillPackagesLoading(false);
       });
     return () => {
       cancelled = true;
@@ -225,6 +279,17 @@ export default function ManagedDrawer({
           ? undefined
           : expertPresetSrc(avatarPresetId ?? "default"),
         enable_trajectory: values.enable_trajectory === true,
+        permission_mode: permissionForSessionMode(
+          sessionModes,
+          values.session_mode ?? "",
+          values.permission_mode === true,
+        ),
+        ...(sessionModes.length > 0 && values.session_mode
+          ? { session_mode: values.session_mode }
+          : {}),
+        skill_package_ids: values.skill_package_ids ?? [],
+        knowledge_base_ids: values.knowledge_base_ids ?? [],
+        mcp_servers: values.mcp_servers ?? [],
         visibility,
         group_ids: visibility === "groups" ? groupIds : [],
         ...(prompts ? { quick_prompts: prompts } : {}),
@@ -257,6 +322,8 @@ export default function ManagedDrawer({
       onClose={onClose}
       width={600}
       destroyOnHidden
+      className={styles.expertDrawer}
+      rootClassName={styles.expertDrawerRoot}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <Button onClick={onClose}>{t("common.cancel")}</Button>
@@ -376,6 +443,31 @@ export default function ManagedDrawer({
         >
           <ManagedRunnerPicker runners={runners} />
         </Form.Item>
+        {sessionModes.length > 0 ? (
+          <Form.Item
+            name="session_mode"
+            label={t("chat.conversationMode.picker")}
+            extra={t("experts.managed.sessionModeHint")}
+          >
+            <Select
+              options={sessionModes.map((mode) => ({
+                value: mode.id,
+                label: acpSessionModeText(mode, i18n.language, "name"),
+                title: acpSessionModeText(mode, i18n.language, "hint"),
+              }))}
+            />
+          </Form.Item>
+        ) : null}
+        {catalogOffersUnattendedMode(sessionModes) ? null : (
+          <Form.Item
+            name="permission_mode"
+            label={t("experts.managed.yolo")}
+            valuePropName="checked"
+            extra={t("experts.managed.yoloHint")}
+          >
+            <Switch />
+          </Form.Item>
+        )}
         <Form.Item
           name="workspace_dir"
           label={t("experts.workspaceDir")}
@@ -399,6 +491,23 @@ export default function ManagedDrawer({
             setGroupIds(next.visibility === "groups" ? next.groupIds : []);
           }}
         />
+        <Form.Item
+          name="skill_package_ids"
+          label={t("experts.skillPackagesLabel")}
+          extra={t("experts.managedSkillPackagesHint")}
+        >
+          <Select
+            mode="multiple"
+            allowClear
+            loading={skillPackagesLoading}
+            options={skillPackages.map((pack) => ({
+              value: pack.id,
+              label: pack.name,
+            }))}
+            placeholder={t("experts.skillPackagesPlaceholder")}
+          />
+        </Form.Item>
+        <ExpertComposerDefaultsFields />
         <MoreConfigCollapse>
           <Form.Item
             name="agent_id"

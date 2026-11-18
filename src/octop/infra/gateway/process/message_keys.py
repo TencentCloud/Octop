@@ -37,11 +37,12 @@ def build_composer_context(
     target_agent_ids: list[str] | None,
     model_ref: str | None,
     default_model: str | None,
+    knowledge_base_ids: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """Snapshot of per-turn composer selections for history display chips.
 
     Shared by dashboard chat and cron agent runs so MessageBubble can render
-    connector / skill / model tags the same way.
+    connector / skill / knowledge / model tags the same way.
 
     Only stamped on newly written HumanMessages — existing history is not
     backfilled when job/chat settings change.
@@ -49,6 +50,8 @@ def build_composer_context(
     ctx: dict[str, Any] = {}
     if mcp_servers:
         ctx["connectors"] = list(mcp_servers)
+    if knowledge_base_ids:
+        ctx["knowledgeBaseIds"] = [str(item) for item in knowledge_base_ids if str(item).strip()]
     if skills:
         ctx["skills"] = list(skills)
     if target_agent_ids:
@@ -58,6 +61,31 @@ def build_composer_context(
     if model and model != default:
         ctx["model"] = model
     return ctx or None
+
+
+def stamp_composer_fields(request: dict[str, Any], **updates: Any) -> None:
+    """Add chip fields onto the turn's human message after the request exists."""
+    messages = request.get("messages")
+    if not isinstance(messages, list):
+        return
+    for message in messages:
+        kwargs = getattr(message, "additional_kwargs", None)
+        if not isinstance(kwargs, dict):
+            continue
+        role = str(getattr(message, "type", None) or getattr(message, "role", "")).lower()
+        if role not in {"human", "user"}:
+            continue
+        current = kwargs.get(COMPOSER_CTX_KEY)
+        ctx = dict(current) if isinstance(current, dict) else {}
+        connectors = updates.get("connectors")
+        if isinstance(connectors, list) and connectors:
+            ctx["connectors"] = [str(item) for item in connectors if str(item).strip()]
+        knowledge = updates.get("knowledge_base_ids")
+        if isinstance(knowledge, list) and knowledge:
+            ctx["knowledgeBaseIds"] = [str(item) for item in knowledge if str(item).strip()]
+        if ctx:
+            kwargs[COMPOSER_CTX_KEY] = ctx
+        return
 
 
 try:

@@ -90,7 +90,10 @@ export default function TeamDrawer({
   onIconUrlChange,
 }: TeamDrawerProps) {
   const { t } = useTranslation();
-  const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
+  const currentUser = useCurrentUser();
+  const allowedBackendTypes = currentUser?.allowed_backend_types;
+  const viewerIdRef = useRef(currentUser?.id);
+  viewerIdRef.current = currentUser?.id;
   const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
   const [form] = Form.useForm<TeamFormValues>();
   const { models, modelsLoading, backends, backendsLoading } =
@@ -176,9 +179,17 @@ export default function TeamDrawer({
               color: member.color,
               icon_name: member.icon_name,
               icon_url: member.icon_url,
-              kind: "expert",
+              kind: member.kind || "expert",
+              config:
+                member.kind === "managed" && member.managed_runner
+                  ? { managed_runner: member.managed_runner }
+                  : null,
               is_shared: member.is_shared,
-              is_owner: true,
+              user_id: member.user_id,
+              is_owner:
+                member.user_id != null && viewerIdRef.current != null
+                  ? Number(member.user_id) === Number(viewerIdRef.current)
+                  : undefined,
             })),
           );
         })
@@ -384,6 +395,8 @@ export default function TeamDrawer({
       onClose={onClose}
       width={600}
       destroyOnHidden
+      className={styles.expertDrawer}
+      rootClassName={styles.expertDrawerRoot}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button className={styles.drawerCancelBtn} onClick={onClose}>
