@@ -1,5 +1,6 @@
 import {
   EXPERT_AVATAR_PRESETS,
+  canonicalExpertPresetId,
   expertPresetSrc,
   ResourceAvatarPicker,
   splitExpertAvatarUrl,
@@ -30,8 +31,8 @@ export default function ExpertAvatarPicker({
   onRemove,
 }: ExpertAvatarPickerProps) {
   const { imageUrl, presetId: rawPresetId } = splitExpertAvatarUrl(iconUrl);
-  // First grid tile is ``default.svg``; keep that URL on the same tile.
-  const presetId = rawPresetId === "default" ? null : rawPresetId;
+  // First grid tile is ``default.svg``. Duplicate drawings share that tile.
+  const presetId = canonicalExpertPresetId(rawPresetId);
 
   return (
     <ResourceAvatarPicker

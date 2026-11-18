@@ -24,6 +24,8 @@ import tavilyLogo from "./tavily.svg";
 import braveLogo from "./brave.svg";
 import googleLogo from "./google.svg";
 import yuanbaoLogo from "../channels/yuanbao.svg";
+import iflytekLogo from "./iflytek.svg";
+import magpieLogo from "./magpie.svg";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -51,6 +53,9 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   tavily: tavilyLogo,
   brave: braveLogo,
   google: googleLogo,
+  iflytek: iflytekLogo,
+  "iflytek-astron": iflytekLogo,
+  magpie: magpieLogo,
   // Same mark as the Yuanbao channel: one product, search and IM.
   yuanbao: yuanbaoLogo,
 };
@@ -71,6 +76,8 @@ export function getProviderLogo(providerId: string): string | undefined {
     siliconflow: siliconLogo,
     tencent: tencentCodingPlanLogo,
     opencode: opencodeLogo,
+    iflytek: iflytekLogo,
+    magpie: magpieLogo,
   };
   return groupLogo[base];
 }
@@ -94,6 +101,10 @@ export const PROVIDER_DOCS: Record<string, string> = {
   "tencent-coding-plan": "https://hunyuan.cloud.tencent.com/#/app/subscription",
   "tencent-token-plan": "https://hunyuan.cloud.tencent.com/#/app/subscription",
   "tencent-hai": "https://cloud.tencent.com/document/product/1721",
+  iflytek: "https://xinghuo.xfyun.com/",
+  "iflytek-astron": "https://xinghuo.xfyun.com/",
+  "iflytek-astron-token-plan": "https://xinghuo.xfyun.com/",
+  magpie: "http://127.0.0.1:3425",
   openrouter: "https://openrouter.ai/docs/quickstart",
   mimo: "https://platform.xiaomimimo.com/",
   minimax: "https://platform.minimaxi.com/",

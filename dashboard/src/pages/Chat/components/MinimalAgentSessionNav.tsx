@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
@@ -16,7 +15,6 @@ import {
 } from "lucide-react";
 import cx from "classnames";
 import type { OctopAgent } from "../../../context/AgentContext";
-import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import {
   confirmDeleteConversation,
@@ -32,6 +30,8 @@ import { onSessionEvent } from "../hooks/chatStore";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
+import { useExpertSort } from "../hooks/useExpertSort";
+import { useChatNavDrawers } from "./ChatNavDrawers";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
@@ -41,7 +41,11 @@ import {
   type ChatNavScope,
 } from "../utils/chatNavScope";
 import AgentUnreadBadge from "./AgentUnreadBadge";
-import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import ChatNavScopeTabs, {
+  ChatNavCreateButton,
+  ChatNavScopeEmpty,
+} from "./ChatNavScopeTabs";
+import ExpertSortMenu from "./ExpertSortMenu";
 import {
   expertVisibleInNavSearch,
   matchesNavQuery,
@@ -50,10 +54,12 @@ import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
-import SharedExpertHint from "./SharedExpertHint";
+import { ExpertOwnerShareFlag } from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
+import SessionShareMark from "./SessionShareMark";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import TeamChatBadge from "./TeamChatBadge";
+import { isTeamAgent } from "../../../utils/teamAgent";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
 import ChatEditExpertDrawer, {
@@ -292,15 +298,13 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           <span className={styles.sessionRowLead}>
             <SessionWorkStatusIcon status={workStatus} />
           </span>
-          <span className={styles.sessionRowTitle}>{session.name}</span>
-          {session.contributed ? (
-            <span
-              className={styles.sessionRowPinIndicator}
-              title={t("chat.sharedSession", "已共享")}
-            >
-              <Share2 size={12} strokeWidth={2} />
-            </span>
-          ) : null}
+          <span className={styles.sessionRowTitleGroup}>
+            <span className={styles.sessionRowTitle}>{session.name}</span>
+            <SessionShareMark
+              contributed={session.contributed}
+              owned={session.owned}
+            />
+          </span>
           {session.pinned ? (
             <span
               className={styles.sessionRowPinIndicator}
@@ -347,7 +351,6 @@ export default function MinimalAgentSessionNav({
   activeForkDisabledHint,
 }: MinimalAgentSessionNavProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [byAgent, setByAgent] = useState<Record<string, Session[]>>({});
   const [hasMoreByAgent, setHasMoreByAgent] = useState<Record<string, boolean>>(
     {},
@@ -383,21 +386,23 @@ export default function MinimalAgentSessionNav({
     ),
   );
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
+  const { mode: sortMode, setMode: setSortMode } = useExpertSort();
+  const navCreate = useChatNavDrawers();
   const { filterVisible, pickHidden, hide, unhide, canHide } =
     useHiddenSharedExperts();
   const hiddenAgents = useMemo(
     () =>
-      sortExpertsByPin(pickHidden(agents), pinnedIds).filter((agent) =>
-        matchesChatNavScope(agent, navScope),
+      sortExpertsByPin(pickHidden(agents), pinnedIds, sortMode).filter(
+        (agent) => matchesChatNavScope(agent, navScope),
       ),
-    [agents, pickHidden, pinnedIds, navScope],
+    [agents, pickHidden, pinnedIds, navScope, sortMode],
   );
   const sortedAgents = useMemo(() => {
     const visible = filterVisible(agents);
-    return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
+    return sortExpertsByPin(visible, pinnedIds, sortMode).filter((agent) =>
       matchesChatNavScope(agent, navScope),
     );
-  }, [agents, filterVisible, pinnedIds, navScope]);
+  }, [agents, filterVisible, pinnedIds, navScope, sortMode]);
   const searching = searchQuery.trim().length > 0;
   const catalog = useExpertSessionCatalog(sortedAgents, searching);
   const visibleAgents = useMemo(() => {
@@ -701,23 +706,6 @@ export default function MinimalAgentSessionNav({
     [patchLocal, t],
   );
 
-  if (agents.length === 0) {
-    return (
-      <div className={styles.sessionEmptyAgents}>
-        <p className={styles.sessionEmptyAgentsText}>
-          {t("chat.noAgentsHint")}
-        </p>
-        <button
-          type="button"
-          className={styles.sessionEmptyAgentsLink}
-          onClick={() => navigate("/experts")}
-        >
-          {t("chat.createExpert")}
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className={cx(styles.sessionList, styles.minimalAgentNav)}>
       <ChatEditExpertDrawer
@@ -739,7 +727,17 @@ export default function MinimalAgentSessionNav({
           aria-label={t("chat.searchSessions", "搜索会话")}
         />
       </div>
-      <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      <div className={styles.sessionScopeRow}>
+        <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      </div>
+      <div className={styles.sessionCreateRow}>
+        <ChatNavCreateButton
+          scope={navScope}
+          onCreate={() => navCreate.open(navScope)}
+        />
+        <ExpertSortMenu mode={sortMode} onChange={setSortMode} />
+      </div>
+      {navCreate.drawers}
       {visibleAgents.length === 0 &&
       (searching || loading || hiddenAgents.length === 0) ? (
         searching ? (
@@ -749,7 +747,10 @@ export default function MinimalAgentSessionNav({
               : t("chat.noSearchResults", "没有匹配的会话")}
           </div>
         ) : (
-          <ChatNavScopeEmpty scope={navScope} />
+          <ChatNavScopeEmpty
+            scope={navScope}
+            onCreate={() => navCreate.open(navScope)}
+          />
         )
       ) : null}
       {navBlocks.map((block) => {
@@ -791,25 +792,6 @@ export default function MinimalAgentSessionNav({
           <section key={block.key} className={styles.minimalAgentSection}>
             <div className={styles.minimalAgentHeader}>
               <span className={styles.minimalAgentIconSlot}>
-                <SharedExpertHint
-                  agent={agent}
-                  className={styles.minimalAgentAvatarHost}
-                >
-                  <span
-                    className={styles.minimalAgentAvatar}
-                    style={{
-                      color: agent.color || "var(--fn-text-tertiary)",
-                      background: `${agent.color || "#6366f1"}14`,
-                    }}
-                    aria-hidden
-                  >
-                    <ExpertIcon
-                      iconUrl={agent.icon_url}
-                      iconName={agent.icon_name}
-                      size={agent.icon_url?.trim() ? 22 : 14}
-                    />
-                  </span>
-                </SharedExpertHint>
                 <button
                   type="button"
                   className={styles.minimalAgentChevronBtn}
@@ -840,6 +822,7 @@ export default function MinimalAgentSessionNav({
                     name={agent.name}
                     className={styles.minimalAgentName}
                   />
+                  <ExpertOwnerShareFlag agent={agent} />
                   <ExpertPinMark pinned={isPinned(agent.agent_id)} />
                   <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
@@ -861,6 +844,7 @@ export default function MinimalAgentSessionNav({
                     ? () => setEditAgent(agent)
                     : undefined
                 }
+                editingTeam={isTeamAgent(agent)}
                 onHide={
                   canHide(agent) &&
                   !hiddenAgents.some((row) => row.agent_id === agent.agent_id)

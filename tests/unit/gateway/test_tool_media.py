@@ -476,6 +476,15 @@ def test_plain_text_image_scan_handles_long_web_output() -> None:
     assert time.perf_counter() - started < 1.0
 
 
+@pytest.mark.parametrize("kind", [{"nested": "value"}, ["custom"]])
+def test_history_tool_output_preserves_non_media_type(kind: object) -> None:
+    from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync
+
+    payload = {"type": kind, "data": "ordinary tool result"}
+    output = enrich_tool_output_string_sync(json.dumps(payload), agent_id="A1")
+    assert json.loads(output) == payload
+
+
 def test_is_media_push_tool_allowlist() -> None:
     from octop.infra.gateway.media.tool_media import is_media_push_tool
 
@@ -941,3 +950,49 @@ async def test_project_stream_drops_media_when_tool_call_has_no_id() -> None:
             if isinstance(part, ImageContent)
         ]
         assert images == []
+
+
+@pytest.mark.asyncio
+async def test_managed_send_file_marker_pushes_without_the_tool_name() -> None:
+    with tempfile.TemporaryDirectory() as ws:
+        report = Path(ws) / "report.txt"
+        report.write_text("hello", encoding="utf-8")
+        workspace = _workspace(ws)
+        payload = json.dumps(
+            {
+                "type": "file",
+                "path": "report.txt",
+                "filename": "report.txt",
+                "octop_delivery": "send_file_to_user",
+                "source": {"type": "url", "url": report.as_uri(), "media_type": "text/plain"},
+            }
+        )
+        frames = [
+            frame
+            async for frame in attachment_frames_from_tool_result(
+                {"messages": [{"name": "octop-files_send_file_to_user", "content": payload}]},
+                agent_id="agent-1",
+                workspace=workspace,
+            )
+        ]
+        assert len(frames) == 1
+        assert frames[0]["filename"] == "report.txt"
+
+        skipped = [
+            frame
+            async for frame in attachment_frames_from_tool_result(
+                {
+                    "messages": [
+                        {
+                            "name": "write_file",
+                            "content": payload.replace(
+                                '"octop_delivery": "send_file_to_user"', '"octop_delivery": "no"'
+                            ),
+                        }
+                    ]
+                },
+                agent_id="agent-1",
+                workspace=workspace,
+            )
+        ]
+        assert skipped == []

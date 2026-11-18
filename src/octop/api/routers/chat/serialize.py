@@ -488,11 +488,6 @@ async def _backfill_thread_projection(
     user: Any,
 ) -> None:
     """Decode one legacy checkpoint off-request and atomically publish it."""
-    from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
-
-    archive = getattr(server.app_runtime, "history_archive", None)
-    if isinstance(archive, HistoryArchive):
-        raise ValueError("History backfill is disabled while versioned history is in use")
     repo = server.services.thread_message_repo
     registry = server.app_runtime.agent_registry
     reserve = getattr(registry, "try_begin_history_backfill", None)
@@ -950,11 +945,14 @@ def _serialize_history_message(
     if role == "tool":
         content = _msg_attr(msg, "content", "")
         output = _message_content(msg) if isinstance(content, list) else str(content or "")
-        if not output.strip():
+        call_id = str(_msg_attr(msg, "tool_call_id") or "")
+        # A finished tool with no text still has to stay in history. Dropping it
+        # leaves the card looking like it is still running after a reload.
+        if not output.strip() and not call_id.strip():
             return None
         result_block = {
             "type": "tool_result",
-            "id": str(_msg_attr(msg, "tool_call_id") or ""),
+            "id": call_id,
             "name": str(_msg_attr(msg, "name") or ""),
             "output": output,
         }

@@ -152,6 +152,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert {"mfa_version", "mfa_failed_count", "mfa_locked_until", "password_version"}.issubset(
         cols
     )
+    assert "last_login_at" in cols
     assert {
         "user_totp",
         "user_webauthn_credentials",
@@ -347,6 +348,7 @@ def test_migration_005_preserves_populated_users_and_constraints(tmp_path: Path)
             "mfa_failed_count": 0,
             "mfa_locked_until": 0,
             "password_version": 0,
+            "last_login_at": None,
         }
         assert dict(agent) == {
             "agent_id": "legacy-agent",
