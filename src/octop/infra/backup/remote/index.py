@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.infra.backup.remote.types import MirrorStatus
-from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.errors import corrupt_config_error
 from octop.infra.utils.json_file import (
     JsonFileCorruptError,
     read_json_object,
@@ -63,10 +63,7 @@ class MirrorIndex:
         try:
             raw = read_json_object(self._path)
         except JsonFileCorruptError as exc:
-            raise OctopError(
-                ErrorCode.CONFIG_FILE_CORRUPT,
-                f"corrupt remote mirror index: {self._path.name}",
-            ) from exc
+            raise corrupt_config_error(self._path, str(exc)) from exc
         if raw is None:
             self._entries = {}
             return
