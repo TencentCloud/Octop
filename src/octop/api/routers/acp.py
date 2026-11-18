@@ -24,7 +24,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _BUILTIN_RUNNERS = frozenset(
-    {"opencode", "codebuddy", "claude_code", "codex", "kimi_code", "cursor_cli", "pi"}
+    {
+        "opencode",
+        "codebuddy",
+        "claude_code",
+        "codex",
+        "kimi_code",
+        "cursor_cli",
+        "pi",
+        "qwen_code",
+    }
 )
 _ALLOWED_PARSE_MODES = frozenset({"call_title", "update_detail", "call_detail"})
 _DEFAULT_STDIO_BUFFER = 50 * 1024 * 1024
