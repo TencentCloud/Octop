@@ -68,7 +68,18 @@ def sign_token(
 
 def decode_token(secret: bytes, token: str) -> dict[str, Any]:
     try:
-        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        payload = jwt.decode(
+            token,
+            secret,
+            algorithms=["HS256"],
+            # Skip only the iat "not yet valid" check: VMs/WSL2 get NTP-corrected
+            # and the clock can step backward, so a freshly minted token's iat
+            # (int(time.time())) may read as a fraction of a second in the future
+            # and raise ImmatureSignatureError -> intermittent AUTH_FAILED 401s.
+            # iat is informational (never a security boundary); exp/nbf/signature
+            # stay strictly enforced.
+            options={"verify_iat": False},
+        )
         if "sub" in payload:
             payload["sub"] = int(payload["sub"])
         return payload
