@@ -1,6 +1,7 @@
 import { webcrypto } from "node:crypto";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import svgr from "vite-plugin-svgr";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
@@ -152,6 +153,7 @@ export default defineConfig(({ mode }) => {
       monacoSameOrigin(__dirname),
       suppressViteDisconnectReload(),
       react(),
+      svgr(),
       VitePWA({
         // fast 模式不生成 Service Worker，省掉 workbox 扫描与打包。
         disable: fast,
@@ -175,6 +177,9 @@ export default defineConfig(({ mode }) => {
           "apple-touch-icon.png",
         ],
         workbox: {
+          // Notification clicks are handled here. The production worker must
+          // not skipWaiting; notify-sw.js only does that when it is the worker.
+          importScripts: ["notify-sw.js"],
           // Precache hashed entry + vendor chunks. Do NOT precache index.html:
           // Cache-First on the shell pins a stale HTML that points at deleted
           // hashes after deploy (white screen until a hard refresh).

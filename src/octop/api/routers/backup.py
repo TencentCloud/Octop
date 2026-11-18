@@ -143,6 +143,7 @@ def _restore_stored_backup(
         db_config=db_config,
         restore_config=restore_config,
         owner_user_id=owner_user_id,
+        allow_legacy_history=False,
     )
 
 

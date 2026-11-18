@@ -8,7 +8,6 @@ import {
   Modal,
   Popconfirm,
   Segmented,
-  Select,
   Space,
   Spin,
   Table,
@@ -18,10 +17,9 @@ import {
 } from "antd";
 import {
   ExternalLink,
+  Info,
   KeyRound,
   LogIn,
-  PanelLeftClose,
-  PanelLeftOpen,
   PauseCircle,
   PlayCircle,
   RefreshCw,
@@ -31,6 +29,7 @@ import {
 } from "lucide-react";
 import { request } from "../../../api/request";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
+import RailEdgeControl from "../../../components/RailEdgeControl";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { useCvmOpsExpert } from "../../../hooks/useCvmOpsExpert";
 import { ALERT_MIN, WARN_MIN, levelTone } from "./theme";
@@ -46,6 +45,7 @@ import CloudOverviewBoard, {
   type BoardInstance,
   type TrendPoint,
 } from "./components/CloudOverviewBoard";
+import RegionPicker from "./components/RegionPicker";
 import styles from "./index.module.less";
 
 type CloudStatus = {
@@ -186,8 +186,10 @@ function CredentialBadge({
     onExpire();
   }, [remaining, expiresAt, status?.authorized, onExpire]);
 
+  // 未授权时不再渲染「未授权」标签：空状态引导里已有完整说明，
+  // 工具栏再挂一个灰 Tag 只会干扰视线。
   if (!status?.authorized) {
-    return <Tag color="default">{t("cloud.notAuthorized")}</Tag>;
+    return null;
   }
 
   const critical = remaining <= 60;
@@ -746,6 +748,15 @@ export default function CloudHostsPage({
     );
   }, [instances, keyword]);
 
+  // 每个地域的节点数：地域选择器要在名字后带上这个数字
+  const regionCounts = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const row of instances) {
+      out[row.region] = (out[row.region] ?? 0) + 1;
+    }
+    return out;
+  }, [instances]);
+
   // KPI 跟随搜索范围，避免"顶部写 486、左侧只剩 2 台"的口径不一致
   const runningCount = filteredInstances.filter(
     (row) => row.state === "RUNNING",
@@ -892,17 +903,11 @@ export default function CloudHostsPage({
             onExpire={handleExpire}
             onRenew={() => void refreshCredential()}
           />
-          <Select
-            mode="multiple"
-            allowClear
-            style={{ minWidth: 260 }}
-            placeholder={t("cloud.regionPlaceholder")}
+          <RegionPicker
+            regions={regions}
+            counts={regionCounts}
             value={selectedRegions}
-            options={regions.map((region) => ({
-              value: region.id,
-              label: `${region.name} (${region.id})`,
-            }))}
-            onChange={(value) => setSelectedRegions(value)}
+            onChange={setSelectedRegions}
             disabled={!authorized}
           />
           {revalidating ? (
@@ -972,6 +977,12 @@ export default function CloudHostsPage({
                 detail: t("cloud.emptyGuideStepImportDetail"),
               },
             ]}
+            notice={
+              <p className={styles.providerHint}>
+                <Info size={14} strokeWidth={2} />
+                <span>{t("cloud.tencentOnlyHint")}</span>
+              </p>
+            }
             primaryAction={{
               label: t("cloud.authorize"),
               onClick: () => setAuthOpen(true),
@@ -1069,32 +1080,27 @@ export default function CloudHostsPage({
                     </span>
                   )}
                 </div>
+                <RailEdgeControl
+                  expanded
+                  side="end"
+                  onToggle={toggleSidebar}
+                  label={t("cloud.collapseSidebar")}
+                />
               </aside>
             ) : null}
             <div className={styles.stage}>
+              {sidebarOpen ? null : (
+                <RailEdgeControl
+                  expanded={false}
+                  side="start"
+                  showLine={false}
+                  className={styles.railEdgeClosed}
+                  onToggle={toggleSidebar}
+                  label={t("cloud.expandSidebar")}
+                />
+              )}
               <div className={styles.content}>
                 <div className={styles.contentHead}>
-                  <button
-                    type="button"
-                    className={styles.railBtn}
-                    onClick={toggleSidebar}
-                    title={
-                      sidebarOpen
-                        ? t("cloud.collapseSidebar")
-                        : t("cloud.expandSidebar")
-                    }
-                    aria-label={
-                      sidebarOpen
-                        ? t("cloud.collapseSidebar")
-                        : t("cloud.expandSidebar")
-                    }
-                  >
-                    {sidebarOpen ? (
-                      <PanelLeftClose size={14} />
-                    ) : (
-                      <PanelLeftOpen size={14} />
-                    )}
-                  </button>
                   <Tabs
                     size="small"
                     activeKey={activeTab}

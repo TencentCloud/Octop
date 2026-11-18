@@ -27,5 +27,11 @@ async def test_openapi_has_bearer_security_and_descriptions(tmp_octop_home: Path
         me = spec["paths"]["/api/auth/me"]["get"]
         assert "BearerAuth" in me["security"][0]
         assert "security" not in spec["paths"]["/api/setup/status"]["get"]
+        extraction = spec["paths"]["/api/agents/{agent_id}/memory/extract-config"]["put"]
+        ref = extraction["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+        properties = spec["components"]["schemas"][ref.rsplit("/", 1)[-1]]["properties"]
+        for key in ("memory_capture_enabled", "memory_recall_inject_enabled"):
+            assert {"type": "boolean"} in properties[key]["anyOf"]
+            assert properties[key]["description"]
     finally:
         await srv.stop()

@@ -289,6 +289,226 @@ async def test_agent_strips_orphan_thinking_prefix() -> None:
 
 
 @pytest.mark.asyncio
+async def test_delivery_binds_channel_to_latest_conversation(tmp_path: Path) -> None:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    UserRepo(db).create(username="u", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id="a1", user_id=1, name="bot")
+    session_key = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    threads = ThreadRepo(db)
+    threads.insert(
+        thread_id="thr_open",
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        title="正在看的旧对话",
+        last_active=10,
+    )
+    threads.insert(
+        thread_id="thr_latest",
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        title="最近一次会话",
+        last_active=20,
+    )
+    threads.insert(
+        thread_id="thr_blank",
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        title="空白新对话",
+        last_active=0,
+    )
+    SessionRepo(db).upsert(
+        session_key=session_key,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        chat_type=ThreadRegistry.CHAT_TYPE_DM,
+        thread_id="thr_open",
+    )
+    registry = ThreadRegistry(session_repo=SessionRepo(db), thread_repo=threads)
+
+    seen: list[str] = []
+
+    async def append(thread_id: str, _messages):
+        seen.append(thread_id)
+        return [
+            HumanMessage(content="h", id="cron:x:human"),
+            AIMessage(content="记得喝水", id="cron:x:assistant"),
+        ]
+
+    harness = MagicMock()
+    harness.aappend_messages = append
+    agent_manager = MagicMock()
+    agent_manager.get_agent.return_value = harness
+
+    gateway = MagicMock()
+    gateway.thread_registry = registry
+    gateway.run_in_session = _run_locked
+    gateway.require_session = lambda _agent_id, key: registry.get_session(key)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+
+    repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="zh")
+    repos.thread_message_repo.append_if_ready.return_value = 2
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=repos,
+    )
+    await service.deliver(_command(session_key=session_key))
+
+    assert seen == ["thr_latest"]
+    bound = registry.get_session(session_key)
+    assert bound is not None
+    assert bound.thread_id == "thr_latest"
+
+
+@pytest.mark.asyncio
+async def test_delivery_pins_historical_thread(tmp_path: Path) -> None:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    UserRepo(db).create(username="u", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id="a1", user_id=1, name="bot")
+    session_key = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    threads = ThreadRepo(db)
+    threads.insert(
+        thread_id="thr_old",
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        title="历史会话",
+        last_active=10,
+    )
+    threads.insert(
+        thread_id="thr_latest",
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        title="最近一次会话",
+        last_active=20,
+    )
+    SessionRepo(db).upsert(
+        session_key=session_key,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        chat_type=ThreadRegistry.CHAT_TYPE_DM,
+        thread_id="thr_latest",
+    )
+    registry = ThreadRegistry(session_repo=SessionRepo(db), thread_repo=threads)
+    seen: list[str] = []
+
+    async def append(thread_id: str, _messages):
+        seen.append(thread_id)
+        return [
+            HumanMessage(content="h", id="cron:x:human"),
+            AIMessage(content="记得喝水", id="cron:x:assistant"),
+        ]
+
+    harness = MagicMock()
+    harness.aappend_messages = append
+    agent_manager = MagicMock()
+    agent_manager.get_agent.return_value = harness
+    gateway = MagicMock()
+    gateway.thread_registry = registry
+    gateway.run_in_session = _run_locked
+    gateway.require_session = lambda _agent_id, key: registry.get_session(key)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="zh")
+    repos.thread_message_repo.append_if_ready.return_value = 2
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=repos,
+    )
+    await service.deliver(_command(session_key="thread:thr_old"))
+
+    assert seen == ["thr_old"]
+    bound = registry.get_session(session_key)
+    assert bound is not None
+    assert bound.thread_id == "thr_old"
+
+
+@pytest.mark.asyncio
+async def test_fresh_thread_does_not_return_to_latest_conversation(tmp_path: Path) -> None:
+    db = SqlitePool(tmp_path / "octop.db")
+    run_migrations(db)
+    UserRepo(db).create(username="u", password_hash="h", role="user")
+    AgentRepo(db).create(agent_id="a1", user_id=1, name="bot")
+    session_key = ThreadRegistry.dashboard_key(agent_id="a1", user_id=1)
+    threads = ThreadRepo(db)
+    threads.insert(
+        thread_id="thr_latest",
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        last_active=20,
+    )
+    SessionRepo(db).upsert(
+        session_key=session_key,
+        agent_id="a1",
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        chat_type=ThreadRegistry.CHAT_TYPE_DM,
+        thread_id="thr_latest",
+        channel_subject_id="1",
+        channel_chat_type=ThreadRegistry.CHAT_TYPE_DM,
+    )
+    registry = ThreadRegistry(session_repo=SessionRepo(db), thread_repo=threads)
+
+    seen: list[str] = []
+
+    async def append(thread_id: str, _messages):
+        seen.append(thread_id)
+        return [
+            HumanMessage(content="h", id="cron:x:human"),
+            AIMessage(content="记得喝水", id="cron:x:assistant"),
+        ]
+
+    harness = MagicMock()
+    harness.aappend_messages = append
+    agent_manager = MagicMock()
+    agent_manager.get_agent.return_value = harness
+
+    gateway = MagicMock()
+    gateway.thread_registry = registry
+    gateway.run_in_session = _run_locked
+    gateway.require_session = lambda _agent_id, key: registry.get_session(key)
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+
+    repos = MagicMock()
+    repos.user_repo.get.return_value = MagicMock(locale="zh")
+    repos.thread_message_repo.append_if_ready.return_value = 2
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=repos,
+    )
+    await service.deliver(_command(session_key=session_key, fresh_thread=True))
+
+    assert seen and seen[0] != "thr_latest"
+    bound = registry.get_session(session_key)
+    assert bound is not None
+    assert bound.thread_id == seen[0]
+
+
+@pytest.mark.asyncio
 async def test_fresh_thread_resets_before_require_session() -> None:
     session = _session(channel_type="feishu")
     order: list[str] = []
@@ -420,4 +640,59 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     titled = ThreadRepo(db).get("thr_fail")
     assert titled is not None
     assert titled.title == "喝水提醒"
+    db.close()
+
+
+@pytest.mark.asyncio
+async def test_telegram_cron_reloads_topic_routing_from_persisted_session(tmp_path: Path) -> None:
+    from octop_gateway.models import ChannelSubject, InboundMessage
+
+    from octop.infra.gateway.gateway import Gateway
+    from octop.infra.gateway.process.message_keys import (
+        sanitize_im_metadata,
+        session_key_from_message,
+    )
+
+    db, _ = _seed_dashboard_thread(tmp_path, thread_id="dashboard-thread")
+    sessions = SessionRepo(db)
+    registry = ThreadRegistry(session_repo=sessions, thread_repo=ThreadRepo(db))
+    inbound = InboundMessage(
+        channel_type="telegram",
+        channel_id="telegram-bot",
+        content=[],
+        channel_subject=ChannelSubject(subject_id="-100123", chat_type="group"),
+        metadata={
+            "chat_id": "-100123",
+            "chat_type": "group",
+            "message_thread_id": 42,
+            "topic_isolation": True,
+            "message_id": 999,
+        },
+    )
+    key = session_key_from_message(inbound, agent_id="a1")
+    await registry.get_or_create_by_key(
+        session_key=key,
+        agent_id="a1",
+        user_id=1,
+        channel_type="telegram",
+        channel_channel_id="telegram-bot",
+        channel_metadata=sanitize_im_metadata(inbound),
+    )
+    # Cron can create a fresh thread; routing must survive the reset and DB reload.
+    await registry.reset_by_session_key(key)
+    session = SessionRepo(db).get(key)
+    assert session is not None
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session.return_value = session
+    gateway.push_session_text = AsyncMock()
+    gateway.notify_dashboard_push = AsyncMock()
+    service = CronDeliveryService(gateway=gateway, agent_manager=MagicMock(), repos=MagicMock())
+    await service.deliver(_command(session_key=key))
+    delivered_session = gateway.push_session_text.call_args.args[0]
+    subject = Gateway._resolve_push_subject(gateway, delivered_session)
+    assert subject.metadata["chat_id"] == "-100123"
+    assert subject.metadata["message_thread_id"] == 42
+    assert subject.metadata["channel_id"] == "telegram-bot"
+    assert "message_id" not in subject.metadata
     db.close()

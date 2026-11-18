@@ -30,6 +30,10 @@ interface StreamSetupGuideProps {
   secondaryAction?: SetupGuideAction;
   /** Optional third action (e.g. uninstall) rendered after the main pair. */
   extraAction?: SetupGuideAction;
+  /** Further actions rendered after ``extraAction``. */
+  moreActions?: SetupGuideAction[];
+  /** Callout rendered immediately above the action buttons. */
+  notice?: ReactNode;
   className?: string;
   /** Widen the card for longer explanatory copy. */
   wide?: boolean;
@@ -73,11 +77,14 @@ export default function StreamSetupGuide({
   primaryAction,
   secondaryAction,
   extraAction,
+  moreActions,
+  notice,
   className,
   wide,
   plain,
 }: StreamSetupGuideProps) {
-  const hasActions = primaryAction || secondaryAction || extraAction;
+  const hasActions =
+    primaryAction || secondaryAction || extraAction || moreActions?.length;
   const wrapClass = cx(
     styles.wrap,
     wide && styles.wide,
@@ -108,11 +115,15 @@ export default function StreamSetupGuide({
             ))}
           </ol>
         ) : null}
+        {notice ? <div className={styles.notice}>{notice}</div> : null}
         {hasActions ? (
           <div className={styles.actions}>
             {primaryAction ? <ActionButton action={primaryAction} /> : null}
             {secondaryAction ? <ActionButton action={secondaryAction} /> : null}
             {extraAction ? <ActionButton action={extraAction} /> : null}
+            {moreActions?.map((action) => (
+              <ActionButton key={String(action.label)} action={action} />
+            ))}
           </div>
         ) : null}
       </div>

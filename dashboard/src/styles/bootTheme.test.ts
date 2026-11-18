@@ -34,6 +34,7 @@ describe("index.html boot theme", () => {
   beforeEach(() => {
     localStorage.removeItem(THEME_STORAGE_KEY);
     document.documentElement.removeAttribute("data-theme");
+    window.history.replaceState(null, "", "/");
     stubMatchMedia(true);
   });
 
@@ -41,6 +42,7 @@ describe("index.html boot theme", () => {
     window.matchMedia = originalMatchMedia;
     localStorage.removeItem(THEME_STORAGE_KEY);
     document.documentElement.removeAttribute("data-theme");
+    window.history.replaceState(null, "", "/");
   });
 
   it("styles the splash from data-theme, not OS color scheme", () => {
@@ -50,11 +52,16 @@ describe("index.html boot theme", () => {
     );
   });
 
-  it("uses the white vertical mark in dark mode", () => {
-    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_vertical_white.svg"');
-    expect(INDEX_HTML).toContain(
-      'html[data-theme="dark"] .octop-boot-logo--dark',
-    );
+  it("paints the horizontal lockup for both themes, not the framed favicon", () => {
+    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_horizontal_dark.png"');
+    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_horizontal_white.png"');
+    expect(INDEX_HTML).not.toContain('src="%BASE_URL%favico.svg"');
+    expect(INDEX_HTML).not.toContain("logo_vertical_white.svg");
+  });
+
+  it("shows the shared arc beside the status line", () => {
+    expect(INDEX_HTML).toContain('class="octop-boot-spinner"');
+    expect(INDEX_HTML).toContain("@keyframes octop-boot-spin");
   });
 
   it("keeps a stored light preference over OS dark", () => {
@@ -90,5 +97,39 @@ describe("index.html boot theme", () => {
     localStorage.setItem(THEME_STORAGE_KEY, "light");
     eval(bootThemeScript());
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  });
+
+  it("adopts the desktop shell preference over the stored one", () => {
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      JSON.stringify({
+        preference: "dark",
+        palette: "tech",
+        customColor: "#112233",
+      }),
+    );
+    window.history.replaceState(null, "", "/?octopTheme=light");
+    eval(bootThemeScript());
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toEqual({
+      preference: "light",
+      palette: "tech",
+      customColor: "#112233",
+    });
+    expect(window.location.search).not.toContain("octopTheme");
+  });
+
+  it("resolves a desktop system preference against the OS", () => {
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      JSON.stringify({ preference: "light", palette: "rose" }),
+    );
+    window.history.replaceState(null, "", "/?octopTheme=system");
+    eval(bootThemeScript());
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+    expect(JSON.parse(localStorage.getItem(THEME_STORAGE_KEY)!)).toMatchObject({
+      preference: "system",
+      palette: "rose",
+    });
   });
 });

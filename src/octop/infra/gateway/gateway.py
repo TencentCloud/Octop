@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from octop_gateway.channel import ChannelCredentialsError
 from octop_gateway.channels import ChannelKind
 from octop_gateway.manager import ChannelManager
-from octop_gateway.models import ChannelSubject
+from octop_gateway.models import ChannelSubject, ContentPart
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.lease import LEASE_SECONDS, RECONCILE_SECONDS
@@ -118,14 +118,12 @@ class Gateway:
         agent_manager: AgentManager,
         repos: RepoBundle,
         trajectory_service: Any | None = None,
-        history_archive: Any | None = None,
         instance_id: str | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._repos = repos
         self._instance_id = instance_id or uuid.uuid4().hex
         self._trajectory_service = trajectory_service
-        self._history_archive = history_archive
         self._thread_registry = ThreadRegistry(
             session_repo=repos.session_repo,
             thread_repo=repos.thread_repo,
@@ -240,11 +238,34 @@ class Gateway:
             "error": error,
             "updated_at": status.updated_at,
         }
+        channel = self._channel_manager.get_channel(channel_id) if self._channel_manager else None
+        metrics = getattr(channel, "health_metrics", None)
+        if callable(metrics):
+            out.update(metrics())
         if status.lease_owner:
             out["lease_owner"] = status.lease_owner
         if status.lease_until is not None:
             out["lease_until"] = status.lease_until
         return out
+
+    def channel_health(self) -> list[dict[str, Any]]:
+        """Per-channel liveness counters. Message bodies are not included."""
+        if self._channel_manager is None:
+            return []
+        rows: list[dict[str, Any]] = []
+        for channel_id in self._channel_manager.channel_ids:
+            channel = self._channel_manager.get_channel(channel_id)
+            status = self.get_runtime_status(channel_id)
+            metrics = getattr(channel, "health_metrics", None)
+            row: dict[str, Any] = {
+                "id": channel_id,
+                "type": getattr(channel, "channel_type", ""),
+                "connected": bool(status.connected) if status is not None else False,
+            }
+            if callable(metrics):
+                row.update(metrics())
+            rows.append(row)
+        return rows
 
     async def boot(self, *, serve_background: bool = True) -> None:
         from octop.infra.gateway.process.channel_thinking import (
@@ -267,10 +288,13 @@ class Gateway:
             thread_message_repo=self._repos.thread_message_repo,
             gateway=self,
             trajectory_service=self._trajectory_service,
-            history_archive=self._history_archive,
         )
 
-        self._channel_manager = ChannelManager(channels={})
+        from octop.infra.gateway.channels.telegram_bridge import is_telegram_button_reply
+
+        self._channel_manager = ChannelManager(
+            channels={}, control_message_predicate=is_telegram_button_reply
+        )
         self._channel_manager.set_pre_lock_handler(self._preempt_cancel_on_stop)
         await self._channel_manager.start()
 
@@ -383,6 +407,9 @@ class Gateway:
         return self._repos.channel_repo.get(channel_id)
 
     async def create_channel(self, spec: ChannelCreateSpec) -> ChannelRow:
+        from octop.infra.gateway.channels.telegram_bridge import validate_telegram_config
+
+        validate_telegram_config(str(spec.kind), spec.config)
         config_json = json.dumps(spec.config)
         existing = self._repos.channel_repo.get_by_agent_and_name(spec.agent_id, spec.name)
         if existing is not None:
@@ -426,6 +453,17 @@ class Gateway:
         config_json: str | None = None,
         enabled: int | None = None,
     ) -> ChannelRow | None:
+        from octop.infra.gateway.channels.telegram_bridge import validate_telegram_config
+
+        existing = self._repos.channel_repo.get(channel_id)
+        effective_kind = kind or (existing.kind if existing else "")
+        if effective_kind == "telegram":
+            config = (
+                json.loads(config_json)
+                if config_json is not None
+                else (self._config_from_row(existing) if existing else {})
+            )
+            validate_telegram_config(effective_kind, config)
         self._repos.channel_repo.update(
             channel_id,
             kind=kind,
@@ -639,6 +677,25 @@ class Gateway:
             return
         await manager.push_text(channel_id, subject, cleaned)
 
+    async def push_content(
+        self,
+        channel_type: str,
+        channel_id: str,
+        subject: ChannelSubject,
+        parts: list[ContentPart],
+    ) -> None:
+        """Proactively push files or images to an IM user via ChannelManager.
+
+        Team member turns finish outside the inbound reply loop, so media cannot
+        ride a ``MessageEvent``. ``channel_type`` matches :meth:`push_text`;
+        routing uses ``channel_id``.
+        """
+        del channel_type
+        if not parts:
+            return
+        manager = self._require_channel_manager()
+        await manager.push_content(channel_id, subject, parts)
+
     async def probe_channel(
         self, channel_id: str, *, locale: Locale = DEFAULT_LOCALE
     ) -> dict[str, Any]:
@@ -691,6 +748,9 @@ class Gateway:
             raise RuntimeError("gateway not booted")
 
         try:
+            from octop.infra.gateway.channels.telegram_bridge import validate_telegram_config
+
+            validate_telegram_config(row.kind, raw_cfg)
             await manager.probe_channel(
                 row.kind,
                 raw_cfg,
@@ -820,6 +880,8 @@ class Gateway:
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)
+        if row.kind == "feishu":
+            config = self._with_feishu_dedup_path(config)
         from octop.infra.agents.teams.service import is_team_agent  # noqa: PLC0415
 
         team_host = False
@@ -839,6 +901,17 @@ class Gateway:
         processor = processor_for_response_mode(self._processor, response_mode)
         if row.kind == "weixin" and response_mode == "stream":
             processor = wrap_weixin_stream_processor(processor)
+        if row.kind == "telegram":
+            from octop.infra.gateway.channels.telegram_bridge import (
+                TelegramBridge,
+                validate_telegram_config,
+            )
+
+            validate_telegram_config(row.kind, config)
+            # Wrap once: the bridge sends choice menus on COMPLETED, so a second layer
+            # would push every menu twice.
+            if not isinstance(processor, TelegramBridge):
+                processor = TelegramBridge(self, processor, row.channel_id)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,
@@ -887,6 +960,25 @@ class Gateway:
                 f"channel {row.channel_id} config must be a JSON object",
             )
         return raw
+
+    def _with_feishu_dedup_path(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Point Feishu dedup at this install's data directory.
+
+        The channel library only opens a SQLite file when a path is set.
+        Restart and re-register then still recognize message ids Feishu redelivers.
+        An explicit ``dedup_db_path`` in the channel config is left as-is.
+        """
+        if str(config.get("dedup_db_path") or "").strip():
+            return config
+        paths = getattr(self._agent_manager, "_paths", None)
+        root = getattr(paths, "root", None)
+        if root is None:
+            from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+            root = PathLayout.from_env().root
+        updated = dict(config)
+        updated["dedup_db_path"] = str(root / "feishu-dedup.sqlite")
+        return updated
 
     async def _unregister(self, channel_id: str) -> None:
         """Disconnect locally, then release only the lease this process holds."""

@@ -15,6 +15,7 @@ import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
+import { isMagpieProvider, magpieIntegrationExtra } from "../../magpie";
 import styles from "../../index.module.less";
 
 interface CustomProviderModalProps {
@@ -62,6 +63,7 @@ export function CustomProviderModal({
   const kind = Form.useWatch("kind", form) as string | undefined;
   const baseUrl = Form.useWatch("base_url", form) as string | undefined;
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
+  const magpieShaped = isMagpieProvider({ name, base_url: baseUrl });
   const [models, setModels] = useState<ProviderModel[]>([]);
   const canTest = !!apiKey?.trim();
   const setupStep = !apiKey?.trim()
@@ -225,6 +227,7 @@ export function CustomProviderModal({
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
           purpose: embeddingLane ? "embedding" : "chat",
+          ...(magpieShaped ? { extra_json: magpieIntegrationExtra() } : {}),
           ...((values.kind as string) === "openai" && !embeddingLane
             ? { stream_usage: values.stream_usage === true }
             : {}),
@@ -321,9 +324,14 @@ export function CustomProviderModal({
           name="base_url"
           label="Base URL"
           extra={
-            embeddingLane
-              ? t("models.embeddingBaseUrlExtra")
-              : t("models.baseUrlExtra")
+            <>
+              <div>
+                {embeddingLane
+                  ? t("models.embeddingBaseUrlExtra")
+                  : t("models.baseUrlExtra")}
+              </div>
+              {magpieShaped ? <div>{t("models.magpieAddressHint")}</div> : null}
+            </>
           }
         >
           <Input placeholder="https://api.openai.com/v1" />
