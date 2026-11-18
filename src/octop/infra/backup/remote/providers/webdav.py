@@ -9,7 +9,7 @@ import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote, urljoin, urlparse
+from urllib.parse import quote, unquote, urljoin, urlparse
 
 import httpx
 
@@ -113,10 +113,10 @@ class WebDavBackupProvider:
         )
 
     def _object_url(self, remote_name: str) -> str:
-        name = Path(remote_name).name
-        if not name or name != remote_name.replace("\\", "/").rsplit("/", 1)[-1]:
+        name = (remote_name or "").replace("\\", "/").strip()
+        if not name or "/" in name or name in {".", ".."} or name.endswith(".part"):
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "invalid remote archive name")
-        return urljoin(self._settings.base_url, quote(name))
+        return urljoin(self._settings.base_url, quote(name, safe=""))
 
     def _client(self) -> httpx.AsyncClient:
         timeout = httpx.Timeout(
@@ -132,7 +132,8 @@ class WebDavBackupProvider:
             timeout=timeout,
             verify=self._settings.verify_ssl,
             auth=auth,
-            follow_redirects=True,
+            # Redirects rewrite PUT/MOVE/PROPFIND to GET and can fake success.
+            follow_redirects=False,
         )
 
     def _reason(self, text: str) -> str:
@@ -173,16 +174,16 @@ class WebDavBackupProvider:
                 put_status = await self._put_bytes(client, temp_url, local_path)
                 # Prefer temp + MOVE so a truncated final key is less likely.
                 moved = await self._try_move(client, temp_url, url)
-                final_url = url if moved else temp_url
-                if not moved and final_url.endswith(".part"):
-                    # Fallback: put directly to the final name.
-                    put_status = await self._put_bytes(client, url, local_path)
-                    final_url = url
-                    with contextlib.suppress(httpx.HTTPError):
-                        await client.delete(temp_url)
-                    return await self._verify_put(
-                        client, final_url, expected_size=size, put_status=put_status
-                    )
+                if moved:
+                    # MOVE completed placement; treat like a finished write for verify.
+                    return await self._verify_put(client, url, expected_size=size, put_status=204)
+                # Fallback: put directly to the final name.
+                put_status = await self._put_bytes(client, url, local_path)
+                with contextlib.suppress(httpx.HTTPError):
+                    await client.delete(temp_url)
+                return await self._verify_put(
+                    client, url, expected_size=size, put_status=put_status
+                )
         except OctopError as exc:
             return MirrorResult(status="remote_failed", reason=self._reason(str(exc)))
         except httpx.HTTPError as exc:
@@ -201,9 +202,12 @@ class WebDavBackupProvider:
         size = local_path.stat().st_size
 
         async def _body():
+            def _read_chunk(handle: object, n: int) -> bytes:
+                return handle.read(n)  # type: ignore[attr-defined]
+
             with local_path.open("rb") as handle:
                 while True:
-                    chunk = handle.read(1024 * 1024)
+                    chunk = await asyncio.to_thread(_read_chunk, handle, 1024 * 1024)
                     if not chunk:
                         break
                     yield chunk
@@ -229,7 +233,8 @@ class WebDavBackupProvider:
             )
         except httpx.HTTPError:
             return False
-        return response.status_code in {201, 204, 200}
+        # Do not treat 200 as MOVE success: redirected GET often returns 200.
+        return response.status_code in {201, 204}
 
     async def _head_meta(
         self, client: httpx.AsyncClient, url: str
@@ -294,7 +299,8 @@ class WebDavBackupProvider:
                     content=(
                         '<?xml version="1.0" encoding="utf-8"?>'
                         '<d:propfind xmlns:d="DAV:"><d:prop>'
-                        "<d:displayname/><d:getcontentlength/><d:getlastmodified/>"
+                        "<d:resourcetype/><d:displayname/>"
+                        "<d:getcontentlength/><d:getlastmodified/>"
                         "</d:prop></d:propfind>"
                     ),
                 )
@@ -315,15 +321,20 @@ class WebDavBackupProvider:
         async with self._client() as client:
             try:
                 async with client.stream("GET", url) as response:
-                    if response.status_code >= 400:
+                    if response.status_code in {404, 410}:
                         raise OctopError(
                             ErrorCode.NOT_FOUND,
+                            self._reason(f"WebDAV download failed: HTTP {response.status_code}"),
+                        )
+                    if response.status_code >= 400:
+                        raise OctopError(
+                            ErrorCode.NETWORK_ERROR,
                             self._reason(f"WebDAV download failed: HTTP {response.status_code}"),
                         )
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     with dest.open("wb") as handle:
                         async for chunk in response.aiter_bytes():
-                            handle.write(chunk)
+                            await asyncio.to_thread(handle.write, chunk)
             except OctopError:
                 raise
             except httpx.HTTPError as exc:
@@ -352,9 +363,12 @@ class WebDavBackupProvider:
 def _parse_propfind(xml_text: str, *, base_url: str) -> list[RemoteObject]:
     try:
         root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return []
-    base_path = urlparse(base_url).path.rstrip("/")
+    except ET.ParseError as exc:
+        raise OctopError(
+            ErrorCode.NETWORK_ERROR,
+            "WebDAV list returned non-PROPFIND XML",
+        ) from exc
+    base_path = unquote(urlparse(base_url).path.rstrip("/"))
     items: list[RemoteObject] = []
     for response in root.findall("d:response", _DAV_NS):
         href_el = response.find("d:href", _DAV_NS)
@@ -362,10 +376,15 @@ def _parse_propfind(xml_text: str, *, base_url: str) -> list[RemoteObject]:
             continue
         href = href_el.text
         path = urlparse(href).path if "://" in href else href
-        name = Path(path.rstrip("/")).name
-        if not name or path.rstrip("/") == base_path:
+        path = unquote(path.rstrip("/"))
+        name = Path(path).name
+        if not name or path == base_path or name.endswith(".part"):
             continue
         prop = response.find("d:propstat/d:prop", _DAV_NS)
+        if prop is not None:
+            rtype = prop.find("d:resourcetype", _DAV_NS)
+            if rtype is not None and rtype.find("d:collection", _DAV_NS) is not None:
+                continue
         size = 0
         modified: str | None = None
         if prop is not None:
@@ -382,14 +401,37 @@ def _parse_propfind(xml_text: str, *, base_url: str) -> list[RemoteObject]:
     return items
 
 
+def _as_bool(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    return default
+
+
+def _as_float(value: object, default: float) -> float:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value.strip())
+        except ValueError:
+            return default
+    return default
+
+
 def _factory(**kwargs: object) -> WebDavBackupProvider:
     return WebDavBackupProvider.from_settings(
         url=str(kwargs.get("url") or ""),
         username=str(kwargs.get("username") or ""),
         password=str(kwargs.get("password") or ""),
         base_dir=str(kwargs.get("base_dir") or ""),
-        verify_ssl=bool(kwargs.get("verify_ssl", True)),
-        allow_insecure=bool(kwargs.get("allow_insecure", False)),
+        verify_ssl=_as_bool(kwargs.get("verify_ssl"), True),
+        allow_insecure=_as_bool(kwargs.get("allow_insecure"), False),
+        connect_timeout_s=_as_float(kwargs.get("connect_timeout_s"), _DEFAULT_CONNECT_TIMEOUT_S),
+        read_timeout_s=_as_float(kwargs.get("read_timeout_s"), _DEFAULT_READ_TIMEOUT_S),
+        put_budget_s=_as_float(kwargs.get("put_budget_s"), _DEFAULT_PUT_BUDGET_S),
+        recheck_delay_s=_as_float(kwargs.get("recheck_delay_s"), _DEFAULT_RECHECK_DELAY_S),
     )
 
 

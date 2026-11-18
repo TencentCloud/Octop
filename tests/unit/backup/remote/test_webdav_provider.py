@@ -27,6 +27,20 @@ def test_from_settings_rejects_userinfo_in_url() -> None:
     assert "userinfo" in str(exc_info.value).lower()
 
 
+def test_object_url_rejects_path_separators() -> None:
+    provider = WebDavBackupProvider.from_settings(
+        url="https://dav.example/backups",
+        username="u",
+        password="p",
+        base_dir="octop",
+        verify_ssl=True,
+        allow_insecure=False,
+    )
+    with pytest.raises(OctopError) as exc_info:
+        provider._object_url("../escape.tar.gz")
+    assert exc_info.value.code == ErrorCode.SLASH_BAD_ARGS
+
+
 def test_from_settings_rejects_http_without_allow_insecure() -> None:
     with pytest.raises(OctopError) as exc_info:
         WebDavBackupProvider.from_settings(
