@@ -445,6 +445,32 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
       },
     ],
   },
+  {
+    kind: "webdav",
+    nameKey: "storage.kindWebdav",
+    descKey: "storage.descWebdav",
+    color: "#0f766e",
+    icon: storageBrandIcon("webdav"),
+    fields: [
+      {
+        key: "endpoint",
+        labelKey: "storage.endpointLabel",
+        required: true,
+        placeholder: "https://dav.example/remote.php/dav/files/user/",
+      },
+      {
+        key: "access_key",
+        labelKey: "storage.usernameLabel",
+        placeholder: "username",
+      },
+      {
+        key: "secret_key",
+        labelKey: "storage.passwordLabel",
+        secret: true,
+        placeholder: "password",
+      },
+    ],
+  },
 ];
 
 export const STORAGE_KINDS = STORAGE_TYPE_DEFS.map((t) => ({
@@ -478,6 +504,11 @@ export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
     id: "database",
     titleKey: "storage.groupDatabase",
     kinds: ["postgres"],
+  },
+  {
+    id: "backup",
+    titleKey: "storage.groupBackup",
+    kinds: ["webdav"],
   },
 ];
 

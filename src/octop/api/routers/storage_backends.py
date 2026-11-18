@@ -184,6 +184,21 @@ async def patch_storage_backend(
                 )
             new_name = candidate
 
+    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
+
+    if new_name is not None:
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="rename",
+        )
+    if body.enabled is False:
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="disable",
+        )
+
     old_name = row.name
     if new_name is not None:
         from octop.infra.backend.resolver import (  # noqa: PLC0415
@@ -248,6 +263,13 @@ async def delete_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
+
+    raise_if_backup_remote_backend(
+        config_path=server.paths.config,
+        backend_id=backend_id,
+        action="delete",
+    )
     assert server.app_runtime is not None
     refs = server.app_runtime.agent_registry.find_agents_using_storage_backend(row.name)
     if refs:
@@ -287,6 +309,15 @@ async def probe_storage_backend_config(
         config_json=body.config_json,
         base=base,
     )
+    if (row.kind or "").lower() == "webdav":
+        from octop.infra.backup.remote.resolve import provider_from_backend
+
+        try:
+            provider = provider_from_backend(row)
+            await provider.test()
+        except OctopError as exc:
+            return {"ok": False, "message": str(exc.message)}
+        return {"ok": True}
     return probe_storage_backend(row)
 
 
