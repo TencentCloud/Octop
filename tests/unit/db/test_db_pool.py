@@ -160,6 +160,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         "auth_challenges",
         "profile_avatars",
         "control_files",
+        "thread_shares",
     }.issubset(table_names)
     assert "preferences_json" in cols
     assert "permissions" in cols

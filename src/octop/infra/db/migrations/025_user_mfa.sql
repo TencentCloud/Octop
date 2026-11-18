@@ -1,7 +1,7 @@
 -- Schema v25: GitHub-style MFA (TOTP, WebAuthn/passkeys, recovery codes),
--- DB-backed auth challenges, same-row cron/channel leases, and
--- users.last_login_at. SQLite applies this through idempotent ensure helpers
--- so a replay does not fail.
+-- DB-backed auth challenges, same-row cron/channel leases,
+-- users.last_login_at, and read-only conversation share links.
+-- SQLite applies this through idempotent ensure helpers so a replay does not fail.
 
 ALTER TABLE users ADD COLUMN mfa_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN mfa_failed_count INTEGER NOT NULL DEFAULT 0;
@@ -107,5 +107,18 @@ CREATE TABLE IF NOT EXISTS control_files (
   content BLOB NOT NULL,
   PRIMARY KEY (namespace, owner_id, path)
 );
+
+CREATE TABLE IF NOT EXISTS thread_shares (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  share_id    TEXT NOT NULL UNIQUE,
+  thread_id   TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+  agent_id    TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  created_by  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  revoked_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_shares_active_thread
+  ON thread_shares(thread_id) WHERE revoked_at IS NULL;
 
 UPDATE _schema_version SET version = 25;
