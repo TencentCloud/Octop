@@ -97,9 +97,9 @@ class WebDavBackupProvider:
                 "http:// WebDAV requires allow_insecure=true (credentials travel in cleartext)",
             )
         base = raw if raw.endswith("/") else raw + "/"
-        rel = (base_dir or "").strip().lstrip("/")
-        if rel:
-            base = urljoin(base, rel.rstrip("/") + "/")
+        for seg in (base_dir or "").strip().strip("/").split("/"):
+            if seg and seg not in {".", ".."}:
+                base = urljoin(base, quote(seg, safe="") + "/")
         return cls(
             WebDavSettings(
                 base_url=base,
@@ -140,13 +140,51 @@ class WebDavBackupProvider:
     def _reason(self, text: str) -> str:
         return redact_secrets(text, password=self._settings.password)
 
+    def _network_error(
+        self,
+        reason: str,
+        *,
+        http_status: int | None = None,
+        code: ErrorCode = ErrorCode.NETWORK_ERROR,
+    ) -> OctopError:
+        cleaned = self._reason(reason)
+        details: dict[str, object] = {"reason": cleaned}
+        if http_status is not None:
+            details["http_status"] = http_status
+        return OctopError(code, cleaned, details=details)
+
+    def _raise_http(self, *, op: str, status: int) -> None:
+        """Map WebDAV HTTP failures to OctopError with toast-friendly ``reason``."""
+        if status in {401, 403}:
+            reason = (
+                f"WebDAV {op} HTTP {status}: authentication failed — check username and password"
+            )
+        elif status == 404:
+            reason = (
+                f"WebDAV {op}: remote directory may not exist — "
+                "create base_dir on the server first, then retry"
+            )
+        elif status == 429:
+            reason = f"WebDAV {op} HTTP 429: too many requests — wait a moment and retry"
+        elif status in {301, 302, 303, 307, 308}:
+            reason = (
+                f"WebDAV {op} HTTP {status}: redirect refused "
+                "(check the URL ends with the correct collection path)"
+            )
+        else:
+            reason = f"WebDAV {op} failed: HTTP {status}"
+        raise self._network_error(reason, http_status=status)
+
     async def test(self) -> None:
         async with self._client() as client:
             try:
                 response = await client.request(
                     "PROPFIND",
                     self._settings.base_url,
-                    headers={"Depth": "0"},
+                    headers={
+                        "Depth": "0",
+                        "Content-Type": "application/xml; charset=utf-8",
+                    },
                     content=(
                         '<?xml version="1.0" encoding="utf-8"?>'
                         '<d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop>'
@@ -154,15 +192,9 @@ class WebDavBackupProvider:
                     ),
                 )
             except httpx.HTTPError as exc:
-                raise OctopError(
-                    ErrorCode.NETWORK_ERROR,
-                    self._reason(f"WebDAV connectivity failed: {exc}"),
-                ) from exc
+                raise self._network_error(f"WebDAV connectivity failed: {exc}") from exc
         if response.status_code not in {207, 200}:
-            raise OctopError(
-                ErrorCode.NETWORK_ERROR,
-                self._reason(f"WebDAV connectivity failed: HTTP {response.status_code}"),
-            )
+            self._raise_http(op="connectivity", status=int(response.status_code))
 
     async def put(self, local_path: Path, remote_name: str) -> MirrorResult:
         if not local_path.is_file():
@@ -255,6 +287,54 @@ class WebDavBackupProvider:
         etag = response.headers.get("ETag")
         return length, etag
 
+    async def _propfind_size(self, client: httpx.AsyncClient, url: str) -> int | None:
+        """Some hosts (e.g. Nutstore) return ``Content-Length: 0`` on HEAD."""
+        try:
+            response = await client.request(
+                "PROPFIND",
+                url,
+                headers={
+                    "Depth": "0",
+                    "Content-Type": "application/xml; charset=utf-8",
+                },
+                content=(
+                    '<?xml version="1.0" encoding="utf-8"?>'
+                    '<d:propfind xmlns:d="DAV:"><d:prop>'
+                    "<d:getcontentlength/>"
+                    "</d:prop></d:propfind>"
+                ),
+            )
+        except httpx.HTTPError:
+            return None
+        if response.status_code not in {207, 200}:
+            return None
+        objects = _parse_propfind(response.text, base_url=url)
+        if not objects:
+            # Single-resource PROPFIND may report the file itself under base path.
+            try:
+                root = ET.fromstring(response.text)
+            except ET.ParseError:
+                return None
+            for node in root.findall("d:response/d:propstat/d:prop/d:getcontentlength", _DAV_NS):
+                if node.text:
+                    try:
+                        return int(node.text)
+                    except ValueError:
+                        return None
+            return None
+        return objects[0].size
+
+    async def _remote_size(
+        self, client: httpx.AsyncClient, url: str
+    ) -> tuple[int | None, str | None]:
+        size, etag = await self._head_meta(client, url)
+        # Treat missing or zero HEAD length as unreliable and fall back to PROPFIND.
+        if size is None or size == 0:
+            prop_size = await self._propfind_size(client, url)
+            if prop_size is not None and prop_size > 0:
+                return prop_size, etag
+        return size, etag
+
     async def _verify_put(
         self,
         client: httpx.AsyncClient,
@@ -263,34 +343,32 @@ class WebDavBackupProvider:
         expected_size: int,
         put_status: int,
     ) -> MirrorResult:
-        size1, etag1 = await self._head_meta(client, url)
+        size1, _etag1 = await self._remote_size(client, url)
         if size1 is None:
             return MirrorResult(
                 status="remote_failed",
-                reason="WebDAV HEAD after PUT failed or missing Content-Length",
+                reason="WebDAV HEAD/PROPFIND after PUT failed or missing size",
             )
         if size1 != expected_size:
             return MirrorResult(
                 status="remote_failed",
                 reason=f"remote size {size1} != local size {expected_size}",
             )
-        # Ordinary completed PUT (200/204) + size match → ok.
-        if put_status in {200, 204}:
-            return MirrorResult(status="remote_ok", reason="put verified")
-        # 201 often means "created / accepted"; require a stronger signal.
-        if self._settings.recheck_delay_s > 0:
+        # Size match is the practical completion signal. Some hosts (Nutstore)
+        # answer PUT with 201 and never expose a stable ETag on HEAD.
+        if put_status == 201 and self._settings.recheck_delay_s > 0:
             await asyncio.sleep(self._settings.recheck_delay_s)
-        size2, etag2 = await self._head_meta(client, url)
-        if size2 != expected_size:
-            return MirrorResult(
-                status="unverified",
-                reason="size changed after delayed re-check",
-            )
-        if etag1 and etag2 and etag1 == etag2:
-            return MirrorResult(status="remote_ok", reason="etag stable after re-check")
+            size2, _etag2 = await self._remote_size(client, url)
+            if size2 != expected_size:
+                return MirrorResult(
+                    status="unverified",
+                    reason="size changed after delayed re-check",
+                )
+        if put_status in {200, 201, 204}:
+            return MirrorResult(status="remote_ok", reason="put verified")
         return MirrorResult(
             status="unverified",
-            reason="PUT 201 with size match but no stable ETag completion signal",
+            reason=f"unexpected PUT status {put_status} with size match",
         )
 
     async def list(self) -> list[RemoteObject]:
@@ -309,15 +387,9 @@ class WebDavBackupProvider:
                     ),
                 )
             except httpx.HTTPError as exc:
-                raise OctopError(
-                    ErrorCode.NETWORK_ERROR,
-                    self._reason(f"WebDAV list failed: {exc}"),
-                ) from exc
+                raise self._network_error(f"WebDAV list failed: {exc}") from exc
         if response.status_code not in {207, 200}:
-            raise OctopError(
-                ErrorCode.NETWORK_ERROR,
-                self._reason(f"WebDAV list failed: HTTP {response.status_code}"),
-            )
+            self._raise_http(op="list", status=int(response.status_code))
         return _parse_propfind(response.text, base_url=self._settings.base_url)
 
     async def get(self, remote_name: str, dest: Path) -> None:
@@ -326,14 +398,15 @@ class WebDavBackupProvider:
             try:
                 async with client.stream("GET", url) as response:
                     if response.status_code in {404, 410}:
-                        raise OctopError(
-                            ErrorCode.NOT_FOUND,
-                            self._reason(f"WebDAV download failed: HTTP {response.status_code}"),
+                        raise self._network_error(
+                            f"WebDAV download failed: HTTP {response.status_code}",
+                            http_status=int(response.status_code),
+                            code=ErrorCode.NOT_FOUND,
                         )
                     if response.status_code != 200:
-                        raise OctopError(
-                            ErrorCode.NETWORK_ERROR,
-                            self._reason(f"WebDAV download failed: HTTP {response.status_code}"),
+                        raise self._network_error(
+                            f"WebDAV download failed: HTTP {response.status_code}",
+                            http_status=int(response.status_code),
                         )
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     with dest.open("wb") as handle:
@@ -342,10 +415,7 @@ class WebDavBackupProvider:
             except OctopError:
                 raise
             except httpx.HTTPError as exc:
-                raise OctopError(
-                    ErrorCode.NETWORK_ERROR,
-                    self._reason(f"WebDAV download failed: {exc}"),
-                ) from exc
+                raise self._network_error(f"WebDAV download failed: {exc}") from exc
 
     async def delete(self, remote_name: str) -> None:
         url = self._object_url(remote_name)
@@ -353,14 +423,11 @@ class WebDavBackupProvider:
             try:
                 response = await client.delete(url)
             except httpx.HTTPError as exc:
-                raise OctopError(
-                    ErrorCode.NETWORK_ERROR,
-                    self._reason(f"WebDAV delete failed: {exc}"),
-                ) from exc
+                raise self._network_error(f"WebDAV delete failed: {exc}") from exc
         if response.status_code not in {200, 204, 404}:
-            raise OctopError(
-                ErrorCode.NETWORK_ERROR,
-                self._reason(f"WebDAV delete failed: HTTP {response.status_code}"),
+            raise self._network_error(
+                f"WebDAV delete failed: HTTP {response.status_code}",
+                http_status=int(response.status_code),
             )
 
 
@@ -371,6 +438,7 @@ def _parse_propfind(xml_text: str, *, base_url: str) -> list[RemoteObject]:
         raise OctopError(
             ErrorCode.NETWORK_ERROR,
             "WebDAV list returned non-PROPFIND XML",
+            details={"reason": "WebDAV list returned non-PROPFIND XML"},
         ) from exc
     base_path = unquote(urlparse(base_url).path.rstrip("/"))
     items: list[RemoteObject] = []

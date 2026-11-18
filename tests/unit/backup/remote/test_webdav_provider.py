@@ -88,7 +88,7 @@ async def test_put_200_with_matching_head_is_remote_ok(
         url="https://dav.example/backups",
         username="u",
         password="p",
-        base_dir="octop",
+        base_dir="Apps",
         verify_ssl=True,
         allow_insecure=False,
         recheck_delay_s=0.0,
@@ -105,7 +105,7 @@ async def test_put_200_with_matching_head_is_remote_ok(
 
 
 @pytest.mark.asyncio
-async def test_put_201_size_echo_without_etag_is_unverified(
+async def test_put_201_size_match_without_etag_is_remote_ok(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     local = tmp_path / "octop-auto-backup-20260101T000000Z.tar.gz"
@@ -115,7 +115,7 @@ async def test_put_201_size_echo_without_etag_is_unverified(
         if request.method == "PUT":
             return httpx.Response(201)
         if request.method == "HEAD":
-            # CloudDrive2-class: size already matches, no ETag completion signal.
+            # Some hosts: size matches, no usable ETag completion signal.
             return httpx.Response(200, headers={"Content-Length": "8"})
         return httpx.Response(404)
 
@@ -134,8 +134,53 @@ async def test_put_201_size_echo_without_etag_is_unverified(
         lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
     )
     result = await provider.put(local, local.name)
-    assert result.status == "unverified"
+    assert result.status == "remote_ok"
     assert "secret-token" not in result.reason
+
+
+@pytest.mark.asyncio
+async def test_put_head_zero_falls_back_to_propfind_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Some hosts answer HEAD with Content-Length: 0; fall back to PROPFIND."""
+    local = tmp_path / "octop-backup.tar.gz"
+    local.write_bytes(b"abcdefgh")
+    propfind_body = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<d:multistatus xmlns:d="DAV:">'
+        "<d:response>"
+        "<d:href>/dav/Apps/octop-backup.tar.gz</d:href>"
+        "<d:propstat><d:prop>"
+        "<d:getcontentlength>8</d:getcontentlength>"
+        "</d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>"
+        "</d:response></d:multistatus>"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT":
+            return httpx.Response(200)
+        if request.method == "HEAD":
+            return httpx.Response(200, headers={"Content-Length": "0", "ETag": '"x"'})
+        if request.method == "PROPFIND":
+            return httpx.Response(207, text=propfind_body)
+        return httpx.Response(404)
+
+    provider = WebDavBackupProvider.from_settings(
+        url="https://dav.example/dav/Apps",
+        username="u",
+        password="p",
+        base_dir="",
+        verify_ssl=True,
+        allow_insecure=False,
+        recheck_delay_s=0.0,
+    )
+    monkeypatch.setattr(
+        provider,
+        "_client",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    result = await provider.put(local, local.name)
+    assert result.status == "remote_ok"
 
 
 @pytest.mark.asyncio

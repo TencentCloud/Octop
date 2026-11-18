@@ -269,13 +269,19 @@ async def delete_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
+    from octop.infra.backup.remote.guards import (
+        raise_if_backup_remote_backend,
+        unlink_backup_remote_backend,
+    )
 
+    # Occupied as the active backup destination → refuse. Otherwise clear a
+    # dangling link (remote disabled) then delete.
     raise_if_backup_remote_backend(
         config_path=server.paths.config,
         backend_id=backend_id,
         action="delete",
     )
+    unlink_backup_remote_backend(server=server, backend_id=backend_id)
     assert server.app_runtime is not None
     refs = server.app_runtime.agent_registry.find_agents_using_storage_backend(row.name)
     if refs:

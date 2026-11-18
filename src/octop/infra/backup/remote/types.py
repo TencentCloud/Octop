@@ -8,8 +8,8 @@ from typing import Literal, Protocol
 
 MirrorStatus = Literal["remote_ok", "unverified", "remote_failed"]
 
-# Kinds the remote backup engine knows about (stubs + WebDAV).
-BACKUP_REMOTE_KINDS = frozenset({"webdav", "s3", "dropbox"})
+# Kinds the remote backup engine knows about (implemented + stubs).
+BACKUP_REMOTE_KINDS = frozenset({"webdav", "cos", "s3", "dropbox"})
 
 
 @dataclass(frozen=True)

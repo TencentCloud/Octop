@@ -24,6 +24,8 @@ export interface BackupFileItem {
 
 export interface BackupListResponse {
   dir: string;
+  /** ``remote`` when cloud destination is enabled (authoritative catalog). */
+  source?: "local" | "remote";
   items: BackupFileItem[];
 }
 
@@ -45,10 +47,22 @@ export interface RemoteBackupSummary {
   has_password?: boolean;
   verify_ssl?: boolean;
   allow_insecure?: boolean;
+  /** User-facing label for the WebDAV destination. */
+  label?: string | null;
   backend_name?: string | null;
   backend_enabled?: boolean;
   last_mirror?: RemoteMirrorSummary | null;
   detail?: string;
+}
+
+/** Configured storage backend that can be selected as a backup destination. */
+export interface BackupDestinationOption {
+  id: number;
+  name: string;
+  kind: string;
+  label?: string | null;
+  endpoint?: string | null;
+  base_dir?: string | null;
 }
 
 export interface AutoBackupSettings {
@@ -64,6 +78,8 @@ export interface AutoBackupSettings {
   remote_enabled?: boolean;
   remote_backend_id?: number | null;
   remote?: RemoteBackupSummary;
+  /** Remote destinations from configured storage backends (e.g. WebDAV). */
+  destinations?: BackupDestinationOption[];
   scheduled?: boolean;
 }
 
@@ -85,6 +101,8 @@ export interface BackupStatusResponse {
 
 export interface RemoteWebDavConfig {
   url: string;
+  /** Display name shown in the backup destination card. */
+  name?: string;
   username?: string;
   password?: string | null;
   base_dir?: string;
@@ -191,10 +209,13 @@ export const backupApi = {
     request<{ items: RemoteBackupObject[] }>("/admin/backup/remote/list"),
 
   pullRemote: (filename: string) =>
-    request<{ ok: boolean; item: BackupFileItem }>("/admin/backup/remote/pull", {
-      method: "POST",
-      body: JSON.stringify({ filename }),
-    }),
+    request<{ ok: boolean; item: BackupFileItem }>(
+      "/admin/backup/remote/pull",
+      {
+        method: "POST",
+        body: JSON.stringify({ filename }),
+      },
+    ),
 
   mirrorRemote: (filename: string) =>
     request<{

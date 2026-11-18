@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -93,9 +92,7 @@ async def test_run_auto_backup_fails_closed_on_remote_failed(
     )
 
     engine = MagicMock()
-    engine.mirror = AsyncMock(
-        return_value=MirrorResult(status="remote_failed", reason="http 500")
-    )
+    engine.mirror = AsyncMock(return_value=MirrorResult(status="remote_failed", reason="http 500"))
     engine.prune_auto = AsyncMock(return_value=[])
     monkeypatch.setattr(auto_mod, "resolve_remote_engine", MagicMock(return_value=engine))
 

@@ -1,0 +1,36 @@
+---
+description: Align Octop commits/PRs with CONTRIBUTING.md (develop base, make all, CHANGELOG, screenshots)
+alwaysApply: true
+---
+
+# Octop CONTRIBUTING alignment
+
+Before committing or opening a PR in this repo, follow [CONTRIBUTING.md](../../CONTRIBUTING.md):
+
+## Branch / PR target
+
+- Feature work: branch from **`develop`**, open PR **into `develop`** (not `main`).
+- Never bulk-merge `develop` → `main`; releases go `release/x.y.z` → `main`.
+
+## Quality gate
+
+- Keep `make install-hooks` enabled; **do not skip pre-commit** (`--no-verify`) unless the user explicitly requests it.
+- Pre-commit runs **`make all`** (+ dashboard build). Wait for it; do not treat a long test run as stuck without checking progress.
+- Prefer `make check-all` when both backend and frontend changed.
+- Add/update tests for behavior changes; keep cross-platform rules in AGENTS.md §7.
+
+## User-facing changes
+
+- Update **`CHANGELOG.md`** under `[Unreleased]` when behavior is user-visible.
+
+## PR description (CONTRIBUTING checklist)
+
+Include:
+
+- [ ] UI screenshots / feature demo (upload on the GitHub PR itself — **not** a docs/image-hosting branch)
+- [ ] Tests added and passing
+- [ ] CI expected green
+- [ ] Minimal-change / one problem per PR
+- [ ] Clear test plan
+
+For UI screenshots: redact privacy (usernames, home paths, emails, credentials) before upload.

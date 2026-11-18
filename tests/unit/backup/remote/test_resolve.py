@@ -49,9 +49,38 @@ def test_provider_kwargs_from_webdav_row() -> None:
     assert kwargs["verify_ssl"] is True
 
 
+def test_provider_kwargs_from_cos_row_uses_base_dir() -> None:
+    kwargs = provider_kwargs_from_backend(
+        _row(
+            kind="cos",
+            endpoint="cos.ap-shanghai.myqcloud.com",
+            access_key="AKIDxxx",
+            secret_key="secret",
+            bucket="voyah-sd-pic-1301141550",
+            region="ap-shanghai",
+            config_json='{"base_dir":"/Apps"}',
+        )
+    )
+    assert kwargs["bucket"] == "voyah-sd-pic-1301141550"
+    assert kwargs["base_dir"] == "Apps"
+    assert kwargs["region"] == "ap-shanghai"
+
+
+def test_provider_kwargs_from_cos_accepts_prefix_alias() -> None:
+    kwargs = provider_kwargs_from_backend(
+        _row(
+            kind="cos",
+            bucket="b",
+            region="ap-guangzhou",
+            config_json='{"prefix":"legacy"}',
+        )
+    )
+    assert kwargs["base_dir"] == "legacy"
+
+
 def test_provider_from_backend_rejects_unimplemented_kind() -> None:
     with pytest.raises(OctopError) as exc_info:
-        provider_from_backend(_row(kind="s3"))
+        provider_from_backend(_row(kind="dropbox"))
     assert exc_info.value.code == ErrorCode.BACKUP_REMOTE_UNSUPPORTED
 
 

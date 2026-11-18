@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 from octop.config import BackupConfig
 from octop.infra.backup.remote.engine import RemoteBackupEngine
 from octop.infra.backup.remote.index import MirrorIndex
+from octop.infra.backup.remote.providers import s3 as _s3  # noqa: F401
+from octop.infra.backup.remote.providers import webdav as _webdav  # noqa: F401
 from octop.infra.backup.remote.registry import get_provider
 from octop.infra.backup.remote.types import BACKUP_REMOTE_KINDS, RemoteBackupProvider
 from octop.infra.db.repos.backends import BackendRow
@@ -32,6 +34,11 @@ def _parse_config_json(raw: str | None) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _configured_base_dir(cfg: dict[str, Any]) -> str:
+    """Operator-configured base directory (archives land directly under it)."""
+    return str(cfg.get("base_dir") or cfg.get("prefix") or "").strip().strip("/")
+
+
 def provider_kwargs_from_backend(row: BackendRow) -> dict[str, Any]:
     """Map a ``storage_backends`` row to provider factory kwargs."""
     kind = (row.kind or "").strip().lower()
@@ -41,9 +48,18 @@ def provider_kwargs_from_backend(row: BackendRow) -> dict[str, Any]:
             "url": (row.endpoint or "").strip(),
             "username": row.access_key or "",
             "password": row.secret_key or "",
-            "base_dir": str(cfg.get("base_dir") or ""),
+            "base_dir": _configured_base_dir(cfg),
             "verify_ssl": bool(cfg.get("verify_ssl", True)),
             "allow_insecure": bool(cfg.get("allow_insecure", False)),
+        }
+    if kind in {"cos", "s3"}:
+        return {
+            "endpoint": (row.endpoint or "").strip(),
+            "access_key": row.access_key or "",
+            "secret_key": row.secret_key or "",
+            "bucket": row.bucket or "",
+            "region": row.region or "",
+            "base_dir": _configured_base_dir(cfg),
         }
     # Future kinds can extend mapping here; stubs still receive the row fields.
     return {
@@ -57,7 +73,7 @@ def provider_kwargs_from_backend(row: BackendRow) -> dict[str, Any]:
 
 
 # Kinds that can actually mirror in this release (stubs stay in the registry).
-_IMPLEMENTED_REMOTE_KINDS = frozenset({"webdav"})
+_IMPLEMENTED_REMOTE_KINDS = frozenset({"webdav", "cos", "s3"})
 
 
 def provider_from_backend(row: BackendRow) -> RemoteBackupProvider:
@@ -143,6 +159,34 @@ def redact_endpoint(endpoint: str | None) -> str | None:
     return raw
 
 
+def list_backup_destinations(
+    *,
+    list_backends: Callable[[], list[BackendRow]],
+) -> list[dict[str, Any]]:
+    """Configured storage backends that can be chosen as a backup destination."""
+    items: list[dict[str, Any]] = []
+    for row in list_backends():
+        kind = (row.kind or "").strip().lower()
+        if kind not in _IMPLEMENTED_REMOTE_KINDS:
+            continue
+        if not row.enabled:
+            continue
+        cfg = _parse_config_json(row.config_json)
+        label = str(cfg.get("label") or "").strip() or None
+        items.append(
+            {
+                "id": int(row.id),
+                "name": row.name,
+                "kind": kind,
+                "label": label,
+                "endpoint": redact_endpoint(row.endpoint),
+                "base_dir": _configured_base_dir(cfg) or None,
+            }
+        )
+    items.sort(key=lambda item: str(item.get("label") or item.get("name") or "").lower())
+    return items
+
+
 def remote_summary(
     *,
     paths: PathLayout,
@@ -167,15 +211,17 @@ def remote_summary(
         summary["detail"] = "remote_backend_id references a missing storage backend"
         return summary
     cfg = _parse_config_json(row.config_json)
+    label = str(cfg.get("label") or "").strip() or None
     summary.update(
         {
             "kind": (row.kind or "").lower() or None,
             "endpoint": redact_endpoint(row.endpoint),
-            "base_dir": str(cfg.get("base_dir") or "") or None,
+            "base_dir": _configured_base_dir(cfg) or None,
             "username": row.access_key or "",
             "has_password": bool(row.secret_key),
             "verify_ssl": bool(cfg.get("verify_ssl", True)),
             "allow_insecure": bool(cfg.get("allow_insecure", False)),
+            "label": label,
             "backend_name": row.name,
             "backend_enabled": bool(row.enabled),
         }
@@ -195,16 +241,17 @@ def webdav_config_json(
     base_dir: str = "",
     verify_ssl: bool = True,
     allow_insecure: bool = False,
+    label: str = "",
 ) -> str:
-    return json.dumps(
-        {
-            "base_dir": base_dir,
-            "verify_ssl": verify_ssl,
-            "allow_insecure": allow_insecure,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+    payload: dict[str, Any] = {
+        "base_dir": base_dir,
+        "verify_ssl": verify_ssl,
+        "allow_insecure": allow_insecure,
+    }
+    cleaned = label.strip()
+    if cleaned:
+        payload["label"] = cleaned
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def raise_remote_mirror_failed(detail: str) -> None:

@@ -6,14 +6,13 @@ from collections.abc import Callable
 from typing import Any
 
 from octop.infra.backup.remote.providers.dropbox import DropboxBackupProvider
-from octop.infra.backup.remote.providers.s3 import S3BackupProvider
 from octop.infra.backup.remote.types import RemoteBackupProvider
 from octop.infra.errors import ErrorCode, OctopError
 
 ProviderFactory = Callable[..., RemoteBackupProvider]
 
 _REGISTRY: dict[str, ProviderFactory] = {
-    "s3": lambda **_kwargs: S3BackupProvider(),
+    # ``webdav`` / ``s3`` / ``cos`` self-register on import.
     "dropbox": lambda **_kwargs: DropboxBackupProvider(),
 }
 
@@ -29,8 +28,8 @@ def register_provider(kind: str, factory: ProviderFactory) -> None:
 def get_provider(kind: str, **kwargs: Any) -> RemoteBackupProvider:
     """Return a provider instance for ``kind``.
 
-    ``webdav`` is registered by the WebDAV module when imported; until then
-    (and for unknown kinds) this raises ``OctopError``.
+    ``webdav`` / ``s3`` / ``cos`` self-register when their modules are
+    imported; unknown kinds raise ``OctopError``.
     """
     key = (kind or "").strip().lower()
     factory = _REGISTRY.get(key)

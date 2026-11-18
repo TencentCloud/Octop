@@ -10,13 +10,12 @@ from octop.infra.errors import ErrorCode, OctopError
 
 
 @pytest.mark.asyncio
-async def test_s3_and_dropbox_stubs_raise_not_implemented() -> None:
-    for kind in ("s3", "dropbox"):
-        provider = get_provider(kind)
-        with pytest.raises(OctopError) as exc_info:
-            await provider.test()
-        assert exc_info.value.code == ErrorCode.BACKUP_REMOTE_UNSUPPORTED
-        assert "not implemented" in str(exc_info.value).lower()
+async def test_dropbox_stub_raises_not_implemented() -> None:
+    provider = get_provider("dropbox")
+    with pytest.raises(OctopError) as exc_info:
+        await provider.test()
+    assert exc_info.value.code == ErrorCode.BACKUP_REMOTE_UNSUPPORTED
+    assert "not implemented" in str(exc_info.value).lower()
 
 
 def test_unknown_kind_raises() -> None:

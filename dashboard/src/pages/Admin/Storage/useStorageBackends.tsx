@@ -462,6 +462,7 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
         key: "access_key",
         labelKey: "storage.usernameLabel",
         placeholder: "username",
+        secret: false,
       },
       {
         key: "secret_key",

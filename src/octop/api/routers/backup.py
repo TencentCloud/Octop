@@ -30,6 +30,7 @@ from octop.infra.backup.remote.index import MirrorIndex
 from octop.infra.backup.remote.registry import get_provider
 from octop.infra.backup.remote.resolve import (
     BACKUP_REMOTE_BACKEND_NAME,
+    list_backup_destinations,
     provider_from_backend,
     raise_remote_mirror_failed,
     remote_summary,
@@ -87,6 +88,7 @@ class RemoteWebDavBody(BaseModel):
     """Draft or save payload for the Backup-managed WebDAV target."""
 
     url: str = Field(min_length=1)
+    name: str = Field(default="", description="Display label for this WebDAV destination")
     username: str = ""
     password: str | None = None
     base_dir: str = ""
@@ -154,6 +156,11 @@ def _auto_settings_payload(server: Any) -> dict[str, Any]:
             backup=backup,
             get_backend=server.services.storage_backend_repo.get,
         )
+        payload["destinations"] = list_backup_destinations(
+            list_backends=server.services.storage_backend_repo.list_all,
+        )
+    else:
+        payload["destinations"] = []
     return payload
 
 
@@ -303,19 +310,37 @@ async def _rehydrate_runtime_after_restore(server: Any) -> None:
             logger.exception("post-restore cron rehydrate failed")
 
 
+def _remote_engine_or_none(server: Any) -> Any:
+    """Return the remote engine when cloud destination is enabled."""
+    config = load_config(server.paths.config)
+    return resolve_remote_engine(
+        paths=server.paths,
+        backup=config.backup,
+        get_backend=lambda backend_id: _get_backend(server, backend_id),
+    )
+
+
 @router.get("/backup/list", summary="List stored backup archives")
 async def list_backups(
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """List ``.tar.gz`` files in ``~/.octop/backups/``.
+    """List backup archives for the active destination.
 
-    Disk/manifest peek runs in a worker thread so the event loop stays free.
-    When a remote mirror index exists, each item may include ``remote_status``.
+    When remote backup is enabled, the cloud catalog is authoritative (local
+    disk is only a cache). Otherwise list ``~/.octop/backups/``.
     """
+    engine = _remote_engine_or_none(server)
+    if engine is not None:
+        items = await engine.list_catalog()
+        return {
+            "dir": str(server.paths.backups_dir),
+            "source": "remote",
+            "items": items,
+        }
     files = await asyncio.to_thread(list_backup_files, server.paths)
     index = MirrorIndex.for_paths(server.paths)
-    items: list[dict[str, Any]] = []
+    local_items: list[dict[str, Any]] = []
     for entry in files:
         payload: dict[str, Any] = dict(entry.to_dict())
         mirror = index.get(entry.name)
@@ -326,10 +351,11 @@ async def list_backups(
                 payload["remote_detail"] = mirror.detail
         else:
             payload["remote_status"] = None
-        items.append(payload)
+        local_items.append(payload)
     return {
         "dir": str(server.paths.backups_dir),
-        "items": items,
+        "source": "local",
+        "items": local_items,
     }
 
 
@@ -422,9 +448,17 @@ async def download_backup_file(
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> FileResponse:
-    """Stream a backup file from ``backups_dir`` without loading it into memory."""
+    """Stream a backup file from ``backups_dir`` without loading it into memory.
+
+    When the cloud destination is enabled and the local cache is missing, pull
+    the archive first.
+    """
     safe = normalize_backup_filename(filename)
-    path = await asyncio.to_thread(resolve_backup_path, server.paths, safe)
+    engine = _remote_engine_or_none(server)
+    if engine is not None:
+        path = await engine.ensure_local(safe)
+    else:
+        path = await asyncio.to_thread(resolve_backup_path, server.paths, safe)
     return FileResponse(
         path,
         media_type="application/gzip",
@@ -457,7 +491,10 @@ async def restore_backup_file(
     assert server.services is not None
     _raise_if_backup_busy()
     safe = normalize_backup_filename(filename)
+    engine = _remote_engine_or_none(server)
     async with hold_backup_lock("restore"):
+        if engine is not None:
+            await engine.ensure_local(safe)
         result = await asyncio.to_thread(
             _restore_stored_backup,
             paths=server.paths,
@@ -483,8 +520,15 @@ async def remove_backup_file(
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> None:
-    """Remove a backup archive from ``backups_dir``."""
+    """Remove a backup from the active destination (and local cache if present)."""
     safe = normalize_backup_filename(filename)
+    engine = _remote_engine_or_none(server)
+    if engine is not None:
+        await engine.delete_remote(safe)
+        local = server.paths.backup_file(safe)
+        if local.is_file():
+            local.unlink()
+        return
     await asyncio.to_thread(delete_backup_file, server.paths, safe)
 
 
@@ -575,13 +619,16 @@ async def put_remote_backup_target(
     )
     repo = server.services.storage_backend_repo
     existing = repo.get_by_name(BACKUP_REMOTE_BACKEND_NAME)
+    label = body.name.strip()
     config_json = webdav_config_json(
         base_dir=body.base_dir,
         verify_ssl=body.verify_ssl,
         allow_insecure=body.allow_insecure,
+        label=label,
     )
     username = body.username.strip()
     endpoint = body.url.strip()
+    note = label or "Managed by Backup → Remote"
     if existing is None:
         backend_id = repo.create(
             name=BACKUP_REMOTE_BACKEND_NAME,
@@ -590,7 +637,7 @@ async def put_remote_backup_target(
             access_key=username or None,
             secret_key=body.password if body.password is not None else None,
             config_json=config_json,
-            note="Managed by Backup → Remote",
+            note=note,
         )
     else:
         backend_id = existing.id
@@ -604,9 +651,7 @@ async def put_remote_backup_target(
                 ErrorCode.SLASH_BAD_ARGS,
                 "password is required when changing the WebDAV URL",
             )
-        elif not same_endpoint:
-            secret = ""
-        elif not username and (existing.access_key or ""):
+        elif not same_endpoint or not username and (existing.access_key or ""):
             secret = ""
         else:
             secret = existing.secret_key or ""
@@ -618,7 +663,7 @@ async def put_remote_backup_target(
             secret_key=secret,
             config_json=config_json,
             enabled=True,
-            note="Managed by Backup → Remote",
+            note=note,
         )
     config = load_config(server.paths.config)
     backup = replace(config.backup, remote_backend_id=backend_id)
@@ -643,10 +688,9 @@ async def test_remote_backup(
         # ``None`` = keep stored secret for the same endpoint; ``""`` = probe
         # with an empty password. Never send stored creds to a new URL.
         if password is None:
-            if (
-                stored is not None
-                and (stored.endpoint or "").rstrip("/") == body.url.strip().rstrip("/")
-            ):
+            if stored is not None and (stored.endpoint or "").rstrip(
+                "/"
+            ) == body.url.strip().rstrip("/"):
                 password = stored.secret_key or ""
             else:
                 password = ""

@@ -111,3 +111,36 @@ async def test_pull_writes_local_archive(layout: PathLayout) -> None:
     engine = RemoteBackupEngine(paths=layout, provider=provider)
     dest = await engine.pull(name)
     assert dest.read_bytes() == b"remote-bytes"
+
+
+@pytest.mark.asyncio
+async def test_list_catalog_is_cloud_first_without_local(layout: PathLayout) -> None:
+    layout.backups_dir.mkdir(parents=True)
+    name = "octop-backup-20260101T120000Z.tar.gz"
+    provider = _FakeProvider()
+    provider.objects[name] = b"remote-only"
+    provider.objects[f"{name}.octop-meta.json"] = (
+        b'{"includes_config":true,"includes_workspaces":false,'
+        b'"includes_skill_packages":true,"includes_plugins":true,'
+        b'"includes_knowledge":true,"includes_chats":false}'
+    )
+    engine = RemoteBackupEngine(paths=layout, provider=provider)
+    items = await engine.list_catalog()
+    assert len(items) == 1
+    assert items[0]["name"] == name
+    assert items[0]["includes_workspaces"] is False
+    assert items[0]["includes_chats"] is False
+    assert items[0]["remote_status"] == "remote_ok"
+
+
+@pytest.mark.asyncio
+async def test_ensure_local_downloads_when_missing(layout: PathLayout) -> None:
+    layout.backups_dir.mkdir(parents=True)
+    name = "octop-backup-20260102T000000Z.tar.gz"
+    provider = _FakeProvider()
+    provider.objects[name] = b"from-cloud"
+    engine = RemoteBackupEngine(paths=layout, provider=provider)
+    dest = await engine.ensure_local(name)
+    assert dest.read_bytes() == b"from-cloud"
+    again = await engine.ensure_local(name)
+    assert again == dest

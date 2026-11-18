@@ -35,6 +35,7 @@ async def test_restore_backup_file_rehydrates_providers_channels_and_cron(
         "_restore_stored_backup",
         lambda **_k: restored,
     )
+    monkeypatch.setattr(backup_router, "_remote_engine_or_none", lambda _server: None)
 
     server = MagicMock()
     server.services = MagicMock()
@@ -79,6 +80,7 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
         "_restore_stored_backup",
         lambda **_k: restored,
     )
+    monkeypatch.setattr(backup_router, "_remote_engine_or_none", lambda _server: None)
 
     server = MagicMock()
     server.services = MagicMock()
