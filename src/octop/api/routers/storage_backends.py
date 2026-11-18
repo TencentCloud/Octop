@@ -198,6 +198,12 @@ async def patch_storage_backend(
             backend_id=backend_id,
             action="disable",
         )
+    if body.kind is not None and (body.kind or "").strip().lower() != (row.kind or "").lower():
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="change_kind",
+        )
 
     old_name = row.name
     if new_name is not None:
@@ -310,14 +316,9 @@ async def probe_storage_backend_config(
         base=base,
     )
     if (row.kind or "").lower() == "webdav":
-        from octop.infra.backup.remote.resolve import provider_from_backend
+        from octop.infra.backend.probe import probe_webdav_backend
 
-        try:
-            provider = provider_from_backend(row)
-            await provider.test()
-        except OctopError as exc:
-            return {"ok": False, "message": str(exc.message)}
-        return {"ok": True}
+        return await probe_webdav_backend(row)
     return probe_storage_backend(row)
 
 
@@ -444,8 +445,10 @@ async def test_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    from octop.infra.backend.probe import probe_storage_backend
+    from octop.infra.backend.probe import probe_storage_backend, probe_webdav_backend
 
+    if (row.kind or "").lower() == "webdav":
+        return await probe_webdav_backend(row)
     return probe_storage_backend(row)
 
 

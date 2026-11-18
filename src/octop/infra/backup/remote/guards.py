@@ -8,7 +8,14 @@ from typing import Literal
 from octop.config import load_config
 from octop.infra.errors import ErrorCode, OctopError
 
-BackupRemoteGuardAction = Literal["delete", "rename", "disable"]
+BackupRemoteGuardAction = Literal["delete", "rename", "disable", "change_kind"]
+
+_ACTION_LABELS = {
+    "delete": "deleted",
+    "rename": "renamed",
+    "disable": "disabled",
+    "change_kind": "changed",
+}
 
 
 def raise_if_backup_remote_backend(
@@ -17,21 +24,17 @@ def raise_if_backup_remote_backend(
     backend_id: int,
     action: BackupRemoteGuardAction,
 ) -> None:
-    """Raise ``STORAGE_BACKEND_REFERENCED`` when *backend_id* is the backup remote."""
+    """Raise ``STORAGE_BACKEND_BACKUP_REMOTE`` when *backend_id* is the backup remote."""
     backup = load_config(config_path).backup
     if backup.remote_backend_id != backend_id:
         return
-    verb = {
-        "delete": "deleted",
-        "rename": "renamed",
-        "disable": "disabled",
-    }[action]
+    label = _ACTION_LABELS[action]
     raise OctopError(
-        ErrorCode.STORAGE_BACKEND_REFERENCED,
-        f"storage backend id {backend_id} is the backup remote target and cannot be {verb}",
+        ErrorCode.STORAGE_BACKEND_BACKUP_REMOTE,
+        f"storage backend id {backend_id} is the backup remote target and cannot be {label}",
         details={
+            "action": label,
             "reason": "backup_remote",
-            "action": action,
             "remote_backend_id": backend_id,
             "remote_enabled": backup.remote_enabled,
         },

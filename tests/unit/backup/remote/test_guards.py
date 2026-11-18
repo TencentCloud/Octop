@@ -19,8 +19,9 @@ def test_raise_if_backup_remote_backend_delete(tmp_path: Path) -> None:
     persist_backup_config(cfg, BackupConfig(remote_backend_id=7, remote_enabled=False))
     with pytest.raises(OctopError) as exc_info:
         raise_if_backup_remote_backend(config_path=cfg, backend_id=7, action="delete")
-    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_REFERENCED
+    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_BACKUP_REMOTE
     assert exc_info.value.details["reason"] == "backup_remote"
+    assert exc_info.value.details["action"] == "deleted"
 
 
 def test_raise_if_backup_remote_backend_allows_other_id(tmp_path: Path) -> None:
@@ -48,7 +49,7 @@ async def test_delete_storage_backend_refuses_backup_remote(
 
     with pytest.raises(OctopError) as exc_info:
         await sb.delete_storage_backend(backend_id=3, server=server)
-    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_REFERENCED
+    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_BACKUP_REMOTE
     server.services.storage_backend_repo.delete.assert_not_called()
 
 
@@ -89,8 +90,8 @@ async def test_patch_storage_backend_refuses_rename_and_disable(
             body=sb.StorageBackendPatchBody(name="renamed"),
             server=server,
         )
-    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_REFERENCED
-    assert exc_info.value.details["action"] == "rename"
+    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_BACKUP_REMOTE
+    assert exc_info.value.details["action"] == "renamed"
 
     with pytest.raises(OctopError) as exc_info:
         await sb.patch_storage_backend(
@@ -98,5 +99,14 @@ async def test_patch_storage_backend_refuses_rename_and_disable(
             body=sb.StorageBackendPatchBody(enabled=False),
             server=server,
         )
-    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_REFERENCED
-    assert exc_info.value.details["action"] == "disable"
+    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_BACKUP_REMOTE
+    assert exc_info.value.details["action"] == "disabled"
+
+    with pytest.raises(OctopError) as exc_info:
+        await sb.patch_storage_backend(
+            backend_id=3,
+            body=sb.StorageBackendPatchBody(kind="s3"),
+            server=server,
+        )
+    assert exc_info.value.code == ErrorCode.STORAGE_BACKEND_BACKUP_REMOTE
+    assert exc_info.value.details["action"] == "changed"

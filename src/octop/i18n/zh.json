@@ -437,6 +437,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "RESOURCE_NOT_ALLOWED": "你没有使用该资源的权限。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
+    "STORAGE_BACKEND_BACKUP_REMOTE": "该存储后端是备份远端目标，无法删除、重命名、禁用或更改类型。请先在备份设置中解除关联。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",

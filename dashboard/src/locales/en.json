@@ -149,6 +149,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "RESOURCE_NOT_ALLOWED": "You do not have access to this resource.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
+    "STORAGE_BACKEND_BACKUP_REMOTE": "This storage backend is the backup remote target and cannot be {{action}}. Clear the backup remote reference first.",
     "STORAGE_BACKEND_DEPS_FAILED": "Could not install optional components for this storage backend. Check network access and retry.",
     "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",

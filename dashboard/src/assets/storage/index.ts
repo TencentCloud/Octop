@@ -9,6 +9,7 @@ import docker from "./docker.svg";
 import opensandbox from "./opensandbox.svg";
 import postgres from "./postgres.svg";
 import custom from "./custom.svg";
+import webdav from "./webdav.svg";
 
 export const STORAGE_LOGOS: Record<string, string> = {
   cos,
@@ -22,6 +23,7 @@ export const STORAGE_LOGOS: Record<string, string> = {
   opensandbox,
   postgres,
   custom,
+  webdav,
 };
 
 export function getStorageLogo(kind: string): string | undefined {
