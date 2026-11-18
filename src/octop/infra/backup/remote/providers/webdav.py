@@ -175,8 +175,10 @@ class WebDavBackupProvider:
                 # Prefer temp + MOVE so a truncated final key is less likely.
                 moved = await self._try_move(client, temp_url, url)
                 if moved:
-                    # MOVE completed placement; treat like a finished write for verify.
-                    return await self._verify_put(client, url, expected_size=size, put_status=204)
+                    # Keep the temp PUT status so 201 async gateways still re-check.
+                    return await self._verify_put(
+                        client, url, expected_size=size, put_status=put_status
+                    )
                 # Fallback: put directly to the final name.
                 put_status = await self._put_bytes(client, url, local_path)
                 with contextlib.suppress(httpx.HTTPError):
@@ -326,7 +328,7 @@ class WebDavBackupProvider:
                             ErrorCode.NOT_FOUND,
                             self._reason(f"WebDAV download failed: HTTP {response.status_code}"),
                         )
-                    if response.status_code >= 400:
+                    if response.status_code != 200:
                         raise OctopError(
                             ErrorCode.NETWORK_ERROR,
                             self._reason(f"WebDAV download failed: HTTP {response.status_code}"),
