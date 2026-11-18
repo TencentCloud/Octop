@@ -595,9 +595,10 @@ async def put_remote_backup_target(
         backend_id = existing.id
         if body.password is not None:
             secret = body.password
-        elif not username:
-            # Clearing username without a new password must not leave a
-            # dangling Basic-auth secret paired with an empty user.
+        elif not username and (existing.access_key or ""):
+            # Clearing a previously set username without a new password must
+            # not leave a dangling Basic-auth secret. Password-only targets
+            # (empty username already) keep the stored secret.
             secret = ""
         else:
             secret = existing.secret_key
