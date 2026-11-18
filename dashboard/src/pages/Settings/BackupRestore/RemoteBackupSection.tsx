@@ -86,9 +86,14 @@ export function RemoteBackupSection({
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [pulling, setPulling] = useState<string | null>(null);
   const [form] = Form.useForm<RemoteWebDavConfig>();
+  const watchedUrl = Form.useWatch("url", form);
 
   const configured = Boolean(summary?.remote_backend_id && summary.endpoint);
   const enabled = Boolean(summary?.remote_enabled);
+  const sameEndpoint =
+    (watchedUrl || "").trim().replace(/\/$/, "") ===
+    (summary?.endpoint || "").trim().replace(/\/$/, "");
+  const keepPasswordHint = Boolean(summary?.has_password && sameEndpoint);
 
   const openEdit = () => {
     form.setFieldsValue({
@@ -293,17 +298,27 @@ export function RemoteBackupSection({
             name="password"
             label={t("backup.remotePassword")}
             extra={
-              summary?.has_password
+              keepPasswordHint
                 ? t("backup.remotePasswordHint")
+                : summary?.has_password && !sameEndpoint
+                  ? t("backup.remotePasswordRequiredOnUrlChange")
+                  : undefined
+            }
+            rules={
+              summary?.has_password && !sameEndpoint
+                ? [
+                    {
+                      required: true,
+                      message: t("backup.remotePasswordRequiredOnUrlChange"),
+                    },
+                  ]
                 : undefined
             }
           >
             <Input.Password
               autoComplete="new-password"
               placeholder={
-                summary?.has_password
-                  ? t("backup.remotePasswordKeep")
-                  : undefined
+                keepPasswordHint ? t("backup.remotePasswordKeep") : undefined
               }
             />
           </Form.Item>

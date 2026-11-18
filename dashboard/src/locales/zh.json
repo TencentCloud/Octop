@@ -2340,6 +2340,7 @@
     "remotePassword": "密码",
     "remotePasswordHint": "编辑时留空表示保留已保存的密码。",
     "remotePasswordKeep": "已保存密码（留空保留）",
+    "remotePasswordRequiredOnUrlChange": "更改 WebDAV URL 时请重新输入密码。",
     "remoteStatusNotMirrored": "未同步",
     "remoteBaseDir": "基础目录",
     "remoteVerifySsl": "校验 TLS 证书",
@@ -2355,7 +2356,6 @@
     "remoteMirrorFailed": "远端同步失败",
     "colRemote": "远端",
     "remoteStatusLocalOnly": "仅本地",
-    "remoteStatusNone": "未配置",
     "remoteStatus": {
       "remote_ok": "已同步",
       "unverified": "未确认",

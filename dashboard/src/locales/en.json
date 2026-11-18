@@ -2340,6 +2340,7 @@
     "remotePassword": "Password",
     "remotePasswordHint": "Leave blank when editing to keep the stored password.",
     "remotePasswordKeep": "Stored password (leave blank to keep)",
+    "remotePasswordRequiredOnUrlChange": "Enter the password again when changing the WebDAV URL.",
     "remoteStatusNotMirrored": "Not mirrored",
     "remoteBaseDir": "Base directory",
     "remoteVerifySsl": "Verify TLS certificates",
@@ -2355,7 +2356,6 @@
     "remoteMirrorFailed": "Remote mirror failed",
     "colRemote": "Remote",
     "remoteStatusLocalOnly": "Local only",
-    "remoteStatusNone": "Not configured",
     "remoteStatus": {
       "remote_ok": "Synced",
       "unverified": "Unverified",

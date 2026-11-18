@@ -581,11 +581,12 @@ async def put_remote_backup_target(
         allow_insecure=body.allow_insecure,
     )
     username = body.username.strip()
+    endpoint = body.url.strip()
     if existing is None:
         backend_id = repo.create(
             name=BACKUP_REMOTE_BACKEND_NAME,
             kind="webdav",
-            endpoint=body.url.strip(),
+            endpoint=endpoint,
             access_key=username or None,
             secret_key=body.password if body.password is not None else None,
             config_json=config_json,
@@ -593,11 +594,16 @@ async def put_remote_backup_target(
         )
     else:
         backend_id = existing.id
-        # Empty password means "keep stored secret". Empty username means
-        # clear only when the client explicitly sent a blank after a prior
-        # username (UI prefills the stored username).
+        same_endpoint = (existing.endpoint or "").rstrip("/") == endpoint.rstrip("/")
+        # Empty password means "keep stored secret" only for the same endpoint.
+        # Changing the URL without a new password must not re-bind the old secret.
         if body.password is not None:
             secret = body.password
+        elif not same_endpoint:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "password is required when changing the WebDAV URL",
+            )
         elif not username and (existing.access_key or ""):
             secret = ""
         else:
@@ -605,7 +611,7 @@ async def put_remote_backup_target(
         repo.update(
             backend_id,
             kind="webdav",
-            endpoint=body.url.strip(),
+            endpoint=endpoint,
             access_key=username,
             secret_key=secret,
             config_json=config_json,
@@ -631,15 +637,17 @@ async def test_remote_backup(
         stored = None
         if config.backup.remote_backend_id is not None:
             stored = _get_backend(server, config.backup.remote_backend_id)
-        password = body.password or ""
-        # Reuse the linked secret only when the draft still targets the same
-        # endpoint (blank password = keep). Never send stored creds to a new URL.
-        if (
-            not password
-            and stored is not None
-            and (stored.endpoint or "").rstrip("/") == body.url.strip().rstrip("/")
-        ):
-            password = stored.secret_key or ""
+        password = body.password
+        # ``None`` = keep stored secret for the same endpoint; ``""`` = probe
+        # with an empty password. Never send stored creds to a new URL.
+        if password is None:
+            if (
+                stored is not None
+                and (stored.endpoint or "").rstrip("/") == body.url.strip().rstrip("/")
+            ):
+                password = stored.secret_key or ""
+            else:
+                password = ""
         provider = get_provider(
             "webdav",
             url=body.url,
