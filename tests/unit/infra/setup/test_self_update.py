@@ -534,6 +534,17 @@ def _write_octop_metadata(target: Path, version: str) -> None:
     metadata.write_text(f"Name: octop\nVersion: {version}\n", encoding="utf-8")
 
 
+def _write_critical_import_stubs(target: Path) -> None:
+    from octop.infra.setup.self_update import _CRITICAL_MODULES
+
+    for name in _CRITICAL_MODULES:
+        package = target / name
+        package.mkdir(parents=True, exist_ok=True)
+        init = package / "__init__.py"
+        if not init.exists():
+            init.write_text("# critical-import stub\n", encoding="utf-8")
+
+
 def _write_octop_package(target: Path, version: str) -> None:
     package = target / "octop" / "__init__.py"
     package.parent.mkdir(exist_ok=True)
@@ -544,6 +555,7 @@ def _write_octop_package(target: Path, version: str) -> None:
         "print('octop v' + __version__)\nraise SystemExit(0)\n",
         encoding="utf-8",
     )
+    _write_critical_import_stubs(target)
 
 
 def _write_upgrade_wheel(directory: Path, metadata: str | None = None) -> Path:
@@ -1062,6 +1074,7 @@ def test_upgrade_keeps_locale_bundle_when_installer_replaces_resources(
         (bundles / f"{language}.json").write_text(content, encoding="utf-8")
     target = tmp_path / "packages"
     target.mkdir()
+    _write_critical_import_stubs(target)
     monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(target))
     monkeypatch.setenv("OCTOP_FPK_SITE_PACKAGES", str(target) if fpk else "")
     monkeypatch.setattr(loader.resources, "files", lambda _: bundles)
@@ -1167,6 +1180,7 @@ def test_cold_target_install_budget_preserves_regular_timeout(
     from octop.infra.setup import self_update
 
     monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path) if portable else "")
+    _write_critical_import_stubs(tmp_path)
     monkeypatch.setattr(self_update, "detect_installer", lambda: installer)
     monkeypatch.setattr(self_update, "has_pip", lambda _: True)
     monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")

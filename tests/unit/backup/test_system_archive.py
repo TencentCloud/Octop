@@ -1134,7 +1134,7 @@ def test_restore_repairs_old_physical_schema_with_current_watermark(tmp_path: Pa
             (
                 Path(__file__).resolve().parents[3]
                 / "src/octop/infra/db/migrations/001_initial.sql"
-            ).read_text()
+            ).read_text(encoding="utf-8")
         )
         conn.execute("UPDATE _schema_version SET version = 13")
         conn.execute(
