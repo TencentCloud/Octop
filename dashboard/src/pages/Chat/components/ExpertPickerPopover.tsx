@@ -8,6 +8,7 @@ import SearchablePickerPanel, {
 } from "../../../components/ChatPicker/SearchablePickerPanel";
 import { message } from "@/utils/antdMessage";
 import ExpertAgentAvatar, { type ChatAgentOption } from "./ExpertAgentAvatar";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import RemoteExpertHint from "./RemoteExpertHint";
 import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import { groupExpertsByConnection } from "../../../utils/remoteExpert";
@@ -163,6 +164,8 @@ export default function ExpertPickerPopover({
                 color={agent.color}
                 size={32}
                 iconSize={18}
+                managedRunner={agent.managed_runner}
+                {...incomingShareProps(agent)}
               />
               <span className={styles.expertPickerItemText}>
                 <span className={pickerStyles.itemName}>{agent.name}</span>

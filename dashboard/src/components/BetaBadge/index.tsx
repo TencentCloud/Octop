@@ -5,16 +5,19 @@ import styles from "./index.module.less";
 
 interface BetaBadgeProps {
   isMobile?: boolean;
+  /** Replaces the product-version tooltip when the badge marks one feature. */
+  tooltip?: string;
 }
 
-export default function BetaBadge({ isMobile }: BetaBadgeProps) {
+export default function BetaBadge({ isMobile, tooltip }: BetaBadgeProps) {
   const { t } = useTranslation();
+  const tip = tooltip ?? t("header.betaTooltip");
 
   return (
-    <Tooltip title={t("header.betaTooltip")} mouseEnterDelay={0.35}>
+    <Tooltip title={tip} mouseEnterDelay={0.35}>
       <span
         className={cx(styles.betaBadge, isMobile && styles.betaBadgeMobile)}
-        aria-label={t("header.betaTooltip")}
+        aria-label={tip}
       >
         {t("header.betaBadge")}
       </span>

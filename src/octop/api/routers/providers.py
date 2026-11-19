@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.codex_apply import (
@@ -25,6 +25,7 @@ from octop.infra.agents.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.magpie import MAGPIE_DEFAULT_BASE_URL, discover_local_magpie
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
@@ -285,7 +286,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning_config"] = capability
         models.append(model)
     extra = parse_provider_extra(r)
-    return {
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
@@ -303,6 +304,10 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             models=models,
         ),
     }
+    integration = extra.get("integration")
+    if isinstance(integration, str) and integration.strip():
+        payload["integration"] = integration.strip()
+    return payload
 
 
 @router.get("/presets")
@@ -370,6 +375,48 @@ async def list_providers(
 # ── Admin endpoints ─────────────────────────────────────────────────────────
 
 admin_router = APIRouter()
+
+
+class MagpieDiscoveryResponse(BaseModel):
+    available: bool = Field(
+        description="True when this Octop server reached a local Magpie hello response."
+    )
+    base_url: str = Field(description="OpenAI-compatible base URL of the probed local Magpie.")
+    version: str | None = Field(
+        default=None,
+        description="Magpie version from /api/hello. Empty when discovery did not succeed.",
+    )
+
+
+def _extra_dict(raw: str | None) -> dict[str, Any]:
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+@admin_router.get(
+    "/magpie/discovery",
+    summary="Discover local Magpie",
+    description=(
+        "Read-only probe of Magpie on the Octop server host at the default "
+        "loopback address. Failures return available=false and do not include "
+        "the upstream body. This route has no URL parameter."
+    ),
+    response_model=MagpieDiscoveryResponse,
+)
+async def admin_discover_magpie(
+    _: Any = Depends(require_permission("providers")),
+) -> MagpieDiscoveryResponse:
+    found = await discover_local_magpie()
+    return MagpieDiscoveryResponse(
+        available=found.available,
+        base_url=found.base_url or MAGPIE_DEFAULT_BASE_URL,
+        version=found.version,
+    )
 
 
 @admin_router.get("")
@@ -536,6 +583,7 @@ async def admin_fetch_provider_models(
         extra_headers=provider_headers(draft) or None,
         locale=resolve_request_locale(request),
         provider_name=(body.name or "").strip() or None,
+        extra=_extra_dict(body.extra_json),
     )
 
 

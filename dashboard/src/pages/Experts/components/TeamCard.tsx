@@ -27,17 +27,25 @@ import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { canReadAgentRuntimeStatus } from "../../../utils/sharedExpert";
+import {
+  canManageExpert,
+  canReadAgentRuntimeStatus,
+} from "../../../utils/sharedExpert";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark, managedRunnerId } from "./ManagedAvatarMark";
 import {
   formatAgentError,
   formatAgentState,
   isAgentChatReady,
   isAgentModelConfigError,
+  shortAgentError,
 } from "../../../utils/agentError";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
-import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
+import {
+  incomingShareProps,
+  SharedAvatarMark,
+} from "../../../components/SharedResourceBadge";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import {
   expertDeleteConfirm,
@@ -78,6 +86,10 @@ interface MemberChip {
   color: string;
   iconName?: string | null;
   iconUrl?: string | null;
+  runner?: string | null;
+  shared?: boolean;
+  owned?: boolean;
+  ownerName?: string | null;
 }
 
 function resolveMembers(
@@ -95,6 +107,8 @@ function resolveMembers(
       color: expert.color || "#0d9488",
       iconName: expert.icon_name,
       iconUrl: expert.icon_url,
+      runner: managedRunnerId(expert),
+      ...incomingShareProps(expert),
     });
   }
   return chips;
@@ -173,9 +187,12 @@ export const TeamCard = memo(function TeamCard({
   const switchChecked = localState === "running" || localState === "starting";
   const chatReady = isAgentChatReady(localState);
   const isOwner = agent.is_owner !== false;
+  const canManage = canManageExpert(agent, user);
   const deleteConfirm = expertDeleteConfirm(agent, t);
   const meta = getStateMeta(localState);
   const friendlyError = formatAgentError(localError, t);
+  const cardError = shortAgentError(localError, t);
+  const modelConfigError = isAgentModelConfigError(localError);
 
   const handleToggle = useCallback(
     async (checked: boolean) => {
@@ -278,7 +295,7 @@ export const TeamCard = memo(function TeamCard({
             </div>
           </div>
 
-          {isOwner && (
+          {canManage && (
             <div className={styles.agentCard2HeaderActions}>
               <Switch
                 size="small"
@@ -303,23 +320,31 @@ export const TeamCard = memo(function TeamCard({
           </span>
           {visibleMembers.map((member) => (
             <Tooltip key={member.id} title={member.name}>
-              <div
-                className={styles.teamMemberAvatar}
-                style={{
-                  color: member.color,
-                  background: `${member.color}1a`,
-                }}
+              <SharedAvatarMark
+                shared={member.shared}
+                owned={member.owned ?? true}
+                ownerName={member.ownerName}
               >
-                {member.iconUrl || member.iconName ? (
-                  <ExpertIcon
-                    iconUrl={member.iconUrl}
-                    iconName={member.iconName}
-                    size={member.iconUrl ? 22 : 13}
-                  />
-                ) : (
-                  member.name.slice(0, 1)
-                )}
-              </div>
+                <ManagedAvatarMark runner={member.runner}>
+                  <div
+                    className={styles.teamMemberAvatar}
+                    style={{
+                      color: member.color,
+                      background: `${member.color}1a`,
+                    }}
+                  >
+                    {member.iconUrl || member.iconName ? (
+                      <ExpertIcon
+                        iconUrl={member.iconUrl}
+                        iconName={member.iconName}
+                        size={member.iconUrl ? 22 : 13}
+                      />
+                    ) : (
+                      member.name.slice(0, 1)
+                    )}
+                  </div>
+                </ManagedAvatarMark>
+              </SharedAvatarMark>
             </Tooltip>
           ))}
           {hiddenCount > 0 && (
@@ -338,12 +363,10 @@ export const TeamCard = memo(function TeamCard({
             >
               <div className={styles.agentCardError}>
                 <AlertCircle size={13} className={styles.agentCardErrorIcon} />
-                <span className={styles.agentCardErrorText}>
-                  {friendlyError}
-                </span>
+                <span className={styles.agentCardErrorText}>{cardError}</span>
               </div>
             </Tooltip>
-            {isAgentModelConfigError(localError) && (
+            {modelConfigError && (
               <button
                 type="button"
                 className={styles.agentCardErrorAction}
@@ -375,7 +398,7 @@ export const TeamCard = memo(function TeamCard({
             </button>
           </Tooltip>
 
-          {isOwner && (
+          {canManage && (
             <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
               <button
                 type="button"
@@ -400,7 +423,7 @@ export const TeamCard = memo(function TeamCard({
             </button>
           </Tooltip>
 
-          {isOwner ? (
+          {canManage ? (
             <Popconfirm
               title={deleteConfirm.title}
               description={deleteConfirm.description}
@@ -465,7 +488,7 @@ export const TeamCard = memo(function TeamCard({
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : isOwner &&
+          ) : canManage &&
             (localState === "failed" ||
               localState === "stopped" ||
               localState === "created") ? (

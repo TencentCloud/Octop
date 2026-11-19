@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from octop.infra.backend.docker_spec import omit_docker_volumes
 from octop.infra.backend.opensandbox_mkdir import install_opensandbox_fs
 from octop.infra.backend.tos_backend import tos_backend_from_spec
 
@@ -46,7 +47,7 @@ def resolve_octop_backend(
     from octop_harness.backends import resolve_backend
 
     return resolve_backend(
-        materialize_octop_specs(spec),
+        materialize_octop_specs(omit_docker_volumes(spec)),
         workspace_dir=workspace_dir,
         system_files_path=system_files_path,
     )

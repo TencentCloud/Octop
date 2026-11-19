@@ -104,6 +104,77 @@ def test_sanitize_im_metadata_persists_weixin_routing() -> None:
     assert "message_id" not in meta
 
 
+def _telegram_message(**metadata: object) -> InboundMessage:
+    msg = _msg(subject_id="-100123", channel_type="telegram")
+    msg.metadata = {"chat_type": "group", "chat_id": -100123, **metadata}
+    return msg
+
+
+def test_telegram_topic_isolation_is_opt_in() -> None:
+    legacy = session_key_from_message(_telegram_message(), agent_id="a1")
+    assert legacy == "a1:telegram:-100123:group"
+    for flag in (None, False, "true"):
+        msg = _telegram_message(topic_isolation=flag, message_thread_id=42)
+        assert session_key_from_message(msg, agent_id="a1") == legacy
+
+
+def test_telegram_isolation_separates_chat_topic_instance_and_agent() -> None:
+    msg = _telegram_message(topic_isolation=True, message_thread_id=42)
+    first = session_key_from_message(msg, agent_id="a1")
+    msg.metadata["message_thread_id"] = 43
+    second = session_key_from_message(msg, agent_id="a1")
+    msg.channel_id = "ch2"
+    third = session_key_from_message(msg, agent_id="a1")
+    msg.metadata["chat_id"] = -100456
+    fourth = session_key_from_message(msg, agent_id="a1")
+    fifth = session_key_from_message(msg, agent_id="a2")
+    assert len({first, second, third, fourth, fifth}) == 5
+    assert first == "a1:telegram:ch1/-100123/42:group"
+
+
+def test_telegram_missing_topic_preserves_legacy_sessions() -> None:
+    for chat_type in ("dm", "group"):
+        for topic in ({}, {"message_thread_id": None}):
+            msg = _telegram_message(topic_isolation=True, chat_type=chat_type, **topic)
+            assert session_key_from_message(msg, agent_id="a1") == (
+                f"a1:telegram:-100123:{chat_type}"
+            )
+
+
+def test_telegram_zero_topic_is_present_and_explicit_session_wins() -> None:
+    for topic_id in (None, 0, 42):
+        msg = _telegram_message(topic_isolation=True, message_thread_id=topic_id)
+        msg.metadata["session_key"] = " existing-session "
+        assert session_key_from_message(msg, agent_id="a1") == "existing-session"
+        for empty in ("", "  ", None):
+            msg.metadata["session_key"] = empty
+            subject = "-100123" if topic_id is None else f"ch1/-100123/{topic_id}"
+            assert session_key_from_message(msg, agent_id="a1") == f"a1:telegram:{subject}:group"
+
+
+def test_topic_isolation_metadata_does_not_change_other_channels() -> None:
+    msg = _telegram_message(topic_isolation=True, message_thread_id=42)
+    msg.channel_type = "qq"
+    assert session_key_from_message(msg, agent_id="a1") == "a1:qq:-100123:group"
+
+
+def test_telegram_durable_topic_metadata_excludes_source_reply_ids() -> None:
+    msg = _telegram_message(
+        topic_isolation=True,
+        message_thread_id=42,
+        message_id=123,
+        source_message_id=123,
+        reply_to_message_id=122,
+    )
+    assert sanitize_im_metadata(msg) == {
+        "channel_type": "telegram",
+        "chat_type": "group",
+        "chat_id": -100123,
+        "topic_isolation": True,
+        "message_thread_id": 42,
+    }
+
+
 def test_session_metadata_keeps_weixin_token_under_a_durable_key() -> None:
     from octop.infra.gateway.process.message_keys import session_metadata_from_message
 

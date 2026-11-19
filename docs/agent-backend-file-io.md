@@ -290,7 +290,7 @@ Harness 侧只认调用方传入的 ``workspace_dir``；Docker 默认把它镜�
 | `sandbox_id` | `fixed` 必填 |
 | `username` | `user` 用；缺省时 Octop 注入专家所有者用户名 |
 | `previewable` | 仅影响 Admin「我的存储」浏览按钮；默认仅 `fixed` 为 true。专家工作区始终可预览 |
-| `volumes` | 用户自行配置的挂载，原样透传；**不**自动 named volume |
+| `volumes` | Octop 跑在容器里时原样透传，供 Docker 专家挂载宿主机目录。Octop 直接跑在宿主机上时忽略，避免把任意宿主路径挂进沙箱 |
 
 容器命名：
 
@@ -304,7 +304,7 @@ Harness 侧只认调用方传入的 ``workspace_dir``；Docker 默认把它镜�
 
 - `bucket` 或 `config_json.image`：镜像名（必填）
 - Admin 表单可配 `sandbox_scope` / `sandbox_prefix` / `sandbox_id` / `username`，写入 `config_json`
-- 其余可选：`allow_network`、`memory`、`cpus`、`pids_limit`、`command_timeout`、`volumes` 等
+- 其余可选：`allow_network`、`memory`、`cpus`、`pids_limit`、`command_timeout`、`volumes` 等。Octop 直接跑在宿主机上时 `volumes` 会被忽略 |
 
 ```json
 { "type": "named", "name": "my-docker-sandbox" }

@@ -45,10 +45,15 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/internal/mcp/",
     # Short-lived download links: the unguessable token is the credential.
     "/api/downloads/link/",
+    # Read-only conversation links: the unguessable token is the credential.
+    "/api/shares/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
     "/api/auth/login",
+    # Desktop shells renew an expired session here; the device token is the
+    # credential and the router enforces shell-flag + loopback + digest match.
+    "/api/auth/device/token",
     "/api/auth/captcha",
     "/api/auth/mfa/verify",
     "/api/auth/mfa/passkey/options",

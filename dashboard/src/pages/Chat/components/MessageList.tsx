@@ -156,6 +156,7 @@ function renderMessageGroup(
     ctx.onOpenBrowser && groupIndex === ctx.lastBrowserGroupIndex
       ? ctx.onOpenBrowser
       : undefined;
+  const afterLatestUser = groupIndex > ctx.lastUserGroupIndex;
   const isTurnInProgress = isLiveAssistantTurn({
     isStreaming: Boolean(ctx.isStreaming),
     groupIndex,
@@ -178,6 +179,7 @@ function renderMessageGroup(
             messages={[msg]}
             agentId={ctx.agentId}
             isTurnInProgress={isTurnInProgress}
+            afterLatestUser={afterLatestUser}
             liveSpeakers={ctx.liveSpeakers}
             onRegenerate={ctx.onRegenerate}
             onDisableStreamUsage={ctx.onDisableStreamUsage}
@@ -234,6 +236,7 @@ function renderMessageGroup(
         messages={group.messages}
         agentId={ctx.agentId}
         isTurnInProgress={isTurnInProgress}
+        afterLatestUser={afterLatestUser}
         liveSpeakers={ctx.liveSpeakers}
         onRegenerate={ctx.onRegenerate}
         onDisableStreamUsage={ctx.onDisableStreamUsage}

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import logging
 from pathlib import Path
@@ -30,7 +29,6 @@ from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_con
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages, thread_visible_to
-from octop.infra.history.service import HistoryArchive
 from octop.infra.history.trajectory.service import TrajectoryService
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -43,8 +41,61 @@ def _agent_is_busy(server: Any, agent_id: str) -> bool:
     return callable(checker) and checker(agent_id) is True
 
 
-def _hitl_policy_payload(row: Any) -> dict[str, Any]:
-    return parse_hitl_session_policy(getattr(row, "hitl_policy", None)).to_dict()
+def _agent_config(server: Any, agent_id: str) -> dict[str, Any]:
+    repo = getattr(getattr(server, "services", None), "agent_repo", None)
+    get = getattr(repo, "get", None)
+    if not callable(get):
+        return {}
+    row = get(agent_id)
+    if row is None:
+        return {}
+    from octop.infra.agents.settings.profile import parse_config_json
+
+    config = parse_config_json(getattr(row, "config_json", None))
+    kind = getattr(row, "kind", None)
+    if isinstance(kind, str):
+        config = {**config, "kind": kind}
+    return config
+
+
+def _managed_yolo_default(server: Any, agent_id: str) -> bool:
+    from octop.infra.agents.managed import read_managed_permission_mode
+
+    return read_managed_permission_mode(_agent_config(server, agent_id)) == "yolo"
+
+
+def _listed_session_mode(config: dict[str, Any], row: Any) -> str | None:
+    from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+    if config.get("kind") != "managed":
+        return None
+    mode = resolve_managed_session_mode(
+        stored=getattr(row, "conversation_mode", None),
+        config=config,
+    )
+    return mode or None
+
+
+def _session_mode_payload(server: Any, agent_id: str, row: Any) -> str | None:
+    from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+    config = _agent_config(server, agent_id)
+    if config.get("kind") != "managed":
+        return None
+    mode = resolve_managed_session_mode(
+        stored=getattr(row, "conversation_mode", None),
+        config=config,
+    )
+    return mode or None
+
+
+def _hitl_policy_payload(row: Any, *, default_yolo: bool = False) -> dict[str, Any]:
+    raw = getattr(row, "hitl_policy", None)
+    if isinstance(raw, str) and raw.strip():
+        return parse_hitl_session_policy(raw).to_dict()
+    if default_yolo:
+        return {"mode": "allow_all"}
+    return {"mode": "ask"}
 
 
 def _message_author_profile(server: Any, user_id: int) -> dict[str, Any] | None:
@@ -128,12 +179,7 @@ def _history_migration_payload(server: Any, *, agent_id: str, user_id: int) -> d
         "failed": summary.failed,
         "processing": processing,
         "agent_busy": agent_busy,
-        "can_start": (
-            not isinstance(getattr(server.app_runtime, "history_archive", None), HistoryArchive)
-            and summary.remaining > 0
-            and queue.available_slots > 0
-            and not agent_busy
-        ),
+        "can_start": (summary.remaining > 0 and queue.available_slots > 0 and not agent_busy),
     }
 
 
@@ -208,6 +254,8 @@ async def list_threads(
     message_repo = server.services.thread_message_repo
     ids_with_messages = message_repo.threads_with_messages([r.thread_id for r in rows])
     unread = thread_registry.unread_counts_for_threads([r.thread_id for r in rows])
+    default_yolo = _managed_yolo_default(server, agent_id)
+    agent_config = _agent_config(server, agent_id)
 
     def _has_messages(row: Any) -> bool:
         if not thread_row_has_messages(row):
@@ -235,8 +283,9 @@ async def list_threads(
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
             "conversation_mode": r.conversation_mode or "craft",
+            "session_mode": _listed_session_mode(agent_config, r),
             "pending_plan_path": r.pending_plan_path,
-            "hitl_policy": _hitl_policy_payload(r),
+            "hitl_policy": _hitl_policy_payload(r, default_yolo=default_yolo),
             "turn_active": hub.is_turn_active(r.thread_id),
             "awaiting_user": r.thread_id
             in (shared_awaiting_ids if r.contributed else awaiting_ids),
@@ -281,9 +330,7 @@ async def start_history_migration(
     # Fail before changing persisted states when this agent is not actually available.
     server.app_runtime.agent_registry.get_agent(agent_id)
     effective_uid = as_user if as_user is not None else user.id
-    if isinstance(
-        getattr(server.app_runtime, "history_archive", None), HistoryArchive
-    ) or _agent_is_busy(server, agent_id):
+    if _agent_is_busy(server, agent_id):
         return {
             **_history_migration_payload(server, agent_id=agent_id, user_id=effective_uid),
             "accepted": 0,
@@ -409,7 +456,6 @@ async def get_thread_history(
     thread_id: str,
     limit: int = HISTORY_DEFAULT_LIMIT,
     offset: int = 0,
-    cursor: str | None = None,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -423,75 +469,44 @@ async def get_thread_history(
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     page_limit = _clamp_history_limit(limit)
     page_offset = max(0, offset)
-    from langchain_core.messages import messages_from_dict  # noqa: PLC0415
+    projection_repo = server.services.thread_message_repo
+    projection_status = projection_repo.projection_status(thread_id)
+    history_loading = projection_status != "ready"
+    if history_loading:
 
-    from octop.api.routers.chat.serialize import (  # noqa: PLC0415
-        _enrich_history_tool_media,
-        _serialize_history_message,
-    )
-    from octop.infra.history.reader import read_page  # noqa: PLC0415
-
-    archive = getattr(server.app_runtime, "history_archive", None)
-    next_cursor = None
-    if isinstance(archive, HistoryArchive):
-        page = await read_page(
-            archive,
-            server.app_runtime.agent_registry,
-            agent_id,
-            thread_id,
-            limit=page_limit,
-            offset=page_offset,
-            cursor=cursor,
-        )
-        has_more, next_cursor = page["has_more"], page["next_cursor"]
-        messages = []
-        for message in messages_from_dict(page["messages"]):
-            item = _serialize_history_message(message, user=user)
-            if item is None:
-                raise ValueError("An archived history message could not be rendered")
-            messages.append(item)
-        messages = _enrich_history_tool_media(messages, agent_id=agent_id)
-        history_loading = False
-        projection_status = "ready"
-    else:
-        projection_repo = server.services.thread_message_repo
-        projection_status = projection_repo.projection_status(thread_id)
-        history_loading = projection_status != "ready"
-        if history_loading:
-
-            async def _work() -> None:
-                await _backfill_thread_projection(
-                    server,
-                    agent_id,
-                    thread_id,
-                    user=user,
-                )
-
-            accepted = (
-                False
-                if _agent_is_busy(server, agent_id)
-                else server.app_runtime.gateway.history_backfill.enqueue(thread_id, _work)
-            )
-            if accepted and projection_status not in ("queued", "running"):
-                projection_repo.mark_projection(thread_id, "queued")
-            messages = []
-            has_more = False
-            projection_status = (
-                projection_status
-                if accepted and projection_status in ("queued", "running")
-                else "queued"
-                if accepted
-                else "pending"
-            )
-        else:
-            messages, has_more = _load_projected_thread_messages(
+        async def _work() -> None:
+            await _backfill_thread_projection(
                 server,
                 agent_id,
                 thread_id,
-                page_limit,
-                offset=page_offset,
                 user=user,
             )
+
+        accepted = (
+            False
+            if _agent_is_busy(server, agent_id)
+            else server.app_runtime.gateway.history_backfill.enqueue(thread_id, _work)
+        )
+        if accepted and projection_status not in ("queued", "running"):
+            projection_repo.mark_projection(thread_id, "queued")
+        messages: list[dict[str, Any]] = []
+        has_more = False
+        projection_status = (
+            projection_status
+            if accepted and projection_status in ("queued", "running")
+            else "queued"
+            if accepted
+            else "pending"
+        )
+    else:
+        messages, has_more = _load_projected_thread_messages(
+            server,
+            agent_id,
+            thread_id,
+            page_limit,
+            offset=page_offset,
+            user=user,
+        )
     effective_uid = as_user if as_user is not None else user.id
     _attach_message_authors(server, messages, owner_user_id=row.user_id)
     hitl_pending = pending_hitl_payload(
@@ -507,7 +522,7 @@ async def get_thread_history(
         "has_more": has_more,
         "limit": page_limit,
         "offset": page_offset,
-        "next_cursor": next_cursor,
+        "next_cursor": None,
         "history_loading": history_loading,
         "history_status": projection_status,
         "history_retry_after_ms": 1500 if history_loading else 0,
@@ -519,8 +534,11 @@ async def get_thread_history(
             default_agent_id=agent_id,
         ),
         "conversation_mode": row.conversation_mode or "craft",
+        "session_mode": _session_mode_payload(server, agent_id, row),
         "pending_plan_path": row.pending_plan_path,
-        "hitl_policy": _hitl_policy_payload(row),
+        "hitl_policy": _hitl_policy_payload(
+            row, default_yolo=_managed_yolo_default(server, agent_id)
+        ),
     }
 
 
@@ -611,7 +629,6 @@ async def fork_thread(
         assistant_turns_from_end=body.assistant_turns_from_end,
         locale=resolve_request_locale(request),
         thread_message_repo=server.services.thread_message_repo,
-        history_archive=getattr(server.app_runtime, "history_archive", None),
     )
 
 
@@ -634,41 +651,6 @@ async def rebind_session(
     return {"session_key": sk, "thread_id": body.thread_id}
 
 
-@router.get(
-    "/agents/{agent_id}/threads/{thread_id}/history/export",
-    summary="Export unrendered conversation history",
-    description="Read-only JSON export of legacy and versioned messages with archive turn status.",
-)
-async def export_history(
-    thread_id: str,
-    agent_id: str,
-    as_user: int | None = None,
-    user: Any = Depends(current_user),
-    server: Any = Depends(get_server),
-) -> Any:
-    from fastapi.responses import JSONResponse  # noqa: PLC0415
-
-    from octop.infra.history.reader import export_messages  # noqa: PLC0415
-
-    _require_thread(server, agent_id, thread_id, user, as_user)
-    archive = getattr(server.app_runtime, "history_archive", None)
-    if not isinstance(archive, HistoryArchive):
-        raise OctopError(ErrorCode.NOT_FOUND, "Versioned history is not enabled")
-
-    messages = await export_messages(
-        archive, server.app_runtime.agent_registry, agent_id, thread_id
-    )
-    return JSONResponse(
-        {
-            "format": "octop-history-v2",
-            "thread_id": thread_id,
-            "messages": messages,
-            "latest_turn": await asyncio.to_thread(archive.store.turn, thread_id),
-        },
-        headers={"Content-Disposition": 'attachment; filename="history.json"'},
-    )
-
-
 @router.patch("/agents/{agent_id}/threads/{thread_id}", summary="Update thread")
 async def patch_thread(
     agent_id: str,
@@ -681,11 +663,13 @@ async def patch_thread(
     """Update sidebar metadata or sticky composer settings for a thread."""
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     effective_uid = as_user if as_user is not None else user.id
+    default_yolo = _managed_yolo_default(server, agent_id)
     composer_fields = {
         "model_ref",
         "reasoning_mode",
         "reasoning_effort",
         "conversation_mode",
+        "session_mode",
         "hitl_policy",
     }
     managing = bool(body.model_fields_set)
@@ -707,8 +691,9 @@ async def patch_thread(
             "reasoning_mode": row.reasoning_mode,
             "reasoning_effort": row.reasoning_effort,
             "conversation_mode": row.conversation_mode or "craft",
+            "session_mode": _session_mode_payload(server, agent_id, row),
             "pending_plan_path": row.pending_plan_path,
-            "hitl_policy": _hitl_policy_payload(row),
+            "hitl_policy": _hitl_policy_payload(row, default_yolo=default_yolo),
         }
     registry = server.app_runtime.gateway.thread_registry
     if "contributed" in body.model_fields_set:
@@ -751,7 +736,11 @@ async def patch_thread(
         reasoning_mode = body.reasoning_mode
     if "reasoning_effort" in body.model_fields_set:
         reasoning_effort = (body.reasoning_effort or "").strip().lower() or None
-    if "conversation_mode" in body.model_fields_set:
+    if "session_mode" in body.model_fields_set:
+        from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+        conversation_mode = resolve_managed_session_mode(explicit=body.session_mode) or None
+    elif "conversation_mode" in body.model_fields_set:
         conversation_mode = body.conversation_mode or "craft"
     if "hitl_policy" in body.model_fields_set:
         policy = parse_hitl_session_policy(
@@ -781,8 +770,9 @@ async def patch_thread(
         "reasoning_mode": updated.reasoning_mode,
         "reasoning_effort": updated.reasoning_effort,
         "conversation_mode": updated.conversation_mode or "craft",
+        "session_mode": _session_mode_payload(server, agent_id, updated),
         "pending_plan_path": updated.pending_plan_path,
-        "hitl_policy": _hitl_policy_payload(updated),
+        "hitl_policy": _hitl_policy_payload(updated, default_yolo=default_yolo),
     }
 
 
