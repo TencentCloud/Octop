@@ -70,6 +70,25 @@ def row_for_probe(
     )
 
 
+async def probe_webdav_backend(row: BackendRow) -> dict[str, Any]:
+    """Async connectivity probe for WebDAV (backup remote; not agent-resolvable).
+
+    Does not require the row to be enabled — admins may test before re-enabling.
+    """
+    from octop.infra.backup.remote.registry import get_provider
+    from octop.infra.backup.remote.resolve import provider_kwargs_from_backend
+    from octop.infra.errors import OctopError
+
+    try:
+        provider = get_provider("webdav", **provider_kwargs_from_backend(row))
+        await provider.test()
+    except OctopError as exc:
+        return {"ok": False, "message": str(exc.message)}
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        return {"ok": False, "message": f"WebDAV probe failed: {exc}"}
+    return {"ok": True}
+
+
 def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     """Return ``{ok: bool, message?: str, message_key?: str}`` after a probe."""
     kind = (row.kind or "").lower()
@@ -85,6 +104,12 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
         if spec is None:
             return {"ok": False, "message": "configuration incomplete"}
         return _probe_tos(spec)
+
+    if kind == "webdav":
+        return {
+            "ok": False,
+            "message": "WebDAV probe requires the async probe_webdav_backend helper",
+        }
 
     spec = row_to_backend_spec(row)
     if spec is None:
