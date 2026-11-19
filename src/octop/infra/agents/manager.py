@@ -9,7 +9,7 @@ import re
 import shutil
 import threading
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Sequence
 from contextlib import asynccontextmanager, nullcontext, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -467,6 +467,39 @@ def _sanitize_bound_mcp_tools(agent: Any) -> None:
         agent.replace_mcp_tools(tools)
 
 
+def _bound_tools_for(agent: Any, name: str) -> frozenset[str]:
+    """Final tool names this process bound for *name*."""
+    book = getattr(agent, "_mcp_tool_names_by_server", None)
+    if not isinstance(book, dict):
+        return frozenset()
+    names = book.get(name)
+    return names if isinstance(names, frozenset) else frozenset()
+
+
+def _remember_bound_tools(agent: Any, name: str, tools: list[Any]) -> None:
+    """Record the sanitized tool names bound for *name* (#3049).
+
+    A long or non-ASCII server name is truncated/transliterated before binding,
+    so later turns cannot recover the owner by a raw name prefix.
+    """
+    names = frozenset(
+        str(getattr(tool, "name", "") or "") for tool in tools if getattr(tool, "name", None)
+    )
+    book = getattr(agent, "_mcp_tool_names_by_server", None)
+    mapping: dict[str, frozenset[str]] = book if isinstance(book, dict) else {}
+    mapping[name] = names
+    agent._mcp_tool_names_by_server = mapping
+
+
+def _has_server_tools(tool_names: Iterable[str], name: str, bound: Iterable[str]) -> bool:
+    """Whether a server's tools are present, by recorded names or raw prefix."""
+    tools = frozenset(tool_names)
+    if frozenset(bound) & tools:
+        return True
+    prefix = f"{name}_"
+    return any(tool_name.startswith(prefix) for tool_name in tools)
+
+
 def _bind_custom_mcp_tools(
     agent: Any,
     name: str,
@@ -480,10 +513,15 @@ def _bind_custom_mcp_tools(
     viewer's same-named server both land on ``{name}_*``, and ``append`` keeps
     the first set. Record who was bound so the next turn can swap.
     """
+    bound = _bound_tools_for(agent, name)
     prefix = f"{name}_"
     current_names: Any = getattr(agent, "_mcp_tool_name_set", frozenset())
-    occupied = isinstance(current_names, frozenset) and any(
-        isinstance(tool_name, str) and tool_name.startswith(prefix) for tool_name in current_names
+    occupied = isinstance(current_names, frozenset) and (
+        bool(bound & current_names)
+        or any(
+            isinstance(tool_name, str) and tool_name.startswith(prefix)
+            for tool_name in current_names
+        )
     )
     if occupied:
         existing = getattr(agent, "_mcp_tools", None)
@@ -491,7 +529,8 @@ def _bind_custom_mcp_tools(
             [
                 tool
                 for tool in existing
-                if not str(getattr(tool, "name", "") or "").startswith(prefix)
+                if str(getattr(tool, "name", "") or "") not in bound
+                and not str(getattr(tool, "name", "") or "").startswith(prefix)
             ]
             if isinstance(existing, list)
             else []
@@ -499,6 +538,7 @@ def _bind_custom_mcp_tools(
         agent.replace_mcp_tools([*kept, *tools])
     else:
         agent.append_mcp_tools(tools)
+    _remember_bound_tools(agent, name, tools)
     if user_id is None:
         return
     book = getattr(agent, "_mcp_attached_user", None)
@@ -2724,7 +2764,7 @@ class AgentManager:
         attached: dict[str, int] = attached_raw if isinstance(attached_raw, dict) else {}
         missing_tools: list[str] = []
         for name in names:
-            has_tools = any(tool_name.startswith(f"{name}_") for tool_name in tool_set)
+            has_tools = _has_server_tools(tool_set, name, _bound_tools_for(agent, name))
             expected = load_user.get(name)
             if has_tools and (expected is None or attached.get(name) == expected):
                 continue
@@ -2738,7 +2778,14 @@ class AgentManager:
             missing_tools,
         )
         if not missing_tools:
-            matched = sorted(t for t in tool_set if any(t.startswith(f"{n}_") for n in names))
+            matched = sorted(
+                {
+                    t
+                    for n in names
+                    for t in tool_set
+                    if _has_server_tools({t}, n, _bound_tools_for(agent, n))
+                }
+            )
             logger.info(
                 "prepare_chat_mcp agent=%s: MCP already ready, matching_tools=%s",
                 agent_id,
@@ -2855,7 +2902,7 @@ class AgentManager:
                 for name in names:
                     if name not in custom_configs:
                         continue
-                    if any(t.startswith(f"{name}_") for t in tool_set):
+                    if _has_server_tools(tool_set, name, _bound_tools_for(agent, name)):
                         continue
                     spec = custom_configs[name]
                     if not isinstance(spec, dict) or not spec.get("transport"):
@@ -2884,7 +2931,9 @@ class AgentManager:
 
         agent = self.get_agent(agent_id)
         tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
-        still_missing = sorted(n for n in names if not any(t.startswith(f"{n}_") for t in tool_set))
+        still_missing = sorted(
+            n for n in names if not _has_server_tools(tool_set, n, _bound_tools_for(agent, n))
+        )
         if still_missing:
             logger.warning(
                 "prepare_chat_mcp agent=%s: tools still missing for %s",

@@ -2959,6 +2959,59 @@ async def test_prepare_chat_mcp_loads_shared_server_as_owner(
 
 
 @pytest.mark.asyncio
+async def test_prepare_chat_mcp_matches_sanitized_tool_names(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A long server name keeps its truncated, sanitized tool prefix (#3049)."""
+    from octop.infra.agents.plugins.plugin_tool_names import (
+        sanitize_plugin_tool_name,
+    )
+
+    user_id = _seed_user(manager, "mcp-long-server")
+    # Over the 64-char LLM limit together with "_upload_file"; sanitization
+    # cuts inside the server name, so the stored tool name has no raw prefix.
+    server_name = "agent_" + "a" * 54
+    manager._connector_svc.put_custom_servers(
+        user_id,
+        {
+            server_name: {
+                "transport": "streamable_http",
+                "url": "https://long-name.example.com/mcp",
+            }
+        },
+    )
+    bound_tool = sanitize_plugin_tool_name(f"{server_name}_upload_file")
+    assert not bound_tool.startswith(f"{server_name}_")
+
+    agent_id = manager._repos.agent_repo.create(
+        agent_id="LONGMCP",
+        user_id=user_id,
+        name="long",
+        mcp_servers=json.dumps([server_name]),
+    )
+    agent = MagicMock()
+    agent._mcp_tools = []
+    agent._mcp_tool_name_set = frozenset({bound_tool})
+    agent._mcp_tool_names_by_server = {server_name: frozenset({bound_tool})}
+    agent._mcp_attached_user = {server_name: user_id}
+    agent.config.mcp_server_configs = {server_name: {}}
+    load = AsyncMock()
+
+    monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
+    monkeypatch.setattr(manager, "_get_or_load_mcp_tools", load)
+
+    missing = await manager.prepare_chat_mcp(
+        agent_id,
+        [server_name],
+        connector_user_id=user_id,
+    )
+
+    assert missing == []
+    load.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_prepare_chat_mcp_reports_failure_in_caller_name(
     manager: AgentManager,
     monkeypatch: pytest.MonkeyPatch,
