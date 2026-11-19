@@ -14,6 +14,7 @@
 - ACP 协作新增内置 Qwen Code Runner（`qwen --acp`），含主机探测、安装脚本与托管专家会话模式
 
 ### 修复
+- 工作区压缩包不再打包或写回 Octop 自己的 SQLite `-shm` 文件。Windows 上覆盖正在使用的 `memory.sqlite-shm` 会让导入失败；数据库和 WAL 仍会导入。
 - 修复 PostgreSQL 控制面凭证在配置保存重载时被重复编码的问题，并保留用户名和密码中的空格。
 
 ## [1.0.3b7] - 2026-11-17
