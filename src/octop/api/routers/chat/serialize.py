@@ -477,6 +477,8 @@ def _load_projected_thread_messages(
             fallback_created_at=row.created_at,
         )
         if entry is not None:
+            if row.turn_user_message_id and entry["role"] != "user":
+                entry["turn_user_message_id"] = row.turn_user_message_id
             out.append(entry)
     if not include_tool_media:
         return out, has_more

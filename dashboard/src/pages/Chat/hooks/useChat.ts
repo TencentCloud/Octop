@@ -414,7 +414,9 @@ function messageAuthor(raw: unknown): ChatMessage["author"] {
   };
 }
 
-function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
+type HistoryEntry = CallEntry & { turnUserMessageId?: string };
+
+function convertCallEntries(entries: HistoryEntry[]): ChatMessage[] {
   const raw: InternalChatMessage[] = entries.map((entry, index) => {
     const tool = extractToolData(entry.content);
     const toolFeedback = parseToolExecutionFeedback(tool?.data.output);
@@ -446,6 +448,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
 
     return {
       id: entry.message_id || entry.entry_index || `call-${index}`,
+      ...(entry.turnUserMessageId
+        ? { turnUserMessageId: entry.turnUserMessageId }
+        : {}),
       role:
         entry.role === "user"
           ? "user"
@@ -745,6 +750,7 @@ export function convertHistoryMessages(
     role: string;
     content: unknown;
     id?: string;
+    turn_user_message_id?: string;
     usage?: unknown;
     duration_ms?: number;
     timestamp?: number;
@@ -766,7 +772,7 @@ export function convertHistoryMessages(
   }>,
   agentId?: string,
 ): ChatMessage[] {
-  const entries: CallEntry[] = messages.map((message, index) => {
+  const entries: HistoryEntry[] = messages.map((message, index) => {
     const meta: Record<string, unknown> = {};
     if (message.composer_context) {
       meta.composer_context = message.composer_context;
@@ -776,6 +782,7 @@ export function convertHistoryMessages(
     }
     return {
       message_id: message.id,
+      turnUserMessageId: message.turn_user_message_id,
       entry_index: `hist-${index}`,
       role: message.role,
       content: toHistoryContentBlocks(message.content),

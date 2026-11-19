@@ -292,6 +292,7 @@ def test_load_projected_falls_back_to_created_at() -> None:
         seq=1,
         message_json=json.dumps(message_to_dict(HumanMessage(content="hi", id="m1"))),
         created_at=1_700_000_000,
+        turn_user_message_id="m1",
     )
     server = SimpleNamespace(
         services=SimpleNamespace(
@@ -301,6 +302,31 @@ def test_load_projected_falls_back_to_created_at() -> None:
     messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 25, user=None)
     assert has_more is False
     assert messages[0]["timestamp"] == 1_700_000_000_000
+    assert "turn_user_message_id" not in messages[0]
+
+
+def test_load_projected_reply_includes_its_question_id() -> None:
+    import json
+
+    from langchain_core.messages import AIMessage, message_to_dict
+
+    from octop.api.routers.chat.serialize import _load_projected_thread_messages
+
+    row = SimpleNamespace(
+        seq=9,
+        message_json=json.dumps(message_to_dict(AIMessage(content="finished", id="answer"))),
+        created_at=0,
+        turn_user_message_id="question-outside-page",
+    )
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            thread_message_repo=SimpleNamespace(page=lambda *_a, **_k: ([row], True))
+        )
+    )
+    messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 1, user=None)
+    assert has_more is True
+    assert messages[0]["turn_user_message_id"] == "question-outside-page"
+    assert "timestamp" not in messages[0]
 
 
 def test_ts_to_ms_converts_seconds() -> None:

@@ -24,15 +24,17 @@ class ThreadMessageRow:
     role: str
     message_json: str
     created_at: int
+    turn_user_message_id: str | None = None
 
     @classmethod
-    def from_row(cls, row: DbRow) -> ThreadMessageRow:
+    def from_row(cls, row: DbRow, *, turn_user_message_id: str | None = None) -> ThreadMessageRow:
         return cls(
             seq=int(row["seq"]),
             message_id=str(row["message_id"]) if row["message_id"] else None,
             role=str(row["role"]),
             message_json=str(row["message_json"]),
             created_at=int(row["created_at"]),
+            turn_user_message_id=turn_user_message_id,
         )
 
 
@@ -187,15 +189,27 @@ class ThreadMessageRepo:
     ) -> tuple[list[ThreadMessageRow], bool]:
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT seq, message_id, role, message_json, created_at "
-                "FROM thread_messages WHERE thread_id = ? "
-                "ORDER BY seq DESC LIMIT ? OFFSET ?",
-                (thread_id, limit + 1, max(0, offset)),
+                "WITH recent AS ("
+                "  SELECT seq, message_id, role, message_json, created_at "
+                "  FROM thread_messages WHERE thread_id = ? "
+                "  ORDER BY seq DESC LIMIT ? OFFSET ?"
+                ") SELECT recent.*, ("
+                "  SELECT message_id FROM thread_messages "
+                "  WHERE thread_id = ? AND role IN ('user', 'human') "
+                "    AND seq <= (SELECT MIN(seq) FROM recent) "
+                "  ORDER BY seq DESC LIMIT 1"
+                ") AS leading_user_message_id FROM recent ORDER BY seq DESC",
+                (thread_id, limit + 1, max(0, offset), thread_id),
             ).fetchall()
-        has_more = len(rows) > limit
-        page = [ThreadMessageRow.from_row(row) for row in rows[:limit]]
-        page.reverse()
-        return page, has_more
+        # Start at or before the lookahead row, then follow user boundaries
+        # within the page. Both reads share the same database snapshot.
+        turn_user_message_id = rows[0]["leading_user_message_id"] if rows else None
+        page = []
+        for row in reversed(rows[:limit]):
+            if row["role"] in ("user", "human"):
+                turn_user_message_id = row["message_id"]
+            page.append(ThreadMessageRow.from_row(row, turn_user_message_id=turn_user_message_id))
+        return page, len(rows) > limit
 
     def append_if_ready(
         self,

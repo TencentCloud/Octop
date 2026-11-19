@@ -31,6 +31,7 @@ import {
 import { isChatStreamError } from "../../../utils/chatStreamError";
 import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
+import { isTemporaryThreadId } from "../constants";
 import { hasPendingHitl } from "../utils/pendingHitl";
 import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
@@ -933,9 +934,30 @@ export function prependHistoryMessages(
   opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
-  const uniqueOlder = dedupePrependMessages(older, state.messages);
+  let current = state.messages;
+  let page = older;
+  const question = current[0];
+  if (question?.role === "user" && question.localPending) {
+    const turnStart = older.findIndex(
+      (message) =>
+        message.id === question.id || message.turnUserMessageId === question.id,
+    );
+    if (turnStart >= 0) {
+      // The newest page may have borrowed the question from the local send.
+      // Keep it ahead of earlier replies in the same turn as we page back.
+      if (older[turnStart].id !== question.id) {
+        page = [
+          ...older.slice(0, turnStart),
+          question,
+          ...older.slice(turnStart),
+        ];
+      }
+      current = current.slice(1);
+    }
+  }
+  const uniqueOlder = dedupePrependMessages(page, current);
   if (uniqueOlder.length > 0) {
-    state.messages = [...uniqueOlder, ...state.messages];
+    state.messages = [...uniqueOlder, ...current];
   }
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
@@ -3508,7 +3530,10 @@ export async function sendTurn(
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
 
-  if (sessionId === "__pending__" || threadId === "__pending__") {
+  if (
+    isTemporaryThreadId(sessionId) ||
+    (threadId && isTemporaryThreadId(threadId))
+  ) {
     appendErrorBubble(
       state,
       "Thread is still being created. Please retry shortly.",

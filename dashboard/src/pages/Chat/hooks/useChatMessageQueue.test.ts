@@ -150,7 +150,7 @@ describe("useChatMessageQueue", () => {
     expect(result.current.items).toHaveLength(0);
   });
 
-  it("flushes a background thread on streamEnd while viewing another", () => {
+  it("flushes both queues when a background and the visible thread end together", () => {
     const onFlush = vi.fn();
     let emitEnd: ((sessionId: string) => void) | null = null;
 
@@ -183,14 +183,20 @@ describe("useChatMessageQueue", () => {
     });
     expect(onFlush).not.toHaveBeenCalled();
 
+    rerender({ threadId: "t2", isStreaming: true });
     act(() => {
+      result.current.enqueue({ text: "visible-msg" });
       emitEnd?.("t1");
+      emitEnd?.("t2");
       vi.runAllTimers();
     });
 
-    expect(onFlush).toHaveBeenCalledTimes(1);
-    expect(onFlush.mock.calls[0]?.[0]?.text).toBe("bg-msg");
-    expect(onFlush.mock.calls[0]?.[1]?.threadId).toBe("t1");
+    expect(
+      onFlush.mock.calls.map(([item, ctx]) => [ctx.threadId, item.text]),
+    ).toEqual([
+      ["t1", "bg-msg"],
+      ["t2", "visible-msg"],
+    ]);
   });
 
   it("requeues the head when onFlush returns false", () => {

@@ -56,7 +56,7 @@ import {
   shouldJumpToChromeInstall,
   WORKBENCH_BROWSER_PATH,
 } from "./utils/chromeInstallGate";
-import { isFileToolName } from "./constants";
+import { isFileToolName, isTemporaryThreadId } from "./constants";
 import { browserApi } from "../../api/modules/browser";
 import { octopThreadsApi } from "../../api/modules/octopThreads";
 import type { TokenUsage } from "../../api/types";
@@ -920,7 +920,6 @@ function ChatPageInner() {
     enqueue: enqueueQueued,
     remove: removeQueued,
     reclaim: reclaimQueued,
-    clear: clearQueued,
   } = useChatMessageQueue({
     agentId: resolvedAgentId,
     threadId: activeThreadId,
@@ -993,7 +992,7 @@ function ChatPageInner() {
   const displayQueuedItems = queuedItems;
 
   const {
-    handleNewChat: startNewChat,
+    handleNewChat,
     handleNewChatWithAgent,
     handleSelectSession,
     navigateToAgent,
@@ -1012,11 +1011,6 @@ function ChatPageInner() {
     resetNavForAgentSwitch,
     markInitialNavDone,
   });
-
-  const handleNewChat = useCallback(() => {
-    clearQueued();
-    startNewChat();
-  }, [clearQueued, startNewChat]);
 
   useEffect(() => {
     return chatStore.onSlashAction((ev) => {
@@ -1421,7 +1415,9 @@ function ChatPageInner() {
       onSelectSession={(sessionId, agentId) => {
         setActiveAgent(agentId);
         if (agentId && agentId !== resolvedAgentId) {
-          void octopThreadsApi.rebind(agentId, sessionId).catch(() => {});
+          if (!isTemporaryThreadId(sessionId)) {
+            void octopThreadsApi.rebind(agentId, sessionId).catch(() => {});
+          }
           navigate(`/chat/${agentId}/${sessionId}`);
           if (isMobile) setSidebarOpen(false);
           return;
@@ -1429,10 +1425,7 @@ function ChatPageInner() {
         handleSelectSession(sessionId);
       }}
       onAgentSelect={navigateToAgent}
-      onNewChatWithAgent={(agentId) => {
-        clearQueued();
-        handleNewChatWithAgent(agentId);
-      }}
+      onNewChatWithAgent={handleNewChatWithAgent}
       onDeleteSession={handleDeleteSession}
       onRenameSession={renameSession}
       onPinSession={pinSession}

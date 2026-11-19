@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -71,6 +71,115 @@ describe("useChatNavigation stale thread", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("stays on the blank composer when the initial session list arrives after New Chat", () => {
+    const sessions = [session("thr_old")];
+    const { result, rerender } = renderHook(
+      ({
+        threadId,
+        sessionsLoading,
+      }: {
+        threadId?: string;
+        sessionsLoading: boolean;
+      }) =>
+        useChatNavigation({
+          routeAgentId: "agent-a",
+          threadId,
+          resolvedAgentId: "agent-a",
+          activeThreadId: threadId ?? null,
+          sessions: sessionsLoading ? [] : sessions,
+          sessionsLoading,
+          prefillInputRef: { current: "" },
+          loadHistory: vi.fn().mockResolvedValue(undefined),
+          clearMessages: vi.fn(),
+          ensureThreadInList: vi.fn().mockResolvedValue("found"),
+          fetchSessions: vi.fn().mockResolvedValue(sessions),
+          refreshAgents: vi.fn().mockResolvedValue(undefined),
+        }),
+      { wrapper, initialProps: { threadId: "thr_old", sessionsLoading: true } },
+    );
+
+    result.current.markInitialNavDone("agent-a");
+    rerender({ threadId: undefined, sessionsLoading: false });
+
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores an old thread probe that finishes after New Chat", async () => {
+    let complete!: (result: "missing") => void;
+    const ensureThreadInList = vi.fn(
+      () =>
+        new Promise<"missing">((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const { result } = renderHook(
+      () =>
+        useChatNavigation({
+          routeAgentId: "agent-a",
+          threadId: "thr_old",
+          resolvedAgentId: "agent-a",
+          activeThreadId: "thr_old",
+          sessions: [session("thr_other")],
+          sessionsLoading: false,
+          prefillInputRef: { current: "" },
+          loadHistory: vi.fn().mockResolvedValue(undefined),
+          clearMessages: vi.fn(),
+          ensureThreadInList,
+          fetchSessions: vi.fn().mockResolvedValue([]),
+          refreshAgents: vi.fn().mockResolvedValue(undefined),
+        }),
+      { wrapper },
+    );
+    expect(ensureThreadInList).toHaveBeenCalledWith("thr_old");
+
+    result.current.markInitialNavDone("agent-a");
+    await act(async () => {
+      complete("missing");
+    });
+
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores an earlier probe when returning to the same thread", async () => {
+    const complete: Array<(result: "found" | "missing") => void> = [];
+    const ensureThreadInList = vi.fn(
+      () =>
+        new Promise<"found" | "missing">((resolve) => complete.push(resolve)),
+    );
+    const sessions = [session("thr_other")];
+    const { rerender } = renderHook(
+      ({ threadId }) =>
+        useChatNavigation({
+          routeAgentId: "agent-a",
+          threadId,
+          resolvedAgentId: "agent-a",
+          activeThreadId: threadId,
+          sessions,
+          sessionsLoading: false,
+          prefillInputRef: { current: "" },
+          loadHistory: vi.fn().mockResolvedValue(undefined),
+          clearMessages: vi.fn(),
+          ensureThreadInList,
+          fetchSessions: vi.fn().mockResolvedValue(sessions),
+          refreshAgents: vi.fn().mockResolvedValue(undefined),
+        }),
+      { wrapper, initialProps: { threadId: "thr_old" } },
+    );
+
+    rerender({ threadId: "thr_other" });
+    rerender({ threadId: "thr_old" });
+    expect(ensureThreadInList).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      complete[0]("missing");
+      complete[1]("found");
+    });
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(rebindMock).not.toHaveBeenCalled();
   });
 
   it("rewrites URL only after ensureThreadInList confirms missing", async () => {

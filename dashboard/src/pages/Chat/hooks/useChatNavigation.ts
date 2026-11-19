@@ -167,10 +167,13 @@ export function useChatNavigation({
     prefillInputRef,
   ]);
 
-  const ensureThreadAttemptRef = useRef<string | null>(null);
-  useEffect(() => {
-    ensureThreadAttemptRef.current = null;
-  }, [resolvedAgentId]);
+  const ensureThreadAttemptRef = useRef<{ threadId: string } | null>(null);
+  useLayoutEffect(
+    () => () => {
+      ensureThreadAttemptRef.current = null;
+    },
+    [resolvedAgentId, threadId],
+  );
 
   useEffect(() => {
     if (!resolvedAgentId || !threadId || sessionsLoading) return;
@@ -187,13 +190,13 @@ export function useChatNavigation({
     // Thread missing from the visible page (or list is empty after load).
     // Probe the API — only rewrite the URL when the probe confirms absence.
     // Do not treat a still-loading / failed list as "deleted".
-    const attemptKey = `${resolvedAgentId}:${threadId}`;
-    if (ensureThreadAttemptRef.current === attemptKey) {
+    if (ensureThreadAttemptRef.current?.threadId === threadId) {
       return;
     }
-    ensureThreadAttemptRef.current = attemptKey;
+    const attempt = { threadId };
+    ensureThreadAttemptRef.current = attempt;
     void ensureThreadInList(threadId).then((result) => {
-      if (ensureThreadAttemptRef.current !== attemptKey) return;
+      if (ensureThreadAttemptRef.current !== attempt) return;
       // Only rewrite when the probe confirms absence — keep URL on found/unknown.
       if (result !== "missing") return;
       const preferred = pickPreferredSession(sessions);
@@ -223,6 +226,7 @@ export function useChatNavigation({
 
   const markInitialNavDone = (agentId: string) => {
     initialNavDone.current = agentId;
+    ensureThreadAttemptRef.current = null;
   };
 
   return { resetNavForAgentSwitch, markInitialNavDone };

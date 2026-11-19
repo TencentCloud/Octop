@@ -381,6 +381,8 @@ export default function CloudAiPanel({
     loadMoreHistory,
     booting,
     bootError,
+    creatingThread,
+    createThreadError,
     threads,
     startNewThread,
     selectThread,
@@ -474,15 +476,15 @@ export default function CloudAiPanel({
     ].join("\n");
   }, [instance]);
 
+  const waitingForThread = booting || creatingThread || !threadId;
   const submit = () => {
     const text = draft.trim();
-    if (!text || isStreaming) return;
-    send(contextLine ? `${contextLine}\n\n${text}` : text);
-    setDraft("");
+    if (!text || isStreaming || waitingForThread) return;
+    if (send(contextLine ? `${contextLine}\n\n${text}` : text)) setDraft("");
   };
 
   const ask = (prompt: string) => {
-    if (isStreaming || pendingPause || !agentId) return;
+    if (isStreaming || pendingPause || waitingForThread) return;
     send(contextLine ? `${contextLine}\n\n${prompt}` : prompt);
   };
 
@@ -510,10 +512,11 @@ export default function CloudAiPanel({
             title="新建对话"
             aria-label="新建对话"
             icon={<Plus size={14} />}
-            disabled={!agentId || booting}
+            disabled={!agentId || booting || creatingThread}
             onClick={() => void startNewThread()}
           />
           <Dropdown
+            disabled={creatingThread}
             trigger={["click"]}
             menu={{
               items: historyThreads.length
@@ -533,7 +536,7 @@ export default function CloudAiPanel({
               title="历史对话"
               aria-label="历史对话"
               icon={<History size={14} />}
-              disabled={!agentId}
+              disabled={!agentId || creatingThread}
             />
           </Dropdown>
         </>
@@ -547,11 +550,19 @@ export default function CloudAiPanel({
       ) : null}
 
       {/* 启动/加载失败以前是静默的：面板会停在一个空会话上，只能看到「没有历史」 */}
-      {bootError ? (
+      {bootError || createThreadError ? (
         <div className={styles.expertError} role="alert">
-          <span className={styles.expertErrorTitle}>会话加载失败</span>
-          <span className={styles.expertErrorBody}>{bootError}</span>
-          <Button size="small" type="link" onClick={reload}>
+          <span className={styles.expertErrorTitle}>
+            {createThreadError ? "创建会话失败" : "会话加载失败"}
+          </span>
+          <span className={styles.expertErrorBody}>
+            {createThreadError ?? bootError}
+          </span>
+          <Button
+            size="small"
+            type="link"
+            onClick={createThreadError ? () => void startNewThread() : reload}
+          >
             重试
           </Button>
         </div>
@@ -600,10 +611,10 @@ export default function CloudAiPanel({
       </div>
 
       <div className={styles.list} ref={listRef}>
-        {booting ? (
+        {booting || creatingThread ? (
           <div className={styles.booting}>
             <Spin size="small" />
-            <span>正在载入会话…</span>
+            <span>{creatingThread ? "正在创建会话…" : "正在载入会话…"}</span>
           </div>
         ) : messages.length ? (
           groupTurns(messages).map((item) => {
@@ -804,7 +815,7 @@ export default function CloudAiPanel({
               key={item.label}
               type="button"
               className={styles.quickAsk}
-              disabled={isStreaming || pendingPause || !agentId}
+              disabled={isStreaming || pendingPause || waitingForThread}
               onClick={() => ask(item.prompt)}
             >
               {item.label}
@@ -861,7 +872,7 @@ export default function CloudAiPanel({
               size="small"
               type="primary"
               icon={<Send size={13} />}
-              disabled={!draft.trim() || !agentId}
+              disabled={!draft.trim() || waitingForThread}
               onClick={submit}
             >
               发送

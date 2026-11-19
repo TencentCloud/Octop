@@ -173,6 +173,8 @@ export interface ChatMessage {
   speakerAgentId?: string;
   /** Server turn that produced this bubble. Different ids must not merge. */
   turnId?: string;
+  /** User message associated with this persisted reply in history. */
+  turnUserMessageId?: string;
   /** Host wrap-up after members — never continue the dispatch bubble. */
   teamWrapup?: boolean;
   /**

@@ -82,6 +82,48 @@ def test_pending_legacy_thread_only_publishes_after_replace(tmp_path: Path) -> N
     assert more is False
 
 
+def test_history_page_tracks_questions_outside_and_inside_the_page(tmp_path: Path) -> None:
+    _db, threads, messages = _repos(tmp_path)
+    threads.insert(
+        thread_id="thr", agent_id="agt", user_id=1, channel_type="dashboard", session_key="sk"
+    )
+    messages.append_if_ready(
+        "thr",
+        [
+            ThreadMessageInput("opening", "ai", "{}", 9),
+            ThreadMessageInput("question", "human", "{}", 3),
+            ThreadMessageInput("tool-call", "ai", "{}", 2),
+            ThreadMessageInput("tool-result", "tool", "{}", 0),
+            ThreadMessageInput("answer", "ai", "{}", 1),
+            ThreadMessageInput("next", "user", "{}", 1),
+            ThreadMessageInput("next-answer", "assistant", "{}", 1),
+            ThreadMessageInput(None, "human", "{}", 1),
+            ThreadMessageInput("unlinked", "assistant", "{}", 0),
+        ],
+    )
+
+    def turns(limit: int, offset: int = 0) -> list[tuple[str | None, str | None]]:
+        page, _ = messages.page("thr", limit=limit, offset=offset)
+        return [(row.message_id, row.turn_user_message_id) for row in page]
+
+    # The question can be the lookahead row, or further back than the lookahead.
+    assert turns(3, offset=4) == [
+        ("tool-call", "question"),
+        ("tool-result", "question"),
+        ("answer", "question"),
+    ]
+    assert turns(1, offset=4) == [("answer", "question")]
+    assert turns(5) == [
+        ("answer", "question"),
+        ("next", "next"),
+        ("next-answer", "next"),
+        (None, None),
+        ("unlinked", None),
+    ]
+    assert turns(2, offset=7) == [("opening", None), ("question", "question")]
+    assert turns(1, offset=9) == []
+
+
 def test_migration_summary_and_candidates_are_scoped(tmp_path: Path) -> None:
     _db, threads, messages = _repos(tmp_path)
     for thread_id, last_active in (("old-1", 10), ("old-2", 20), ("empty", 0)):
