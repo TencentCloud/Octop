@@ -38,6 +38,7 @@ from octop.infra.agents.experts.catalog import (
     preview_file_paths,
     preview_paths_from_expert_dir,
     read_text_file_contents,
+    resolve_expert_icon_url,
 )
 from octop.infra.agents.experts.composer_files import (
     ComposerApplyReport,
@@ -345,7 +346,11 @@ def _portal_hub_item(
         "description": _localized_pair(item.get("description")),
         "scene": str(item.get("scene") or ""),
         "sub_scene": str(item.get("sub_scene") or ""),
-        "icon_url": item.get("icon_url") if isinstance(item.get("icon_url"), str) else None,
+        "icon_url": resolve_expert_icon_url(
+            str(item.get("slug") or item.get("id") or ""),
+            item.get("icon_url"),
+            scene=str(item.get("scene") or "") or None,
+        ),
         "icon_name": item.get("icon_name") if isinstance(item.get("icon_name"), str) else None,
         "color": item.get("color") if isinstance(item.get("color"), str) else None,
         "skill_slugs": slugs,

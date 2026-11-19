@@ -10,6 +10,13 @@ const EXPERT_PORTRAIT_IDS = [
   "scene-healthcare",
   "scene-marketing",
   "parenting-companion",
+  "office-automation",
+  "news-trend",
+  "cvm-cluster-doctor",
+  "cvm-ai-doctor",
+  "stock-assistant",
+  "wechat-ops",
+  "ops-engineer",
 ] as const;
 
 /**
@@ -18,11 +25,9 @@ const EXPERT_PORTRAIT_IDS = [
  * the picker shows the canonical tile.
  */
 const PRESET_ALIASES: Record<string, string> = {
-  "news-trend": "scene-marketing",
   "scene-media": "scene-marketing",
   "scene-content-creation": "scene-marketing",
   "scene-ecommerce": "scene-data",
-  "stock-assistant": "scene-finance",
   "scene-finance": "scene-office",
   "scene-hr": "scene-education",
   "scene-legal": "scene-education",

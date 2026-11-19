@@ -51,7 +51,6 @@ export default function WelcomeScreen({
   const {
     welcomeRef,
     headingRef,
-    sectionTitleRef,
     probeRef,
     expanded,
     setExpanded,
@@ -70,52 +69,54 @@ export default function WelcomeScreen({
     <div className={styles.welcome} ref={welcomeRef}>
       <div className={styles.welcomeInner}>
         <div className={styles.welcomeHeading} ref={headingRef}>
-          {showMascot && (
-            <img
-              className={styles.welcomeMascot}
-              src={mascotSrc}
-              alt=""
-              draggable={false}
-              onClick={handleMascotClick}
-              role="button"
-              tabIndex={0}
-              title={t("chatWelcome.mascotSwitchHint")}
-              aria-label="Octop mascot"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleMascotClick();
-                }
-              }}
-            />
-          )}
-          <h1 className={styles.welcomeTitle}>
-            {isTeam
-              ? t("chatWelcome.teamHeading", {
-                  name: agentName?.trim() || t("chatWelcome.teamNameFallback"),
-                })
-              : t("chatWelcome.greeting")}
-          </h1>
-          <p className={styles.welcomeSubtitle}>
-            {isTeam ? (
-              <span className={styles.welcomeSubtitleText}>
-                {welcomeSuffix ?? t("chatWelcome.descriptionWithTeamSuffix")}
-              </span>
-            ) : agentName ? (
-              <>
-                <span className={styles.welcomeAgentLine}>
-                  <span className={styles.welcomeAgentMention}>
-                    @{agentName}
-                  </span>
-                </span>
-                <span className={styles.welcomeSubtitleText}>
-                  {welcomeSuffix ?? t("chatWelcome.descriptionWithAgentSuffix")}
-                </span>
-              </>
-            ) : (
-              t("chatWelcome.description")
+          <div className={styles.welcomeHeadingText}>
+            {showMascot && (
+              <img
+                className={styles.welcomeMascot}
+                src={mascotSrc}
+                alt=""
+                draggable={false}
+                onClick={handleMascotClick}
+                role="button"
+                tabIndex={0}
+                title={t("chatWelcome.mascotSwitchHint")}
+                aria-label="Octop mascot"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleMascotClick();
+                  }
+                }}
+              />
             )}
-          </p>
+            <h1 className={styles.welcomeTitle}>
+              {isTeam
+                ? t("chatWelcome.teamHeading", {
+                    name: agentName?.trim() || t("chatWelcome.teamNameFallback"),
+                  })
+                : t("chatWelcome.greeting")}
+            </h1>
+            <p className={styles.welcomeSubtitle}>
+              {isTeam ? (
+                <span className={styles.welcomeSubtitleText}>
+                  {welcomeSuffix ?? t("chatWelcome.descriptionWithTeamSuffix")}
+                </span>
+              ) : agentName ? (
+                <>
+                  <span className={styles.welcomeAgentLine}>
+                    <span className={styles.welcomeAgentMention}>
+                      @{agentName}
+                    </span>
+                  </span>
+                  <span className={styles.welcomeSubtitleText}>
+                    {welcomeSuffix ?? t("chatWelcome.descriptionWithAgentSuffix")}
+                  </span>
+                </>
+              ) : (
+                t("chatWelcome.description")
+              )}
+            </p>
+          </div>
         </div>
 
         {quickCards.length > 0 && (
@@ -125,7 +126,6 @@ export default function WelcomeScreen({
             expanded={expanded}
             onToggle={() => setExpanded((prev) => !prev)}
             onPromptClick={onPromptClick}
-            sectionTitleRef={sectionTitleRef}
           />
         )}
       </div>

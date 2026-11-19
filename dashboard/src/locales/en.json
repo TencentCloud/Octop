@@ -575,7 +575,7 @@
     "editDocumentSuccess": "Saved; reindex started",
     "editDocumentFailed": "Failed to save document",
     "filenameRequired": "Please enter a file name",
-    "filenamePlaceholder": "e.g. notes",
+    "filenamePlaceholder": "File name",
     "fileFormat": "Format",
     "fileContent": "Content",
     "fileContentPlaceholder": "Write document content here…",
@@ -1366,6 +1366,12 @@
       "yolo": "YOLO",
       "yoloHint": "New chats skip approval. The underlying agent runs actions directly, including file edits and commands. A chat can still switch back to asking every time.",
       "sessionModeHint": "Modes come from the managed agent. New chats start here, and a chat can still switch."
+    },
+    "chips": {
+      "workspace": "Workspace",
+      "subagents": "Subagents",
+      "skills": "Skills",
+      "startChat": "Start Chat"
     }
   },
   "subagents": {

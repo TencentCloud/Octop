@@ -116,6 +116,24 @@ def discover_bundled_avatar_ids(avatars_dir: Path | None = None) -> frozenset[st
 
 _BUNDLED_AVATAR_IDS = discover_bundled_avatar_ids()
 
+# Experts whose bundled portrait was redesigned with curated new art (the
+# colourful cartoon set). Market cards may only use the bundled file for
+# these ids; every other expert keeps the remote manifest portrait, because
+# the remaining bundled files are the legacy black-and-white sketches.
+REDESIGNED_AVATAR_IDS = frozenset(
+    {
+        "general-assistant",
+        "office-automation",
+        "wechat-ops",
+        "news-trend",
+        "cvm-ai-doctor",
+        "cvm-cluster-doctor",
+        "ops-engineer",
+        "parenting-companion",
+        "stock-assistant",
+    }
+)
+
 
 @dataclass(frozen=True)
 class ExpertQuickPrompt:
@@ -493,7 +511,14 @@ def resolve_expert_icon_url(
 
     SkillHub market templates reuse scene portraits; unknown ids do **not** get
     a fabricated ``/experts/avatars/<id>.svg`` path (that 404s in the UI).
+
+    Only experts whose bundled portrait was redesigned (curated new art) serve
+    the local file. The rest keep their remote manifest portrait, so legacy
+    black-and-white bundled sketches never leak into the market cards.
     """
+    if expert_id in REDESIGNED_AVATAR_IDS:
+        return builtin_expert_avatar_url(expert_id)
+
     text = str(manifest_icon_url or "").strip()
     if text:
         avatar_id = _avatar_id_from_url(text)
@@ -502,9 +527,6 @@ def resolve_expert_icon_url(
         if avatar_id in _BUNDLED_AVATAR_IDS:
             return text
         # Stale/missing bundled path — fall through to scene / builtin lookup.
-
-    if expert_id in _BUNDLED_AVATAR_IDS:
-        return builtin_expert_avatar_url(expert_id)
 
     scene_url = scene_expert_avatar_url(scene)
     if scene_url:
