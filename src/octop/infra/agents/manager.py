@@ -160,17 +160,23 @@ _PROVIDER_RELOAD_CONCURRENCY = 6
 # One hung remote backend must not block ``octop run`` from serving HTTP.
 _AGENT_BOOT_START_TIMEOUT = 60.0
 
-# octop-memory builds SQLite table names as ``{namespace}_*``. The namespace
-# must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
-_MEMORY_NS_PREFIX = "agent_"
-
 _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
 _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
 
 
-def _memory_namespace(agent_id: str) -> str:
-    return f"{_MEMORY_NS_PREFIX}{agent_id}"
+def _reject_shared_memory_namespace(rows: list[Any], agent_id: str) -> None:
+    """Refuse an id whose normalized memory name is already in use."""
+    from octop.infra.agents.memory.thread_cleanup import memory_namespace
+
+    target = memory_namespace(agent_id)
+    for row in rows:
+        other = str(row.agent_id)
+        if other != agent_id and memory_namespace(other) == target:
+            raise OctopError(
+                ErrorCode.AGENT_ID_TAKEN,
+                f"agent id {agent_id!r} collides with an existing agent",
+            )
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -816,6 +822,14 @@ class AgentManager:
     def paths(self) -> PathLayout:
         return self._paths
 
+    def _runtime_memory_namespace(self, agent_id: str) -> str:
+        from octop.infra.agents.memory.thread_cleanup import runtime_memory_namespace_for
+
+        return runtime_memory_namespace_for(
+            agent_id,
+            self._repos.agent_repo.list_all(include_disabled=True),
+        )
+
     @property
     def harness_manager(self) -> HarnessAgentManager | None:
         return self._harness_manager
@@ -853,6 +867,10 @@ class AgentManager:
                         break
                 else:
                     raise RuntimeError("failed to allocate unique agent_id")
+            _reject_shared_memory_namespace(
+                self._repos.agent_repo.list_all(include_disabled=True),
+                agent_id,
+            )
             runtime_config = dict(spec.runtime_config)
             compaction_set = COMPACTION_CONFIG_KEY in runtime_config
             compaction_value = runtime_config.pop(COMPACTION_CONFIG_KEY, None)
@@ -1083,6 +1101,7 @@ class AgentManager:
                     octop_config=self._config,
                     workspace_dir=workspace_dir,
                     paths=self._paths,
+                    namespace=self._runtime_memory_namespace(agent_id),
                 )
                 from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
 
@@ -1313,6 +1332,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace_dir,
             paths=self._paths,
+            namespace=self._runtime_memory_namespace(agent_id),
         )
         try:
             from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
@@ -4423,7 +4443,7 @@ class AgentManager:
                 if key in _HARNESS_AGENT_CONFIG_FIELDS
             }
         built = HarnessAgentConfig(
-            name=_memory_namespace(row.agent_id),
+            name=self._runtime_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
             language=resolve_user_locale(
@@ -4770,7 +4790,7 @@ class AgentManager:
             harness_fields["decision"] = self._decision.harness_config()
 
         harness_cfg = HarnessAgentConfig(
-            name=_memory_namespace(row.agent_id),
+            name=self._runtime_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
             # Owner's stored locale only. Per-message language would change

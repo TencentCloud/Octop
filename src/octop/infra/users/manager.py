@@ -842,6 +842,7 @@ class UserManager:
         from octop.infra.agents.memory.thread_cleanup import (
             agent_config_from_row,
             delete_agent_memory_and_checkpoints,
+            runtime_memory_namespace_for,
             workspace_for_agent_row,
         )
 
@@ -853,6 +854,10 @@ class UserManager:
                 octop_config=self._services.config,
                 workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
                 paths=self._services.paths,
+                namespace=runtime_memory_namespace_for(
+                    agent.agent_id,
+                    self._services.agent_repo.list_all(include_disabled=True),
+                ),
             )
 
     def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
