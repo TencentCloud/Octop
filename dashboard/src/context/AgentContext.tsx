@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import type { AgentRuntimeApiFields } from "../utils/agentRuntimeConfig";
 import { userCan } from "../utils/permissions";
 import {
   retainDisconnectedBridgeAgents,
@@ -26,7 +27,7 @@ import {
  * ``X-Octop-Agent-Id`` header.
  */
 
-export interface OctopAgent {
+export interface OctopAgent extends AgentRuntimeApiFields {
   /** Surrogate integer primary key from the database. */
   id: number;
   /** Public agent id used in API paths and ``X-Octop-Agent-Id``. */
@@ -54,11 +55,12 @@ export interface OctopAgent {
   icon_name: string | null;
   icon_url: string | null;
   color: string | null;
-  max_iters?: number | null;
-  max_input_length?: number | null;
-  temperature?: number | null;
-  top_p?: number | null;
-  max_tokens?: number | null;
+  compaction?: {
+    enabled?: boolean;
+    trigger_fraction?: number;
+    keep_fraction?: number;
+    trim_tokens?: number;
+  } | null;
   config: Record<string, unknown>;
   /** Knowledge bases opened by default in new chats with this expert. */
   knowledge_base_ids?: string[];
@@ -66,6 +68,11 @@ export interface OctopAgent {
   mcp_servers?: string[];
   /** Aggregated unread count across all sessions for this agent (current user). */
   unread_count?: number;
+  /**
+   * Unix seconds of this user's latest turn with the expert.
+   * ``null`` when they have never chatted with it.
+   */
+  last_active?: number | null;
   /** True while BOOTSTRAP.md onboarding has not written ``.bootstrapped`` yet. */
   bootstrap_pending?: boolean;
   /** ``expert`` (default) or ``team`` host. */
@@ -164,6 +171,7 @@ export function agentsSnapshotEqual(
         a.agent_id === b.agent_id &&
         a.state === b.state &&
         a.unread_count === b.unread_count &&
+        a.last_active === b.last_active &&
         a.bootstrap_pending === b.bootstrap_pending &&
         a.name === b.name &&
         a.icon === b.icon &&
@@ -207,6 +215,7 @@ export function projectChatAgentOption(agent: OctopAgent): {
   bridge_connection_icon: string | null;
   bridge_disconnected: boolean;
   bridge_inbound: boolean;
+  managed_runner: string | null;
 } {
   return {
     agent_id: agent.agent_id,
@@ -223,6 +232,11 @@ export function projectChatAgentOption(agent: OctopAgent): {
     bridge_connection_icon: agent.bridge_connection_icon ?? null,
     bridge_disconnected: Boolean(agent.bridge_disconnected),
     bridge_inbound: Boolean(agent.bridge_inbound),
+    managed_runner:
+      agent.kind === "managed" &&
+      typeof agent.config?.managed_runner === "string"
+        ? agent.config.managed_runner
+        : null,
   };
 }
 

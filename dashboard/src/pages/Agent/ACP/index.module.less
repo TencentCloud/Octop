@@ -56,8 +56,267 @@
   opacity: 0.55;
 }
 
+.drawerTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drawerTitleIcon {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  flex: none;
+}
+
+.drawerIntro {
+  margin: 0 0 16px;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.installBlock {
+  margin: 0 0 20px;
+  padding: 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
+}
+
+.installLabel {
+  margin-bottom: 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.installCommandRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.installCommand {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.switchLabel {
+  color: var(--fn-text-primary);
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.switchHelp {
+  margin-top: 4px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sectionToggle {
+  margin-top: 4px;
+}
+
+.sectionToggleButton {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 8px 0 4px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.sectionToggleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sectionToggleIcon,
+.sectionToggleIconOpen {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.sectionToggleIconOpen {
+  transform: rotate(180deg);
+}
+
+.drawerFooterWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drawerFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.askBar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--fn-border-subtle, var(--fn-card-border-normal));
+}
+
+.askResultLabel {
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.askOutput {
+  margin: 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--fn-surface-sunken);
+  color: var(--fn-text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.drawerFooterActions {
+  display: flex;
+  gap: 8px;
+}
+
+.hostPanel {
+  margin: 0 0 20px;
+  padding: 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.hostTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.hostStatus {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
+.hostOk {
+  color: #52c41a;
+  flex: none;
+  margin-top: 2px;
+}
+
+.hostWarn {
+  color: #faad14;
+  flex: none;
+  margin-top: 2px;
+}
+
+.hostDetail {
+  display: block;
+  margin-top: 2px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.hostSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.hostSectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.hostSectionDesc {
+  margin: 0;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hostActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.hostCode,
+.hostPrompt {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--fn-bg-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.hostPrompt {
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.askError {
+  margin: 0;
+  color: #d48806;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .drawerHint {
-  margin: 0 0 12px;
+  margin: 0 0 16px;
   padding: 10px 12px;
   border-radius: var(--fn-radius-md);
   background: var(--fn-surface-sunken);

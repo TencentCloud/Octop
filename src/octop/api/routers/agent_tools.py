@@ -10,12 +10,16 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import get_server, require_permission
 from octop.i18n.domains.tools import tool_display_name
+from octop.infra.agents.managed import is_managed_agent
 from octop.infra.agents.plugins.plugin_tool_defaults import merge_plugins_tool_settings
+from octop.infra.agents.settings.profile import parse_id_list_json
 from octop.infra.agents.settings.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
+    MANAGED_BUILTIN_TOOLS,
     agent_plugin_enabled,
     builtin_tool_available,
+    managed_builtin_available,
     normalize_tools_disabled,
 )
 from octop.infra.agents.teams import HOST_TOOLS_ALLOWED, is_team_agent
@@ -62,6 +66,27 @@ class ToolSettingPatchBody(BaseModel):
     enabled: bool
     source: Literal["builtin", "plugin"] = "builtin"
     plugin_id: str | None = None
+
+
+def _managed_has_peers(server: OctopServer, user: Any, agent_id: str) -> bool:
+    """True when this user can call some other expert."""
+    user_id = getattr(user, "id", None)
+    if not isinstance(user_id, int):
+        return False
+    registry = server.app_runtime.agent_registry if server.app_runtime is not None else None
+    if registry is None:
+        return False
+    harness = getattr(registry, "_harness_manager", None)
+    team = getattr(harness, "team", None)
+    if team is not None:
+        try:
+            return bool(team.list_peers(user_id, exclude_agent_id=agent_id))
+        except Exception:
+            return False
+    for other in registry.list_agents(user_id):
+        if other.agent_id != agent_id and not is_team_agent(other):
+            return True
+    return False
 
 
 def _plugin_manager(server: OctopServer) -> Any:
@@ -176,17 +201,36 @@ async def get_tool_settings(
     agent_cfg = server.app_runtime.agent_registry.get_config(agent_id)
     disabled = set(normalize_tools_disabled(agent_cfg.get("tools_disabled")))
     mobile_enabled = bool(server.config is not None and server.config.capabilities.mobile.enabled)
-    team_host = is_team_agent(row)
+    managed = is_managed_agent(row)
+    team_host = is_team_agent(row) and not managed
 
     tools: list[ToolSettingsItem] = []
-    catalog = (
-        tuple(entry for entry in BUILTIN_TOOL_CATALOG if entry.name in HOST_TOOLS_ALLOWED)
-        if team_host
-        else BUILTIN_TOOL_CATALOG
-    )
+    if managed:
+        catalog = tuple(
+            entry for entry in BUILTIN_TOOL_CATALOG if entry.name in MANAGED_BUILTIN_TOOLS
+        )
+    elif team_host:
+        catalog = tuple(entry for entry in BUILTIN_TOOL_CATALOG if entry.name in HOST_TOOLS_ALLOWED)
+    else:
+        catalog = BUILTIN_TOOL_CATALOG
+    knowledge_ids = parse_id_list_json(getattr(row, "knowledge_base_ids", None)) or []
+    has_peers = _managed_has_peers(server, user, agent_id) if managed else False
     for entry in catalog:
         allowed = not team_host or entry.name in HOST_TOOLS_ALLOWED
         disableable = (not team_host) and entry.name not in CRITICAL_TOOLS
+        if managed:
+            available = managed_builtin_available(
+                entry.name,
+                agent_cfg=agent_cfg,
+                knowledge_base_ids=knowledge_ids,
+                has_peers=has_peers,
+            )
+        else:
+            available = builtin_tool_available(
+                entry.name,
+                agent_cfg=agent_cfg,
+                mobile_enabled=mobile_enabled,
+            )
         tools.append(
             ToolSettingsItem(
                 name=entry.name,
@@ -196,12 +240,7 @@ async def get_tool_settings(
                 description=None,
                 enabled=allowed and (entry.name not in disabled if disableable else True),
                 disableable=disableable,
-                available=allowed
-                and builtin_tool_available(
-                    entry.name,
-                    agent_cfg=agent_cfg,
-                    mobile_enabled=mobile_enabled,
-                ),
+                available=allowed and available,
                 plugin_id=None,
             )
         )

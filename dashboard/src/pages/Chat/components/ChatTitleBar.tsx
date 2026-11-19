@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { Dropdown, Switch } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
   MoreVertical,
+  PanelRightClose,
+  PanelRightOpen,
   Pin,
   PinOff,
   Pencil,
   Trash2,
   GitFork,
+  Link2,
+  Share2,
 } from "lucide-react";
 import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
@@ -30,6 +35,10 @@ interface ChatTitleBarProps {
     id: string,
     compact: boolean,
   ) => void | Promise<boolean | null | void>;
+  /** Owner-only. Opens the read-only share-link dialog. */
+  onShare?: () => void;
+  /** Owner-only, when the expert can be shared with other users. */
+  onContribute?: (contributed: boolean) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   isTeam?: boolean;
@@ -38,6 +47,47 @@ interface ChatTitleBarProps {
     bridge_connection_name?: string | null;
     bridge_connection_icon?: string | null;
   } | null;
+  /** Top-right control, usually the side-panel toggle. */
+  sideSlot?: ReactNode;
+}
+
+export function ChatSidePanelToggle({
+  open,
+  disabled = false,
+  disabledHint,
+  onToggle,
+}: {
+  open: boolean;
+  disabled?: boolean;
+  disabledHint?: string;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const label = open
+    ? t("chat.closeSidePanel", "收起侧栏")
+    : t("chat.openSidePanel", "展开侧栏");
+
+  return (
+    <span
+      className={styles.chatSideToggleWrap}
+      title={disabled ? disabledHint : label}
+    >
+      <button
+        type="button"
+        className={styles.chatSideToggle}
+        onClick={onToggle}
+        disabled={disabled}
+        aria-label={label}
+        aria-expanded={open}
+      >
+        {open ? (
+          <PanelRightClose size={16} strokeWidth={1.8} aria-hidden />
+        ) : (
+          <PanelRightOpen size={16} strokeWidth={1.8} aria-hidden />
+        )}
+      </button>
+    </span>
+  );
 }
 
 export default function ChatTitleBar({
@@ -47,14 +97,18 @@ export default function ChatTitleBar({
   onPin,
   onFork,
   onDelete,
+  onShare,
+  onContribute,
   forkDisabled,
   forkDisabledHint,
   isTeam = false,
   agent = null,
+  sideSlot = null,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
   const [collapseThinking, setCollapseThinking] = useCollapseThinking(isTeam);
   const [isEditing, setIsEditing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [editValue, setEditValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -79,6 +133,9 @@ export default function ChatTitleBar({
     setIsEditing(false);
   }, [editValue, session.id, session.name, onRename, title]);
 
+  const owned = session.owned !== false;
+  const canShare = Boolean(onShare) && owned;
+  const canContribute = Boolean(onContribute) && owned;
   const menuItems: MenuProps["items"] = useMemo(
     () => [
       {
@@ -96,6 +153,28 @@ export default function ChatTitleBar({
         onClick: () => setCollapseThinking(!collapseThinking),
       },
       { type: "divider" },
+      ...(canShare
+        ? [
+            {
+              key: "share",
+              label: t("chat.publicShare.action", "分享链接"),
+              icon: <Link2 size={14} />,
+              onClick: () => onShare?.(),
+            },
+          ]
+        : []),
+      ...(canContribute
+        ? [
+            {
+              key: "contribute",
+              label: session.contributed
+                ? t("chat.uncontribute", "取消共享")
+                : t("chat.contribute", "共享会话"),
+              icon: <Share2 size={14} />,
+              onClick: () => onContribute?.(!session.contributed),
+            },
+          ]
+        : []),
       {
         key: "pin",
         label: session.pinned
@@ -111,6 +190,12 @@ export default function ChatTitleBar({
         disabled: forkDisabled,
         title: forkDisabled && forkDisabledHint ? forkDisabledHint : undefined,
         onClick: () => onFork(session.id),
+      },
+      {
+        key: "rename",
+        label: t("common.rename"),
+        icon: <Pencil size={14} />,
+        onClick: () => setIsEditing(true),
       },
       {
         key: "delete",
@@ -132,6 +217,11 @@ export default function ChatTitleBar({
       onPin,
       onFork,
       onDelete,
+      canShare,
+      onShare,
+      canContribute,
+      onContribute,
+      session.contributed,
       forkDisabled,
       forkDisabledHint,
       t,
@@ -146,73 +236,84 @@ export default function ChatTitleBar({
           size={13}
           className={styles.chatTitleLeadingIcon}
         />
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            className={styles.chatTitleInput}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={(e) => {
-              if (isImeComposing(e)) return;
-              if (e.key === "Enter") commitEdit();
-              if (e.key === "Escape") {
-                setEditValue(title);
-                setIsEditing(false);
-              }
-            }}
-          />
-        ) : (
-          <div className={styles.chatTitleHeading}>
-            <h1 className={styles.chatTitleText} title={title}>
-              {title}
-            </h1>
-            <SessionShareMark
-              contributed={session.contributed}
-              owned={session.owned}
+        <div className={styles.chatTitleCluster}>
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              className={styles.chatTitleInput}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={commitEdit}
+              onKeyDown={(e) => {
+                if (isImeComposing(e)) return;
+                if (e.key === "Enter") commitEdit();
+                if (e.key === "Escape") {
+                  setEditValue(title);
+                  setIsEditing(false);
+                }
+              }}
             />
-            <TeamChatBadge show={isTeam} />
-            <RemoteExpertHint agent={agent} />
-            {session.pinned ? (
-              <Pin
-                size={13}
-                strokeWidth={2}
-                className={styles.chatTitlePinMark}
-                aria-hidden
+          ) : (
+            <div className={styles.chatTitleHeading}>
+              <h1 className={styles.chatTitleText} title={title}>
+                {title}
+              </h1>
+              <SessionShareMark
+                contributed={session.contributed}
+                owned={session.owned}
               />
-            ) : null}
-          </div>
-        )}
-      </div>
-      <div className={styles.chatTitleActions}>
-        <button
-          type="button"
-          className={styles.chatTitleEditBtn}
-          onClick={() => setIsEditing(true)}
-          onPointerDown={(event) => {
-            // 避免失焦解除禁用后，同一次点击又重新打开编辑。
-            if (isEditing) event.preventDefault();
-          }}
-          disabled={isEditing}
-          aria-label={t("common.edit")}
-          title={t("common.edit")}
-        >
-          <Pencil size={14} strokeWidth={2} aria-hidden />
-        </button>
-        <Dropdown
-          menu={{ items: menuItems }}
-          trigger={["click"]}
-          placement="bottomRight"
-        >
-          <button
-            type="button"
-            className={styles.chatTitleEditBtn}
-            aria-label={t("common.more", "更多")}
+              <TeamChatBadge show={isTeam} />
+              <RemoteExpertHint agent={agent} />
+              {session.pinned ? (
+                <Pin
+                  size={13}
+                  strokeWidth={2}
+                  className={styles.chatTitlePinMark}
+                  aria-hidden
+                />
+              ) : null}
+            </div>
+          )}
+          <div
+            className={
+              isEditing || moreOpen
+                ? `${styles.chatTitleActions} ${styles.chatTitleActionsOpen}`
+                : styles.chatTitleActions
+            }
           >
-            <MoreVertical size={14} strokeWidth={2} aria-hidden />
-          </button>
-        </Dropdown>
+            <button
+              type="button"
+              className={styles.chatTitleEditBtn}
+              onClick={() => setIsEditing(true)}
+              onPointerDown={(event) => {
+                // 避免失焦解除禁用后，同一次点击又重新打开编辑。
+                if (isEditing) event.preventDefault();
+              }}
+              disabled={isEditing}
+              aria-label={t("common.edit")}
+              title={t("common.edit")}
+            >
+              <Pencil size={14} strokeWidth={2} aria-hidden />
+            </button>
+            <Dropdown
+              menu={{ items: menuItems }}
+              trigger={["click"]}
+              placement="bottomRight"
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+            >
+              <button
+                type="button"
+                className={styles.chatTitleEditBtn}
+                aria-label={t("common.more", "更多")}
+              >
+                <MoreVertical size={14} strokeWidth={2} aria-hidden />
+              </button>
+            </Dropdown>
+          </div>
+        </div>
       </div>
+      {sideSlot}
     </div>
   );
 }

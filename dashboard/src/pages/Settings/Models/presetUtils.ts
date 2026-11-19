@@ -16,6 +16,7 @@ const PRESET_GROUP_ORDER = [
   "aliyun",
   "volcengine",
   "zhipu",
+  "iflytek",
 ] as const;
 
 function comparePresetGroups(a: PresetGroup, b: PresetGroup): number {
@@ -110,7 +111,7 @@ export function groupPresets(presets: ProviderPreset[]): {
 
   const grouped: PresetGroup[] = [];
   for (const group of groupMap.values()) {
-    if (group.presets.length >= 2) {
+    if (group.presets.length >= 2 || group.groupKey === "iflytek") {
       grouped.push(group);
     } else {
       ungrouped.push(...group.presets);

@@ -21,6 +21,7 @@ import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { textAssistApi } from "../../../api/modules/textAssist";
 import type { ChatAttachment } from "../hooks/useChat";
+import type { AcpSessionMode } from "../../../api/modules/acp";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -112,6 +113,9 @@ interface ChatInputProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  sessionModes?: AcpSessionMode[];
+  sessionMode?: string;
+  onSessionModeChange?: (modeId: string) => void;
   hitlPolicy?: HitlSessionPolicy;
   onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   /** Shared conversation: model, reasoning, mode, and approval stay with the owner. */
@@ -142,6 +146,8 @@ interface ChatInputProps {
   contextUsedTokens?: number | null;
   contextMaxTokens?: number;
   decisionSaved?: number;
+  /** Managed experts hide model, connectors, knowledge, and expert pickers. */
+  managed?: boolean;
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -176,6 +182,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onReasoningChange,
       conversationMode = "craft",
       onConversationModeChange,
+      sessionModes,
+      sessionMode,
+      onSessionModeChange,
       hitlPolicy,
       onHitlPolicyChange,
       lockThreadSettings = false,
@@ -199,6 +208,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       contextUsedTokens = null,
       contextMaxTokens = 128_000,
       decisionSaved = 0,
+      managed = false,
     },
     ref,
   ) {
@@ -512,6 +522,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       isStreaming,
       onSubmitRef: submitRef,
       enterToSend: !isMobile,
+      slashMenuEnabled: !managed,
     });
 
     const skillTokenRefs = useMemo<SkillTokenRef[]>(
@@ -1031,6 +1042,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onReasoningChange={onReasoningChange}
             conversationMode={conversationMode}
             onConversationModeChange={onConversationModeChange}
+            sessionModes={sessionModes}
+            sessionMode={sessionMode}
+            onSessionModeChange={onSessionModeChange}
             hitlPolicy={hitlPolicy}
             onHitlPolicyChange={onHitlPolicyChange}
             lockThreadSettings={lockThreadSettings}
@@ -1052,6 +1066,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             slashPickerGroups={slashPickerGroups}
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}
+            managed={managed}
             onFileSelect={handleFileSelect}
             onFolderSelect={handleFolderSelect}
             onNewChat={onNewChat}

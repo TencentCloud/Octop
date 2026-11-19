@@ -167,6 +167,7 @@ async def redeem_invite(
     from octop.infra.agents.experts.default_agent import try_bootstrap_default_agent
 
     await try_bootstrap_default_agent(server, user_id=user.id, locale=user.locale)
+    server.services.user_repo.touch_last_login(user.id)
     from octop.infra.auth.tokens import PURPOSE_ACCESS
 
     secret = server.services.secret_repo.get("jwt")

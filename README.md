@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b5-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b7-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -295,7 +295,7 @@ docker run -d \
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
 
-Kubernetes manifests for a shared PostgreSQL and multiple replicas are in [deploy/k8s/README.md](deploy/k8s/README.md).
+The Helm chart for a shared PostgreSQL and multiple replicas is documented in [deploy/helm/octop/README.md](deploy/helm/octop/README.md). Install it from `oci://ghcr.io/tencentcloud/octop/charts/octop`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
@@ -522,7 +522,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-deploy/        Docker (deploy/docker) and Kubernetes (deploy/k8s)
+deploy/        Docker (deploy/docker) and the Kubernetes Helm chart (deploy/helm/octop)
 tests/         unit/ + integration/
 ```
 

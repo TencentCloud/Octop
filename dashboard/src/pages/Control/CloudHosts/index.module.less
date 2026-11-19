@@ -84,7 +84,7 @@
   align-items: center;
   padding: 3px 10px;
   font-family: var(--sc-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: inherit;
   cursor: pointer;
@@ -167,7 +167,7 @@
 
 .overviewLabel {
   font-family: var(--sc-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   opacity: 0.5;
@@ -182,11 +182,13 @@
 }
 
 .overviewHint {
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.45;
 }
 
 .sidebar {
+  /* RailEdgeControl 绝对定位的锚点：折叠手柄骑在右侧分隔线上 */
+  position: relative;
   display: flex;
   flex: 0 0 196px;
   flex-direction: column;
@@ -201,31 +203,8 @@
   flex: 0 0 auto;
   gap: 4px;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fn-text-quaternary);
-}
-
-.railBtn {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  color: var(--fn-text-quaternary);
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-  border-radius: 6px;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-
-.railBtn:hover {
-  color: var(--fn-text-primary);
-  background: var(--fn-bg-secondary);
 }
 
 .sidebarHead {
@@ -234,20 +213,18 @@
   align-items: center;
 }
 
+/* 标签统一走 12px 常规字体，不再用 mono + 全大写 + 低透明度的终端风，
+   否则和页面其它文案放在一起显得忽大忽小、忽轻忽重。 */
 .sidebarTitle {
   flex: 1;
-  font-family: var(--sc-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  opacity: 0.45;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
 }
 
 .sidebarCount {
-  font-family: var(--sc-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
-  opacity: 0.55;
+  color: var(--fn-text-tertiary);
 }
 
 .nodeList {
@@ -348,7 +325,7 @@
 
 .nodeName {
   overflow: hidden;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -357,16 +334,16 @@
 .nodeMeta {
   overflow: hidden;
   font-family: var(--sc-mono);
-  font-size: 10.5px;
-  opacity: 0.45;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .nodeEmpty {
   padding: 16px 4px;
-  font-size: 11px;
-  opacity: 0.45;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
   text-align: center;
 }
 
@@ -405,7 +382,7 @@
 
 .miniValue {
   font-family: var(--sc-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
@@ -461,12 +438,27 @@
 }
 
 .stage {
+  /* 折叠态下 RailEdgeControl 以此为锚点，手柄停在内容区左边缘 */
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: row;
   align-items: stretch;
   min-width: 0;
   min-height: 0;
+}
+
+/* 折叠态：左侧没有独立面板可以挂边线，手柄整体内移几个像素，
+   避免被 Workbench 面板的 overflow: hidden 裁掉一半。 */
+.railEdgeClosed {
+  left: 4px !important;
+  right: auto !important;
+
+  /* 面板收起后这是唯一的展开入口，常驻可见，不等 hover */
+  > button {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .main {
@@ -609,11 +601,8 @@
 }
 
 .kpiLabel {
-  font-family: var(--sc-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  opacity: 0.5;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
 }
 
 .kpiValue {
@@ -636,11 +625,9 @@
 }
 
 .blockTitle {
-  font-family: var(--sc-mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  opacity: 0.5;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
 }
 
 .mono {
@@ -652,17 +639,14 @@
 
 /* ---- Terminal-flavoured table ---- */
 .page :global(.octop-table) {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .page :global(.octop-table-thead > tr > th) {
-  font-family: var(--sc-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  color: var(--fn-text-tertiary);
   background: transparent !important;
-  opacity: 0.6;
 }
 
 .page :global(.octop-table-tbody > tr > td) {
@@ -671,8 +655,6 @@
 
 .page :global(.octop-tag) {
   margin: 0;
-  font-family: var(--sc-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  font-size: 12px;
   border-radius: 3px;
 }

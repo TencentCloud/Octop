@@ -1,5 +1,13 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+
+// The panel import graph reaches pdfjs, which reads DOMMatrix at load time.
+vi.hoisted(() => {
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    globalThis.DOMMatrix = class DOMMatrix {} as unknown as typeof DOMMatrix;
+  }
+});
+
 import ChatSidebarPanel from "./ChatSidebarPanel";
 
 vi.mock("./SessionList", () => ({
@@ -47,7 +55,7 @@ describe("ChatSidebarPanel edge", () => {
     ).toBeInTheDocument();
   });
 
-  it("列表收起时右侧竖线不提供展开，展开在对话行按钮上", () => {
+  it("列表收起时不提供展开按钮", () => {
     render(
       <ChatSidebarPanel
         {...baseProps}

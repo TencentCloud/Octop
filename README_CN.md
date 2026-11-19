@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b5-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b7-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -297,7 +297,7 @@ docker run -d \
 
 打开 `http://localhost:8088`。`OCTOP_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.octop/octop-login.txt`）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
 
-共用 PostgreSQL、多副本的 Kubernetes 清单在 [deploy/k8s/README_CN.md](deploy/k8s/README_CN.md)。
+共用 PostgreSQL、多副本的 Kubernetes 安装说明在 [deploy/helm/octop/README_CN.md](deploy/helm/octop/README_CN.md)。安装地址是 `oci://ghcr.io/tencentcloud/octop/charts/octop`。
 
 > **密码策略：** 至少 8 位，且同时包含字母和数字。
 
@@ -518,7 +518,7 @@ src/octop/
 
 dashboard/     前端源码（Vite）— 在此编辑，运行 make build-frontend
 
-deploy/        Docker（deploy/docker）与 Kubernetes（deploy/k8s）
+deploy/        Docker（deploy/docker）与 Kubernetes Helm chart（deploy/helm/octop）
 tests/         unit/ + integration/
 ```
 

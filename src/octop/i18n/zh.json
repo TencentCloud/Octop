@@ -487,7 +487,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
     "SKILL_PACKAGE_NAME_TAKEN": "技能包 {name} 已存在。",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录须为 /（POSIX）或专家的工作区根目录（Windows 默认）。",
-    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部 Runner。启用向外委托（acp_runner）不受影响；通过 IDE / octop acp 接入也不受影响。",
+    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部智能体。在当前专家中启用外部智能体协作不受影响；通过 IDE / octop acp 接入也不受影响。",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{slug}。",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{name}」，请改为刷新已发布模板。",
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
@@ -518,6 +518,7 @@
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
+    "KNOWLEDGE_GRAPH_NOT_READY": "请先在知识库设置中为知识图谱选择一个可用的对话模型。",
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
     "KNOWLEDGE_MOVE_INVALID": "不能把文件夹移动到它自身或其子文件夹中。",
     "KNOWLEDGE_MOVE_NAME_TAKEN": "目标文件夹中已有同名项目。",
@@ -544,6 +545,7 @@
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
     "CONFIG_FILE_CORRUPT": "无法更新 {path}：该文件不是合法 JSON（{detail}）。请修正语法后重试；现有配置未被改动。",
+    "APP_CONFIG_INVALID": "配置无效：{detail}。",
     "TEAM_NOT_FOUND": "未找到该团队。",
     "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
     "TEAM_MEMBER_INVALID": "所选专家无法加入本机团队。对端专家、其他团队或已删除的专家不能作为成员。",
@@ -665,7 +667,8 @@
     "ask_agent": "咨询专家",
     "call_agent": "调用专家",
     "call_deferred_tool": "按需调用",
-    "acp_runner": "ACP 外部 Agent",
+    "acp_runner": "外部智能体协作",
+    "external-agent": "托管智能体",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
     "send_file_to_user": "发送文件",
@@ -761,6 +764,11 @@
     }
   },
   "threads": {
+    "gc_kept_postgres": "保留了 {agent} 的 {threads} 个孤儿检查点会话（{bytes} 字节）：PostgreSQL 上的检查点只报告、不删除。",
+    "gc_kept_external": "没有扫描 {agent}：它的记忆在外部 PostgreSQL 库里。",
+    "gc_none": "没有可删除的孤儿检查点。",
+    "gc_would_delete": "将删除 {count} 个孤儿会话，共 {bytes} 字节。",
+    "gc_deleted": "已删除 {count} 个孤儿会话，共 {bytes} 字节。",
     "fork_title_suffix": "（分叉）",
     "fork_default_title": "分叉对话"
   },
@@ -799,6 +807,7 @@
     "insufficient_balance": "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。",
     "context_length": "对话上下文过长，超出模型限制。请新开会话，或精简历史后再试。",
     "recursion_limit": "智能体已达到最大迭代次数（递归上限），任务尚未完成。请前往「运行配置」调高「最大迭代次数」后重试。",
+    "tool_call_repeat": "工具「{tool}」带着相同参数已连续调用 {count} 次，达到上限 {limit}，本轮已停止。请换一种做法，或前往「运行配置」调高「连续相同调用上限」，保存后重新加载该专家。",
     "timeout_network": "连接模型服务超时或网络异常。请检查网络后重试；若使用代理或自建服务，请确认其可达。",
     "provider_unavailable": "模型服务暂时不可用。请稍后重试，或切换其他模型。",
     "invalid_request": "模型接口拒绝了本次请求参数。华为 MindIE 等严格的 OpenAI 兼容服务通常不接受 stream_options 等扩展字段。自定义供应商现已默认关闭流式用量；若仍失败，请确认该模型是否支持工具调用。完整错误已写入服务端日志。",
@@ -820,6 +829,7 @@
   "knowledge": {
     "retrieval": {
       "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
+      "graph_preamble": "以下是从同一批知识库中自动抽取的实体关系，可用于串联上面的内容，但不要把它们当作可引用的来源。",
       "preamble": "以下知识库内容仅供参考；回答时请引用对应来源。"
     }
   },
@@ -933,6 +943,8 @@
     }
   },
   "memory_slim": {
+    "postgres_kept": "PostgreSQL 上的残留只统计、不删除：没有对应会话的检查点会话 {threads} 个，没有对应专家的记忆命名空间 {namespaces} 个。",
+    "skipped_databases": "跳过了 {count} 个外部 PostgreSQL 记忆库：它们可能和其他安装共用。",
     "waiting": "等待当前任务结束…",
     "backing_up": "正在备份记忆库…",
     "sweeping": "正在清理已删除专家和会话的残留…",
@@ -986,6 +998,7 @@
     "channel_line": "{name}: {text}",
     "channel_wrapup": "【主持人总结】{text}",
     "channel_dispatched": "已请 {name} 处理，请稍候…",
+    "connector_auth_skipped": "以下连接器需要重新授权，本轮未使用：{servers}",
     "host_briefing": "[主持人调度，不是让你代答]\n用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。专业工作必须改写成给该成员的任务说明书后再 ask_agent：写清目标、范围、交付格式和必要上下文，禁止原样转发用户原话。不同成员给不同任务。寒暄或澄清自己短答。ask_agent 返回后不要重复「已安排 / 稍等」。若当前是成员完成或失败的系统唤醒，按唤醒说明收口或改派，不要重复同一任务。",
     "member_briefing": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。",
     "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}"

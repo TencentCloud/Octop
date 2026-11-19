@@ -53,7 +53,21 @@ export function modelShortLabel(modelRefValue: string): string {
   return modelRefValue.slice(slash + 1);
 }
 
-/** Same text as the model picker, so the chat chip can tell two vendors apart. */
+/** Model name only, for the composer chip above the input. */
+export function modelNameLabel(
+  modelRefValue: string,
+  models?: readonly ModelPickerOption[] | null,
+): string {
+  const ref = modelRefValue.trim();
+  if (!ref) return "";
+  const match = models?.find((item) => modelOptionValue(item) === ref);
+  if (match) return match.name || match.model;
+  const slash = ref.indexOf("/");
+  if (slash <= 0 || slash === ref.length - 1) return ref;
+  return ref.slice(slash + 1);
+}
+
+/** Picker and conversation-history text, including the provider. */
 export function modelRefLabel(
   modelRefValue: string,
   models?: readonly ModelPickerOption[] | null,
