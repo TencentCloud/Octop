@@ -1398,6 +1398,7 @@
   gap: 8px;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
   border: none;
   background: transparent;
   color: inherit;
@@ -1407,6 +1408,20 @@
   padding: 0;
   cursor: pointer;
   text-align: left;
+
+  > * {
+    flex-shrink: 0;
+  }
+
+  .fileChangeName {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .turnChangeDir {
+    flex-shrink: 1;
+    min-width: 0;
+  }
 }
 
 .fileChangeRowMain:hover .fileChangeName {
@@ -1419,6 +1434,7 @@
   gap: 6px;
   flex-shrink: 0;
   margin-left: auto;
+  padding-left: 8px;
 }
 
 .turnChangeAction {
