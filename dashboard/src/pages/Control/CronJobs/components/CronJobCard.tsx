@@ -105,7 +105,10 @@ export function CronJobCard({
     once: t("cronJobs.form.scheduleModeOnce"),
   });
 
-  const taskType = job.task_type === "text" ? "text" : "agent";
+  const taskType =
+    job.task_type === "text" || job.task_type === "script"
+      ? job.task_type
+      : "agent";
 
   const moreMenuItems: MenuProps["items"] = [
     {
@@ -165,6 +168,8 @@ export function CronJobCard({
             <Tag style={{ fontSize: 11, margin: 0 }}>
               {taskType === "text"
                 ? t("cronJobs.form.taskTypeText")
+                : taskType === "script"
+                ? t("cronJobs.form.taskTypeScriptShort")
                 : t("cronJobs.form.taskTypeAgent")}
             </Tag>
           </div>

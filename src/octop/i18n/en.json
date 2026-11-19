@@ -777,7 +777,14 @@
   },
   "cron": {
     "history": {
-      "executed": "Task {cron_id}: {name} executed."
+      "executed": "Task {cron_id}: {name} executed.",
+      "script_done": "Script {name} finished with no output."
+    },
+    "script": {
+      "interpreter_missing": "No {runtime} interpreter is available, so the script did not run.",
+      "timeout": "The script ran longer than {seconds} seconds.",
+      "failed": "Script failed (exit {code}): {detail}",
+      "unreadable": "Could not read workspace script {path}."
     }
   },
   "agents": {
