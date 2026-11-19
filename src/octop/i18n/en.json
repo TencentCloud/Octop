@@ -776,6 +776,7 @@
     "fork_default_title": "Forked chat"
   },
   "cron": {
+    "missing_target_session": "The conversation for this scheduled task is no longer available. Choose a delivery target in the task settings.",
     "history": {
       "executed": "Task {cron_id}: {name} executed.",
       "script_done": "Script {name} finished with no output."
