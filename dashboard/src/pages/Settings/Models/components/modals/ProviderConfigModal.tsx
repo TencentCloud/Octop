@@ -728,11 +728,11 @@ export function ProviderConfigModal({
 
       const modelsForSave =
         embeddingLane && !isOnnx
-          ? draftModels.map((m) => ({
-              ...m,
-              embedding: true,
-              task: "embedding",
-            }))
+          ? draftModels.map((m) =>
+              isEmbeddingModel(m, true)
+                ? { ...m, embedding: true, task: "embedding" }
+                : m,
+            )
           : draftModels;
       const modelsChanged =
         JSON.stringify(
