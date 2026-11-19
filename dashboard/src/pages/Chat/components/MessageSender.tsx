@@ -36,6 +36,9 @@ interface ExpertMessageAvatarProps {
   profileAgentId?: string | null;
   /** ACP runner shown at the avatar's bottom-right. */
   managedRunner?: string | null;
+  shared?: boolean;
+  owned?: boolean;
+  ownerName?: string | null;
 }
 
 export function ExpertMessageAvatar({
@@ -46,6 +49,9 @@ export function ExpertMessageAvatar({
   tooltip,
   profileAgentId,
   managedRunner,
+  shared,
+  owned,
+  ownerName,
 }: ExpertMessageAvatarProps) {
   const { t } = useTranslation();
   const profile = useChatAgentProfile();
@@ -58,6 +64,9 @@ export function ExpertMessageAvatar({
       color={color}
       size={MESSAGE_AVATAR_SIZE}
       managedRunner={managedRunner}
+      shared={shared}
+      owned={owned}
+      ownerName={ownerName}
     />
   );
 

@@ -32,6 +32,7 @@ import {
   canReadAgentRuntimeStatus,
 } from "../../../utils/sharedExpert";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark, managedRunnerId } from "./ManagedAvatarMark";
 import {
   formatAgentError,
   formatAgentState,
@@ -41,7 +42,10 @@ import {
 } from "../../../utils/agentError";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
-import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
+import {
+  incomingShareProps,
+  SharedAvatarMark,
+} from "../../../components/SharedResourceBadge";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import {
   expertDeleteConfirm,
@@ -82,6 +86,10 @@ interface MemberChip {
   color: string;
   iconName?: string | null;
   iconUrl?: string | null;
+  runner?: string | null;
+  shared?: boolean;
+  owned?: boolean;
+  ownerName?: string | null;
 }
 
 function resolveMembers(
@@ -99,6 +107,8 @@ function resolveMembers(
       color: expert.color || "#0d9488",
       iconName: expert.icon_name,
       iconUrl: expert.icon_url,
+      runner: managedRunnerId(expert),
+      ...incomingShareProps(expert),
     });
   }
   return chips;
@@ -310,23 +320,31 @@ export const TeamCard = memo(function TeamCard({
           </span>
           {visibleMembers.map((member) => (
             <Tooltip key={member.id} title={member.name}>
-              <div
-                className={styles.teamMemberAvatar}
-                style={{
-                  color: member.color,
-                  background: `${member.color}1a`,
-                }}
+              <SharedAvatarMark
+                shared={member.shared}
+                owned={member.owned ?? true}
+                ownerName={member.ownerName}
               >
-                {member.iconUrl || member.iconName ? (
-                  <ExpertIcon
-                    iconUrl={member.iconUrl}
-                    iconName={member.iconName}
-                    size={member.iconUrl ? 22 : 13}
-                  />
-                ) : (
-                  member.name.slice(0, 1)
-                )}
-              </div>
+                <ManagedAvatarMark runner={member.runner}>
+                  <div
+                    className={styles.teamMemberAvatar}
+                    style={{
+                      color: member.color,
+                      background: `${member.color}1a`,
+                    }}
+                  >
+                    {member.iconUrl || member.iconName ? (
+                      <ExpertIcon
+                        iconUrl={member.iconUrl}
+                        iconName={member.iconName}
+                        size={member.iconUrl ? 22 : 13}
+                      />
+                    ) : (
+                      member.name.slice(0, 1)
+                    )}
+                  </div>
+                </ManagedAvatarMark>
+              </SharedAvatarMark>
             </Tooltip>
           ))}
           {hiddenCount > 0 && (

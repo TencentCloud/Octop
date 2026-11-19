@@ -86,10 +86,9 @@ class HitlSessionPolicy:
         return {"mode": "ask"}
 
     def to_json(self) -> str | None:
-        data = self.to_dict()
-        if data.get("mode") == "ask":
-            return None
-        return json.dumps(data, ensure_ascii=False)
+        # Ask is stored too. An empty column means the thread never chose, so a
+        # managed expert can apply its own default on the next turn.
+        return json.dumps(self.to_dict(), ensure_ascii=False)
 
 
 def parse_hitl_session_policy(raw: object) -> HitlSessionPolicy:

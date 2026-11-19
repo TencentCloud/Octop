@@ -18,6 +18,23 @@ EXPERT_KIND = "expert"
 TEAM_TEMPLATE_NAME = "team-host"
 TEAM_MIN_MEMBERS = 2
 TEAM_AVATAR_URL = "/experts/avatars/team-host.svg"
+
+
+def _member_runner(member: AgentRow) -> str | None:
+    if getattr(member, "kind", None) != "managed":
+        return None
+    raw = member.config_json
+    try:
+        cfg = json.loads(raw) if isinstance(raw, str) and raw.strip() else {}
+    except json.JSONDecodeError:
+        return None
+    runner = cfg.get("managed_runner") if isinstance(cfg, dict) else None
+    if not isinstance(runner, str):
+        return None
+    text = runner.strip()
+    return text or None
+
+
 TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 TEAM_MANIFEST_WORKSPACE = ".octop/manifest.json"
 
@@ -294,6 +311,8 @@ class TeamService:
                     "state": member.last_state or "unknown",
                     "is_shared": bool(int(member.is_shared or 0)),
                     "user_id": member.user_id,
+                    "kind": getattr(member, "kind", None) or "expert",
+                    "managed_runner": _member_runner(member),
                 }
                 for member in member_rows
                 if member is not None

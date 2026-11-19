@@ -123,6 +123,43 @@ def internal_mcp_url(
     return f"{scheme}://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
 
 
+def _loopback_mcp_url(config: OctopConfig, suffix: str, token: str) -> str:
+    host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
+    token_q = quote(token, safe="")
+    scheme = "https" if _internal_mcp_uses_https(config) else "http"
+    return f"{scheme}://{host}:{config.port}/api/internal/mcp/{suffix}?token={token_q}"
+
+
+def knowledge_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for the knowledge-base MCP a managed ACP agent can call."""
+    return _loopback_mcp_url(config, "knowledge", token)
+
+
+def agents_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for ``ask_agent`` on a managed ACP session."""
+    return _loopback_mcp_url(config, "agents", token)
+
+
+def files_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for ``send_file_to_user`` on a managed ACP session."""
+    return _loopback_mcp_url(config, "files", token)
+
+
+def cron_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for cron tools on a managed ACP session."""
+    return _loopback_mcp_url(config, "cron", token)
+
+
+def memory_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for memory tools on a managed ACP session."""
+    return _loopback_mcp_url(config, "memory", token)
+
+
+def plugins_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for this expert's enabled plugin tools."""
+    return _loopback_mcp_url(config, "plugins", token)
+
+
 def new_internal_token() -> str:
     return secrets.token_urlsafe(32)
 
