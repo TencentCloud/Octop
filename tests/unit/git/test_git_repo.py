@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -20,6 +21,7 @@ from octop.infra.git.repo import (
 )
 
 needs_git = pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only fixture")
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -128,6 +130,7 @@ async def test_diff_rejects_missing_and_unsafe_paths(repo: Path) -> None:
 
 
 @needs_git
+@posix_only
 async def test_diff_ignores_external_diff_driver(repo: Path) -> None:
     (repo / "tracked.txt").write_text("line1\nline2\n")
     # A repo-level external diff driver (e.g. difftastic) must not change the
