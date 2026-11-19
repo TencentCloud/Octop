@@ -147,8 +147,6 @@ def _send_greeting(
 ) -> None:
     _log_info("greeting", "Sending initial greeting message")
     ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
 
     token_payload = json.dumps({"app_id": app_id, "app_secret": app_secret}).encode()
     token_req = urllib.request.Request(
