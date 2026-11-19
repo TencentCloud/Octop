@@ -136,6 +136,14 @@ class UserManager:
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
+        from octop.infra.utils.paths import is_single_path_segment
+
+        if not is_single_path_segment(username):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "username must be a single directory name",
+                status=400,
+            )
         loc = normalize_locale(locale)
         if directory_provider_id is not None:
             # A directory reservation has no local secret. The directory bind is
