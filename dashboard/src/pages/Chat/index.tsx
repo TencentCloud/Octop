@@ -446,6 +446,7 @@ function ChatPageInner() {
     openWorkspaceTab,
     openBrowserTab,
     openTerminalTab,
+    openGitDiffTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
     toggleSidePanel,
@@ -2095,6 +2096,7 @@ function ChatPageInner() {
             onSelectTab={setDockActiveTab}
             onCloseTab={closeDockTab}
             onOpenFile={openFileAt}
+            onOpenGitDiff={openGitDiffTab}
             browserEnvironment={browserEnvironment}
             bridgeConnectionId={bridgeConnectionId}
             threadId={activeThreadId}
