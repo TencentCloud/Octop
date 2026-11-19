@@ -8,7 +8,7 @@ import pytest
 from octop_harness.acp.client import ACPHostedClient
 from octop_harness.acp.models import ACPRunnerConfig
 
-from octop.infra.agents.acp_permission_compat import install_acp_permission_queue
+from octop.infra.agents.acp.permissions import install_acp_permission_queue
 
 _OPTIONS = [
     {"optionId": "allow-once", "name": "Allow once", "kind": "allow_once"},

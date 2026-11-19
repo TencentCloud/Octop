@@ -59,6 +59,8 @@ interface AssistantTurnViewProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  /** Public transcripts hide read-aloud. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function hasProcessContent(
@@ -81,6 +83,7 @@ function TurnErrorBubbles({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: {
   messages: ChatMessage[] | undefined;
   agentId?: string | null;
@@ -94,6 +97,7 @@ function TurnErrorBubbles({
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  readAloud?: boolean;
 }) {
   if (!messages?.length) return null;
   return (
@@ -114,6 +118,7 @@ function TurnErrorBubbles({
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
             shellCommandDisabledTitle={shellCommandDisabledTitle}
+            readAloud={readAloud}
           />
         </div>
       ))}
@@ -154,6 +159,7 @@ export default function AssistantTurnView({
   shellCommandDisabled,
   shellCommandDisabledTitle,
   compactProcess = false,
+  readAloud = true,
 }: AssistantTurnViewProps) {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
@@ -320,6 +326,7 @@ export default function AssistantTurnView({
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
             shellCommandDisabledTitle={shellCommandDisabledTitle}
+            readAloud={readAloud}
           />
         </div>
       ) : null}
@@ -340,6 +347,7 @@ export default function AssistantTurnView({
         onRunShellCommand={onRunShellCommand}
         shellCommandDisabled={shellCommandDisabled}
         shellCommandDisabledTitle={shellCommandDisabledTitle}
+        readAloud={readAloud}
       />
       {knowledgeCitations.length > 0 ? (
         <div className={styles.turnInset}>
@@ -430,6 +438,7 @@ export default function AssistantTurnView({
                   onRunShellCommand={onRunShellCommand}
                   shellCommandDisabled={shellCommandDisabled}
                   shellCommandDisabledTitle={shellCommandDisabledTitle}
+                  readAloud={readAloud}
                 />
               </div>
             ) : null}
@@ -446,12 +455,14 @@ export default function AssistantTurnView({
               onRunShellCommand={onRunShellCommand}
               shellCommandDisabled={shellCommandDisabled}
               shellCommandDisabledTitle={shellCommandDisabledTitle}
+              readAloud={readAloud}
             />
             <MessageBubble
               message={hitl}
               agentId={agentId}
               onHitlDecision={onHitlDecision}
               groupPosition="only"
+              readAloud={readAloud}
             />
           </div>
         );

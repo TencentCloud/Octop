@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote, unquote, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -70,8 +70,8 @@ class DatabaseConfig:
             raise ValueError("postgresql_conninfo() requires driver=postgresql")
         if self.url:
             return self.url
-        user = quote_plus(self.user)
-        auth = user if not self.password else f"{user}:{quote_plus(self.password)}"
+        user = quote(self.user, safe="")
+        auth = user if not self.password else f"{user}:{quote(self.password, safe='')}"
         return f"postgresql://{auth}@{self.host}:{self.port}/{self.database}"
 
 
@@ -103,6 +103,8 @@ class BackupConfig:
     include_plugins: bool = True
     include_knowledge: bool = True
     include_chats: bool = False
+    remote_enabled: bool = False
+    remote_backend_id: int | None = None
 
 
 _VALID_MOBILE_BACKENDS = frozenset({"physical", "redroid", "emulator", "none"})
@@ -223,6 +225,15 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         raise ValueError("config.backup.retention_count must be an integer") from exc
     if retention < 1:
         raise ValueError("config.backup.retention_count must be >= 1")
+    remote_backend_id = parse_optional_int(
+        raw.get("remote_backend_id", defaults.remote_backend_id),
+        field="config.backup.remote_backend_id",
+    )
+    if remote_backend_id is not None and remote_backend_id < 1:
+        raise ValueError("config.backup.remote_backend_id must be >= 1 when set")
+    remote_enabled = bool(raw.get("remote_enabled", defaults.remote_enabled))
+    if remote_enabled and remote_backend_id is None:
+        raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
     return BackupConfig(
         auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
@@ -235,6 +246,8 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         include_plugins=bool(raw.get("include_plugins", defaults.include_plugins)),
         include_knowledge=bool(raw.get("include_knowledge", defaults.include_knowledge)),
         include_chats=bool(raw.get("include_chats", defaults.include_chats)),
+        remote_enabled=remote_enabled,
+        remote_backend_id=remote_backend_id,
     )
 
 
@@ -293,6 +306,25 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
     return default
 
 
+def parse_optional_int(raw: object, *, field: str) -> int | None:
+    """Parse an optional JSON integer; empty string / null → None."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError(f"{field} must be an integer or null")
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an integer or null") from exc
+    raise ValueError(f"{field} must be an integer or null")
+
+
 def _parse_database_url(url: str) -> dict[str, Any]:
     parsed = urlparse(url)
     if parsed.scheme not in ("postgresql", "postgres"):
@@ -310,9 +342,9 @@ def _parse_database_url(url: str) -> dict[str, Any]:
         "url": url,
     }
     if parsed.username:
-        out["user"] = parsed.username
+        out["user"] = unquote(parsed.username)
     if parsed.password:
-        out["password"] = parsed.password
+        out["password"] = unquote(parsed.password)
     return out
 
 
@@ -341,7 +373,7 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
 
     host = str(merged.get("host", "")).strip()
     database = str(merged.get("database", "")).strip()
-    user = str(merged.get("user", "")).strip()
+    user = str(merged.get("user", ""))
     port = int(merged.get("port", 5432))
     if not host:
         raise ValueError("database.host is required for postgresql")
@@ -713,6 +745,27 @@ def load_config(path: Path) -> OctopConfig:
             backup,
             include_chats=_coerce_bool("OCTOP_BACKUP_INCLUDE_CHATS", v, backup.include_chats),
         )
+    if v := os.environ.get("OCTOP_BACKUP_REMOTE_ENABLED"):
+        backup = replace(
+            backup,
+            remote_enabled=_coerce_bool("OCTOP_BACKUP_REMOTE_ENABLED", v, backup.remote_enabled),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_REMOTE_BACKEND_ID"):
+        text = v.strip()
+        if not text:
+            backup = replace(backup, remote_backend_id=None)
+        else:
+            try:
+                parsed = int(text)
+            except ValueError as exc:
+                raise ValueError(
+                    "OCTOP_BACKUP_REMOTE_BACKEND_ID must be an integer or empty"
+                ) from exc
+            if parsed < 1:
+                raise ValueError("OCTOP_BACKUP_REMOTE_BACKEND_ID must be >= 1 when set")
+            backup = replace(backup, remote_backend_id=parsed)
+    if backup.remote_enabled and backup.remote_backend_id is None:
+        raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
 
     return OctopConfig(
         bind_host=merged["bind_host"],

@@ -26,8 +26,8 @@ def _iso_utc_from_timestamp(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
 
-def resolve_backup_created_at(name: str, path: Path, *, mtime: float) -> str:
-    """Filename stamp → birth time → mtime."""
+def backup_created_at_from_name(name: str, *, fallback_iso: str | None = None) -> str:
+    """Prefer the ``YYYYMMDDTHHMMSSZ`` stamp embedded in Octop backup names."""
     match = _BACKUP_CREATED_RE.search(name)
     if match:
         stamp = match.group(1)  # YYYYMMDDTHHMMSSZ
@@ -37,10 +37,27 @@ def resolve_backup_created_at(name: str, path: Path, *, mtime: float) -> str:
             pass
         else:
             return parsed.isoformat()
+    if fallback_iso:
+        return fallback_iso
+    return datetime.now(tz=UTC).isoformat()
+
+
+def resolve_backup_created_at(name: str, path: Path, *, mtime: float) -> str:
+    """Filename stamp → birth time → mtime."""
     birth = getattr(path.stat(), "st_birthtime", None)
     if isinstance(birth, int | float) and birth > 0:
-        return _iso_utc_from_timestamp(float(birth))
-    return _iso_utc_from_timestamp(mtime)
+        fallback = _iso_utc_from_timestamp(float(birth))
+    else:
+        fallback = _iso_utc_from_timestamp(mtime)
+    return backup_created_at_from_name(name, fallback_iso=fallback)
+
+
+def is_backup_archive_filename(name: str) -> bool:
+    """True for ``.tar.gz`` / ``.tgz`` backup archives (not meta sidecars)."""
+    base = Path(name).name
+    if base != name.strip() or "/" in base or "\\" in base:
+        return False
+    return any(base.endswith(suffix) for suffix in _BACKUP_SUFFIXES)
 
 
 @dataclass(frozen=True)

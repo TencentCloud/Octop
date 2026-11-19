@@ -5,8 +5,10 @@ from __future__ import annotations
 from octop.infra.agents.settings.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
+    MANAGED_BUILTIN_TOOLS,
     builtin_tool_available,
     effective_tools_disabled,
+    managed_builtin_available,
     normalize_tools_disabled,
     plugin_tools_disabled_names,
     tools_disabled_set,
@@ -21,6 +23,66 @@ def test_team_host_tools_are_dispatch_only() -> None:
     assert "ask_agent" in HOST_TOOLS_ALLOWED
     assert "write_file" in HOST_TOOLS_DISABLED
     assert "task" in HOST_TOOLS_DISABLED
+
+
+def test_managed_catalog_is_only_tools_octop_can_attach() -> None:
+    names = {entry.name for entry in BUILTIN_TOOL_CATALOG}
+    assert names >= MANAGED_BUILTIN_TOOLS
+    assert "send_file_to_user" in MANAGED_BUILTIN_TOOLS
+    assert "search_knowledge" in MANAGED_BUILTIN_TOOLS
+    assert "ask_agent" in MANAGED_BUILTIN_TOOLS
+    assert "write_file" not in MANAGED_BUILTIN_TOOLS
+    assert "browser_use" not in MANAGED_BUILTIN_TOOLS
+    assert "acp_runner" not in MANAGED_BUILTIN_TOOLS
+
+
+def test_managed_tools_stay_unavailable_until_they_can_attach() -> None:
+    off = {"memory": {"memory_enabled": False}}
+    assert (
+        managed_builtin_available(
+            "memory_search",
+            agent_cfg=off,
+            knowledge_base_ids=[],
+            has_peers=False,
+        )
+        is False
+    )
+    assert (
+        managed_builtin_available(
+            "search_knowledge",
+            agent_cfg=off,
+            knowledge_base_ids=[],
+            has_peers=True,
+        )
+        is False
+    )
+    assert (
+        managed_builtin_available(
+            "ask_agent",
+            agent_cfg=off,
+            knowledge_base_ids=["kb"],
+            has_peers=False,
+        )
+        is False
+    )
+    assert (
+        managed_builtin_available(
+            "send_file_to_user",
+            agent_cfg=off,
+            knowledge_base_ids=[],
+            has_peers=False,
+        )
+        is True
+    )
+    assert (
+        managed_builtin_available(
+            "search_knowledge",
+            agent_cfg={"memory": {"memory_enabled": True}},
+            knowledge_base_ids=["kb"],
+            has_peers=True,
+        )
+        is True
+    )
 
 
 def test_critical_tools_are_in_catalog() -> None:

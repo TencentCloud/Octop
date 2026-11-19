@@ -3,6 +3,10 @@ import { Share2 } from "lucide-react";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
+import {
+  isSharedExpertViewer,
+  type SharedExpertAccess,
+} from "../../utils/sharedExpert";
 import styles from "./SharedResourceBadge.module.less";
 
 type Props = {
@@ -43,6 +47,18 @@ export function SharedResourceBadge({
       <span className={styles.label}>{label}</span>
     </span>
   );
+}
+
+/** Props for the incoming-share pip. Owners who shared outward get no avatar mark. */
+export function incomingShareProps(
+  agent?: (SharedExpertAccess & { owner_username?: string | null }) | null,
+): { shared: boolean; owned: boolean; ownerName?: string | null } {
+  const incoming = Boolean(agent && isSharedExpertViewer(agent));
+  return {
+    shared: incoming,
+    owned: !incoming,
+    ownerName: agent?.owner_username,
+  };
 }
 
 /** Avatar with a pip when the resource was shared to the current user. */

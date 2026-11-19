@@ -40,6 +40,7 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
+  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
@@ -49,6 +50,7 @@ import {
 } from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
 import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
@@ -111,6 +113,8 @@ interface MessageBubbleProps {
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  /** Public transcripts hide this. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function formatElapsedSeconds(durationMs: number | undefined): string | null {
@@ -591,6 +595,7 @@ function MessageBubble({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -746,7 +751,9 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const isError = message.status === "error";
+  const isError =
+    message.status === "error" ||
+    (!isUser && !hasToolData && isChatStreamError(textContent));
   const errorSource = isError
     ? message.errorInfo?.message?.trim() || textContent
     : textContent;
@@ -848,6 +855,7 @@ function MessageBubble({
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
       managedRunner={managedRunnerId(expert)}
+      {...incomingShareProps(expert)}
     />
   ) : null;
 
@@ -1137,7 +1145,7 @@ function MessageBubble({
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
-                  {!isUser && !isStreaming && speechText && (
+                  {!isUser && !isStreaming && readAloud && speechText && (
                     <>
                       <CopyButton text={textContent} />
                       <button
