@@ -60,7 +60,7 @@ export function VoiceSettingsPanel() {
     try {
       const [presetList, rows, activeVoice] = await Promise.all([
         voiceApi.getPresets(),
-        voiceApi.getProviders(),
+        voiceApi.adminListProviders().catch(() => voiceApi.getProviders()),
         voiceApi.getActive(),
       ]);
       setPresets(presetList);

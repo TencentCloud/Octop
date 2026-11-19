@@ -715,7 +715,7 @@ async def get_custom_mcp(
 @router.put("/connectors/custom-mcp", summary="Save custom MCP servers")
 async def put_custom_mcp(
     body: CustomMcpPutBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Replace the user's custom MCP servers document and reload agents."""
@@ -749,7 +749,7 @@ async def put_custom_mcp(
 async def patch_custom_mcp_server(
     server_name: str,
     body: CustomMcpServerPatchBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Update ``enabled`` and/or ``default_open`` for one custom MCP server."""
@@ -775,7 +775,7 @@ async def patch_custom_mcp_server(
 @router.post("/connectors/custom-mcp/test", summary="Probe a custom MCP server")
 async def test_custom_mcp(
     body: CustomMcpTestBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Probe connectivity for one custom MCP server (saved name or inline spec)."""
