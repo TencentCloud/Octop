@@ -825,6 +825,29 @@
         }
       ],
       "remote_transport": "streamable_http"
+    },
+    {
+      "kind": "github",
+      "name": { "en": "GitHub", "zh": "GitHub" },
+      "description": {
+        "en": "Official MCP: manage repositories, issues, pull requests, code search, and notifications",
+        "zh": "官方 MCP：管理仓库、Issue、PR、代码检索与通知"
+      },
+      "auth_kind": "personal_token",
+      "doc_url": "https://github.com/github/github-mcp-server",
+      "icon": "github",
+      "color": "#24292f",
+      "phase": "available",
+      "mcp_mode": "remote",
+      "category": "productivity",
+      "quick_auth_url": "https://github.com/settings/personal-access-tokens/new",
+      "guide_url": "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md",
+      "manual_url": "https://github.com/settings/personal-access-tokens/new",
+      "auth_hint": {
+        "en": "Create a fine-grained personal access token (Issues & Pull requests read-write, Contents read-only) and paste it below",
+        "zh": "在 GitHub 创建细粒度个人访问令牌（Issue 与 PR 读写、Contents 只读）并粘贴到下方"
+      },
+      "remote_transport": "streamable_http"
     }
   ]
 }
