@@ -155,7 +155,7 @@ export default function ExpertComposerDefaultsFields({
       <Form.Item
         name="knowledge_base_ids"
         label={t("experts.knowledgeBasesLabel")}
-        extra={t("experts.knowledgeBasesHint")}
+        tooltip={t("experts.knowledgeBasesHint")}
       >
         <Select
           mode="multiple"
@@ -197,7 +197,7 @@ export default function ExpertComposerDefaultsFields({
       <Form.Item
         name="mcp_servers"
         label={t("experts.connectorsLabel")}
-        extra={t("experts.connectorsHint")}
+        tooltip={t("experts.connectorsHint")}
       >
         <Select
           mode="multiple"
