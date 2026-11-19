@@ -86,12 +86,18 @@ function GitDiffPane({ agentId, path, staged }: GitDiffPaneProps) {
 interface ChatGitPanelProps {
   agentId: string;
   streaming?: boolean;
+  /** External focus request (e.g. message-stream Review): select this file. */
+  focusPath?: string | null;
+  /** Bumped on each focus request so a repeated path re-triggers selection. */
+  focusSeq?: number;
   onOpenFile?: (path: string) => void;
 }
 
 export default function ChatGitPanel({
   agentId,
   streaming = false,
+  focusPath = null,
+  focusSeq = 0,
   onOpenFile,
 }: ChatGitPanelProps) {
   const { t } = useTranslation();
@@ -126,6 +132,20 @@ export default function ChatGitPanel({
     );
     if (!stillThere) setSelected(null);
   }, [status, selected]);
+
+  // External focus requests (message-stream Review rows) select the file's
+  // unstaged row first, falling back to the staged row.
+  useEffect(() => {
+    if (!focusPath || !status) return;
+    const target = focusPath.replace(/^[\\/]+/, "");
+    const unstaged = status.files.find((f) => f.path === target && !f.staged);
+    const any = status.files.find((f) => f.path === target);
+    const hit = unstaged ?? any;
+    if (hit) {
+      setSelected({ path: hit.path, staged: hit.staged });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPath, focusSeq, status]);
 
   const loadLog = useCallback(async () => {
     setLogLoading(true);

@@ -25,7 +25,7 @@ export type DockTab =
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
   | { id: string; kind: "file"; path: string; agentId?: string }
-  | { id: "git"; kind: "git" }
+  | { id: "git"; kind: "git"; focusPath?: string; focusSeq?: number }
   | {
       id: string;
       kind: "knowledge";
@@ -226,14 +226,37 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openDock();
   }, [openDock]);
 
-  const openGitTab = useCallback(() => {
-    setOpenTabs((prev) => {
-      if (prev.some((t) => t.id === "git")) return prev;
-      return [...prev, { id: "git", kind: "git" as const }];
-    });
-    setActiveTabId("git");
-    openDock();
-  }, [openDock]);
+  const openGitTab = useCallback(
+    (focusPath?: string) => {
+      const focus = focusPath?.trim() || undefined;
+      setOpenTabs((prev) => {
+        const existing = prev.find(
+          (t): t is Extract<DockTab, { kind: "git" }> => t.kind === "git",
+        );
+        if (existing) {
+          if (!focus) return prev;
+          // Bump focusSeq so the panel re-selects the file even when the
+          // path repeats.
+          return prev.map((t) =>
+            t.id === "git"
+              ? {
+                  ...t,
+                  focusPath: focus,
+                  focusSeq: (existing.focusSeq ?? 0) + 1,
+                }
+              : t,
+          );
+        }
+        return [
+          ...prev,
+          { id: "git", kind: "git" as const, focusPath: focus, focusSeq: 1 },
+        ];
+      });
+      setActiveTabId("git");
+      openDock();
+    },
+    [openDock],
+  );
 
   const openKnowledgeCitation = useCallback(
     (citation: KnowledgeCitation) => {

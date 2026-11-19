@@ -4,6 +4,8 @@ import type { KnowledgeCitation } from "../../utils/parseKnowledgeCitations";
 interface ChatFilePreviewContextValue {
   /** Open the shared file panel on a workspace path (preview / download cards). */
   openFilePreview: (path: string, agentId?: string | null) => void;
+  /** Open the git panel with this file's diff selected. */
+  openGitChange: (path: string, agentId?: string | null) => void;
   /** Open a knowledge citation in the shared chat dock (same shell as file tabs). */
   openKnowledgeCitation: (citation: KnowledgeCitation) => void;
 }
@@ -13,16 +15,18 @@ const ChatFilePreviewContext =
 
 export function ChatFilePreviewProvider({
   openFilePreview,
+  openGitChange,
   openKnowledgeCitation,
   children,
 }: {
   openFilePreview: (path: string, agentId?: string | null) => void;
+  openGitChange: (path: string, agentId?: string | null) => void;
   openKnowledgeCitation: (citation: KnowledgeCitation) => void;
   children: ReactNode;
 }) {
   return (
     <ChatFilePreviewContext.Provider
-      value={{ openFilePreview, openKnowledgeCitation }}
+      value={{ openFilePreview, openGitChange, openKnowledgeCitation }}
     >
       {children}
     </ChatFilePreviewContext.Provider>

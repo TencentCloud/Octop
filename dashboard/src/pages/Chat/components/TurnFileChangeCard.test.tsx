@@ -11,11 +11,16 @@ vi.mock("react-i18next", () => ({
         "chat.fileChangePending": "进行中",
         "chat.fileChangeMore": "还有 {{count}} 个",
         "chat.editFileCard": "编辑了{{count}}个文件",
+        "git.filesChanged": "{{count}} 个文件变更",
+        "git.review": "Review",
+        "git.open": "打开",
       };
       let text = templates[key] ?? key;
       if (opts) {
         for (const [name, value] of Object.entries(opts)) {
-          text = text.replaceAll(`{{${name}}}`, String(value));
+          if (typeof value === "number") {
+            text = text.replaceAll(`{{${name}}}`, String(value));
+          }
         }
       }
       return text;
@@ -41,20 +46,41 @@ function writeMessage(): ChatMessage {
   };
 }
 
-describe("TurnFileChangeCard", () => {
-  it("shows the line totals and opens the file from the list", () => {
-    const openFilePreview = vi.fn();
-    render(
-      <ChatFilePreviewProvider
-        openFilePreview={openFilePreview}
-        openKnowledgeCitation={vi.fn()}
-      >
-        <TurnFileChangeCard messages={[writeMessage()]} onOpenList={vi.fn()} />
-      </ChatFilePreviewProvider>,
-    );
+function renderCard(messages: ChatMessage[]) {
+  const openFilePreview = vi.fn();
+  const openGitChange = vi.fn();
+  render(
+    <ChatFilePreviewProvider
+      openFilePreview={openFilePreview}
+      openGitChange={openGitChange}
+      openKnowledgeCitation={vi.fn()}
+    >
+      <TurnFileChangeCard messages={messages} onOpenList={vi.fn()} />
+    </ChatFilePreviewProvider>,
+  );
+  return { openFilePreview, openGitChange };
+}
 
-    const row = screen.getByRole("button", { name: "src/app.py +2 −0" });
-    fireEvent.click(row);
+describe("TurnFileChangeCard", () => {
+  it("shows the collapsed summary bar with line totals, then expands", () => {
+    const { openGitChange, openFilePreview } = renderCard([writeMessage()]);
+
+    const summary = screen.getByRole("button", {
+      name: "1 个文件变更 +2 −0",
+    });
+    expect(summary).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(summary);
+    const row = screen.getByTestId("turn-change-row");
+    expect(row).toHaveTextContent("app.py");
+
+    // Row body (and Review) opens the diff in the git panel.
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(openGitChange).toHaveBeenCalledWith("src/app.py", null);
+    expect(openFilePreview).not.toHaveBeenCalled();
+
+    // Open goes to the file viewer.
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
     expect(openFilePreview).toHaveBeenCalledWith("src/app.py", null);
   });
 
@@ -75,14 +101,8 @@ describe("TurnFileChangeCard", () => {
         },
       }),
     );
-    render(
-      <ChatFilePreviewProvider
-        openFilePreview={vi.fn()}
-        openKnowledgeCitation={vi.fn()}
-      >
-        <TurnFileChangeCard messages={messages} />
-      </ChatFilePreviewProvider>,
-    );
+    renderCard(messages);
+    fireEvent.click(screen.getByRole("button", { name: /5 个文件变更/ }));
     expect(
       screen.getByRole("button", { name: /src\/d\.py/ }),
     ).toBeInTheDocument();

@@ -626,6 +626,10 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             <ChatGitPanel
               agentId={agentId}
               streaming={!!isStreamingTurn}
+              focusPath={
+                openTabs.find((t) => t.kind === "git")?.focusPath ?? null
+              }
+              focusSeq={openTabs.find((t) => t.kind === "git")?.focusSeq ?? 0}
               onOpenFile={(path) => onOpenFile(path, agentId)}
             />
           </div>

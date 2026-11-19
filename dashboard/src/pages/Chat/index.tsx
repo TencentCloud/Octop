@@ -1471,6 +1471,7 @@ function ChatPageInner() {
   return (
     <ChatFilePreviewProvider
       openFilePreview={openFileAt}
+      openGitChange={(path) => openGitTab(path)}
       openKnowledgeCitation={openKnowledgeCitation}
     >
       <ChatToolDockProvider

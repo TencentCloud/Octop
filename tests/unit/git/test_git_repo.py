@@ -157,6 +157,19 @@ async def test_log_shape(repo: Path) -> None:
 
 
 @needs_git
+async def test_status_lists_untracked_files_individually(repo: Path) -> None:
+    (repo / "notes").mkdir()
+    (repo / "notes" / "one.md").write_text("a\n")
+    (repo / "notes" / "two.md").write_text("b\nc\n")
+
+    snapshot = await get_status(repo)
+    untracked = {f.path: f for f in snapshot.files if f.status == "untracked"}
+    assert "notes/" not in untracked
+    assert untracked["notes/one.md"].added == 1
+    assert untracked["notes/two.md"].added == 2
+
+
+@needs_git
 async def test_stage_unstage_commit_roundtrip(repo: Path) -> None:
     (repo / "feature.txt").write_text("feature work\n")
     await stage_paths(repo, ["feature.txt"])

@@ -239,7 +239,9 @@ async def get_status(ws_dir: Path) -> GitStatusSnapshot:
         return GitStatusSnapshot(is_repo=True, git_available=False)
     _, status_out, _ = await _run_git(
         ws_dir,
-        ["status", "--porcelain=v2", "--branch", "-z"],
+        # -uall lists untracked files individually (not collapsed dirs) so
+        # per-file line counts and file-level focus both work.
+        ["status", "--porcelain=v2", "--branch", "-z", "-uall"],
         timeout=_STATUS_TIMEOUT_S,
         max_bytes=_STATUS_MAX_BYTES,
         read_query=True,
