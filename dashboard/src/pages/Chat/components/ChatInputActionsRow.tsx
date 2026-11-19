@@ -32,6 +32,11 @@ import {
 import { Tooltip, Popover } from "antd";
 import cx from "classnames";
 import { message } from "@/utils/antdMessage";
+import {
+  catalogOffersUnattendedMode,
+  type AcpSessionMode,
+} from "../../../api/modules/acp";
+import { acpSessionModeText } from "../../../api/modules/acp";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -53,6 +58,8 @@ import {
   conversationModeIcon,
 } from "./ConversationModePicker";
 import HitlPolicyPicker from "./HitlPolicyPicker";
+import { SessionModeMenu, sessionModeIcon } from "./SessionModeMenu";
+import ManagedApprovalPicker from "./ManagedApprovalPicker";
 import SlashCommandMenu from "./SlashCommandMenu";
 import type { SlashMenuGroup } from "../../../utils/slashCategories";
 import type { SlashMenuItem } from "../hooks/useSlashMentionInput";
@@ -160,6 +167,9 @@ interface ChatInputActionsRowProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  sessionModes?: AcpSessionMode[];
+  sessionMode?: string;
+  onSessionModeChange?: (modeId: string) => void;
   hitlPolicy?: HitlSessionPolicy;
   onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   lockThreadSettings?: boolean;
@@ -182,7 +192,7 @@ interface ChatInputActionsRowProps {
   slashPickerGroups: SlashMenuGroup<SlashMenuItem>[] | null;
   slashMenuItems: SlashMenuItem[];
   onSlashShortcutSelect: (command: string) => void;
-  /** Hide mode, model, connectors, knowledge, experts, and shortcuts. */
+  /** Hide mode, model, and shortcuts. Experts, subagents, connectors, and knowledge stay. */
   managed?: boolean;
   onFileSelect: () => void;
   onFolderSelect: () => void;
@@ -226,6 +236,9 @@ export default function ChatInputActionsRow({
   onReasoningChange,
   conversationMode = "craft",
   onConversationModeChange,
+  sessionModes,
+  sessionMode = "",
+  onSessionModeChange,
   hitlPolicy,
   onHitlPolicyChange,
   lockThreadSettings = false,
@@ -253,7 +266,7 @@ export default function ChatInputActionsRow({
   onCancel,
   onSubmit,
 }: ChatInputActionsRowProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const settingsLockedHint = lockThreadSettings
     ? t("chat.threadSettingsOwnerOnly", "只有会话创建人可以改模型和审批设置")
     : undefined;
@@ -359,22 +372,21 @@ export default function ChatInputActionsRow({
     !managed &&
     Boolean(availableModels && availableModels.length > 0 && onModelChange);
   const allowWriteTools = conversationMode === "craft";
-  const showConnectorPicker =
-    !managed &&
-    Boolean(allowWriteTools && availableConnectors && onConnectorsChange);
-  const showKnowledgePicker =
-    !managed && Boolean(availableKnowledgeBases && onKnowledgeBaseIdsChange);
+  const showConnectorPicker = Boolean(
+    allowWriteTools && availableConnectors && onConnectorsChange,
+  );
+  const showKnowledgePicker = Boolean(
+    availableKnowledgeBases && onKnowledgeBaseIdsChange,
+  );
   const showSkillPicker = Boolean(
     allowWriteTools && availableSkills && onInsertSkillCommand,
   );
-  const showExpertPicker =
-    !managed &&
-    Boolean(
-      allowWriteTools &&
-        availableExperts &&
-        onInsertExpertMention &&
-        availableExperts.length > 0,
-    );
+  const showExpertPicker = Boolean(
+    allowWriteTools &&
+      availableExperts &&
+      onInsertExpertMention &&
+      availableExperts.length > 0,
+  );
   const showSubagentPicker = Boolean(
     allowWriteTools &&
       availableSubagents &&
@@ -396,7 +408,13 @@ export default function ChatInputActionsRow({
     [availableSkills, skillDisplayName],
   );
   const activeSkillSlugs = parseSkillSlugsInText(text, skillTokenRefs);
-  const showModePicker = !managed && Boolean(onConversationModeChange);
+  const showManagedModes =
+    managed && (sessionModes?.length ?? 0) > 0 && Boolean(onSessionModeChange);
+  const showModePicker =
+    showManagedModes || (!managed && Boolean(onConversationModeChange));
+  const activeSessionMode = sessionModes?.find(
+    (mode) => mode.id === sessionMode,
+  );
   const polishDisabled =
     !text.trim() || polishing || isStreaming || disabled || !agentId;
   const overflowKeys = (
@@ -460,7 +478,7 @@ export default function ChatInputActionsRow({
     expert: t("chat.expertPicker"),
     subagent: t("chat.subagentPicker"),
     shortcut: t("shortcut.title", "快捷指令"),
-    upload: t("upload.tooltip", "Upload"),
+    upload: t("upload.action", "Upload"),
   };
 
   const reasoningModel = availableModels?.find(
@@ -765,7 +783,9 @@ export default function ChatInputActionsRow({
     </div>
   );
 
-  const ModeIcon = conversationModeIcon(conversationMode);
+  const ModeIcon = showManagedModes
+    ? sessionModeIcon(sessionMode)
+    : conversationModeIcon(conversationMode);
 
   const renderPlusMenu = () => (
     <div className={styles.mobileOverflowMenu}>
@@ -788,7 +808,11 @@ export default function ChatInputActionsRow({
           </span>
           <span className={styles.mobileOverflowItemMeta}>
             <span className={styles.mobileOverflowItemMetaLabel}>
-              {t(`chat.conversationMode.${conversationMode}`)}
+              {showManagedModes
+                ? activeSessionMode
+                  ? acpSessionModeText(activeSessionMode, i18n.language, "name")
+                  : sessionMode
+                : t(`chat.conversationMode.${conversationMode}`)}
             </span>
             <ChevronRight size={16} />
           </span>
@@ -951,7 +975,7 @@ export default function ChatInputActionsRow({
         >
           <span className={styles.mobileOverflowItemMain}>
             <Paperclip size={16} />
-            <span>{t("upload.tooltip", "Upload")}</span>
+            <span>{t("upload.action", "Upload")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
             <ChevronRight size={16} />
@@ -1074,7 +1098,17 @@ export default function ChatInputActionsRow({
   const renderPickerBody = (key: CompactPickerKey) => {
     switch (key) {
       case "mode":
-        return (
+        return showManagedModes ? (
+          <SessionModeMenu
+            modes={sessionModes ?? []}
+            modeId={sessionMode}
+            language={i18n.language}
+            onChange={(modeId) => {
+              onSessionModeChange?.(modeId);
+              closePlusMenu();
+            }}
+          />
+        ) : (
           <ConversationModeMenu
             conversationMode={conversationMode}
             onChange={(mode) => {
@@ -1277,14 +1311,24 @@ export default function ChatInputActionsRow({
             </Tooltip>
           </Popover>
         )}
-        {onHitlPolicyChange && (
+        {onHitlPolicyChange &&
+        managed &&
+        !catalogOffersUnattendedMode(sessionModes ?? []) ? (
+          <ManagedApprovalPicker
+            policy={hitlPolicy ?? { mode: "ask" }}
+            onChange={hitlChange ?? onHitlPolicyChange}
+            disabled={lockThreadSettings}
+            disabledHint={settingsLockedHint}
+          />
+        ) : null}
+        {onHitlPolicyChange && !managed ? (
           <HitlPolicyPicker
             policy={hitlPolicy ?? { mode: "ask" }}
             onChange={hitlChange ?? onHitlPolicyChange}
             disabled={lockThreadSettings}
             disabledHint={settingsLockedHint}
           />
-        )}
+        ) : null}
         {!useCompactControls && !managed && (
           <Popover
             trigger="click"

@@ -6,7 +6,13 @@ import {
   isChatStreamError,
 } from "./chatStreamError";
 
-const t = ((key: string) => `translated:${key}`) as unknown as (
+const t = ((
+  key: string,
+  opts?: { tool?: string; count?: string; limit?: string },
+) =>
+  opts?.tool
+    ? `translated:${key}:${opts.tool}:${opts.count}:${opts.limit}`
+    : `translated:${key}`) as unknown as (
   key: string,
   opts?: { defaultValue?: string },
 ) => string;
@@ -63,6 +69,19 @@ describe("classifyChatStreamError", () => {
     expect(classifyChatStreamError("HTTP 503: service overloaded")).toBe(
       "stream_errors.provider_unavailable",
     );
+  });
+
+  it("classifies a repeated tool call as a friendly config error", () => {
+    const msg = "[tool_call_repeat]\ntool: search\ncount: 41\nlimit: 40";
+    expect(classifyChatStreamError(msg)).toBe("stream_errors.tool_call_repeat");
+    expect(isChatStreamError(msg)).toBe(true);
+    expect(formatChatStreamError(msg, t)).toBe(
+      "translated:stream_errors.tool_call_repeat:search:41:40",
+    );
+    expect(chatStreamErrorAction(msg)).toEqual({
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    });
   });
 
   it("classifies LangGraph recursion limit as recursion_limit", () => {

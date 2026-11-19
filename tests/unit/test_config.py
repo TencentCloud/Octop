@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from psycopg.conninfo import conninfo_to_dict
 
 from octop.config import load_config, parse_database_config
 
@@ -32,6 +33,8 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.backup.include_plugins is True
     assert cfg.backup.include_knowledge is True
     assert cfg.backup.include_chats is False
+    assert cfg.backup.remote_enabled is False
+    assert cfg.backup.remote_backend_id is None
     assert cfg.max_upload_mb == 100
     assert cfg.max_upload_bytes == 100 * 1024 * 1024
     assert cfg_path.exists()  # file written with defaults
@@ -56,6 +59,8 @@ def test_loads_backup_section(tmp_path: Path):
                     "include_plugins": False,
                     "include_knowledge": False,
                     "include_chats": True,
+                    "remote_enabled": True,
+                    "remote_backend_id": 42,
                 }
             }
         )
@@ -70,6 +75,36 @@ def test_loads_backup_section(tmp_path: Path):
     assert cfg.backup.include_plugins is False
     assert cfg.backup.include_knowledge is False
     assert cfg.backup.include_chats is True
+    assert cfg.backup.remote_enabled is True
+    assert cfg.backup.remote_backend_id == 42
+
+
+def test_backup_remote_enabled_requires_backend_id(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"backup": {"remote_enabled": True}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="remote_backend_id"):
+        load_config(cfg_path)
+
+
+def test_backup_remote_backend_id_must_be_positive(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"backup": {"remote_backend_id": 0}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="remote_backend_id"):
+        load_config(cfg_path)
+
+
+def test_backup_remote_backend_id_env_rejects_non_positive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_BACKEND_ID", "-5")
+    with pytest.raises(ValueError, match="OCTOP_BACKUP_REMOTE_BACKEND_ID"):
+        load_config(tmp_path / "config.json")
 
 
 def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -82,6 +117,8 @@ def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES", "false")
     monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_PLUGINS", "false")
     monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_KNOWLEDGE", "false")
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_BACKEND_ID", "9")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.backup.auto_enabled is True
     assert cfg.backup.schedule == "cron:30 5 * * *"
@@ -92,6 +129,8 @@ def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert cfg.backup.include_skill_packages is False
     assert cfg.backup.include_plugins is False
     assert cfg.backup.include_knowledge is False
+    assert cfg.backup.remote_enabled is True
+    assert cfg.backup.remote_backend_id == 9
 
 
 def test_loads_existing(tmp_path: Path):
@@ -176,15 +215,28 @@ def test_database_env_sqlite_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert resolved.as_posix().endswith("/tmp/octop-test.db")
 
 
-def test_database_env_url_postgresql(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_DATABASE_URL", "postgresql://alice:secret@db.example.com:5433/mydb")
+@pytest.mark.parametrize(
+    ("auth", "user", "password"),
+    [
+        ("alice:secret", "alice", "secret"),
+        ("db%20user:my%20pass", "db user", "my pass"),
+        ("db+user:pass+word", "db+user", "pass+word"),
+        ("db%2540user:pass%2540word", "db%40user", "pass%40word"),
+    ],
+)
+def test_database_env_url_postgresql(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth: str, user: str, password: str
+):
+    url = f"postgresql://{auth}@db.example.com:5433/mydb"
+    monkeypatch.setenv("OCTOP_DATABASE_URL", url)
     cfg = load_config(tmp_path / "config.json")
     assert cfg.database.is_postgresql
     assert cfg.database.host == "db.example.com"
     assert cfg.database.port == 5433
     assert cfg.database.database == "mydb"
-    assert cfg.database.user == "alice"
-    assert cfg.database.password == "secret"
+    assert cfg.database.user == user
+    assert cfg.database.password == password
+    assert cfg.database.postgresql_conninfo() == url
 
 
 def test_database_url_preserves_query_for_conninfo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -198,7 +250,24 @@ def test_database_url_preserves_query_for_conninfo(tmp_path: Path, monkeypatch: 
     assert "sslmode=require" in cfg.database.postgresql_conninfo()
 
 
-def test_postgresql_conninfo_from_discrete_fields(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("user", "password"),
+    [
+        ("octop", "s3cret"),
+        ("db user", "my pass"),
+        (" alice ", " my pass "),
+        (" ", "secret"),
+        ("db+user", "pass+word"),
+        ("db@user", "pass@word"),
+        ("db%user", "pass%word"),
+        ("db/user", "pass/word"),
+        ("用户", "密码"),
+        ("db%40user", "pass%40word"),
+        ("octop", None),
+        ("octop", ""),
+    ],
+)
+def test_postgresql_conninfo_from_discrete_fields(tmp_path: Path, user: str, password: str | None):
     (tmp_path / "config.json").write_text(
         json.dumps(
             {
@@ -207,18 +276,20 @@ def test_postgresql_conninfo_from_discrete_fields(tmp_path: Path):
                     "host": "127.0.0.1",
                     "port": 5432,
                     "database": "octop",
-                    "user": "octop",
-                    "password": "s3cret",
+                    "user": user,
+                    "password": password,
                 }
             }
         ),
         encoding="utf-8",
     )
     cfg = load_config(tmp_path / "config.json")
-    info = cfg.database.postgresql_conninfo()
-    assert info.startswith("postgresql://")
-    assert "octop" in info
-    assert "s3cret" in info
+    info = conninfo_to_dict(cfg.database.postgresql_conninfo())
+    assert info["user"] == user
+    assert info.get("password") == (password or None)
+    assert info["host"] == "127.0.0.1"
+    assert info["port"] == "5432"
+    assert info["dbname"] == "octop"
 
 
 def test_database_env_password_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

@@ -4,6 +4,7 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { isFileToolName } from "../constants";
 
 /** Names the harness invents when an ACP update did not include a title. */
 export function isPlaceholderToolName(name?: string): boolean {
@@ -11,14 +12,20 @@ export function isPlaceholderToolName(name?: string): boolean {
   return !text || text === "unknown";
 }
 
-/** Keep a real tool name. A later ``unknown`` update must not replace it. */
+/** Keep a real tool name. A later ``unknown`` update must not replace it.
+
+ACP file edits are stored as ``write_file`` / ``edit_file`` and then again
+under the agent title (``Write /path``). The file card only recognizes the
+native name, so that title must not replace it.
+*/
 export function preferToolName(
   incoming?: string,
   current?: string,
 ): string | undefined {
   const next = incoming?.trim();
-  if (!isPlaceholderToolName(next)) return next;
   const prev = current?.trim();
+  if (isFileToolName(prev) && !isFileToolName(next)) return prev;
+  if (!isPlaceholderToolName(next)) return next;
   return prev || next;
 }
 
