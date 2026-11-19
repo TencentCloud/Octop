@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
@@ -2003,6 +2004,29 @@ class GlobalProcessor:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
         _M.inc("stream_errors_total")
+        # A failed turn has no assistant message to key checkpoints by; drop
+        # its undrained captures so they never merge into the next turn's
+        # window (the files stay changed on disk, visible in the git panel).
+        if agent_id and thread_id:
+            try:
+                agent = self._agent_manager.get_agent(agent_id)
+                discard = getattr(agent, "discard_file_changes", None)
+                if callable(discard):
+                    self._call_capture_api(discard, thread_id)
+                else:
+                    logger.warning(
+                        "harness has no discard_file_changes; a failed turn's "
+                        "captures may merge into the next turn (agent=%s thread=%s)",
+                        agent_id,
+                        thread_id,
+                    )
+            except Exception:  # noqa: BLE001 - best-effort, never mask the error
+                logger.warning(
+                    "failed to discard file checkpoints for agent=%s thread=%s",
+                    agent_id,
+                    thread_id,
+                    exc_info=True,
+                )
         log_turn_failure(
             "stream",
             detail=str(exc),
@@ -2193,6 +2217,39 @@ class GlobalProcessor:
                 exc_info=True,
             )
 
+    def _call_capture_api(self, fn: Any, thread_id: str) -> Any:
+        """Call a harness capture hook, honoring its arity.
+
+        The hook lives in the external harness package; inspect its signature
+        instead of catching TypeError around the call, which would also trap
+        unrelated TypeErrors and double-drain the buffer.
+        """
+        params: Mapping[str, inspect.Parameter] | None
+        try:
+            params = inspect.signature(fn).parameters
+        except (TypeError, ValueError):
+            params = None
+        call_mode = "scopeless"
+        if params is not None:
+            for param in params.values():
+                if param.kind is inspect.Parameter.VAR_POSITIONAL:
+                    call_mode = "positional"
+                    break
+                if param.name == "thread_id" and param.kind is not inspect.Parameter.VAR_KEYWORD:
+                    call_mode = (
+                        "keyword" if param.kind is inspect.Parameter.KEYWORD_ONLY else "positional"
+                    )
+                    break
+        if call_mode == "positional":
+            return fn(thread_id)
+        if call_mode == "keyword":
+            return fn(thread_id=thread_id)
+        logger.debug(
+            "harness capture hook has no thread_id parameter; calling scopeless for thread=%s",
+            thread_id,
+        )
+        return fn()
+
     async def _record_file_checkpoints(
         self, agent_id: str, thread_id: str, tracker: TurnHistoryTracker
     ) -> None:
@@ -2205,13 +2262,19 @@ class GlobalProcessor:
             pop = getattr(agent, "pop_file_changes", None)
             if pop is None:
                 return
-            changes = pop()
+            changes = self._call_capture_api(pop, thread_id)
             if not changes:
                 return
+            # tracker.inputs yields ThreadMessageInput rows, not LangChain
+            # messages; the key is the last assistant-role projection row id.
             message_id = None
             for m in reversed(tracker.inputs):
-                if isinstance(m, AIMessage):
-                    message_id = m.id
+                role = getattr(m, "role", None)
+                if role in ("human", "user"):
+                    # Reversed scan: past the user row is the previous turn.
+                    break
+                if role in ("ai", "assistant") and getattr(m, "message_id", None):
+                    message_id = m.message_id
                     break
             if not message_id:
                 return
