@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import httpx
 import pytest
@@ -8,7 +10,21 @@ from tests.support.app import ensure_control_plane_bound
 from tests.support.auth import bearer, bootstrap_admin, login
 
 from octop.api.app import build_app
+from octop.api.routers import settings
 from octop.infra.server import OctopServer
+from octop.infra.utils import user_downloads
+
+
+@pytest.fixture
+def isolated_download_dir(repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    scratch = repo_root / ".pytest_cache"
+    scratch.mkdir(exist_ok=True)
+    with TemporaryDirectory(prefix="local-download-", dir=scratch) as directory:
+        destination = Path(directory)
+        monkeypatch.setattr(user_downloads, "downloads_dir", lambda *, home=None: destination)
+        # The router holds its own reference to the function that opens the file manager.
+        monkeypatch.setattr(settings, "reveal_download", lambda _path: None)
+        yield destination
 
 
 @pytest.fixture
@@ -24,17 +40,8 @@ async def client(tmp_path: Path):
     await srv.stop()
 
 
-async def test_save_local_download_writes_downloads(
-    client, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_save_local_download_writes_file(client, isolated_download_dir: Path) -> None:
     c, _srv, home = client
-    downloads = home / "Downloads"
-    downloads.mkdir()
-    monkeypatch.setattr(
-        "octop.infra.utils.user_downloads.downloads_dir",
-        lambda home=None: downloads,
-    )
-    monkeypatch.setattr("octop.infra.utils.user_downloads.reveal_download", lambda _path: None)
     await bootstrap_admin(c, home)
     token = await login(c)
     response = await c.post(
@@ -44,13 +51,14 @@ async def test_save_local_download_writes_downloads(
     )
     assert response.status_code == 200, response.text
     assert response.json()["filename"] == "note.txt"
-    assert (downloads / "note.txt").read_bytes() == b"hello"
+    saved_file = isolated_download_dir / "note.txt"
+    assert Path(response.json()["path"]) == saved_file
+    assert saved_file.read_bytes() == b"hello"
 
 
 async def test_save_local_download_rejects_public_host(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, isolated_download_dir: Path
 ) -> None:
-    monkeypatch.setattr("octop.infra.utils.user_downloads.reveal_download", lambda _path: None)
     srv = OctopServer(home=tmp_path)
     await srv.start()
     await ensure_control_plane_bound(srv)
@@ -68,5 +76,6 @@ async def test_save_local_download_rejects_public_host(
             )
             assert response.status_code == 403
             assert response.json()["error"]["code"] == "LOCAL_DOWNLOAD_UNAVAILABLE"
+            assert not any(isolated_download_dir.iterdir())
     finally:
         await srv.stop()
