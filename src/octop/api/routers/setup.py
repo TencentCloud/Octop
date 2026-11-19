@@ -336,9 +336,15 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
 async def test_database(
     body: DatabaseSetupBody,
     server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    """Validate DSN/settings with a short-lived pool (does not replace the process pool)."""
+    """Validate DSN/settings with a short-lived pool (does not replace the process pool).
+
+    Binding a database decides where the control plane lives, so the probe uses
+    the same wizard session as creating the initial admin.
+    """
     _enforce_wizard_open(server)
+    _require_wizard_token(authorization, server)
     from octop.infra.db.probe import probe_database
     from octop.infra.db.rebind import database_config_from_payload
 
@@ -354,15 +360,17 @@ async def test_database(
 async def apply_database(
     body: DatabaseSetupBody,
     server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Write ``config.json`` database section, open the pool, migrate, and boot runtime.
 
     First-run path binds once (no prior pool). If already bound with zero users
     (e.g. changing engine mid-wizard), swaps via rebind. PostgreSQL may adopt a
     database that already has users when ``adopt_existing`` is set; SQLite still
-    requires an empty file.
+    requires an empty file. The caller must already hold a wizard session.
     """
     _enforce_wizard_open(server)
+    _require_wizard_token(authorization, server)
     from octop.infra.db.probe import probe_database
     from octop.infra.db.rebind import (
         assert_control_plane_database_empty,
