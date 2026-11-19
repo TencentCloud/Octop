@@ -60,12 +60,7 @@ import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { dedupeFileTreeInfos } from "../../../../utils/fileTreeNodes";
 import { workspaceEntryPath } from "../../../../utils/workspacePath";
 import FileViewer from "./FileViewer";
-import WorkspaceGitSection, {
-  gitTreeBadges,
-  useWorkspaceGit,
-} from "./WorkspaceGitSection";
-import GitDiffView from "./GitDiffView";
-import { gitApi, type GitDiff } from "../../../../api/modules/git";
+import { gitTreeBadges, useWorkspaceGit } from "./gitStatus";
 import {
   getPreviewKind,
   previewNeedsFillLayout,
@@ -282,63 +277,12 @@ function gitTreeBadge(
   );
 }
 
-function GitDiffModalBody({
-  agentId,
-  path,
-  staged,
-}: {
-  agentId: string;
-  path: string;
-  staged: boolean;
-}) {
-  const { t } = useTranslation();
-  const [data, setData] = useState<GitDiff | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    gitApi
-      .diff(agentId, path, staged)
-      .then((result) => {
-        if (!cancelled) setData(result);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(apiErrorMessage(err, t("workspace.readFailed", "读取失败")));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [agentId, path, staged, t]);
-
-  if (loading) {
-    return (
-      <div className={styles.viewerLoading}>
-        <Spin />
-      </div>
-    );
-  }
-  if (error) return <div className={styles.gitNotice}>{error}</div>;
-  return <GitDiffView diff={data?.diff ?? ""} truncated={data?.truncated} />;
-}
-
 interface WorkspaceDrawerProps {
   agentId: string;
   open: boolean;
   onClose: () => void;
   /** Render as a dock/tab body instead of a standalone Ant Design Drawer. */
   embedded?: boolean;
-  /** Open a file diff in an external surface (dock tab); falls back to a modal. */
-  onOpenGitDiff?: (path: string, staged: boolean) => void;
-  /** True while the chat turn is streaming — git write actions are disabled. */
-  streaming?: boolean;
 }
 
 export default function WorkspaceDrawer({
@@ -346,8 +290,6 @@ export default function WorkspaceDrawer({
   open,
   onClose,
   embedded = false,
-  onOpenGitDiff,
-  streaming = false,
 }: WorkspaceDrawerProps) {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
@@ -465,26 +407,10 @@ export default function WorkspaceDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, agentId, workspaceReady]);
 
-  const git = useWorkspaceGit(agentId, {
-    enabled: open && workspaceReady,
-    streaming,
-    onMutated: () => void refreshRoot(),
-  });
+  // Git status powers the tree badges only; the full review surface lives
+  // in the standalone Git dock panel.
+  const git = useWorkspaceGit(agentId, { enabled: open && workspaceReady });
   const gitBadges = useMemo(() => gitTreeBadges(git.status), [git.status]);
-  const [gitDiffView, setGitDiffView] = useState<{
-    path: string;
-    staged: boolean;
-  } | null>(null);
-  const handleGitReview = useCallback(
-    (path: string, staged: boolean) => {
-      if (onOpenGitDiff) {
-        onOpenGitDiff(path, staged);
-        return;
-      }
-      setGitDiffView({ path, staged });
-    },
-    [onOpenGitDiff],
-  );
 
   const onLoadData = async (node: TreeDataNode): Promise<void> => {
     if (!agentId || !workspaceReady) return;
@@ -1330,353 +1256,318 @@ export default function WorkspaceDrawer({
           <AgentNotReadyScreen agent={activeAgent} />
         </div>
       ) : (
-        <div className={styles.gitSplitWrap}>
-          <WorkspaceGitSection
-            agentId={agentId}
-            git={git}
-            streaming={streaming}
-            onReview={handleGitReview}
-            onOpenFile={(path) => {
-              const fullPath = path.startsWith("/") ? path : `/${path}`;
-              void activateSelection(
-                nodeKey({ path: fullPath, is_dir: false }),
-              );
-            }}
-          />
-          <div
-            className={cx(styles.split, isMobile && styles.splitMobile)}
-            style={{ flex: 1, minHeight: 0 }}
-          >
-            {((!isMobile && !treeCollapsed) ||
-              (isMobile && mobilePane === "tree")) && (
-              <div
-                className={styles.treePane}
-                style={isMobile ? undefined : { width: treeWidth }}
-              >
-                <div className={styles.treeScroll}>
-                  {treeLoading ? (
-                    <div className={styles.viewerLoading}>
-                      <Spin />
-                    </div>
-                  ) : (
-                    <Tree
-                      treeData={treeData}
-                      loadData={onLoadData}
-                      onSelect={(keys) => void onSelect(keys)}
-                      selectedKeys={selectedKey ? [selectedKey] : []}
-                      expandedKeys={expandedKeys}
-                      onExpand={(keys) => setExpandedKeys(keys as string[])}
-                      blockNode
-                      draggable={{
-                        icon: false,
-                        nodeDraggable: (node) => {
-                          const target = pathFromKey(String(node.key));
-                          return canDeletePath(target.path);
-                        },
-                      }}
-                      allowDrop={allowDrop}
-                      onDrop={(info) => void onDrop(info)}
-                      titleRender={renderTreeTitle}
-                    />
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!isMobile && renderSplitDivider()}
-
-            {(!isMobile || mobilePane === "viewer") && (
-              <div
-                className={cx(
-                  styles.viewerPane,
-                  !isMobile && treeCollapsed && styles.viewerPaneFull,
-                )}
-              >
-                {!selected ? (
-                  <div className={styles.viewerEmpty}>
-                    <Empty
-                      description={t(
-                        "workspace.pickEntry",
-                        "选择工作区或文件以查看内容",
-                      )}
-                    />
+        <div
+          className={cx(styles.split, isMobile && styles.splitMobile)}
+          style={{ flex: 1, minHeight: 0 }}
+        >
+          {((!isMobile && !treeCollapsed) ||
+            (isMobile && mobilePane === "tree")) && (
+            <div
+              className={styles.treePane}
+              style={isMobile ? undefined : { width: treeWidth }}
+            >
+              <div className={styles.treeScroll}>
+                {treeLoading ? (
+                  <div className={styles.viewerLoading}>
+                    <Spin />
                   </div>
-                ) : selected.is_dir ? (
-                  <>
-                    <div className={styles.viewerHeader}>
-                      {isMobile && (
-                        <button
-                          type="button"
-                          className={styles.mobileBackBtn}
-                          onClick={() => setMobilePane("tree")}
-                          aria-label={t("common.back", "返回")}
-                        >
-                          <ChevronLeft size={18} />
-                        </button>
-                      )}
-                      <div className={styles.viewerPathRow}>
-                        {renderPathNav(selected.path, true)}
-                      </div>
-                      <div className={styles.toolbar}>
-                        {canCreateIn(selected.path) && (
-                          <>
-                            <Tooltip title={t("workspace.createFile")}>
-                              <button
-                                type="button"
-                                className={styles.toolBtnIcon}
-                                onClick={() =>
-                                  openCreate("file", selected.path)
-                                }
-                                aria-label={t("workspace.createFile")}
-                              >
-                                <FilePlus size={16} strokeWidth={2} />
-                              </button>
-                            </Tooltip>
-                            <Tooltip title={t("workspace.createFolder")}>
-                              <button
-                                type="button"
-                                className={styles.toolBtnIcon}
-                                onClick={() =>
-                                  openCreate("folder", selected.path)
-                                }
-                                aria-label={t("workspace.createFolder")}
-                              >
-                                <FolderPlus size={16} strokeWidth={2} />
-                              </button>
-                            </Tooltip>
-                            <Tooltip title={t("common.refresh")}>
-                              <button
-                                type="button"
-                                className={styles.toolBtnIcon}
-                                onClick={() =>
-                                  void loadDirEntries(selected.path)
-                                }
-                                aria-label={t("common.refresh")}
-                              >
-                                <RefreshCw size={16} strokeWidth={2} />
-                              </button>
-                            </Tooltip>
-                            {canDeletePath(selected.path) && (
-                              <Popconfirm
-                                title={t("workspace.deleteDirConfirm")}
-                                onConfirm={() => void handleDelete(selected)}
-                                okText={t("common.delete")}
-                                cancelText={t("common.cancel")}
-                              >
-                                <button
-                                  type="button"
-                                  className={styles.toolBtnIcon}
-                                  title={t("common.delete")}
-                                  aria-label={t("common.delete")}
-                                >
-                                  <Trash2 size={16} strokeWidth={2} />
-                                </button>
-                              </Popconfirm>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className={styles.viewerBody}>
-                      {dirLoading ? (
-                        <div className={styles.viewerLoading}>
-                          <Spin />
-                        </div>
-                      ) : dirEntries.length === 0 ? (
-                        <div className={styles.viewerEmpty}>
-                          <Empty description={t("workspace.dirListingEmpty")} />
-                        </div>
-                      ) : (
-                        <div className={styles.dirListing}>
-                          <div className={styles.dirListingHead}>
-                            <span>{t("workspace.dirColName")}</span>
-                            <span>{t("workspace.dirColType")}</span>
-                            <span>{t("workspace.dirColSize")}</span>
-                            <span>{t("workspace.dirColModified")}</span>
-                          </div>
-                          {sortFileInfos(dirEntries).map((entry) => {
-                            const fullPath = workspaceEntryPath(entry.path);
-                            const name =
-                              fullPath.split("/").filter(Boolean).pop() ||
-                              fullPath;
-                            return (
-                              <button
-                                key={fullPath}
-                                type="button"
-                                className={styles.dirListingRow}
-                                onClick={() => void selectDirEntry(entry)}
-                              >
-                                <span className={styles.dirListingName}>
-                                  {entry.is_dir ? (
-                                    <Folder
-                                      size={14}
-                                      className={styles.dirListingIcon}
-                                    />
-                                  ) : (
-                                    <span className={styles.dirListingIcon}>
-                                      {fileTreeIcon(fullPath)}
-                                    </span>
-                                  )}
-                                  <span>{name}</span>
-                                  {gitTreeBadge(
-                                    { path: fullPath, is_dir: !!entry.is_dir },
-                                    gitBadges,
-                                  )}
-                                </span>
-                                <span className={styles.dirListingMeta}>
-                                  {entry.is_dir
-                                    ? t("workspace.dirTypeFolder")
-                                    : t("workspace.dirTypeFile")}
-                                </span>
-                                <span className={styles.dirListingMeta}>
-                                  {entry.is_dir || entry.size == null
-                                    ? "—"
-                                    : formatSize(entry.size)}
-                                </span>
-                                <span className={styles.dirListingMeta}>
-                                  {formatModified(entry.modified_at, timeZone)}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </>
                 ) : (
-                  <>
-                    <div className={styles.viewerHeader}>
-                      {isMobile && (
-                        <button
-                          type="button"
-                          className={styles.mobileBackBtn}
-                          onClick={() => setMobilePane("tree")}
-                          aria-label={t("common.back", "返回")}
-                        >
-                          <ChevronLeft size={18} />
-                        </button>
-                      )}
-                      <div className={styles.viewerPathRow}>
-                        {renderPathNav(selected.path, false)}
-                      </div>
-                      <div className={styles.toolbar}>
-                        {showPreviewToggle && (
-                          <Segmented
-                            size="small"
-                            value={previewMode ? "preview" : "source"}
-                            options={[
-                              { label: t("common.preview"), value: "preview" },
-                              {
-                                label: t("workspace.source", "源码"),
-                                value: "source",
-                              },
-                            ]}
-                            onChange={(v) => setPreviewMode(v === "preview")}
-                          />
-                        )}
-                        <button
-                          type="button"
-                          className={styles.toolBtnIcon}
-                          onClick={() => void download()}
-                          title={t("common.download")}
-                          aria-label={t("common.download")}
-                        >
-                          <ArrowDownToLine size={16} strokeWidth={2} />
-                        </button>
-                        {selected && canDeletePath(selected.path) && (
-                          <Popconfirm
-                            title={
-                              selected.is_dir
-                                ? t("workspace.deleteDirConfirm")
-                                : t("workspace.deleteConfirm")
-                            }
-                            onConfirm={() => void handleDelete(selected)}
-                            okText={t("common.delete")}
-                            cancelText={t("common.cancel")}
-                          >
+                  <Tree
+                    treeData={treeData}
+                    loadData={onLoadData}
+                    onSelect={(keys) => void onSelect(keys)}
+                    selectedKeys={selectedKey ? [selectedKey] : []}
+                    expandedKeys={expandedKeys}
+                    onExpand={(keys) => setExpandedKeys(keys as string[])}
+                    blockNode
+                    draggable={{
+                      icon: false,
+                      nodeDraggable: (node) => {
+                        const target = pathFromKey(String(node.key));
+                        return canDeletePath(target.path);
+                      },
+                    }}
+                    allowDrop={allowDrop}
+                    onDrop={(info) => void onDrop(info)}
+                    titleRender={renderTreeTitle}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {!isMobile && renderSplitDivider()}
+
+          {(!isMobile || mobilePane === "viewer") && (
+            <div
+              className={cx(
+                styles.viewerPane,
+                !isMobile && treeCollapsed && styles.viewerPaneFull,
+              )}
+            >
+              {!selected ? (
+                <div className={styles.viewerEmpty}>
+                  <Empty
+                    description={t(
+                      "workspace.pickEntry",
+                      "选择工作区或文件以查看内容",
+                    )}
+                  />
+                </div>
+              ) : selected.is_dir ? (
+                <>
+                  <div className={styles.viewerHeader}>
+                    {isMobile && (
+                      <button
+                        type="button"
+                        className={styles.mobileBackBtn}
+                        onClick={() => setMobilePane("tree")}
+                        aria-label={t("common.back", "返回")}
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                    )}
+                    <div className={styles.viewerPathRow}>
+                      {renderPathNav(selected.path, true)}
+                    </div>
+                    <div className={styles.toolbar}>
+                      {canCreateIn(selected.path) && (
+                        <>
+                          <Tooltip title={t("workspace.createFile")}>
                             <button
                               type="button"
                               className={styles.toolBtnIcon}
-                              title={t("common.delete")}
-                              aria-label={t("common.delete")}
+                              onClick={() => openCreate("file", selected.path)}
+                              aria-label={t("workspace.createFile")}
                             >
-                              <Trash2 size={16} strokeWidth={2} />
+                              <FilePlus size={16} strokeWidth={2} />
                             </button>
-                          </Popconfirm>
-                        )}
-                        {showEditButton &&
-                          (editMode ? (
+                          </Tooltip>
+                          <Tooltip title={t("workspace.createFolder")}>
                             <button
                               type="button"
-                              className={styles.toolBtnPrimary}
-                              onClick={() => void save()}
-                              disabled={saving}
+                              className={styles.toolBtnIcon}
+                              onClick={() =>
+                                openCreate("folder", selected.path)
+                              }
+                              aria-label={t("workspace.createFolder")}
                             >
-                              <Save size={14} />
-                              {saving
-                                ? t("workspace.saving", "保存中…")
-                                : t("common.save")}
+                              <FolderPlus size={16} strokeWidth={2} />
                             </button>
-                          ) : (
+                          </Tooltip>
+                          <Tooltip title={t("common.refresh")}>
                             <button
                               type="button"
-                              className={styles.toolBtn}
-                              onClick={() => void handleEdit()}
+                              className={styles.toolBtnIcon}
+                              onClick={() => void loadDirEntries(selected.path)}
+                              aria-label={t("common.refresh")}
                             >
-                              <Pencil size={14} />
-                              {t("common.edit")}
+                              <RefreshCw size={16} strokeWidth={2} />
                             </button>
-                          ))}
+                          </Tooltip>
+                          {canDeletePath(selected.path) && (
+                            <Popconfirm
+                              title={t("workspace.deleteDirConfirm")}
+                              onConfirm={() => void handleDelete(selected)}
+                              okText={t("common.delete")}
+                              cancelText={t("common.cancel")}
+                            >
+                              <button
+                                type="button"
+                                className={styles.toolBtnIcon}
+                                title={t("common.delete")}
+                                aria-label={t("common.delete")}
+                              >
+                                <Trash2 size={16} strokeWidth={2} />
+                              </button>
+                            </Popconfirm>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className={styles.viewerBody}>
+                    {dirLoading ? (
+                      <div className={styles.viewerLoading}>
+                        <Spin />
                       </div>
+                    ) : dirEntries.length === 0 ? (
+                      <div className={styles.viewerEmpty}>
+                        <Empty description={t("workspace.dirListingEmpty")} />
+                      </div>
+                    ) : (
+                      <div className={styles.dirListing}>
+                        <div className={styles.dirListingHead}>
+                          <span>{t("workspace.dirColName")}</span>
+                          <span>{t("workspace.dirColType")}</span>
+                          <span>{t("workspace.dirColSize")}</span>
+                          <span>{t("workspace.dirColModified")}</span>
+                        </div>
+                        {sortFileInfos(dirEntries).map((entry) => {
+                          const fullPath = workspaceEntryPath(entry.path);
+                          const name =
+                            fullPath.split("/").filter(Boolean).pop() ||
+                            fullPath;
+                          return (
+                            <button
+                              key={fullPath}
+                              type="button"
+                              className={styles.dirListingRow}
+                              onClick={() => void selectDirEntry(entry)}
+                            >
+                              <span className={styles.dirListingName}>
+                                {entry.is_dir ? (
+                                  <Folder
+                                    size={14}
+                                    className={styles.dirListingIcon}
+                                  />
+                                ) : (
+                                  <span className={styles.dirListingIcon}>
+                                    {fileTreeIcon(fullPath)}
+                                  </span>
+                                )}
+                                <span>{name}</span>
+                                {gitTreeBadge(
+                                  { path: fullPath, is_dir: !!entry.is_dir },
+                                  gitBadges,
+                                )}
+                              </span>
+                              <span className={styles.dirListingMeta}>
+                                {entry.is_dir
+                                  ? t("workspace.dirTypeFolder")
+                                  : t("workspace.dirTypeFile")}
+                              </span>
+                              <span className={styles.dirListingMeta}>
+                                {entry.is_dir || entry.size == null
+                                  ? "—"
+                                  : formatSize(entry.size)}
+                              </span>
+                              <span className={styles.dirListingMeta}>
+                                {formatModified(entry.modified_at, timeZone)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={styles.viewerHeader}>
+                    {isMobile && (
+                      <button
+                        type="button"
+                        className={styles.mobileBackBtn}
+                        onClick={() => setMobilePane("tree")}
+                        aria-label={t("common.back", "返回")}
+                      >
+                        <ChevronLeft size={18} />
+                      </button>
+                    )}
+                    <div className={styles.viewerPathRow}>
+                      {renderPathNav(selected.path, false)}
                     </div>
-                    <div
-                      className={styles.viewerBody}
-                      style={
-                        (showEditButton && editMode) ||
-                        docKind !== null ||
-                        (previewMode && previewNeedsFillLayout(previewKind))
-                          ? {
-                              overflow: "hidden",
-                              display: "flex",
-                              flexDirection: "column",
-                            }
-                          : undefined
-                      }
-                    >
-                      <FileViewer
-                        agentId={agentId}
-                        path={selected.path}
-                        editMode={editMode}
-                        value={content}
-                        onChange={setContent}
-                        fileLoading={fileLoading}
-                        previewMode={previewMode}
-                      />
+                    <div className={styles.toolbar}>
+                      {showPreviewToggle && (
+                        <Segmented
+                          size="small"
+                          value={previewMode ? "preview" : "source"}
+                          options={[
+                            { label: t("common.preview"), value: "preview" },
+                            {
+                              label: t("workspace.source", "源码"),
+                              value: "source",
+                            },
+                          ]}
+                          onChange={(v) => setPreviewMode(v === "preview")}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        className={styles.toolBtnIcon}
+                        onClick={() => void download()}
+                        title={t("common.download")}
+                        aria-label={t("common.download")}
+                      >
+                        <ArrowDownToLine size={16} strokeWidth={2} />
+                      </button>
+                      {selected && canDeletePath(selected.path) && (
+                        <Popconfirm
+                          title={
+                            selected.is_dir
+                              ? t("workspace.deleteDirConfirm")
+                              : t("workspace.deleteConfirm")
+                          }
+                          onConfirm={() => void handleDelete(selected)}
+                          okText={t("common.delete")}
+                          cancelText={t("common.cancel")}
+                        >
+                          <button
+                            type="button"
+                            className={styles.toolBtnIcon}
+                            title={t("common.delete")}
+                            aria-label={t("common.delete")}
+                          >
+                            <Trash2 size={16} strokeWidth={2} />
+                          </button>
+                        </Popconfirm>
+                      )}
+                      {showEditButton &&
+                        (editMode ? (
+                          <button
+                            type="button"
+                            className={styles.toolBtnPrimary}
+                            onClick={() => void save()}
+                            disabled={saving}
+                          >
+                            <Save size={14} />
+                            {saving
+                              ? t("workspace.saving", "保存中…")
+                              : t("common.save")}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.toolBtn}
+                            onClick={() => void handleEdit()}
+                          >
+                            <Pencil size={14} />
+                            {t("common.edit")}
+                          </button>
+                        ))}
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
+                  </div>
+                  <div
+                    className={styles.viewerBody}
+                    style={
+                      (showEditButton && editMode) ||
+                      docKind !== null ||
+                      (previewMode && previewNeedsFillLayout(previewKind))
+                        ? {
+                            overflow: "hidden",
+                            display: "flex",
+                            flexDirection: "column",
+                          }
+                        : undefined
+                    }
+                  >
+                    <FileViewer
+                      agentId={agentId}
+                      path={selected.path}
+                      editMode={editMode}
+                      value={content}
+                      onChange={setContent}
+                      fileLoading={fileLoading}
+                      previewMode={previewMode}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
-
-      <Modal
-        title={gitDiffView?.path}
-        open={gitDiffView != null}
-        onCancel={() => setGitDiffView(null)}
-        footer={null}
-        width={isMobile ? "100%" : "72vw"}
-        destroyOnHidden
-      >
-        {gitDiffView && (
-          <GitDiffModalBody
-            agentId={agentId}
-            path={gitDiffView.path}
-            staged={gitDiffView.staged}
-          />
-        )}
-      </Modal>
     </>
   );
 

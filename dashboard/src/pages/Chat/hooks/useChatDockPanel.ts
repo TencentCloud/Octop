@@ -25,7 +25,7 @@ export type DockTab =
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
   | { id: string; kind: "file"; path: string; agentId?: string }
-  | { id: string; kind: "gitDiff"; path: string; staged: boolean }
+  | { id: "git"; kind: "git" }
   | {
       id: string;
       kind: "knowledge";
@@ -226,23 +226,14 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openDock();
   }, [openDock]);
 
-  const openGitDiffTab = useCallback(
-    (path: string, staged: boolean) => {
-      const trimmed = path.trim();
-      if (!trimmed) return;
-      const id = `gitdiff:${staged ? "s" : "w"}:${trimmed}`;
-      setOpenTabs((prev) => {
-        if (prev.some((t) => t.id === id)) return prev;
-        return [
-          ...prev,
-          { id, kind: "gitDiff" as const, path: trimmed, staged },
-        ];
-      });
-      setActiveTabId(id);
-      openDock();
-    },
-    [openDock],
-  );
+  const openGitTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === "git")) return prev;
+      return [...prev, { id: "git", kind: "git" as const }];
+    });
+    setActiveTabId("git");
+    openDock();
+  }, [openDock]);
 
   const openKnowledgeCitation = useCallback(
     (citation: KnowledgeCitation) => {
@@ -403,7 +394,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleBrowserPanel,
     openTerminalTab,
     toggleTerminalPanel,
-    openGitDiffTab,
+    openGitTab,
     openToolUiTab,
     focusToolUiTab,
     closeTab,

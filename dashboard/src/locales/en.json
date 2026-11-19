@@ -2323,7 +2323,8 @@
     "statusCopied": "Copied",
     "statusTypechange": "Type change",
     "statusUntracked": "Untracked",
-    "statusConflicted": "Conflicted"
+    "statusConflicted": "Conflicted",
+    "pickFile": "Select a file to view the diff"
   },
   "backup": {
     "storedTitle": "Backup files",

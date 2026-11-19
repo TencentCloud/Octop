@@ -771,7 +771,7 @@
 
 // --- Git changes section (embedded workspace panel) ------------------------
 
-.gitSplitWrap {
+.gitPanel {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -779,37 +779,41 @@
   overflow: hidden;
 }
 
-.gitSection {
-  display: flex;
-  flex-direction: column;
-  border-bottom: 1px solid var(--fn-border-secondary);
-}
-
-.gitBar {
+.gitPanelHeader {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  background: transparent;
-  color: var(--fn-text-primary);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-
-  &:disabled {
-    cursor: default;
-  }
-
-  &:hover:not(:disabled) {
-    background: var(--fn-bg-hover);
-  }
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  font-size: 13px;
 }
 
-.gitBarTitle {
-  font-weight: 600;
+.gitPanelBody {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.gitPanelList {
+  width: 300px;
+  flex-shrink: 0;
+  overflow: auto;
+  border-right: 1px solid var(--fn-border-secondary);
+}
+
+.gitPanelDiff {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gitPanelEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .gitBranchChip {
@@ -825,30 +829,10 @@
   background: rgba(9, 105, 218, 0.12);
 }
 
-.gitBarSummary {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fn-text-secondary);
-}
-
-.gitBarSummaryMuted {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.gitNotice {
+  padding: 4px 10px 8px;
+  font-size: 12px;
   color: var(--fn-text-tertiary);
-}
-
-.gitBarActions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--fn-text-tertiary);
-  flex-shrink: 0;
 }
 
 .gitSpin {
@@ -862,18 +846,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-.gitNotice {
-  padding: 4px 10px 8px;
-  font-size: 12px;
-  color: var(--fn-text-tertiary);
-}
-
-.gitBody {
-  max-height: 42%;
-  overflow: auto;
-  padding-bottom: 4px;
 }
 
 .gitCommitRow {
@@ -895,6 +867,19 @@
   padding: 10px;
   font-size: 12px;
   color: var(--fn-text-tertiary);
+}
+
+.gitBarSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-secondary);
+}
+
+.gitRowSelected {
+  background: var(--fn-bg-hover);
 }
 
 .gitRow {

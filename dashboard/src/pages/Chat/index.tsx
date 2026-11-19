@@ -446,7 +446,7 @@ function ChatPageInner() {
     openWorkspaceTab,
     openBrowserTab,
     openTerminalTab,
-    openGitDiffTab,
+    openGitTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
     toggleSidePanel,
@@ -537,12 +537,14 @@ function ChatPageInner() {
     if (canTerminal) {
       handlers.onOpenTerminal = openTerminalTab;
     }
+    handlers.onOpenGit = openGitTab;
     return handlers;
   }, [
     agentChatReady,
     canTerminal,
     handleOpenBrowserTab,
     openFileList,
+    openGitTab,
     openTerminalTab,
     openWorkspaceTab,
     sharedExpertViewer,
@@ -2096,7 +2098,6 @@ function ChatPageInner() {
             onSelectTab={setDockActiveTab}
             onCloseTab={closeDockTab}
             onOpenFile={openFileAt}
-            onOpenGitDiff={openGitDiffTab}
             browserEnvironment={browserEnvironment}
             bridgeConnectionId={bridgeConnectionId}
             threadId={activeThreadId}

@@ -20,7 +20,6 @@ interface ChatDockPanelsProps {
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
-  onOpenGitDiff?: (path: string, staged: boolean) => void;
   browserEnvironment: DisplayEnvironment;
   bridgeConnectionId?: string | null;
   threadId?: string | null;
@@ -58,7 +57,6 @@ export default function ChatDockPanels({
   onSelectTab,
   onCloseTab,
   onOpenFile,
-  onOpenGitDiff,
   browserEnvironment,
   bridgeConnectionId = null,
   threadId = null,
@@ -98,7 +96,6 @@ export default function ChatDockPanels({
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onOpenFile={onOpenFile}
-      onOpenGitDiff={onOpenGitDiff}
       browserEnvironment={browserEnvironment}
       bridgeConnectionId={bridgeConnectionId}
       threadId={threadId}

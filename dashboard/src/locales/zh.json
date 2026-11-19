@@ -2323,7 +2323,8 @@
     "statusCopied": "复制",
     "statusTypechange": "类型变更",
     "statusUntracked": "未跟踪",
-    "statusConflicted": "冲突"
+    "statusConflicted": "冲突",
+    "pickFile": "选择文件以查看差异"
   },
   "backup": {
     "storedTitle": "备份文件",

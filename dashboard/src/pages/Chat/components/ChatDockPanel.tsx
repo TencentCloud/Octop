@@ -40,7 +40,7 @@ import styles from "../index.module.less";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
-import GitDiffPanelContent from "./GitDiffPanelContent";
+import ChatGitPanel from "./ChatGitPanel";
 import KnowledgeCitationPanelContent from "./KnowledgeCitationPanelContent";
 import ChatDockToolUiContent from "./ChatDockToolUiContent";
 
@@ -51,11 +51,12 @@ export type ChatDockAddTabHandlers = {
   onOpenBrowser?: () => void;
   onOpenTerminal?: () => void;
   onOpenFiles?: () => void;
+  onOpenGit?: () => void;
   workspaceDisabled?: boolean;
   workspaceDisabledHint?: string;
 };
 
-type AddTabKey = "workspace" | "files" | "browser" | "terminal";
+type AddTabKey = "workspace" | "files" | "browser" | "terminal" | "git";
 
 interface ChatDockPanelProps {
   mode: PanelMode;
@@ -70,8 +71,6 @@ interface ChatDockPanelProps {
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
-  /** Open a git file diff as a dock tab (wired from useChatDockPanel). */
-  onOpenGitDiff?: (path: string, staged: boolean) => void;
   browserEnvironment?: DisplayEnvironment;
   /** When set, Chat dock browser talks to the peer harness via Bridge. */
   bridgeConnectionId?: string | null;
@@ -141,6 +140,14 @@ const DockAddTabButton: React.FC<{
         extra: check("terminal"),
       });
     }
+    if (addTab.onOpenGit) {
+      next.push({
+        key: "git",
+        label: t("git.title", "Git 变更"),
+        icon: <GitBranch size={14} />,
+        extra: check("git"),
+      });
+    }
     return next;
   }, [addTab, openTabs, t]);
 
@@ -151,6 +158,7 @@ const DockAddTabButton: React.FC<{
         files: addTab.onOpenFiles,
         browser: addTab.onOpenBrowser,
         terminal: addTab.onOpenTerminal,
+        git: addTab.onOpenGit,
       };
       openers[key as AddTabKey]?.();
     },
@@ -206,7 +214,6 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   onSelectTab,
   onCloseTab,
   onOpenFile,
-  onOpenGitDiff,
   browserEnvironment = "desktop",
   bridgeConnectionId = null,
   threadId = null,
@@ -229,9 +236,6 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   const [mountedFileTabs, setMountedFileTabs] = useState<
     Extract<DockTab, { kind: "file" }>[]
   >(() => openTabs.filter((tab) => tab.kind === "file"));
-  const [mountedGitDiffTabs, setMountedGitDiffTabs] = useState<
-    Extract<DockTab, { kind: "gitDiff" }>[]
-  >(() => openTabs.filter((tab) => tab.kind === "gitDiff"));
   const [mountedKnowledgeTabs, setMountedKnowledgeTabs] = useState<
     Extract<DockTab, { kind: "knowledge" }>[]
   >(() => openTabs.filter((tab) => tab.kind === "knowledge"));
@@ -268,14 +272,6 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
         )
         .map((tab) => [tab.id, tab]),
     );
-    const openGitDiffById = new Map(
-      openTabs
-        .filter(
-          (tab): tab is Extract<DockTab, { kind: "gitDiff" }> =>
-            tab.kind === "gitDiff",
-        )
-        .map((tab) => [tab.id, tab]),
-    );
     const openKnowledgeById = new Map(
       openTabs
         .filter(
@@ -294,20 +290,6 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
       let changed =
         next.length !== prev.length || next.some((tab, i) => tab !== prev[i]);
       for (const tab of openFileById.values()) {
-        if (!next.some((row) => row.id === tab.id)) {
-          next.push(tab);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-    setMountedGitDiffTabs((prev) => {
-      const next = prev
-        .filter((tab) => openGitDiffById.has(tab.id))
-        .map((tab) => openGitDiffById.get(tab.id) ?? tab);
-      let changed =
-        next.length !== prev.length || next.some((tab, i) => tab !== prev[i]);
-      for (const tab of openGitDiffById.values()) {
         if (!next.some((row) => row.id === tab.id)) {
           next.push(tab);
           changed = true;
@@ -443,10 +425,10 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
                 <Terminal size={16} strokeWidth={2} aria-hidden />
                 <span>{t("chat.dockTerminalTitle", "终端")}</span>
               </>
-            ) : tab.kind === "gitDiff" ? (
+            ) : tab.kind === "git" ? (
               <>
                 <GitBranch size={16} strokeWidth={2} aria-hidden />
-                <span title={tab.path}>{dockFileBasename(tab.path)}</span>
+                <span>{t("git.title", "Git 变更")}</span>
               </>
             ) : tab.kind === "toolUi" ? (
               <>
@@ -598,26 +580,6 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
           );
         })}
 
-        {mountedGitDiffTabs.map((tab) => {
-          const isActive =
-            activeTab?.kind === "gitDiff" && activeTab.id === tab.id;
-          return (
-            <div
-              key={tab.id}
-              className={styles.dockTabBody}
-              hidden={!isActive}
-              style={{ display: isActive ? "flex" : "none" }}
-            >
-              <GitDiffPanelContent
-                agentId={agentId}
-                path={tab.path}
-                staged={tab.staged}
-                onOpenFile={(path) => onOpenFile(path, agentId)}
-              />
-            </div>
-          );
-        })}
-
         {mountedKnowledgeTabs.map((tab) => {
           const isActive =
             activeTab?.kind === "knowledge" && activeTab.id === tab.id;
@@ -649,8 +611,22 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               open
               onClose={() => onCloseTab("workspace")}
               embedded
-              onOpenGitDiff={onOpenGitDiff}
+            />
+          </div>
+        )}
+
+        {openTabs.some((t) => t.kind === "git") && (
+          <div
+            className={styles.dockTabBody}
+            hidden={activeTab?.kind !== "git"}
+            style={{
+              display: activeTab?.kind === "git" ? "flex" : "none",
+            }}
+          >
+            <ChatGitPanel
+              agentId={agentId}
               streaming={!!isStreamingTurn}
+              onOpenFile={(path) => onOpenFile(path, agentId)}
             />
           </div>
         )}
