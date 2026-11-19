@@ -178,7 +178,7 @@ def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
         db,
         "cron_jobs",
         "task_type",
-        "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent'))",
+        "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent', 'script'))",
     )
     _ensure_column(
         db,
@@ -186,6 +186,144 @@ def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
         "mcp_servers",
         "TEXT NOT NULL DEFAULT '[]'",
     )
+    _ensure_column(db, "cron_jobs", "allow_all", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "cron_jobs", "script_lang", "TEXT")
+    _ensure_column(db, "cron_jobs", "script_source", "TEXT")
+    _ensure_column(db, "cron_jobs", "script_path", "TEXT")
+    _widen_cron_task_type_check(db)
+
+
+def _cell(row: Any, key: str) -> str:
+    if isinstance(row, Mapping):
+        if key in row:
+            return str(row[key])
+        return str(next(iter(row.values())))
+    return str(row[0])
+
+
+def _cron_task_check_sql(db: DatabasePool) -> str:
+    with db.connect() as conn:
+        if db.dialect == "postgresql":
+            rows = conn.execute(
+                "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint "
+                "WHERE conrelid = 'cron_jobs'::regclass AND contype = 'c'"
+            ).fetchall()
+            return "\n".join(_cell(row, "def") for row in rows)
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cron_jobs'"
+        ).fetchone()
+    if row is None:
+        return ""
+    return _cell(row, "sql")
+
+
+def _widen_cron_task_type_check(db: DatabasePool) -> None:
+    """Allow ``task_type='script'`` on tables created with the text/agent check."""
+    if not _table_exists(db, "cron_jobs"):
+        return
+    if db.dialect == "postgresql":
+        _widen_postgres_cron_task_check(db)
+        return
+    # Column names such as script_lang also contain the letters "script".
+    if "'script'" in _cron_task_check_sql(db):
+        return
+    _rebuild_sqlite_cron_jobs(db)
+
+
+def _widen_postgres_cron_task_check(db: DatabasePool) -> None:
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint "
+            "WHERE conrelid = 'cron_jobs'::regclass AND contype = 'c'"
+        ).fetchall()
+        has_script = False
+        for row in rows:
+            definition = _cell(row, "def")
+            if "task_type" not in definition:
+                continue
+            if "'script'" in definition:
+                has_script = True
+                continue
+            name = row["conname"] if isinstance(row, Mapping) else row[0]
+            conn.execute(f'ALTER TABLE cron_jobs DROP CONSTRAINT "{name}"')
+        if has_script:
+            return
+        conn.execute(
+            "ALTER TABLE cron_jobs ADD CONSTRAINT cron_jobs_task_type_check "
+            "CHECK (task_type IN ('text', 'agent', 'script'))"
+        )
+
+
+def _rebuild_sqlite_cron_jobs(db: DatabasePool) -> None:
+    columns = _table_columns(db, "cron_jobs")
+    select = ", ".join(name for name in _CRON_JOBS_COLUMNS if name in columns)
+    with db.transaction() as conn:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE cron_jobs RENAME TO cron_jobs_legacy")
+        conn.execute(
+            """
+            CREATE TABLE cron_jobs (
+              id              INTEGER PRIMARY KEY AUTOINCREMENT,
+              cron_id         TEXT NOT NULL UNIQUE,
+              name            TEXT NOT NULL DEFAULT '',
+              agent_id        TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+              user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              schedule_spec   TEXT NOT NULL,
+              prompt          TEXT NOT NULL,
+              session_key     TEXT NOT NULL,
+              model           TEXT,
+              fresh_thread    INTEGER NOT NULL DEFAULT 0,
+              task_type       TEXT NOT NULL DEFAULT 'agent'
+                              CHECK (task_type IN ('text', 'agent', 'script')),
+              mcp_servers     TEXT NOT NULL DEFAULT '[]',
+              allow_all       INTEGER NOT NULL DEFAULT 0,
+              script_lang     TEXT,
+              script_source   TEXT,
+              script_path     TEXT,
+              enabled         INTEGER NOT NULL DEFAULT 1,
+              last_run_at     INTEGER,
+              last_status     TEXT,
+              last_error      TEXT,
+              run_lease_owner TEXT,
+              run_lease_token TEXT,
+              run_lease_until INTEGER,
+              created_at      INTEGER NOT NULL,
+              updated_at      INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(f"INSERT INTO cron_jobs ({select}) SELECT {select} FROM cron_jobs_legacy")
+        conn.execute("DROP TABLE cron_jobs_legacy")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+_CRON_JOBS_COLUMNS = (
+    "id",
+    "cron_id",
+    "name",
+    "agent_id",
+    "user_id",
+    "schedule_spec",
+    "prompt",
+    "session_key",
+    "model",
+    "fresh_thread",
+    "task_type",
+    "mcp_servers",
+    "allow_all",
+    "script_lang",
+    "script_source",
+    "script_path",
+    "enabled",
+    "last_run_at",
+    "last_status",
+    "last_error",
+    "run_lease_owner",
+    "run_lease_token",
+    "run_lease_until",
+    "created_at",
+    "updated_at",
+)
 
 
 def _collapse_legacy_agent_welcome_columns(db: DatabasePool) -> None:

@@ -24,7 +24,12 @@ import {
   cronToPreset,
   presetToCron,
 } from "./constants";
-import { CRON_NAME_MAX_LEN, CRON_PROMPT_MAX_LEN } from "../constants";
+import { ScriptPathSelect } from "./ScriptPathSelect";
+import {
+  CRON_NAME_MAX_LEN,
+  CRON_PROMPT_MAX_LEN,
+  CRON_SCRIPT_MAX_LEN,
+} from "../constants";
 import { CHANNEL_LABEL_KEYS } from "../../../Agent/Channels/components/constants";
 import { LATEST_SESSION_TARGET, channelFromSessionKey } from "../cronDisplay";
 import { defaultOnceRunAt, isFutureWallClock } from "../onceSchedule";
@@ -94,6 +99,12 @@ export function JobDrawer({
   const scheduleMode = Form.useWatch("_scheduleMode", form);
   const freshThread = Form.useWatch("fresh_thread", form);
   const sessionTarget = Form.useWatch("session_target", form);
+  const taskType = Form.useWatch("task_type", form);
+  const scriptSource = Form.useWatch("script_source", form);
+  const scriptLang = Form.useWatch("script_lang", form);
+  const scriptFile = taskType === "script" && scriptSource === "file";
+  const promptMax =
+    taskType === "script" ? CRON_SCRIPT_MAX_LEN : CRON_PROMPT_MAX_LEN;
 
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -494,65 +505,164 @@ export function JobDrawer({
             <Select.Option value="text">
               {t("cronJobs.form.taskTypeText")}
             </Select.Option>
+            <Select.Option value="script">
+              {t("cronJobs.form.taskTypeScript")}
+            </Select.Option>
           </Select>
         </Form.Item>
 
+        {taskType === "agent" ? (
+          <Form.Item
+            name="allow_all"
+            label={t("cronJobs.form.allowAll")}
+            valuePropName="checked"
+            tooltip={t("cronJobs.form.allowAllTooltip")}
+          >
+            <Switch />
+          </Form.Item>
+        ) : null}
+
+        {taskType === "script" ? (
+          <>
+            <Form.Item
+              name="script_lang"
+              label={t("cronJobs.form.scriptLang")}
+              rules={[
+                {
+                  required: true,
+                  message: t("cronJobs.form.scriptLangRequired"),
+                },
+              ]}
+            >
+              <Select>
+                <Select.Option value="python">
+                  {t("cronJobs.form.scriptLangPython")}
+                </Select.Option>
+                <Select.Option value="bash">
+                  {t("cronJobs.form.scriptLangBash")}
+                </Select.Option>
+                <Select.Option value="powershell">
+                  {t("cronJobs.form.scriptLangPowershell")}
+                </Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              name="script_source"
+              label={t("cronJobs.form.scriptSource")}
+              initialValue="inline"
+            >
+              <Select>
+                <Select.Option value="inline">
+                  {t("cronJobs.form.scriptSourceInline")}
+                </Select.Option>
+                <Select.Option value="file">
+                  {t("cronJobs.form.scriptSourceFile")}
+                </Select.Option>
+              </Select>
+            </Form.Item>
+            {scriptFile ? (
+              <Form.Item
+                name="script_path"
+                label={t("cronJobs.form.scriptPath")}
+                tooltip={t("cronJobs.form.scriptPathTooltip")}
+                rules={[
+                  {
+                    required: true,
+                    message: t("cronJobs.form.scriptPathRequired"),
+                  },
+                ]}
+              >
+                <ScriptPathSelect
+                  agentId={activeAgentId}
+                  lang={scriptLang || "python"}
+                />
+              </Form.Item>
+            ) : null}
+          </>
+        ) : null}
+
         <Form.Item
           name="prompt"
-          label={t("cronJobs.form.agentPrompt")}
-          rules={[
-            { required: true, message: t("cronJobs.form.agentPromptRequired") },
-            {
-              max: CRON_PROMPT_MAX_LEN,
-              message: t("cronJobs.form.agentPromptTooLong", {
-                max: CRON_PROMPT_MAX_LEN,
-              }),
-            },
-          ]}
-          tooltip={t("cronJobs.form.agentPromptTooltip")}
+          hidden={scriptFile}
+          label={
+            taskType === "script"
+              ? t("cronJobs.form.scriptBody")
+              : t("cronJobs.form.agentPrompt")
+          }
+          rules={
+            scriptFile
+              ? []
+              : [
+                  {
+                    required: true,
+                    message:
+                      taskType === "script"
+                        ? t("cronJobs.form.scriptBodyRequired")
+                        : t("cronJobs.form.agentPromptRequired"),
+                  },
+                  {
+                    max: promptMax,
+                    message: t(
+                      taskType === "script"
+                        ? "cronJobs.form.scriptBodyTooLong"
+                        : "cronJobs.form.agentPromptTooLong",
+                      { max: promptMax },
+                    ),
+                  },
+                ]
+          }
+          tooltip={
+            taskType === "script"
+              ? t("cronJobs.form.scriptBodyTooltip")
+              : t("cronJobs.form.agentPromptTooltip")
+          }
         >
           <Input.TextArea
-            rows={4}
-            maxLength={CRON_PROMPT_MAX_LEN}
+            rows={taskType === "script" ? 10 : 4}
+            maxLength={promptMax}
             showCount
             placeholder={t("cronJobs.form.agentPromptPlaceholder")}
           />
         </Form.Item>
 
-        <Form.Item
-          name="model"
-          label={t("cronJobs.form.model")}
-          tooltip={t("cronJobs.form.modelTooltip")}
-          initialValue={MODEL_AUTO_VALUE}
-        >
-          <Select
-            showSearch
-            loading={modelsLoading}
-            options={modelOptions}
-            filterOption={(input, option) =>
-              (option?.label?.toString() || "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
+        {taskType !== "script" ? (
+          <>
+            <Form.Item
+              name="model"
+              label={t("cronJobs.form.model")}
+              tooltip={t("cronJobs.form.modelTooltip")}
+              initialValue={MODEL_AUTO_VALUE}
+            >
+              <Select
+                showSearch
+                loading={modelsLoading}
+                options={modelOptions}
+                filterOption={(input, option) =>
+                  (option?.label?.toString() || "")
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+              />
+            </Form.Item>
 
-        <Form.Item
-          name="mcp_servers"
-          label={t("cronJobs.form.connectors")}
-          tooltip={t("cronJobs.form.connectorsTooltip")}
-          extra={t("cronJobs.form.connectorsHint")}
-        >
-          <Select
-            mode="multiple"
-            allowClear
-            showSearch
-            loading={connectorsLoading}
-            placeholder={t("cronJobs.form.connectorsPlaceholder")}
-            options={connectorOptions}
-            optionFilterProp="label"
-          />
-        </Form.Item>
+            <Form.Item
+              name="mcp_servers"
+              label={t("cronJobs.form.connectors")}
+              tooltip={t("cronJobs.form.connectorsTooltip")}
+              extra={t("cronJobs.form.connectorsHint")}
+            >
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                loading={connectorsLoading}
+                placeholder={t("cronJobs.form.connectorsPlaceholder")}
+                options={connectorOptions}
+                optionFilterProp="label"
+              />
+            </Form.Item>
+          </>
+        ) : null}
 
         <Form.Item
           name="fresh_thread"

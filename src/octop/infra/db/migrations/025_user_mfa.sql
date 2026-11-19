@@ -83,6 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires_at
 ALTER TABLE cron_jobs ADD COLUMN run_lease_owner TEXT;
 ALTER TABLE cron_jobs ADD COLUMN run_lease_token TEXT;
 ALTER TABLE cron_jobs ADD COLUMN run_lease_until INTEGER;
+ALTER TABLE cron_jobs ADD COLUMN allow_all INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE cron_jobs ADD COLUMN script_lang TEXT;
+ALTER TABLE cron_jobs ADD COLUMN script_source TEXT;
+ALTER TABLE cron_jobs ADD COLUMN script_path TEXT;
 
 ALTER TABLE channels ADD COLUMN runtime_lease_owner TEXT;
 ALTER TABLE channels ADD COLUMN runtime_lease_token TEXT;

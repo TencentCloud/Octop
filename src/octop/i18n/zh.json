@@ -777,7 +777,14 @@
   },
   "cron": {
     "history": {
-      "executed": "任务{cron_id} :{name} 执行."
+      "executed": "任务{cron_id} :{name} 执行.",
+      "script_done": "脚本 {name} 已执行，没有输出。"
+    },
+    "script": {
+      "interpreter_missing": "未找到 {runtime} 解释器，无法执行脚本。",
+      "timeout": "脚本执行超过 {seconds} 秒。",
+      "failed": "脚本失败（退出码 {code}）：{detail}",
+      "unreadable": "无法读取工作区脚本 {path}。"
     }
   },
   "agents": {
