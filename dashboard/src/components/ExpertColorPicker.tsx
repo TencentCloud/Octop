@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import type { AggregationColor } from "antd/es/color-picker/color";
 import cx from "classnames";
 import {
-  DEFAULT_CUSTOM_COLOR,
   DEFAULT_PALETTE,
   PALETTE_SWATCH,
   VALID_PALETTES,
@@ -79,9 +78,6 @@ export default function ExpertColorPicker({
           </ColorPicker>
         </span>
       </Tooltip>
-      {!curated && resolved !== DEFAULT_CUSTOM_COLOR && (
-        <span className={styles.customHex}>{resolved.toUpperCase()}</span>
-      )}
     </div>
   );
 }
