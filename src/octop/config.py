@@ -9,7 +9,7 @@ from dataclasses import asdict, dataclass, field, replace
 from functools import cache
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote, unquote, urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -70,8 +70,8 @@ class DatabaseConfig:
             raise ValueError("postgresql_conninfo() requires driver=postgresql")
         if self.url:
             return self.url
-        user = quote_plus(self.user)
-        auth = user if not self.password else f"{user}:{quote_plus(self.password)}"
+        user = quote(self.user, safe="")
+        auth = user if not self.password else f"{user}:{quote(self.password, safe='')}"
         return f"postgresql://{auth}@{self.host}:{self.port}/{self.database}"
 
 
@@ -342,9 +342,9 @@ def _parse_database_url(url: str) -> dict[str, Any]:
         "url": url,
     }
     if parsed.username:
-        out["user"] = parsed.username
+        out["user"] = unquote(parsed.username)
     if parsed.password:
-        out["password"] = parsed.password
+        out["password"] = unquote(parsed.password)
     return out
 
 
@@ -373,7 +373,7 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
 
     host = str(merged.get("host", "")).strip()
     database = str(merged.get("database", "")).strip()
-    user = str(merged.get("user", "")).strip()
+    user = str(merged.get("user", ""))
     port = int(merged.get("port", 5432))
     if not host:
         raise ValueError("database.host is required for postgresql")
