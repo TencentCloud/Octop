@@ -2324,7 +2324,14 @@
     "statusTypechange": "类型变更",
     "statusUntracked": "未跟踪",
     "statusConflicted": "冲突",
-    "pickFile": "选择文件以查看差异"
+    "pickFile": "选择文件以查看差异",
+    "undo": "Undo",
+    "rewindTitle": "回滚本轮文件更改",
+    "rewindApply": "回滚",
+    "rewindHint": "仅回滚自本轮后未被外部修改的文件；新建文件将被删除。",
+    "rewindSafe": "可回滚",
+    "rewindUnsafe": "已被外部修改",
+    "rewindApplied": "已回滚 {{count}} 个文件"
   },
   "backup": {
     "storedTitle": "备份文件",

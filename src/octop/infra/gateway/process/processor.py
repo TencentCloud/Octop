@@ -937,7 +937,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker, agent_id)
                 yield MessageEvent.completed()
                 return
 
@@ -1135,7 +1135,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                await self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker, agent_id)
                 hint = self._plan_ready_hint(thread_id, locale)
                 if hint:
                     yield MessageEvent(
@@ -1282,7 +1282,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker, agent_id)
                 yield _maybe_stamp_team_host(
                     self._done_chunk(ask_record.thread_id),
                     agent_id,
@@ -1525,7 +1525,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 usage=usage_tracker.usage,
             )
-            await self._record_turn_history(thread_id, history_tracker)
+            await self._record_turn_history(thread_id, history_tracker, agent_id)
         yield _maybe_stamp_team_host(
             self._done_chunk(
                 thread_id,
@@ -1620,7 +1620,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                await self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker, agent_id)
 
     async def _build_dashboard_request(
         self,
@@ -2169,7 +2169,17 @@ class GlobalProcessor:
         self._touch_thread_after_turn(thread_id, title_source)
         await self._record_turn_history(thread_id, tracker)
 
-    async def _record_turn_history(self, thread_id: str, tracker: TurnHistoryTracker) -> None:
+    async def _record_turn_history(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+        agent_id: str | None = None,
+    ) -> None:
+        if agent_id is None:
+            row = self._thread_registry.get_thread(thread_id)
+            agent_id = getattr(row, "agent_id", None)
+        if agent_id:
+            await self._record_file_checkpoints(agent_id, thread_id, tracker)
         if self._thread_message_repo is None:
             return
         try:
@@ -2179,6 +2189,40 @@ class GlobalProcessor:
             # successful model response into a failed chat turn.
             logger.warning(
                 "failed to append thread history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    async def _record_file_checkpoints(
+        self, agent_id: str, thread_id: str, tracker: TurnHistoryTracker
+    ) -> None:
+        """Drain harness write checkpoints and persist them for this turn.
+
+        Best-effort: checkpoint capture must never fail a successful turn.
+        """
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+            pop = getattr(agent, "pop_file_changes", None)
+            if pop is None:
+                return
+            changes = pop()
+            if not changes:
+                return
+            message_id = None
+            for m in reversed(tracker.inputs):
+                if isinstance(m, AIMessage):
+                    message_id = m.id
+                    break
+            if not message_id:
+                return
+            from octop.infra.agents.file_checkpoints import save_checkpoints
+            from octop.infra.utils.paths import PathLayout
+
+            save_checkpoints(PathLayout.from_env().root, agent_id, thread_id, message_id, changes)
+        except Exception:
+            logger.warning(
+                "failed to persist file checkpoints for agent=%s thread=%s",
+                agent_id,
                 thread_id,
                 exc_info=True,
             )

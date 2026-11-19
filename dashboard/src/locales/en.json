@@ -2324,7 +2324,14 @@
     "statusTypechange": "Type change",
     "statusUntracked": "Untracked",
     "statusConflicted": "Conflicted",
-    "pickFile": "Select a file to view the diff"
+    "pickFile": "Select a file to view the diff",
+    "undo": "Undo",
+    "rewindTitle": "Rewind this turn's file changes",
+    "rewindApply": "Rewind",
+    "rewindHint": "Only files not externally modified since this turn are rewound; created files are deleted.",
+    "rewindSafe": "rewindable",
+    "rewindUnsafe": "externally modified",
+    "rewindApplied": "Rewound {{count}} files"
   },
   "backup": {
     "storedTitle": "Backup files",

@@ -8,6 +8,8 @@ interface ChatFilePreviewContextValue {
   openGitChange: (path: string, agentId?: string | null) => void;
   /** Open a knowledge citation in the shared chat dock (same shell as file tabs). */
   openKnowledgeCitation: (citation: KnowledgeCitation) => void;
+  /** Active thread id, for per-turn file checkpoint APIs. */
+  threadId?: string | null;
 }
 
 const ChatFilePreviewContext =
@@ -17,16 +19,23 @@ export function ChatFilePreviewProvider({
   openFilePreview,
   openGitChange,
   openKnowledgeCitation,
+  threadId = null,
   children,
 }: {
   openFilePreview: (path: string, agentId?: string | null) => void;
   openGitChange: (path: string, agentId?: string | null) => void;
   openKnowledgeCitation: (citation: KnowledgeCitation) => void;
+  threadId?: string | null;
   children: ReactNode;
 }) {
   return (
     <ChatFilePreviewContext.Provider
-      value={{ openFilePreview, openGitChange, openKnowledgeCitation }}
+      value={{
+        openFilePreview,
+        openGitChange,
+        openKnowledgeCitation,
+        threadId,
+      }}
     >
       {children}
     </ChatFilePreviewContext.Provider>

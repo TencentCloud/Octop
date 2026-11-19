@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { App } from "antd";
 import { ChatFilePreviewProvider } from "../ChatFilePreviewContext";
 import type { ChatMessage } from "../hooks/useChat";
 import TurnFileChangeCard from "./TurnFileChangeCard";
@@ -14,6 +15,9 @@ vi.mock("react-i18next", () => ({
         "git.filesChanged": "{{count}} 个文件变更",
         "git.review": "Review",
         "git.open": "打开",
+        "git.undo": "Undo",
+        "git.rewindSafe": "可回滚",
+        "git.rewindApply": "回滚",
       };
       let text = templates[key] ?? key;
       if (opts) {
@@ -28,9 +32,18 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
+const checkpoints = vi.hoisted(() => ({
+  turnDiff: vi.fn(),
+  rewindPreview: vi.fn(),
+  rewindApply: vi.fn(),
+}));
+vi.mock("../../../api/modules/fileCheckpoints", () => ({
+  fileCheckpointsApi: checkpoints,
+}));
+
 function writeMessage(): ChatMessage {
   return {
-    id: "w",
+    id: "assistant-1",
     role: "assistant",
     content: "",
     timestamp: 1,
@@ -46,70 +59,85 @@ function writeMessage(): ChatMessage {
   };
 }
 
-function renderCard(messages: ChatMessage[]) {
+function renderCard(messages: ChatMessage[], threadId: string | null = "th-1") {
   const openFilePreview = vi.fn();
   const openGitChange = vi.fn();
   render(
-    <ChatFilePreviewProvider
-      openFilePreview={openFilePreview}
-      openGitChange={openGitChange}
-      openKnowledgeCitation={vi.fn()}
-    >
-      <TurnFileChangeCard messages={messages} onOpenList={vi.fn()} />
-    </ChatFilePreviewProvider>,
+    <App>
+      <ChatFilePreviewProvider
+        openFilePreview={openFilePreview}
+        openGitChange={openGitChange}
+        openKnowledgeCitation={vi.fn()}
+        threadId={threadId}
+      >
+        <TurnFileChangeCard
+          messages={messages}
+          agentId="ag-1"
+          onOpenList={vi.fn()}
+        />
+      </ChatFilePreviewProvider>
+    </App>,
   );
   return { openFilePreview, openGitChange };
 }
 
 describe("TurnFileChangeCard", () => {
-  it("shows the collapsed summary bar with line totals, then expands", () => {
-    const { openGitChange, openFilePreview } = renderCard([writeMessage()]);
-
-    const summary = screen.getByRole("button", {
-      name: "1 个文件变更 +2 −0",
+  it("Review opens the per-turn diff modal", async () => {
+    checkpoints.turnDiff.mockResolvedValue({
+      path: "src/app.py",
+      diff: "@@ -1 +1 @@\n-old\n+one\n",
     });
-    expect(summary).toHaveAttribute("aria-expanded", "false");
-
-    fireEvent.click(summary);
-    const row = screen.getByTestId("turn-change-row");
-    expect(row).toHaveTextContent("app.py");
-
-    // Row body (and Review) opens the diff in the git panel.
+    renderCard([writeMessage()]);
+    fireEvent.click(screen.getByRole("button", { name: /1 个文件变更/ }));
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    expect(openGitChange).toHaveBeenCalledWith("src/app.py", null);
-    expect(openFilePreview).not.toHaveBeenCalled();
-
-    // Open goes to the file viewer.
-    fireEvent.click(screen.getByRole("button", { name: "打开" }));
-    expect(openFilePreview).toHaveBeenCalledWith("src/app.py", null);
+    await waitFor(() => {
+      expect(checkpoints.turnDiff).toHaveBeenCalledWith(
+        "ag-1",
+        "th-1",
+        "assistant-1",
+        "src/app.py",
+      );
+    });
+    expect(await screen.findByText("+one")).toBeInTheDocument();
   });
 
-  it("shows the first files and reveals the rest", () => {
-    const messages = ["a", "b", "c", "d", "e"].map(
-      (name, index): ChatMessage => ({
-        id: String(index),
-        role: "assistant",
-        content: "",
-        timestamp: 1,
-        status: "done",
-        toolData: {
-          name: "write_file",
-          arguments: JSON.stringify({
-            file_path: `src/${name}.py`,
-            content: "x\n",
-          }),
-        },
-      }),
-    );
-    renderCard(messages);
-    fireEvent.click(screen.getByRole("button", { name: /5 个文件变更/ }));
-    expect(
-      screen.getByRole("button", { name: /src\/d\.py/ }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /src\/e\.py/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "还有 1 个" }));
-    expect(
-      screen.getByRole("button", { name: /src\/e\.py/ }),
-    ).toBeInTheDocument();
+  it("falls back to live git when no checkpoint exists", async () => {
+    checkpoints.turnDiff.mockRejectedValue(new Error("404"));
+    const { openGitChange } = renderCard([writeMessage()]);
+    fireEvent.click(screen.getByRole("button", { name: /1 个文件变更/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Review" }));
+    await waitFor(() => {
+      expect(openGitChange).toHaveBeenCalledWith("src/app.py", "ag-1");
+    });
+  });
+
+  it("Undo previews and applies rewind", async () => {
+    checkpoints.rewindPreview.mockResolvedValue({
+      safe: [{ path: "src/app.py", before: null, after: "one\ntwo\n" }],
+      unsafe: [],
+      ignored: [],
+    });
+    checkpoints.rewindApply.mockResolvedValue({ applied: ["src/app.py"] });
+    renderCard([writeMessage()]);
+    fireEvent.click(screen.getByTestId("turn-undo"));
+    await waitFor(() => {
+      expect(checkpoints.rewindPreview).toHaveBeenCalled();
+    });
+    expect(await screen.findByText("可回滚")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /回滚 \(1\)/ }));
+    await waitFor(() => {
+      expect(checkpoints.rewindApply).toHaveBeenCalledWith(
+        "ag-1",
+        "th-1",
+        "assistant-1",
+      );
+    });
+  });
+
+  it("Open still opens the file viewer", () => {
+    const { openFilePreview } = renderCard([writeMessage()]);
+    fireEvent.click(screen.getByRole("button", { name: /1 个文件变更/ }));
+    fireEvent.click(screen.getByRole("button", { name: "打开" }));
+    expect(openFilePreview).toHaveBeenCalledWith("src/app.py", "ag-1");
   });
 });

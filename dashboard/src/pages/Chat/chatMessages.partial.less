@@ -1379,6 +1379,64 @@
   font-weight: 600;
 }
 
+.turnChangeUndo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+
+  &:hover {
+    color: var(--fn-color-brand);
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.turnRewindFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.turnRewindList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.turnRewindHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+
+.turnRewindRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.turnRewindTagSafe {
+  color: var(--fn-color-success, #389e0d);
+  flex-shrink: 0;
+}
+
+.turnRewindTagUnsafe {
+  color: var(--fn-color-danger, #cf1322);
+  flex-shrink: 0;
+}
+
 .turnChangeChevronOpen {
   transform: rotate(90deg);
 }

@@ -1473,6 +1473,7 @@ function ChatPageInner() {
       openFilePreview={openFileAt}
       openGitChange={(path) => openGitTab(path)}
       openKnowledgeCitation={openKnowledgeCitation}
+      threadId={activeThreadId}
     >
       <ChatToolDockProvider
         dockOpen={dockOpen}
