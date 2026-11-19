@@ -42,23 +42,6 @@ logger = logging.getLogger(__name__)
 # Host filesystem path guards
 # ---------------------------------------------------------------------------
 
-_BLOCKED_UNIX_PREFIXES = (
-    "/users/",
-    "/tmp/",
-    "/home/",
-    "/var/",
-    "/private/",
-    "/appdata/local/temp/",
-    "/appdata/local/microsoft/windows/inetcache/",
-)
-
-_BLOCKED_WIN_DRIVE_PREFIXES = (
-    "c:/users/",
-    "c:/windows/temp/",
-    "c:/program files/",
-    "c:/program files (x86)/",
-)
-
 # New default is ``~/.octop-browser``; keep ``~/.harness-browser`` as a deny
 # source so leftover profiles cannot be downloaded after migration.
 _DENIED_BROWSER_HOME_SEGMENTS = (".harness-browser", ".octop-browser")
@@ -67,41 +50,6 @@ _DENIED_BROWSER_HOME_SEGMENTS = (".harness-browser", ".octop-browser")
 def _contains_denied_browser_home(text: str) -> bool:
     lowered = text.replace("\\", "/").lower()
     return any(segment in lowered for segment in _DENIED_BROWSER_HOME_SEGMENTS)
-
-
-def _normalize_host_path(raw: str) -> str:
-    """Lowercase path with forward slashes for prefix checks."""
-    text = raw.strip().replace("\\", "/")
-    if len(text) >= 2 and text[1] == ":":
-        return text.lower()
-    if text and not text.startswith("/"):
-        text = "/" + text
-    return text.lower()
-
-
-def is_blocked_host_download_path(raw: str) -> bool:
-    """True when *raw* looks like a host absolute path that must not be downloaded.
-
-    Workspace-relative keys (``tmp/foo``, ``var/data.json``) must **not** be blocked —
-    only paths that are already host-absolute (leading ``/``, ``file://``, or a drive
-    letter on Windows).
-    """
-    text = raw.strip()
-    if not text:
-        return False
-
-    if _contains_denied_browser_home(text):
-        return True
-
-    if len(text) >= 2 and text[1] == ":":
-        norm = _normalize_host_path(text)
-        return norm.startswith(_BLOCKED_WIN_DRIVE_PREFIXES)
-
-    if text.startswith("/"):
-        norm = _normalize_host_path(text)
-        return norm.startswith(_BLOCKED_UNIX_PREFIXES)
-
-    return False
 
 
 def is_allowed_host_temp_path(resolved: Path) -> bool:
@@ -166,40 +114,26 @@ def resolve_media_agent_id(chat_agent_id: str, raw_url: str) -> str:
     return agent_id_from_workspace_path(raw_url) or chat_agent_id
 
 
+def _has_parent_segment(path: str) -> bool:
+    return any(part == ".." for part in path.replace("\\", "/").split("/"))
+
+
 def extract_workspace_rel(path: str) -> str | None:
     """Return ``outbound/…`` or ``inbound/…`` when present in *path* (any common shape)."""
     raw = path.strip()
     fs_path = file_url_to_abs_path(raw) if raw.startswith("file://") else raw.lstrip("/")
     normalized = fs_path.replace("\\", "/")
+    if _has_parent_segment(normalized):
+        return None
     if normalized.startswith(("outbound/", "inbound/")):
         return normalized
     for marker in ("/outbound/", "/inbound/"):
         if marker in normalized:
-            return normalized[normalized.index(marker) + 1 :]
+            rel = normalized[normalized.index(marker) + 1 :]
+            if _has_parent_segment(rel):
+                return None
+            return rel
     return None
-
-
-def normalize_workspace_media_path(path: str) -> str:
-    """Return ``outbound/…`` or ``inbound/…`` for tool/browser media URLs."""
-    rel = extract_workspace_rel(path)
-    if rel:
-        return rel
-    raise ValueError(f"not a workspace media path: {path.strip()!r}")
-
-
-def normalize_workspace_download_path(path: str) -> str:
-    """Backend-relative path for workspace download; rejects host absolute paths."""
-    raw = path.strip()
-    if not raw:
-        raise ValueError("empty path")
-    rel = extract_workspace_rel(raw)
-    if rel:
-        return rel
-    if raw.startswith("file://"):
-        raise ValueError(f"not a workspace file URL: {raw!r}")
-    if is_blocked_host_download_path(raw):
-        raise ValueError(f"host path not allowed: {raw!r}")
-    return raw.lstrip("/")
 
 
 def workspace_download_url(agent_id: str, workspace_path: str) -> str:
@@ -495,6 +429,9 @@ async def read_file_url_bytes(
         if data is not None:
             return data
 
+    if _is_host_absolute(path) and not _abs_path_allowed(path, workspace=workspace.workspace_dir):
+        return None
+
     data = await _download_via_workspace(workspace, path)
     if data is not None:
         return data
@@ -553,6 +490,9 @@ async def ensure_workspace_media_path(
     if not _is_host_absolute(abs_path):
         return existing
 
+    if not _abs_path_allowed(abs_path, workspace=workspace.workspace_dir):
+        return None
+
     dest = _outbound_dest_rel(filename=filename, abs_path=abs_path, mime=mime)
     data = await _download_via_workspace(workspace, abs_path)
     if data is None:
@@ -573,12 +513,9 @@ __all__ = [
     "file_url_to_abs_path",
     "is_allowed_host_download_abs_path",
     "is_allowed_host_temp_path",
-    "is_blocked_host_download_path",
     "is_host_absolute_path",
     "is_previewable_mime",
     "media_preview_url",
-    "normalize_workspace_download_path",
-    "normalize_workspace_media_path",
     "read_file_url_bytes",
     "resolve_dashboard_media_url",
     "resolve_media_agent_id",
