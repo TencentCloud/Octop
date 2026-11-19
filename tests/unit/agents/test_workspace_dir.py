@@ -9,6 +9,7 @@ import pytest
 from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
+    agent_host_data_dirs,
     apply_explicit_workspace_dir,
     default_agent_workspace_dir,
     default_workspace_parent_dir,
@@ -213,3 +214,16 @@ def test_apply_explicit_workspace_dir_keeps_host_root_only() -> None:
     blank = {"backend": {"type": "local_shell", "root_dir": "/"}}
     apply_explicit_workspace_dir(blank, "  ")
     assert "workspace_dir" not in blank
+
+
+def test_agent_host_data_dirs_skips_caller_workspace(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / ".octop")
+    chosen = tmp_path / "important"
+    chosen.mkdir()
+    cfg = {
+        "backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+        "workspace_dir": str(chosen),
+    }
+    removed = agent_host_data_dirs(cfg, paths=paths, agent_id="ag1")
+    assert chosen.resolve() not in removed
+    assert paths.agent_workspace("ag1").resolve() in removed

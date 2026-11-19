@@ -24,7 +24,6 @@ memory sqlite path, etc.) when the persisted value is the agent-facing
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import re
@@ -143,17 +142,17 @@ def agent_host_data_dirs(
     paths: PathLayout,
     agent_id: str,
 ) -> list[Path]:
-    """Every on-disk directory that belongs to this agent and may be removed.
+    """Every Octop-managed directory for this agent that may be removed.
 
-    Covers the persisted workspace, ``~/.octop/agents/<id>``, a scoped jail
-    workspace, and ``~/.octop/workspaces/<id>``. Roots such as ``/``, the
-    home directory, and ``OCTOP_HOME`` itself are never included.
+    Covers ``~/.octop/agents/<id>``, ``~/.octop/workspaces/<id>``, and a scoped
+    jail's ``.octop/workspaces/<id>``. A caller-supplied ``workspace_dir``
+    outside those locations is left in place. Roots such as ``/``, the home
+    directory, and ``OCTOP_HOME`` itself are never included.
     """
+    # Only directories Octop itself allocated for this agent. A workspace_dir
+    # the caller typed in is not removed: that string is otherwise an arbitrary
+    # host path, and deleting the agent would delete it.
     candidates: list[Path] = []
-    raw = (cfg or {}).get("workspace_dir")
-    if isinstance(raw, str) and raw.strip():
-        with contextlib.suppress(ValueError):
-            candidates.append(resolve_workspace_host_path(raw, cfg))
     candidates.append(paths.agent_workspace(agent_id))
     candidates.append(paths.root / SCOPED_WORKSPACE_DIRNAME / agent_id)
     root_raw = local_backend_root_dir(cfg)

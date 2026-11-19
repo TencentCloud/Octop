@@ -824,14 +824,13 @@ class UserManager:
         if agent_manager is not None:
             agent_manager.assert_agents_deletable([agent.agent_id for agent in owned])
         await self._delete_foreign_checkpoints(row.id, owned_ids, agent_manager)
-        workspaces = self._owned_workspaces(owned)
         if agent_manager is not None:
             for agent in owned:
                 await agent_manager.delete(agent.agent_id)
         else:
             await asyncio.to_thread(self._purge_owned_stores, owned)
             await asyncio.to_thread(self._remove_owned_dirs, owned)
-        await asyncio.to_thread(self._remove_paths, workspaces)
+        await asyncio.to_thread(self._remove_paths, self._managed_agent_dirs(owned))
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
@@ -867,10 +866,20 @@ class UserManager:
                 agent_id=agent.agent_id,
             )
 
-    def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
-        from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row
+    def _managed_agent_dirs(self, owned: builtins.list[Any]) -> builtins.list[Path]:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import agent_host_data_dirs
 
-        return [workspace_for_agent_row(agent, paths=self._services.paths) for agent in owned]
+        found: builtins.list[Path] = []
+        for agent in owned:
+            found.extend(
+                agent_host_data_dirs(
+                    agent_config_from_row(agent),
+                    paths=self._services.paths,
+                    agent_id=agent.agent_id,
+                )
+            )
+        return found
 
     async def _delete_foreign_checkpoints(
         self,

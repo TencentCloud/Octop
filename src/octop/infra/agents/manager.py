@@ -1090,7 +1090,12 @@ class AgentManager:
                     remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
                 )
             elif await asyncio.to_thread(workspace_dir.exists):
-                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+                managed = {
+                    self._paths.agent_workspace(agent_id).resolve(),
+                    (self._paths.root / "workspaces" / agent_id).resolve(),
+                }
+                if workspace_dir.resolve() in managed:
+                    await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("abort team create: rmtree failed for %s", agent_id)
         except Exception:
