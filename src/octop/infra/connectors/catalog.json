@@ -836,7 +836,7 @@
       "auth_kind": "personal_token",
       "doc_url": "https://github.com/github/github-mcp-server",
       "icon": "github",
-      "color": "#24292f",
+      "color": "#2f81f7",
       "phase": "available",
       "mcp_mode": "remote",
       "category": "productivity",
