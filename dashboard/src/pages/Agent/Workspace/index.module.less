@@ -886,6 +886,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 28px;
   padding: 4px 10px;
   font-size: 12px;
   cursor: pointer;
@@ -955,10 +956,15 @@
 }
 
 .gitRowActions {
-  display: none;
+  /* Always occupy layout space; only fade in on hover so row height and
+     width never change (avoids list jitter). */
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
 
   > button {
     border: 1px solid var(--fn-border-secondary);
@@ -985,8 +991,10 @@
   }
 }
 
-.gitRow:hover .gitRowActions {
-  display: inline-flex;
+.gitRow:hover .gitRowActions,
+.gitRow:focus-within .gitRowActions {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .gitLogToggle {
