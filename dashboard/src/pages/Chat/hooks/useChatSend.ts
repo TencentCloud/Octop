@@ -1,6 +1,6 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useLayoutEffect } from "react";
 import type { TFunction } from "i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
 import {
   isPendingThread,
@@ -9,7 +9,6 @@ import {
 } from "./useSessions";
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
-import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -18,6 +17,9 @@ import {
   resolveTurnModelRef,
 } from "../utils/chatMessages";
 import { parseSkillSlugsInText } from "../utils/skillSlash";
+
+// Browser history can revisit a temporary route after the creation completes.
+const pendingChatDestinations = new Map<string, Promise<string>>();
 
 interface UseChatSendParams {
   resolvedAgentId: string | null | undefined;
@@ -90,6 +92,18 @@ export function useChatSend({
   t,
 }: UseChatSendParams) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  useLayoutEffect(() => {
+    const destination = pendingChatDestinations.get(pathname);
+    if (!destination) return;
+    let current = true;
+    void destination.then((path) => {
+      if (current) navigate(path, { replace: true });
+    });
+    return () => {
+      current = false;
+    };
+  }, [navigate, pathname]);
 
   /** @returns false when the send was rejected before starting a turn. */
   const handleSend = useCallback(
@@ -174,26 +188,20 @@ export function useChatSend({
         return true;
       }
 
+      const { session, resolvedId } = createSession();
+      const pendingId = session.id;
+      if (!pendingId) return false;
+      const pendingPath = `/chat/${agent}/${pendingId}`;
       const userMsg = buildUserMessage(trimmed, attachments, composerContext);
-      chatStore.appendUserMessage(EMPTY_CHAT_SESSION_KEY, userMsg);
+      chatStore.appendUserMessage(pendingId, userMsg);
 
-      const { resolvedId } = createSession();
-      const snap = chatStore.getSnapshot(EMPTY_CHAT_SESSION_KEY);
-      // Break any leftover ``__pending__`` → previous thr_* alias so this new
-      // chat cannot mutate / stream into an older thread's bucket.
-      chatStore.detachSessionKey(PENDING_THREAD_ID);
-      chatStore.setMessages(PENDING_THREAD_ID, snap.messages);
-      chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
-      navigate(`/chat/${agent}/${PENDING_THREAD_ID}`);
-
-      void resolvedId.then((tid) => {
+      const destination = resolvedId.then((tid) => {
         if (!tid) {
-          chatStore.clearMessages(PENDING_THREAD_ID);
-          navigate(`/chat/${agent}`, { replace: true });
+          chatStore.removeSession(pendingId);
           message.error(t("chat.createSessionFailed", "创建会话失败，请重试"));
-          return;
+          return `/chat/${agent}`;
         }
-        chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
+        chatStore.renameSessionKey(pendingId, tid);
         // Title is filled by the server from an AI summary of this first
         // message. Do not lock the raw question in as the thread name.
         if (policy) syncSessionHitlPolicy(tid, policy);
@@ -216,8 +224,10 @@ export function useChatSend({
           userMsg.id,
           sessionMode,
         );
-        navigate(`/chat/${agent}/${tid}`, { replace: true });
+        return `/chat/${agent}/${tid}`;
       });
+      pendingChatDestinations.set(pendingPath, destination);
+      navigate(pendingPath);
       return true;
     },
     [

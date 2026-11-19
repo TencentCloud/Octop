@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { generateId } from "../../../utils/messageParser";
+import { isTemporaryThreadId, PENDING_THREAD_ID } from "../constants";
 import { deleteConversation } from "../utils/deleteConversation";
 import {
   normalizeThreadArtifacts,
@@ -127,6 +129,7 @@ export function sortSessions(sessions: Session[]): Session[] {
 
 /** Pick the thread bound to the dashboard session_key, else best history candidate. */
 export function pickPreferredSession(sessions: Session[]): Session | null {
+  sessions = sessions.filter((session) => !isTemporaryThreadId(session.id));
   if (sessions.length === 0) return null;
   return (
     sessions.find((s) => s.isActive) ??
@@ -275,7 +278,7 @@ export async function fetchAndSyncSessionArtifacts(
 }
 
 export function isPendingThread(threadId: string): boolean {
-  return threadId === "__pending__" || _pendingThreadIds.has(threadId);
+  return isTemporaryThreadId(threadId) || _pendingThreadIds.has(threadId);
 }
 
 function notifyListeners() {
@@ -562,15 +565,8 @@ export function useSessions(agentId: string | null) {
         if (!title) return;
         if (event.agentId && event.agentId !== _storeAgentId) return;
         setModuleSessions((prev) => {
-          const hasId = prev.some((session) => session.id === event.sessionId);
           return prev.map((session) => {
-            const matches =
-              session.id === event.sessionId ||
-              (Boolean(event.agentId) &&
-                event.agentId === _storeAgentId &&
-                !hasId &&
-                session.id === "__pending__");
-            if (!matches) return session;
+            if (session.id !== event.sessionId) return session;
             if (
               event.provisional &&
               session.name &&
@@ -604,7 +600,7 @@ export function useSessions(agentId: string | null) {
       return { session: empty, resolvedId: Promise.resolve("") };
     }
     const placeholder: Session = {
-      id: "__pending__",
+      id: `${PENDING_THREAD_ID}-${generateId()}`,
       name: "New Chat",
       threadId: "",
       updatedAt: new Date().toISOString(),
@@ -615,6 +611,7 @@ export function useSessions(agentId: string | null) {
       .create(agentId)
       .then((created) => {
         markPendingThread(created.thread_id);
+        if (_storeAgentId !== agentId) return created.thread_id;
         const now = Math.floor(Date.now() / 1000);
         const session = toSession({
           thread_id: created.thread_id,
@@ -627,14 +624,18 @@ export function useSessions(agentId: string | null) {
         });
         setModuleSessions((prev) =>
           sortSessions([
-            session,
-            ...prev.filter((s) => s.id !== "__pending__"),
+            ...(prev.some((s) => s.id === session.id) ? [] : [session]),
+            ...prev.filter((s) => s.id !== placeholder.id),
           ]),
         );
         return created.thread_id;
       })
       .catch(() => {
-        setModuleSessions((prev) => prev.filter((s) => s.id !== "__pending__"));
+        if (_storeAgentId === agentId) {
+          setModuleSessions((prev) =>
+            prev.filter((s) => s.id !== placeholder.id),
+          );
+        }
         return "";
       });
     return { session: placeholder, resolvedId };

@@ -149,40 +149,132 @@ describe("history failures", () => {
     ).toEqual(["older", "latest"]);
   });
 
-  it("keeps a message sent while the history request is still in flight", async () => {
-    let resolveHistory: (value: unknown) => void = () => {};
-    const gate = new Promise((resolve) => {
-      resolveHistory = resolve;
-    });
-    vi.spyOn(octopThreadsApi, "history").mockImplementation(
-      () => gate as ReturnType<typeof octopThreadsApi.history>,
-    );
+  const sendTime = 1_700_000_000_000;
+
+  it.each([undefined, sendTime + 1_000])(
+    "keeps a message sent while the history request is still in flight (old timestamp %s)",
+    async (timestamp) => {
+      const history = deferredHistory();
+      vi.spyOn(octopThreadsApi, "history").mockReturnValue(history.promise);
+      const { result } = renderHook(() => useChat(thread, "agent"));
+      let pending!: Promise<void>;
+      act(() => {
+        pending = result.current.loadHistory(thread);
+      });
+      // Dynamic import inside the loader yields before the request is awaited.
+      await flushHistoryRequest();
+      act(() => {
+        chatStore.appendUserMessage(thread, {
+          id: "local-user",
+          role: "user",
+          content: "继续做",
+          timestamp: sendTime,
+        });
+      });
+      history.resolve({
+        thread_id: thread,
+        messages: [
+          { id: "old", role: "assistant", content: "之前的回复", timestamp },
+        ],
+        has_more: false,
+      });
+      await act(async () => {
+        await pending;
+      });
+      expect(
+        chatStore
+          .getSnapshot(thread)
+          .messages.map((message) => message.content),
+      ).toEqual(["之前的回复", "继续做"]);
+    },
+  );
+
+  it("keeps a local question ahead of its stored tool results and answer when a page starts mid-turn", async () => {
+    const history = deferredHistory();
+    const historyApi = vi
+      .spyOn(octopThreadsApi, "history")
+      .mockReturnValueOnce(history.promise);
     const { result } = renderHook(() => useChat(thread, "agent"));
     let pending!: Promise<void>;
     act(() => {
       pending = result.current.loadHistory(thread);
     });
-    // Dynamic import inside the loader yields before the request is awaited.
     await flushHistoryRequest();
     act(() => {
       chatStore.appendUserMessage(thread, {
         id: "local-user",
         role: "user",
-        content: "继续做",
-        timestamp: Date.now(),
+        content: "检查工具执行结果",
+        timestamp: sendTime,
       });
     });
-    resolveHistory({
+    history.resolve({
       thread_id: thread,
-      messages: [{ id: "old", role: "assistant", content: "之前的回复" }],
-      has_more: false,
+      has_more: true,
+      messages: [
+        {
+          id: "tool-result",
+          role: "tool",
+          content: [
+            { type: "tool_result", id: "call", name: "shell", output: "ok" },
+          ],
+          turn_user_message_id: "local-user",
+        },
+        {
+          id: "final",
+          role: "assistant",
+          content: "任务完成",
+          turn_user_message_id: "local-user",
+          timestamp: sendTime - 1_000,
+        },
+      ],
     });
     await act(async () => {
       await pending;
     });
     expect(
-      chatStore.getSnapshot(thread).messages.map((message) => message.content),
-    ).toEqual(["之前的回复", "继续做"]);
+      chatStore.getSnapshot(thread).messages.map((message) => message.id),
+    ).toEqual(["local-user", "tool-result", "final"]);
+
+    historyApi.mockResolvedValueOnce({
+      thread_id: thread,
+      has_more: true,
+      messages: [
+        {
+          id: "tool-preamble",
+          role: "assistant",
+          content: "开始检查",
+          turn_user_message_id: "local-user",
+        },
+      ],
+    });
+    await act(async () => {
+      await result.current.loadMoreHistory();
+    });
+    expect(
+      chatStore.getSnapshot(thread).messages.map((message) => message.id),
+    ).toEqual(["local-user", "tool-preamble", "tool-result", "final"]);
+
+    historyApi.mockResolvedValueOnce({
+      thread_id: thread,
+      has_more: false,
+      messages: [
+        { id: "old", role: "assistant", content: "之前的回复" },
+        { id: "local-user", role: "user", content: "检查工具执行结果" },
+      ],
+    });
+    await act(async () => {
+      await result.current.loadMoreHistory();
+    });
+    const { messages } = chatStore.getSnapshot(thread);
+    expect(messages.map((message) => message.id)).toEqual([
+      "old",
+      "local-user",
+      "tool-preamble",
+      "tool-result",
+      "final",
+    ]);
+    expect(messages[1].localPending).toBeUndefined();
   });
 
   it("shows a cached turn that history has not stored while the server turn is still active", async () => {

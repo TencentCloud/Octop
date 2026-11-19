@@ -125,7 +125,7 @@ export function useChatMessageQueue({
   shouldDeferFlushRef.current = shouldDeferFlush;
   const isThreadStreamingRef = useRef(isThreadStreaming);
   isThreadStreamingRef.current = isThreadStreaming;
-  const flushTimerRef = useRef<number | null>(null);
+  const flushTimers = useRef(new Map<string, number>());
   /** Streaming edge is tracked per queue key so thread switches never mis-flush. */
   const streamStateRef = useRef<{ key: string; streaming: boolean }>({
     key,
@@ -230,19 +230,19 @@ export function useChatMessageQueue({
     [writeQueues],
   );
 
-  const cancelScheduledFlush = useCallback(() => {
-    if (flushTimerRef.current != null) {
-      window.clearTimeout(flushTimerRef.current);
-      flushTimerRef.current = null;
-    }
+  const cancelScheduledFlush = useCallback((queueKey: string) => {
+    const timer = flushTimers.current.get(queueKey);
+    if (timer == null) return;
+    window.clearTimeout(timer);
+    flushTimers.current.delete(queueKey);
   }, []);
 
   const scheduleFlush = useCallback(
     (queueKey: string) => {
-      cancelScheduledFlush();
+      cancelScheduledFlush(queueKey);
       if ((queuesRef.current[queueKey] ?? []).length === 0) return;
-      flushTimerRef.current = window.setTimeout(() => {
-        flushTimerRef.current = null;
+      const timer = window.setTimeout(() => {
+        flushTimers.current.delete(queueKey);
         const { agentId: flushAgentId, threadId: flushThreadId } =
           parseThreadQueueKey(queueKey);
         // Another turn may have started between schedule and fire.
@@ -272,6 +272,7 @@ export function useChatMessageQueue({
           requeueFront(queueKey, head);
         }
       }, 0);
+      flushTimers.current.set(queueKey, timer);
     },
     [cancelScheduledFlush, dequeueHead, requeueFront],
   );
@@ -280,23 +281,21 @@ export function useChatMessageQueue({
     const prev = streamStateRef.current;
     streamStateRef.current = { key, streaming: isStreaming };
 
-    if (prev.key !== key) {
-      // Returning to an idle thread that still has a queue — resume sending.
-      if (!isStreaming) {
-        scheduleFlush(key);
-      } else {
-        cancelScheduledFlush();
-      }
-    } else if (prev.streaming && !isStreaming) {
-      // Same thread: only flush on true → false.
+    if (isStreaming) {
+      cancelScheduledFlush(key);
+    } else if (prev.key !== key || prev.streaming) {
+      // Returning to an idle thread, or the current turn finished.
       scheduleFlush(key);
-    } else if (isStreaming) {
-      // Stream resumed before the timer fired — keep the queue intact.
-      cancelScheduledFlush();
     }
-
-    return cancelScheduledFlush;
   }, [key, isStreaming, scheduleFlush, cancelScheduledFlush]);
+
+  useEffect(() => {
+    const timers = flushTimers.current;
+    return () => {
+      for (const timer of timers.values()) window.clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
 
   // Background (and active) threads: flush when chatStore reports streamEnd.
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { isTemporaryThreadId } from "../constants";
 import { emitSessionEvent } from "./chatStore";
 import {
   resetSessionStoreForTests,
@@ -183,7 +184,7 @@ describe("useSessions agent switch", () => {
     expect(listMock).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps another agent's delayed title off the pending chat", async () => {
+  it("keeps titles for other threads off the pending chat", async () => {
     listMock.mockResolvedValue([]);
     createMock.mockReturnValue(new Promise(() => {}));
 
@@ -194,7 +195,9 @@ describe("useSessions agent switch", () => {
     act(() => {
       result.current.createSession();
     });
-    expect(result.current.sessions[0]?.id).toBe("__pending__");
+    expect(isTemporaryThreadId(result.current.sessions[0]?.id ?? "")).toBe(
+      true,
+    );
 
     act(() => {
       emitSessionEvent({
@@ -215,6 +218,6 @@ describe("useSessions agent switch", () => {
         provisional: true,
       });
     });
-    expect(result.current.sessions[0]?.name).toBe("本会话");
+    expect(result.current.sessions[0]?.name).toBe("New Chat");
   });
 });

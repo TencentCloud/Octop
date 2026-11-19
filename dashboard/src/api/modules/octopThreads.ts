@@ -80,6 +80,8 @@ export interface OctopThreadHistory {
     role: string;
     content: unknown;
     id?: string;
+    /** User message that started this reply, including across page boundaries. */
+    turn_user_message_id?: string;
     usage?: unknown;
     timestamp?: number;
     status?: string;

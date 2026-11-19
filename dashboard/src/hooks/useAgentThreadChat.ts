@@ -58,6 +58,11 @@ export function useAgentThreadChat(
   const [threads, setThreads] = useState<OctopThread[]>([]);
   const [booting, setBooting] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
+  const [creatingThread, setCreatingThread] = useState(false);
+  const [createThreadError, setCreateThreadError] = useState<string | null>(
+    null,
+  );
+  const pendingThreadCreation = useRef<symbol | null>(null);
   /** Bumped by ``reload``: re-runs the boot effect after a failure. */
   const [bootNonce, setBootNonce] = useState(0);
   /** Thread the user explicitly picked; boot must not override it. */
@@ -120,6 +125,8 @@ export function useAgentThreadChat(
   }, [agentId]);
 
   useEffect(() => {
+    setCreatingThread(false);
+    setCreateThreadError(null);
     if (!agentId) {
       pinnedRef.current = null;
       lastAgentRef.current = null;
@@ -212,6 +219,7 @@ export function useAgentThreadChat(
 
     return () => {
       cancelled = true;
+      pendingThreadCreation.current = null;
     };
   }, [agentId, hitlMode, bootNonce, pinKey, pinIdentity, adoptThread]);
 
@@ -228,17 +236,18 @@ export function useAgentThreadChat(
         bound.agentId === agentId && bound.pinKey === pinIdentity
           ? bound.threadId
           : null;
-      if (!agentId || !tid) return;
+      if (!agentId || !tid || pendingThreadCreation.current) return false;
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed) return false;
       sendMessage(trimmed, "", agentId, undefined, tid);
+      return true;
     },
     [agentId, pinIdentity, sendMessage],
   );
 
   /** Start a fresh conversation and pin it so boot won't switch back. */
   const startNewThread = useCallback(async () => {
-    if (!agentId) return;
+    if (!agentId || booting || pendingThreadCreation.current) return;
     // 当前会话还没有任何消息时就不必再建一个空壳，
     // 否则每点一次「+」都会在历史列表里留下一条点开是空白的会话。
     const bound = boundRef.current;
@@ -247,17 +256,39 @@ export function useAgentThreadChat(
         ? bound.threadId
         : null;
     if (currentThreadId && messages.length === 0) return;
-    const created = await octopThreadsApi.create(
-      agentId,
-      pinKey ? { rebind: false } : undefined,
-    );
-    if (pinKey) writeSurfaceThread(pinKey, agentId, created.thread_id);
-    else await octopThreadsApi.rebind(agentId, created.thread_id);
-    pinnedRef.current = created.thread_id;
-    adoptThread(agentId, pinIdentity, created.thread_id);
-    void refreshThreads();
+    const creation = Symbol();
+    pendingThreadCreation.current = creation;
+    setCreatingThread(true);
+    setCreateThreadError(null);
+    setBootError(null);
+    adoptThread(agentId, pinIdentity, null);
+    try {
+      const { thread_id: createdId } = await octopThreadsApi.create(
+        agentId,
+        pinKey ? { rebind: false } : undefined,
+      );
+      if (pendingThreadCreation.current !== creation) return;
+      if (pinKey) writeSurfaceThread(pinKey, agentId, createdId);
+      else await octopThreadsApi.rebind(agentId, createdId);
+      if (pendingThreadCreation.current !== creation) return;
+      pinnedRef.current = createdId;
+      adoptThread(agentId, pinIdentity, createdId);
+      void refreshThreads();
+    } catch (err) {
+      if (pendingThreadCreation.current === creation) {
+        setCreateThreadError(
+          err instanceof Error ? err.message : "创建会话失败",
+        );
+      }
+    } finally {
+      if (pendingThreadCreation.current === creation) {
+        pendingThreadCreation.current = null;
+        setCreatingThread(false);
+      }
+    }
   }, [
     agentId,
+    booting,
     messages.length,
     refreshThreads,
     pinKey,
@@ -268,11 +299,12 @@ export function useAgentThreadChat(
   /** Switch to an existing conversation. */
   const selectThread = useCallback(
     async (id: string) => {
-      if (!agentId || !id) return;
+      if (!agentId || !id || pendingThreadCreation.current) return;
       if (pinKey) writeSurfaceThread(pinKey, agentId, id);
       else await octopThreadsApi.rebind(agentId, id);
       pinnedRef.current = id;
       adoptThread(agentId, pinIdentity, id);
+      setCreateThreadError(null);
     },
     [agentId, pinKey, pinIdentity, adoptThread],
   );
@@ -299,6 +331,8 @@ export function useAgentThreadChat(
     threads,
     booting,
     bootError,
+    creatingThread,
+    createThreadError,
     messages,
     isStreaming,
     historyHasMore,
