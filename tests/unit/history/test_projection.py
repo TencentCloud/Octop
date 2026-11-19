@@ -152,6 +152,27 @@ def test_turn_tracker_does_not_duplicate_state_assistant() -> None:
     assert any(text == "hello world" for text in texts)
 
 
+def test_turn_tracker_does_not_duplicate_split_emoji_in_state_reply() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "hello \ud83e"})
+    tracker.observe({"type": "token", "content": "\udd16"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "hello \ud83e\udd16", "id": "a1"},
+                ],
+            },
+        }
+    )
+
+    assert [_wire_text(item) for item in tracker.inputs] == ["hi", "hello 🤖"]
+
+
 @pytest.mark.asyncio
 async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     queue = HistoryBackfillQueue(max_pending=2)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -22,6 +23,14 @@ from octop.infra.gateway.process.message_keys import (
 _USER_ROLES = frozenset({"human", "user"})
 _ASSISTANT_ROLES = frozenset({"ai", "assistant"})
 _TURN_DURATION_KEY = "turn_duration_ms"
+_UTF16_SURROGATE = re.compile(r"[\ud800-\udfff]")
+
+
+def _repair_surrogates(text: str) -> str:
+    """Rejoin split surrogate pairs and replace unpaired halves with U+FFFD."""
+    if _UTF16_SURROGATE.search(text) is None:
+        return text
+    return text.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace")
 
 
 def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[ThreadMessageInput]:
@@ -108,10 +117,13 @@ def message_input(message: Any) -> ThreadMessageInput | None:
         if role in ("", "system"):
             return None
         ts_ms = checkpoint_ts_ms(converted)
+        # Repair after assembly so paired halves from different deltas survive
+        # as one character and the projected JSON can be stored as UTF-8.
+        message_json = _repair_surrogates(json.dumps(wire, ensure_ascii=False, default=str))
         return ThreadMessageInput(
             message_id=str(getattr(converted, "id", "") or "") or None,
             role=role,
-            message_json=json.dumps(wire, ensure_ascii=False, default=str),
+            message_json=message_json,
             created_at=(ts_ms // 1000) if ts_ms is not None else now_ts(),
         )
     except Exception:
@@ -259,9 +271,9 @@ class TurnHistoryTracker:
     def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
         if not self._stream_text:
             return False
+        stream_text = _repair_surrogates(self._stream_text)
         return any(
-            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
-            for item in items
+            item.role in _ASSISTANT_ROLES and stream_text in _wire_text(item) for item in items
         )
 
     @property
