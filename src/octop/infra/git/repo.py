@@ -334,7 +334,9 @@ async def get_diff(ws_dir: Path, raw_path: str, *, staged: bool) -> dict[str, ob
     if staged:
         _, out, _ = await _run_git(
             ws_dir,
-            ["diff", "--cached", "--", rel],
+            # --no-ext-diff keeps the output a unified diff even when the
+            # user configures an external diff driver (e.g. difftastic).
+            ["diff", "--no-ext-diff", "--cached", "--", rel],
             timeout=_DIFF_TIMEOUT_S,
             max_bytes=_DIFF_MAX_BYTES,
             read_query=True,
@@ -343,7 +345,7 @@ async def get_diff(ws_dir: Path, raw_path: str, *, staged: bool) -> dict[str, ob
     else:
         _, out, _ = await _run_git(
             ws_dir,
-            ["diff", "--", rel],
+            ["diff", "--no-ext-diff", "--", rel],
             timeout=_DIFF_TIMEOUT_S,
             max_bytes=_DIFF_MAX_BYTES,
             read_query=True,
@@ -355,7 +357,7 @@ async def get_diff(ws_dir: Path, raw_path: str, *, staged: bool) -> dict[str, ob
                 raise OctopError(ErrorCode.NOT_FOUND, f"cannot diff {rel!r}: not a file")
             _, out, _ = await _run_git(
                 ws_dir,
-                ["diff", "--no-index", "--", os.devnull, rel],
+                ["diff", "--no-ext-diff", "--no-index", "--", os.devnull, rel],
                 timeout=_DIFF_TIMEOUT_S,
                 max_bytes=_DIFF_MAX_BYTES,
                 read_query=True,

@@ -128,6 +128,23 @@ async def test_diff_rejects_missing_and_unsafe_paths(repo: Path) -> None:
 
 
 @needs_git
+async def test_diff_ignores_external_diff_driver(repo: Path) -> None:
+    (repo / "tracked.txt").write_text("line1\nline2\n")
+    # A repo-level external diff driver (e.g. difftastic) must not change the
+    # output shape: the panel parses a unified diff.
+    driver = repo / "fake-difft.sh"
+    driver.write_text('#!/bin/sh\necho "not a unified diff"\n')
+    driver.chmod(0o755)
+    _git(repo, "config", "diff.external", str(driver))
+
+    result = await get_diff(repo, "tracked.txt", staged=False)
+    text = str(result["diff"])
+    assert text.startswith("diff --git")
+    assert "+line2" in text
+    assert "not a unified diff" not in text
+
+
+@needs_git
 async def test_log_shape(repo: Path) -> None:
     commits = await get_log(repo, limit=5)
     assert len(commits) == 1
