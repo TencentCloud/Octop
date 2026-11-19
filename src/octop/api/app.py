@@ -229,6 +229,7 @@ def build_app(server: OctopServer) -> FastAPI:
     )
     from octop.api.routers.decision import router as decision_router
     from octop.api.routers.filesystem import router as filesystem_router
+    from octop.api.routers.memory_defaults import router as memory_defaults_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
     from octop.api.routers.security import router as security_router
@@ -270,6 +271,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(cron.router, "/api", ["cron"]),
             _RouterMount(settings.router, "/api", ["settings"]),
             _RouterMount(decision_router, "/api", ["settings"]),
+            _RouterMount(memory_defaults_router, "/api", ["settings"]),
             _RouterMount(envs.router, "/api", ["envs"]),
             _RouterMount(search.router, "/api", ["search"]),
             _RouterMount(providers.router, "/api/providers", ["providers"]),

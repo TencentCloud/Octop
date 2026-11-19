@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any, cast
 from octop_harness import HarnessAgent, HarnessAgentConfig, HarnessAgentManager
 from octop_harness.registry import AgentEntry
 from octop_harness.security.models import SecurityPolicy
+from octop_memory import MemoryService
 
 from octop.i18n.domains.agents import (
     AGENT_START_TIMEOUT,
@@ -53,6 +54,14 @@ from octop.infra.agents.settings.media_generation import (
     MediaGenerationSettings,
     MediaGenerationSettingsStore,
     MediaProviderUpdate,
+)
+from octop.infra.agents.settings.memory_defaults import (
+    GlobalMemoryDefaults,
+    infer_aux_model_mode,
+    infer_extract_rules_mode,
+    load_global_memory_defaults,
+    resolve_effective_memory_defaults,
+    save_global_memory_defaults,
 )
 from octop.infra.agents.settings.profile import (
     dump_id_list,
@@ -211,25 +220,24 @@ def _stored_id_list(value: Any) -> list[str]:
 
 
 def _memory_aux_model_settings(
-    mem: dict[str, Any],
+    effective_aux_model: str | None,
     supported_fields: frozenset[str],
     is_ref_usable: Callable[[str], bool] | None,
 ) -> dict[str, Any]:
-    """Map the ``memory.aux_model`` ref onto both harness extraction tiers.
+    """Map the effective ``aux_model`` ref onto both harness extraction tiers.
 
     A stale ref (provider deleted / model disabled since it was saved) is
     dropped with a warning so extraction falls back to the default model
     instead of failing at call time.
     """
-    aux_model = mem.get("aux_model")
     if (
-        not isinstance(aux_model, str)
-        or not aux_model.strip()
+        not isinstance(effective_aux_model, str)
+        or not effective_aux_model.strip()
         or "memory_aux_light_model" not in supported_fields
         or "memory_aux_heavy_model" not in supported_fields
     ):
         return {}
-    ref = aux_model.strip()
+    ref = effective_aux_model.strip()
     if is_ref_usable is not None and not is_ref_usable(ref):
         logger.warning(
             "memory aux_model %r no longer usable; falling back to the default model",
@@ -238,6 +246,12 @@ def _memory_aux_model_settings(
         return {}
     # One user-chosen model drives both extraction tiers.
     return {"memory_aux_light_model": ref, "memory_aux_heavy_model": ref}
+
+
+def _supports_memory_extract_rules(supported_fields: frozenset[str]) -> bool:
+    return {"memory_extract_keep_rules", "memory_extract_skip_rules"} <= supported_fields and bool(
+        getattr(MemoryService, "supports_extraction_rules", False)
+    )
 
 
 def memory_extract_supported_options() -> list[str]:
@@ -253,7 +267,10 @@ def memory_extract_supported_options() -> list[str]:
         "extract_max_retries": "memory_aux_max_retries",
         "extract_retry_backoff_s": "memory_aux_retry_backoff_s",
     }
-    return [key for key, field in fields.items() if field in _HARNESS_AGENT_CONFIG_FIELDS]
+    supported = [key for key, field in fields.items() if field in _HARNESS_AGENT_CONFIG_FIELDS]
+    if _supports_memory_extract_rules(_HARNESS_AGENT_CONFIG_FIELDS):
+        supported.append("extract_rules")
+    return supported
 
 
 def _memory_extract_settings(
@@ -261,18 +278,29 @@ def _memory_extract_settings(
     *,
     supported_fields: frozenset[str] = _HARNESS_AGENT_CONFIG_FIELDS,
     is_ref_usable: Callable[[str], bool] | None = None,
+    global_defaults: GlobalMemoryDefaults | None = None,
 ) -> dict[str, Any]:
     """Extract the ``memory`` config section into HarnessAgentConfig kwargs.
 
     Mirrors the shape written by the dashboard's ``PUT .../memory/extract-config``
-    endpoint. Only recognized keys are forwarded; anything missing falls through
-    to HarnessAgentConfig's own defaults, so an agent with no ``memory`` section
-    behaves exactly as before.
+    endpoint, overlaid onto *global_defaults* for inherited fields. Only
+    recognized keys are forwarded; anything missing falls through to
+    HarnessAgentConfig's own defaults, so an agent with no ``memory`` section
+    and empty global defaults behaves exactly as before.
     """
-    mem = cfg.get("memory")
-    if not isinstance(mem, dict):
-        return {}
-    out: dict[str, Any] = _memory_aux_model_settings(mem, supported_fields, is_ref_usable)
+    raw_mem = cfg.get("memory")
+    mem = raw_mem if isinstance(raw_mem, dict) else {}
+    effective = resolve_effective_memory_defaults(mem, global_defaults)
+    out: dict[str, Any] = _memory_aux_model_settings(
+        effective.effective_aux_model, supported_fields, is_ref_usable
+    )
+    if _supports_memory_extract_rules(supported_fields):
+        if effective.effective_keep_rules:
+            out["memory_extract_keep_rules"] = effective.effective_keep_rules
+        if effective.effective_skip_rules:
+            out["memory_extract_skip_rules"] = effective.effective_skip_rules
+    if not mem:
+        return out
     for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
         if key in supported_fields and isinstance(mem.get(key), bool):
             out[key] = mem[key]
@@ -335,8 +363,7 @@ def _memory_extract_settings(
         ):
             out[dst] = value
     extra_body = mem.get("extract_extra_body")
-    aux_model = mem.get("aux_model")
-    has_aux_override = isinstance(aux_model, str) and bool(aux_model.strip())
+    has_aux_override = bool(effective.effective_aux_model)
     if (
         "memory_aux_extra_body" in supported_fields
         and isinstance(extra_body, dict)
@@ -2301,8 +2328,95 @@ class AgentManager:
                     auto_ids=auto_ids,
                 )
             )
+            impact.update(
+                self._memory_aux_provider_impact_ids(
+                    provider_name=provider_name,
+                    rows=rows,
+                )
+            )
 
         return sorted(impact)
+
+    def _memory_aux_provider_impact_ids(
+        self,
+        *,
+        provider_name: str,
+        rows: list[AgentRow],
+    ) -> set[str]:
+        """Agents whose effective or live memory aux model references *provider_name*."""
+        prefix = f"{provider_name}/"
+        global_defaults = self.get_global_memory_defaults()
+        impact: set[str] = set()
+        memory_enabled_ids: set[str] = set()
+        for row in rows:
+            cfg = parse_config_json(row.config_json)
+            raw_mem = cfg.get("memory")
+            mem = raw_mem if isinstance(raw_mem, dict) else {}
+            if mem.get("memory_enabled") is False:
+                continue
+            memory_enabled_ids.add(row.agent_id)
+            effective = resolve_effective_memory_defaults(mem, global_defaults)
+            if effective.effective_aux_model and effective.effective_aux_model.startswith(prefix):
+                impact.add(row.agent_id)
+        if self._harness_manager is not None:
+            for entry in self._harness_manager.list_agents():
+                aid = getattr(entry, "agent_id", None)
+                if not isinstance(aid, str) or aid not in memory_enabled_ids:
+                    continue
+                built_cfg = getattr(entry, "config", None)
+                if getattr(built_cfg, "memory_enabled", True) is False:
+                    continue
+                for field_name in ("memory_aux_light_model", "memory_aux_heavy_model"):
+                    ref = getattr(built_cfg, field_name, None)
+                    if isinstance(ref, str) and ref.startswith(prefix):
+                        impact.add(aid)
+        return impact
+
+    def get_global_memory_defaults(self) -> GlobalMemoryDefaults:
+        """Return the process-wide default memory extraction settings."""
+        return load_global_memory_defaults(self._repos.settings_repo)
+
+    async def save_global_memory_defaults(
+        self,
+        defaults: GlobalMemoryDefaults,
+    ) -> tuple[GlobalMemoryDefaults, list[str]]:
+        """Persist global memory defaults and reload all inheriting enabled agents."""
+        before = self.get_global_memory_defaults()
+        saved = save_global_memory_defaults(self._repos.settings_repo, defaults)
+        affected = await self.on_global_memory_defaults_changed(
+            aux_model_changed=before.aux_model != saved.aux_model,
+            rules_changed=(
+                before.extract_keep_rules != saved.extract_keep_rules
+                or before.extract_skip_rules != saved.extract_skip_rules
+            ),
+        )
+        return saved, affected
+
+    async def on_global_memory_defaults_changed(
+        self,
+        *,
+        aux_model_changed: bool,
+        rules_changed: bool,
+    ) -> list[str]:
+        """Return affected enabled agents, refreshing active runtimes when available."""
+        if not aux_model_changed and not rules_changed:
+            return []
+        rows = self._repos.agent_repo.list_all(include_disabled=False)
+        impact: list[str] = []
+        for row in rows:
+            cfg = parse_config_json(row.config_json)
+            raw_mem = cfg.get("memory")
+            mem = raw_mem if isinstance(raw_mem, dict) else {}
+            if mem.get("memory_enabled") is False:
+                continue
+            inherits_model = aux_model_changed and infer_aux_model_mode(mem) == "inherit"
+            inherits_rules = rules_changed and infer_extract_rules_mode(mem) == "inherit"
+            if inherits_model or inherits_rules:
+                impact.append(row.agent_id)
+        if self._harness_manager is not None and impact:
+            stopped = {row.agent_id for row in rows if row.last_state == "stopped"}
+            await self._reload_agents([aid for aid in impact if aid not in stopped])
+        return impact
 
     def _stale_auto_default_ids(
         self,
@@ -4405,7 +4519,11 @@ class AgentManager:
         acp_config = ACPConfig.from_dict({"runners": runners})
         runner = cfg.get("managed_runner")
         runner_id = runner.strip() if isinstance(runner, str) else ""
-        memory_settings = _memory_extract_settings(cfg)
+        memory_settings = _memory_extract_settings(
+            cfg,
+            is_ref_usable=self._providers.is_model_ref_usable,
+            global_defaults=self.get_global_memory_defaults(),
+        )
         if memory_settings.get("memory_enabled") is not True:
             memory_settings = {
                 key: False
@@ -4797,7 +4915,11 @@ class AgentManager:
             default_timezone=self._config.default_timezone,
             media_generation=self._media_generation.harness_config(),
             **harness_fields,
-            **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
+            **_memory_extract_settings(
+                cfg,
+                is_ref_usable=self._providers.is_model_ref_usable,
+                global_defaults=self.get_global_memory_defaults(),
+            ),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
             **harness_summarization_kwargs(cfg, supported_fields=_HARNESS_AGENT_CONFIG_FIELDS),
         )

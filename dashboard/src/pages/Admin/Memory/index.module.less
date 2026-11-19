@@ -1,0 +1,103 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  max-width: 900px;
+  padding-bottom: 24px;
+}
+
+.settingCard {
+  border-radius: 12px;
+
+  :global(.ant-card-body) {
+    padding: 20px;
+  }
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settingIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
+}
+
+.settingTitle {
+  color: var(--fn-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settingDescription {
+  margin-top: 3px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 18px 0 0 46px;
+}
+
+.fieldBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.fieldHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.saveBar {
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--fn-bg-elevated) 94%, transparent);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(10px);
+
+  > span {
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  .fields {
+    margin-left: 0;
+  }
+
+  .saveBar {
+    bottom: 8px;
+  }
+}

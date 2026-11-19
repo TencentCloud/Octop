@@ -43,8 +43,16 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner, require_agent_owner_row
 from octop.api.common.memory_client import call_memory_rpc
+from octop.api.common.memory_model import validate_memory_model_ref
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.manager import memory_extract_supported_options
+from octop.infra.agents.settings.memory_defaults import (
+    MAX_EXTRACT_RULE_CHARS,
+    GlobalMemoryDefaults,
+    MemoryOverrideMode,
+    normalize_rule_text,
+    resolve_effective_memory_defaults,
+)
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -66,6 +74,11 @@ _EXTRACT_DEFAULTS: dict[str, Any] = {
     # Model ref ("provider/model") used for extraction / promotion; None → AUTO
     # (follow the agent's effective chat model).
     "aux_model": None,
+    "aux_model_mode": "inherit",
+    # Retention / skip guidance for memory extraction (TencentCloud/Octop#2963).
+    "extract_rules_mode": "inherit",
+    "extract_keep_rules": "",
+    "extract_skip_rules": "",
     # Aux-call options (TencentCloud/Octop#1360): how long a memory call may
     # wait and how much it may generate. None → harness defaults. These are
     # independent of the idle/interval trigger above, which only decides when
@@ -209,9 +222,31 @@ class _ExtractConfigBody(BaseModel):
     extract_interval_seconds: float | None = Field(
         default=None, description="mode=interval: seconds between sweeps"
     )
+    aux_model_mode: MemoryOverrideMode | None = Field(
+        default=None,
+        description="'inherit' follows global defaults; 'custom' uses this expert's aux_model",
+    )
     aux_model: str | None = Field(
         default=None,
-        description="'provider/model' ref for extraction; '' resets to AUTO",
+        description="'provider/model' ref for extraction; '' or null resets to AUTO",
+    )
+    extract_rules_mode: MemoryOverrideMode | None = Field(
+        default=None,
+        description="'inherit' follows global memory rules; 'custom' uses this expert's rules",
+    )
+    extract_keep_rules: str | None = Field(
+        default=None,
+        description=(
+            "Custom retention guidance describing information worth keeping "
+            f"(at most {MAX_EXTRACT_RULE_CHARS} chars)."
+        ),
+    )
+    extract_skip_rules: str | None = Field(
+        default=None,
+        description=(
+            "Custom guidance describing information to skip during extraction "
+            f"(at most {MAX_EXTRACT_RULE_CHARS} chars)."
+        ),
     )
     extract_light_timeout_s: float | None = Field(
         default=None,
@@ -846,7 +881,58 @@ def _read_extract_config(row: Any) -> dict[str, Any]:
     for key in _EXTRACT_DEFAULTS:
         if key in stored:
             out[key] = stored[key]
+    resolved = resolve_effective_memory_defaults(stored)
+    out["aux_model_mode"] = resolved.aux_model_mode
+    out["aux_model"] = resolved.aux_model
+    out["extract_rules_mode"] = resolved.extract_rules_mode
+    out["extract_keep_rules"] = resolved.extract_keep_rules
+    out["extract_skip_rules"] = resolved.extract_skip_rules
     return out
+
+
+def _extract_config_response(
+    merged: dict[str, Any],
+    *,
+    global_defaults: GlobalMemoryDefaults,
+    providers: Any,
+) -> dict[str, Any]:
+    """Attach global defaults summary, resolved effective values, and capabilities."""
+    resolved = resolve_effective_memory_defaults(merged, global_defaults)
+    global_aux = global_defaults.aux_model
+    global_aux_usable = bool(providers.is_model_ref_usable(global_aux)) if global_aux else True
+    effective_aux = resolved.effective_aux_model
+    effective_aux_usable = (
+        bool(providers.is_model_ref_usable(effective_aux)) if effective_aux else True
+    )
+    return {
+        **merged,
+        "aux_model_mode": resolved.aux_model_mode,
+        "aux_model": resolved.aux_model,
+        "extract_rules_mode": resolved.extract_rules_mode,
+        "extract_keep_rules": resolved.extract_keep_rules,
+        "extract_skip_rules": resolved.extract_skip_rules,
+        "global_defaults": {
+            "aux_model": global_aux,
+            "aux_model_usable": global_aux_usable,
+            "extract_keep_rules": global_defaults.extract_keep_rules,
+            "extract_skip_rules": global_defaults.extract_skip_rules,
+        },
+        "effective": {
+            "aux_model": effective_aux if effective_aux_usable else None,
+            "aux_model_configured": effective_aux,
+            "aux_model_usable": effective_aux_usable,
+            "extract_keep_rules": resolved.effective_keep_rules,
+            "extract_skip_rules": resolved.effective_skip_rules,
+        },
+        "supported_call_options": memory_extract_supported_options(),
+    }
+
+
+def _coerce_rule_text(name: str, value: Any) -> str:
+    try:
+        return normalize_rule_text(value, strict=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"{name}: {exc}") from exc
 
 
 def _coerce_seconds(value: Any, *, minimum: float) -> float:
@@ -856,19 +942,6 @@ def _coerce_seconds(value: Any, *, minimum: float) -> float:
     if seconds > _MAX_SECONDS:
         return _MAX_SECONDS
     return seconds
-
-
-def _validated_aux_model(value: Any, providers: Any) -> str | None:
-    """Normalize an ``aux_model`` patch value: empty / "auto" → None (AUTO)."""
-    ref = str(value).strip()
-    if not ref or ref.lower() == "auto":
-        return None
-    if not providers.is_model_ref_usable(ref):
-        raise HTTPException(
-            status_code=400,
-            detail=f"aux_model {ref!r} is not an enabled model on a usable provider",
-        )
-    return ref
 
 
 def _coerce_aux_timeout(value: Any) -> float | None:
@@ -901,12 +974,14 @@ async def get_extract_config(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return memory extraction timing and independent model call options."""
+    """Return memory extraction timing, inheritance modes, and independent call options."""
     row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
-    return {
-        **_read_extract_config(row),
-        "supported_call_options": memory_extract_supported_options(),
-    }
+    registry = server.app_runtime.agent_registry
+    return _extract_config_response(
+        _read_extract_config(row),
+        global_defaults=registry.get_global_memory_defaults(),
+        providers=registry.providers,
+    )
 
 
 @router.put("/agents/{agent_id}/memory/extract-config")
@@ -928,6 +1003,7 @@ async def put_extract_config(
     assert_agent_owner(row, user)
 
     merged = _read_extract_config(row)
+    fields_set = body.model_fields_set
     patch = body.model_dump(exclude_none=True)
 
     for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
@@ -950,8 +1026,50 @@ async def put_extract_config(
         merged["extract_interval_seconds"] = _coerce_seconds(
             patch["extract_interval_seconds"], minimum=_MIN_INTERVAL_SECONDS
         )
-    if "aux_model" in patch:
-        merged["aux_model"] = _validated_aux_model(patch["aux_model"], registry.providers)
+
+    # Extraction model inheritance / custom override (#2963)
+    if "aux_model_mode" in fields_set and body.aux_model_mode is not None:
+        if body.aux_model_mode == "inherit":
+            merged["aux_model_mode"] = "inherit"
+            merged["aux_model"] = None
+        else:
+            merged["aux_model_mode"] = "custom"
+            if "aux_model" in fields_set:
+                merged["aux_model"] = validate_memory_model_ref(body.aux_model, registry, user.id)
+    elif "aux_model" in patch:
+        # Backward-compatible callers that only send ``aux_model``.
+        validated = validate_memory_model_ref(body.aux_model, registry, user.id)
+        merged["aux_model"] = validated
+        merged["aux_model_mode"] = "custom" if validated is not None else "inherit"
+
+    # Memory retention/skip rules inheritance / custom override (#2963)
+    if "extract_rules_mode" in fields_set and body.extract_rules_mode is not None:
+        if body.extract_rules_mode == "inherit":
+            merged["extract_rules_mode"] = "inherit"
+            merged["extract_keep_rules"] = ""
+            merged["extract_skip_rules"] = ""
+        else:
+            merged["extract_rules_mode"] = "custom"
+            if "extract_keep_rules" in fields_set:
+                merged["extract_keep_rules"] = _coerce_rule_text(
+                    "extract_keep_rules", body.extract_keep_rules
+                )
+            if "extract_skip_rules" in fields_set:
+                merged["extract_skip_rules"] = _coerce_rule_text(
+                    "extract_skip_rules", body.extract_skip_rules
+                )
+    elif "extract_keep_rules" in fields_set or "extract_skip_rules" in fields_set:
+        if "extract_keep_rules" in fields_set:
+            merged["extract_keep_rules"] = _coerce_rule_text(
+                "extract_keep_rules", body.extract_keep_rules
+            )
+        if "extract_skip_rules" in fields_set:
+            merged["extract_skip_rules"] = _coerce_rule_text(
+                "extract_skip_rules", body.extract_skip_rules
+            )
+        if merged["extract_keep_rules"] or merged["extract_skip_rules"]:
+            merged["extract_rules_mode"] = "custom"
+
     if "extract_light_timeout_s" in patch:
         merged["extract_light_timeout_s"] = _coerce_aux_timeout(patch["extract_light_timeout_s"])
     if "extract_heavy_timeout_s" in patch:
@@ -976,7 +1094,11 @@ async def put_extract_config(
     cfg["memory"] = mem_section
 
     await registry.update(agent_id, config_json=json.dumps(cfg))
-    return {**merged, "supported_call_options": memory_extract_supported_options()}
+    return _extract_config_response(
+        merged,
+        global_defaults=registry.get_global_memory_defaults(),
+        providers=registry.providers,
+    )
 
 
 __all__ = ["router"]
