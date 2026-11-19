@@ -31,6 +31,7 @@ import {
 import { isChatStreamError } from "../../../utils/chatStreamError";
 import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
+import { localDirectoryForTurn } from "../localExecution";
 import { hasPendingHitl } from "../utils/pendingHitl";
 import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
@@ -3271,6 +3272,8 @@ async function sendTurnWebSocket(
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       if (conversationMode) payload.conversation_mode = conversationMode;
       if (sessionMode) payload.session_mode = sessionMode;
+      const localDirectory = localDirectoryForTurn(agentId, threadId ?? null);
+      if (localDirectory) payload.local_directory = localDirectory;
       if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
     };
@@ -4345,6 +4348,14 @@ export function sharedTurnBlocksSender(
   return Number(owner) !== Number(userId);
 }
 
+function localDirectoryPayload(
+  agentId: string,
+  threadId: string,
+): { local_directory: string } | Record<string, never> {
+  const directory = localDirectoryForTurn(agentId, threadId);
+  return directory ? { local_directory: directory } : {};
+}
+
 export function sendSteerWhileBusy(
   sessionId: string,
   text: string,
@@ -4375,6 +4386,7 @@ export function sendSteerWhileBusy(
         ...(turnId ? { expected_turn_id: turnId } : {}),
         client_pending_id: cpid,
         messages: [{ role: "user", content: messageContent }],
+        ...localDirectoryPayload(live.agentId, live.threadId),
       }),
     );
   } catch {

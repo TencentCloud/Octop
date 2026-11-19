@@ -23,6 +23,24 @@ from octop.infra.utils.host_dirs import host_path_text
 from octop.infra.utils.paths import PathLayout
 
 
+def test_chat_agent_default_uses_the_remote_id_and_a_scoped_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from octop.infra.agents.workspace.dir import (
+        default_workspace_for_chat_agent,
+        workspace_folder_id,
+    )
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    assert workspace_folder_id("bridge:conn:EXPERT1") == "EXPERT1"
+    assert default_workspace_for_chat_agent("bridge:conn:EXPERT1") == host_path_text(
+        tmp_path / "agents" / "EXPERT1"
+    )
+    root = tmp_path / "jail"
+    scoped = default_workspace_for_chat_agent("bridge:conn:EXPERT1", root_dir=str(root))
+    assert scoped == host_path_text(root / ".octop" / "workspaces" / "EXPERT1")
+
+
 def test_default_workspace_parent_dir_follows_octop_home(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

@@ -1,3 +1,24 @@
+.rootDirChip:global(.ant-select) {
+  height: 28px;
+}
+
+.rootDirChip:global(.ant-select) :global(.ant-select-selector) {
+  height: 28px !important;
+  padding: 0 4px 0 0 !important;
+  color: inherit;
+}
+
+.rootDirChip:global(.ant-select) :global(.ant-select-selection-item),
+.rootDirChip:global(.ant-select) :global(.ant-select-selection-placeholder) {
+  line-height: 28px !important;
+  font-size: 13px;
+  color: inherit;
+}
+
+.rootDirChip:global(.ant-select) :global(.ant-select-arrow) {
+  color: inherit;
+}
+
 /* Dropdown is portaled — scope tree layout to its popup class. */
 .rootDirDropdown :global(.ant-select-tree-node-content-wrapper) {
   flex: 1 1 auto !important;

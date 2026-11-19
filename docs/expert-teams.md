@@ -12,7 +12,7 @@
 | 2 | 创建团队至少 2 个成员（不含主持人） |
 | 3 | 成员只能是普通专家，不能套团队 |
 | 4 | 可加入：自己的专家 + 分享给自己的专家 |
-| 5 | 分享来的专家可以真正派工；产出进对方工作区/聊天，不能改对方配置 |
+| 5 | 分享来的专家可以真正派工；这一轮的文件进主持人工作区，不能改对方配置 |
 | 6 | 第一版团队不分享，只有创建者能聊、改成员、绑通道 |
 | 7 | 有在途派工时，不能移出该成员、不能删除该专家 |
 
@@ -35,12 +35,12 @@
 | # | 决策 |
 |---|------|
 | 17 | 房间 ID = 主持人 `thread_id`；成员 checkpoint = `主thread~成员id`；网关转播 + `speaker_agent_id` |
-| 18 | 各写各的工作区；团队准则/团体记忆只在主持人侧，派工时写进任务消息 |
+| 18 | 派工这一轮的读写和执行走主持人的 backend，工具名不变；技能、记忆、连接器仍在成员侧。用户明确要求用成员自己的文件工具时，这一轮不切换。云端协同选定本地目录时，同一套覆盖指向该目录，经 Bridge WebSocket 执行。团队准则/团体记忆只在主持人侧，派工时写进任务消息 |
 | 19 | 通道只绑主持人 |
 | 20 | 两边都能看：团队房间转播；成员侧栏多一条「来自团队 XXX」会话 |
 | 21 | 团队出现在现有聊天侧栏，用徽章区分；「我的团队」tab 只做创建和编辑 |
 | 22 | 右侧成员条只放成员，不含主持人 |
-| 23 | 主持人权能只有成员相关工具：`agent_list` + 异步 `ask_agent` + 记忆/时间；不挂文件系统/浏览器/搜索/MCP/技能/插件；创建编辑无 skill / subagent / 插件 / 人格 |
+| 23 | 主持人权能只有成员相关工具：`agent_list` + 异步 `ask_agent` + 记忆/时间 + `send_file_to_user`；不挂文件系统/浏览器/搜索/MCP/技能/插件；创建编辑无 skill / subagent / 插件 / 人格 |
 
 ## 身份模型
 
@@ -50,7 +50,7 @@
 |--|--|--|
 | 工作区 / checkpoint / 记忆 | 有 | 有（团队记忆根） |
 | 系统提示 | 专家模板 | 隐藏调度模板 + 运行时「先消化再改写」约束（用户不可见专家库） |
-| 工具 | 干活用的全套 | 轻量 + `agent_list` + 异步 `ask_agent` |
+| 工具 | 干活用的全套 | 轻量 + `agent_list` + 异步 `ask_agent` + `send_file_to_user` |
 | 可见 peer | 默认同用户其它专家 | 仅 `team_peers` = 团队成员 |
 | 通道 | 可绑（1:1） | 可绑（团队入口） |
 
@@ -101,11 +101,11 @@ inbox 按 callee 并发：同一成员串行，不同成员并行；主持人回
 
 - 不挂 cron / knowledge / mobile / plugin / MCP / 技能包
 - 启动时 `init_workspace=False`，不拷贝 harness `_builtin_skills` / 内置 subagent
-- `tools_disabled` 只保留 `agent_list` / `ask_agent` / 记忆 / `current_time`（含原本不可关的文件系统与 `task`）
+- `tools_disabled` 只保留 `agent_list` / `ask_agent` / 记忆 / `current_time` / `send_file_to_user`（含原本不可关的文件系统与 `task`）。`write_todos` 关闭。用户要文件时由成员写入主持人工作区并回报路径，主持人只调用 `send_file_to_user`，不自己写文件或跑命令
 - `team_peers` = 成员
 - 种子写入工作区 `SOUL.md`（主持人人格）+ `AGENTS.md`（协调/派工准则）+ `.octop/manifest.json`（`kind=team` 与 `members`）
 
-成员被派工时仍用自己的工作区。对方 `last_state` 非 running 则 harness 调用失败，主持人走失败回叫。
+成员被派工时，这一轮的 `ls` / `read_file` / `write_file` / `edit_file` / `glob` / `grep` / `delete` / `send_file_to_user` 走主持人的 `BackendWorkspace`，并在任务说明里写明主持人的工作区目录。相对路径在进工具前就按这个目录解析，成员自己的文件系统 guard 在这一轮不再把路径改到成员目录。`execute` 和文件工具走同一个 `BackendWorkspace`。`send_file_to_user` 也从该目录读。主持人的 backend 有 shell 时，`execute` 也在那边执行；对象存储则不要调用 `execute`。技能脚本若只存在于成员自己的 backend，这一轮执行不到。用户明确说用成员自己的工作区或文件工具时，这一轮不切换。托管专家另挂一个 MCP `octop-team-workspace`（含 `send_file_to_user`，不再另挂成员自己的 `octop-files`）。运行器自带的写文件和 shell 这一轮会被拒绝；如果运行器仍执行了它们，结果标成写在运行器自己的工作区，不算所选目录。托管专家沿用自己的审批设置。对方 `last_state` 非 running 则 harness 调用失败，主持人走失败回叫。
 
 停止：Dashboard 取消只取消主持人当前 stream；inbox 里已排队/在跑的成员任务不取消。
 

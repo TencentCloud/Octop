@@ -63,6 +63,7 @@ import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
+import LocalExecutionBar from "./components/LocalExecutionBar";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import ModelConfigEmpty from "./components/ModelConfigEmpty";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
@@ -1945,6 +1946,14 @@ function ChatPageInner() {
             ) : null}
             <ChatInput
               ref={chatInputRef}
+              leading={
+                activeAgent?.bridge && resolvedAgentId ? (
+                  <LocalExecutionBar
+                    agentId={resolvedAgentId}
+                    threadId={activeThreadId}
+                  />
+                ) : null
+              }
               onSend={wrappedHandleSend}
               onQueue={enqueueUnlessSharedBusy}
               queuedItems={displayQueuedItems}

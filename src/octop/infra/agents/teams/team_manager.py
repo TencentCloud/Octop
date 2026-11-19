@@ -819,12 +819,100 @@ class TeamManager:
         await self._stamp_member_connectors(payload, speaker_id, user_id)
         self._stamp_member_model(payload, speaker_id, user_id)
         self._stamp_member_craft(payload)
+        await self._bind_team_file_target(payload, speaker_id, room_thread_id)
         cfg = payload.get("configurable")
         if isinstance(cfg, dict):
             cfg[_PEER_RESOURCES_KEY] = True
         from octop.infra.agents.acp.turn import attach_managed_turn
 
         await attach_managed_turn(self._agent_manager, speaker_id, payload)
+
+    async def _bind_team_file_target(
+        self,
+        payload: dict[str, Any],
+        speaker_id: str,
+        room_thread_id: str,
+    ) -> None:
+        """Stamp the host workspace onto a member turn unless the user opted out."""
+        from octop.infra.agents.managed import is_managed_agent
+        from octop.infra.agents.middleware.team_dispatch import CONFIG_KEY as BRIEFING_KEY
+        from octop.infra.agents.teams.file_target import (
+            BRIDGE_TARGET_KEY,
+            DIR_KEY,
+            HOST_KEY,
+            file_target_briefing,
+            file_target_opt_out,
+            host_can_execute,
+            stamp_turn_capabilities,
+            workspace_directory,
+        )
+        from octop.infra.bridge.local_workspace import peer_target_for_thread
+
+        thread_id = str(payload.get("thread_id") or room_thread_id or "")
+        room = self._team_room_id(thread_id, speaker_id)
+        if not room:
+            return
+        getter = getattr(self._thread_registry, "get_thread", None)
+        row = getter(room) if callable(getter) else None
+        host_id = str(getattr(row, "agent_id", "") or "").strip()
+        if not host_id or host_id == speaker_id:
+            return
+        cfg = payload.get("configurable")
+        if not isinstance(cfg, dict):
+            cfg = {}
+            payload["configurable"] = cfg
+        texts = [_assistant_text(message) for message in payload.get("messages") or []]
+        briefing = cfg.get(BRIEFING_KEY)
+        if isinstance(briefing, str):
+            texts.append(briefing)
+        try:
+            texts.append(await self._last_room_user_text(room, host_id))
+        except Exception:
+            logger.debug("team file target user text skipped", exc_info=True)
+        if file_target_opt_out(*texts):
+            return
+        bridged = peer_target_for_thread(room)
+        if bridged is not None:
+            directory = str(getattr(bridged, "directory", "") or "").strip()
+            if not directory:
+                return
+            execute = bool(getattr(bridged, "execute", False))
+            cfg[BRIDGE_TARGET_KEY] = str(getattr(bridged, "token", "") or "")
+            cfg[DIR_KEY] = directory
+            stamp_turn_capabilities(cfg, execute=execute)
+            if is_managed_agent(self._agent_manager.get_row(speaker_id)):
+                return
+            locale = self._locale_for(self._payload_user_id(payload, room))
+            note = file_target_briefing(
+                locale, directory, execute=execute, managed=False, local=True
+            )
+            existing = cfg.get(BRIEFING_KEY)
+            if isinstance(existing, str) and existing.strip():
+                cfg[BRIEFING_KEY] = f"{existing.rstrip()}\n\n{note}"
+            else:
+                cfg[BRIEFING_KEY] = note
+            return
+        try:
+            host = self._agent_manager.get_agent(host_id)
+        except Exception:
+            logger.info("team file target skipped; host %s is not running", host_id)
+            return
+        directory = workspace_directory(host)
+        if not directory:
+            return
+        execute = host_can_execute(getattr(host, "backend", None))
+        cfg[HOST_KEY] = host_id
+        cfg[DIR_KEY] = directory
+        stamp_turn_capabilities(cfg, execute=execute)
+        if is_managed_agent(self._agent_manager.get_row(speaker_id)):
+            return
+        locale = self._locale_for(self._payload_user_id(payload, room))
+        note = file_target_briefing(locale, directory, execute=execute, managed=False)
+        existing = cfg.get(BRIEFING_KEY)
+        if isinstance(existing, str) and existing.strip():
+            cfg[BRIEFING_KEY] = f"{existing.rstrip()}\n\n{note}"
+        else:
+            cfg[BRIEFING_KEY] = note
 
     def _payload_user_id(self, payload: dict[str, Any], room_thread_id: str) -> int | None:
         raw_user = payload.get("user")

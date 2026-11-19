@@ -6,6 +6,7 @@ import {
   useMemo,
   forwardRef,
   useImperativeHandle,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { App } from "antd";
@@ -148,6 +149,8 @@ interface ChatInputProps {
   decisionSaved?: number;
   /** Managed experts hide model, connectors, knowledge, and expert pickers. */
   managed?: boolean;
+  /** Quiet controls sitting on the top edge of the composer. */
+  leading?: ReactNode;
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -207,6 +210,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       defaultModel,
       contextUsedTokens = null,
       contextMaxTokens = 128_000,
+      leading = null,
       decisionSaved = 0,
       managed = false,
     },
@@ -879,6 +883,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
+        {leading ? (
+          <div className={styles.composerLeading}>{leading}</div>
+        ) : null}
         <div className={styles.inputWrapper}>
           {showDrop && (
             <div className={styles.dropOverlay} data-testid="chat-drop-overlay">

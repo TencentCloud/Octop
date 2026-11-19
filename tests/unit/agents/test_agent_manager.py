@@ -259,6 +259,8 @@ def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) ->
     assert "ask_agent" not in disabled
     assert "agent_list" not in disabled
     assert out.bootstrap_enabled is False
+    if hasattr(out, "todos_enabled"):
+        assert out.todos_enabled is False
     assert "Host dispatch" in (out.system_prompt or "") or "主持人调度" in (out.system_prompt or "")
 
 
