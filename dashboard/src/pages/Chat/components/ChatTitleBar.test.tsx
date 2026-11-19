@@ -408,6 +408,45 @@ describe("ChatTitleBar", () => {
     },
   );
 
+  it("更多菜单可以打开只读分享", async () => {
+    const onShare = vi.fn();
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        onShare={onShare}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "分享链接" }));
+    expect(onShare).toHaveBeenCalledOnce();
+  });
+
+  it("别人的会话不提供分享链接", async () => {
+    render(
+      <ChatTitleBar
+        session={{ ...session, owned: false }}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        onShare={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    await screen.findByRole("menuitem", { name: "置顶" });
+    expect(
+      screen.queryByRole("menuitem", { name: "分享链接" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("waits for the IME to finish before committing a rename", () => {
     const onRename = vi.fn();
     render(

@@ -19,6 +19,7 @@ import OidcComplete from "./pages/Login/OidcComplete";
 import ExternalComplete from "./pages/Login/ExternalComplete";
 import SetupPage from "./pages/Setup";
 import InvitePage from "./pages/Invite";
+import SharePage from "./pages/Share";
 import AuthGuard from "./components/AuthGuard";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import DesktopWindowDragBand from "./components/DesktopWindowDragBand";
@@ -145,6 +146,7 @@ function ThemedApp() {
             <Route path="/login/external" element={<ExternalComplete />} />
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/invite" element={<InvitePage />} />
+            <Route path="/share/:shareId" element={<SharePage />} />
             <Route
               path="/*"
               element={

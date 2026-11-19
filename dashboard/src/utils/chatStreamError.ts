@@ -9,6 +9,7 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.insufficient_balance",
   "stream_errors.context_length",
   "stream_errors.recursion_limit",
+  "stream_errors.tool_call_repeat",
   "stream_errors.timeout_network",
   "stream_errors.provider_unavailable",
   "stream_errors.invalid_request",
@@ -26,6 +27,9 @@ export type StreamErrorAction = {
 };
 
 const MODEL_RETRY_FAILURE_MARK = "[model_call_failed]";
+const TOOL_CALL_REPEAT_MARK = "[tool_call_repeat]";
+const TOOL_CALL_REPEAT_RE =
+  /\[tool_call_repeat\]\s*tool:\s*(.+)\ncount:\s*(\d+)\nlimit:\s*(\d+)/i;
 const RETRY_WRAPPER_RE = /^model call failed after \d+ attempts?\s+with\s+/i;
 const TECHNICAL_DETAIL_RE = /technical detail:\s*([\s\S]+)$/i;
 const COMPLETION_USAGE_RE = /\s*-?\s*CompletionUsage\([\s\S]*\)\s*$/;
@@ -50,6 +54,10 @@ const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
       fix: "disable_stream_usage",
     },
     "stream_errors.recursion_limit": {
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    },
+    "stream_errors.tool_call_repeat": {
       path: "/agent-config",
       labelKey: "chat.goToAgentConfig",
     },
@@ -94,11 +102,24 @@ function unwrapModelRetryMessage(message: string): string {
   return msg || normalizeMessage(message);
 }
 
+function toolCallRepeatVars(
+  message: string,
+): { tool: string; count: string; limit: string } | null {
+  const match = message.match(TOOL_CALL_REPEAT_RE);
+  if (!match?.[1] || !match[2] || !match[3]) return null;
+  return {
+    tool: match[1].trim(),
+    count: match[2],
+    limit: match[3],
+  };
+}
+
 /** Return a stable i18n key for known model/stream failures, else null. */
 export function classifyChatStreamError(
   message: string | null | undefined,
 ): StreamErrorKey | null {
   if (!message) return null;
+  if (toolCallRepeatVars(message)) return "stream_errors.tool_call_repeat";
   const raw = normalizeMessage(message);
   const msg = unwrapModelRetryMessage(message);
   if (!msg && !raw) return null;
@@ -235,6 +256,8 @@ function isModelRetryEnvelope(message: string | null | undefined): boolean {
 
 /** True only for ModelRetryMiddleware envelopes, not ordinary answers. */
 export function isChatStreamError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  if (message.includes(TOOL_CALL_REPEAT_MARK)) return true;
   return isModelRetryEnvelope(message);
 }
 
@@ -246,6 +269,10 @@ export function formatChatStreamError(
   if (!message) return "";
   const key = classifyChatStreamError(message);
   const detail = unwrapModelRetryMessage(message);
+  if (key === "stream_errors.tool_call_repeat") {
+    const fields = toolCallRepeatVars(message) ?? {};
+    return t(key, { ...fields, defaultValue: message });
+  }
   if (key && key !== "stream_errors.model_call_failed") {
     return t(key, { defaultValue: message });
   }

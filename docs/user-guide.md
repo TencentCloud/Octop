@@ -361,7 +361,7 @@ Octop 支持两个方向的 ACP 集成：
    octop acp --agent main
    ```
 
-2. **出站** —— 在对话中把编码任务委派给外部 Agent（OpenCode、CodeBuddy、Claude Code、Codex）：
+2. **出站** —— 在对话中把编码任务委派给外部 Agent（OpenCode、CodeBuddy、Claude Code、Codex、Qwen Code）：
    - 控制台 → **ACP**：配置 Runner（按用户全局）。
    - 为 Agent 启用 `acp_runner`，然后在对话中委派。
 

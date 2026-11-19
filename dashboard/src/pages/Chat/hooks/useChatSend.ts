@@ -29,6 +29,7 @@ interface UseChatSendParams {
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
   conversationMode?: "ask" | "plan" | "craft";
+  sessionMode?: string;
   hitlPolicy?: HitlSessionPolicy;
   defaultModel?: string | null;
   sendMessage: (
@@ -46,6 +47,7 @@ interface UseChatSendParams {
     reasoningEffort?: string | null,
     conversationMode?: "ask" | "plan" | "craft" | null,
     hitlPolicy?: HitlSessionPolicy | null,
+    sessionMode?: string | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   /** Called when auto-recording starts successfully from a pending message. */
@@ -79,6 +81,7 @@ export function useChatSend({
   reasoningMode,
   reasoningEffort,
   conversationMode = "craft",
+  sessionMode,
   hitlPolicy,
   defaultModel,
   sendMessage,
@@ -155,6 +158,7 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          sessionMode,
         );
       };
 
@@ -210,6 +214,7 @@ export function useChatSend({
           mode,
           policy,
           userMsg.id,
+          sessionMode,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -228,6 +233,7 @@ export function useChatSend({
       reasoningMode,
       reasoningEffort,
       conversationMode,
+      sessionMode,
       hitlPolicy,
       defaultModel,
       t,

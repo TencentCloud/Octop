@@ -45,6 +45,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/internal/mcp/",
     # Short-lived download links: the unguessable token is the credential.
     "/api/downloads/link/",
+    # Read-only conversation links: the unguessable token is the credential.
+    "/api/shares/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",

@@ -12,11 +12,11 @@ The longer multi-replica guide is [docs/cluster_CN.md](../../../docs/cluster_CN.
 
 ## Where to install from
 
-Install the chart from GHCR. A clone is not required. The chart sits next to the image. There is no separate HTTP Helm repository. A `v*` tag publishes the package. `appVersion` is the image tag, for example `1.0.3b5`. Helm chart `version` must be SemVer, so `1.0.3b5` is published as `1.0.3-b5` and `1.0.3` stays `1.0.3`. The published `appVersion` is already the image tag, so the install does not set `image.tag`.
+Install the chart from GHCR. A clone is not required. The chart sits next to the image. There is no separate HTTP Helm repository. A `v*` tag publishes the package. `appVersion` is the image tag, for example `1.0.3b7`. Helm chart `version` must be SemVer, so `1.0.3b7` is published as `1.0.3-b7` and `1.0.3` stays `1.0.3`. The published `appVersion` is already the image tag, so the install does not set `image.tag`.
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -25,11 +25,11 @@ Edit chart source in `deploy/helm/octop` and install that directory from the rep
 
 ## What you set
 
-The chart does not store passwords and does not create Secrets from values. Published defaults are `helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b5`. In this repository, `values.example.yaml` is the same knobs with comments, and `secrets.example.yaml` is the password sample. Copy them, change the hostname and image, replace the placeholders, and do not commit filled-in passwords.
+The chart does not store passwords and does not create Secrets from values. Published defaults are `helm show values oci://ghcr.io/tencentcloud/octop/charts/octop --version 1.0.3-b7`. In this repository, `values.example.yaml` is the same knobs with comments, and `secrets.example.yaml` is the password sample. Copy them, change the hostname and image, replace the placeholders, and do not commit filled-in passwords.
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   -f my-values.yaml
 ```
@@ -95,7 +95,7 @@ kubectl -n octop create secret tls octop-tls \
   --cert=fullchain.pem --key=privkey.pem
 
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   --set ingress.host=octop.example.com
 ```
@@ -104,7 +104,7 @@ Without a public hostname, or when the ingress controller is not Ingress NGINX, 
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   --set ingress.enabled=false
 
@@ -138,7 +138,7 @@ Sign in through the Ingress host with the `octop-admin` username and password. T
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   --reuse-values \
   --set ingress.host=octop.example.com
@@ -150,7 +150,7 @@ Keep the TLS secret's names in step with that host. If TLS is turned off, also s
 
 ```bash
 helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   --reuse-values \
   --set replicaCount=3
@@ -164,7 +164,7 @@ Leave the extension to the database operator (`CREATE EXTENSION vector`). The ch
 
 ```bash
 helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
-  --version 1.0.3-b5 \
+  --version 1.0.3-b7 \
   -n octop \
   --set postgresql.enabled=false \
   --set database.host=pg.example.com \

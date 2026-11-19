@@ -46,6 +46,53 @@ export interface AcpHostRequest {
   env: Record<string, string>;
 }
 
+export interface AcpSessionMode {
+  id: string;
+  name_zh: string;
+  name_en: string;
+  hint_zh: string;
+  hint_en: string;
+}
+
+export function acpSessionModeText(
+  mode: AcpSessionMode,
+  language: string,
+  field: "name" | "hint",
+): string {
+  const zh = language.toLowerCase().startsWith("zh");
+  return zh ? mode[`${field}_zh`] : mode[`${field}_en`];
+}
+
+/** Same ids the harness treats as unattended. */
+export function isUnattendedSessionMode(modeId: string): boolean {
+  const folded = modeId.toLowerCase();
+  return (
+    folded.includes("yolo") ||
+    folded.includes("bypass") ||
+    folded.includes("full-access") ||
+    folded.includes("fullaccess") ||
+    folded.includes("auto-accept") ||
+    folded.includes("autoaccept") ||
+    folded.includes("unrestricted") ||
+    folded.includes("danger")
+  );
+}
+
+export function catalogOffersUnattendedMode(modes: { id: string }[]): boolean {
+  return modes.some((mode) => isUnattendedSessionMode(mode.id));
+}
+
+/** Approval stored with a managed expert. A published unattended mode wins. */
+export function permissionForSessionMode(
+  modes: { id: string }[],
+  sessionMode: string,
+  yoloSwitch: boolean,
+): "ask" | "yolo" {
+  if (isUnattendedSessionMode(sessionMode)) return "yolo";
+  if (catalogOffersUnattendedMode(modes)) return "ask";
+  return yoloSwitch ? "yolo" : "ask";
+}
+
 export const acpApi = {
   /** Global runner definitions (shared by all agents for the current user). */
   getGlobalRunners: (agentId?: string | null) =>
@@ -62,6 +109,11 @@ export const acpApi = {
       body: JSON.stringify({ runners }),
       headers: optionalAgentHeaders(agentId),
     }),
+
+  sessionModes: (runner: string) =>
+    request<{ runner: string; modes: AcpSessionMode[] }>(
+      `/acp/session-modes?runner=${encodeURIComponent(runner)}`,
+    ),
 
   getRunner: (runnerName: string) =>
     request<ACPRunnerConfig>(`/acp/${encodeURIComponent(runnerName)}`),
