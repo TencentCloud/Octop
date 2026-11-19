@@ -296,6 +296,30 @@ export default function AgentBackendFields({
       <Form.Item
         name="backend_choice"
         label={t("experts.backendLabel")}
+        extra={
+          !backendsLoading &&
+          allowedSet &&
+          filteredBuiltins.length === 0 &&
+          filteredBackends.length === 0 ? (
+            t("experts.backendAllowedEmpty", {
+              types: (allowedBackendTypes ?? [])
+                .map((type) =>
+                  backendPolicyTypeLabel(canonicalBackendPolicyType(type), t),
+                )
+                .join(i18n.language.startsWith("zh") ? "、" : ", "),
+            })
+          ) : desc ? (
+            <span className={styles.backendDesc}>
+              {desc.text}
+              {desc.warning ? (
+                <>
+                  <br />
+                  <span className={styles.backendWarning}>{desc.warning}</span>
+                </>
+              ) : null}
+            </span>
+          ) : undefined
+        }
         initialValue={
           rootDirMode === "create" ? createDefaultChoice : DEFAULT_BACKEND
         }
@@ -311,51 +335,18 @@ export default function AgentBackendFields({
         />
       </Form.Item>
 
-      {!backendsLoading &&
-      allowedSet &&
-      filteredBuiltins.length === 0 &&
-      filteredBackends.length === 0 ? (
-        <p
-          style={{
-            fontSize: 12,
-            color: "var(--fn-text-tertiary)",
-            margin: "-8px 0 12px",
-          }}
-        >
-          {t("experts.backendAllowedEmpty", {
-            types: (allowedBackendTypes ?? [])
-              .map((type) =>
-                backendPolicyTypeLabel(canonicalBackendPolicyType(type), t),
-              )
-              .join(i18n.language.startsWith("zh") ? "、" : ", "),
-          })}
-        </p>
-      ) : null}
-
-      {desc ? (
-        <div style={{ margin: "-8px 0 12px" }}>
-          <p
-            style={{
-              fontSize: 12,
-              color: "var(--fn-text-tertiary)",
-              margin: 0,
-            }}
-          >
-            {desc.text}
-          </p>
-          {desc.warning ? (
-            <p style={{ fontSize: 12, color: "#d48806", margin: "4px 0 0" }}>
-              {desc.warning}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
       {(backendChoice === "local_shell" || backendChoice === "filesystem") && (
         <>
           <Form.Item
             name="root_dir"
             label={t("experts.backendRootDir")}
+            extra={
+              rootDirMode === "edit"
+                ? t("experts.backendRootDirImmutableHint")
+                : fsDefaults?.in_container
+                ? t("experts.backendRootDirDescContainer")
+                : t("experts.backendRootDirDesc")
+            }
             initialValue={
               rootDirMode === "create"
                 ? fsDefaults?.default_root_dir
@@ -364,67 +355,18 @@ export default function AgentBackendFields({
           >
             <RootDirSelect treeRoots={treeRoots} disabled={pathLocked} />
           </Form.Item>
-          <div style={{ margin: "-8px 0 12px" }}>
-            {rootDirMode === "edit" ? (
-              <p
-                style={{
-                  fontSize: 12,
-                  lineHeight: 1.5,
-                  color: "var(--fn-text-tertiary)",
-                  margin: 0,
-                }}
-              >
-                {t("experts.backendRootDirImmutableHint")}
-              </p>
-            ) : (
-              <>
-                <p
-                  style={{
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    color: "var(--fn-text-tertiary)",
-                    margin: 0,
-                  }}
-                >
-                  {fsDefaults?.in_container
-                    ? t("experts.backendRootDirDescContainer")
-                    : t("experts.backendRootDirDesc")}
-                </p>
-                <p
-                  style={{
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    color: "var(--fn-text-tertiary)",
-                    margin: "4px 0 0",
-                  }}
-                >
-                  {fsDefaults?.jail_enforced
-                    ? t("experts.backendRootDirJailHint")
-                    : t("experts.backendRootDirPathLimitHint")}
-                </p>
-              </>
-            )}
-          </div>
           {isHostRootDir(watchedRootDir) ? (
-            <>
-              <Form.Item name="workspace_dir" label={t("experts.workspaceDir")}>
-                <RootDirSelect treeRoots={treeRoots} disabled={pathLocked} />
-              </Form.Item>
-              <div style={{ margin: "-8px 0 12px" }}>
-                <p
-                  style={{
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    color: "var(--fn-text-tertiary)",
-                    margin: 0,
-                  }}
-                >
-                  {pathLocked
-                    ? t("experts.workspaceDirImmutableHint")
-                    : t("experts.workspaceDirDesc")}
-                </p>
-              </div>
-            </>
+            <Form.Item
+              name="workspace_dir"
+              label={t("experts.workspaceDir")}
+              extra={
+                pathLocked
+                  ? t("experts.workspaceDirImmutableHint")
+                  : t("experts.workspaceDirDesc")
+              }
+            >
+              <RootDirSelect treeRoots={treeRoots} disabled={pathLocked} />
+            </Form.Item>
           ) : null}
         </>
       )}

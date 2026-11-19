@@ -1,16 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Alert,
-  Button,
-  Collapse,
-  Drawer,
-  Form,
-  Input,
-  Select,
-  Switch,
-} from "antd";
+import { Alert, Button, Drawer, Form, Input, Select, Switch } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -36,8 +27,10 @@ import {
 } from "../../../components/AvatarPicker";
 import BetaBadge from "../../../components/BetaBadge";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
-import { ResourceVisibilityFormItem } from "../../../components/ResourceVisibilityFields";
-import { TextAssistBar } from "../../../components/TextAssistBar";
+import {
+  ResourceVisibilityFormItem,
+  useResourceVisibilityAvailable,
+} from "../../../components/ResourceVisibilityFields";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { expertPaletteColor } from "../../../utils/expertColor";
 import {
@@ -46,17 +39,21 @@ import {
 } from "../../../styles/themePalettes";
 import AgentTrajectoryField from "./AgentTrajectoryField";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
-import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import FileEditModal from "./FileEditModal";
 import { metaForFile } from "./iconForName";
 import ManagedRunnerPicker from "./ManagedRunnerPicker";
-import MoreConfigCollapse from "./MoreConfigCollapse";
 import RootDirSelect from "./RootDirSelect";
 import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
 import {
   normalizeQuickPrompts,
   serializeQuickPrompts,
 } from "./welcomeManifest";
+import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
+import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
+import ExpertDrawerCollapsible from "./expertDrawer/ExpertDrawerCollapsible";
+import ExpertFilePreviewList from "./expertDrawer/ExpertFilePreviewList";
+import { SECTION_IDS } from "./expertDrawer/sectionIds";
+import expertDrawerStyles from "./expertDrawer/expertDrawer.module.less";
 import styles from "../index.module.less";
 
 interface ManagedDrawerProps {
@@ -127,6 +124,12 @@ export default function ManagedDrawer({
   const [saving, setSaving] = useState(false);
   const [colorPalette, setColorPalette] = useState<string>(DEFAULT_PALETTE);
   const [visibility, setVisibility] = useState<ResourceVisibilityMode>("owner");
+
+  const sharingAvailable = useResourceVisibilityAvailable({
+    allowOwner: true,
+    visibility,
+  });
+
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -310,6 +313,13 @@ export default function ManagedDrawer({
     }
   };
 
+  const promptPreviewFiles = promptFiles.map((file) => ({
+    key: file.name,
+    label: metaForFile(file.name, t).label,
+    path: file.name,
+    content: file.content,
+  }));
+
   return (
     <Drawer
       title={
@@ -320,9 +330,9 @@ export default function ManagedDrawer({
       }
       open={open}
       onClose={onClose}
-      width={600}
+      width={475}
       destroyOnHidden
-      className={styles.expertDrawer}
+      className={`${styles.expertDrawer} ${expertDrawerStyles.expertDrawer}`}
       rootClassName={styles.expertDrawerRoot}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -341,178 +351,79 @@ export default function ManagedDrawer({
           message={t("experts.managed.noRunners")}
         />
       ) : null}
-      <Form form={form} layout="vertical" size="middle" requiredMark={false}>
-        <Form.Item
-          label={t("experts.avatar")}
-          className={avatarPickerStyles.formItem}
-        >
-          <ExpertAvatarPicker
-            iconUrl={
-              avatarPreview ?? expertPresetSrc(avatarPresetId ?? "default")
-            }
-            color={storedColor(colorPalette)}
-            disabled={saving}
-            onPick={(file) => {
-              setAvatarFile(file);
-              setAvatarPresetId(null);
-              setAvatarPresetTouched(false);
-              setAvatarPreview((prev) => {
-                if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                return URL.createObjectURL(file);
-              });
-            }}
-            onSelectPreset={(presetId) => {
-              setAvatarFile(null);
-              setAvatarPresetId(presetId);
-              setAvatarPresetTouched(true);
-              setAvatarPreview((prev) => {
-                if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                return null;
-              });
-            }}
-            onRemove={
-              avatarFile || avatarPreview || avatarPresetTouched
-                ? () => {
-                    setAvatarFile(null);
-                    setAvatarPresetId(null);
-                    setAvatarPresetTouched(false);
-                    setAvatarPreview((prev) => {
-                      if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
-                      return null;
-                    });
-                  }
-                : undefined
-            }
-          />
-        </Form.Item>
-        <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
-          <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
-        </Form.Item>
-        <Form.Item
-          name="name"
-          label={t("experts.agentName")}
-          rules={[{ required: true, message: t("experts.pleaseEnterName") }]}
-        >
-          <Input />
-        </Form.Item>
-        <Form.Item
-          name="description"
-          label={t("experts.agentDescription")}
-          className={styles.textAssistField}
-        >
-          <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
-        </Form.Item>
-        <TextAssistBar
-          kind="expert.description"
-          getName={() => String(form.getFieldValue("name") ?? "")}
-          getText={() => String(form.getFieldValue("description") ?? "")}
-          onApply={(text) => form.setFieldsValue({ description: text })}
-        />
-        <Form.Item
-          name="welcome_message"
-          label={t("experts.welcomeMessageTitle")}
-          tooltip={t("experts.createWelcomeHint")}
-          className={styles.textAssistField}
-        >
-          <Input.TextArea
-            rows={3}
-            placeholder={t("experts.welcomeMessagePlaceholder")}
-          />
-        </Form.Item>
-        <TextAssistBar
-          kind="expert.welcome_message"
-          getName={() => String(form.getFieldValue("name") ?? "")}
-          getText={() => String(form.getFieldValue("welcome_message") ?? "")}
-          onApply={(text) => form.setFieldsValue({ welcome_message: text })}
-        />
-        <Form.Item
-          name="runner"
-          colon={false}
-          className={styles.runnerField}
-          label={
-            <span className={styles.runnerFieldLabel}>
-              <span>{t("experts.managed.runner")}</span>
-              <Link to="/acp" className={styles.runnerManageLink}>
-                {t("experts.managed.manageAcp")}
-              </Link>
-            </span>
-          }
-          rules={[
-            { required: true, message: t("experts.managed.runnerRequired") },
-          ]}
-        >
-          <ManagedRunnerPicker runners={runners} />
-        </Form.Item>
-        {sessionModes.length > 0 ? (
+      <Form
+        form={form}
+        layout="vertical"
+        size="middle"
+        requiredMark={false}
+        className={expertDrawerStyles.formArea}
+      >
+        {/* ── Identity ─────────────────────────────────────── */}
+        <ExpertDrawerSection id={SECTION_IDS.identity}>
           <Form.Item
-            name="session_mode"
-            label={t("chat.conversationMode.picker")}
-            extra={t("experts.managed.sessionModeHint")}
+            label={t("experts.avatar")}
+            className={avatarPickerStyles.formItem}
           >
-            <Select
-              options={sessionModes.map((mode) => ({
-                value: mode.id,
-                label: acpSessionModeText(mode, i18n.language, "name"),
-                title: acpSessionModeText(mode, i18n.language, "hint"),
-              }))}
+            <ExpertAvatarPicker
+              iconUrl={
+                avatarPreview ?? expertPresetSrc(avatarPresetId ?? "default")
+              }
+              color={storedColor(colorPalette)}
+              disabled={saving}
+              onPick={(file) => {
+                setAvatarFile(file);
+                setAvatarPresetId(null);
+                setAvatarPresetTouched(false);
+                setAvatarPreview((prev) => {
+                  if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+                  return URL.createObjectURL(file);
+                });
+              }}
+              onSelectPreset={(presetId) => {
+                setAvatarFile(null);
+                setAvatarPresetId(presetId);
+                setAvatarPresetTouched(true);
+                setAvatarPreview((prev) => {
+                  if (prev?.startsWith("blob:")) URL.revokeObjectURL(prev);
+                  return null;
+                });
+              }}
+              onRemove={
+                avatarFile || avatarPreview || avatarPresetTouched
+                  ? () => {
+                      setAvatarFile(null);
+                      setAvatarPresetId(null);
+                      setAvatarPresetTouched(false);
+                      setAvatarPreview((prev) => {
+                        if (prev?.startsWith("blob:"))
+                          URL.revokeObjectURL(prev);
+                        return null;
+                      });
+                    }
+                  : undefined
+              }
             />
           </Form.Item>
-        ) : null}
-        {catalogOffersUnattendedMode(sessionModes) ? null : (
           <Form.Item
-            name="permission_mode"
-            label={t("experts.managed.yolo")}
-            valuePropName="checked"
-            extra={t("experts.managed.yoloHint")}
+            label={t("experts.color")}
+            tooltip={t("experts.colorHint")}
           >
-            <Switch />
+            <ExpertColorPicker
+              value={colorPalette}
+              onChange={setColorPalette}
+            />
           </Form.Item>
-        )}
-        <Form.Item
-          name="workspace_dir"
-          label={t("experts.workspaceDir")}
-          rules={[
-            { required: true, message: t("experts.managed.workspaceRequired") },
-          ]}
-        >
-          <WorkspaceDirField
-            onUserEdit={() => {
-              workspaceTouched.current = true;
-            }}
-          />
-        </Form.Item>
-        <ResourceVisibilityFormItem
-          allowOwner
-          visibility={visibility}
-          groupIds={groupIds}
-          extra={t("experts.visibilityHint")}
-          onChange={(next) => {
-            setVisibility(next.visibility);
-            setGroupIds(next.visibility === "groups" ? next.groupIds : []);
-          }}
-        />
-        <Form.Item
-          name="skill_package_ids"
-          label={t("experts.skillPackagesLabel")}
-          extra={t("experts.managedSkillPackagesHint")}
-        >
-          <Select
-            mode="multiple"
-            allowClear
-            loading={skillPackagesLoading}
-            options={skillPackages.map((pack) => ({
-              value: pack.id,
-              label: pack.name,
-            }))}
-            placeholder={t("experts.skillPackagesPlaceholder")}
-          />
-        </Form.Item>
-        <ExpertComposerDefaultsFields />
-        <MoreConfigCollapse>
+          <Form.Item
+            name="name"
+            label={t("experts.agentName")}
+            rules={[{ required: true, message: t("experts.pleaseEnterName") }]}
+          >
+            <Input />
+          </Form.Item>
           <Form.Item
             name="agent_id"
             label={t("experts.customIdLabel")}
-            extra={t("experts.customIdHint")}
+            tooltip={t("experts.customIdHint")}
             rules={[
               {
                 validator: (_: unknown, value: string | undefined) => {
@@ -541,85 +452,157 @@ export default function ManagedDrawer({
           >
             <Input placeholder={t("experts.customIdPlaceholder")} allowClear />
           </Form.Item>
-          <AgentTrajectoryField />
-          <Collapse
-            ghost
-            className={styles.drawerCollapse}
-            items={[
+          <ExpertTextAssistField
+            name="description"
+            label={t("experts.agentDescription")}
+            kind="expert.description"
+          >
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
+          </ExpertTextAssistField>
+          <Form.Item
+            name="workspace_dir"
+            label={t("experts.workspaceDir")}
+            rules={[
               {
-                key: "pageConfig",
-                label: t("experts.pageConfigTitle"),
-                children:
-                  templateState !== "ready" ? (
-                    <div className={styles.welcomeConfigLoading}>
-                      {templateState === "error"
-                        ? t("experts.managed.templateFailed")
-                        : t("common.loading")}
-                    </div>
-                  ) : (
-                    <WelcomeConfig
-                      ref={welcomeRef}
-                      initialPrompts={normalizeQuickPrompts(quickPrompts)}
-                      disabled={saving}
-                    />
-                  ),
-              },
-              {
-                key: "configFiles",
-                label: t("experts.mdFilesTitle"),
-                children: (
-                  <>
-                    <p className={styles.managedFileHint}>
-                      {t("experts.mdFilesEditHint")}
-                    </p>
-                    {templateState !== "ready" ? (
-                      <div className={styles.welcomeConfigLoading}>
-                        {templateState === "error"
-                          ? t("experts.managed.templateFailed")
-                          : t("common.loading")}
-                      </div>
-                    ) : (
-                      <Collapse
-                        size="small"
-                        items={promptFiles.map((file) => {
-                          const meta = metaForFile(file.name, t);
-                          return {
-                            key: file.name,
-                            label: (
-                              <span className={styles.managedFileLabel}>
-                                <span>{meta.label}</span>
-                                <span className={styles.managedFileName}>
-                                  {file.name}
-                                </span>
-                              </span>
-                            ),
-                            extra: (
-                              <Button
-                                type="link"
-                                size="small"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setEditPath(file.name);
-                                }}
-                              >
-                                {t("experts.editFile")}
-                              </Button>
-                            ),
-                            children: (
-                              <pre className={styles.managedFilePreview}>
-                                {file.content}
-                              </pre>
-                            ),
-                          };
-                        })}
-                      />
-                    )}
-                  </>
-                ),
+                required: true,
+                message: t("experts.managed.workspaceRequired"),
               },
             ]}
-          />
-        </MoreConfigCollapse>
+          >
+            <WorkspaceDirField
+              onUserEdit={() => {
+                workspaceTouched.current = true;
+              }}
+            />
+          </Form.Item>
+        </ExpertDrawerSection>
+
+        {/* ── Skills & resources (the runner powers a managed expert) ── */}
+        <ExpertDrawerSection id={SECTION_IDS.resources}>
+          <Form.Item
+            name="runner"
+            colon={false}
+            className={styles.runnerField}
+            label={
+              <span className={styles.runnerFieldLabel}>
+                <span>{t("experts.managed.runner")}</span>
+                <Link to="/acp" className={styles.runnerManageLink}>
+                  {t("experts.managed.manageAcp")}
+                </Link>
+              </span>
+            }
+            rules={[
+              { required: true, message: t("experts.managed.runnerRequired") },
+            ]}
+          >
+            <ManagedRunnerPicker runners={runners} />
+          </Form.Item>
+          {sessionModes.length > 0 ? (
+            <Form.Item
+              name="session_mode"
+              label={t("chat.conversationMode.picker")}
+              tooltip={t("experts.managed.sessionModeHint")}
+            >
+              <Select
+                options={sessionModes.map((mode) => ({
+                  value: mode.id,
+                  label: acpSessionModeText(mode, i18n.language, "name"),
+                  title: acpSessionModeText(mode, i18n.language, "hint"),
+                }))}
+              />
+            </Form.Item>
+          ) : null}
+          {catalogOffersUnattendedMode(sessionModes) ? null : (
+            <Form.Item
+              name="permission_mode"
+              label={t("experts.managed.yolo")}
+              valuePropName="checked"
+              tooltip={t("experts.managed.yoloHint")}
+            >
+              <Switch size="small" />
+            </Form.Item>
+          )}
+          <Form.Item
+            name="skill_package_ids"
+            label={t("experts.skillPackagesLabel")}
+            tooltip={t("experts.managedSkillPackagesHint")}
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              loading={skillPackagesLoading}
+              options={skillPackages.map((pack) => ({
+                value: pack.id,
+                label: pack.name,
+              }))}
+              placeholder={t("experts.skillPackagesPlaceholder")}
+            />
+          </Form.Item>
+        </ExpertDrawerSection>
+
+        <ExpertDrawerSection id={SECTION_IDS.advanced}>
+          <ExpertDrawerCollapsible title={t("nav.advancedSettings")} prominent>
+            <ExpertDrawerCollapsible title={t("experts.pageConfigTitle")}>
+              <ExpertTextAssistField
+                name="welcome_message"
+                label={t("experts.welcomeMessageTitle")}
+                tooltip={t("experts.createWelcomeHint")}
+                kind="expert.welcome_message"
+              >
+                <Input.TextArea
+                  rows={3}
+                  placeholder={t("experts.welcomeMessagePlaceholder")}
+                />
+              </ExpertTextAssistField>
+              {templateState !== "ready" ? (
+                <div className={styles.welcomeConfigLoading}>
+                  {templateState === "error"
+                    ? t("experts.managed.templateFailed")
+                    : t("common.loading")}
+                </div>
+              ) : (
+                <WelcomeConfig
+                  ref={welcomeRef}
+                  initialPrompts={normalizeQuickPrompts(quickPrompts)}
+                  disabled={saving}
+                />
+              )}
+            </ExpertDrawerCollapsible>
+            <Form.Item label={t("experts.mdFilesTitle")}>
+              <p className={expertDrawerStyles.hint}>
+                {t("experts.mdFilesEditHint")}
+              </p>
+              {templateState !== "ready" ? (
+                <div className={styles.welcomeConfigLoading}>
+                  {templateState === "error"
+                    ? t("experts.managed.templateFailed")
+                    : t("common.loading")}
+                </div>
+              ) : (
+                <ExpertFilePreviewList
+                  files={promptPreviewFiles}
+                  onEdit={(key) => setEditPath(key)}
+                  editLabel={t("experts.editFile")}
+                />
+              )}
+            </Form.Item>
+            {sharingAvailable ? (
+              <ResourceVisibilityFormItem
+                allowOwner
+                visibility={visibility}
+                groupIds={groupIds}
+                tooltip={t("experts.visibilityHint")}
+                onChange={(next) => {
+                  setVisibility(next.visibility);
+                  setGroupIds(
+                    next.visibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            ) : null}
+            <AgentTrajectoryField />
+          </ExpertDrawerCollapsible>
+        </ExpertDrawerSection>
       </Form>
       <FileEditModal
         open={editPath !== null}
