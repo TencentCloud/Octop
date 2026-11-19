@@ -2294,7 +2294,7 @@
     "notARepo": "当前工作区不是 Git 仓库",
     "gitUnavailable": "服务器未安装 git",
     "filesChanged": "{{count}} 个文件变更",
-    "review": "Review",
+    "review": "审查",
     "open": "打开",
     "stage": "暂存",
     "unstage": "取消暂存",
