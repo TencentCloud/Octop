@@ -1437,6 +1437,21 @@
   flex-shrink: 0;
 }
 
+.turnRewindTagIgnored {
+  color: var(--fn-text-tertiary);
+  flex-shrink: 0;
+}
+
+.turnChangeReverted {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.06));
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
 .turnChangeChevronOpen {
   transform: rotate(90deg);
 }
@@ -1877,4 +1892,10 @@
     outline-offset: 2px;
     opacity: 1;
   }
+}
+
+.turnChangeEmpty {
+  padding: 8px 10px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
 }

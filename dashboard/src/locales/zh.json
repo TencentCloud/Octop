@@ -2325,13 +2325,18 @@
     "statusUntracked": "未跟踪",
     "statusConflicted": "冲突",
     "pickFile": "选择文件以查看差异",
-    "undo": "Undo",
+    "undo": "撤销",
     "rewindTitle": "回滚本轮文件更改",
     "rewindApply": "回滚",
     "rewindHint": "仅回滚自本轮后未被外部修改的文件；新建文件将被删除。",
     "rewindSafe": "可回滚",
     "rewindUnsafe": "已被外部修改",
-    "rewindApplied": "已回滚 {{count}} 个文件"
+    "rewindApplied": "已回滚 {{count}} 个文件",
+    "reverted": "已撤销",
+    "rewindIgnored": "已忽略",
+    "rewindCannotApply": "有文件在本轮之后被修改，无法安全回滚；本次不会写入任何文件。",
+    "rewindBlocked": "未回滚任何文件：{{count}} 个文件在本轮之后被修改。",
+    "diffUnavailable": "暂时无法预览这份 Diff。"
   },
   "backup": {
     "storedTitle": "备份文件",

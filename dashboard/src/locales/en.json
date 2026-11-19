@@ -2331,7 +2331,12 @@
     "rewindHint": "Only files not externally modified since this turn are rewound; created files are deleted.",
     "rewindSafe": "rewindable",
     "rewindUnsafe": "externally modified",
-    "rewindApplied": "Rewound {{count}} files"
+    "rewindApplied": "Rewound {{count}} files",
+    "reverted": "Undone",
+    "rewindIgnored": "Ignored",
+    "rewindCannotApply": "Some files changed since this turn; nothing will be written.",
+    "rewindBlocked": "Nothing was rewound: {{count}} file(s) changed since this turn.",
+    "diffUnavailable": "This diff preview is currently unavailable."
   },
   "backup": {
     "storedTitle": "Backup files",
