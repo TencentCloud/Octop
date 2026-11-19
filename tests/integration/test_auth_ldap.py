@@ -199,6 +199,53 @@ async def test_local_password_login_still_wins_over_the_directory(
     assert response.json()["user"]["role"] == "admin"
 
 
+async def test_precreated_directory_account_signs_in_without_auto_provision(
+    env, directory: FakeLdapDirectory
+) -> None:
+    """An admin can reserve a directory login before that person signs in.
+
+    The username only has to match the directory login name (case-insensitively).
+    The account keeps the role the admin chose; the directory admin group does
+    not re-template it. Anyone who was not reserved is still refused.
+    """
+    client, _srv, auth = env
+    del directory
+
+    missing = await client.post(
+        "/api/users",
+        headers=auth,
+        json={"username": "carol", "directory": True, "role": "user"},
+    )
+    assert missing.status_code == 400
+    assert missing.json()["error"]["code"] == "LDAP_NOT_CONFIGURED"
+
+    await _configure(client, auth, auto_provision=False)
+    created = await client.post(
+        "/api/users",
+        headers=auth,
+        json={"username": "Alice", "directory": True, "role": "user"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["has_password"] is False
+    assert created.json()["directory"] is True
+    assert created.json()["sso_linked"] is False
+
+    denied = await _login(client, "carol", "carolpw")
+    assert denied.status_code == 403
+    assert denied.json()["error"]["code"] == "LDAP_USER_NOT_PROVISIONED"
+
+    logged = await _login(client, "alice", "alicepw")
+    assert logged.status_code == 200, logged.text
+    assert logged.json()["user"]["username"] == "Alice"
+    assert logged.json()["user"]["role"] == "user"
+
+    listed = await client.get("/api/users", headers=auth)
+    alice = next(item for item in listed.json() if item["username"] == "Alice")
+    assert alice["sso_linked"] is True
+    assert alice["directory"] is True
+    assert alice["has_password"] is False
+
+
 async def test_unprovisioned_directory_user_is_refused_when_auto_provision_is_off(
     env, directory: FakeLdapDirectory
 ) -> None:

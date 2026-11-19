@@ -68,12 +68,78 @@ export function togglePinnedExpertId(
   return next;
 }
 
-type SortableExpert = { id: number; agent_id: string };
+export const EXPERT_SORT_STORAGE_KEY = "octop:expert-sort";
 
-/** Pinned experts first (pin order), then newest id. */
+/** Chat-nav order under the pin group. */
+export type ExpertSortMode = "recent" | "newest" | "oldest";
+
+const EXPERT_SORT_MODES: readonly ExpertSortMode[] = [
+  "recent",
+  "newest",
+  "oldest",
+];
+
+export function expertSortStorageKey(userId?: number | null): string {
+  return userId == null || userId <= 0
+    ? EXPERT_SORT_STORAGE_KEY
+    : `${EXPERT_SORT_STORAGE_KEY}:${userId}`;
+}
+
+export function readExpertSortMode(userId?: number | null): ExpertSortMode {
+  try {
+    const raw = localStorage.getItem(expertSortStorageKey(userId));
+    if (raw != null && (EXPERT_SORT_MODES as readonly string[]).includes(raw)) {
+      return raw as ExpertSortMode;
+    }
+  } catch {
+    // private mode
+  }
+  return "recent";
+}
+
+export function writeExpertSortMode(
+  mode: ExpertSortMode,
+  userId?: number | null,
+): ExpertSortMode {
+  const next = (EXPERT_SORT_MODES as readonly string[]).includes(mode)
+    ? mode
+    : "recent";
+  try {
+    localStorage.setItem(expertSortStorageKey(userId), next);
+  } catch {
+    // quota / private mode
+  }
+  return next;
+}
+
+type SortableExpert = {
+  id: number;
+  agent_id: string;
+  /** Unix seconds of this viewer's latest turn. Missing or 0 means never chatted. */
+  last_active?: number | null;
+};
+
+function chatActivity(agent: SortableExpert): number {
+  const value = agent.last_active;
+  return typeof value === "number" && value > 0 ? value : 0;
+}
+
+function compareCreated<T extends SortableExpert>(
+  a: T,
+  b: T,
+  direction: "newest" | "oldest",
+): number {
+  return direction === "oldest" ? a.id - b.id : b.id - a.id;
+}
+
+/**
+ * Pinned experts first (pin order), then the chosen order.
+ * Recent chats float up; experts with no turns stay behind them, newest id first.
+ */
 export function sortExpertsByPin<T extends SortableExpert>(
   agents: readonly T[],
   pinnedIds: readonly string[],
+  mode: ExpertSortMode = "recent",
 ): T[] {
   const rank = new Map<string, number>();
   pinnedIds.forEach((id, index) => {
@@ -86,6 +152,13 @@ export function sortExpertsByPin<T extends SortableExpert>(
     const bPinned = bRank != null;
     if (aPinned !== bPinned) return aPinned ? -1 : 1;
     if (aPinned && bPinned && aRank !== bRank) return aRank - bRank;
-    return b.id - a.id;
+    if (mode === "newest" || mode === "oldest") {
+      return compareCreated(a, b, mode);
+    }
+    const aActive = chatActivity(a);
+    const bActive = chatActivity(b);
+    if (aActive > 0 !== bActive > 0) return aActive > 0 ? -1 : 1;
+    if (aActive !== bActive) return bActive - aActive;
+    return compareCreated(a, b, "newest");
   });
 }

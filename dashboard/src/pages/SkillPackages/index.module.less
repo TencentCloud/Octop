@@ -596,21 +596,10 @@
 .emptyDetail {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 20px;
+  flex: 1;
   height: 100%;
-  min-height: 180px;
-  padding: 80px 24px 24px;
-  text-align: center;
-}
-
-.emptyDetailText {
-  margin: 0;
-  max-width: 320px;
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--fn-text-tertiary);
+  min-height: 0;
+  overflow: auto;
 }
 
 .emptyLayout {
@@ -623,6 +612,14 @@
 
 .emptyGuide {
   flex: 1;
+}
+
+.skillsEmpty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding-top: 8px;
 }
 
 .layoutMobile {

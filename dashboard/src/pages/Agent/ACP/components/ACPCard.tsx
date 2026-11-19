@@ -1,8 +1,14 @@
 import { Switch, Tooltip } from "antd";
 import { CheckCircle, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { ACPRunnerConfig } from "../../../../api/types/acp";
-import { runnerIcon, runnerIntroKey, runnerLabelKey } from "../constants";
+import {
+  isBuiltinRunner,
+  runnerIcon,
+  runnerIntroKey,
+  runnerLabelKey,
+} from "../constants";
 import styles from "../../Channels/index.module.less";
 import acpStyles from "../index.module.less";
 
@@ -35,11 +41,11 @@ export function ACPCard({
   onToggleEnabled,
 }: ACPCardProps) {
   const { t } = useTranslation();
-  const labelKey = runnerLabelKey(runnerKey);
-  const label = labelKey ? t(labelKey) : runnerKey;
-  const introKey = runnerIntroKey(runnerKey);
-  const intro = introKey
-    ? t(introKey)
+  const label = isBuiltinRunner(runnerKey)
+    ? t(runnerLabelKey(runnerKey))
+    : runnerKey;
+  const intro = isBuiltinRunner(runnerKey)
+    ? t(runnerIntroKey(runnerKey))
     : t("acp.intro_custom", {
         command: config.command || t("acp.notSet"),
       });
@@ -51,19 +57,17 @@ export function ACPCard({
     (interactionDisabled && !config.enabled) ||
     (!configured && !config.enabled);
 
-  const cardClass = [
+  const cardClass = cx(
     styles.channelCard,
     config.enabled ? styles.enabled : styles.normal,
-    isHover && !interactionDisabled ? styles.hover : "",
-    interactionDisabled ? acpStyles.runnerCardDisabled : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isHover && !interactionDisabled && styles.hover,
+    interactionDisabled && acpStyles.runnerCardDisabled,
+  );
 
   const renderStatusBadge = () => {
     if (interactionDisabled && !config.enabled) {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusInactive}`}>
+        <span className={cx(styles.statusBadge, styles.statusInactive)}>
           <Plug size={14} />
           {t("acp.runnerUnavailable")}
         </span>
@@ -71,14 +75,14 @@ export function ACPCard({
     }
     if (config.enabled) {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusConnected}`}>
+        <span className={cx(styles.statusBadge, styles.statusConnected)}>
           <CheckCircle size={14} />
           {configured ? t("common.enabled") : t("acp.runnerNeedsConfig")}
         </span>
       );
     }
     return (
-      <span className={`${styles.statusBadge} ${styles.statusInactive}`}>
+      <span className={cx(styles.statusBadge, styles.statusInactive)}>
         <Plug size={14} />
         {t("common.disabled")}
       </span>
@@ -96,12 +100,10 @@ export function ACPCard({
         <img
           src={icon}
           alt={label}
-          className={[
+          className={cx(
             styles.channelIcon,
-            runnerKey === "pi" ? acpStyles.invertOnDark : "",
-          ]
-            .filter(Boolean)
-            .join(" ")}
+            runnerKey === "pi" && acpStyles.invertOnDark,
+          )}
         />
         <span className={styles.cardTitle}>{label}</span>
         <div onClick={(e) => e.stopPropagation()}>

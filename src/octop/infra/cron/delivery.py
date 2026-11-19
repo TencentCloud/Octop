@@ -9,13 +9,15 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
+from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
+from octop.infra.db.repos.threads import ThreadRow
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import TurnHistoryTracker, message_inputs
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.turn_failure import log_failed_tool_results
@@ -67,11 +69,16 @@ class CronDeliveryService:
 
     async def deliver(self, command: CronDeliveryCommand) -> None:
         """Run one delivery under the target channel session lock."""
+        session_key, pinned = self._target_session(command)
 
         async def _locked() -> None:
             if command.fresh_thread:
-                await self._gateway.thread_registry.reset_by_session_key(command.session_key)
-            session = self._gateway.require_session(command.agent_id, command.session_key)
+                await self._gateway.thread_registry.reset_by_session_key(session_key)
+            elif pinned:
+                await self._bind_pinned_thread(session_key, pinned)
+            else:
+                await self._bind_latest_thread(session_key)
+            session = self._gateway.require_session(command.agent_id, session_key)
             if session.user_id != command.user_id:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
@@ -83,7 +90,7 @@ class CronDeliveryService:
 
         await self._gateway.run_in_session(
             command.agent_id,
-            command.session_key,
+            session_key,
             _locked,
         )
 
@@ -196,46 +203,23 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
     ) -> dict[str, Any]:
-        from octop.infra.agents.teams import is_team_agent
-
-        if is_team_agent(self._agent_manager.get_row(command.agent_id)):
-            servers: list[str] = []
-        else:
-            servers = [name.strip() for name in command.mcp_servers if name.strip()]
-            extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
-            if servers:
-                servers = (
-                    self._agent_manager.merge_turn_mcp_servers(
-                        session.user_id,
-                        servers,
-                        apply_defaults=False,
-                        extra_defaults=extra_defaults,
-                    )
-                    or []
-                )
-            else:
-                servers = (
-                    self._agent_manager.merge_turn_mcp_servers(
-                        session.user_id,
-                        None,
-                        apply_defaults=True,
-                        extra_defaults=extra_defaults,
-                    )
-                    or []
-                )
-        if servers:
-            failed = await self._agent_manager.prepare_chat_mcp(
-                command.agent_id,
-                servers,
-                connector_user_id=session.user_id,
-            )
-            if failed:
-                raise RuntimeError(f"mcp load failed: {', '.join(failed)}")
+        picked = [name.strip() for name in command.mcp_servers if name.strip()]
+        resolved = await resolve_turn_mcp(
+            self._agent_manager,
+            agent_id=command.agent_id,
+            user_id=session.user_id,
+            explicit=picked or None,
+            apply_defaults=not picked,
+        )
+        if resolved is not None and resolved.failed:
+            raise RuntimeError(f"mcp load failed: {', '.join(resolved.failed)}")
+        servers = resolved.harness if resolved is not None else []
+        shown_servers = resolved.shown if resolved is not None else []
 
         row = self._agent_manager.get_row(command.agent_id)
         default_model = (row.default_model if row is not None else None) or None
         composer = build_composer_context(
-            mcp_servers=servers or None,
+            mcp_servers=shown_servers or None,
             skills=None,
             target_agent_ids=None,
             model_ref=command.model,
@@ -265,23 +249,71 @@ class CronDeliveryService:
     ) -> None:
         user_row = self._repos.user_repo.get(session.user_id)
         is_admin = str(getattr(user_row, "role", "") or "") == "admin"
-        knowledge_repo = self._repos.knowledge_repo
-        bases = (
-            knowledge_repo.list_all() if is_admin else knowledge_repo.list_visible(session.user_id)
-        )
         locale = resolve_user_locale(
             user_repo=self._repos.user_repo,
             user_id=session.user_id,
             channel_type=session.channel_type,
         )
-        stamp_turn_knowledge_config(
+        attach_turn_knowledge(
             request,
-            visible_bases=bases,
-            explicit_ids=None,
-            owner_user_id=session.user_id,
-            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
+            knowledge_repo=self._repos.knowledge_repo,
+            user_id=session.user_id,
             is_admin=is_admin,
+            explicit_ids=None,
+            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
             locale=locale,
+        )
+
+    def _target_session(self, command: CronDeliveryCommand) -> tuple[str, str | None]:
+        """Return the channel session and, for a history pick, its thread id."""
+        pinned = pinned_thread_id(command.session_key)
+        if not pinned:
+            return command.session_key, None
+        row = self._gateway.thread_registry.get_thread(pinned)
+        if (
+            not isinstance(row, ThreadRow)
+            or row.agent_id != command.agent_id
+            or row.user_id != command.user_id
+        ):
+            raise ValueError(f"thread {pinned!r} is not available for this job")
+        return row.session_key, pinned
+
+    async def _bind_pinned_thread(self, session_key: str, thread_id: str) -> None:
+        """Point the channel at the historical conversation chosen for this job."""
+        registry = self._gateway.thread_registry
+        if registry.get_bound_thread_id(session_key) == thread_id:
+            return
+        session = registry.get_session(session_key)
+        if session is None:
+            return
+        await registry.rebind(
+            session_key=session_key,
+            thread_id=thread_id,
+            agent_id=session.agent_id,
+            acting_user_id=session.user_id,
+        )
+
+    async def _bind_latest_thread(self, session_key: str) -> None:
+        """Point this channel at its latest conversation before the run.
+
+        The stored ``session_key`` names the channel. Several threads can share
+        it; delivery follows the one the user last spoke in, not whichever
+        thread happens to be open.
+        """
+        registry = self._gateway.thread_registry
+        latest = registry.latest_active_thread(session_key=session_key)
+        if not isinstance(latest, ThreadRow):
+            return
+        if registry.get_bound_thread_id(session_key) == latest.thread_id:
+            return
+        session = registry.get_session(session_key)
+        if session is None:
+            return
+        await registry.rebind(
+            session_key=session_key,
+            thread_id=latest.thread_id,
+            agent_id=session.agent_id,
+            acting_user_id=session.user_id,
         )
 
     def _remember_thread_title(self, session: SessionRow, command: CronDeliveryCommand) -> None:

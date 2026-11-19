@@ -14,13 +14,15 @@ export function confirmEditAtom({
   agentId,
   atom,
   onSuccess,
+  isActive = () => true,
 }: {
   agentId: string;
   atom: AtomItem;
   onSuccess?: (next: AtomItem) => void;
+  isActive?: () => boolean;
 }) {
   let assertion = atom.assertion;
-  Modal.confirm({
+  return Modal.confirm({
     title: i18n.t("memory.edit.title"),
     width: 520,
     content: (
@@ -40,6 +42,7 @@ export function confirmEditAtom({
     okText: i18n.t("memory.edit.ok"),
     cancelText: i18n.t("common.cancel"),
     onOk: async () => {
+      if (!isActive()) return;
       const text = assertion.trim();
       if (!text) {
         message.error(i18n.t("memory.edit.empty"));
@@ -49,9 +52,11 @@ export function confirmEditAtom({
         const r = await memoryDashboardApi.replaceAtom(agentId, atom.id, {
           assertion: text,
         });
+        if (!isActive()) return;
         message.success(i18n.t("memory.edit.success"));
         onSuccess?.(r.atom);
       } catch (e) {
+        if (!isActive()) return;
         message.error(
           i18n.t("memory.edit.failed", {
             message: (e as Error).message ?? e,

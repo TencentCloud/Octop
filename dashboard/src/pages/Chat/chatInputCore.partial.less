@@ -19,7 +19,10 @@
 }
 
 .askQuestionDock {
-  flex-shrink: 0;
+  /* The dock itself does not scroll. A docked ask card caps its own height
+     and scrolls only the options, so the action row stays visible. */
+  flex: 0 0 auto;
+  overflow: visible;
   /* Match .chatInput horizontal gutters so the card lines up with the composer. */
   padding: 0 var(--chat-column-pad-x, 24px) 8px;
   background: var(--fn-bg-elevated, #fff);
@@ -36,6 +39,10 @@
   max-width: var(--chat-column-max, 960px);
   margin: 0 auto;
   box-sizing: border-box;
+}
+
+.askQuestionDockInner {
+  overflow: visible;
 }
 
 .modelConfigDock {

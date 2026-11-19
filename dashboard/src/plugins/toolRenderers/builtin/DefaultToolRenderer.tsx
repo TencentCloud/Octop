@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Image, Button } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { builtinToolIcon } from "../../../utils/builtinToolIcons";
 import {
   collectToolMediaFromToolData,
@@ -147,9 +148,10 @@ export function DefaultToolRenderer({
     <div className={styles.inlineToolBlock}>
       <button
         type="button"
-        className={`${styles.inlineToolSummary}${
-          running ? ` ${styles.inlineToolSummaryRunning}` : ""
-        }`}
+        className={cx(
+          styles.inlineToolSummary,
+          running && styles.inlineToolSummaryRunning,
+        )}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         aria-busy={running || undefined}
@@ -176,9 +178,10 @@ export function DefaultToolRenderer({
         </span>
         <ChevronRight
           size={14}
-          className={`${styles.inlineToolChevron} ${
-            expanded ? styles.inlineToolChevronOpen : ""
-          }`}
+          className={cx(
+            styles.inlineToolChevron,
+            expanded && styles.inlineToolChevronOpen,
+          )}
         />
       </button>
 

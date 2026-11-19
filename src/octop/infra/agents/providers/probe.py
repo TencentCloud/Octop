@@ -12,7 +12,9 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
-from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
+from octop.infra.agents.providers.headers import assemble_provider_headers
+from octop.infra.agents.providers.magpie import is_magpie_provider, magpie_catalog_model
+from octop.infra.agents.providers.presets import load_provider_presets
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,14 @@ def build_probe_chat_model(
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
     base_url = row.base_url or "https://api.openai.com/v1"
-    headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
+    extra = parse_provider_extra(row)
+    headers = assemble_provider_headers(
+        row.name,
+        provider_headers(row),
+        base_url=base_url,
+        extra=extra,
+        probe=True,
+    )
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
@@ -77,7 +86,7 @@ def build_probe_chat_model(
         headers=headers,
         stream_usage=resolve_provider_stream_usage(
             provider_name=row.name,
-            extra=parse_provider_extra(row),
+            extra=extra,
         ),
     )
     return build_chat_model(provider, model)
@@ -178,10 +187,12 @@ async def _probe_embedding_endpoint(
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
-    extra = ensure_opencode_session_header(
+    extra = assemble_provider_headers(
         getattr(row, "name", None),
         provider_headers(row),
         base_url=getattr(row, "base_url", None),
+        extra=parse_provider_extra(row),
+        probe=True,
     )
     headers.update(extra)
     try:
@@ -303,13 +314,37 @@ async def fetch_openai_compatible_models(
     extra_headers: dict[str, str] | None = None,
     locale: str = "en",
     provider_name: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """List models via OpenAI-compatible ``GET {base}/models``."""
+    """Use Tencent plan catalogs; otherwise list models via ``GET {base}/models``."""
     url = _models_list_url(base_url)
+    # Token Plan and HY Token Plan share a URL, so also match the selected preset.
+    for preset in load_provider_presets():
+        if (
+            preset["id"]
+            in {
+                "tencent-coding-plan",
+                "tencent-token-plan",
+                "tencent-token-plan-enterprise-cn",
+                "tencent-hy-token-plan",
+            }
+            and provider_name in {preset["id"], preset["name"]}
+            and url == _models_list_url(preset.get("base_url"))
+        ):
+            return {"ok": True, "models": preset["models"]}
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
-    extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
-    if extra_headers:
-        headers.update(extra_headers)
+    # Model listing is not a chat turn. OpenCode still needs a throwaway
+    # session; Magpie listing must not invent one.
+    magpie = is_magpie_provider(provider_name=provider_name, base_url=base_url, extra=extra)
+    merged_headers = assemble_provider_headers(
+        provider_name,
+        extra_headers,
+        base_url=base_url,
+        extra=extra,
+        probe=not magpie,
+    )
+    if merged_headers:
+        headers.update(merged_headers)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
             response = await client.get(url, headers=headers)
@@ -346,18 +381,28 @@ async def fetch_openai_compatible_models(
             "error": "response is not OpenAI-compatible (expected {data: [{id, …}]})",
         }
 
-    models: list[dict[str, str]] = []
+    models: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
             continue
-        mid = item.get("id")
-        if not isinstance(mid, str) or not mid.strip():
+        if magpie:
+            mapped = magpie_catalog_model(item)
+            if mapped is None:
+                continue
+            mid = str(mapped["id"])
+            if mid in seen:
+                continue
+            seen.add(mid)
+            models.append(mapped)
             continue
-        mid = mid.strip()
+        raw_id = item.get("id")
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            continue
+        mid = raw_id.strip()
         if mid in seen:
             continue
         seen.add(mid)
         models.append({"id": mid, "name": mid})
-    models.sort(key=lambda m: m["id"])
+    models.sort(key=lambda m: str(m["id"]))
     return {"ok": True, "models": models}

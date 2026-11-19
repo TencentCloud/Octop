@@ -1,3 +1,5 @@
+import { parseApiError } from "./apiError";
+
 /**
  * Detect browser/network failures from ``fetch`` (offline, DNS, refused).
  * Does not treat HTTP 4xx/5xx ``Error`` messages from ``request()`` as offline.
@@ -30,4 +32,10 @@ export function isNetworkFetchError(error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/** Browser offline, or the API reporting that this host could not reach the catalog. */
+export function isCatalogNetworkError(error: unknown, code: string): boolean {
+  if (isNetworkFetchError(error)) return true;
+  return parseApiError(error)?.code === code;
 }

@@ -18,9 +18,19 @@ _PREFIX = "octop:"
 STREAM_STALL = f"{_PREFIX}stream_errors.stream_stall"
 RATE_LIMIT = f"{_PREFIX}stream_errors.rate_limit"
 AUTH = f"{_PREFIX}stream_errors.auth"
+MODEL_NOT_AUTHORIZED = f"{_PREFIX}stream_errors.model_not_authorized"
+
+# 403002「当前 API Key 无权访问模型 X」和 401「Key 无效」是两回事：
+# 前者换模型或加权限即可，后者要换 Key。混在一起会把用户引向错误的方向。
+_MODEL_SCOPE_RE = re.compile(r"not authorized to access model ([A-Za-z0-9._:-]+)", re.IGNORECASE)
 INSUFFICIENT_BALANCE = f"{_PREFIX}stream_errors.insufficient_balance"
 CONTEXT_LENGTH = f"{_PREFIX}stream_errors.context_length"
 RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
+TOOL_CALL_REPEAT = f"{_PREFIX}stream_errors.tool_call_repeat"
+_TOOL_CALL_REPEAT_RE = re.compile(
+    r"\[tool_call_repeat\]\s*tool:\s*(?P<tool>.+)\ncount:\s*(?P<count>\d+)\nlimit:\s*(?P<limit>\d+)",
+    re.IGNORECASE,
+)
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
@@ -38,9 +48,11 @@ __all__ = [
     "PROVIDER_UNAVAILABLE",
     "RATE_LIMIT",
     "RECURSION_LIMIT",
+    "TOOL_CALL_REPEAT",
     "STREAM_STALL",
     "TIMEOUT_NETWORK",
     "classify_stream_error_message",
+    "tool_call_repeat_vars",
     "exception_display_message",
     "format_stream_error",
     "model_retry_failure_prompt",
@@ -95,8 +107,22 @@ def unwrap_model_retry_message(message: str) -> str:
     return stripped or msg
 
 
+def tool_call_repeat_vars(message: str) -> dict[str, str] | None:
+    """Parse the consecutive-call marker emitted by the limit middleware."""
+    match = _TOOL_CALL_REPEAT_RE.search(message)
+    if match is None:
+        return None
+    return {
+        "tool": match.group("tool").strip(),
+        "count": match.group("count"),
+        "limit": match.group("limit"),
+    }
+
+
 def classify_stream_error_message(message: str) -> str | None:
     """Return a stable ``octop:stream_errors.*`` key for known model failures."""
+    if tool_call_repeat_vars(message) is not None:
+        return TOOL_CALL_REPEAT
     msg = unwrap_model_retry_message(message)
     if not msg:
         return None
@@ -193,8 +219,12 @@ def classify_stream_error_message(message: str) -> str | None:
         "request timed out" in lower
         or "timed out or interrupted" in lower
         or "connection error" in lower
+        or "connection refused" in lower
+        or "all connection attempts failed" in lower
         or "apitimeouterror" in compact
         or "apiconnectionerror" in compact
+        or "connecterror" in compact
+        or "connecttimeout" in compact
     ):
         return TIMEOUT_NETWORK
 
@@ -226,6 +256,14 @@ def exception_display_message(exc: BaseException | str) -> str:
     return f"{type(exc).__name__} <- {type(cause).__name__}"
 
 
+def _localized_classified(classified: str, source: str, locale: str | Locale) -> str:
+    key = classified.removeprefix(_PREFIX)
+    if classified == TOOL_CALL_REPEAT:
+        fields = tool_call_repeat_vars(source) or {}
+        return _format_template(key, locale, **fields)
+    return tr(key, locale)
+
+
 def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
     """Localized stream / model error for user-facing chat and IM output."""
     if not error:
@@ -236,7 +274,7 @@ def stream_error_message(error: str | None, locale: str | Locale = "en") -> str:
             return tr(key, locale)
     classified = classify_stream_error_message(error)
     if classified is not None:
-        return tr(classified.removeprefix(_PREFIX), locale)
+        return _localized_classified(classified, error, locale)
     return error
 
 
@@ -250,6 +288,15 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        # 先区分「Key 无权访问这个模型」与「Key 本身无效」
+        scope_text = f"{current} {getattr(current, 'body', '') or ''}"
+        scope = _MODEL_SCOPE_RE.search(scope_text)
+        if scope is not None:
+            return _format_template(
+                "stream_errors.model_not_authorized",
+                locale,
+                model=scope.group(1),
+            )
         if isinstance(current, (ModelAuthenticationError, ModelPermissionDeniedError)) or getattr(
             current, "status_code", None
         ) in (401, 403):
@@ -261,7 +308,7 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
     inner = unwrap_model_retry_message(message)
     classified = classify_stream_error_message(inner)
     if classified is not None and classified != MODEL_CALL_FAILED:
-        return tr(classified.removeprefix(_PREFIX), locale)
+        return _localized_classified(classified, inner, locale)
     if _looks_like_send_file_tool_error(message) or _looks_like_send_file_tool_error(inner):
         return message if _looks_like_send_file_tool_error(message) else inner
     if inner:

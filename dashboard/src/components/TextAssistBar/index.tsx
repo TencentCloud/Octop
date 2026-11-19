@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { Button } from "antd";
 import { Wand2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import {
   textAssistApi,
@@ -63,7 +64,7 @@ export function TextAssistBar({
   }, [disabled, getName, getText, i18n.language, kind, loading, onApply, t]);
 
   return (
-    <div className={[styles.bar, className].filter(Boolean).join(" ")}>
+    <div className={cx(styles.bar, className)}>
       <span className={styles.hint}>{t("textAssist.hint")}</span>
       <Button
         type="link"

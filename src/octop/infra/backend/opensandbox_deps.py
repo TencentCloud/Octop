@@ -17,8 +17,12 @@ def ensure_opensandbox_deps(*, allow_install: bool = True) -> str:
     """Ensure the OpenSandbox SDK can be imported.
 
     Admin enable / probe / agent start pass ``allow_install=True``. Returns
-    ``\"ready\"`` or ``\"installed\"``.
+    ``\"ready\"`` or ``\"installed\"``. Also installs filesystem helpers when the
+    pinned harness build does not provide them.
     """
+    from octop.infra.backend.opensandbox_mkdir import install_opensandbox_fs
+
+    install_opensandbox_fs()
     if opensandbox_sdk_available():
         return "ready"
     if not allow_install:

@@ -1,11 +1,27 @@
--- Schema v25: GitHub-style MFA (TOTP, WebAuthn/passkeys, recovery codes) and
--- DB-backed auth challenges. SQLite applies this through _ensure_user_mfa_schema
--- so a replay onto a database that already has the columns/tables does not fail.
+-- Schema v25: GitHub-style MFA (TOTP, WebAuthn/passkeys, recovery codes),
+-- DB-backed auth challenges, same-row cron/channel leases,
+-- users.last_login_at, and read-only conversation share links.
+-- SQLite applies this through idempotent ensure helpers so a replay does not fail.
 
 ALTER TABLE users ADD COLUMN mfa_version INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN mfa_failed_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN mfa_locked_until INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE users ADD COLUMN password_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN last_login_at INTEGER;
+
+-- Fill blanks from existing sign-in audit rows. Later logins update the column.
+UPDATE users
+SET last_login_at = (
+  SELECT MAX(ts) FROM audit_log
+  WHERE actor = users.username
+    AND action IN ('auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login')
+)
+WHERE last_login_at IS NULL
+  AND EXISTS (
+    SELECT 1 FROM audit_log
+    WHERE actor = users.username
+      AND action IN ('auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login')
+  );
 
 CREATE TABLE IF NOT EXISTS user_totp (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,5 +79,46 @@ CREATE TABLE IF NOT EXISTS auth_challenges (
 
 CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires_at
   ON auth_challenges(expires_at);
+
+ALTER TABLE cron_jobs ADD COLUMN run_lease_owner TEXT;
+ALTER TABLE cron_jobs ADD COLUMN run_lease_token TEXT;
+ALTER TABLE cron_jobs ADD COLUMN run_lease_until INTEGER;
+
+ALTER TABLE channels ADD COLUMN runtime_lease_owner TEXT;
+ALTER TABLE channels ADD COLUMN runtime_lease_token TEXT;
+ALTER TABLE channels ADD COLUMN runtime_lease_until INTEGER;
+ALTER TABLE channels ADD COLUMN runtime_generation INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE threads ADD COLUMN contributed INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS profile_avatars (
+  owner_kind TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  content BLOB NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (owner_kind, owner_id)
+);
+
+CREATE TABLE IF NOT EXISTS control_files (
+  namespace TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  content BLOB NOT NULL,
+  PRIMARY KEY (namespace, owner_id, path)
+);
+
+CREATE TABLE IF NOT EXISTS thread_shares (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  share_id    TEXT NOT NULL UNIQUE,
+  thread_id   TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+  agent_id    TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  created_by  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at  INTEGER NOT NULL,
+  revoked_at  INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_shares_active_thread
+  ON thread_shares(thread_id) WHERE revoked_at IS NULL;
 
 UPDATE _schema_version SET version = 25;

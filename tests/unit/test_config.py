@@ -33,6 +33,8 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.backup.include_plugins is True
     assert cfg.backup.include_knowledge is True
     assert cfg.backup.include_chats is False
+    assert cfg.backup.remote_enabled is False
+    assert cfg.backup.remote_backend_id is None
     assert cfg.max_upload_mb == 100
     assert cfg.max_upload_bytes == 100 * 1024 * 1024
     assert cfg_path.exists()  # file written with defaults
@@ -57,6 +59,8 @@ def test_loads_backup_section(tmp_path: Path):
                     "include_plugins": False,
                     "include_knowledge": False,
                     "include_chats": True,
+                    "remote_enabled": True,
+                    "remote_backend_id": 42,
                 }
             }
         )
@@ -71,6 +75,36 @@ def test_loads_backup_section(tmp_path: Path):
     assert cfg.backup.include_plugins is False
     assert cfg.backup.include_knowledge is False
     assert cfg.backup.include_chats is True
+    assert cfg.backup.remote_enabled is True
+    assert cfg.backup.remote_backend_id == 42
+
+
+def test_backup_remote_enabled_requires_backend_id(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"backup": {"remote_enabled": True}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="remote_backend_id"):
+        load_config(cfg_path)
+
+
+def test_backup_remote_backend_id_must_be_positive(tmp_path: Path):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(
+        json.dumps({"backup": {"remote_backend_id": 0}}),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="remote_backend_id"):
+        load_config(cfg_path)
+
+
+def test_backup_remote_backend_id_env_rejects_non_positive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_BACKEND_ID", "-5")
+    with pytest.raises(ValueError, match="OCTOP_BACKUP_REMOTE_BACKEND_ID"):
+        load_config(tmp_path / "config.json")
 
 
 def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -83,6 +117,8 @@ def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES", "false")
     monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_PLUGINS", "false")
     monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_KNOWLEDGE", "false")
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_ENABLED", "true")
+    monkeypatch.setenv("OCTOP_BACKUP_REMOTE_BACKEND_ID", "9")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.backup.auto_enabled is True
     assert cfg.backup.schedule == "cron:30 5 * * *"
@@ -93,6 +129,8 @@ def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert cfg.backup.include_skill_packages is False
     assert cfg.backup.include_plugins is False
     assert cfg.backup.include_knowledge is False
+    assert cfg.backup.remote_enabled is True
+    assert cfg.backup.remote_backend_id == 9
 
 
 def test_loads_existing(tmp_path: Path):
@@ -217,6 +255,8 @@ def test_database_url_preserves_query_for_conninfo(tmp_path: Path, monkeypatch: 
     [
         ("octop", "s3cret"),
         ("db user", "my pass"),
+        (" alice ", " my pass "),
+        (" ", "secret"),
         ("db+user", "pass+word"),
         ("db@user", "pass@word"),
         ("db%user", "pass%word"),

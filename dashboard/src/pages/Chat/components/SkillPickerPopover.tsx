@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Check, Import, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
@@ -132,9 +133,10 @@ export default function SkillPickerPopover({
           <button
             key={skill.slug}
             type="button"
-            className={`${styles.skillPickerItem} ${
-              active ? styles.skillPickerItemActive : ""
-            }`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.skillPickerItemActive,
+            )}
             aria-pressed={active}
             onClick={() => {
               onSelectSkill(skill.slug);

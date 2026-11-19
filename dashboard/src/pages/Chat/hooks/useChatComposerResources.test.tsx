@@ -424,7 +424,7 @@ describe("useChatComposerResources — expert default model", () => {
     );
   });
 
-  it("uses the account preferred model when the expert default is Auto", async () => {
+  it("leaves Auto unset when the expert has no default, even if a preferred model is set", async () => {
     vi.mocked(preferencesApi.get).mockResolvedValue({
       locale: "zh",
       remote_browser_bookmarks: [],
@@ -437,8 +437,9 @@ describe("useChatComposerResources — expert default model", () => {
     );
 
     await waitFor(() =>
-      expect(result.current.selectedModel).toBe("prov/preferred"),
+      expect(result.current.preferredModel).toBe("prov/preferred"),
     );
+    expect(result.current.selectedModel).toBeNull();
   });
 
   it("keeps an explicit thread model ahead of the expert default", async () => {
@@ -485,11 +486,58 @@ describe("useChatComposerResources — peer expert defaults", () => {
     );
 
     await waitFor(() => {
+      expect(result.current.modelsReady).toBe(true);
       expect(result.current.selectedModel).toBe("prov/peer");
       expect(result.current.selectedConnectors).toEqual(["c2"]);
       expect(result.current.selectedKnowledgeBaseIds).toEqual(["k2"]);
       expect(result.current.conversationMode).toBe("plan");
     });
+  });
+
+  it("shows a shared peer expert default even when this catalog omits it", async () => {
+    agentState.agents = [
+      {
+        agent_id: "bridge:cid:peer",
+        bridge: true,
+        bridge_connection_id: "cid",
+        is_owner: false,
+        is_shared: true,
+        default_model: "prov/shared-peer",
+      },
+    ];
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("other"),
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("bridge:cid:peer", null),
+    );
+
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.selectedModel).toBe("prov/shared-peer");
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
+  });
+
+  it("shows a shared local expert default even when this catalog omits it", async () => {
+    agentState.agents = [
+      {
+        agent_id: "expertA",
+        is_shared: true,
+        is_owner: false,
+        default_model: "prov/shared-local",
+      },
+    ];
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("other"),
+    ]);
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", null),
+    );
+
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.selectedModel).toBe("prov/shared-local");
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
   });
 
   it("leaves a remote Auto expert unset instead of the local preferred model", async () => {

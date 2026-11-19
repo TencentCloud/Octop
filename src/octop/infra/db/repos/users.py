@@ -68,6 +68,7 @@ class UserRow:
     permissions: builtins.list[str] = field(default_factory=list)
     role_name: str | None = None
     avatar_icon: str | None = None
+    last_login_at: int | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> UserRow:
@@ -98,6 +99,9 @@ class UserRow:
             permissions=_parse_permissions(r["permissions"] if "permissions" in keys else None),
             role_name=role_name or None,
             avatar_icon=avatar_icon or None,
+            last_login_at=(
+                int(r["last_login_at"]) if "last_login_at" in keys and r["last_login_at"] else None
+            ),
         )
 
 
@@ -172,6 +176,33 @@ class UserRepo:
         row = UserRow.from_row(r)
         self.upsert_sso_identity(row.id, provider_id=provider_id, subject=subject)
         return row
+
+    def list_directory_reservations(
+        self, provider_id: int, username: str
+    ) -> builtins.list[UserRow]:
+        """Passwordless accounts reserved for this directory provider.
+
+        A reservation is an admin-created account with no local password and no
+        subject link yet. Matching is case-insensitive so ``Alice`` and ``alice``
+        name the same login. More than one row means the caller must not guess.
+        """
+        text = username.strip()
+        if not text:
+            return []
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT u.* FROM users u "
+                "WHERE u.sso_provider_id = ? "
+                "AND u.password_hash IS NULL "
+                "AND (u.sso_subject IS NULL OR u.sso_subject = '') "
+                "AND lower(u.username) = lower(?) "
+                "AND NOT EXISTS ("
+                "SELECT 1 FROM user_sso_identities i "
+                "WHERE i.user_id = u.id AND i.provider_id = ?"
+                ")",
+                (provider_id, text, provider_id),
+            ).fetchall()
+        return map_rows(rows, UserRow)
 
     def list_sso_identities(self, user_id: int) -> builtins.list[UserSsoIdentityRow]:
         with self._db.connect() as conn:
@@ -363,6 +394,15 @@ class UserRepo:
             conn.execute(
                 "UPDATE users SET login_failed_count = 0, login_locked_until = 0 WHERE id = ?",
                 (user_id,),
+            )
+
+    def touch_last_login(self, user_id: int, *, now: int | None = None) -> None:
+        """Record a successful sign-in. ``now`` is unix seconds."""
+        ts = now if now is not None else now_ts()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET last_login_at = ? WHERE id = ?",
+                (ts, user_id),
             )
 
     def bump_mfa_version(self, user_id: int) -> int:

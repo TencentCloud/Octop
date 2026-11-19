@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Form, Radio, Select, Tag } from "antd";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   userGroupsApi,
   type ResourceVisibilityMode,
@@ -176,7 +177,7 @@ export function ResourceVisibilityFields({
   }));
 
   return (
-    <div className={[styles.fields, className].filter(Boolean).join(" ")}>
+    <div className={cx(styles.fields, className)}>
       <Radio.Group
         className={styles.radio}
         disabled={disabled}
@@ -268,7 +269,7 @@ export function ResourceVisibilityFormItem({
     <Form.Item
       label={label ?? t("resourceVisibility.label")}
       extra={extra}
-      className={[styles.formItem, className].filter(Boolean).join(" ")}
+      className={cx(styles.formItem, className)}
       required={false}
     >
       <ResourceVisibilityFields
@@ -322,7 +323,7 @@ export function ResourceVisibilityCollapse({
     return null;
   }
   return (
-    <div className={[styles.collapse, className].filter(Boolean).join(" ")}>
+    <div className={cx(styles.collapse, className)}>
       <div className={styles.collapseToggle}>
         <Button
           type="link"

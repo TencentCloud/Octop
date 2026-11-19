@@ -6,9 +6,11 @@ import json
 import logging
 import os
 from dataclasses import asdict, dataclass, field, replace
+from functools import cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +103,8 @@ class BackupConfig:
     include_plugins: bool = True
     include_knowledge: bool = True
     include_chats: bool = False
+    remote_enabled: bool = False
+    remote_backend_id: int | None = None
 
 
 _VALID_MOBILE_BACKENDS = frozenset({"physical", "redroid", "emulator", "none"})
@@ -133,7 +137,6 @@ class OctopConfig:
     default_timezone: str = "Asia/Shanghai"
     enable_dashboard: bool = True
     enable_api_docs: bool = False
-    history_v2_enabled: bool = False
     require_setup_password: bool = True
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     # False when config.json omits ``database`` (use PathLayout.db unless env overrides).
@@ -222,6 +225,15 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         raise ValueError("config.backup.retention_count must be an integer") from exc
     if retention < 1:
         raise ValueError("config.backup.retention_count must be >= 1")
+    remote_backend_id = parse_optional_int(
+        raw.get("remote_backend_id", defaults.remote_backend_id),
+        field="config.backup.remote_backend_id",
+    )
+    if remote_backend_id is not None and remote_backend_id < 1:
+        raise ValueError("config.backup.remote_backend_id must be >= 1 when set")
+    remote_enabled = bool(raw.get("remote_enabled", defaults.remote_enabled))
+    if remote_enabled and remote_backend_id is None:
+        raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
     return BackupConfig(
         auto_enabled=bool(raw.get("auto_enabled", defaults.auto_enabled)),
         schedule=schedule,
@@ -234,6 +246,8 @@ def _parse_backup_section(raw: object) -> BackupConfig:
         include_plugins=bool(raw.get("include_plugins", defaults.include_plugins)),
         include_knowledge=bool(raw.get("include_knowledge", defaults.include_knowledge)),
         include_chats=bool(raw.get("include_chats", defaults.include_chats)),
+        remote_enabled=remote_enabled,
+        remote_backend_id=remote_backend_id,
     )
 
 
@@ -292,6 +306,25 @@ def _coerce_bool(name: str, value: str, default: bool) -> bool:
     return default
 
 
+def parse_optional_int(raw: object, *, field: str) -> int | None:
+    """Parse an optional JSON integer; empty string / null → None."""
+    if raw is None:
+        return None
+    if isinstance(raw, bool):
+        raise ValueError(f"{field} must be an integer or null")
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            return int(text)
+        except ValueError as exc:
+            raise ValueError(f"{field} must be an integer or null") from exc
+    raise ValueError(f"{field} must be an integer or null")
+
+
 def _parse_database_url(url: str) -> dict[str, Any]:
     parsed = urlparse(url)
     if parsed.scheme not in ("postgresql", "postgres"):
@@ -340,7 +373,7 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
 
     host = str(merged.get("host", "")).strip()
     database = str(merged.get("database", "")).strip()
-    user = str(merged.get("user", "")).strip()
+    user = str(merged.get("user", ""))
     port = int(merged.get("port", 5432))
     if not host:
         raise ValueError("database.host is required for postgresql")
@@ -416,6 +449,121 @@ def env_bind_overrides() -> tuple[str | None, int | None]:
     return host, port
 
 
+_LOG_LEVELS = frozenset({"debug", "info", "warning", "error"})
+
+
+def _optional_int(raw: dict[str, Any], key: str) -> int | None:
+    """Return an int field without echoing the raw value in errors."""
+    if key not in raw or raw[key] is None:
+        return None
+    value = raw[key]
+    if isinstance(value, bool):
+        raise ValueError(f"{key} must be an integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            raise ValueError(f"{key} must be an integer") from None
+    raise ValueError(f"{key} must be an integer")
+
+
+def _optional_bool(raw: dict[str, Any], key: str) -> None:
+    if key not in raw or raw[key] is None:
+        return
+    if not isinstance(raw[key], bool):
+        raise ValueError(f"{key} must be a boolean")
+
+
+def _optional_str(raw: dict[str, Any], key: str) -> str | None:
+    if key not in raw or raw[key] is None:
+        return None
+    value = raw[key]
+    if not isinstance(value, str):
+        raise ValueError(f"{key} must be a string")
+    return value
+
+
+def validate_persisted_config(raw: dict[str, Any]) -> None:
+    """Raise ``ValueError`` when ``raw`` cannot be stored as ``config.json``.
+
+    Checks the on-disk document only. Environment overrides are not applied.
+    Messages name the field, never secret values.
+    """
+    if not isinstance(raw, dict):
+        raise ValueError("config must be a JSON object")
+
+    bind_host = _optional_str(raw, "bind_host")
+    if bind_host is not None and not bind_host.strip():
+        raise ValueError("bind_host must not be empty")
+    port = _optional_int(raw, "port")
+    if port is not None and not 0 <= port <= 65535:
+        raise ValueError("port must be 0-65535")
+    level = _optional_str(raw, "log_level")
+    if level is not None and level.strip().lower() not in _LOG_LEVELS:
+        raise ValueError("log_level must be one of debug, info, warning, error")
+    ttl = _optional_int(raw, "access_token_ttl_seconds")
+    if ttl is not None and ttl < 1:
+        raise ValueError("access_token_ttl_seconds must be >= 1")
+    attempts = _optional_int(raw, "login_max_attempts")
+    if attempts is not None and attempts < 1:
+        raise ValueError("login_max_attempts must be >= 1")
+    lockout = _optional_int(raw, "login_lockout_seconds")
+    if lockout is not None and lockout < 0:
+        raise ValueError("login_lockout_seconds must be >= 0")
+    if "cors_origins" in raw and raw["cors_origins"] is not None:
+        origins = raw["cors_origins"]
+        if not isinstance(origins, list) or any(not isinstance(item, str) for item in origins):
+            raise ValueError("cors_origins must be a list of strings")
+    timezone = _optional_str(raw, "default_timezone")
+    if timezone is not None:
+        tz = timezone.strip()
+        if not tz:
+            raise ValueError("default_timezone must not be empty")
+        try:
+            ZoneInfo(tz)
+        except ZoneInfoNotFoundError:
+            raise ValueError("default_timezone must be an IANA timezone name") from None
+    for key in ("enable_dashboard", "enable_api_docs", "require_setup_password"):
+        _optional_bool(raw, key)
+    upload = _optional_int(raw, "max_upload_mb")
+    if upload is not None and not MIN_MAX_UPLOAD_MB <= upload <= MAX_MAX_UPLOAD_MB:
+        raise ValueError(f"max_upload_mb must be {MIN_MAX_UPLOAD_MB}-{MAX_MAX_UPLOAD_MB}")
+    idle = _optional_int(raw, "browser_idle_timeout_minutes")
+    if idle is not None and idle < 0:
+        raise ValueError("browser_idle_timeout_minutes must be >= 0")
+
+    if "database" in raw:
+        section = _parse_database_section(raw.get("database"))
+        driver = str(section.get("driver", "sqlite")).strip().lower()
+        if driver == "postgresql":
+            db_port = _optional_int(section, "port")
+            if "port" in section and (db_port is None or not 1 <= db_port <= 65535):
+                raise ValueError("database.port must be 1-65535")
+        defaults = _defaults_for_file()["database"]
+        parse_database_config({**defaults, **section})
+
+    if "tls" in raw and raw.get("tls") is not None:
+        tls_raw = raw["tls"]
+        if not isinstance(tls_raw, dict):
+            raise ValueError("tls must be an object")
+        if "http_port" in tls_raw:
+            http_port = _optional_int(tls_raw, "http_port")
+            if http_port is None or not 1 <= http_port <= 65535:
+                raise ValueError("tls.http_port must be 1-65535")
+        _parse_tls_section(tls_raw)
+    if "backup" in raw:
+        _parse_backup_section(raw.get("backup"))
+    if "capabilities" in raw:
+        _parse_capabilities_section(raw.get("capabilities"))
+
+
+@cache
+def _warn_retired_history_config() -> None:
+    logger.warning("history_v2_enabled and OCTOP_HISTORY_V2_ENABLED are retired and ignored")
+
+
 def load_config(path: Path) -> OctopConfig:
     """Load ``config.json``; write defaults if absent. Apply env overrides.
 
@@ -446,6 +594,8 @@ def load_config(path: Path) -> OctopConfig:
         raw = {}
         database_in_file = False
 
+    if "history_v2_enabled" in raw or "OCTOP_HISTORY_V2_ENABLED" in os.environ:
+        _warn_retired_history_config()
     merged = {**file_defaults, **raw}
     # Legacy key: prefer default_timezone when both are present in the file.
     if "default_timezone" not in raw and "cron_timezone" in raw:
@@ -595,6 +745,27 @@ def load_config(path: Path) -> OctopConfig:
             backup,
             include_chats=_coerce_bool("OCTOP_BACKUP_INCLUDE_CHATS", v, backup.include_chats),
         )
+    if v := os.environ.get("OCTOP_BACKUP_REMOTE_ENABLED"):
+        backup = replace(
+            backup,
+            remote_enabled=_coerce_bool("OCTOP_BACKUP_REMOTE_ENABLED", v, backup.remote_enabled),
+        )
+    if v := os.environ.get("OCTOP_BACKUP_REMOTE_BACKEND_ID"):
+        text = v.strip()
+        if not text:
+            backup = replace(backup, remote_backend_id=None)
+        else:
+            try:
+                parsed = int(text)
+            except ValueError as exc:
+                raise ValueError(
+                    "OCTOP_BACKUP_REMOTE_BACKEND_ID must be an integer or empty"
+                ) from exc
+            if parsed < 1:
+                raise ValueError("OCTOP_BACKUP_REMOTE_BACKEND_ID must be >= 1 when set")
+            backup = replace(backup, remote_backend_id=parsed)
+    if backup.remote_enabled and backup.remote_backend_id is None:
+        raise ValueError("config.backup.remote_enabled requires remote_backend_id to be set")
 
     return OctopConfig(
         bind_host=merged["bind_host"],
@@ -607,13 +778,6 @@ def load_config(path: Path) -> OctopConfig:
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
-        history_v2_enabled=_coerce_bool(
-            "OCTOP_HISTORY_V2_ENABLED",
-            os.environ.get(
-                "OCTOP_HISTORY_V2_ENABLED", str(merged.get("history_v2_enabled", False))
-            ),
-            False,
-        ),
         require_setup_password=bool(merged["require_setup_password"]),
         database=parse_database_config(merged_db),
         database_in_file=database_in_file,

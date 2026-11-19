@@ -1,5 +1,0 @@
-{
-  "renderers": [
-    { "id": "timer_card", "tools": ["start_pomodoro", "start_countdown"] }
-  ]
-}

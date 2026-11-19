@@ -19,6 +19,8 @@ from octop.infra.db.rebind import database_config_from_payload, persist_database
     [
         ("alice:secret", "alice", "secret"),
         ("db%20user:my%20pass", "db user", "my pass"),
+        ("%20alice%20:secret", " alice ", "secret"),
+        ("%20:secret", " ", "secret"),
         ("db+user:pass+word", "db+user", "pass+word"),
         ("db%40user:pass%40word", "db@user", "pass@word"),
         ("db%25user:pass%25word", "db%user", "pass%word"),

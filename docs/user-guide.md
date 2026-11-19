@@ -71,19 +71,19 @@
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash
 ```
 
 **Windows（PowerShell）**
 
 ```powershell
-irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex
+irm https://download.octop.cloud/octop/scripts/install.ps1 | iex
 ```
 
 **Windows（cmd）** —— 先下载再运行：
 
 ```bat
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.bat -o install.bat
+curl -fsSL https://download.octop.cloud/octop/scripts/install.bat -o install.bat
 install.bat
 ```
 
@@ -112,10 +112,10 @@ octop run --help
 
 ```bash
 # 构建并后台启动
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # 或手动构建后运行
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -134,6 +134,8 @@ docker run -d \
 | `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
 
 > 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
+
+多副本怎么工作、虚拟机和 Kubernetes 怎么装，见 [cluster_CN.md](cluster_CN.md)。Kubernetes 的安装参数见 [deploy/helm/octop/README_CN.md](../deploy/helm/octop/README_CN.md)。
 
 ---
 
@@ -315,7 +317,7 @@ octop provider --help     # 供应商增删改查帮助
 
 ### 5.3 创建 Agent（专家库 / MBTI 人格）
 
-- 进入 **Agent → 专家** 页面，从专家库模板中选择专业角色（如写作、编程、数据分析），一键创建。
+- 进入 **专家** 页面，从专家市场选择模板（门户专家或本实例用户发布的模板）一键创建，也可以新建空白专家。
 - 选择 **MBTI 人格** 模板为 Agent 赋予性格（也可做人格测试自动生成）。
 - 为该 Agent 指定 **供应商与模型**、工作区后端。
 
@@ -359,7 +361,7 @@ Octop 支持两个方向的 ACP 集成：
    octop acp --agent main
    ```
 
-2. **出站** —— 在对话中把编码任务委派给外部 Agent（OpenCode、CodeBuddy、Claude Code、Codex）：
+2. **出站** —— 在对话中把编码任务委派给外部 Agent（OpenCode、CodeBuddy、Claude Code、Codex、Qwen Code）：
    - 控制台 → **ACP**：配置 Runner（按用户全局）。
    - 为 Agent 启用 `acp_runner`，然后在对话中委派。
 
@@ -430,6 +432,12 @@ Octop 支持两个方向的 ACP 集成：
 
 **Q：如何修改监听地址让局域网访问？**
 - 启动时：`octop run --host 0.0.0.0 --port 8088`；或设置环境变量 `OCTOP_BIND_HOST=0.0.0.0`、`OCTOP_PORT=8088`。
+
+**Q：局域网访问不了插件市场和专家市场？**
+- 这两处默认请求公网的 `octop.cloud`。在内网自建兼容目录的步骤见 [内网自建市场](private-market.md)。
+
+**Q：局域网访问不了技能市场？**
+- 技能页默认请求 `https://api.skillhub.cn`。在内网按同一接口自建，并设置 `SKILL_MARKET_ORIGIN`，见 [技能市场](skill-market.md)。技能包页「从技能市场导入」读取的技能集用 `SKILLSET_ORIGIN`，同一篇文档里有接口说明。
 
 **Q：数据存放在哪里？**
 - 全部在 `~/.octop/`：

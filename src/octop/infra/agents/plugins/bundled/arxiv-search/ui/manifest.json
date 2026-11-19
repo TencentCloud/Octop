@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "arxiv_search_list", "tools": ["search_arxiv"] }]
-}

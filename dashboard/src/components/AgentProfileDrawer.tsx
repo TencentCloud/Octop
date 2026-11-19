@@ -8,10 +8,12 @@ import {
 import { useTranslation } from "react-i18next";
 import { Collapse, Drawer, Spin, Tag } from "antd";
 import { ChevronLeft } from "lucide-react";
+import cx from "classnames";
 import { request } from "../api/request";
 import { withFromWorkspace } from "../utils/fromWorkspace";
 import type { OctopAgent } from "../context/AgentContext";
 import { useAgent } from "../context/AgentContext";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 import { isAgentChatReady } from "../utils/agentError";
 import { isTeamAgent } from "../utils/teamAgent";
 import {
@@ -25,6 +27,8 @@ import {
   ExpertIcon,
   metaForFile,
 } from "../pages/Experts/components/iconForName";
+import { ManagedAvatarMark } from "../pages/Experts/components/ManagedAvatarMark";
+import { incomingShareProps, SharedAvatarMark } from "./SharedResourceBadge";
 import { fetchConfigMdFiles } from "../pages/Experts/components/expertFileGroups";
 import { useSkillDisplayName } from "../pages/Agent/Skills/skillDisplayNames";
 import { DEFAULT_SKILL_EMOJI } from "../pages/Agent/Skills/skillMarkdown";
@@ -85,9 +89,7 @@ function ProfileEntityCard({
       <div className={styles.entityCard}>
         <div className={styles.entityCardHeader}>
           {icon}
-          <div
-            className={`${expertStyles.fileLabel} ${styles.entityCardTitle}`}
-          >
+          <div className={cx(expertStyles.fileLabel, styles.entityCardTitle)}>
             {title}
           </div>
           {trailing}
@@ -115,6 +117,7 @@ export default function AgentProfileDrawer({
 }: AgentProfileDrawerProps) {
   const { t } = useTranslation();
   const { agents } = useAgent();
+  const viewerId = useCurrentUser()?.id;
   const skillDisplayName = useSkillDisplayName();
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
@@ -146,6 +149,12 @@ export default function AgentProfileDrawer({
           icon_name: found.icon_name ?? member.icon_name,
           icon_url: found.icon_url ?? member.icon_url,
           state: found.state || member.state,
+          kind: found.kind || member.kind,
+          managed_runner:
+            (found.kind === "managed" &&
+            typeof found.config?.managed_runner === "string"
+              ? found.config.managed_runner
+              : null) || member.managed_runner,
         };
       }),
     [teamMembers, agents],
@@ -410,23 +419,39 @@ export default function AgentProfileDrawer({
                 visibleTeamMembers.map((member) => {
                   const accent = member.color || "#0d9488";
                   const stateKey = member.state || "unknown";
+                  const memberAgent = agents.find(
+                    (item) => item.agent_id === member.agent_id,
+                  );
+                  const shareSource =
+                    memberAgent ??
+                    (member.user_id != null && viewerId != null
+                      ? {
+                          is_shared: member.is_shared,
+                          is_owner: Number(member.user_id) === Number(viewerId),
+                          user_id: member.user_id,
+                        }
+                      : null);
                   return (
                     <ProfileEntityCard
                       key={member.agent_id}
                       icon={
-                        <div
-                          className={expertStyles.fileIcon}
-                          style={{
-                            color: accent,
-                            background: `${accent}1a`,
-                          }}
-                        >
-                          <ExpertIcon
-                            iconUrl={member.icon_url}
-                            iconName={member.icon_name}
-                            size={16}
-                          />
-                        </div>
+                        <SharedAvatarMark {...incomingShareProps(shareSource)}>
+                          <ManagedAvatarMark runner={member.managed_runner}>
+                            <div
+                              className={expertStyles.fileIcon}
+                              style={{
+                                color: accent,
+                                background: `${accent}1a`,
+                              }}
+                            >
+                              <ExpertIcon
+                                iconUrl={member.icon_url}
+                                iconName={member.icon_name}
+                                size={16}
+                              />
+                            </div>
+                          </ManagedAvatarMark>
+                        </SharedAvatarMark>
                       }
                       title={member.name}
                       trailing={
