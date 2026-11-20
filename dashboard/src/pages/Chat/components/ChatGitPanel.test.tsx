@@ -95,7 +95,7 @@ describe("ChatGitPanel", () => {
     });
     expect(screen.getByTestId("git-tools-changes")).toHaveTextContent("+5");
     expect(screen.getByTestId("git-tools-changes")).toHaveTextContent("−1");
-    expect(screen.getByTestId("git-tools-branch")).toHaveTextContent("⇅1/0");
+    expect(screen.getByTestId("git-tools-ahead")).toHaveTextContent("⇅1/0");
     expect(screen.getByTestId("git-diff-empty")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("README.md"));

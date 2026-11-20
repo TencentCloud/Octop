@@ -124,7 +124,6 @@ export default function ChatGitPanel({
   const [logOpen, setLogOpen] = useState(false);
   const [log, setLog] = useState<GitCommitEntry[] | null>(null);
   const [logLoading, setLogLoading] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(true);
   const [commitOpen, setCommitOpen] = useState(false);
 
   const { status, loading, error } = git;
@@ -192,21 +191,56 @@ export default function ChatGitPanel({
     <div className={styles.gitPanel} data-testid="git-panel">
       <div className={styles.gitToolsCard} data-testid="git-tools-card">
         <div className={styles.gitToolsHeader}>
-          <button
-            type="button"
-            className={styles.gitToolsToggle}
-            onClick={() => setToolsOpen((value) => !value)}
-            aria-expanded={toolsOpen}
-            data-testid="git-tools-toggle"
+          <span
+            className={styles.gitToolsBranch}
+            title={status?.upstream ?? undefined}
+            data-testid="git-tools-branch"
           >
-            {toolsOpen ? (
-              <ChevronDown size={14} aria-hidden />
-            ) : (
-              <ChevronRight size={14} aria-hidden />
-            )}
             <GitBranch size={14} aria-hidden />
-            <span>{t("git.tools.title", "Git tools")}</span>
-          </button>
+            <span className={styles.gitToolsBranchName}>
+              {status?.branch ?? "—"}
+            </span>
+          </span>
+          {status?.upstream && (
+            <span className={styles.gitToolsMeta} data-testid="git-tools-ahead">
+              ⇅{status.ahead}/{status.behind}
+            </span>
+          )}
+          <span className={styles.gitToolsStat} data-testid="git-tools-changes">
+            <FileDiff size={13} aria-hidden />
+            <span>{t("git.tools.changes", "Changes")}</span>
+            <span className={styles.gitCommitTotals}>
+              <span className={styles.gitRowAdded}>+{status?.added ?? 0}</span>{" "}
+              <span className={styles.gitRowRemoved}>
+                −{status?.removed ?? 0}
+              </span>
+            </span>
+          </span>
+          <span className={styles.gitToolsSpacer} />
+          <Tooltip title={t("git.tools.commitOrPush", "Commit or push")}>
+            <Button
+              type="text"
+              size="small"
+              disabled={streaming}
+              onClick={() => setCommitOpen(true)}
+              aria-label={t("git.tools.commitOrPush", "Commit or push")}
+              title={
+                streaming ? t("git.writeDisabledWhileStreaming") : undefined
+              }
+              data-testid="git-commit-open"
+              icon={<GitCommitHorizontal size={14} />}
+            />
+          </Tooltip>
+          <Tooltip title={t("git.tools.history", "History")}>
+            <Button
+              type="text"
+              size="small"
+              onClick={() => onOpenHistory?.()}
+              aria-label={t("git.tools.history", "History")}
+              data-testid="git-history-open"
+              icon={<History size={14} />}
+            />
+          </Tooltip>
           <Tooltip title={t("common.refresh")}>
             <Button
               size="small"
@@ -221,66 +255,6 @@ export default function ChatGitPanel({
             />
           </Tooltip>
         </div>
-
-        {toolsOpen && (
-          <div className={styles.gitToolsBody}>
-            <div
-              className={styles.gitToolsInfoRow}
-              data-testid="git-tools-changes"
-            >
-              <FileDiff size={14} aria-hidden />
-              <span className={styles.gitToolsInfoLabel}>
-                {t("git.tools.changes", "Changes")}
-              </span>
-              <span className={styles.gitCommitTotals}>
-                <span className={styles.gitRowAdded}>
-                  +{status?.added ?? 0}
-                </span>{" "}
-                <span className={styles.gitRowRemoved}>
-                  −{status?.removed ?? 0}
-                </span>
-              </span>
-            </div>
-            <div
-              className={styles.gitToolsInfoRow}
-              title={status?.upstream ?? undefined}
-              data-testid="git-tools-branch"
-            >
-              <GitBranch size={14} aria-hidden />
-              <span className={styles.gitToolsInfoLabel}>
-                {status?.branch ?? "—"}
-              </span>
-              {status?.upstream && (
-                <span className={styles.gitToolsInfoMeta}>
-                  ⇅{status.ahead}/{status.behind}
-                </span>
-              )}
-            </div>
-            <div className={styles.gitToolsDivider} />
-            <button
-              type="button"
-              className={styles.gitToolsActionRow}
-              onClick={() => setCommitOpen(true)}
-              disabled={streaming}
-              title={
-                streaming ? t("git.writeDisabledWhileStreaming") : undefined
-              }
-              data-testid="git-commit-open"
-            >
-              <GitCommitHorizontal size={14} aria-hidden />
-              <span>{t("git.tools.commitOrPush", "Commit or push")}</span>
-            </button>
-            <button
-              type="button"
-              className={styles.gitToolsActionRow}
-              onClick={() => onOpenHistory?.()}
-              data-testid="git-history-open"
-            >
-              <History size={14} aria-hidden />
-              <span>{t("git.tools.history", "History")}</span>
-            </button>
-          </div>
-        )}
       </div>
 
       <div className={styles.gitPanelBody}>

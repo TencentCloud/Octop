@@ -2341,7 +2341,6 @@
     "rewindBlocked": "未回滚任何文件：{{count}} 个文件在本轮之后被修改。",
     "diffUnavailable": "暂时无法预览这份 Diff。",
     "tools": {
-      "title": "Git tools",
       "changes": "变更",
       "commitOrPush": "提交或推送",
       "history": "提交历史"

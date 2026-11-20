@@ -1239,94 +1239,60 @@
 .gitToolsHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 12px;
+  line-height: 1;
 }
 
-.gitToolsToggle {
+.gitToolsBranch {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
+  flex-shrink: 0;
+  font-size: 13px;
+  line-height: 1;
   color: var(--fn-text-primary);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 0;
-  text-align: left;
-}
 
-.gitToolsBody {
-  display: flex;
-  flex-direction: column;
-  padding: 0 6px 8px;
-}
-
-.gitToolsInfoRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 30px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 13px;
-  color: var(--fn-text-secondary);
-
-  &:hover {
-    background: var(--fn-bg-hover);
+  svg {
+    display: block;
   }
 }
 
-.gitToolsInfoLabel {
-  flex: 1;
-  min-width: 0;
+.gitToolsBranchName {
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--fn-text-primary);
 }
 
-.gitToolsInfoMeta {
+.gitToolsStat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-left: 10px;
+  border-left: 1px solid var(--fn-border-primary);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--fn-text-secondary);
+
+  svg {
+    display: block;
+  }
+}
+
+.gitToolsMeta {
   flex-shrink: 0;
   font-size: 11px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--fn-text-tertiary);
 }
 
-.gitToolsDivider {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--fn-border-primary);
-}
-
-.gitToolsActionRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 32px;
-  padding: 6px 8px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--fn-text-primary);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-
-  &:hover:not(:disabled) {
-    background: var(--fn-bg-hover);
-  }
-
-  &:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
+.gitToolsSpacer {
+  flex: 1;
+  min-width: 8px;
 }
 
 .gitCommitTotals {
@@ -1469,24 +1435,26 @@
 }
 
 .gitHistoryGraphOnly {
-  display: flex;
+  display: grid;
+  grid-template-columns: 64px 52px minmax(0, 96px) minmax(0, 1fr) 92px 118px 58px;
+  column-gap: 8px;
+  align-items: center;
   min-height: 18px;
   padding: 0 8px;
 }
 
 .gitHistoryGraph {
-  flex-shrink: 0;
-  min-width: 64px;
-  padding-right: 8px;
+  overflow: hidden;
   font-family: var(--fn-font-mono, ui-monospace, monospace);
   color: #1a7f37;
   white-space: pre;
 }
 
 .gitHistoryRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 64px 52px minmax(0, 96px) minmax(0, 1fr) 92px 118px 58px;
+  column-gap: 8px;
   align-items: center;
-  gap: 8px;
   min-height: 24px;
   padding: 1px 8px;
 
@@ -1496,12 +1464,14 @@
 }
 
 .gitHistoryRefs {
-  display: inline-flex;
+  display: flex;
   gap: 4px;
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .gitHistoryRef {
+  flex-shrink: 0;
   padding: 0 6px;
   border-radius: 8px;
   font-size: 10px;
@@ -1510,7 +1480,6 @@
 }
 
 .gitHistorySubject {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1519,8 +1488,7 @@
 }
 
 .gitHistoryCommitter {
-  flex-shrink: 0;
-  max-width: 110px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1529,9 +1497,8 @@
 }
 
 .gitHistoryDate {
-  flex-shrink: 0;
-  min-width: 112px;
   text-align: right;
+  white-space: nowrap;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--fn-text-tertiary);
@@ -1541,7 +1508,9 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  flex-shrink: 0;
+  justify-self: start;
+  overflow: hidden;
+  white-space: nowrap;
   font-size: 10px;
   color: var(--fn-text-tertiary);
 }

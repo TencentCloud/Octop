@@ -2341,7 +2341,6 @@
     "rewindBlocked": "Nothing was rewound: {{count}} file(s) changed since this turn.",
     "diffUnavailable": "This diff preview is currently unavailable.",
     "tools": {
-      "title": "Git tools",
       "changes": "Changes",
       "commitOrPush": "Commit or push",
       "history": "History"
