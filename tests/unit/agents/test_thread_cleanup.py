@@ -16,6 +16,7 @@ from octop.infra.agents.memory.thread_cleanup import (
     delete_agent_memory_and_checkpoints,
     delete_stored_thread,
     gc_orphan_checkpoints,
+    runtime_memory_namespace,
     sqlite_freelist_bytes,
 )
 from octop.infra.db.migrate import run_migrations
@@ -24,6 +25,13 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+
+
+def test_runtime_memory_namespace_keeps_the_oldest_store() -> None:
+    peers = [("Foo-Bar", 10, 1), ("foo_bar", 20, 2)]
+    assert runtime_memory_namespace("Foo-Bar", peers) == "agent_Foo-Bar"
+    assert runtime_memory_namespace("foo_bar", peers) == "agent_foo_bar_2"
+    assert runtime_memory_namespace("solo", [("solo", 1, 3)]) == "agent_solo"
 
 
 def _services(tmp_path: Path):

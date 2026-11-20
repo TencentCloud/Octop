@@ -104,8 +104,10 @@ def import_tccli(profile: str | None, as_user: str | None, as_json: bool, quiet:
         if fallback is None:
             raise SystemExit(f"error: {acting_error}") from acting_error
         uid = fallback
-    if not profile:
-        profile = tccli_profile_for_user(uid)
+    expected = tccli_profile_for_user(uid)
+    if profile and profile != expected:
+        raise SystemExit("error: tccli profile does not belong to this user")
+    profile = expected
 
     path = Path.home() / ".tccli" / f"{profile}.credential"
     if not path.is_file():

@@ -1662,13 +1662,18 @@ async def test_delete_stops_memory_maintenance_before_close(manager: AgentManage
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_persisted_workspace_dir(
+async def test_delete_keeps_caller_workspace_and_removes_managed_dirs(
     manager: AgentManager, tmp_path: Path
 ) -> None:
+    """A workspace the caller chose stays; directories Octop allocated are removed."""
     agent_id = "AGT_DELETE_CUSTOM"
     custom = tmp_path / "custom-ws"
     custom.mkdir()
     (custom / "SOUL.md").write_text("keep", encoding="utf-8")
+    managed = manager._paths.ensure_agent_workspace(agent_id)
+    (managed / "MEMORY.md").write_text("managed", encoding="utf-8")
+    scoped = manager._paths.root / "workspaces" / agent_id
+    scoped.mkdir(parents=True)
     manager._repos.agent_repo.create(
         agent_id=agent_id,
         user_id=None,
@@ -1682,7 +1687,9 @@ async def test_delete_removes_persisted_workspace_dir(
     await manager.delete(agent_id)
 
     assert manager.get_row(agent_id) is None
-    assert not custom.exists()
+    assert (custom / "SOUL.md").read_text(encoding="utf-8") == "keep"
+    assert not managed.exists()
+    assert not scoped.exists()
 
 
 @pytest.mark.asyncio

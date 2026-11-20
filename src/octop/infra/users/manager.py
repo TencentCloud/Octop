@@ -136,6 +136,14 @@ class UserManager:
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
+        from octop.infra.utils.paths import is_single_path_segment
+
+        if not is_single_path_segment(username):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "username must be a single directory name",
+                status=400,
+            )
         loc = normalize_locale(locale)
         if directory_provider_id is not None:
             # A directory reservation has no local secret. The directory bind is
@@ -816,14 +824,13 @@ class UserManager:
         if agent_manager is not None:
             agent_manager.assert_agents_deletable([agent.agent_id for agent in owned])
         await self._delete_foreign_checkpoints(row.id, owned_ids, agent_manager)
-        workspaces = self._owned_workspaces(owned)
         if agent_manager is not None:
             for agent in owned:
                 await agent_manager.delete(agent.agent_id)
         else:
             await asyncio.to_thread(self._purge_owned_stores, owned)
             await asyncio.to_thread(self._remove_owned_dirs, owned)
-        await asyncio.to_thread(self._remove_paths, workspaces)
+        await asyncio.to_thread(self._remove_paths, self._managed_agent_dirs(owned))
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
@@ -835,6 +842,7 @@ class UserManager:
         from octop.infra.agents.memory.thread_cleanup import (
             agent_config_from_row,
             delete_agent_memory_and_checkpoints,
+            runtime_memory_namespace_for,
             workspace_for_agent_row,
         )
 
@@ -846,6 +854,10 @@ class UserManager:
                 octop_config=self._services.config,
                 workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
                 paths=self._services.paths,
+                namespace=runtime_memory_namespace_for(
+                    agent.agent_id,
+                    self._services.agent_repo.list_all(include_disabled=True),
+                ),
             )
 
     def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
@@ -859,10 +871,20 @@ class UserManager:
                 agent_id=agent.agent_id,
             )
 
-    def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
-        from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row
+    def _managed_agent_dirs(self, owned: builtins.list[Any]) -> builtins.list[Path]:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import agent_host_data_dirs
 
-        return [workspace_for_agent_row(agent, paths=self._services.paths) for agent in owned]
+        found: builtins.list[Path] = []
+        for agent in owned:
+            found.extend(
+                agent_host_data_dirs(
+                    agent_config_from_row(agent),
+                    paths=self._services.paths,
+                    agent_id=agent.agent_id,
+                )
+            )
+        return found
 
     async def _delete_foreign_checkpoints(
         self,
