@@ -825,6 +825,52 @@
         }
       ],
       "remote_transport": "streamable_http"
+    },
+    {
+      "kind": "gitea",
+      "name": { "en": "Gitea", "zh": "Gitea" },
+      "description": {
+        "en": "Self-hosted Git: browse repositories, issues, comments, pull requests, and read files",
+        "zh": "自托管 Git 平台：浏览仓库、Issue、评论、PR 与读取文件"
+      },
+      "auth_kind": "custom_fields",
+      "doc_url": "https://docs.gitea.com/category/api",
+      "icon": "gitea",
+      "color": "#7cb342",
+      "phase": "available",
+      "mcp_mode": "gateway",
+      "category": "professional",
+      "guide_url": "https://docs.gitea.com/development/api-usage",
+      "manual_url": "https://docs.gitea.com/development/api-usage",
+      "auth_hint": {
+        "en": "Paste your Gitea instance URL and a Personal Access Token (issue/PR read; commenting needs write scope)",
+        "zh": "填写 Gitea 实例地址与个人访问令牌（读 Issue/PR，发评论需写权限）"
+      },
+      "credential_fields": [
+        {
+          "key": "base_url",
+          "label": { "en": "Instance URL", "zh": "实例地址" },
+          "field_type": "url",
+          "required": true,
+          "placeholder": "https://gitea.example.com",
+          "help": {
+            "en": "Your self-hosted Gitea origin; stored encrypted per user",
+            "zh": "自建 Gitea 的访问地址，按用户加密保存"
+          }
+        },
+        {
+          "key": "token",
+          "label": { "en": "Personal Access Token", "zh": "个人访问令牌" },
+          "field_type": "password",
+          "required": true,
+          "placeholder": "gitea token",
+          "help": {
+            "en": "Create it under Settings → Applications → Access Tokens; stored encrypted per user",
+            "zh": "在 设置 → 应用 → 管理 Access Token 中创建，按用户加密保存"
+          },
+          "secret": true
+        }
+      ]
     }
   ]
 }

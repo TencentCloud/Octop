@@ -1196,6 +1196,19 @@
     "invalid_id": "请提供有效的 {field}。",
     "unknown_tool": "未知的 RAGFlow 工具：{name}"
   },
+  "gitea": {
+    "invalid_base_url": "Gitea 实例地址不能包含用户名、密码、查询参数或片段。",
+    "token_required": "请填写有效的 Gitea 个人访问令牌。",
+    "http_error": "Gitea 请求失败：HTTP {status}。{reason}",
+    "network_error": "无法连接 Gitea，请检查实例地址和网络连通。",
+    "invalid_response": "Gitea 返回了无效的接口响应。",
+    "invalid_slug": "请提供有效的 {field}。",
+    "invalid_index": "请提供有效的 Issue 编号。",
+    "invalid_path": "请提供有效的仓库文件路径。",
+    "query_required": "请提供检索关键词。",
+    "body_required": "评论内容不能为空。",
+    "unknown_tool": "未知的 Gitea 工具：{name}"
+  },
   "migrate": {
     "not_found": "未找到 {source} 的安装目录，请用 --from 指定。",
     "nothing": "在 {home} 中没有找到可迁移的内容。",
