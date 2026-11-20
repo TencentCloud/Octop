@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from octop.infra.agents.providers.probe import _probe_model_id, probe_provider_row
 from octop.infra.agents.providers.probe import build_probe_chat_model as _build_chat_model
-from octop.infra.agents.providers.probe import probe_provider_row
 
 
 def test_build_chat_model_includes_provider_id_and_model_name() -> None:
@@ -369,3 +369,31 @@ def test_friendly_probe_error_empty_string_passthrough() -> None:
 
     assert _friendly_probe_error("", locale="en") == "unknown error"
     assert _friendly_probe_error(TimeoutError(), locale="zh") == "TimeoutError"
+
+
+def test_probe_model_id_skips_disabled_first_model() -> None:
+    row = SimpleNamespace(
+        get_models=lambda: [
+            {"id": "doubao-seed-2.0-lite", "enabled": False},
+            {"id": "deepseek-v4-flash", "enabled": True},
+        ]
+    )
+    assert _probe_model_id(row, None) == "deepseek-v4-flash"
+
+
+def test_probe_model_id_treats_missing_enabled_as_enabled() -> None:
+    row = SimpleNamespace(get_models=lambda: [{"id": "off", "enabled": False}, {"id": "legacy"}])
+    assert _probe_model_id(row, None) == "legacy"
+
+
+def test_probe_model_id_falls_back_when_all_disabled() -> None:
+    row = SimpleNamespace(
+        get_models=lambda: [{"id": "a", "enabled": False}, {"id": "b", "enabled": False}]
+    )
+    assert _probe_model_id(row, None) == "a"
+
+
+def test_probe_model_id_explicit_request_wins() -> None:
+    row = SimpleNamespace(get_models=lambda: [{"id": "a", "enabled": False}])
+    assert _probe_model_id(row, "a") == "a"
+    assert _probe_model_id(SimpleNamespace(get_models=lambda: []), None) == "gpt-4o-mini"
