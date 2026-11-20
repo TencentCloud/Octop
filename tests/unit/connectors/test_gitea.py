@@ -235,6 +235,27 @@ def test_read_file_lists_directories(mock_http: Callable[..., list[httpx.Request
     assert [entry["name"] for entry in result["entries"]] == ["setup.md", "img"]
 
 
+def test_read_file_allows_dotfiles(mock_http: Callable[..., list[httpx.Request]]) -> None:
+    calls = mock_http(
+        {
+            "type": "file",
+            "size": 10,
+            "sha": "def",
+            "encoding": "base64",
+            "content": base64.b64encode(b"*.pyc\n").decode(),
+        }
+    )
+    result = json.loads(
+        gitea.call_tool(
+            CREDS,
+            "read_file",
+            {"owner": "octop", "repo": "docs", "filepath": ".github/workflows/ci.yml"},
+        )
+    )
+    assert calls[0].url.path == "/api/v1/repos/octop/docs/contents/.github/workflows/ci.yml"
+    assert result["content"] == "*.pyc\n"
+
+
 @pytest.mark.parametrize(
     "args",
     [
@@ -242,6 +263,8 @@ def test_read_file_lists_directories(mock_http: Callable[..., list[httpx.Request
         {"owner": "octop", "repo": "docs/../../x", "index": 1},
         {"owner": "octop", "repo": "docs", "index": "abc"},
         {"owner": "octop", "repo": "docs", "filepath": "a/../b", "ref": ""},
+        {"owner": "octop", "repo": "docs", "filepath": "./README.md"},
+        {"owner": "octop", "repo": "docs", "filepath": "."},
     ],
 )
 def test_tool_args_reject_path_injection(args: dict[str, Any]) -> None:
@@ -258,6 +281,12 @@ def test_probe_fails_on_http_errors(
     with pytest.raises(ValueError, match=f"HTTP {status}"):
         gitea.probe_credentials(CREDS)
     assert len(calls) == 1
+
+
+def test_probe_localizes_error_to_zh(mock_http: Callable[..., list[httpx.Request]]) -> None:
+    mock_http({"message": "unauthorized"}, status=401)
+    with pytest.raises(ValueError, match="Gitea 请求失败：HTTP 401"):
+        gitea.probe_credentials({**CREDS, "_locale": "zh"})
 
 
 def test_probe_error_message_hides_token(mock_http: Callable[..., list[httpx.Request]]) -> None:

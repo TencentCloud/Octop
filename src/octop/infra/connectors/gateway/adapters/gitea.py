@@ -61,7 +61,7 @@ TOOLS: list[dict[str, Any]] = [
         "name": "list_issues",
         "description": (
             "List issues (or pull requests) of a repository, newest first. "
-            "Use state=open/closed/all and type=issues/pulls to filter."
+            "Use state=open/closed/all and kind=issues/pulls to filter."
         ),
         "inputSchema": {
             "type": "object",
@@ -213,10 +213,14 @@ def _index(creds: dict[str, Any], args: dict[str, Any]) -> int:
 
 def _filepath(creds: dict[str, Any], args: dict[str, Any]) -> str:
     value = str(args.get("filepath") or "").strip().strip("/")
-    if not value or value.startswith("."):
+    if not value:
         raise ValueError(_text(creds, "invalid_path"))
     for segment in value.split("/"):
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", segment) or ".." in segment:
+        if (
+            segment in {".", ".."}
+            or ".." in segment
+            or not re.fullmatch(r"[A-Za-z0-9._-]+", segment)
+        ):
             raise ValueError(_text(creds, "invalid_path"))
     return value
 
