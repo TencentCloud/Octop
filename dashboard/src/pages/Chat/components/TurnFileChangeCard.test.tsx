@@ -68,11 +68,13 @@ function writeMessage(): ChatMessage {
 function renderCard(messages: ChatMessage[], threadId: string | null = "th-1") {
   const openFilePreview = vi.fn();
   const openGitChange = vi.fn();
+  const openTurnDiff = vi.fn();
   const view = render(
     <App>
       <ChatFilePreviewProvider
         openFilePreview={openFilePreview}
         openGitChange={openGitChange}
+        openTurnDiff={openTurnDiff}
         openKnowledgeCitation={vi.fn()}
         threadId={threadId}
       >
@@ -84,7 +86,7 @@ function renderCard(messages: ChatMessage[], threadId: string | null = "th-1") {
       </ChatFilePreviewProvider>
     </App>,
   );
-  return { ...view, openFilePreview, openGitChange };
+  return { ...view, openFilePreview, openGitChange, openTurnDiff };
 }
 
 describe("TurnFileChangeCard", () => {
@@ -99,34 +101,26 @@ describe("TurnFileChangeCard", () => {
     });
   });
 
-  it("Review opens the per-turn diff modal", async () => {
-    checkpoints.turnDiff.mockResolvedValue({
-      path: "src/app.py",
-      diff: "@@ -1 +1 @@\n-old\n+one\n",
-    });
-    renderCard([writeMessage()]);
+  it("Review opens the turn diff in the right-side dock", async () => {
+    const { openTurnDiff } = renderCard([writeMessage()]);
     fireEvent.click(screen.getByRole("button", { name: /1 个文件变更/ }));
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    await waitFor(() => {
-      expect(checkpoints.turnDiff).toHaveBeenCalledWith(
-        "ag-1",
-        "th-1",
-        "assistant-1",
-        "src/app.py",
-      );
-    });
-    expect(await screen.findByText("+one")).toBeInTheDocument();
+    expect(openTurnDiff).toHaveBeenCalledWith(
+      "ag-1",
+      "th-1",
+      "assistant-1",
+      "src/app.py",
+      "src/app.py",
+    );
+    expect(checkpoints.turnDiff).not.toHaveBeenCalled();
   });
 
-  it("shows unavailable instead of falling back to the git worktree diff", async () => {
-    checkpoints.turnDiff.mockRejectedValue(new Error("404"));
-    const { openGitChange } = renderCard([writeMessage()]);
+  it("falls back to the git panel when no checkpoint context exists", () => {
+    const { openGitChange, openTurnDiff } = renderCard([writeMessage()], null);
     fireEvent.click(screen.getByRole("button", { name: /1 个文件变更/ }));
     fireEvent.click(screen.getByRole("button", { name: "Review" }));
-    expect(
-      await screen.findByText("暂时无法预览这份 Diff。"),
-    ).toBeInTheDocument();
-    expect(openGitChange).not.toHaveBeenCalled();
+    expect(openGitChange).toHaveBeenCalledWith("src/app.py", "ag-1");
+    expect(openTurnDiff).not.toHaveBeenCalled();
   });
 
   it("Undo previews and applies rewind when the preview is safe", async () => {

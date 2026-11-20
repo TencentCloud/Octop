@@ -447,6 +447,7 @@ function ChatPageInner() {
     openBrowserTab,
     openTerminalTab,
     openGitTab,
+    openTurnDiffTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
     toggleSidePanel,
@@ -1472,6 +1473,7 @@ function ChatPageInner() {
     <ChatFilePreviewProvider
       openFilePreview={openFileAt}
       openGitChange={(path) => openGitTab(path)}
+      openTurnDiff={openTurnDiffTab}
       openKnowledgeCitation={openKnowledgeCitation}
       threadId={activeThreadId}
     >

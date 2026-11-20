@@ -1914,13 +1914,3 @@
 }
 
 // The turn diff fills the modal body; align its surface with the modal's
-// content background so the diff block and its sticky gutter do not render
-// as a differently-shaded rectangle inside it. The app prefixes antd with
-// "octop" (App.tsx ConfigProvider), so the octop- selector is the live one;
-// ant- stays as a fallback. Values mirror the modal surface per theme: the
-// dark theme pins contentBg in App.tsx, light falls back to antd's default
-// elevated white.
-.turnDiffModal :global(.octop-modal-content),
-.turnDiffModal :global(.ant-modal-content) {
-  --git-diff-surface: var(--fn-bg-modal);
-}

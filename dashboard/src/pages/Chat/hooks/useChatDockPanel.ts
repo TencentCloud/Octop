@@ -28,6 +28,15 @@ export type DockTab =
   | { id: "git"; kind: "git"; focusPath?: string; focusSeq?: number }
   | {
       id: string;
+      kind: "turnDiff";
+      agentId: string;
+      threadId: string;
+      messageId: string;
+      path: string;
+      displayPath: string;
+    }
+  | {
+      id: string;
       kind: "knowledge";
       citation: KnowledgeCitation;
     }
@@ -258,6 +267,38 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     [openDock],
   );
 
+  const openTurnDiffTab = useCallback(
+    (
+      agentId: string,
+      threadId: string,
+      messageId: string,
+      path: string,
+      displayPath?: string,
+    ) => {
+      const target = path.trim();
+      if (!target) return;
+      const id = `turndiff:${messageId}:${target}`;
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.id === id)) return prev;
+        return [
+          ...prev,
+          {
+            id,
+            kind: "turnDiff" as const,
+            agentId,
+            threadId,
+            messageId,
+            path: target,
+            displayPath: displayPath?.trim() || target,
+          },
+        ];
+      });
+      setActiveTabId(id);
+      openDock();
+    },
+    [openDock],
+  );
+
   const openKnowledgeCitation = useCallback(
     (citation: KnowledgeCitation) => {
       const kbId = citation.kbId?.trim();
@@ -418,6 +459,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openTerminalTab,
     toggleTerminalPanel,
     openGitTab,
+    openTurnDiffTab,
     openToolUiTab,
     focusToolUiTab,
     closeTab,

@@ -18,7 +18,6 @@ import {
 } from "../../../api/modules/fileCheckpoints";
 import { canonicalizeDockFilePath } from "../utils/dockFilePath";
 import { apiErrorMessage } from "../../../utils/apiError";
-import GitDiffView from "../../Agent/Workspace/components/GitDiffView";
 import styles from "../index.module.less";
 
 const FILE_CHANGE_PREVIEW = 4;
@@ -93,11 +92,6 @@ export default function TurnFileChangeCard({
   const [expanded, setExpanded] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const [diffPath, setDiffPath] = useState<string | null>(null);
-  const [diffText, setDiffText] = useState("");
-  const [diffLoading, setDiffLoading] = useState(false);
-  const [diffUnavailable, setDiffUnavailable] = useState(false);
-
   const [serverSummary, setServerSummary] = useState<TurnSummary | null>(null);
   const [rewindOpen, setRewindOpen] = useState(false);
   const [preview, setPreview] = useState<RewindPreview | null>(null);
@@ -160,7 +154,6 @@ export default function TurnFileChangeCard({
 
   const effectiveMessageId = resolvedMessageId ?? messageId;
   const canCheckpoint = Boolean(agentId && threadId && effectiveMessageId);
-  const diffRequestRef = useRef(0);
 
   const summaryRequestRef = useRef(0);
   const summaryRetriedRef = useRef(false);
@@ -320,36 +313,22 @@ export default function TurnFileChangeCard({
   const measured = additions + deletions > 0;
   const reverted = serverSummary?.reverted === true;
 
-  const openTurnDiff = async (row: TurnFileChange) => {
-    // Review shows the turn-scoped diff; the checkpoint is keyed by the
-    // harness-recorded path, which can differ in form from the display path.
+  const openTurnDiff = (row: TurnFileChange) => {
+    // Review shows the turn-scoped diff in the right-side dock; the
+    // checkpoint is keyed by the harness-recorded path, which can differ in
+    // form from the display path.
     const path = row.checkpointPath ?? row.displayPath;
     if (!canCheckpoint) {
       filePreview?.openGitChange(path, agentId);
       return;
     }
-    const requestId = ++diffRequestRef.current;
-    setDiffPath(path);
-    setDiffLoading(true);
-    setDiffText("");
-    setDiffUnavailable(false);
-    try {
-      const res = await fileCheckpointsApi.turnDiff(
-        agentId!,
-        threadId!,
-        effectiveMessageId!,
-        path,
-      );
-      if (requestId !== diffRequestRef.current) return;
-      setDiffText(res.diff);
-    } catch {
-      if (requestId !== diffRequestRef.current) return;
-      // No checkpoint for this path (e.g. shell write): never fall back to
-      // the git worktree diff — it would show changes this turn did not make.
-      setDiffUnavailable(true);
-    } finally {
-      if (requestId === diffRequestRef.current) setDiffLoading(false);
-    }
+    filePreview?.openTurnDiff(
+      agentId!,
+      threadId!,
+      effectiveMessageId!,
+      path,
+      row.displayPath,
+    );
   };
 
   const openRewind = async () => {
@@ -604,30 +583,6 @@ export default function TurnFileChangeCard({
           ) : null}
         </ul>
       )}
-
-      <Modal
-        title={diffPath ?? undefined}
-        className={styles.turnDiffModal}
-        open={diffPath != null}
-        footer={null}
-        width="72vw"
-        onCancel={() => setDiffPath(null)}
-        destroyOnHidden
-      >
-        {diffLoading ? (
-          <div className={styles.viewerLoading}>
-            <Spin />
-          </div>
-        ) : diffUnavailable ? (
-          <div className={styles.turnChangeEmpty}>
-            {t("git.diffUnavailable", {
-              defaultValue: "暂时无法预览这份 Diff。",
-            })}
-          </div>
-        ) : (
-          <GitDiffView diff={diffText} />
-        )}
-      </Modal>
 
       <Modal
         title={t("git.rewindTitle", "回滚本轮文件更改")}

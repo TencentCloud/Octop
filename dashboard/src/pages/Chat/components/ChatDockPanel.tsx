@@ -41,6 +41,7 @@ import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
 import ChatGitPanel from "./ChatGitPanel";
+import TurnDiffPanelContent from "./TurnDiffPanelContent";
 import KnowledgeCitationPanelContent from "./KnowledgeCitationPanelContent";
 import ChatDockToolUiContent from "./ChatDockToolUiContent";
 
@@ -446,6 +447,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
                   {tab.citation.filename || t("chat.citationPreview")}
                 </span>
               </>
+            ) : tab.kind === "turnDiff" ? (
+              <>
+                <GitBranch size={16} strokeWidth={2} aria-hidden />
+                <span title={tab.displayPath}>
+                  {dockFileBasename(tab.displayPath)}
+                </span>
+              </>
             ) : (
               <>
                 <FilePen size={16} strokeWidth={2} aria-hidden />
@@ -579,6 +587,32 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
             </div>
           );
         })}
+
+        {openTabs
+          .filter(
+            (tab): tab is Extract<DockTab, { kind: "turnDiff" }> =>
+              tab.kind === "turnDiff",
+          )
+          .map((tab) => {
+            const isActive =
+              activeTab?.kind === "turnDiff" && activeTab.id === tab.id;
+            return (
+              <div
+                key={tab.id}
+                className={styles.dockTabBody}
+                hidden={!isActive}
+                style={{ display: isActive ? "flex" : "none" }}
+              >
+                <TurnDiffPanelContent
+                  agentId={tab.agentId}
+                  threadId={tab.threadId}
+                  messageId={tab.messageId}
+                  path={tab.path}
+                  displayPath={tab.displayPath}
+                />
+              </div>
+            );
+          })}
 
         {mountedKnowledgeTabs.map((tab) => {
           const isActive =
