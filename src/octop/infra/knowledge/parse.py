@@ -279,6 +279,14 @@ def _parse_xlsx(path: Path) -> str:
 
 
 def _parse_xls(path: Path) -> str:
+    from octop.infra.knowledge.spreadsheetml import looks_like_xml, read_sheets
+
+    with path.open("rb") as stream:
+        prefix = stream.read(1024)
+    if looks_like_xml(prefix):
+        xml_parts = [_sheet_text(title, rows) for title, rows in read_sheets(path)]
+        return "\n\n".join(part for part in xml_parts if part)
+
     import xlrd
 
     book = xlrd.open_workbook(str(path), formatting_info=False)
