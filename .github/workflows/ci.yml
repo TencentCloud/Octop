@@ -92,6 +92,14 @@ jobs:
       - name: Test
         run: make test
 
+      # PYTHONUTF8 is read only at interpreter startup. cp1252 (this runner)
+      # can decode UTF-8 bytes without raising, so the job runs the encoding
+      # regressions with UTF-8 mode off; those tests assert the characters.
+      - name: Legacy default encoding
+        env:
+          PYTHONUTF8: "0"
+        run: uv run pytest -q --tb=short tests/unit/infra/setup/test_self_update_encoding.py tests/unit/db/test_migration_sql_encoding.py
+
   live-tests:
     name: "Live tests (real credentials)"
     runs-on: ubuntu-latest
