@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
-from octop.infra.agents.providers.presets import load_provider_presets
+from octop.infra.agents.providers.presets import _reasoning_profile, load_provider_presets
+from octop.infra.agents.providers.reasoning import reasoning_request_parameters
+
+
+def test_iflytek_astron_spark_models_toggle_thinking() -> None:
+    for model_id in ("spark-x2.5", "xsparkx2flash"):
+        profile = _reasoning_profile("iflytek-astron-token-plan", model_id)
+        assert profile is not None
+        assert profile["adapter"] == "thinking"
+        assert profile["toggle"] is True
+        assert reasoning_request_parameters(profile, mode="disabled", effort=None) == {
+            "extra_body": {"thinking": {"type": "disabled"}}
+        }
+    assert _reasoning_profile("iflytek-astron-token-plan", "xopkimik26") is None
 
 
 def test_load_provider_presets_integration() -> None:
