@@ -53,11 +53,12 @@ import {
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
 import { metaForFile } from "./iconForName";
-import TeamMemberPicker, {
+import {
   mergeTeamPickerExperts,
   selectedRosterIds,
   type TeamMemberOption,
 } from "./TeamMemberPicker";
+import TeamMembersConfig from "./TeamMembersConfig";
 import ExpertDrawerCollapsible from "./expertDrawer/ExpertDrawerCollapsible";
 import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
 import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
@@ -663,8 +664,6 @@ export default function TeamDrawer({
         <ExpertDrawerSection id={SECTION_IDS.resources}>
           <Form.Item
             name="member_ids"
-            label={t("experts.teams.members")}
-            tooltip={t("experts.teams.membersHint")}
             rules={[
               {
                 validator: async (_, value: string[]) => {
@@ -675,7 +674,7 @@ export default function TeamDrawer({
               },
             ]}
           >
-            <TeamMemberPicker experts={pickerExperts} />
+            <TeamMembersConfig experts={pickerExperts} disabled={submitting} />
           </Form.Item>
           {sharingAvailable ? (
             <ResourceVisibilityFormItem

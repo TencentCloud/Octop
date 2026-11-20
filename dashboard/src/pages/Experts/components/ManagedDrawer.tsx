@@ -541,33 +541,15 @@ export default function ManagedDrawer({
         </ExpertDrawerSection>
 
         <ExpertDrawerSection id={SECTION_IDS.advanced}>
+          <Form.Item name="welcome_message" noStyle>
+            <WelcomeConfig
+              ref={welcomeRef}
+              initialPrompts={normalizeQuickPrompts(quickPrompts)}
+              templateStatus={templateState}
+              disabled={saving}
+            />
+          </Form.Item>
           <ExpertDrawerCollapsible title={t("nav.advancedSettings")} prominent>
-            <ExpertDrawerCollapsible title={t("experts.pageConfigTitle")}>
-              <ExpertTextAssistField
-                name="welcome_message"
-                label={t("experts.welcomeMessageTitle")}
-                tooltip={t("experts.createWelcomeHint")}
-                kind="expert.welcome_message"
-              >
-                <Input.TextArea
-                  rows={3}
-                  placeholder={t("experts.welcomeMessagePlaceholder")}
-                />
-              </ExpertTextAssistField>
-              {templateState !== "ready" ? (
-                <div className={styles.welcomeConfigLoading}>
-                  {templateState === "error"
-                    ? t("experts.managed.templateFailed")
-                    : t("common.loading")}
-                </div>
-              ) : (
-                <WelcomeConfig
-                  ref={welcomeRef}
-                  initialPrompts={normalizeQuickPrompts(quickPrompts)}
-                  disabled={saving}
-                />
-              )}
-            </ExpertDrawerCollapsible>
             <Form.Item label={t("experts.mdFilesTitle")}>
               <p className={expertDrawerStyles.hint}>
                 {t("experts.mdFilesEditHint")}

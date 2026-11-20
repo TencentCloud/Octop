@@ -943,6 +943,15 @@ export default function CreateFromExpertDrawer({
         </ExpertDrawerSection>
 
         <ExpertDrawerSection id={SECTION_IDS.advanced} compact>
+          <Form.Item name="welcome_message" noStyle>
+            <WelcomeConfig
+              key={sourceKey}
+              ref={welcomeConfigRef}
+              initialPrompts={templatePrompts}
+              templateStatus={detailLoading ? "loading" : "ready"}
+              disabled={detailLoading || submitting}
+            />
+          </Form.Item>
           <ExpertDrawerCollapsible title={t("nav.moreSettings")} prominent>
             {/* Skills list (template preview + pending installs), inline previews kept */}
             <Form.Item
@@ -1141,31 +1150,6 @@ export default function CreateFromExpertDrawer({
               />
             ) : null}
             <AgentTrajectoryField />
-          </ExpertDrawerCollapsible>
-          <ExpertDrawerCollapsible title={t("experts.pageConfigTitle")}>
-            <ExpertTextAssistField
-              name="welcome_message"
-              label={t("experts.welcomeMessageTitle")}
-              tooltip={t("experts.createWelcomeHint")}
-              kind="expert.welcome_message"
-            >
-              <Input.TextArea
-                rows={3}
-                placeholder={t("experts.welcomeMessagePlaceholder")}
-              />
-            </ExpertTextAssistField>
-            {detailLoading && templatePrompts.length === 0 ? (
-              <div className={styles.welcomeConfigLoading}>
-                {t("common.loading")}
-              </div>
-            ) : (
-              <WelcomeConfig
-                key={sourceKey}
-                ref={welcomeConfigRef}
-                initialPrompts={templatePrompts}
-                disabled={detailLoading || submitting}
-              />
-            )}
           </ExpertDrawerCollapsible>
           <ExpertDrawerCollapsible title={t("experts.advancedOptions")}>
             <AgentAdvancedConfigFields />

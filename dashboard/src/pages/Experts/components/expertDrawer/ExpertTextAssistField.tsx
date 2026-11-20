@@ -12,12 +12,14 @@ export default function ExpertTextAssistField({
   label,
   tooltip,
   kind,
+  getName,
   children,
 }: {
   name: "description" | "welcome_message";
   label: string;
   tooltip?: string;
   kind: TextAssistBarProps["kind"];
+  getName?: () => string;
   children: ReactElement;
 }) {
   const form = Form.useFormInstance();
@@ -31,7 +33,7 @@ export default function ExpertTextAssistField({
         <TextAssistBar
           compact
           kind={kind}
-          getName={() => String(form.getFieldValue("name") ?? "")}
+          getName={getName ?? (() => String(form.getFieldValue("name") ?? ""))}
           getText={() => String(form.getFieldValue(name) ?? "")}
           onApply={(text) => form.setFieldValue(name, text)}
         />

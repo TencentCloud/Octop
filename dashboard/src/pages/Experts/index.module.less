@@ -2584,7 +2584,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
+  padding: 8px 12px;
   background: var(--fn-bg-secondary);
   border: 1px solid var(--fn-card-border-normal);
   border-radius: var(--fn-radius-md);
@@ -2597,10 +2597,27 @@
   gap: 8px;
 }
 
-.quickPromptIndex {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--fn-text-tertiary);
+.quickPromptToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-color-brand);
+  }
+
+  > svg {
+    flex-shrink: 0;
+  }
 }
 
 .quickPromptFields {
@@ -2631,10 +2648,11 @@
   gap: 6px;
 }
 
-.quickPromptField label {
+.quickPromptField label,
+.quickPromptFieldFull label {
   font-size: 12px;
   font-weight: 500;
-  color: var(--fn-text-tertiary);
+  color: var(--fn-text-secondary);
 }
 
 .colorPicker {

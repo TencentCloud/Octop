@@ -466,3 +466,53 @@
   inset-block-start: -2px;
   inset-inline-end: 0;
 }
+
+.configEntry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-color-brand);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  > svg {
+    flex-shrink: 0;
+  }
+}
+
+.configEntryText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.configEntryTitle {
+  color: var(--fn-text-primary);
+  font-size: var(--ed-fs-body);
+  font-weight: 600;
+}
+
+.configSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ed-fs-aux);
+}
+
+.configBody {
+  padding: 20px 24px 24px;
+}
