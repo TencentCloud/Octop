@@ -58,6 +58,19 @@ def _active_payload(mgr: VoiceManager) -> dict[str, Any]:
     return active
 
 
+_SECRET_EXTRA_KEYS = frozenset(
+    {
+        "api_key",
+        "access_token",
+        "refresh_token",
+        "secret",
+        "secret_id",
+        "secret_key",
+        "token",
+    }
+)
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     return {
         "id": r.id,
@@ -70,6 +83,20 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "note": r.note,
         "enabled": bool(r.enabled),
     }
+
+
+def _public_voice_row(r: Any) -> dict[str, Any]:
+    """Voice provider list for any signed-in user: drop stored credentials."""
+    data = _row_to_dict(r)
+    data["api_key_set"] = bool(data.get("api_key"))
+    data["api_key"] = None
+    extra = data.get("extra")
+    if isinstance(extra, dict):
+        data["extra"] = {
+            key: None if key.lower() in _SECRET_EXTRA_KEYS else value
+            for key, value in extra.items()
+        }
+    return data
 
 
 class VoiceProviderCreateBody(BaseModel):
@@ -122,7 +149,8 @@ async def list_voice_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.voice_provider_repo.list_all()]
+    """Return voice providers. Credentials stay on the admin route."""
+    return [_public_voice_row(r) for r in server.services.voice_provider_repo.list_all()]
 
 
 @router.get("/active")

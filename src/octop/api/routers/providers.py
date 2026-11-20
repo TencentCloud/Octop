@@ -276,6 +276,14 @@ def _saved_default_model(extra: dict[str, Any]) -> str | None:
     return cleaned or None
 
 
+def _public_row(r: Any) -> dict[str, Any]:
+    """Provider list for any signed-in user: never include the stored API key."""
+    data = _row_to_dict(r)
+    data["api_key_set"] = bool(data.get("api_key"))
+    data["api_key"] = None
+    return data
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     models: list[dict[str, Any]] = []
     for stored in r.get_models():
@@ -368,8 +376,8 @@ async def list_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all providers. Read-only for regular users."""
-    return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
+    """Return all providers. Read-only for regular users; API keys stay on the admin route."""
+    return [_public_row(r) for r in server.services.provider_repo.list_all()]
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ from octop.cli.support.db import (
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.cron.session_target import thread_target_key
-from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_prompt
+from octop.infra.cron.task_type import normalize_cron_task
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
@@ -233,10 +233,22 @@ def create_cron_offline(
     fresh_thread: bool = False,
     task_type: str = "agent",
     thread_id: str | None = None,
+    allow_all: bool = False,
+    script_lang: str | None = None,
+    script_source: str | None = None,
+    script_path: str | None = None,
     home: Path | None = None,
 ) -> dict[str, Any]:
     build_trigger(trigger)
-    cleaned_prompt = require_cron_prompt(prompt)
+    task = normalize_cron_task(
+        task_type=task_type,
+        prompt=prompt,
+        allow_all=allow_all,
+        script_lang=script_lang,
+        script_source=script_source,
+        script_path=script_path,
+    )
+    cleaned_prompt = task.prompt
     pinned = (thread_id or "").strip()
     session_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
     channel_type = ThreadRegistry.CHANNEL_DASHBOARD
@@ -274,7 +286,11 @@ def create_cron_offline(
             session_key=session_key,
             fresh_thread=fresh_thread,
             model=None,
-            task_type=normalize_cron_task_type(task_type),
+            task_type=task.task_type,
+            allow_all=task.allow_all,
+            script_lang=task.script_lang,
+            script_source=task.script_source,
+            script_path=task.script_path,
         )
         row = svc.cron_repo.get(cron_id)
         assert row is not None

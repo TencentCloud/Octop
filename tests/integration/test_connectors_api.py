@@ -1167,3 +1167,25 @@ async def test_a_failed_token_exchange_is_reported_as_an_error(env):
     pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
     assert pending.json()["status"] == "error"
     assert "invalid_grant" in pending.json()["message"]
+
+
+async def test_custom_mcp_mutation_requires_permission(env):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(
+        c,
+        admin_auth,
+        username="no_custom_mcp",
+        permissions=["connector_builtin"],
+    )
+    denied = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=user_auth,
+        json={"servers": {"local": {"transport": "stdio", "command": "npx"}}},
+    )
+    assert denied.status_code == 403
+    probe = await c.post(
+        "/api/connectors/custom-mcp/test",
+        headers=user_auth,
+        json={"server": {"transport": "stdio", "command": "npx"}},
+    )
+    assert probe.status_code == 403

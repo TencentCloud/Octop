@@ -401,6 +401,8 @@
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {archive_schema_version}，当前 Octop 版本无法恢复（最高支持版本：{runtime_schema_version}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "BACKUP_CLIENT_MISSING": "当前环境找不到 {tool}，无法备份或恢复 PostgreSQL。请在运行 Octop 的环境中安装 PostgreSQL 客户端后再试。",
+    "BACKUP_REMOTE_UNSUPPORTED": "该远端备份提供方尚未支持。",
+    "BACKUP_REMOTE_FAILED": "远端备份同步未成功（{detail}）。本地归档已保留。",
     "FORBIDDEN": "没有权限。",
     "UPDATE_TARGET_NOT_NEWER": "目标版本 {target} 必须高于已安装版本 {current}，不支持重装同版本或降级。",
     "NOT_FOUND": "未找到。",
@@ -435,6 +437,7 @@
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "RESOURCE_NOT_ALLOWED": "你没有使用该资源的权限。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
+    "STORAGE_BACKEND_BACKUP_REMOTE": "该存储后端正被用作备份目标，无法删除、重命名、禁用或更改类型。请先在「设置 → 备份与恢复」将目标改为本地。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
@@ -774,7 +777,14 @@
   },
   "cron": {
     "history": {
-      "executed": "任务{cron_id} :{name} 执行."
+      "executed": "任务{cron_id} :{name} 执行.",
+      "script_done": "脚本 {name} 已执行，没有输出。"
+    },
+    "script": {
+      "interpreter_missing": "未找到 {runtime} 解释器，无法执行脚本。",
+      "timeout": "脚本执行超过 {seconds} 秒。",
+      "failed": "脚本失败（退出码 {code}）：{detail}",
+      "unreadable": "无法读取工作区脚本 {path}。"
     }
   },
   "agents": {

@@ -179,6 +179,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert "task_type" in cron_cols
     assert "mcp_servers" in cron_cols
     assert "name" in cron_cols
+    assert {"allow_all", "script_lang", "script_source", "script_path"}.issubset(cron_cols)
     assert "shared" in connector_cols
     assert "idx_connectors_user_display_name" in connector_indexes
     assert {

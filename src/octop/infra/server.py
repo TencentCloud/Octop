@@ -704,6 +704,10 @@ class OctopServer:
 
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
 
+        from octop.infra.setup.completion import seal_setup_wizard_if_installed  # noqa: PLC0415
+
+        seal_setup_wizard_if_installed(self)
+
     async def refresh_plugin_channels(self) -> None:
         """Reconcile only changed kinds and report registration failures to callers."""
         from octop.infra.errors import ErrorCode, OctopError
