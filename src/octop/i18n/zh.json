@@ -394,6 +394,7 @@
   },
   "errors": {
     "AUTH_FAILED": "认证失败。",
+    "MISSING_CREDENTIALS": "需要登录。",
     "TOKEN_EXPIRED": "登录已过期，请重新登录。",
     "SETUP_REQUIRED": "需要完成初始设置。",
     "DATABASE_NOT_EMPTY": "目标数据库已有用户。PostgreSQL 可确认后沿用现有账户；SQLite 请改用空库。",

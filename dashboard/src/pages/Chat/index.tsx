@@ -84,7 +84,7 @@ import {
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
-import { isTeamAgent } from "../../utils/teamAgent";
+import { isTeamAgent, teamMemberChatOption } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
 import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
@@ -725,10 +725,18 @@ function ChatPageInner() {
   const teamExpertOptions = useMemo(() => {
     if (!isTeamChat) return chatAgentOptionsPickable;
     const ids = new Set(activeAgent?.member_ids ?? []);
-    return chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const listed = chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const seen = new Set(listed.map((item) => item.agent_id));
+    const extras = (activeAgent?.members ?? [])
+      .filter(
+        (member) => ids.has(member.agent_id) && !seen.has(member.agent_id),
+      )
+      .map(teamMemberChatOption);
+    return [...listed, ...extras];
   }, [
     isTeamChat,
     activeAgent?.member_ids,
+    activeAgent?.members,
     chatAgentOptions,
     chatAgentOptionsPickable,
   ]);

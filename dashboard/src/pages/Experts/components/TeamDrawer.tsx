@@ -19,6 +19,8 @@ import {
   TEAM_AVATAR_PRESETS,
 } from "../../../components/AvatarPicker";
 import { TextAssistBar } from "../../../components/TextAssistBar";
+import { ResourceVisibilityFormItem } from "../../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -55,6 +57,24 @@ import TeamMemberPicker, {
   type TeamMemberOption,
 } from "./TeamMemberPicker";
 import styles from "../index.module.less";
+
+function audienceFromTeam(team: OctopAgent | null | undefined): {
+  visibility: ResourceVisibilityMode;
+  groupIds: string[];
+} {
+  const visibility: ResourceVisibilityMode =
+    team?.visibility === "groups" ||
+    team?.visibility === "all" ||
+    team?.visibility === "owner"
+      ? team.visibility
+      : team?.is_shared
+      ? "all"
+      : "owner";
+  return {
+    visibility,
+    groupIds: visibility === "groups" ? team?.group_ids ?? [] : [],
+  };
+}
 
 interface TeamDrawerProps {
   open: boolean;
@@ -103,6 +123,8 @@ export default function TeamDrawer({
   const [templateFiles, setTemplateFiles] = useState<TeamTemplateFile[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [rosterExtras, setRosterExtras] = useState<TeamMemberOption[]>([]);
+  const [visibility, setVisibility] = useState<ResourceVisibilityMode>("owner");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [iconUrl, setIconUrl] = useState<string | null>(TEAM_AVATAR_URL);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
@@ -119,9 +141,15 @@ export default function TeamDrawer({
       iconTouchedRef.current = false;
       setRosterExtras([]);
       setPathMappings([]);
+      setVisibility("owner");
+      setGroupIds([]);
       return;
     }
     iconTouchedRef.current = false;
+    const audience =
+      mode === "edit" ? audienceFromTeam(team) : audienceFromTeam(null);
+    setVisibility(audience.visibility);
+    setGroupIds(audience.groupIds);
     if (mode === "edit" && team) {
       form.setFieldsValue({
         name: team.name,
@@ -320,6 +348,8 @@ export default function TeamDrawer({
         : iconUrl?.trim() || TEAM_AVATAR_URL,
       welcome_message: values.welcome_message?.trim() || null,
       member_ids: selectedRosterIds(values.member_ids, pickerExperts),
+      visibility,
+      group_ids: visibility === "groups" ? groupIds : [],
     };
     const backendSpec = buildBackendSpec(
       values.backend_choice,
@@ -632,6 +662,16 @@ export default function TeamDrawer({
         >
           <TeamMemberPicker experts={pickerExperts} />
         </Form.Item>
+        <ResourceVisibilityFormItem
+          allowOwner
+          visibility={visibility}
+          groupIds={groupIds}
+          extra={t("experts.teams.visibilityHint")}
+          onChange={(next) => {
+            setVisibility(next.visibility);
+            setGroupIds(next.visibility === "groups" ? next.groupIds : []);
+          }}
+        />
       </Form>
 
       <div style={{ marginTop: 8 }}>

@@ -5,16 +5,22 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
+from octop.api.common.public_base import resolve_public_base
+
 SSO_STATE_COOKIE = "octop_sso_state"
 SSO_COOKIE_PATH = "/api/auth"
 SSO_STATE_TTL_SECONDS = 600
 
 
 def request_is_https(request: Request) -> bool:
-    forwarded_proto = request.headers.get("x-forwarded-proto")
-    if forwarded_proto:
-        return forwarded_proto.split(",", 1)[0].strip().lower() == "https"
-    return request.url.scheme == "https"
+    """Whether the browser-facing origin is HTTPS.
+
+    Same order as ``resolve_public_base``: a forwarded proto wins, otherwise
+    ``public_base_url``, otherwise the socket scheme. A TLS-terminating proxy
+    that omits ``X-Forwarded-Proto`` still gets a ``Secure`` SSO cookie when
+    the configured origin is ``https``.
+    """
+    return resolve_public_base(request).split(":", 1)[0].lower() == "https"
 
 
 def set_sso_state_cookie(response: JSONResponse, request: Request, state: str) -> None:

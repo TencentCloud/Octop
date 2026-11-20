@@ -95,20 +95,42 @@ interface MemberChip {
 function resolveMembers(
   memberIds: string[] | undefined,
   experts: OctopAgent[],
+  summaries: OctopAgent["members"],
+  viewerId: number | null | undefined,
 ): MemberChip[] {
   const byId = new Map(experts.map((item) => [item.agent_id, item]));
+  const extra = new Map((summaries ?? []).map((item) => [item.agent_id, item]));
   const chips: MemberChip[] = [];
   for (const id of memberIds ?? []) {
     const expert = byId.get(id);
-    if (!expert) continue;
+    if (expert) {
+      chips.push({
+        id,
+        name: expert.name,
+        color: expert.color || "#0d9488",
+        iconName: expert.icon_name,
+        iconUrl: expert.icon_url,
+        runner: managedRunnerId(expert),
+        ...incomingShareProps(expert),
+      });
+      continue;
+    }
+    const member = extra.get(id);
+    if (!member) continue;
+    const owned =
+      viewerId != null &&
+      member.user_id != null &&
+      Number(member.user_id) === Number(viewerId);
     chips.push({
       id,
-      name: expert.name,
-      color: expert.color || "#0d9488",
-      iconName: expert.icon_name,
-      iconUrl: expert.icon_url,
-      runner: managedRunnerId(expert),
-      ...incomingShareProps(expert),
+      name: member.name,
+      color: member.color || "#0d9488",
+      iconName: member.icon_name,
+      iconUrl: member.icon_url,
+      runner: member.managed_runner ?? null,
+      shared: Boolean(member.is_shared),
+      owned,
+      ownerName: null,
     });
   }
   return chips;
@@ -136,8 +158,8 @@ export const TeamCard = memo(function TeamCard({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const members = useMemo(
-    () => resolveMembers(agent.member_ids, experts),
-    [agent.member_ids, experts],
+    () => resolveMembers(agent.member_ids, experts, agent.members, user?.id),
+    [agent.member_ids, agent.members, experts, user?.id],
   );
   const visibleMembers = members.slice(0, MAX_VISIBLE_MEMBERS);
   const hiddenCount = Math.max(0, members.length - visibleMembers.length);
@@ -379,49 +401,51 @@ export const TeamCard = memo(function TeamCard({
         )}
 
         <div className={styles.agentCard2Footer}>
-          <Tooltip
-            title={
-              chatReady
-                ? t("pageShell.workspace.title")
-                : t("workspace.requiresRunning")
-            }
-            mouseEnterDelay={0.5}
-          >
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              disabled={!chatReady}
-              onClick={() => setWorkspaceDrawerOpen(true)}
-              aria-label={t("pageShell.workspace.title")}
-            >
-              <FolderOpen size={13} />
-            </button>
-          </Tooltip>
-
           {canManage && (
-            <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.agentCard2EditBtn}
-                disabled={isTransient || actionLoading}
-                onClick={() => void handleReload()}
-                aria-label={t("experts.reloadAgent")}
+            <>
+              <Tooltip
+                title={
+                  chatReady
+                    ? t("pageShell.workspace.title")
+                    : t("workspace.requiresRunning")
+                }
+                mouseEnterDelay={0.5}
               >
-                <RefreshCw size={13} />
-              </button>
-            </Tooltip>
-          )}
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  disabled={!chatReady}
+                  onClick={() => setWorkspaceDrawerOpen(true)}
+                  aria-label={t("pageShell.workspace.title")}
+                >
+                  <FolderOpen size={13} />
+                </button>
+              </Tooltip>
 
-          <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              onClick={() => onEdit(agent.agent_id)}
-              aria-label={t("common.edit", "Edit")}
-            >
-              <Pencil size={13} />
-            </button>
-          </Tooltip>
+              <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  disabled={isTransient || actionLoading}
+                  onClick={() => void handleReload()}
+                  aria-label={t("experts.reloadAgent")}
+                >
+                  <RefreshCw size={13} />
+                </button>
+              </Tooltip>
+
+              <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  onClick={() => onEdit(agent.agent_id)}
+                  aria-label={t("common.edit", "Edit")}
+                >
+                  <Pencil size={13} />
+                </button>
+              </Tooltip>
+            </>
+          )}
 
           {canManage ? (
             <Popconfirm
@@ -447,36 +471,38 @@ export const TeamCard = memo(function TeamCard({
             </Popconfirm>
           ) : null}
 
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "memory",
-                  icon: <Notebook size={14} />,
-                  label: t("experts.teams.memoryBtn"),
-                  onClick: () => setMemoryCatalogOpen(true),
-                },
-                {
-                  key: "channels",
-                  icon: <Waypoints size={14} />,
-                  label: t("experts.channelsBtn"),
-                  onClick: () => setChannelCatalogOpen(true),
-                },
-              ] satisfies MenuProps["items"],
-            }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <Tooltip title={t("common.more")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.agentCard2EditBtn}
-                aria-label={t("common.more")}
-              >
-                <MoreHorizontal size={13} />
-              </button>
-            </Tooltip>
-          </Dropdown>
+          {canManage ? (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "memory",
+                    icon: <Notebook size={14} />,
+                    label: t("experts.teams.memoryBtn"),
+                    onClick: () => setMemoryCatalogOpen(true),
+                  },
+                  {
+                    key: "channels",
+                    icon: <Waypoints size={14} />,
+                    label: t("experts.channelsBtn"),
+                    onClick: () => setChannelCatalogOpen(true),
+                  },
+                ] satisfies MenuProps["items"],
+              }}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <Tooltip title={t("common.more")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  aria-label={t("common.more")}
+                >
+                  <MoreHorizontal size={13} />
+                </button>
+              </Tooltip>
+            </Dropdown>
+          ) : null}
 
           {chatReady ? (
             <button

@@ -78,6 +78,11 @@ export function chatGeneratingPhase(opts: {
   loading?: boolean;
   lastMessageRole?: string | null;
   hasLiveSpeakers?: boolean;
+  /**
+   * A teammate is already producing. The host turn may still be open
+   * (managed experts run long); the footer names the member anyway.
+   */
+  membersLive?: boolean;
   /** Overrides the role check when a decision-only placeholder is already stored. */
   awaitingVisibleReply?: boolean;
 }): {
@@ -87,7 +92,9 @@ export function chatGeneratingPhase(opts: {
 } {
   const showFooter = shouldShowGenerating(opts);
   const membersOnly = Boolean(
-    showFooter && !opts.isStreaming && opts.hasLiveSpeakers,
+    showFooter &&
+      opts.hasLiveSpeakers &&
+      (!opts.isStreaming || opts.membersLive),
   );
   const stillWaiting =
     opts.awaitingVisibleReply ??

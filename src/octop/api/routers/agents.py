@@ -245,8 +245,10 @@ def _row_dict(
         teams = getattr(registry, "teams", None)
         if teams is not None:
             payload["member_ids"] = teams.visible_member_ids(row.agent_id)
+            payload["members"] = teams.member_summaries(row.agent_id)
         else:
             payload["member_ids"] = []
+            payload["members"] = []
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
     repos = getattr(getattr(server, "services", None), "repos", None)

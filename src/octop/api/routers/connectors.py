@@ -704,7 +704,7 @@ async def list_instances(
 
 @router.get("/connectors/custom-mcp", summary="Get custom MCP servers")
 async def get_custom_mcp(
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return the user's custom MCP server map (langchain-mcp-adapters shape)."""

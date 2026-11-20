@@ -126,10 +126,10 @@ def test_compose_followup_truncates_long_member_result(processor_env: dict) -> N
         message="survey market",
         user_id=1,
     )
-    huge = "建议采纳此项。" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200))
+    huge = "HEAD-DROP-" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200)) + "建议采纳此项。"
     text = processor.compose_followup(msg, result_text=huge, error_text=None)
     assert "建议采纳此项。" in text
-    assert huge not in text
+    assert "HEAD-DROP-" not in text
     assert "…" in text
     assert len(text) < len(huge) + 800
 

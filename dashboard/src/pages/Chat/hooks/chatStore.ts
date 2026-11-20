@@ -525,29 +525,6 @@ function clearAllLiveSpeakers(state: SessionStreamState): void {
   state.liveSpeakers.clear();
 }
 
-/** Drop live speakers with no streaming text and no in-flight tools. */
-function pruneIdleLiveSpeakers(state: SessionStreamState): void {
-  if (state.liveSpeakers.size === 0) return;
-  const busy = new Set<string>();
-  const host = state.roomAgentId?.trim();
-  for (const message of state.messages) {
-    if (message.role !== "assistant") continue;
-    const key = speakerLiveKey(message.speakerAgentId);
-    const inFlightTool = Boolean(
-      message.toolData &&
-        message.toolData.output === undefined &&
-        !isPausedAskTool(message),
-    );
-    if (message.status !== "streaming" && !inFlightTool) continue;
-    busy.add(key);
-    if (!key && host) busy.add(host);
-    if (key && host && key === host) busy.add("");
-  }
-  for (const key of [...state.liveSpeakers]) {
-    if (!busy.has(key)) state.liveSpeakers.delete(key);
-  }
-}
-
 function getOrCreate(sessionId: string): SessionStreamState {
   let state = sessionStates.get(sessionId);
   if (!state) {
@@ -666,11 +643,29 @@ function chunkPaintsImmediately(type: string): boolean {
   );
 }
 
+/** Team rooms whose sidebar "in progress" badge was cleared for a member. */
+const delegatedHostWork = new Set<string>();
+
+/** True after a teammate started speaking, until the next host turn. */
+export function hostWorkDelegated(sessionId: string): boolean {
+  return delegatedHostWork.has(sessionId);
+}
+
+function releaseHostWorkBadge(sessionId: string): void {
+  if (!sessionId || delegatedHostWork.has(sessionId)) return;
+  delegatedHostWork.add(sessionId);
+  // The host graph can stay open for the whole managed job. The session
+  // badge should follow the member, not keep saying the host is in progress.
+  emitStreamEvent({ kind: "streamEnd", sessionId });
+}
+
 function beginStream(state: SessionStreamState, sessionId: string): void {
+  const resumeBadge = delegatedHostWork.delete(sessionId);
   clearAllLiveSpeakers(state);
   state.thinkingStartedAt = Date.now();
   state.isStreaming = true;
   touchStreamActivity(sessionId);
+  if (resumeBadge) emitStreamEvent({ kind: "streamStart", sessionId });
 }
 
 function clearStreamingFlags(
@@ -1503,6 +1498,19 @@ function handleHarnessChunk(
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
+  const hostId = sessionHostAgentId(state, sessionId) || "";
+  if (
+    sessionId &&
+    state.isTeamRoom &&
+    speaker &&
+    speaker !== hostId &&
+    (chunk.type === "token" ||
+      chunk.type === "reasoning" ||
+      chunk.type === "tool_call_chunk" ||
+      chunk.type === "tool_result")
+  ) {
+    releaseHostWorkBadge(sessionId);
+  }
   switch (chunk.type) {
     case "token": {
       const snapshot = Boolean(chunk.team_snapshot);
@@ -1553,10 +1561,19 @@ function handleHarnessChunk(
       }
       if (chunk.team_wrapup) {
         finalizeWrapupMessages(state, speaker);
-        clearSpeakerLive(state, speaker);
-        // Wrap-up means members already finished — drop stale live bits
-        // (e.g. snapshot re-marked a speaker after their done).
-        pruneIdleLiveSpeakers(state);
+        // The answer is on screen. Seal a member bubble whose done frame
+        // never arrived, then drop the in-progress badge with it.
+        state.messages = state.messages.map((message) =>
+          message.status === "streaming"
+            ? { ...message, status: "done" as const }
+            : message,
+        );
+        clearAllLiveSpeakers(state);
+        clearStreamingFlags(state);
+        if (sessionId) {
+          clearStreamActivity(sessionId);
+          emitStreamEvent({ kind: "streamEnd", sessionId });
+        }
         break;
       }
       if (chunk.hitl_paused === true) {

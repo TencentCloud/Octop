@@ -65,6 +65,7 @@ _EDIT_CARD_TOOL_BASES = frozenset(
 _HISTORY_TOOL_RESULT_MAX_CHARS = 4000
 _HISTORY_TOOL_RESULT_SUFFIX = "…"
 # Member answer excerpt injected into the host wrap-up wake-up prompt.
+# Keep the ending: long answers put the conclusion last.
 _FOLLOWUP_RESULT_MAX_CHARS = 6000
 _PEER_RESOURCES_KEY = "octop_peer_resources"
 
@@ -307,12 +308,9 @@ class TeamManager:
                 task=msg.message,
                 error=error_text,
             )
-        # Member answers live on the room wall / peer checkpoint, not the host
-        # graph — inject a truncated excerpt so wrap-up can follow their advice.
-        result = _truncate_tool_result_text(
-            (result_text or "").strip(),
-            max_chars=_FOLLOWUP_RESULT_MAX_CHARS,
-        )
+        # Member answers live on the room wall, not the host graph. The
+        # excerpt prefers the live answer and keeps its ending.
+        result = _truncate_followup_result((result_text or "").strip())
         if not result:
             result = "(empty)"
         return tr(
@@ -2240,6 +2238,34 @@ def _truncate_tool_result_text(
     return text[:keep] + _HISTORY_TOOL_RESULT_SUFFIX
 
 
+def _truncate_followup_result(
+    text: str,
+    *,
+    max_chars: int = _FOLLOWUP_RESULT_MAX_CHARS,
+) -> str:
+    """Keep the end of a member answer. The conclusion is what wrap-up needs."""
+    if len(text) <= max_chars:
+        return text
+    keep = max(max_chars - len(_HISTORY_TOOL_RESULT_SUFFIX), 0)
+    return _HISTORY_TOOL_RESULT_SUFFIX + text[-keep:]
+
+
+def _followup_result_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Inbox reads the last assistant message. Prefer the text just streamed.
+
+    Fan-in already stored the checkpoint trail. A long tool run can push the
+    final answer out of that window, so the wake-up must not depend on it.
+    """
+    text = str(payload.get("stream_text") or "").strip()
+    if not text:
+        return payload
+    from langchain_core.messages import AIMessage
+
+    followup = dict(payload)
+    followup["messages"] = [AIMessage(content=text)]
+    return followup
+
+
 def _truncate_tool_content(content: Any) -> Any:
     if isinstance(content, str):
         return _truncate_tool_result_text(content)
@@ -2585,6 +2611,7 @@ def _usable_shared_entry(
     exclude_agent_id: str | None,
     viewer: Any,
     load_agent: Callable[[str], AgentRow | None],
+    roster_visible: Callable[[Any, AgentRow, str], bool] | None = None,
 ) -> Any | None:
     if not agent_id or agent_id == exclude_agent_id:
         return None
@@ -2595,9 +2622,13 @@ def _usable_shared_entry(
     if entry.agent_id == exclude_agent_id:
         return None
     row = load_agent(entry.agent_id)
-    if row is None or is_team_agent(row) or not _user_may_use_member(row, viewer):
+    if row is None or is_team_agent(row):
         return None
-    return entry
+    if _user_may_use_member(row, viewer):
+        return entry
+    if roster_visible is not None and roster_visible(viewer, row, str(exclude_agent_id or "")):
+        return entry
+    return None
 
 
 def wire_shared_member_peers(
@@ -2605,14 +2636,16 @@ def wire_shared_member_peers(
     *,
     load_agent: Callable[[str], AgentRow | None],
     load_user: Callable[[int], Any],
+    roster_visible: Callable[[Any, AgentRow, str], bool] | None = None,
 ) -> None:
-    """Let a team allowlist see shared experts owned by other accounts.
+    """Let a team allowlist see members the chatting user does not own.
 
     Harness ``list_peers`` and ``_resolve_peer_entry`` keep same-user peers
     only, so a host whose members were shared by someone else gets an empty
     ``agent_list`` and ``ask_agent`` rejects the dispatch. Ids on the host
     ``team_peers`` config, or on a member's request-scoped allowlist, are
-    added back when ``_user_may_use_member`` accepts them for the chatting user.
+    added back when the chatting user may use that expert directly, or when
+    ``roster_visible`` says this team chat may run that roster member.
     """
     if harness_team is None or getattr(harness_team, "_octop_shared_member_peers", False):
         return
@@ -2655,6 +2688,7 @@ def wire_shared_member_peers(
                 exclude_agent_id=exclude_agent_id,
                 viewer=viewer,
                 load_agent=load_agent,
+                roster_visible=roster_visible,
             )
             if entry is None or entry.agent_id in seen:
                 continue
@@ -2686,6 +2720,7 @@ def wire_shared_member_peers(
             exclude_agent_id=from_agent_id,
             viewer=_peer_viewer(user_id, load_user),
             load_agent=load_agent,
+            roster_visible=roster_visible,
         )
         if entry is None:
             raise ValueError(f"agent {to_agent_id!r} not owned by user")
@@ -2830,7 +2865,7 @@ def wire_host_dispatch(
                         to_agent_id,
                         exc_info=True,
                     )
-            return request, payload
+            return request, _followup_result_payload(payload)
 
         harness_team._invoke_peer = invoke_peer
 
