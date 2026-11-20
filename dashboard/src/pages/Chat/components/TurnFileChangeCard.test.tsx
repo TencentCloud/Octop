@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "antd";
 import { ChatFilePreviewProvider } from "../ChatFilePreviewContext";
 import type { ChatMessage } from "../hooks/useChat";
-import TurnFileChangeCard from "./TurnFileChangeCard";
+import TurnFileChangeCard, { turnSummaryCache } from "./TurnFileChangeCard";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -68,7 +68,7 @@ function writeMessage(): ChatMessage {
 function renderCard(messages: ChatMessage[], threadId: string | null = "th-1") {
   const openFilePreview = vi.fn();
   const openGitChange = vi.fn();
-  render(
+  const view = render(
     <App>
       <ChatFilePreviewProvider
         openFilePreview={openFilePreview}
@@ -84,12 +84,13 @@ function renderCard(messages: ChatMessage[], threadId: string | null = "th-1") {
       </ChatFilePreviewProvider>
     </App>,
   );
-  return { openFilePreview, openGitChange };
+  return { ...view, openFilePreview, openGitChange };
 }
 
 describe("TurnFileChangeCard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    turnSummaryCache.clear();
     checkpoints.turnSummary.mockResolvedValue({
       files: [],
       additions: 0,
@@ -194,6 +195,114 @@ describe("TurnFileChangeCard", () => {
       await screen.findByTestId("turn-change-reverted"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("turn-undo")).not.toBeInTheDocument();
+  });
+
+  it("shows the server-only list when the client estimate is empty", async () => {
+    // Subagent turns write files the client-side tool scan cannot see; the
+    // card must still render the server-authoritative list.
+    checkpoints.turnSummary.mockResolvedValue({
+      files: [
+        {
+          path: "src/octop_harness/middleware/file_capture.py",
+          added: 312,
+          removed: 0,
+          write_count: 3,
+          tool_names: ["write_file"],
+        },
+        {
+          path: "src/octop_harness/middleware/tool_paths.py",
+          added: 35,
+          removed: 0,
+          write_count: 1,
+          tool_names: ["edit_file"],
+        },
+      ],
+      additions: 347,
+      deletions: 0,
+      reverted: false,
+    });
+    const textOnly: ChatMessage[] = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "delegated the edits",
+        timestamp: 1,
+        status: "done",
+      },
+    ];
+    renderCard(textOnly);
+    expect(
+      await screen.findByRole("button", { name: /2 个文件变更/ }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /2 个文件变更/ }));
+    expect(
+      await screen.findByText("middleware/file_capture.py"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("middleware/tool_paths.py")).toBeInTheDocument();
+  });
+
+  it("reuses a warm cache on remount without a second request", async () => {
+    checkpoints.turnSummary.mockResolvedValue({
+      files: [
+        { path: "a.md", added: 1, removed: 0, write_count: 1, tool_names: [] },
+      ],
+      additions: 1,
+      deletions: 0,
+      reverted: false,
+    });
+    const { unmount } = renderCard([writeMessage()]);
+    await screen.findByRole("button", { name: /1 个文件变更/ });
+    unmount();
+    const second = renderCard([writeMessage()]);
+    await waitFor(() => {
+      expect(
+        second.container.querySelector('[data-testid="turn-change-card"]'),
+      ).not.toBeNull();
+    });
+    await new Promise((r) => setTimeout(r, 900));
+    expect(checkpoints.turnSummary).toHaveBeenCalledTimes(1);
+    expect(
+      second.container.querySelector('[data-testid="turn-change-card"]'),
+    ).not.toBeNull();
+  });
+
+  it("does not cache a failed summary and retries on remount", async () => {
+    checkpoints.turnSummary.mockRejectedValue(new Error("500"));
+    const { unmount } = renderCard([writeMessage()]);
+    // Failure falls back to the client estimate, never caching the miss.
+    await waitFor(() => {
+      expect(checkpoints.turnSummary).toHaveBeenCalled();
+    });
+    unmount();
+    renderCard([writeMessage()]);
+    await waitFor(() => {
+      expect(checkpoints.turnSummary).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("renders nothing when no source knows about files", async () => {
+    checkpoints.turnSummary.mockResolvedValue({
+      files: [],
+      additions: 0,
+      deletions: 0,
+      reverted: false,
+    });
+    const textOnly: ChatMessage[] = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "plain",
+        timestamp: 1,
+        status: "done",
+      },
+    ];
+    const { container } = renderCard(textOnly);
+    await waitFor(() => {
+      expect(checkpoints.turnSummary).toHaveBeenCalled();
+    });
+    expect(
+      container.querySelector('[data-testid="turn-change-card"]'),
+    ).toBeNull();
   });
 
   it("Open still opens the file viewer", () => {

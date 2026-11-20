@@ -8,7 +8,6 @@ import {
   splitAssistantTurn,
   toAnswerOnlyMessage,
   turnUsedBrowserTool,
-  turnUsedFileTool,
 } from "../utils/messageContent";
 import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
 import { useAgent } from "../../../context/AgentContext";
@@ -216,8 +215,17 @@ export default function AssistantTurnView({
 
   const usedBrowser = turnUsedBrowserTool(fullSplit);
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
-  const usedFileTool = turnUsedFileTool(fullSplit);
-  const showEditFile = usedFileTool && !!onEditFile;
+  // The change card mounts whenever the dock handler exists — turns whose
+  // files were written by a subagent are invisible to the client-side tool
+  // scan, and only the server summary knows about them. The card itself
+  // renders nothing when neither source has files. Turn *visibility* keeps
+  // the cheap client gate so empty placeholder turns stay unrendered.
+  const showEditFile = !!onEditFile;
+  // The card alone makes a turn visible: server-only file changes
+  // (subagent writes) must keep an otherwise quiet turn rendered, and a
+  // streaming write-tool turn stays visible in compact-process mode.
+  // Empty placeholders collapse via the .turnInset:empty rule.
+  const editFileVisible = showEditFile;
   const hasToolMedia =
     toolMedia.images.length > 0 ||
     toolMedia.videos.length > 0 ||
@@ -278,7 +286,7 @@ export default function AssistantTurnView({
     hasToolMedia ||
     knowledgeCitations.length > 0 ||
     showOpenBrowser ||
-    showEditFile;
+    editFileVisible;
   // A decision-only placeholder has no row yet. Rendering an empty turn
   // would shift the layout before the avatar and the first status settle.
   if (!hasVisibleTurn) return null;

@@ -232,6 +232,19 @@
   }
 }
 
+// The change card mounts for every settled turn and self-hides when no
+// source has files; :empty collapses the wrapper so hidden cards add no
+// flex-gap spacing.
+.turnInset:empty {
+  display: none;
+}
+
+// A settled turn whose only content would be the (collapsed) empty change
+// card must not leave the turn wrapper's spacing behind.
+.assistantTurn:has(> .turnInset:empty:only-child) {
+  display: none;
+}
+
 .turnInset {
   .chatMsgColumns();
   max-width: 100%;

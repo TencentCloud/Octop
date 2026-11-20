@@ -5,7 +5,6 @@ import { App, Button, Modal, Spin } from "antd";
 import cx from "classnames";
 import { useChatFilePreview } from "../ChatFilePreviewContext";
 import { isWriteToolName } from "../constants";
-import { collectChatFilePaths } from "../hooks/useChatFileDetection";
 import type { ChatMessage } from "../hooks/useChat";
 import {
   fileChangeChipLabel,
@@ -23,6 +22,41 @@ import GitDiffView from "../../Agent/Workspace/components/GitDiffView";
 import styles from "../index.module.less";
 
 const FILE_CHANGE_PREVIEW = 4;
+// Delay before retrying an empty summary right after a turn settles.
+const SUMMARY_RETRY_MS = 800;
+
+// The message list virtualizes turns, so scrolling remounts this card;
+// cache summaries per turn (an empty summary is a cheap cached miss) so
+// remounts do not re-hit the API. Cleared on rewind so the refreshed
+// reverted state is authoritative again. Exported for tests to reset
+// between cases; failures are never cached.
+const TURN_SUMMARY_CACHE_MAX = 200;
+export const turnSummaryCache = new Map<string, TurnSummary>();
+
+function touchCacheSummary(key: string): TurnSummary {
+  const value = turnSummaryCache.get(key)!;
+  turnSummaryCache.delete(key);
+  turnSummaryCache.set(key, value);
+  return value;
+}
+
+function cacheSummary(key: string, value: TurnSummary): void {
+  turnSummaryCache.delete(key);
+  turnSummaryCache.set(key, value);
+  while (turnSummaryCache.size > TURN_SUMMARY_CACHE_MAX) {
+    const oldest = turnSummaryCache.keys().next().value;
+    if (oldest === undefined) break;
+    turnSummaryCache.delete(oldest);
+  }
+}
+
+// Thread-first so a rewind evicts every speaker's entries in a team room
+// with one prefix.
+const summaryCacheKey = (
+  agentId: string,
+  threadId: string,
+  messageId: string,
+) => `${threadId}:${agentId}:${messageId}`;
 
 function changeDir(displayPath: string): string {
   const parts = displayPath.replace(/\\/g, "/").split("/").filter(Boolean);
@@ -72,10 +106,21 @@ export default function TurnFileChangeCard({
     [messages, agentId],
   );
   const fallbackCount = useMemo(() => {
-    const fromPaths = collectChatFilePaths(messages, agentId).length;
-    if (fromPaths > 0) return fromPaths;
-    return messages.filter((m) => isWriteToolName(m.toolData?.name)).length;
-  }, [messages, agentId]);
+    // Write tools and edited-file stamps only: media/attachment paths would
+    // turn read-only turns (e.g. a browser screenshot) into false positives.
+    const edited = new Set<string>();
+    for (const m of messages) {
+      for (const path of m.editedFiles ?? []) {
+        if (path.trim()) edited.add(path.trim());
+      }
+    }
+    // The two signals count different units (paths vs calls); take the
+    // stronger one instead of summing.
+    const writeCalls = messages.filter((m) =>
+      isWriteToolName(m.toolData?.name),
+    ).length;
+    return Math.max(edited.size, writeCalls);
+  }, [messages]);
 
   const messageId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -88,38 +133,90 @@ export default function TurnFileChangeCard({
   const diffRequestRef = useRef(0);
 
   const summaryRequestRef = useRef(0);
-  const refreshSummary = useCallback(async () => {
-    if (!canCheckpoint || streaming) {
-      // Invalidate any in-flight summary so a late response cannot
-      // repopulate serverSummary after the card fell back to the estimate.
-      summaryRequestRef.current += 1;
-      setServerSummary(null);
-      return;
-    }
-    const requestId = ++summaryRequestRef.current;
-    try {
-      const res = await fileCheckpointsApi.turnSummary(
-        agentId!,
-        threadId!,
-        messageId!,
-      );
-      if (requestId === summaryRequestRef.current) setServerSummary(res);
-    } catch {
-      // No checkpoints (older harness) or transient failure: fall back to
-      // the client estimate instead of showing stale authoritative stats.
-      if (requestId === summaryRequestRef.current) setServerSummary(null);
-    }
-  }, [agentId, threadId, messageId, streaming, canCheckpoint]);
+  const summaryRetriedRef = useRef(false);
+  const summaryRetryTimerRef = useRef<number | null>(null);
+  const refreshSummary = useCallback(
+    async (cacheEmpty = false) => {
+      if (!canCheckpoint || streaming) {
+        // Invalidate any in-flight summary so a late response cannot
+        // repopulate serverSummary after the card fell back to the estimate.
+        summaryRequestRef.current += 1;
+        setServerSummary(null);
+        return;
+      }
+      const requestId = ++summaryRequestRef.current;
+      const key = summaryCacheKey(agentId!, threadId!, messageId!);
+      if (turnSummaryCache.has(key)) {
+        setServerSummary(touchCacheSummary(key));
+        return;
+      }
+      try {
+        const res = await fileCheckpointsApi.turnSummary(
+          agentId!,
+          threadId!,
+          messageId!,
+        );
+        if (requestId !== summaryRequestRef.current) return;
+        // Only the current request may touch the cache: a late response would
+        // otherwise shadow a post-rewind refresh with the stale summary. An
+        // empty first fetch is not cached — checkpoints are persisted after
+        // the stream's done chunk, so it can legitimately race an empty
+        // store — but the post-settle retry's (still-empty) result is: the
+        // race window has passed, and negative-caching keeps quiet turns
+        // from re-hitting the endpoint on every remount.
+        if (res.files.length > 0 || cacheEmpty) cacheSummary(key, res);
+        if (
+          res.files.length === 0 &&
+          !cacheEmpty &&
+          !summaryRetriedRef.current
+        ) {
+          // Checkpoints are written after the stream's done chunk; if the
+          // first fetch raced that write, retry once shortly after the
+          // response lands. Scheduling here (not from a fixed post-settle
+          // timer) means a slow first request still gets its retry.
+          summaryRetriedRef.current = true;
+          summaryRetryTimerRef.current = window.setTimeout(() => {
+            summaryRetryTimerRef.current = null;
+            void refreshSummary(true);
+          }, SUMMARY_RETRY_MS);
+        }
+        setServerSummary(res);
+      } catch {
+        // A rejection is a genuine failure: fall back to the client estimate
+        // and leave the miss uncached so a remount retries.
+        if (requestId !== summaryRequestRef.current) return;
+        setServerSummary(null);
+      }
+    },
+    [agentId, threadId, messageId, streaming, canCheckpoint],
+  );
 
-  // Only turns whose client estimate saw write/edit tools can have
-  // checkpoints — skip the request for every other historical turn.
-  const needsSummary = !streaming && canCheckpoint && summary.files.length > 0;
+  // Fetch the authoritative summary for every settled turn, even when the
+  // client estimate is empty: writes made by subagents (or any path the
+  // client-side tool scan cannot see) are only known to the server. The
+  // settle-race retry is scheduled inside refreshSummary; this effect only
+  // cleans its timer up.
+  const needsSummary = !streaming && canCheckpoint;
   useEffect(() => {
     if (!needsSummary) {
+      // Same invalidation as inside refreshSummary: an in-flight response
+      // must not populate state after the turn resumed streaming, and a
+      // summary cached during a mid-turn lull (tool/HITL gap) must not be
+      // served after the real settle.
+      summaryRequestRef.current += 1;
+      if (agentId && threadId && messageId) {
+        turnSummaryCache.delete(summaryCacheKey(agentId, threadId, messageId));
+      }
       setServerSummary(null);
-      return;
+      return undefined;
     }
     void refreshSummary();
+    return () => {
+      if (summaryRetryTimerRef.current !== null) {
+        window.clearTimeout(summaryRetryTimerRef.current);
+        summaryRetryTimerRef.current = null;
+      }
+    };
   }, [needsSummary, refreshSummary]);
 
   const serverFiles = serverSummary?.files ?? [];
@@ -266,7 +363,14 @@ export default function TurnFileChangeCard({
       );
       setRewindOpen(false);
       // Re-read the authoritative stats so the reverted badge appears and
-      // the undo action disappears immediately.
+      // the undo action disappears immediately; the cached pre-rewind
+      // summary must not shadow the refresh.
+      // Restoring this turn also discards files written by later turns,
+      // so every cached summary in this thread may be stale.
+      const prefix = `${threadId}:`;
+      for (const key of [...turnSummaryCache.keys()]) {
+        if (key.startsWith(prefix)) turnSummaryCache.delete(key);
+      }
       void refreshSummary();
     } catch (err) {
       message.error(apiErrorMessage(err, t("git.opFailed")));
@@ -275,7 +379,14 @@ export default function TurnFileChangeCard({
     }
   };
 
-  if (summary.files.length === 0) {
+  if (displayFiles.length === 0 && fallbackCount === 0) {
+    // Neither source knows about files: render nothing instead of a
+    // placeholder with a wrong count. (The pending summary does not hide
+    // the fallback button — that would flip the card height twice.)
+    return null;
+  }
+
+  if (displayFiles.length === 0) {
     return (
       <button
         type="button"
