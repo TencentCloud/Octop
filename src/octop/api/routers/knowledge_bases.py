@@ -17,8 +17,6 @@ from octop.api.deps import current_user, get_server, require_permission
 from octop.config import DEFAULT_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB, upload_mb_to_bytes
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
-    is_embedding_model,
-    is_onnx_local_provider,
     is_vision_model,
 )
 from octop.infra.agents.providers.onnx_catalog import (
@@ -49,6 +47,7 @@ from octop.infra.knowledge.graph_extract import (
     set_graph_settings,
 )
 from octop.infra.knowledge.jobs import enqueue_index_document, reindex_all_documents
+from octop.infra.knowledge.model_options import remote_models
 from octop.infra.knowledge.ocr import (
     ensure_ocr_deps_async,
     get_ocr_capability,
@@ -57,7 +56,6 @@ from octop.infra.knowledge.ocr import (
 )
 from octop.infra.knowledge.rerank import (
     get_rerank_capability,
-    rerank_models,
     set_rerank_settings,
 )
 from octop.infra.knowledge.service import (
@@ -516,20 +514,7 @@ async def embedding_options(
     assert server.services is not None
     remote = []
     for provider in server.services.provider_repo.list_all():
-        if is_onnx_local_provider(
-            provider.name, provider_api_key=getattr(provider, "api_key", None)
-        ):
-            continue
-        models = [
-            {"id": str(model["id"]), "name": str(model.get("name") or model["id"])}
-            for model in provider.get_models()
-            if str(model.get("id") or "").strip()
-            and is_embedding_model(
-                model,
-                provider_name=provider.name,
-                provider_api_key=getattr(provider, "api_key", None),
-            )
-        ]
+        models = remote_models(provider, "embedding")
         if models:
             remote.append(
                 {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
@@ -580,7 +565,7 @@ async def rerank_options(
     assert server.services is not None
     providers = []
     for provider in server.services.provider_repo.list_all():
-        models = rerank_models(provider) if provider.enabled else []
+        models = remote_models(provider, "rerank")
         if models:
             providers.append(
                 {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}

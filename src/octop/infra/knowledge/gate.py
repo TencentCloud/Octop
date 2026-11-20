@@ -7,13 +7,13 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from octop.infra.agents.providers.model_flags import is_embedding_model
 from octop.infra.agents.providers.onnx_service import (
     embedding_prerequisites_ok_for_model,
     is_model_downloaded,
     local_embedding_deps_available,
     require_embedding_prerequisites_for_model,
 )
+from octop.infra.knowledge.model_options import remote_models
 from octop.infra.knowledge.params import get_advanced_settings
 
 logger = logging.getLogger(__name__)
@@ -46,21 +46,7 @@ def _provider_for_settings(provider_repo: Any, provider_id: str) -> Any | None:
 
 
 def _remote_ready(provider: Any | None, model: str) -> bool:
-    return bool(
-        provider
-        and provider.enabled
-        and provider.api_key
-        and provider.base_url
-        and any(
-            str(candidate.get("id") or "").strip() == model
-            and is_embedding_model(
-                candidate,
-                provider_name=provider.name,
-                provider_api_key=getattr(provider, "api_key", None),
-            )
-            for candidate in provider.get_models()
-        )
-    )
+    return any(candidate["id"] == model for candidate in remote_models(provider, "embedding"))
 
 
 def get_capability(settings_get: SettingsGet, provider_repo: Any = None) -> dict[str, Any]:

@@ -53,10 +53,11 @@ export function EmbeddingModelPool({
     for (const provider of providers) {
       if (!provider.enabled || !provider.api_key) continue;
       const onnx = isOnnxProviderRow(provider);
+      if (!onnx && !provider.base_url) continue;
       const embeddingLane = onnx || provider.purpose === "embedding";
       for (const model of provider.models ?? []) {
-        if (model.enabled === false) continue;
-        if (!embeddingLane && !isEmbeddingModel(model)) continue;
+        if (model.enabled === false || !model.id.trim()) continue;
+        if (!isEmbeddingModel(model, embeddingLane)) continue;
         out.push({
           providerId: provider.id,
           providerName: provider.name,
