@@ -1178,6 +1178,16 @@ function EditAgentDrawerBody({
             ) : null}
 
             <ExpertDrawerSection id={SECTION_IDS.advanced} compact>
+              <Form.Item name="welcome_message" noStyle>
+                <WelcomeConfig
+                  key={agent.agent_id}
+                  ref={welcomeConfigRef}
+                  agentId={chatReady ? agent.agent_id : undefined}
+                  showPrompts={chatReady}
+                  editing
+                  disabled={saving}
+                />
+              </Form.Item>
               <ExpertDrawerCollapsible title={t("nav.moreSettings")} prominent>
                 {chatReady && agent.kind !== "managed" ? (
                   <Form.Item
@@ -1395,25 +1405,6 @@ function EditAgentDrawerBody({
                     onUpdatePathMapping={updatePathMapping}
                   />
                 )}
-              </ExpertDrawerCollapsible>
-              <ExpertDrawerCollapsible title={t("experts.pageConfigTitle")}>
-                <ExpertTextAssistField
-                  name="welcome_message"
-                  label={t("experts.welcomeMessageTitle")}
-                  tooltip={t("experts.editWelcomeHint")}
-                  kind="expert.welcome_message"
-                >
-                  <Input.TextArea
-                    rows={3}
-                    placeholder={t("experts.welcomeMessagePlaceholder")}
-                  />
-                </ExpertTextAssistField>
-                {chatReady ? (
-                  <WelcomeConfig
-                    ref={welcomeConfigRef}
-                    agentId={agent.agent_id}
-                  />
-                ) : null}
               </ExpertDrawerCollapsible>
               {agent.kind === "managed" ? null : (
                 <ExpertDrawerCollapsible title={t("experts.advancedOptions")}>
