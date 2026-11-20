@@ -1,11 +1,13 @@
 /** Catalog of App-ID OAuth providers shown under the admin SSO OAuth family. */
 
-export type OauthAppKind = "feishu" | "dingtalk" | "wecom";
+export type OauthAppKind = "feishu" | "dingtalk" | "wecom" | "external";
 
 export interface OauthProviderDef {
   kind: OauthAppKind;
   /** When false, show a collapsed placeholder until the adapter ships. */
   available: boolean;
+  /** 服务器间免登：无登录按钮、无浏览器回调地址（external 外部系统免登）。 */
+  isServerToServer?: boolean;
   titleKey: string;
   descKey: string;
   /** Fallback login button label when display_name is empty. */
@@ -59,5 +61,17 @@ export const OAUTH_APP_PROVIDERS: OauthProviderDef[] = [
     showCallbackDomain: true,
     redirectHintKey: "adminSso.wecomRedirectHint",
     redirectDocsKey: "adminSso.wecomRedirectDocs",
+  },
+  {
+    kind: "external",
+    available: true,
+    isServerToServer: true,
+    titleKey: "adminSso.externalTitle",
+    descKey: "adminSso.externalDesc",
+    // external 不出现在登录页，默认名放在 adminSso 命名空间而非 login.providerKind
+    defaultNameKey: "adminSso.externalDefaultName",
+    enabledAriaKey: "adminSso.externalEnabled",
+    clientIdKey: "adminSso.externalAppId",
+    clientSecretKey: "adminSso.externalSecret",
   },
 ];
