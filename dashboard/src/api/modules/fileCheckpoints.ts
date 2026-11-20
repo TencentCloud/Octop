@@ -35,6 +35,12 @@ const base = (agentId: string, threadId: string, messageId: string) =>
   `/agents/${agentId}/threads/${threadId}/messages/${messageId}/files`;
 
 export const fileCheckpointsApi = {
+  latestMessage: (
+    agentId: string,
+    threadId: string,
+  ): Promise<{ message_id: string | null }> =>
+    request(`/agents/${agentId}/threads/${threadId}/files/latest-message`),
+
   turnSummary: (
     agentId: string,
     threadId: string,

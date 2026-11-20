@@ -76,6 +76,23 @@ def save_checkpoints(
         _write_atomic(path, json.dumps({"reverted": False, "changes": changes}, ensure_ascii=False))
 
 
+def latest_message_id(home: Path, agent_id: str, thread_id: str) -> str | None:
+    """Newest checkpointed assistant message id for a thread, or None.
+
+    Live dashboard turns get a client-side message id; the newest checkpoint is
+    the just-finished turn, so the UI can resolve the harness id before reload.
+    """
+    thread_dir = home / "file_checkpoints" / agent_id / thread_id
+    try:
+        files = [p for p in thread_dir.glob("*.json") if p.is_file()]
+    except OSError:
+        return None
+    if not files:
+        return None
+    newest = max(files, key=lambda p: p.stat().st_mtime_ns)
+    return newest.stem
+
+
 def load_turn_state(home: Path, agent_id: str, thread_id: str, message_id: str) -> dict[str, Any]:
     """Return ``{"reverted": bool, "changes": [...]}`` for one turn.
 

@@ -394,6 +394,7 @@ export default function AssistantTurnView({
             messages={messages}
             agentId={speakerAgentId}
             streaming={turnStreaming}
+            isLatestTurn={afterLatestUser}
             onOpenList={onEditFile}
           />
         </div>

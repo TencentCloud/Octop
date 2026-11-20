@@ -18,6 +18,7 @@ from octop.api.deps import current_user, get_server
 from octop.infra.agents.file_checkpoints import (
     apply_rewind,
     classify_rewind,
+    latest_message_id,
     load_turn_state,
     mark_turn_reverted,
     turn_diff,
@@ -47,6 +48,12 @@ class TurnSummaryModel(BaseModel):
     additions: int = 0
     deletions: int = 0
     reverted: bool = Field(False, description="This turn's files were already rewound")
+
+
+class LatestCheckpointModel(BaseModel):
+    message_id: str | None = Field(
+        None, description="Newest checkpointed assistant message id, if any"
+    )
 
 
 class TurnDiffModel(BaseModel):
@@ -89,6 +96,32 @@ def _rf(g: dict[str, Any]) -> RewindFileModel:
         write_count=g.get("write_count"),
         tool_names=g.get("tool_names"),
     )
+
+
+@router.get(
+    "/agents/{agent_id}/threads/{thread_id}/files/latest-message",
+    summary="Resolve the newest checkpointed turn",
+    response_model=LatestCheckpointModel,
+)
+async def latest_turn_message(
+    agent_id: str,
+    thread_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    """Newest checkpointed assistant message id for a thread.
+
+    Live dashboard turns use a client-side message id, so the change card
+    resolves the harness-recorded id here until the thread is reloaded.
+    """
+    await require_agent_workspace(
+        agent_id, user=user, server=server, as_user=as_user, owner_only=True
+    )
+    message_id = await asyncio.to_thread(
+        latest_message_id, PathLayout.from_env().root, agent_id, thread_id
+    )
+    return LatestCheckpointModel(message_id=message_id)
 
 
 @router.get(

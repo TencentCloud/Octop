@@ -76,11 +76,14 @@ export default function TurnFileChangeCard({
   messages,
   agentId,
   streaming = false,
+  isLatestTurn = false,
   onOpenList,
 }: {
   messages: ChatMessage[];
   agentId?: string | null;
   streaming?: boolean;
+  /** True for the turn after the latest user message (live id resolution). */
+  isLatestTurn?: boolean;
   onOpenList?: () => void;
 }) {
   const { t } = useTranslation();
@@ -129,7 +132,34 @@ export default function TurnFileChangeCard({
     return null;
   }, [messages]);
 
-  const canCheckpoint = Boolean(agentId && threadId && messageId);
+  // Live turns carry a client-side message id; checkpoints are keyed by the
+  // harness assistant id. The newest checkpoint in the thread is exactly this
+  // turn while it is the latest one, so resolve that id until a reload gives
+  // the real history id.
+  const [resolvedMessageId, setResolvedMessageId] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    setResolvedMessageId(null);
+  }, [messageId]);
+  useEffect(() => {
+    if (!isLatestTurn || !agentId || !threadId || streaming) return;
+    let cancelled = false;
+    void fileCheckpointsApi
+      .latestMessage(agentId, threadId)
+      .then((res) => {
+        if (!cancelled && res.message_id) {
+          setResolvedMessageId(res.message_id);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isLatestTurn, agentId, threadId, streaming]);
+
+  const effectiveMessageId = resolvedMessageId ?? messageId;
+  const canCheckpoint = Boolean(agentId && threadId && effectiveMessageId);
   const diffRequestRef = useRef(0);
 
   const summaryRequestRef = useRef(0);
@@ -145,7 +175,7 @@ export default function TurnFileChangeCard({
         return;
       }
       const requestId = ++summaryRequestRef.current;
-      const key = summaryCacheKey(agentId!, threadId!, messageId!);
+      const key = summaryCacheKey(agentId!, threadId!, effectiveMessageId!);
       if (turnSummaryCache.has(key)) {
         setServerSummary(touchCacheSummary(key));
         return;
@@ -154,7 +184,7 @@ export default function TurnFileChangeCard({
         const res = await fileCheckpointsApi.turnSummary(
           agentId!,
           threadId!,
-          messageId!,
+          effectiveMessageId!,
         );
         if (requestId !== summaryRequestRef.current) return;
         // Only the current request may touch the cache: a late response would
@@ -188,7 +218,7 @@ export default function TurnFileChangeCard({
         setServerSummary(null);
       }
     },
-    [agentId, threadId, messageId, streaming, canCheckpoint],
+    [agentId, threadId, effectiveMessageId, streaming, canCheckpoint],
   );
 
   // Fetch the authoritative summary for every settled turn, even when the
@@ -204,8 +234,10 @@ export default function TurnFileChangeCard({
       // summary cached during a mid-turn lull (tool/HITL gap) must not be
       // served after the real settle.
       summaryRequestRef.current += 1;
-      if (agentId && threadId && messageId) {
-        turnSummaryCache.delete(summaryCacheKey(agentId, threadId, messageId));
+      if (agentId && threadId && effectiveMessageId) {
+        turnSummaryCache.delete(
+          summaryCacheKey(agentId, threadId, effectiveMessageId),
+        );
       }
       setServerSummary(null);
       return undefined;
@@ -305,7 +337,7 @@ export default function TurnFileChangeCard({
       const res = await fileCheckpointsApi.turnDiff(
         agentId!,
         threadId!,
-        messageId!,
+        effectiveMessageId!,
         path,
       );
       if (requestId !== diffRequestRef.current) return;
@@ -327,7 +359,11 @@ export default function TurnFileChangeCard({
     setPreview(null);
     try {
       setPreview(
-        await fileCheckpointsApi.rewindPreview(agentId!, threadId!, messageId!),
+        await fileCheckpointsApi.rewindPreview(
+          agentId!,
+          threadId!,
+          effectiveMessageId!,
+        ),
       );
     } catch (err) {
       message.error(apiErrorMessage(err, t("git.opFailed")));
@@ -346,7 +382,7 @@ export default function TurnFileChangeCard({
       const res = await fileCheckpointsApi.rewindApply(
         agentId!,
         threadId!,
-        messageId!,
+        effectiveMessageId!,
       );
       const blocked = res.blocked ?? [];
       if (blocked.length > 0) {

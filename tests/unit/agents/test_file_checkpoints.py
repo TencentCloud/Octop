@@ -170,3 +170,18 @@ def test_classify_rewind_safe_unsafe_ignored() -> None:
     assert [g["path"] for g in groups["unsafe"]] == ["unsafe.md"]
     assert groups["unsafe"][0]["reason"] == "external_modified"
     assert [g["path"] for g in groups["ignored"]] == ["same.md"]
+
+
+def test_latest_message_id_picks_newest(tmp_path: Path) -> None:
+    import os
+    import time
+
+    from octop.infra.agents.file_checkpoints import latest_message_id
+
+    assert latest_message_id(tmp_path, "ag", "th") is None
+    save_checkpoints(tmp_path, "ag", "th", "m-old", [{"path": "a", "before": None, "after": "x"}])
+    save_checkpoints(tmp_path, "ag", "th", "m-new", [{"path": "a", "before": "x", "after": "y"}])
+    old = tmp_path / "file_checkpoints" / "ag" / "th" / "m-old.json"
+    now = time.time() - 60
+    os.utime(old, (now, now))
+    assert latest_message_id(tmp_path, "ag", "th") == "m-new"
