@@ -6,7 +6,7 @@ import asyncio
 import json
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
@@ -20,13 +20,18 @@ from octop.infra.git import (
     commit_paths,
     discard_paths,
     get_diff,
+    get_history,
     get_log,
     get_status,
+    push_branch,
     resolve_git_binary,
     spec_uses_docker,
     stage_paths,
     unstage_paths,
 )
+from octop.infra.git.message import generate_commit_message
+from octop.infra.text_assist import require_host_models
+from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 
@@ -51,9 +56,11 @@ async def _git_target(
     user: Any,
     as_user: int | None,
     server: Any,
+    row: Any = None,
 ) -> Any:
     """Git target that runs where the workspace files live."""
-    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    if row is None:
+        row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     config = _agent_config(row)
     if spec_uses_docker(config.get("backend")):
         workspace = await require_running_workspace(
@@ -112,6 +119,8 @@ class GitCommitModel(BaseModel):
 
 class GitCommitResultModel(BaseModel):
     commit: str = Field(..., description="Short SHA of the new commit")
+    message: str = Field(..., description="Commit message used (generated when empty)")
+    pushed: bool = Field(False, description="True when the commit was followed by a push")
 
 
 class GitPathsBody(BaseModel):
@@ -119,7 +128,44 @@ class GitPathsBody(BaseModel):
 
 
 class GitCommitBody(BaseModel):
-    message: str = Field(..., min_length=1, description="Commit message")
+    message: str = Field(
+        "",
+        description="Commit message; leave empty to generate one with the current model",
+    )
+    include_unstaged: bool = Field(
+        False, description="Stage all worktree changes before committing"
+    )
+    push: bool = Field(False, description="Push the current branch after committing")
+
+
+class GitMessageBody(BaseModel):
+    include_unstaged: bool = Field(
+        True, description="Include worktree changes when summarising for the model"
+    )
+
+
+class GitMessageResultModel(BaseModel):
+    message: str
+
+
+class GitPushResultModel(BaseModel):
+    branch: str
+    remote: str
+    upstream: str
+    set_upstream: bool
+    output: str = Field("", description="Tail of git push output")
+
+
+class GitHistoryRowModel(BaseModel):
+    graph: str = Field(..., description="Graph prefix (merge lanes) for this row")
+    sha: str | None = None
+    short: str | None = None
+    author: str | None = None
+    date: str | None = None
+    refs: str | None = None
+    signature: str | None = Field(None, description="git %G? signature status: G/B/U/X/Y/R/E/N")
+    signer: str | None = None
+    subject: str | None = None
 
 
 @router.get(
@@ -262,19 +308,119 @@ async def workspace_git_discard(
 
 @router.post(
     "/agents/{agent_id}/git/commit",
-    summary="Commit staged workspace changes",
+    summary="Commit workspace changes",
     response_model=GitCommitResultModel,
 )
 async def workspace_git_commit(
     agent_id: str,
     body: GitCommitBody,
+    request: Request,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> Any:
+    """Commit staged changes, optionally all worktree changes, then push.
+
+    An empty ``message`` is generated from the current turn's diffs with the
+    host model (Conventional Commit, same language as the request).
+    """
+    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    target = await _git_target(agent_id, user=user, as_user=as_user, server=server, row=row)
+    message = body.message.strip()
+    if not message:
+        message = await generate_commit_message(
+            models=require_host_models(server),
+            target=target,
+            include_unstaged=body.include_unstaged,
+            locale=resolve_request_locale(request),
+            default_model=getattr(row, "default_model", None),
+        )
+    result = await commit_paths(target, message, include_unstaged=body.include_unstaged)
+    pushed = False
+    if body.push:
+        await push_branch(target)
+        pushed = True
+    return GitCommitResultModel(commit=result["commit"], message=message, pushed=pushed)
+
+
+@router.post(
+    "/agents/{agent_id}/git/message",
+    summary="Generate a commit message",
+    response_model=GitMessageResultModel,
+)
+async def workspace_git_message(
+    agent_id: str,
+    body: GitMessageBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    """Generate a Conventional Commit message for the pending changes."""
+    row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
+    target = await _git_target(agent_id, user=user, as_user=as_user, server=server, row=row)
+    message = await generate_commit_message(
+        models=require_host_models(server),
+        target=target,
+        include_unstaged=body.include_unstaged,
+        locale=resolve_request_locale(request),
+        default_model=getattr(row, "default_model", None),
+    )
+    return GitMessageResultModel(message=message)
+
+
+@router.post(
+    "/agents/{agent_id}/git/push",
+    summary="Push the current branch",
+    response_model=GitPushResultModel,
+)
+async def workspace_git_push(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    """Push the current branch (never forces; sets upstream on first push)."""
     target = await _git_target(agent_id, user=user, as_user=as_user, server=server)
-    result = await commit_paths(target, body.message)
-    return GitCommitResultModel(commit=result["commit"])
+    result = await push_branch(target)
+    return GitPushResultModel(
+        branch=str(result["branch"]),
+        remote=str(result["remote"]),
+        upstream=str(result["upstream"]),
+        set_upstream=bool(result["set_upstream"]),
+        output=str(result["output"]),
+    )
+
+
+@router.get(
+    "/agents/{agent_id}/git/history",
+    summary="Commit history with graph and signatures",
+    response_model=list[GitHistoryRowModel],
+)
+async def workspace_git_history(
+    agent_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    """``git log --graph`` rows; ``signature`` carries git's ``%G?`` status."""
+    target = await _git_target(agent_id, user=user, as_user=as_user, server=server)
+    rows = await get_history(target, limit=limit)
+    return [
+        GitHistoryRowModel(
+            graph=str(row["graph"]),
+            sha=row.get("sha"),  # type: ignore[arg-type]
+            short=row.get("short"),  # type: ignore[arg-type]
+            author=row.get("author"),  # type: ignore[arg-type]
+            date=row.get("date"),  # type: ignore[arg-type]
+            refs=row.get("refs"),  # type: ignore[arg-type]
+            signature=row.get("signature"),  # type: ignore[arg-type]
+            signer=row.get("signer"),  # type: ignore[arg-type]
+            subject=row.get("subject"),  # type: ignore[arg-type]
+        )
+        for row in rows
+    ]
 
 
 class GitRuntimeModel(BaseModel):

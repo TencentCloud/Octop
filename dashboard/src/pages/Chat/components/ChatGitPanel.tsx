@@ -5,8 +5,15 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { App, Button, Empty, Input, Spin, Tooltip } from "antd";
-import { ChevronDown, ChevronRight, GitBranch, RefreshCw } from "lucide-react";
+import { App, Button, Empty, Spin, Tooltip } from "antd";
+import {
+  ChevronDown,
+  ChevronRight,
+  GitBranch,
+  GitCommitHorizontal,
+  History,
+  RefreshCw,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   gitApi,
@@ -16,12 +23,12 @@ import {
 import { apiErrorMessage } from "../../../utils/apiError";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
-import { isImeComposing } from "../../../utils/ime";
 import {
   useWorkspaceGit,
   type UseWorkspaceGitResult,
 } from "../../Agent/Workspace/components/gitStatus";
 import GitChangeList from "./GitChangeList";
+import GitCommitDialog from "./GitCommitDialog";
 import GitDiffView from "../../Agent/Workspace/components/GitDiffView";
 import styles from "../../Agent/Workspace/index.module.less";
 
@@ -91,6 +98,8 @@ interface ChatGitPanelProps {
   /** Bumped on each focus request so a repeated path re-triggers selection. */
   focusSeq?: number;
   onOpenFile?: (path: string) => void;
+  /** Open the full commit graph in a separate dock tab. */
+  onOpenHistory?: () => void;
 }
 
 export default function ChatGitPanel({
@@ -99,6 +108,7 @@ export default function ChatGitPanel({
   focusPath = null,
   focusSeq = 0,
   onOpenFile,
+  onOpenHistory,
 }: ChatGitPanelProps) {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -114,15 +124,13 @@ export default function ChatGitPanel({
   const [logOpen, setLogOpen] = useState(false);
   const [log, setLog] = useState<GitCommitEntry[] | null>(null);
   const [logLoading, setLogLoading] = useState(false);
-  const [commitMsg, setCommitMsg] = useState("");
-  const [committing, setCommitting] = useState(false);
-  const [acting, setActing] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(true);
+  const [commitOpen, setCommitOpen] = useState(false);
 
   const { status, loading, error } = git;
   const isRepo = status?.is_repo ?? false;
   const gitOk = status?.git_available ?? true;
   const files = status?.files ?? [];
-  const stagedFiles = files.filter((f) => f.staged);
 
   // Drop the selection when the file no longer appears in the status list.
   useEffect(() => {
@@ -144,7 +152,6 @@ export default function ChatGitPanel({
     if (hit) {
       setSelected({ path: hit.path, staged: hit.staged });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusPath, focusSeq, status]);
 
   const loadLog = useCallback(async () => {
@@ -160,36 +167,12 @@ export default function ChatGitPanel({
 
   const runAct = useCallback(
     async (op: (agentId: string) => Promise<unknown>, okText?: string) => {
-      setActing(true);
-      try {
-        const ok = await git.act(op);
-        if (ok && okText) message.success(okText);
-        if (!ok) message.error(t("git.opFailed", "Git 操作失败"));
-      } finally {
-        setActing(false);
-      }
+      const ok = await git.act(op);
+      if (ok && okText) message.success(okText);
+      if (!ok) message.error(t("git.opFailed", "Git 操作失败"));
     },
     [git, message, t],
   );
-
-  const commit = useCallback(async () => {
-    const text = commitMsg.trim();
-    if (!text) return;
-    setCommitting(true);
-    try {
-      const ok = await git.act((id) => gitApi.commit(id, text));
-      if (ok) {
-        message.success(t("git.commitSuccess", "已提交"));
-        setCommitMsg("");
-        if (logOpen) void loadLog();
-        else setLog(null);
-      } else {
-        message.error(t("git.opFailed", "Git 操作失败"));
-      }
-    } finally {
-      setCommitting(false);
-    }
-  }, [commitMsg, git, logOpen, loadLog, message, t]);
 
   if (!isRepo) {
     return (
@@ -208,64 +191,100 @@ export default function ChatGitPanel({
 
   return (
     <div className={styles.gitPanel} data-testid="git-panel">
-      <div className={styles.gitPanelHeader}>
-        <GitBranch size={14} strokeWidth={2} aria-hidden />
-        {status?.branch && (
+      <div className={styles.gitToolsCard} data-testid="git-tools-card">
+        <div className={styles.gitToolsHeader}>
+          <button
+            type="button"
+            className={styles.gitToolsToggle}
+            onClick={() => setToolsOpen((value) => !value)}
+            aria-expanded={toolsOpen}
+            data-testid="git-tools-toggle"
+          >
+            {toolsOpen ? (
+              <ChevronDown size={14} aria-hidden />
+            ) : (
+              <ChevronRight size={14} aria-hidden />
+            )}
+            <GitBranch size={14} aria-hidden />
+            <span>{t("git.tools.title", "Git tools")}</span>
+          </button>
           <span
-            className={styles.gitBranchChip}
-            title={status.upstream ?? undefined}
+            className={styles.gitBarSummary}
+            data-testid="git-panel-summary"
           >
-            {status.branch}
-            {status.upstream ? ` ⇅${status.ahead}/${status.behind}` : ""}
+            {t("git.filesChanged", {
+              count: files.length,
+              defaultValue: "{{count}} 个文件变更",
+            })}
           </span>
-        )}
-        <span className={styles.gitBarSummary} data-testid="git-panel-summary">
-          {t("git.filesChanged", {
-            count: files.length,
-            defaultValue: "{{count}} 个文件变更",
-          })}{" "}
-          +{status?.added ?? 0} −{status?.removed ?? 0}
-        </span>
-        <Tooltip title={t("common.refresh")}>
-          <Button
-            size="small"
-            icon={
-              <RefreshCw
-                size={13}
-                className={loading ? styles.gitSpin : undefined}
-              />
-            }
-            onClick={() => void git.refresh()}
-            aria-label={t("common.refresh")}
-          />
-        </Tooltip>
-      </div>
-
-      {stagedFiles.length > 0 && (
-        <div className={styles.gitCommitRow}>
-          <Input
-            size="small"
-            value={commitMsg}
-            onChange={(e) => setCommitMsg(e.target.value)}
-            onPressEnter={(e) => {
-              if (!isImeComposing(e)) void commit();
-            }}
-            placeholder={t("git.commitPlaceholder", "提交信息")}
-            disabled={streaming}
-            data-testid="git-commit-input"
-          />
-          <Button
-            size="small"
-            type="primary"
-            loading={committing}
-            disabled={streaming || acting || !commitMsg.trim()}
-            onClick={() => void commit()}
-            title={streaming ? t("git.writeDisabledWhileStreaming") : undefined}
-          >
-            {t("git.commit", "提交")} ({stagedFiles.length})
-          </Button>
+          <Tooltip title={t("common.refresh")}>
+            <Button
+              size="small"
+              icon={
+                <RefreshCw
+                  size={13}
+                  className={loading ? styles.gitSpin : undefined}
+                />
+              }
+              onClick={() => void git.refresh()}
+              aria-label={t("common.refresh")}
+            />
+          </Tooltip>
         </div>
-      )}
+
+        {toolsOpen && (
+          <div className={styles.gitToolsBody}>
+            <div
+              className={styles.gitToolsInfoRow}
+              data-testid="git-tools-changes"
+            >
+              <span className={styles.gitToolsInfoLabel}>
+                {t("git.tools.changes", "Changes")}
+              </span>
+              <span className={styles.gitCommitTotals}>
+                <span className={styles.gitRowAdded}>
+                  +{status?.added ?? 0}
+                </span>{" "}
+                <span className={styles.gitRowRemoved}>
+                  −{status?.removed ?? 0}
+                </span>
+              </span>
+            </div>
+            <div className={styles.gitToolsInfoRow}>
+              <span
+                className={styles.gitBranchChip}
+                title={status?.upstream ?? undefined}
+              >
+                <GitBranch size={12} aria-hidden />
+                {status?.branch ?? "—"}
+                {status?.upstream ? ` ⇅${status.ahead}/${status.behind}` : ""}
+              </span>
+            </div>
+            <button
+              type="button"
+              className={styles.gitToolsActionRow}
+              onClick={() => setCommitOpen(true)}
+              disabled={streaming}
+              title={
+                streaming ? t("git.writeDisabledWhileStreaming") : undefined
+              }
+              data-testid="git-commit-open"
+            >
+              <GitCommitHorizontal size={14} aria-hidden />
+              <span>{t("git.tools.commitOrPush", "Commit or push")}</span>
+            </button>
+            <button
+              type="button"
+              className={styles.gitToolsActionRow}
+              onClick={() => onOpenHistory?.()}
+              data-testid="git-history-open"
+            >
+              <History size={14} aria-hidden />
+              <span>{t("git.tools.history", "History")}</span>
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className={styles.gitPanelBody}>
         <div className={styles.gitPanelList}>
@@ -348,6 +367,21 @@ export default function ChatGitPanel({
           )}
         </div>
       </div>
+
+      {status && (
+        <GitCommitDialog
+          open={commitOpen}
+          agentId={agentId}
+          status={status}
+          streaming={streaming}
+          onClose={() => setCommitOpen(false)}
+          onDone={() => {
+            void git.refresh();
+            if (logOpen) void loadLog();
+            else setLog(null);
+          }}
+        />
+      )}
     </div>
   );
 }

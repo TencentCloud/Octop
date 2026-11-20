@@ -277,7 +277,10 @@
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
-    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "GIT_NO_CHANGES": "There are no changes to commit.",
+    "GIT_COMMIT_MESSAGE_INVALID": "The model did not return a usable commit message; please write one.",
+    "GIT_PUSH_DETACHED": "Cannot push while HEAD is detached."
   },
   "nav": {
     "chat": "Conversation",
@@ -2336,7 +2339,40 @@
     "rewindIgnored": "Ignored",
     "rewindCannotApply": "Some files changed since this turn; nothing will be written.",
     "rewindBlocked": "Nothing was rewound: {{count}} file(s) changed since this turn.",
-    "diffUnavailable": "This diff preview is currently unavailable."
+    "diffUnavailable": "This diff preview is currently unavailable.",
+    "tools": {
+      "title": "Git tools",
+      "changes": "Changes",
+      "commitOrPush": "Commit or push",
+      "history": "History"
+    },
+    "commitDialog": {
+      "placeholder": "Commit message (leave empty to generate)",
+      "generate": "Generate commit message",
+      "regenerate": "Regenerate",
+      "includeUnstaged": "Include unstaged changes",
+      "fileCount": "{{count}} files",
+      "commit": "Commit",
+      "commitAndPush": "Commit and push",
+      "push": "Push",
+      "committed": "Committed {{commit}}",
+      "committedAndPushed": "Committed and pushed {{commit}}",
+      "pushed": "Pushed {{branch}}",
+      "hint": "An empty message is generated from this turn's diff as a Conventional Commit"
+    },
+    "history": {
+      "title": "Commit history",
+      "signature": {
+        "verified": "Verified",
+        "bad": "Bad signature",
+        "unknown": "Unknown signature",
+        "expired": "Signature expired",
+        "expiredKey": "Signing key expired",
+        "revoked": "Signing key revoked",
+        "missingKey": "Signing key missing",
+        "unsigned": "Unsigned"
+      }
+    }
   },
   "backup": {
     "storedTitle": "Backup files",

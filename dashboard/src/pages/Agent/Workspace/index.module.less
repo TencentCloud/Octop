@@ -1241,3 +1241,282 @@
   font-size: 12px;
   color: var(--fn-text-primary);
 }
+
+// --- Git tools quick card / commit dialog / history ------------------------
+
+.gitToolsCard {
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-primary);
+}
+
+.gitToolsHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+}
+
+.gitToolsToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.gitToolsBody {
+  display: flex;
+  flex-direction: column;
+  padding: 0 8px 6px;
+  gap: 2px;
+}
+
+.gitToolsInfoRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--fn-text-secondary);
+}
+
+.gitToolsInfoLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gitToolsActionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.gitCommitTotals {
+  flex-shrink: 0;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.gitCommitDialog :global(.octop-modal-body) {
+  padding-top: 4px;
+}
+
+.gitCommitDialogHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0 10px;
+}
+
+.gitCommitMessageWrap {
+  position: relative;
+}
+
+.gitCommitMessageWrap textarea {
+  padding-right: 36px;
+  font-size: 13px;
+}
+
+.gitCommitGenerate {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitCommitInclude {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 6px;
+  font-size: 12px;
+  color: var(--fn-text-primary);
+  cursor: pointer;
+}
+
+.gitCommitIncludeCount {
+  margin-left: auto;
+  color: var(--fn-text-tertiary);
+}
+
+.gitCommitActions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+  border-top: 1px solid var(--fn-border-secondary);
+}
+
+.gitCommitAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover:not(:disabled) {
+    background: var(--fn-bg-hover);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+
+.gitCommitActionIcon {
+  display: inline-flex;
+  width: 18px;
+  justify-content: center;
+  color: var(--fn-text-secondary);
+}
+
+.gitCommitKbd {
+  margin-left: auto;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitCommitHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitHistory {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gitHistoryRows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 12px;
+  font-size: 12px;
+}
+
+.gitHistoryGraphOnly {
+  display: flex;
+  min-height: 18px;
+  padding: 0 8px;
+}
+
+.gitHistoryGraph {
+  flex-shrink: 0;
+  min-width: 120px;
+  padding-right: 8px;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  color: #1a7f37;
+  white-space: pre;
+}
+
+.gitHistoryRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 1px 8px;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
+.gitHistoryRefs {
+  display: inline-flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.gitHistoryRef {
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #0969da;
+  background: rgba(9, 105, 218, 0.12);
+}
+
+.gitHistorySubject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-primary);
+}
+
+.gitHistorySignature {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--fn-text-tertiary);
+}
+
+.gitHistorySignature_good {
+  color: #1a7f37;
+}
+
+.gitHistorySignature_bad {
+  color: #cf222e;
+}
+
+.gitHistorySignature_warn {
+  color: #9a6700;
+}
+
+.gitHistorySignature_muted {
+  color: var(--fn-text-tertiary);
+}

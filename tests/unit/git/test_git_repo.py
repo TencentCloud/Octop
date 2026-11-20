@@ -17,6 +17,7 @@ from octop.infra.git.repo import (
     get_diff,
     get_log,
     get_status,
+    push_branch,
     stage_paths,
     unstage_paths,
 )
@@ -227,3 +228,63 @@ async def test_write_ops_require_repo(tmp_path: Path) -> None:
     with pytest.raises(OctopError) as excinfo:
         await stage_paths(target, ["x.txt"])
     assert excinfo.value.code is ErrorCode.NOT_FOUND
+
+
+@needs_git
+async def test_commit_include_unstaged_stages_everything(repo: Path, target: HostGitTarget) -> None:
+    (repo / "extra.txt").write_text("extra\n")
+    (repo / "tracked.txt").write_text("line1\nline2\n")
+    result = await commit_paths(target, "feat: commit everything", include_unstaged=True)
+    assert result["commit"]
+    snapshot = await get_status(target)
+    assert snapshot.files == []
+
+
+@needs_git
+async def test_push_sets_upstream_then_reuses_it(tmp_path: Path) -> None:
+    remote = tmp_path / "remote.git"
+    _git(tmp_path, "init", "--bare", "-b", "main", str(remote))
+    work = tmp_path / "work"
+    work.mkdir()
+    _git(work, "init", "-b", "main")
+    _git(work, "config", "user.email", "test@example.com")
+    _git(work, "config", "user.name", "Test")
+    (work / "a.txt").write_text("a\n")
+    _git(work, "add", "a.txt")
+    _git(work, "commit", "-m", "init")
+    _git(work, "remote", "add", "origin", str(remote))
+    target = HostGitTarget(work, resolve_git_binary())
+
+    first = await push_branch(target)
+    assert first["set_upstream"] is True
+    assert first["upstream"] == "origin/main"
+
+    (work / "a.txt").write_text("a\nb\n")
+    _git(work, "commit", "-am", "update")
+    second = await push_branch(target)
+    assert second["set_upstream"] is False
+    assert second["upstream"] == "origin/main"
+
+    head = subprocess.run(
+        ["git", "--git-dir", str(remote), "rev-parse", "main"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert (
+        head
+        == subprocess.run(
+            ["git", "-C", str(work), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    )
+
+
+@needs_git
+async def test_push_rejects_detached_head(repo: Path, target: HostGitTarget) -> None:
+    _git(repo, "checkout", "--detach", "HEAD")
+    with pytest.raises(OctopError) as excinfo:
+        await push_branch(target)
+    assert excinfo.value.code is ErrorCode.GIT_PUSH_DETACHED

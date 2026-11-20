@@ -26,6 +26,7 @@ export type DockTab =
   | { id: "terminal"; kind: "terminal" }
   | { id: string; kind: "file"; path: string; agentId?: string }
   | { id: "git"; kind: "git"; focusPath?: string; focusSeq?: number }
+  | { id: "gitHistory"; kind: "gitHistory" }
   | {
       id: string;
       kind: "turnDiff";
@@ -267,6 +268,15 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     [openDock],
   );
 
+  const openGitHistoryTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === "gitHistory")) return prev;
+      return [...prev, { id: "gitHistory", kind: "gitHistory" as const }];
+    });
+    setActiveTabId("gitHistory");
+    openDock();
+  }, [openDock]);
+
   const openTurnDiffTab = useCallback(
     (
       agentId: string,
@@ -459,6 +469,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openTerminalTab,
     toggleTerminalPanel,
     openGitTab,
+    openGitHistoryTab,
     openTurnDiffTab,
     openToolUiTab,
     focusToolUiTab,

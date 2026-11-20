@@ -277,7 +277,10 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "GIT_NO_CHANGES": "没有可提交的更改。",
+    "GIT_COMMIT_MESSAGE_INVALID": "模型没有返回可用的提交信息，请手动填写。",
+    "GIT_PUSH_DETACHED": "当前处于 detached HEAD，无法推送。"
   },
   "nav": {
     "chat": "对话",
@@ -2336,7 +2339,40 @@
     "rewindIgnored": "已忽略",
     "rewindCannotApply": "有文件在本轮之后被修改，无法安全回滚；本次不会写入任何文件。",
     "rewindBlocked": "未回滚任何文件：{{count}} 个文件在本轮之后被修改。",
-    "diffUnavailable": "暂时无法预览这份 Diff。"
+    "diffUnavailable": "暂时无法预览这份 Diff。",
+    "tools": {
+      "title": "Git tools",
+      "changes": "变更",
+      "commitOrPush": "提交或推送",
+      "history": "提交历史"
+    },
+    "commitDialog": {
+      "placeholder": "提交信息（留空自动生成）",
+      "generate": "生成提交信息",
+      "regenerate": "重新生成",
+      "includeUnstaged": "包含未暂存的更改",
+      "fileCount": "{{count}} 个文件",
+      "commit": "提交",
+      "commitAndPush": "提交并推送",
+      "push": "推送",
+      "committed": "已提交 {{commit}}",
+      "committedAndPushed": "已提交并推送 {{commit}}",
+      "pushed": "已推送 {{branch}}",
+      "hint": "空消息会根据本轮 diff 自动生成 Conventional Commit"
+    },
+    "history": {
+      "title": "提交历史",
+      "signature": {
+        "verified": "已验证",
+        "bad": "签名无效",
+        "unknown": "签名未知",
+        "expired": "签名已过期",
+        "expiredKey": "签名密钥已过期",
+        "revoked": "签名密钥已吊销",
+        "missingKey": "缺少签名密钥",
+        "unsigned": "未签名"
+      }
+    }
   },
   "backup": {
     "storedTitle": "备份文件",

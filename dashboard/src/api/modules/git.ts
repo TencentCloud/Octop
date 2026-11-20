@@ -46,6 +46,32 @@ export interface GitCommitEntry {
   subject: string;
 }
 
+export interface GitHistoryRow {
+  graph: string;
+  sha?: string | null;
+  short?: string | null;
+  author?: string | null;
+  date?: string | null;
+  refs?: string | null;
+  signature?: string | null;
+  signer?: string | null;
+  subject?: string | null;
+}
+
+export interface GitPushResult {
+  branch: string;
+  remote: string;
+  upstream: string;
+  set_upstream: boolean;
+  output: string;
+}
+
+export interface GitCommitResult {
+  commit: string;
+  message: string;
+  pushed: boolean;
+}
+
 export const gitApi = {
   status: (agentId: string): Promise<GitStatus> =>
     request<GitStatus>(`/agents/${agentId}/git/status`),
@@ -83,4 +109,28 @@ export const gitApi = {
       method: "POST",
       body: JSON.stringify({ message }),
     }),
+
+  commitAdvanced: (
+    agentId: string,
+    body: { message: string; include_unstaged: boolean; push: boolean },
+  ): Promise<GitCommitResult> =>
+    request<GitCommitResult>(`/agents/${agentId}/git/commit`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  generateMessage: (
+    agentId: string,
+    includeUnstaged: boolean,
+  ): Promise<{ message: string }> =>
+    request<{ message: string }>(`/agents/${agentId}/git/message`, {
+      method: "POST",
+      body: JSON.stringify({ include_unstaged: includeUnstaged }),
+    }),
+
+  push: (agentId: string): Promise<GitPushResult> =>
+    request<GitPushResult>(`/agents/${agentId}/git/push`, { method: "POST" }),
+
+  history: (agentId: string, limit = 50): Promise<GitHistoryRow[]> =>
+    request<GitHistoryRow[]>(`/agents/${agentId}/git/history?limit=${limit}`),
 };

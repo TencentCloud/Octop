@@ -21,9 +21,13 @@ _STATUS_TIMEOUT_S = 60.0
 _DIFF_TIMEOUT_S = 30.0
 _LOG_TIMEOUT_S = 30.0
 _WRITE_TIMEOUT_S = 60.0
+_PUSH_TIMEOUT_S = 180.0
+_HISTORY_TIMEOUT_S = 60.0
 _STATUS_MAX_BYTES = 8 * 1024 * 1024
 _DIFF_MAX_BYTES = 2 * 1024 * 1024
 _LOG_MAX_BYTES = 1024 * 1024
+_HISTORY_MAX_BYTES = 4 * 1024 * 1024
+_PUSH_MAX_BYTES = 2 * 1024 * 1024
 _SMALL_MAX_BYTES = 64 * 1024
 _UNTRACKED_SAMPLE_BYTES = 1024 * 1024
 _LOG_MAX_LIMIT = 200
@@ -423,11 +427,20 @@ async def discard_paths(target: GitTarget, paths: list[str]) -> None:
             raise OctopError(ErrorCode.INTERNAL_ERROR, f"cannot discard {rel!r}: {exc}") from exc
 
 
-async def commit_paths(target: GitTarget, message: str) -> dict[str, str]:
+async def commit_paths(
+    target: GitTarget, message: str, *, include_unstaged: bool = False
+) -> dict[str, str]:
     _ensure_repo(target)
     text = str(message or "").strip()
     if not text:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "empty commit message")
+    if include_unstaged:
+        await _run_git(
+            target,
+            ["add", "-A"],
+            timeout=_WRITE_TIMEOUT_S,
+            max_bytes=_SMALL_MAX_BYTES,
+        )
     await _run_git(
         target,
         ["commit", "-m", text],
@@ -442,3 +455,100 @@ async def commit_paths(target: GitTarget, message: str) -> dict[str, str]:
         read_query=True,
     )
     return {"commit": out.decode("utf-8", "replace").strip()}
+
+
+async def push_branch(target: GitTarget) -> dict[str, object]:
+    """Push the current branch; set upstream on first push (never forces)."""
+    _ensure_repo(target)
+    _, out, _ = await _run_git(
+        target,
+        ["rev-parse", "--abbrev-ref", "HEAD"],
+        timeout=_DIFF_TIMEOUT_S,
+        max_bytes=_SMALL_MAX_BYTES,
+        read_query=True,
+    )
+    branch = out.decode("utf-8", "replace").strip()
+    if not branch or branch == "HEAD":
+        raise OctopError(ErrorCode.GIT_PUSH_DETACHED, "cannot push while HEAD is detached")
+
+    code, upstream_out, _ = await _run_git(
+        target,
+        ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+        timeout=_DIFF_TIMEOUT_S,
+        max_bytes=_SMALL_MAX_BYTES,
+        read_query=True,
+        check=False,
+    )
+    upstream = upstream_out.decode("utf-8", "replace").strip() if code == 0 else ""
+
+    if upstream:
+        args = ["push"]
+        remote = upstream.split("/", 1)[0]
+    else:
+        args = ["push", "--set-upstream", "origin", branch]
+        remote = "origin"
+
+    _, push_out, _ = await _run_git(
+        target,
+        args,
+        timeout=_PUSH_TIMEOUT_S,
+        max_bytes=_PUSH_MAX_BYTES,
+    )
+    output = push_out.decode("utf-8", "replace").strip()
+    return {
+        "branch": branch,
+        "remote": remote,
+        "upstream": upstream or f"{remote}/{branch}",
+        "set_upstream": not upstream,
+        "output": output[-2000:],
+    }
+
+
+async def get_history(target: GitTarget, limit: int = 50) -> list[dict[str, object]]:
+    """``git log --graph`` rows with commit metadata and signature status.
+
+    Graph connector lines (no commit on them) are returned with ``sha=None``
+    so the renderer can keep merge lanes intact. ``signature`` follows git's
+    ``%G?``: G good, B bad, U unknown validity, X/Y expired, R revoked,
+    E missing key, N unsigned.
+    """
+    _ensure_repo(target)
+    bounded = max(1, min(int(limit), 200))
+    _, out, _ = await _run_git(
+        target,
+        [
+            "log",
+            f"-n{bounded}",
+            "--graph",
+            "--date=iso-strict",
+            "--pretty=format:%x1f%H%x1f%h%x1f%an%x1f%aI%x1f%D%x1f%G?%x1f%GS%x1f%s",
+        ],
+        timeout=_HISTORY_TIMEOUT_S,
+        max_bytes=_HISTORY_MAX_BYTES,
+        read_query=True,
+    )
+    rows: list[dict[str, object]] = []
+    for line in out.decode("utf-8", "replace").split("\n"):
+        if not line.strip():
+            continue
+        if "\x1f" not in line:
+            rows.append({"graph": line.rstrip(), "sha": None})
+            continue
+        graph, rest = line.split("\x1f", 1)
+        fields = rest.split("\x1f")
+        if len(fields) < 8:
+            continue
+        rows.append(
+            {
+                "graph": graph.rstrip(),
+                "sha": fields[0],
+                "short": fields[1],
+                "author": fields[2],
+                "date": fields[3],
+                "refs": fields[4],
+                "signature": fields[5],
+                "signer": fields[6],
+                "subject": fields[7],
+            }
+        )
+    return rows

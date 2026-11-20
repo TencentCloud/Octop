@@ -41,6 +41,7 @@ import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
 import ChatGitPanel from "./ChatGitPanel";
+import GitHistoryPanelContent from "./GitHistoryPanelContent";
 import TurnDiffPanelContent from "./TurnDiffPanelContent";
 import KnowledgeCitationPanelContent from "./KnowledgeCitationPanelContent";
 import ChatDockToolUiContent from "./ChatDockToolUiContent";
@@ -72,6 +73,8 @@ interface ChatDockPanelProps {
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
+  /** Open the commit graph tab from the git panel tools card. */
+  onOpenGitHistory?: () => void;
   browserEnvironment?: DisplayEnvironment;
   /** When set, Chat dock browser talks to the peer harness via Bridge. */
   bridgeConnectionId?: string | null;
@@ -215,6 +218,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   onSelectTab,
   onCloseTab,
   onOpenFile,
+  onOpenGitHistory,
   browserEnvironment = "desktop",
   bridgeConnectionId = null,
   threadId = null,
@@ -430,6 +434,11 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               <>
                 <GitBranch size={16} strokeWidth={2} aria-hidden />
                 <span>{t("git.title", "Git 变更")}</span>
+              </>
+            ) : tab.kind === "gitHistory" ? (
+              <>
+                <GitBranch size={16} strokeWidth={2} aria-hidden />
+                <span>{t("git.history.title", "提交历史")}</span>
               </>
             ) : tab.kind === "toolUi" ? (
               <>
@@ -665,7 +674,20 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               }
               focusSeq={openTabs.find((t) => t.kind === "git")?.focusSeq ?? 0}
               onOpenFile={(path) => onOpenFile(path, agentId)}
+              onOpenHistory={onOpenGitHistory}
             />
+          </div>
+        )}
+
+        {openTabs.some((t) => t.kind === "gitHistory") && (
+          <div
+            className={styles.dockTabBody}
+            hidden={activeTab?.kind !== "gitHistory"}
+            style={{
+              display: activeTab?.kind === "gitHistory" ? "flex" : "none",
+            }}
+          >
+            <GitHistoryPanelContent agentId={agentId} />
           </div>
         )}
 
