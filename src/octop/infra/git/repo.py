@@ -1,19 +1,20 @@
-"""Git queries and operations against an agent workspace's local repository.
+"""Git queries and operations through a workspace execution target.
 
-Read queries pin ``--no-optional-locks -c core.fsmonitor=`` so a repository's
-own config cannot execute helper scripts through Octop's background refreshes;
-user-initiated write operations run without that override.
+The target is either a host subprocess (local workspace) or the harness
+backend's ``execute`` inside a docker sandbox, so git always runs next to the
+files it operates on. Read queries pin ``--no-optional-locks -c
+core.fsmonitor=`` so a repository's own config cannot execute helper scripts
+through Octop's background refreshes; user-initiated write operations run
+without that override.
 """
 
 from __future__ import annotations
 
-import asyncio
 import os
-import shutil
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.git.target import GitTarget
 
 _READ_ONLY_ARGS = ["--no-optional-locks", "-c", "core.fsmonitor="]
 _STATUS_TIMEOUT_S = 60.0
@@ -89,16 +90,12 @@ class _PorcelainInfo:
     entries: list[_PorcelainEntry] = field(default_factory=list)
 
 
-def git_available() -> bool:
-    return shutil.which("git") is not None
+def workspace_is_repo(target: GitTarget) -> bool:
+    return target.exists(".git")
 
 
-def workspace_is_repo(ws_dir: Path) -> bool:
-    return (ws_dir / ".git").exists()
-
-
-def _ensure_repo(ws_dir: Path) -> None:
-    if not workspace_is_repo(ws_dir):
+def _ensure_repo(target: GitTarget) -> None:
+    if not workspace_is_repo(target):
         raise OctopError(ErrorCode.NOT_FOUND, "workspace is not a git repository")
 
 
@@ -111,7 +108,7 @@ def _normalize_repo_path(raw: str) -> str:
 
 
 async def _run_git(
-    ws_dir: Path,
+    target: GitTarget,
     args: list[str],
     *,
     timeout: float,
@@ -119,35 +116,23 @@ async def _run_git(
     read_query: bool = False,
     check: bool = True,
 ) -> tuple[int, bytes, bytes]:
-    binary = shutil.which("git")
-    if binary is None:
+    if not await target.probe():
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, "git is not installed")
-    cmd: list[str] = [binary]
+    full = [*args]
     if read_query:
-        cmd += _READ_ONLY_ARGS
-    cmd += args
-    env = dict(os.environ)
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        cwd=str(ws_dir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        env=env,
-    )
+        full = [*_READ_ONLY_ARGS, *args]
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        code, stdout, stderr = await target.run(full, timeout=timeout, max_bytes=max_bytes)
     except TimeoutError:
-        proc.kill()
-        await proc.wait()
         raise OctopError(
             ErrorCode.INTERNAL_ERROR, f"git {args[0]} timed out after {timeout:.0f}s"
         ) from None
-    if check and proc.returncode != 0:
+    except FileNotFoundError:
+        raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, "git is not installed") from None
+    if check and code != 0:
         detail = stderr.decode("utf-8", "replace").strip()
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, detail[:400] or f"git {args[0]} failed")
-    assert proc.returncode is not None
-    return proc.returncode, stdout[:max_bytes], stderr[:max_bytes]
+    return code, stdout[:max_bytes], stderr[:max_bytes]
 
 
 def _parse_status_porcelain(stdout: bytes) -> _PorcelainInfo:
@@ -216,29 +201,26 @@ def _parse_numstat(stdout: bytes) -> dict[str, tuple[int | None, int | None]]:
     return stats
 
 
-def _untracked_added_lines(ws_dir: Path, rel: str) -> int | None:
+def _untracked_added_lines(target: GitTarget, rel: str) -> int | None:
     if rel.endswith("/"):
         return None
-    target = ws_dir / rel
-    try:
-        if not target.is_file():
-            return None
-        with target.open("rb") as fh:
-            sample = fh.read(_UNTRACKED_SAMPLE_BYTES + 1)
-    except OSError:
+    text = target.read_text(rel)
+    if text is None:
         return None
-    if b"\x00" in sample[:8192]:
+    sample = text[:_UNTRACKED_SAMPLE_BYTES]
+    if "\x00" in sample[:8192]:
         return None
-    return len(sample.decode("utf-8", "replace").splitlines())
+    return len(sample.splitlines())
 
 
-async def get_status(ws_dir: Path) -> GitStatusSnapshot:
-    if not workspace_is_repo(ws_dir):
-        return GitStatusSnapshot(is_repo=False, git_available=git_available())
-    if not git_available():
+async def get_status(target: GitTarget) -> GitStatusSnapshot:
+    available = await target.probe()
+    if not workspace_is_repo(target):
+        return GitStatusSnapshot(is_repo=False, git_available=available)
+    if not available:
         return GitStatusSnapshot(is_repo=True, git_available=False)
     _, status_out, _ = await _run_git(
-        ws_dir,
+        target,
         # -uall lists untracked files individually (not collapsed dirs) so
         # per-file line counts and file-level focus both work.
         ["status", "--porcelain=v2", "--branch", "-z", "-uall"],
@@ -247,14 +229,14 @@ async def get_status(ws_dir: Path) -> GitStatusSnapshot:
         read_query=True,
     )
     _, unstaged_out, _ = await _run_git(
-        ws_dir,
+        target,
         ["diff", "--numstat", "-z"],
         timeout=_STATUS_TIMEOUT_S,
         max_bytes=_STATUS_MAX_BYTES,
         read_query=True,
     )
     _, staged_out, _ = await _run_git(
-        ws_dir,
+        target,
         ["diff", "--cached", "--numstat", "-z"],
         timeout=_STATUS_TIMEOUT_S,
         max_bytes=_STATUS_MAX_BYTES,
@@ -271,7 +253,7 @@ async def get_status(ws_dir: Path) -> GitStatusSnapshot:
                     path=entry.path,
                     status="untracked",
                     staged=False,
-                    added=_untracked_added_lines(ws_dir, entry.path),
+                    added=_untracked_added_lines(target, entry.path),
                 )
             )
             continue
@@ -318,9 +300,9 @@ async def get_status(ws_dir: Path) -> GitStatusSnapshot:
     return snapshot
 
 
-async def _is_tracked(ws_dir: Path, rel: str) -> bool:
+async def _is_tracked(target: GitTarget, rel: str) -> bool:
     code, _, _ = await _run_git(
-        ws_dir,
+        target,
         ["ls-files", "--error-unmatch", "--", rel],
         timeout=_DIFF_TIMEOUT_S,
         max_bytes=_SMALL_MAX_BYTES,
@@ -330,12 +312,12 @@ async def _is_tracked(ws_dir: Path, rel: str) -> bool:
     return code == 0
 
 
-async def get_diff(ws_dir: Path, raw_path: str, *, staged: bool) -> dict[str, object]:
-    _ensure_repo(ws_dir)
+async def get_diff(target: GitTarget, raw_path: str, *, staged: bool) -> dict[str, object]:
+    _ensure_repo(target)
     rel = _normalize_repo_path(raw_path)
     if staged:
         _, out, _ = await _run_git(
-            ws_dir,
+            target,
             # --no-ext-diff keeps the output a unified diff even when the
             # user configures an external diff driver (e.g. difftastic).
             ["diff", "--no-ext-diff", "--cached", "--", rel],
@@ -346,19 +328,18 @@ async def get_diff(ws_dir: Path, raw_path: str, *, staged: bool) -> dict[str, ob
         )
     else:
         _, out, _ = await _run_git(
-            ws_dir,
+            target,
             ["diff", "--no-ext-diff", "--", rel],
             timeout=_DIFF_TIMEOUT_S,
             max_bytes=_DIFF_MAX_BYTES,
             read_query=True,
             check=False,
         )
-        if not out.strip() and not await _is_tracked(ws_dir, rel):
-            target = ws_dir / rel
-            if not target.is_file():
+        if not out.strip() and not await _is_tracked(target, rel):
+            if target.read_text(rel) is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cannot diff {rel!r}: not a file")
             _, out, _ = await _run_git(
-                ws_dir,
+                target,
                 ["diff", "--no-ext-diff", "--no-index", "--", os.devnull, rel],
                 timeout=_DIFF_TIMEOUT_S,
                 max_bytes=_DIFF_MAX_BYTES,
@@ -369,11 +350,11 @@ async def get_diff(ws_dir: Path, raw_path: str, *, staged: bool) -> dict[str, ob
     return {"path": rel, "diff": text, "truncated": len(out) >= _DIFF_MAX_BYTES}
 
 
-async def get_log(ws_dir: Path, limit: int = 30) -> list[GitCommit]:
-    _ensure_repo(ws_dir)
+async def get_log(target: GitTarget, limit: int = 30) -> list[GitCommit]:
+    _ensure_repo(target)
     bounded = max(1, min(int(limit), _LOG_MAX_LIMIT))
     _, out, _ = await _run_git(
-        ws_dir,
+        target,
         ["log", f"-n{bounded}", "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"],
         timeout=_LOG_TIMEOUT_S,
         max_bytes=_LOG_MAX_BYTES,
@@ -399,66 +380,62 @@ async def get_log(ws_dir: Path, limit: int = 30) -> list[GitCommit]:
     return commits
 
 
-async def stage_paths(ws_dir: Path, paths: list[str]) -> None:
-    _ensure_repo(ws_dir)
+async def stage_paths(target: GitTarget, paths: list[str]) -> None:
+    _ensure_repo(target)
     rels = [_normalize_repo_path(p) for p in paths]
     await _run_git(
-        ws_dir,
+        target,
         ["add", "--", *rels],
         timeout=_WRITE_TIMEOUT_S,
         max_bytes=_SMALL_MAX_BYTES,
     )
 
 
-async def unstage_paths(ws_dir: Path, paths: list[str]) -> None:
-    _ensure_repo(ws_dir)
+async def unstage_paths(target: GitTarget, paths: list[str]) -> None:
+    _ensure_repo(target)
     rels = [_normalize_repo_path(p) for p in paths]
     await _run_git(
-        ws_dir,
+        target,
         ["restore", "--staged", "--", *rels],
         timeout=_WRITE_TIMEOUT_S,
         max_bytes=_SMALL_MAX_BYTES,
     )
 
 
-async def discard_paths(ws_dir: Path, paths: list[str]) -> None:
-    _ensure_repo(ws_dir)
+async def discard_paths(target: GitTarget, paths: list[str]) -> None:
+    _ensure_repo(target)
     rels = [_normalize_repo_path(p) for p in paths]
     tracked: list[str] = []
     untracked: list[str] = []
     for rel in rels:
-        (tracked if await _is_tracked(ws_dir, rel) else untracked).append(rel)
+        (tracked if await _is_tracked(target, rel) else untracked).append(rel)
     if tracked:
         await _run_git(
-            ws_dir,
+            target,
             ["restore", "--", *tracked],
             timeout=_WRITE_TIMEOUT_S,
             max_bytes=_SMALL_MAX_BYTES,
         )
     for rel in untracked:
-        target = ws_dir / rel
         try:
-            if target.is_dir():
-                shutil.rmtree(target)
-            elif target.exists() or target.is_symlink():
-                target.unlink()
-        except OSError as exc:
+            target.delete(rel)
+        except Exception as exc:  # noqa: BLE001 - report per-file failure
             raise OctopError(ErrorCode.INTERNAL_ERROR, f"cannot discard {rel!r}: {exc}") from exc
 
 
-async def commit_paths(ws_dir: Path, message: str) -> dict[str, str]:
-    _ensure_repo(ws_dir)
+async def commit_paths(target: GitTarget, message: str) -> dict[str, str]:
+    _ensure_repo(target)
     text = str(message or "").strip()
     if not text:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "empty commit message")
     await _run_git(
-        ws_dir,
+        target,
         ["commit", "-m", text],
         timeout=_WRITE_TIMEOUT_S,
         max_bytes=_SMALL_MAX_BYTES,
     )
     _, out, _ = await _run_git(
-        ws_dir,
+        target,
         ["rev-parse", "--short", "HEAD"],
         timeout=_DIFF_TIMEOUT_S,
         max_bytes=_SMALL_MAX_BYTES,

@@ -135,6 +135,9 @@ class OctopConfig:
     login_lockout_seconds: int = 900
     cors_origins: list[str] = field(default_factory=list)
     default_timezone: str = "Asia/Shanghai"
+    # Optional explicit git executable for self-hosted installs whose service
+    # PATH does not include it (Homebrew / Git for Windows / NixOS).
+    git_binary: str = ""
     enable_dashboard: bool = True
     enable_api_docs: bool = False
     require_setup_password: bool = True
@@ -548,6 +551,7 @@ def validate_persisted_config(raw: dict[str, Any]) -> None:
             ZoneInfo(tz)
         except ZoneInfoNotFoundError:
             raise ValueError("default_timezone must be an IANA timezone name") from None
+    _optional_str(raw, "git_binary")
     for key in ("enable_dashboard", "enable_api_docs", "require_setup_password"):
         _optional_bool(raw, key)
     upload = _optional_int(raw, "max_upload_mb")
@@ -805,6 +809,7 @@ def load_config(path: Path) -> OctopConfig:
         login_lockout_seconds=int(merged.get("login_lockout_seconds", 900)),
         cors_origins=list(merged.get("cors_origins") or []),
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
+        git_binary=str(merged.get("git_binary") or "").strip(),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
         require_setup_password=bool(merged["require_setup_password"]),
