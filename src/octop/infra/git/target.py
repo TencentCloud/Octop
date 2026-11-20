@@ -119,14 +119,30 @@ class SandboxGitTarget:
         return int(getattr(response, "exit_code", 1) or 0), encoded[:max_bytes], stderr[:max_bytes]
 
     def exists(self, rel: str) -> bool:
-        return bool(self._ws.exists(rel))
+        # Container listings hide dotfiles, so ``.git`` cannot be probed via
+        # workspace.exists; test inside the container instead.
+        try:
+            response = self._backend.execute(f"test -e {shlex.quote(rel)} && echo yes", timeout=15)
+        except Exception:  # noqa: BLE001 - probe failure means absent
+            return False
+        return int(getattr(response, "exit_code", 1) or 0) == 0 and "yes" in str(
+            getattr(response, "output", "")
+        )
 
     def read_text(self, rel: str) -> str | None:
+        # Read inside the container: BackendWorkspace.read_text materializes a
+        # local copy under .harness-materialize/, which would show up as an
+        # untracked path in the very git status we are computing.
         try:
-            value = self._ws.read_text(rel)
+            response = self._backend.execute(f"head -c 1048576 -- {shlex.quote(rel)}", timeout=15)
         except Exception:  # noqa: BLE001 - unreadable is reported as missing
             return None
-        return value if isinstance(value, str) else None
+        if int(getattr(response, "exit_code", 1) or 0) != 0:
+            return None
+        value = getattr(response, "output", "")
+        if isinstance(value, bytes):
+            return value.decode("utf-8", "replace")
+        return str(value)
 
     def delete(self, rel: str) -> None:
         self._ws.delete(rel)

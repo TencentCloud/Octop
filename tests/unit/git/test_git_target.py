@@ -93,8 +93,9 @@ def test_spec_uses_docker_nested() -> None:
 
 async def test_sandbox_target_runs_git_in_container() -> None:
     class Response:
-        output = "git version 2.43.0\n"
-        exit_code = 0
+        def __init__(self, output: str) -> None:
+            self.output = output
+            self.exit_code = 0
 
     class Backend:
         def __init__(self) -> None:
@@ -102,7 +103,9 @@ async def test_sandbox_target_runs_git_in_container() -> None:
 
         def execute(self, command: str, timeout: int | None = None) -> Response:
             self.command = command
-            return Response()
+            if command.startswith("test -e"):
+                return Response("yes\n")
+            return Response("git version 2.43.0\n")
 
     class Workspace:
         def __init__(self) -> None:
