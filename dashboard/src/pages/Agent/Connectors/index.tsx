@@ -1827,6 +1827,7 @@ function ConnectorConfigDrawer({
                 }
               >
                 <Input
+                  autoComplete="off"
                   placeholder={t(
                     "connectors.feishuAppIdPlaceholder",
                     "例如 cli_xxxxxxxx",
@@ -1840,6 +1841,7 @@ function ConnectorConfigDrawer({
                 extra={configuredExtra(preview, "app_secret_configured", t)}
               >
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder={
                     hasStoredCredentials
                       ? t("connectors.secretPlaceholder", "留空表示不修改")
@@ -2225,14 +2227,14 @@ function ConnectorConfigDrawer({
                 label="AppId"
                 rules={[{ required: true }]}
               >
-                <Input placeholder="企业 ID / AppId" />
+                <Input autoComplete="off" placeholder="企业 ID / AppId" />
               </Form.Item>
               <Form.Item
                 name="sdk_id"
                 label="SdkId"
                 rules={[{ required: true }]}
               >
-                <Input />
+                <Input autoComplete="off" />
               </Form.Item>
               <Form.Item
                 name="secret_key"
@@ -2241,6 +2243,7 @@ function ConnectorConfigDrawer({
                 extra={configuredExtra(preview, "secret_key_configured", t)}
               >
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder={
                     hasStoredCredentials
                       ? t("connectors.secretPlaceholder", "留空表示不修改")
