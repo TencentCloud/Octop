@@ -145,6 +145,11 @@ def files_mcp_url(*, config: OctopConfig, token: str) -> str:
     return _loopback_mcp_url(config, "files", token)
 
 
+def team_workspace_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for host-workspace file tools on a managed team turn."""
+    return _loopback_mcp_url(config, "team-workspace", token)
+
+
 def cron_mcp_url(*, config: OctopConfig, token: str) -> str:
     """Loopback URL for cron tools on a managed ACP session."""
     return _loopback_mcp_url(config, "cron", token)

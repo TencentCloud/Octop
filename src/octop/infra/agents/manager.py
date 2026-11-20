@@ -97,7 +97,7 @@ from octop.infra.skills.workspace_catalog import (
     list_workspace_skill_summaries,
     repair_workspace_skill_manifests,
 )
-from octop.infra.utils.locale import Locale, resolve_user_locale
+from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, resolve_user_locale
 from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
@@ -4595,6 +4595,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.host_dispatch_guard import HostDispatchGuardMiddleware
         from octop.infra.agents.middleware.mcp_output_schema import (
             McpOutputSchemaMiddleware,
             harness_handles_mcp_tool_errors,
@@ -4602,6 +4603,7 @@ class AgentManager:
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.team_dispatch import TeamDispatchBriefingMiddleware
+        from octop.infra.agents.middleware.team_file_target import TeamFileTargetMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
@@ -4624,6 +4626,7 @@ class AgentManager:
             ),
             ReasoningRequestMiddleware(),
             TeamDispatchBriefingMiddleware(),
+            TeamFileTargetMiddleware(agent_id=row.agent_id, lookup=self.get_agent),
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
@@ -4636,6 +4639,14 @@ class AgentManager:
             ),
             OctopUiOffloadMiddleware(),
         ]
+        if team_host:
+            uid = getattr(row, "user_id", None)
+            locale = (
+                resolve_user_locale(user_repo=self._repos.user_repo, user_id=uid)
+                if isinstance(uid, int) and uid > 0
+                else DEFAULT_LOCALE
+            )
+            agent_middleware.append(HostDispatchGuardMiddleware(locale=locale))
 
         merged_tools: list[Any] = []
         if cron_tools:
@@ -4934,6 +4945,8 @@ class AgentManager:
             updates["subagents_auto_load"] = False
         if "bootstrap_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["bootstrap_enabled"] = False
+        if "todos_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["todos_enabled"] = False
         if "system_prompt" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["system_prompt"] = host_system_prompt(row, self._repos.user_repo)
         return replace(cfg, **updates) if updates else cfg

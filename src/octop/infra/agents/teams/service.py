@@ -38,7 +38,7 @@ def _member_runner(member: AgentRow) -> str | None:
 TEMPLATE_DIR = Path(__file__).resolve().parent / "template"
 TEAM_MANIFEST_WORKSPACE = ".octop/manifest.json"
 
-# Hosts only dispatch and keep light memory/time — members do the work.
+# Hosts dispatch, send files that landed in their workspace, and keep light memory/time.
 HOST_TOOLS_ALLOWED: frozenset[str] = frozenset(
     {
         "agent_list",
@@ -46,6 +46,7 @@ HOST_TOOLS_ALLOWED: frozenset[str] = frozenset(
         "memory_search",
         "memory_get",
         "current_time",
+        "send_file_to_user",
     }
 )
 
@@ -55,8 +56,11 @@ HOST_TOOLS_DISABLED: frozenset[str] = frozenset(
 
 
 def host_tools_disabled(extra: frozenset[str] | set[str] | tuple[str, ...] = ()) -> frozenset[str]:
-    """Denylist for a team host: catalog minus the dispatch allowlist."""
-    return frozenset(extra) | HOST_TOOLS_DISABLED
+    """Denylist for a team host: catalog minus the dispatch allowlist.
+
+    A stored denylist cannot turn an allowlisted tool back off.
+    """
+    return (frozenset(extra) - HOST_TOOLS_ALLOWED) | HOST_TOOLS_DISABLED
 
 
 def agent_kind(row: AgentRow | None) -> str:
