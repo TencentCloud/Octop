@@ -66,7 +66,7 @@
 
 ## 📌 概述
 
-Octop 是面向家庭与小团队的自托管 AI 助手平台。单进程同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、微信、企业微信等）与定时任务，共享 `~/.octop/` 下的控制面数据库（默认 SQLite；可选 PostgreSQL）。
+Octop 是面向家庭与小团队的自托管 AI 助手平台。单进程同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、微信、企业微信、Telegram、Discord、Slack、WhatsApp 等）与定时任务，共享 `~/.octop/` 下的控制面数据库（默认 SQLite；可选 PostgreSQL）。
 
 > Octop 的设计目标：让每一次对话、工作区与凭据都留在你自己的机器上，同时为每个用户配备一组可按场景切换的专业 Agent。
 
@@ -122,7 +122,7 @@ Octop 不依赖外部消息队列或中间件，而是通过进程内的 `Harnes
 - 工作区后端（专家文件）：本地磁盘、Docker 沙箱、PostgreSQL、COS/S3 及其他远程存储 — 与控制面数据库分离
 
 ### 通道与自动化
-- IM 通道：飞书、钉钉、QQ、微信、企业微信等
+- IM 通道：飞书、钉钉、QQ、微信、企业微信、Telegram、Discord、Slack、WhatsApp 等
 - 主动定时任务，支持自然语言和斜杠命令触发
 - Web UI、IM、定时任务共用同一套消息处理链路
 

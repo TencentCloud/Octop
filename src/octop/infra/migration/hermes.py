@@ -44,14 +44,16 @@ _TRANSPORT_KINDS = {"chat_completions": "openai", "anthropic_messages": "anthrop
 _CHANNELS: dict[str, dict[str, str]] = {
     "telegram": {"bot_token": "TELEGRAM_BOT_TOKEN"},
     "discord": {"bot_token": "DISCORD_BOT_TOKEN"},
+    "slack": {"bot_token": "SLACK_BOT_TOKEN"},
     "feishu": {"app_id": "FEISHU_APP_ID", "app_secret": "FEISHU_APP_SECRET"},
     "dingtalk": {"client_id": "DINGTALK_CLIENT_ID", "client_secret": "DINGTALK_CLIENT_SECRET"},
     "wecom": {"bot_id": "WECOM_BOT_ID", "secret": "WECOM_SECRET"},
     "qq": {"app_id": "QQ_APP_ID", "client_secret": "QQ_CLIENT_SECRET"},
 }
+_OPTIONAL_CHANNEL_VARS: dict[str, dict[str, str]] = {
+    "slack": {"app_token": "SLACK_APP_TOKEN", "signing_secret": "SLACK_SIGNING_SECRET"},
+}
 _UNSUPPORTED_PLATFORM_VARS = {
-    "slack": "SLACK_BOT_TOKEN",
-    "whatsapp": "WHATSAPP_ENABLED",
     "signal": "SIGNAL_HTTP_URL",
     "matrix": "MATRIX_ACCESS_TOKEN",
     "mattermost": "MATTERMOST_TOKEN",
@@ -240,7 +242,32 @@ def _read_channels(plan: MigrationPlan, values: Mapping[str, str]) -> None:
     for kind, fields in _CHANNELS.items():
         config = {field: values.get(var, "") for field, var in fields.items()}
         if all(config.values()):
+            for opt_field, opt_var in _OPTIONAL_CHANNEL_VARS.get(kind, {}).items():
+                if values.get(opt_var):
+                    config[opt_field] = values[opt_var]
             plan.channels.append(ChannelImport(kind=kind, name=kind, config=config))
+    wa_bridge = values.get("WHATSAPP_BRIDGE_URL", "")
+    wa_token = values.get("WHATSAPP_ACCESS_TOKEN", "")
+    wa_phone = values.get("WHATSAPP_PHONE_NUMBER_ID", "")
+    if wa_token and wa_phone:
+        wa_cfg: dict[str, Any] = {
+            "provider": "cloud",
+            "access_token": wa_token,
+            "phone_number_id": wa_phone,
+        }
+        if values.get("WHATSAPP_VERIFY_TOKEN"):
+            wa_cfg["verify_token"] = values["WHATSAPP_VERIFY_TOKEN"]
+        if values.get("WHATSAPP_APP_SECRET"):
+            wa_cfg["app_secret"] = values["WHATSAPP_APP_SECRET"]
+        plan.channels.append(ChannelImport(kind="whatsapp", name="whatsapp", config=wa_cfg))
+    elif wa_bridge:
+        wa_cfg = {
+            "provider": values.get("WHATSAPP_PROVIDER", "waha"),
+            "bridge_url": wa_bridge,
+        }
+        if values.get("WHATSAPP_BRIDGE_API_KEY"):
+            wa_cfg["bridge_api_key"] = values["WHATSAPP_BRIDGE_API_KEY"]
+        plan.channels.append(ChannelImport(kind="whatsapp", name="whatsapp", config=wa_cfg))
     for platform, var in _UNSUPPORTED_PLATFORM_VARS.items():
         if values.get(var):
             plan.note("channel_unsupported", name=platform)
