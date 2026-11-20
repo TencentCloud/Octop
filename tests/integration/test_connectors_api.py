@@ -515,7 +515,7 @@ async def test_catalog_weknora_dify_last(env):
     assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
     assert kinds.index("didi") < kinds.index("weknora")
-    assert kinds[-2:] == ["weknora", "dify"]
+    assert kinds[-3:] == ["weknora", "dify", "github"]
 
 
 async def test_obsidian_cli_install_registers_binary(
