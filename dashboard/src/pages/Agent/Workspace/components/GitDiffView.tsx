@@ -82,7 +82,7 @@ export default function GitDiffView({ diff, truncated }: GitDiffViewProps) {
   }
 
   return (
-    <div className={styles.gitDiff}>
+    <div className={styles.gitDiffWrap}>
       {truncated && (
         <Alert
           type="warning"
@@ -91,19 +91,21 @@ export default function GitDiffView({ diff, truncated }: GitDiffViewProps) {
           className={styles.gitDiffTruncated}
         />
       )}
-      <div className={styles.gitDiffRows}>
-        {rows.map((row, i) => (
-          <div
-            key={i}
-            className={`${styles.gitDiffRow} ${
-              styles[`gitDiffRow_${row.kind}`] ?? ""
-            }`}
-          >
-            <span className={styles.gitDiffNo}>{row.oldNo ?? ""}</span>
-            <span className={styles.gitDiffNo}>{row.newNo ?? ""}</span>
-            <span className={styles.gitDiffText}>{row.text}</span>
-          </div>
-        ))}
+      <div className={styles.gitDiff}>
+        <div className={styles.gitDiffRows}>
+          {rows.map((row, i) => (
+            <div
+              key={i}
+              className={`${styles.gitDiffRow} ${
+                styles[`gitDiffRow_${row.kind}`] ?? ""
+              }`}
+            >
+              <span className={styles.gitDiffNo}>{row.oldNo ?? ""}</span>
+              <span className={styles.gitDiffNo}>{row.newNo ?? ""}</span>
+              <span className={styles.gitDiffText}>{row.text}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

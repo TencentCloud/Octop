@@ -460,6 +460,7 @@ export default function TurnFileChangeCard({
 
       <Modal
         title={diffPath ?? undefined}
+        className={styles.turnDiffModal}
         open={diffPath != null}
         footer={null}
         width="72vw"

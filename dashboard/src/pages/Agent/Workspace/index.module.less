@@ -1095,24 +1095,57 @@
 
 // --- Git diff view ---------------------------------------------------------
 
+// Row tints live on custom properties so the row background and the sticky
+// gutter's opaque composite share one source; drift would only show while
+// scrolled horizontally.
+@gitDiffGutterWidth: 46px;
+
+// One definition per row kind: the row background and the sticky gutter's
+// opaque composite must consume the same tint pair.
+.gitDiffTint(@color; @pct) {
+  --git-diff-tint-color: @color;
+  --git-diff-tint-pct: @pct;
+  background: color-mix(in srgb, @color @pct, transparent);
+}
+
 .gitDiff {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
   overflow: auto;
+  // Own surface (host-overridable) so the gutter composite always matches
+  // the row base: hosts like the antd modal paint their own content color,
+  // and a gutter pinned to a global token would show a visible strip there.
+  // The fallback lives at each use site — declaring the property here would
+  // shadow any value inherited from the host.
+  background: var(--git-diff-surface, var(--fn-bg-primary));
   font-family: var(--fn-font-mono, ui-monospace, monospace);
   font-size: 12px;
   line-height: 1.5;
 }
 
+.gitDiffWrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .gitDiffTruncated {
+  // Outside the horizontally scrolling block so it stays a full-width
+  // banner instead of scrolling away with the diff.
   margin: 8px 10px 0;
+  flex-shrink: 0;
 }
 
 .gitDiffRows {
   display: flex;
   flex-direction: column;
+  // Rows size to the widest line so the whole diff scrolls as one block in
+  // the single .gitDiff scroll container — never one scrollbar per row.
+  width: max-content;
+  min-width: 100%;
 }
 
 .gitDiffRow {
@@ -1123,38 +1156,55 @@
 
 .gitDiffNo {
   flex-shrink: 0;
-  width: 46px;
+  width: @gitDiffGutterWidth;
   text-align: right;
   padding-right: 8px;
   color: var(--fn-text-quaternary, var(--fn-text-tertiary));
   user-select: none;
   overflow: hidden;
+  // Pin the gutter while the whole diff scrolls horizontally. The opaque
+  // background is the row tint (inherited custom properties, defaulting to
+  // none) composited over the diff surface, so scrolled text cannot show
+  // through the translucent row colors.
+  position: sticky;
+  z-index: 1;
+  left: 0;
+  background: color-mix(
+    in srgb,
+    var(--git-diff-tint-color, transparent) var(--git-diff-tint-pct, 0%),
+    var(--git-diff-surface, var(--fn-bg-primary))
+  );
+}
+
+// Second gutter (old-number column) pins one gutter width in. Assumes the
+// two-column layout rendered by GitDiffView; a third column would need its
+// own offset.
+.gitDiffNo + .gitDiffNo {
+  left: @gitDiffGutterWidth;
 }
 
 .gitDiffText {
   flex: 1;
-  min-width: 0;
-  overflow-x: auto;
   white-space: pre;
   padding-right: 10px;
 }
 
 .gitDiffRow_add {
-  background: rgba(46, 160, 67, 0.14);
+  .gitDiffTint(rgb(46, 160, 67); 14%);
   .gitDiffText {
     color: #1a7f37;
   }
 }
 
 .gitDiffRow_del {
-  background: rgba(248, 81, 73, 0.14);
+  .gitDiffTint(rgb(248, 81, 73); 14%);
   .gitDiffText {
     color: #cf222e;
   }
 }
 
 .gitDiffRow_hunk {
-  background: rgba(9, 105, 218, 0.08);
+  .gitDiffTint(rgb(9, 105, 218); 8%);
   color: var(--fn-text-secondary);
 }
 
