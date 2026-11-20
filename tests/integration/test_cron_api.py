@@ -168,6 +168,46 @@ async def test_run_now_records_last_status(env: Any) -> None:
     assert body["last_run_at"] is not None
 
 
+@pytest.mark.parametrize("fresh_thread", [False, True])
+async def test_run_now_recovers_deleted_dashboard_session(env: Any, fresh_thread: bool) -> None:
+    c, srv, alice_auth, _bob_auth, aid = env
+    harness = srv.app_runtime.agent_registry.get_agent(aid)
+    harness.chunks = [{"type": "token", "content": "scheduled reminder"}]
+    base = f"/api/agents/{aid}/cron"
+    r = await c.post(
+        base,
+        headers=alice_auth,
+        json={
+            "trigger": "interval:3600",
+            "prompt": "scheduled reminder",
+            "task_type": "agent",
+            "fresh_thread": fresh_thread,
+        },
+    )
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+    job = srv.services.cron_repo.get(cid)
+    assert job is not None
+    registry = srv.app_runtime.gateway.thread_registry
+    original = registry.get_session(job.session_key)
+    assert original is not None
+    r = await c.delete(f"/api/agents/{aid}/threads/{original.thread_id}", headers=alice_auth)
+    assert r.status_code == 204, r.text
+    assert registry.get_session(job.session_key) is None
+
+    for run_number in (1, 2):
+        await srv.app_runtime.cron_manager.run_now(cid, wait=True)
+        r = await c.get(f"{base}/{cid}", headers=alice_auth)
+        assert r.status_code == 200, r.text
+        assert r.json()["last_status"] == "ok", r.json().get("last_error")
+        session = registry.get_session(job.session_key)
+        assert session is not None
+        assert session.thread_id != original.thread_id
+        assert (session.agent_id, session.user_id) == (aid, job.user_id)
+        threads = registry.list_threads_for_session(session_key=job.session_key)
+        assert len(threads) == (run_number if fresh_thread else 1)
+
+
 async def test_cron_settings_returns_timezone(env: Any) -> None:
     c, _srv, alice_auth, _bob_auth, _aid = env
     r = await c.get("/api/cron/settings", headers=alice_auth)

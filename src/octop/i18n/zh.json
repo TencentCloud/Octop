@@ -777,6 +777,7 @@
     "fork_default_title": "分叉对话"
   },
   "cron": {
+    "missing_target_session": "此定时任务的会话已不可用，请在任务设置中重新选择投递目标。",
     "history": {
       "executed": "任务{cron_id} :{name} 执行.",
       "script_done": "脚本 {name} 已执行，没有输出。"
