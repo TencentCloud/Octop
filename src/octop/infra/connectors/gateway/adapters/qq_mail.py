@@ -7,6 +7,7 @@ import email
 import imaplib
 import json
 import smtplib
+import ssl
 from email import policy
 from email.mime.text import MIMEText
 from typing import Any
@@ -174,7 +175,7 @@ def _email_send(creds: dict[str, Any], args: dict[str, Any]) -> str:
     host = correct_netease_smtp_host(from_addr, creds.get("smtp_host"))
     port = int(creds.get("smtp_port") or 587)
     with smtplib.SMTP(host, port, timeout=IMAP_CONNECT_TIMEOUT) as smtp:
-        smtp.starttls()
+        smtp.starttls(context=ssl.create_default_context())
         smtp.login(from_addr, str(creds.get("password") or ""))
         smtp.send_message(msg)
     return json.dumps({"ok": True, "to": to_addr}, ensure_ascii=False)
@@ -198,7 +199,12 @@ def _imap_login(creds: dict[str, Any]) -> imaplib.IMAP4_SSL:
     host = correct_netease_imap_host(user, creds.get("imap_host"))
     port = int(creds.get("imap_port") or 993)
     password = str(creds.get("password") or "")
-    imap: imaplib.IMAP4_SSL = imaplib.IMAP4_SSL(host, port, timeout=IMAP_CONNECT_TIMEOUT)
+    imap: imaplib.IMAP4_SSL = imaplib.IMAP4_SSL(
+        host,
+        port,
+        timeout=IMAP_CONNECT_TIMEOUT,
+        ssl_context=ssl.create_default_context(),
+    )
     if _should_send_imap_id(imap, host):
         _imap_send_id(imap)
     imap.login(user, password)
