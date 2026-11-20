@@ -411,7 +411,8 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
-| `GET`/`PUT` | `/agents/{aid}/memory/extract-config` | owner/admin | Read/update memory runtime and extraction options; omitted fields retain their stored values |
+| `GET`/`PUT` | `/agents/{aid}/memory/extract-config` | owner/admin | Read/update memory runtime and extraction options. `aux_model_mode` and `extract_rules_mode` independently accept `inherit` or `custom`. Omitted fields keep their values. A legacy `aux_model: null` leaves the selection unchanged. Explicit `custom` with a null model follows the expert’s chat model. |
+| `GET`/`PUT` | `/settings/memory-defaults` | `memory_defaults` | Read or patch the global `aux_model`, `extract_keep_rules` and `extract_skip_rules`. The caller must have access to a newly selected model. On save, `affected_agent_count` counts enabled experts inheriting a changed setting, including stopped experts that will pick it up when started. |
 | `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
 | `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
 | `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |

@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
@@ -19,6 +20,7 @@ import {
   Brain,
   Cpu,
   Database,
+  ScrollText,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react";
@@ -29,8 +31,12 @@ import {
   memoryDashboardApi,
   type ExtractConfig,
   type ExtractTriggerMode,
+  type GlobalMemoryDefaults,
+  type MemoryOverrideMode,
 } from "../../../api/modules/memoryDashboard";
 import { providerApi } from "../../../api/modules/provider";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { userCan } from "../../../utils/permissions";
 import {
   MODEL_AUTO_VALUE,
   buildModelSelectOptions,
@@ -51,9 +57,12 @@ const MIN_INTERVAL_HOURS = 0.1;
 const AUTO_SENTINEL = 0;
 const MAX_AUX_TIMEOUT_S = 3600;
 const MAX_AUX_TOKENS = 65536;
+const MAX_RULE_CHARS = 2000;
 
 export default function MemorySettings({ agentId }: Props) {
   const { t } = useTranslation();
+  const currentUser = useCurrentUser();
+  const canEditGlobalMemory = userCan(currentUser, "memory_defaults");
   const loadFailedMessage = t("memory.settings.loadFailed", "记忆设置加载失败");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,7 +70,18 @@ export default function MemorySettings({ agentId }: Props) {
   const [mode, setMode] = useState<ExtractTriggerMode>("idle");
   const [idleMinutes, setIdleMinutes] = useState(5);
   const [intervalHours, setIntervalHours] = useState(6);
+  const [auxModelMode, setAuxModelMode] =
+    useState<MemoryOverrideMode>("inherit");
   const [auxModel, setAuxModel] = useState<string>(MODEL_AUTO_VALUE);
+  const [rulesMode, setRulesMode] = useState<MemoryOverrideMode>("inherit");
+  const [keepRules, setKeepRules] = useState("");
+  const [skipRules, setSkipRules] = useState("");
+  const [globalDefaults, setGlobalDefaults] = useState<GlobalMemoryDefaults>({
+    aux_model: null,
+    aux_model_usable: true,
+    extract_keep_rules: "",
+    extract_skip_rules: "",
+  });
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [extractMaxTokens, setExtractMaxTokens] =
@@ -99,7 +119,22 @@ export default function MemorySettings({ agentId }: Props) {
   const applyConfig = useCallback((cfg: ExtractConfig) => {
     setMemoryEnabled(cfg.memory_enabled ?? true);
     setMode(cfg.extract_trigger_mode);
+    const inferredAuxMode: MemoryOverrideMode =
+      cfg.aux_model_mode ?? (cfg.aux_model ? "custom" : "inherit");
+    setAuxModelMode(inferredAuxMode);
     setAuxModel(defaultModelToForm(cfg.aux_model));
+    const inferredRulesMode: MemoryOverrideMode =
+      cfg.extract_rules_mode ??
+      (cfg.extract_keep_rules || cfg.extract_skip_rules ? "custom" : "inherit");
+    setRulesMode(inferredRulesMode);
+    setKeepRules(cfg.extract_keep_rules ?? "");
+    setSkipRules(cfg.extract_skip_rules ?? "");
+    setGlobalDefaults({
+      aux_model: cfg.global_defaults?.aux_model ?? null,
+      aux_model_usable: cfg.global_defaults?.aux_model_usable ?? true,
+      extract_keep_rules: cfg.global_defaults?.extract_keep_rules ?? "",
+      extract_skip_rules: cfg.global_defaults?.extract_skip_rules ?? "",
+    });
     setSupportedCallOptions(cfg.supported_call_options);
     setThinking(cfg.extract_thinking ?? "auto");
     setMaxRetries(cfg.extract_max_retries ?? 2);
@@ -191,7 +226,12 @@ export default function MemorySettings({ agentId }: Props) {
           Math.max(MIN_IDLE_MINUTES, idleMinutes) * 60,
         ),
         extract_interval_seconds: Math.round(intervalHours * 3600),
-        aux_model: defaultModelFromForm(auxModel) ?? "",
+        aux_model_mode: auxModelMode,
+        aux_model:
+          auxModelMode === "custom" ? defaultModelFromForm(auxModel) : null,
+        extract_rules_mode: rulesMode,
+        extract_keep_rules: rulesMode === "custom" ? keepRules.trim() : "",
+        extract_skip_rules: rulesMode === "custom" ? skipRules.trim() : "",
         extract_max_tokens:
           extractMaxTokens > 0 ? extractMaxTokens : AUTO_SENTINEL,
         extract_light_timeout_s:
@@ -400,37 +440,309 @@ export default function MemorySettings({ agentId }: Props) {
           !memoryEnabled && styles.cardDisabled,
         )}
       >
-        <div className={styles.sectionHeading}>
-          <span className={styles.settingIcon}>
-            <Cpu size={18} />
-          </span>
-          <div>
-            <div className={styles.settingTitle}>
-              {t("memory.settings.extractModelTitle", "记忆提取模型")}
-            </div>
-            <div className={styles.settingDescription}>
-              {t(
-                "memory.settings.extractModelDescription",
-                "提炼记忆时调用的模型。选择“自动”跟随对话使用的默认模型；也可以指定一个更便宜或更快的模型专门做提炼。",
-              )}
+        <div className={styles.overrideHeader}>
+          <div className={styles.sectionHeading}>
+            <span className={styles.settingIcon}>
+              <Cpu size={18} />
+            </span>
+            <div>
+              <div className={styles.settingTitle}>
+                {t("memory.settings.extractModelTitle", "记忆提取模型")}
+              </div>
+              <div className={styles.settingDescription}>
+                {t(
+                  "memory.settings.extractModelDescription",
+                  "提炼记忆时调用的模型。默认继承全局设置，也可为当前专家单独指定模型或跟随其对话模型。",
+                )}
+              </div>
             </div>
           </div>
+          <Radio.Group
+            optionType="button"
+            size="small"
+            disabled={!memoryEnabled}
+            value={auxModelMode}
+            onChange={(e) => {
+              const next = e.target.value as MemoryOverrideMode;
+              setAuxModelMode(next);
+              if (
+                next === "custom" &&
+                auxModel === MODEL_AUTO_VALUE &&
+                globalDefaults.aux_model &&
+                globalDefaults.aux_model_usable !== false
+              ) {
+                setAuxModel(defaultModelToForm(globalDefaults.aux_model));
+              }
+            }}
+            aria-label={t(
+              "memory.settings.extractModelSource",
+              "记忆提取模型来源",
+            )}
+            options={[
+              {
+                value: "inherit",
+                label: t("memory.settings.inheritGlobal", "继承全局"),
+              },
+              {
+                value: "custom",
+                label: t("memory.settings.customOverride", "自定义"),
+              },
+            ]}
+          />
         </div>
         <fieldset className={styles.strategyFields} disabled={!memoryEnabled}>
-          <Select
-            aria-label={t("memory.settings.extractModelTitle", "记忆提取模型")}
-            style={{ minWidth: 280, maxWidth: 420 }}
-            value={auxModel}
-            loading={modelsLoading}
+          {auxModelMode === "inherit" ? (
+            <div className={styles.inheritSummary}>
+              <div className={styles.inheritRow}>
+                <span>
+                  {globalDefaults.aux_model
+                    ? globalDefaults.aux_model_usable === false
+                      ? t(
+                          "memory.settings.inheritModelUnavailable",
+                          "当前继承全局：{{model}}（该模型当前不可用，已自动回退到本专家对话模型）",
+                          { model: globalDefaults.aux_model },
+                        )
+                      : t(
+                          "memory.settings.inheritModelValue",
+                          "当前继承全局：{{model}}",
+                          { model: globalDefaults.aux_model },
+                        )
+                    : t(
+                        "memory.settings.inheritModelUnset",
+                        "当前继承全局：未设置（沿用本专家对话模型）",
+                      )}
+                </span>
+                {canEditGlobalMemory ? (
+                  <Link to="/admin/memory">
+                    {t("memory.settings.manageGlobalMemory", "管理全局默认")}
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.customControlsRow}>
+              <Select
+                aria-label={t(
+                  "memory.settings.extractModelTitle",
+                  "记忆提取模型",
+                )}
+                style={{ minWidth: 280, maxWidth: 420 }}
+                value={auxModel}
+                loading={modelsLoading}
+                disabled={!memoryEnabled}
+                onChange={setAuxModel}
+                options={buildModelSelectOptions(
+                  models,
+                  t("memory.settings.extractModelAuto", "自动（跟随对话模型）"),
+                )}
+                showSearch
+                optionFilterProp="label"
+              />
+              <Button
+                type="link"
+                size="small"
+                disabled={!memoryEnabled}
+                onClick={() => {
+                  setAuxModelMode("inherit");
+                  setAuxModel(MODEL_AUTO_VALUE);
+                }}
+              >
+                {t("memory.settings.restoreInherit", "恢复继承全局")}
+              </Button>
+            </div>
+          )}
+        </fieldset>
+      </Card>
+
+      <Card
+        className={cx(
+          styles.settingCard,
+          !memoryEnabled && styles.cardDisabled,
+        )}
+      >
+        <div className={styles.overrideHeader}>
+          <div className={styles.sectionHeading}>
+            <span className={styles.settingIcon}>
+              <ScrollText size={18} />
+            </span>
+            <div>
+              <div className={styles.settingTitle}>
+                {t("memory.settings.rulesTitle", "记忆规则")}
+              </div>
+              <div className={styles.settingDescription}>
+                {t(
+                  "memory.settings.rulesDescription",
+                  "定义哪些信息值得保留为长期记忆、哪些信息应跳过。默认继承全局规则，也可为当前专家单独覆盖。",
+                )}
+              </div>
+            </div>
+          </div>
+          <Radio.Group
+            optionType="button"
+            size="small"
             disabled={!memoryEnabled}
-            onChange={setAuxModel}
-            options={buildModelSelectOptions(
-              models,
-              t("memory.settings.extractModelAuto", "自动（跟随对话模型）"),
-            )}
-            showSearch
-            optionFilterProp="label"
+            value={rulesMode}
+            onChange={(e) => {
+              const next = e.target.value as MemoryOverrideMode;
+              setRulesMode(next);
+              if (next === "custom" && !keepRules && !skipRules) {
+                if (globalDefaults.extract_keep_rules) {
+                  setKeepRules(globalDefaults.extract_keep_rules);
+                }
+                if (globalDefaults.extract_skip_rules) {
+                  setSkipRules(globalDefaults.extract_skip_rules);
+                }
+              }
+            }}
+            aria-label={t("memory.settings.rulesSource", "记忆规则来源")}
+            options={[
+              {
+                value: "inherit",
+                label: t("memory.settings.inheritGlobal", "继承全局"),
+              },
+              {
+                value: "custom",
+                label: t("memory.settings.customOverride", "自定义"),
+              },
+            ]}
           />
+        </div>
+        <fieldset className={styles.strategyFields} disabled={!memoryEnabled}>
+          {Array.isArray(supportedCallOptions) &&
+          !supportedCallOptions.includes("extract_rules") ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t(
+                "memory.settings.rulesUnsupported",
+                "当前运行环境尚不支持自定义记忆规则。规则会保存，升级 octop-harness 和 octop-memory 后生效。",
+              )}
+            />
+          ) : null}
+
+          {rulesMode === "inherit" ? (
+            <div className={styles.inheritSummary}>
+              {globalDefaults.extract_keep_rules ||
+              globalDefaults.extract_skip_rules ? (
+                <>
+                  {globalDefaults.extract_keep_rules ? (
+                    <div className={styles.inheritRuleBlock}>
+                      <span className={styles.inheritRuleLabel}>
+                        {t(
+                          "memory.settings.keepRulesLabel",
+                          "值得保留为长期记忆的信息",
+                        )}
+                      </span>
+                      <span className={styles.inheritRuleText}>
+                        {globalDefaults.extract_keep_rules}
+                      </span>
+                    </div>
+                  ) : null}
+                  {globalDefaults.extract_skip_rules ? (
+                    <div className={styles.inheritRuleBlock}>
+                      <span className={styles.inheritRuleLabel}>
+                        {t("memory.settings.skipRulesLabel", "应当跳过的信息")}
+                      </span>
+                      <span className={styles.inheritRuleText}>
+                        {globalDefaults.extract_skip_rules}
+                      </span>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className={styles.inheritRow}>
+                  <span>
+                    {t(
+                      "memory.settings.inheritRulesUnset",
+                      "当前继承全局：未设置自定义规则（沿用内置默认策略）",
+                    )}
+                  </span>
+                  {canEditGlobalMemory ? (
+                    <Link to="/admin/memory">
+                      {t("memory.settings.manageGlobalMemory", "管理全局默认")}
+                    </Link>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className={styles.ruleField}>
+                <label
+                  htmlFor="expert-memory-keep-rules"
+                  className={styles.ruleFieldLabel}
+                >
+                  {t(
+                    "memory.settings.keepRulesLabel",
+                    "值得保留为长期记忆的信息",
+                  )}
+                </label>
+                <div className={styles.ruleFieldHint}>
+                  {t(
+                    "memory.settings.keepRulesHint",
+                    "例如：该专家专属领域的长期决策、客户约束、偏好与后续必用信息。",
+                  )}
+                </div>
+                <Input.TextArea
+                  id="expert-memory-keep-rules"
+                  rows={3}
+                  maxLength={MAX_RULE_CHARS}
+                  showCount
+                  disabled={!memoryEnabled}
+                  value={keepRules}
+                  onChange={(e) => setKeepRules(e.target.value)}
+                  placeholder={t(
+                    "memory.settings.keepRulesPlaceholder",
+                    "描述需要优先记住的信息，留空表示不额外指定",
+                  )}
+                />
+              </div>
+
+              <div className={styles.ruleField}>
+                <label
+                  htmlFor="expert-memory-skip-rules"
+                  className={styles.ruleFieldLabel}
+                >
+                  {t("memory.settings.skipRulesLabel", "应当跳过的信息")}
+                </label>
+                <div className={styles.ruleFieldHint}>
+                  {t(
+                    "memory.settings.skipRulesHint",
+                    "例如：临时草稿、一次性问答或无需长期留存的上下文。",
+                  )}
+                </div>
+                <Input.TextArea
+                  id="expert-memory-skip-rules"
+                  rows={3}
+                  maxLength={MAX_RULE_CHARS}
+                  showCount
+                  disabled={!memoryEnabled}
+                  value={skipRules}
+                  onChange={(e) => setSkipRules(e.target.value)}
+                  placeholder={t(
+                    "memory.settings.skipRulesPlaceholder",
+                    "描述应跳过的信息，留空表示不额外指定",
+                  )}
+                />
+              </div>
+
+              <div>
+                <Button
+                  type="link"
+                  size="small"
+                  style={{ paddingLeft: 0 }}
+                  disabled={!memoryEnabled}
+                  onClick={() => {
+                    setRulesMode("inherit");
+                    setKeepRules("");
+                    setSkipRules("");
+                  }}
+                >
+                  {t("memory.settings.restoreInherit", "恢复继承全局")}
+                </Button>
+              </div>
+            </>
+          )}
         </fieldset>
       </Card>
 
