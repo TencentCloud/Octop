@@ -160,18 +160,6 @@ async def list_plugin_channel_kinds(
     return [info.to_dict() for info in plugin_channel_kinds()]
 
 
-@router.get("/channels/plugin-settings", summary="List loaded plugin channel settings")
-async def list_plugin_channel_settings(
-    _user: Any = Depends(current_user),
-) -> list[dict[str, Any]]:
-    """Return QQ group-policy switches declared by loaded inbound plugins."""
-    from octop_harness.plugins import PluginRegistry
-
-    from octop.infra.gateway.plugin_channels import plugin_channel_settings
-
-    return plugin_channel_settings(PluginRegistry())
-
-
 @router.get("/agents/{agent_id}/channels")
 async def list_channels(
     agent_id: str,
@@ -1144,12 +1132,13 @@ async def whatsapp_bridge_qrcode_generate(
     from octop_gateway.channels.whatsapp import fetch_whatsapp_bridge_qr  # noqa: PLC0415
 
     try:
-        return await fetch_whatsapp_bridge_qr(
+        res = await fetch_whatsapp_bridge_qr(
             body.bridge_url,
             provider=body.provider,
             session_name=body.session_name,
             api_key=body.bridge_api_key,
         )
+        return cast(dict[str, Any], res)
     except Exception as exc:
         logger.warning("Failed to fetch WhatsApp bridge QR code for agent %s: %s", agent_id, exc)
         raise HTTPException(
@@ -1170,12 +1159,13 @@ async def whatsapp_bridge_qrcode_poll(
     from octop_gateway.channels.whatsapp import check_whatsapp_bridge_status  # noqa: PLC0415
 
     try:
-        return await check_whatsapp_bridge_status(
+        res = await check_whatsapp_bridge_status(
             body.bridge_url,
             provider=body.provider,
             session_name=body.session_name,
             api_key=body.bridge_api_key,
         )
+        return cast(dict[str, Any], res)
     except Exception as exc:
         logger.warning("Failed to poll WhatsApp bridge status for agent %s: %s", agent_id, exc)
         raise HTTPException(
@@ -1200,12 +1190,10 @@ async def whatsapp_webhook_verify(
     hub_challenge: str = Query(default="", alias="hub.challenge"),
     server: Any = Depends(get_server),
 ) -> PlainTextResponse:
-    """Verify Meta WhatsApp Business Cloud API webhook subscription challenge."""
+    """Verify Meta WhatsApp Cloud API GET webhook subscription challenge."""
     channel = _resolve_live_webhook_channel(server, channel_id, "whatsapp")
-    verify_fn = getattr(channel, "verify_webhook_challenge", None)
-    challenge = (
-        verify_fn(hub_mode, hub_verify_token, hub_challenge) if callable(verify_fn) else None
-    )
+    verifier = getattr(channel, "verify_webhook_challenge", None)
+    challenge = verifier(hub_mode, hub_verify_token, hub_challenge) if callable(verifier) else None
     if challenge is None:
         raise HTTPException(status_code=403, detail="WhatsApp webhook verification failed")
     return PlainTextResponse(content=str(challenge))
@@ -1217,25 +1205,21 @@ async def whatsapp_webhook_ingest(
     request: Request,
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Ingest inbound webhook events from Meta WhatsApp Cloud API, WAHA, or Evolution API."""
+    """Ingest inbound WhatsApp webhook events (Meta Cloud API, WAHA, or Evolution API)."""
     channel = _resolve_live_webhook_channel(server, channel_id, "whatsapp")
     raw_body = await request.body()
     sig_header = request.headers.get("X-Hub-Signature-256", "")
-    verify_sig = getattr(channel, "verify_webhook_signature", None)
-    if callable(verify_sig) and not verify_sig(sig_header, raw_body):
-        raise HTTPException(status_code=403, detail="Invalid X-Hub-Signature-256")
+    sig_verifier = getattr(channel, "verify_webhook_signature", None)
+    if callable(sig_verifier) and not sig_verifier(sig_header, raw_body):
+        raise HTTPException(status_code=401, detail="Invalid WhatsApp webhook signature")
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-    extract_fn = getattr(channel, "extract_webhook_messages", None)
-    events = (
-        extract_fn(payload)
-        if callable(extract_fn)
-        else ([payload] if isinstance(payload, dict) else [])
-    )
+    extractor = getattr(channel, "extract_webhook_messages", None)
+    events = extractor(payload) if callable(extractor) else []
     for ev in events:
         if hasattr(channel, "note_inbound"):
             channel.note_inbound()
@@ -1249,21 +1233,23 @@ async def slack_webhook_ingest(
     request: Request,
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Ingest Slack HTTP Events API webhooks (url_verification & event_callback)."""
+    """Ingest Slack HTTP Events API webhooks (url_verification + event_callback)."""
     channel = _resolve_live_webhook_channel(server, channel_id, "slack")
     raw_body = await request.body()
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
     signature = request.headers.get("X-Slack-Signature", "")
-    verify_sig = getattr(channel, "verify_signature", None)
-    if callable(verify_sig) and not verify_sig(timestamp, signature, raw_body):
-        raise HTTPException(status_code=403, detail="Invalid Slack signature")
+    sig_verifier = getattr(channel, "verify_webhook_signature", None)
+    if callable(sig_verifier) and not sig_verifier(timestamp, signature, raw_body):
+        raise HTTPException(status_code=401, detail="Invalid Slack webhook signature")
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
 
-    handle_fn = getattr(channel, "handle_webhook_payload", None)
-    if callable(handle_fn) and isinstance(payload, dict):
-        return cast(dict[str, Any], handle_fn(payload))
+    handler = getattr(channel, "handle_webhook_payload", None)
+    if callable(handler):
+        challenge_resp = handler(payload)
+        if challenge_resp is not None:
+            return cast(dict[str, Any], challenge_resp)
     return {"ok": True}

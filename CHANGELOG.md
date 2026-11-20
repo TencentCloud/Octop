@@ -6,30 +6,17 @@
 
 ## [Unreleased]
 
-- 新增 `Slack`（`slack`）与 `WhatsApp`（`whatsapp`，同时支持 Meta 官方 Cloud API 与自建 WAHA / Evolution API 个人号扫码桥接）IM 通道支持：包含控制台图标、配置表单、免 JWT 的平台 Webhook 验签入口（`/api/channels/webhook/whatsapp/{channel_id}`、`/api/channels/webhook/slack/{channel_id}`）、自建桥接扫码获取与轮询接口（`/api/agents/{agent_id}/channels/whatsapp/qrcode/{generate,poll}`）、引用消息上下文注入，以及 `octop migrate openclaw/hermes` 通道迁移支持。
-- 支持通用插件设置提供者、插件自带设置界面和入站文本渲染扩展；宿主只负责权限、通用上下文和桥接，不定义插件业务字段，旧版专用设置入口保留兼容。
-
-- Attach QQ quote context only when assembling model input, preserving slash command routing.
-- 群聊自动参与配置扩展为多通道分层继承，按通道/机器人/群/专家选择，支持恢复继承和按模式展示设置项。
-
 ### 新增
+- 新增 `Slack`（`slack`）与 `WhatsApp`（`whatsapp`，同时支持 Meta 官方 Cloud API 与自建 WAHA / Evolution API 个人号扫码桥接）IM 通道支持：包含控制台图标、配置表单、免 JWT 的平台 Webhook 验签入口（`/api/channels/webhook/whatsapp/{channel_id}`、`/api/channels/webhook/slack/{channel_id}`）、自建桥接扫码获取与轮询接口（`/api/agents/{agent_id}/channels/whatsapp/qrcode/{generate,poll}`）、引用消息上下文注入，以及 `octop migrate openclaw/hermes` 通道迁移支持。
 - 定时任务新增脚本类型，可执行 Python、Bash 或 PowerShell。脚本可以写在任务里，也可以选择专家工作区中的脚本文件；有可执行沙箱时在沙箱里跑，否则在服务器上跑，标准输出会推进会话。
 - 智能体定时任务可以打开「放通所有」。只作用于这一次运行，不改变对话里已保存的审批设置。原生专家放通除提问外的工具；托管专家使用无人值守模式。
 - 备份与恢复支持以「存储管理」中的 WebDAV / 腾讯云 COS / S3 后端作为备份目标；占用中的备份目标不可删除或改类型。远端路径由存储后端高级配置里的 `base_dir`（S3/COS 亦可用 `prefix`）决定：归档文件直接落在该目录下，不会再自动拼接固定子路径，也不会自动创建目录——请先在远端建好 `base_dir` 再选用。列表、创建、恢复、自动备份与保留清理都只作用于所选后端的该 `base_dir`。多副本部署时，每台 Octop 应使用各自的 `base_dir`（或不同后端），避免共用同一目录导致互写、互删；单机用一个 `base_dir` 即可。选远端时本地备份目录仅作缓存。
 - 会话可以生成只读分享链接。打开后能看到对话、思考和工具调用；用 localhost 或 127.0.0.1 打开时不提供分享
 - ACP 协作新增内置 Qwen Code Runner（`qwen --acp`），含主机探测、安装脚本与托管专家会话模式
 - 新增内置 Gitea 连接器：填写自建实例地址与个人访问令牌（按用户加密保存）后，智能体可浏览仓库、查询 Issue 与评论、查看 PR、读取文件并发表评论。
-- 支持已加载入站插件注册 QQ 群策略开关，并按需提供当前决策模型评分服务；旧 SDK 保持原有消息路由。
-- Telegram 渠道可配置群聊触发、允许列表、话题隔离、流式与发送选项；模型菜单和单选问答使用原生按钮，由 Octop 在会话队列内重新校验权限与待答状态。
 
 ### 修复
 - 修复 PostgreSQL 控制面凭证在配置保存重载时被重复编码的问题，并保留用户名和密码中的空格。
-- Telegram 普通回复本机器人消息时也向模型提供引用正文，避免引用来自其他专家、话题或已离开当前历史的内容时丢失上下文；仍只在模型请求阶段加入引用，保持命令和问答控制文本不变。
-- 修复插件安装失败时错误正文泄漏到界面：普通请求、上传及安装 SSE 统一保留结构化错误与翻译，非 JSON 响应仅展示 HTTP 状态与请求编号，错误读取限制为 16 KiB / 2 秒。
-- 插件下载、解压和依赖安装移至后台，注册和运行时刷新保留在事件循环；加入下载超时、大小及总时间预算，同插件并发冲突和取消保护，更新失败恢复旧文件与注册，禁用插件更新后保持禁用。
-- QQ 群聊策略新增群命令保护开关和所有者 OpenID 白名单，配合 Gateway 命令鉴权；保存配置时保留白名单和显式关闭状态。
-- QQ 群聊支持仅所有者调用工具，复用所有者白名单并向 Harness 透传 Gateway 的回合级工具限制；新建 QQ 通道默认开启，旧通道保持原配置。发布需配套升级包含该能力的 Gateway 与 Harness，并同步更新依赖锁文件。
-- 插件频道卡片与配置抽屉展示插件描述，保留字段默认值、旧配置兼容默认值和悬浮提示，并将插件配置链接标为「查看配置说明」。
 
 ## [1.0.3b7] - 2026-11-17
 

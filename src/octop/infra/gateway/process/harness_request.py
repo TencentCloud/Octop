@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 from typing import Any
 
@@ -29,52 +28,6 @@ from octop.infra.utils.anydoc_convert import (
     truncate_for_chat,
 )
 from octop.infra.utils.locale import Locale, normalize_locale
-
-logger = logging.getLogger(__name__)
-
-
-def _plugin_inbound_text(
-    message: InboundMessage, current_text: str, *, workspace: Any, locale: str | Locale
-) -> str | None:
-    """Optional inbound-plugin text renderer; routing and media remain host-owned."""
-    from octop_harness.plugins import PluginRegistry
-
-    background: list[dict[str, Any]] | None = None
-    for handler in getattr(PluginRegistry(), "all_inbound", lambda: [])():
-        render = getattr(handler, "render_inbound_text", None)
-        if not callable(render):
-            continue
-        if background is None:
-            background = []
-            for item in message.group_context.messages if message.group_context else []:
-                segments = [item.text] if item.text else []
-                segments.extend(
-                    hints_from_content_parts(
-                        item.content, workspace=workspace, locale=locale, skip_vision_images=False
-                    )
-                )
-                background.append(
-                    {
-                        "sender_id": item.sender_id,
-                        "sender_name": item.sender_name,
-                        "segments": segments,
-                    }
-                )
-        try:
-            result = render(
-                message,
-                current_text,
-                background=background,
-                locale=str(normalize_locale(str(locale))),
-            )
-            if result is None:
-                continue
-            if not isinstance(result, str):
-                raise TypeError("inbound renderer must return text or None")
-            return result
-        except Exception:
-            logger.warning("Plugin inbound text renderer failed; using host defaults")
-    return None
 
 
 def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
@@ -141,19 +94,11 @@ def _group_turn_text(
     context_header = (
         "【群聊背景｜仅供参考】" if language == "zh" else "[Group context | reference only]"
     )
-    automatic = msg.metadata.get("social_trigger_auto") is True
-    if automatic:
-        current_header = (
-            "【当前群消息｜自动参与】"
-            if language == "zh"
-            else "[Current group message | automatic participation]"
-        )
-    else:
-        current_header = (
-            "【当前群消息｜请回复这条消息】"
-            if language == "zh"
-            else "[Current group message | reply to this]"
-        )
+    current_header = (
+        "【当前群消息｜请回复这条消息】"
+        if language == "zh"
+        else "[Current group message | reply to this]"
+    )
 
     lines: list[str] = []
     if context.messages:
@@ -183,30 +128,6 @@ def _group_turn_text(
             f"[{sender_label(sender_id, sender_name)}] {current_text}",
         ]
     )
-    if automatic:
-        lines.extend(
-            [
-                "",
-                (
-                    "【自动参与提示】只在能提供有帮助的回复时发言；否则仅输出 [NO_REPLY]，不要输出括号中的状态或动作。"
-                    if language == "zh"
-                    else "[Automatic participation] Reply only if helpful; otherwise output only [NO_REPLY], "
-                    "without a parenthesized status or action."
-                ),
-            ]
-        )
-    elif msg.metadata.get("social_trigger_output_guard") is True:
-        lines.extend(
-            [
-                "",
-                (
-                    "【群回复提示】只输出发给群成员的正文；若不应回复，仅输出 [NO_REPLY]，不要输出括号中的状态或动作。"
-                    if language == "zh"
-                    else "[Group reply] Output only the message for the group. If no reply is appropriate, "
-                    "output only [NO_REPLY], without a parenthesized status or action."
-                ),
-            ]
-        )
     return "\n".join(lines)
 
 
@@ -270,31 +191,28 @@ async def build_content_from_message(
 
     extracted = await _extracted_document_texts(msg, media_backend=media_backend, locale=locale)
     current_text = "\n\n".join(part for part in [msg.text or "", *file_hints, *extracted] if part)
-    rendered = _plugin_inbound_text(msg, current_text, workspace=workspace, locale=locale)
-    if rendered is not None:
-        combined_text = rendered
-    else:
-        # Commands and HITL answers are consumed before request assembly. Keep their
-        # control text intact and add quoted context only to the model's user turn.
-        # Telegram replies may refer to another expert, topic, or an older message
-        # outside the current history. Keep their context even when we sent it.
-        if msg.channel_type in (
-            "telegram",
-            "qq",
-            "discord",
-            "slack",
-            "whatsapp",
-            "feishu",
-            "wecom",
-        ):
-            quote = msg.metadata.get("reply_quote_text") or (
-                None
-                if msg.channel_type == "qq" and msg.metadata.get("reply_to_is_own_bot")
-                else msg.metadata.get("reply_to_text")
-            )
-            if isinstance(quote, str) and quote:
-                current_text = telegram_quote_prompt(quote, locale) + current_text
-        combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
+    # Commands and HITL answers are consumed before request assembly. Keep their
+    # control text intact and add quoted context only to the model's user turn.
+    # Telegram replies may refer to another expert, topic, or an older message
+    # outside the current history. Keep their context even when we sent it.
+    if msg.channel_type in (
+        "telegram",
+        "qq",
+        "discord",
+        "slack",
+        "whatsapp",
+        "feishu",
+        "wecom",
+    ):
+        quote = msg.metadata.get("reply_quote_text") or (
+            None
+            if msg.channel_type == "qq" and msg.metadata.get("reply_to_is_own_bot")
+            else msg.metadata.get("reply_to_text")
+        )
+        if isinstance(quote, str) and quote:
+            current_text = telegram_quote_prompt(quote, locale) + current_text
+    combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
+
     if not image_blocks:
         return combined_text or attachment_empty_message(locale)
 
@@ -409,7 +327,6 @@ def build_harness_request(
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
     message_id: str | None = None,
-    allowed_tools: list[str] | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
         req: dict[str, Any] = {
@@ -431,8 +348,6 @@ def build_harness_request(
             req["configurable"] = configurable
         if model:
             req["model"] = model
-        if allowed_tools is not None:
-            req["allowed_tools"] = list(allowed_tools)
         return req
 
     payload = content if content is not None else build_content(text=text, images=images)
@@ -474,8 +389,6 @@ def build_harness_request(
         req["configurable"] = configurable
     if model:
         req["model"] = model
-    if allowed_tools is not None:
-        req["allowed_tools"] = list(allowed_tools)
     return req
 
 
