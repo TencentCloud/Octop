@@ -39,9 +39,12 @@ def test_resolve_skills_sh_url_uses_raw_github_without_token(
             return FIND_SKILLS_MD
         raise AssertionError(f"unexpected raw fetch: {url}")
 
-    with patch(
-        "octop.infra.skills.skills_hub._http_text_get",
-        side_effect=_fake_http_text_get,
+    with (
+        patch("octop.infra.skills.skills_hub._http_text_get", side_effect=_fake_http_text_get),
+        patch(
+            "octop.infra.skills.skills_hub._http_bytes_get",
+            side_effect=HTTPError("https://codeload.github.com", 404, "Not Found", None, None),
+        ),
     ):
         resolved = resolve_bundle_from_url(
             bundle_url="https://skills.sh/vercel-labs/skills/find-skills",
@@ -69,9 +72,12 @@ def test_resolve_skills_sh_url_falls_back_to_second_branch(
             return FIND_SKILLS_MD
         raise AssertionError(f"unexpected raw fetch: {url}")
 
-    with patch(
-        "octop.infra.skills.skills_hub._http_text_get",
-        side_effect=_fake_http_text_get,
+    with (
+        patch("octop.infra.skills.skills_hub._http_text_get", side_effect=_fake_http_text_get),
+        patch(
+            "octop.infra.skills.skills_hub._http_bytes_get",
+            side_effect=HTTPError("https://codeload.github.com", 404, "Not Found", None, None),
+        ),
     ):
         resolved = resolve_bundle_from_url(
             bundle_url="https://skills.sh/vercel-labs/skills/find-skills",
