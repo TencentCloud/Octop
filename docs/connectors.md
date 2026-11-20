@@ -64,7 +64,7 @@ are updating `catalog.json` in the same change.
 | `ragflow` | ragflow | ragflow | knowledge | custom_fields | gateway |
 | `weknora` | WeKnora | WeKnora | knowledge | custom_fields | gateway |
 | `dify` | Dify | Dify | self_hosted | custom_fields | remote |
-| `github` | GitHub | GitHub | productivity | personal_token | remote |
+| `github` | GitHub | GitHub | professional | personal_token | remote |
 
 ## MCP modes / MCP 模式
 

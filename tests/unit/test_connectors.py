@@ -987,6 +987,7 @@ def test_every_catalog_entry_has_category():
         "dify": "self_hosted",
         "yuandian": "professional",
         "qq-mail": "productivity",
+        "github": "professional",
     }
     for entry in list_catalog():
         assert entry.category in allowed, entry.kind

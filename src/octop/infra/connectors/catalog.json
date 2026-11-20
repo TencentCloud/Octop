@@ -839,7 +839,7 @@
       "color": "#2f81f7",
       "phase": "available",
       "mcp_mode": "remote",
-      "category": "productivity",
+      "category": "professional",
       "quick_auth_url": "https://github.com/settings/personal-access-tokens/new",
       "guide_url": "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md",
       "manual_url": "https://github.com/settings/personal-access-tokens/new",
