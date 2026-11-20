@@ -562,6 +562,7 @@ class OctopServer:
             instance_id=self.instance_id,
         )
         await gateway.boot(serve_background=self._serve_background)
+        registry.set_gateway(gateway)
 
         from octop import __version__  # noqa: PLC0415
 
