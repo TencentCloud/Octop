@@ -1,12 +1,11 @@
 /**
- * Commit dialog — ZCode-style action list: Commit / Commit and push / Push.
+ * Commit dialog — action list: Commit / Commit and push / Push.
  * An empty message is generated from the pending diffs by the host model.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { App, Button, Checkbox, Input, Modal, Tooltip } from "antd";
 import {
-  Check,
   CloudUpload,
   GitBranch,
   GitCommitHorizontal,
@@ -154,14 +153,15 @@ export default function GitCommitDialog({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={520}
+      width={560}
       destroyOnHidden
+      closable={false}
       className={styles.gitCommitDialog}
       data-testid="git-commit-dialog"
     >
       <div className={styles.gitCommitDialogHead}>
-        <span className={styles.gitBranchChip}>
-          <GitBranch size={12} aria-hidden /> {status.branch ?? "—"}
+        <span className={styles.gitCommitBranch}>
+          <GitBranch size={13} aria-hidden /> {status.branch ?? "—"}
         </span>
         <span className={styles.gitCommitTotals}>
           <span className={styles.gitRowAdded}>+{status.added}</span>{" "}
@@ -177,7 +177,7 @@ export default function GitCommitDialog({
             "git.commitDialog.placeholder",
             "Commit message（留空自动生成）",
           )}
-          autoSize={{ minRows: 4, maxRows: 8 }}
+          autoSize={{ minRows: 6, maxRows: 12 }}
           disabled={actionDisabled}
           data-testid="git-commit-dialog-input"
           onKeyDown={(event) => {
@@ -233,7 +233,7 @@ export default function GitCommitDialog({
       <div className={styles.gitCommitActions}>
         <button
           type="button"
-          className={styles.gitCommitAction}
+          className={`${styles.gitCommitAction} ${styles.gitCommitActionSelected}`}
           disabled={actionDisabled || !canCommit}
           onClick={() => void submit(false)}
           data-testid="git-action-commit"
@@ -280,14 +280,6 @@ export default function GitCommitDialog({
           </span>
           <span>{t("git.commitDialog.push", "推送")}</span>
         </button>
-      </div>
-
-      <div className={styles.gitCommitHint}>
-        <Check size={12} aria-hidden />{" "}
-        {t(
-          "git.commitDialog.hint",
-          "空消息会根据本轮 diff 自动生成 Conventional Commit",
-        )}
       </div>
     </Modal>
   );

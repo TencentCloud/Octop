@@ -2357,8 +2357,7 @@
       "push": "Push",
       "committed": "Committed {{commit}}",
       "committedAndPushed": "Committed and pushed {{commit}}",
-      "pushed": "Pushed {{branch}}",
-      "hint": "An empty message is generated from this turn's diff as a Conventional Commit"
+      "pushed": "Pushed {{branch}}"
     },
     "history": {
       "title": "Commit history",

@@ -1,7 +1,6 @@
 /**
- * ChatGitPanel — standalone git review panel for the chat dock, mirroring
- * the ZCode code viewer's Changes view: change list on the left, unified
- * diff on the right, commit box and recent commits on top.
+ * ChatGitPanel — standalone git review panel for the chat dock: change list
+ * on the left, unified diff on the right, quick actions and history on top.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -9,6 +8,7 @@ import { App, Button, Empty, Spin, Tooltip } from "antd";
 import {
   ChevronDown,
   ChevronRight,
+  FileDiff,
   GitBranch,
   GitCommitHorizontal,
   History,
@@ -130,7 +130,6 @@ export default function ChatGitPanel({
   const { status, loading, error } = git;
   const isRepo = status?.is_repo ?? false;
   const gitOk = status?.git_available ?? true;
-  const files = status?.files ?? [];
 
   // Drop the selection when the file no longer appears in the status list.
   useEffect(() => {
@@ -208,15 +207,6 @@ export default function ChatGitPanel({
             <GitBranch size={14} aria-hidden />
             <span>{t("git.tools.title", "Git tools")}</span>
           </button>
-          <span
-            className={styles.gitBarSummary}
-            data-testid="git-panel-summary"
-          >
-            {t("git.filesChanged", {
-              count: files.length,
-              defaultValue: "{{count}} 个文件变更",
-            })}
-          </span>
           <Tooltip title={t("common.refresh")}>
             <Button
               size="small"
@@ -238,6 +228,7 @@ export default function ChatGitPanel({
               className={styles.gitToolsInfoRow}
               data-testid="git-tools-changes"
             >
+              <FileDiff size={14} aria-hidden />
               <span className={styles.gitToolsInfoLabel}>
                 {t("git.tools.changes", "Changes")}
               </span>
@@ -250,16 +241,22 @@ export default function ChatGitPanel({
                 </span>
               </span>
             </div>
-            <div className={styles.gitToolsInfoRow}>
-              <span
-                className={styles.gitBranchChip}
-                title={status?.upstream ?? undefined}
-              >
-                <GitBranch size={12} aria-hidden />
+            <div
+              className={styles.gitToolsInfoRow}
+              title={status?.upstream ?? undefined}
+              data-testid="git-tools-branch"
+            >
+              <GitBranch size={14} aria-hidden />
+              <span className={styles.gitToolsInfoLabel}>
                 {status?.branch ?? "—"}
-                {status?.upstream ? ` ⇅${status.ahead}/${status.behind}` : ""}
               </span>
+              {status?.upstream && (
+                <span className={styles.gitToolsInfoMeta}>
+                  ⇅{status.ahead}/{status.behind}
+                </span>
+              )}
             </div>
+            <div className={styles.gitToolsDivider} />
             <button
               type="button"
               className={styles.gitToolsActionRow}

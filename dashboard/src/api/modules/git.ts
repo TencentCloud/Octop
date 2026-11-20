@@ -51,6 +51,7 @@ export interface GitHistoryRow {
   sha?: string | null;
   short?: string | null;
   author?: string | null;
+  committer?: string | null;
   date?: string | null;
   refs?: string | null;
   signature?: string | null;

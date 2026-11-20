@@ -18,6 +18,7 @@ const ROWS = [
     sha: "a".repeat(40),
     short: "aaaaaaa",
     author: "Alice",
+    committer: "Alice",
     date: "2026-01-01T00:00:00Z",
     refs: "HEAD -> main, origin/main",
     signature: "G",
@@ -30,6 +31,7 @@ const ROWS = [
     sha: "b".repeat(40),
     short: "bbbbbbb",
     author: "Bob",
+    committer: "CI Bot",
     date: "2025-12-31T00:00:00Z",
     refs: "",
     signature: "N",
@@ -51,7 +53,10 @@ describe("GitHistoryPanelContent", () => {
     expect(screen.getByText("fix: unsigned work")).toBeInTheDocument();
     expect(screen.getByText("HEAD -> main")).toBeInTheDocument();
     expect(screen.getByText("verified")).toBeInTheDocument();
-    expect(screen.getByText("unsigned")).toBeInTheDocument();
+    expect(screen.getByText("Alice")).toBeInTheDocument();
+    expect(screen.getByText("CI Bot")).toBeInTheDocument();
+    expect(screen.getByText("2026-01-01 00:00:00")).toBeInTheDocument();
+    expect(screen.getByText("2025-12-31 00:00:00")).toBeInTheDocument();
     const rows = screen.getAllByTestId("git-history-row");
     expect(rows[0]).toHaveAttribute("data-signature", "G");
     expect(rows[1]).toHaveAttribute("data-signature", "N");

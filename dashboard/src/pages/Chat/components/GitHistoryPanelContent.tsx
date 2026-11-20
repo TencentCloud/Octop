@@ -16,7 +16,7 @@ import { useTranslation } from "react-i18next";
 import { gitApi, type GitHistoryRow } from "../../../api/modules/git";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
-import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
+import { formatServerDateTimeSeconds } from "../../../utils/formatMessageTime";
 import styles from "../../Agent/Workspace/index.module.less";
 
 interface SignatureBadge {
@@ -57,7 +57,9 @@ function SignatureBadgeView({ row }: { row: GitHistoryRow }) {
         data-signature={status}
       >
         <Icon size={12} aria-hidden />
-        <span>{t(`git.history.signature.${badge.key}`, badge.key)}</span>
+        {status !== "N" && (
+          <span>{t(`git.history.signature.${badge.key}`, badge.key)}</span>
+        )}
       </span>
     </Tooltip>
   );
@@ -156,8 +158,20 @@ export default function GitHistoryPanelContent({
                 >
                   {row.subject}
                 </span>
-                <span className={styles.gitLogMeta}>
-                  {row.date ? formatServerIsoDateTime(row.date, timeZone) : ""}
+                <span
+                  className={styles.gitHistoryCommitter}
+                  title={
+                    row.author && row.author !== row.committer
+                      ? `${t("git.history.author", "作者")}: ${row.author}`
+                      : undefined
+                  }
+                >
+                  {row.committer ?? row.author ?? ""}
+                </span>
+                <span className={styles.gitHistoryDate}>
+                  {row.date
+                    ? formatServerDateTimeSeconds(row.date, timeZone)
+                    : ""}
                 </span>
                 <SignatureBadgeView row={row} />
               </div>

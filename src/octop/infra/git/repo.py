@@ -521,7 +521,7 @@ async def get_history(target: GitTarget, limit: int = 50) -> list[dict[str, obje
             f"-n{bounded}",
             "--graph",
             "--date=iso-strict",
-            "--pretty=format:%x1f%H%x1f%h%x1f%an%x1f%aI%x1f%D%x1f%G?%x1f%GS%x1f%s",
+            "--pretty=format:%x1f%H%x1f%h%x1f%an%x1f%cn%x1f%aI%x1f%D%x1f%G?%x1f%GS%x1f%s",
         ],
         timeout=_HISTORY_TIMEOUT_S,
         max_bytes=_HISTORY_MAX_BYTES,
@@ -536,7 +536,7 @@ async def get_history(target: GitTarget, limit: int = 50) -> list[dict[str, obje
             continue
         graph, rest = line.split("\x1f", 1)
         fields = rest.split("\x1f")
-        if len(fields) < 8:
+        if len(fields) < 9:
             continue
         rows.append(
             {
@@ -544,11 +544,12 @@ async def get_history(target: GitTarget, limit: int = 50) -> list[dict[str, obje
                 "sha": fields[0],
                 "short": fields[1],
                 "author": fields[2],
-                "date": fields[3],
-                "refs": fields[4],
-                "signature": fields[5],
-                "signer": fields[6],
-                "subject": fields[7],
+                "committer": fields[3],
+                "date": fields[4],
+                "refs": fields[5],
+                "signature": fields[6],
+                "signer": fields[7],
+                "subject": fields[8],
             }
         )
     return rows

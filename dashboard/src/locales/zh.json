@@ -2357,8 +2357,7 @@
       "push": "推送",
       "committed": "已提交 {{commit}}",
       "committedAndPushed": "已提交并推送 {{commit}}",
-      "pushed": "已推送 {{branch}}",
-      "hint": "空消息会根据本轮 diff 自动生成 Conventional Commit"
+      "pushed": "已推送 {{branch}}"
     },
     "history": {
       "title": "提交历史",

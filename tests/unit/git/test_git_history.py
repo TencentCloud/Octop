@@ -55,6 +55,7 @@ async def test_history_keeps_merge_graph_rows(repo: Path) -> None:
 
     # Unsigned commits report git's %G? status "N".
     assert all(row["signature"] == "N" for row in commits)
+    assert all(row["author"] == "Test" and row["committer"] == "Test" for row in commits)
 
 
 @needs_git

@@ -82,7 +82,7 @@ describe("ChatGitPanel", () => {
     expect(gitApi.diff).not.toHaveBeenCalled();
   });
 
-  it("renders header summary and selects a file diff on row click", async () => {
+  it("renders branch state and selects a file diff on row click", async () => {
     gitApi.status.mockResolvedValue(REPO_STATUS);
     gitApi.diff.mockResolvedValue({
       path: "README.md",
@@ -91,13 +91,11 @@ describe("ChatGitPanel", () => {
     });
     renderPanel();
     await waitFor(() => {
-      expect(screen.getByTestId("git-panel-summary")).toHaveTextContent(
-        "1 个文件变更",
-      );
+      expect(screen.getByTestId("git-tools-branch")).toHaveTextContent("main");
     });
     expect(screen.getByTestId("git-tools-changes")).toHaveTextContent("+5");
     expect(screen.getByTestId("git-tools-changes")).toHaveTextContent("−1");
-    expect(screen.getByText("main ⇅1/0")).toBeInTheDocument();
+    expect(screen.getByTestId("git-tools-branch")).toHaveTextContent("⇅1/0");
     expect(screen.getByTestId("git-diff-empty")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("README.md"));

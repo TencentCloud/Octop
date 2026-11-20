@@ -161,6 +161,7 @@ class GitHistoryRowModel(BaseModel):
     sha: str | None = None
     short: str | None = None
     author: str | None = None
+    committer: str | None = None
     date: str | None = None
     refs: str | None = None
     signature: str | None = Field(None, description="git %G? signature status: G/B/U/X/Y/R/E/N")
@@ -413,6 +414,7 @@ async def workspace_git_history(
             sha=row.get("sha"),  # type: ignore[arg-type]
             short=row.get("short"),  # type: ignore[arg-type]
             author=row.get("author"),  # type: ignore[arg-type]
+            committer=row.get("committer"),  # type: ignore[arg-type]
             date=row.get("date"),  # type: ignore[arg-type]
             refs=row.get("refs"),  # type: ignore[arg-type]
             signature=row.get("signature"),  # type: ignore[arg-type]
