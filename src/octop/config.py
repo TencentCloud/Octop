@@ -144,6 +144,9 @@ class OctopConfig:
     capabilities: CapabilitiesConfig = field(default_factory=CapabilitiesConfig)
     max_upload_mb: int = DEFAULT_MAX_UPLOAD_MB
     browser_idle_timeout_minutes: int = DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES
+    # External origin when a TLS-terminating proxy omits X-Forwarded-Proto.
+    # Empty means "use the request". No path, query, or fragment.
+    public_base_url: str = ""
 
     @property
     def max_upload_bytes(self) -> int:
@@ -453,6 +456,26 @@ def _optional_str(raw: dict[str, Any], key: str) -> str | None:
     return value
 
 
+def normalize_public_base_url(raw: object) -> str:
+    """Return an ``http(s)`` origin, or ``""`` when unset.
+
+    Raises ``ValueError`` for a non-string or a URL that is not just an origin.
+    """
+    if raw is None:
+        return ""
+    if not isinstance(raw, str):
+        raise ValueError("public_base_url must be a string")
+    text = raw.strip()
+    if not text:
+        return ""
+    parts = urlparse(text)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        raise ValueError("public_base_url must be an absolute http(s) origin")
+    if parts.path not in {"", "/"} or parts.query or parts.fragment or parts.params:
+        raise ValueError("public_base_url must be an origin without a path")
+    return f"{parts.scheme}://{parts.netloc}"
+
+
 def validate_persisted_config(raw: dict[str, Any]) -> None:
     """Raise ``ValueError`` when ``raw`` cannot be stored as ``config.json``.
 
@@ -501,6 +524,8 @@ def validate_persisted_config(raw: dict[str, Any]) -> None:
     idle = _optional_int(raw, "browser_idle_timeout_minutes")
     if idle is not None and idle < 0:
         raise ValueError("browser_idle_timeout_minutes must be >= 0")
+    if "public_base_url" in raw:
+        normalize_public_base_url(raw.get("public_base_url"))
 
     if "database" in raw:
         section = _parse_database_section(raw.get("database"))
@@ -621,6 +646,10 @@ def load_config(path: Path) -> OctopConfig:
         merged["max_upload_mb"] = parse_max_upload_mb(
             merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)
         )
+    public_base_url = normalize_public_base_url(merged.get("public_base_url", ""))
+    if "OCTOP_PUBLIC_BASE_URL" in os.environ:
+        public_base_url = normalize_public_base_url(os.environ["OCTOP_PUBLIC_BASE_URL"])
+
     if v := os.environ.get("OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES"):
         merged["browser_idle_timeout_minutes"] = _coerce_int(
             "OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES",
@@ -741,4 +770,5 @@ def load_config(path: Path) -> OctopConfig:
                 )
             ),
         ),
+        public_base_url=public_base_url,
     )

@@ -57,6 +57,7 @@ import { useAgent } from "../../../context/AgentContext";
 import {
   isTeamAgent,
   isTeamHostSpeaker as isTeamHostSpeakerId,
+  resolveSpeakerFace,
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { accountDisplayName } from "../utils/accountDisplayName";
@@ -631,7 +632,7 @@ function MessageBubble({
   );
   const expert = useMemo(
     () =>
-      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+      resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
       (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
     [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );

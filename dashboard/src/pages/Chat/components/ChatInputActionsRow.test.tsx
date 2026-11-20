@@ -19,6 +19,20 @@ vi.mock("./ContextWindowRing", () => ({
   default: () => <div data-testid="context-window-ring" />,
 }));
 
+const preferenceMocks = vi.hoisted(() => ({
+  get: vi.fn().mockResolvedValue({
+    preferred_model: null,
+    locale: "en",
+    remote_browser_bookmarks: [],
+    model_reasoning: {},
+  }),
+  patch: vi.fn(),
+}));
+
+vi.mock("../../../api/modules/preferences", () => ({
+  preferencesApi: preferenceMocks,
+}));
+
 const models: ResolvedModel[] = [
   {
     provider_id: 1,
@@ -56,6 +70,33 @@ const baseProps = {
 };
 
 describe("ChatInputActionsRow plus menu", () => {
+  it("saves an auto priority model from the model menu", async () => {
+    preferenceMocks.get.mockResolvedValue({
+      preferred_model: null,
+      locale: "en",
+      remote_browser_bookmarks: [],
+      model_reasoning: {},
+    });
+    preferenceMocks.patch.mockResolvedValue({
+      preferred_model: "Provider/compact-model",
+    });
+
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Model"));
+    fireEvent.click(await screen.findByLabelText("models.setAsPreferred"));
+
+    await waitFor(() => {
+      expect(preferenceMocks.patch).toHaveBeenCalledWith({
+        preferred_model: "Provider/compact-model",
+      });
+    });
+  });
+
   it("keeps approval, shortcuts, and attachments on the toolbar", () => {
     render(
       <MemoryRouter>

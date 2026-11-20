@@ -27,6 +27,10 @@ export interface TeamRecord {
   kind: "team";
   member_ids: string[];
   members: TeamMemberSummary[];
+  is_shared?: boolean;
+  is_owner?: boolean;
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
 }
 
 export interface TeamWriteBody {
@@ -38,6 +42,8 @@ export interface TeamWriteBody {
   icon_url?: string | null;
   welcome_message?: string | null;
   member_ids?: string[];
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
   /** Create only. Matches the id segment of the default workspace path. */
   agent_id?: string;
   /** Create only: backend and, for a filesystem root, optional workspace_dir. */

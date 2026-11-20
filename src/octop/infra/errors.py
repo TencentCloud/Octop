@@ -12,6 +12,7 @@ from octop.infra.utils.locale import Locale, normalize_locale
 
 class ErrorCode(StrEnum):
     AUTH_FAILED = "AUTH_FAILED"
+    MISSING_CREDENTIALS = "MISSING_CREDENTIALS"
     TOKEN_EXPIRED = "TOKEN_EXPIRED"
     SETUP_REQUIRED = "SETUP_REQUIRED"
     DATABASE_NOT_EMPTY = "DATABASE_NOT_EMPTY"
@@ -184,6 +185,7 @@ class ErrorCode(StrEnum):
 
 _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.AUTH_FAILED: 401,
+    ErrorCode.MISSING_CREDENTIALS: 401,
     ErrorCode.TOKEN_EXPIRED: 401,
     ErrorCode.SETUP_REQUIRED: 409,
     ErrorCode.DATABASE_NOT_EMPTY: 409,

@@ -308,7 +308,11 @@ function buildAuthHeaders(path: string): Record<string, string> {
 let _redirectingToLogin = false;
 
 /** 401 codes that mean this Octop session is no longer valid. */
-const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+const SESSION_UNAUTHORIZED_CODES = new Set([
+  "AUTH_FAILED",
+  "MISSING_CREDENTIALS",
+  "TOKEN_EXPIRED",
+]);
 
 /**
  * Send the user to the login screen exactly once, no matter how many parallel

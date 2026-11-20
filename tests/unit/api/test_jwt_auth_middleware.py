@@ -74,7 +74,7 @@ async def test_middleware_blocks_unauthenticated_api(client) -> None:
     await bootstrap_admin(c, home)
     r = await c.get("/api/agents")
     assert r.status_code == 401
-    assert r.json()["error"]["code"] == "AUTH_FAILED"
+    assert r.json()["error"]["code"] == "MISSING_CREDENTIALS"
 
 
 async def test_middleware_allows_login_without_token(client) -> None:
@@ -195,19 +195,28 @@ async def test_middleware_localizes_auth_errors_by_accept_language(client) -> No
     c, _srv, home = client
     await bootstrap_admin(c, home)
 
-    # Missing credentials: zh / en / no header fallback.
+    # Missing credentials: zh / en / no header fallback. Distinct from a bad password.
     r = await c.get("/api/agents", headers={"Accept-Language": "zh-CN,zh;q=0.9"})
     assert r.status_code == 401
-    assert r.json()["error"]["code"] == "AUTH_FAILED"
-    assert r.json()["error"]["message"] == "认证失败。"
+    assert r.json()["error"]["code"] == "MISSING_CREDENTIALS"
+    assert r.json()["error"]["message"] == "需要登录。"
 
     r = await c.get("/api/agents", headers={"Accept-Language": "en-US,en;q=0.9"})
     assert r.status_code == 401
-    assert r.json()["error"]["message"] == "Authentication failed."
+    assert r.json()["error"]["message"] == "Sign-in is required."
 
     r = await c.get("/api/agents")
     assert r.status_code == 401
-    assert r.json()["error"]["message"] == "认证失败。"  # no header: DEFAULT_LOCALE (zh)
+    assert r.json()["error"]["message"] == "需要登录。"  # no header: DEFAULT_LOCALE (zh)
+
+    wrong_login = await c.post(
+        "/api/login",
+        json={"username": "admin", "password": "TestPass12"},
+        headers={"Accept-Language": "zh-CN"},
+    )
+    assert wrong_login.status_code == 401
+    assert wrong_login.json()["error"]["code"] == "MISSING_CREDENTIALS"
+    assert wrong_login.json()["error"]["message"] != "认证失败。"
 
     # Invalid token follows the same localization.
     r = await c.get(
