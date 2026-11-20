@@ -1,3 +1,4 @@
+import { ApiResponseError } from "../api/responseError";
 import type { TFunction } from "i18next";
 
 export interface ParsedApiError {
@@ -8,6 +9,7 @@ export interface ParsedApiError {
 
 /** Parse Octop API error envelope from a thrown request() Error. */
 export function parseApiError(error: unknown): ParsedApiError | null {
+  if (error instanceof ApiResponseError) return error.apiError;
   if (!(error instanceof Error)) return null;
   const raw = error.message;
   const jsonStart = raw.indexOf("{");
