@@ -24,6 +24,7 @@ from octop.infra.db.repos.control_files import ControlFileRepo
 from octop.infra.db.repos.cron import CronJobRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
+from octop.infra.db.repos.memory_mcp_tokens import MemoryMcpTokenRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
 from octop.infra.db.repos.profile_avatars import ProfileAvatarRepo
 from octop.infra.db.repos.providers import ProviderRepo
@@ -76,6 +77,7 @@ class RepoBundle:
     skill_package_repo: SkillPackageRepo
     published_expert_repo: PublishedExpertRepo
     knowledge_repo: KnowledgeRepo
+    memory_mcp_token_repo: MemoryMcpTokenRepo
     voice_provider_repo: SealedVoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
@@ -117,6 +119,7 @@ class RepoBundle:
             skill_package_repo=SkillPackageRepo(db),
             published_expert_repo=PublishedExpertRepo(db),
             knowledge_repo=KnowledgeRepo(db),
+            memory_mcp_token_repo=MemoryMcpTokenRepo(db),
             voice_provider_repo=SealedVoiceProviderRepo(VoiceProviderRepo(db), secret_repo),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
@@ -230,6 +233,10 @@ class SharedServices:
     @property
     def knowledge_repo(self) -> KnowledgeRepo:
         return self.repos.knowledge_repo
+
+    @property
+    def memory_mcp_token_repo(self) -> MemoryMcpTokenRepo:
+        return self.repos.memory_mcp_token_repo
 
     @property
     def voice_provider_repo(self) -> SealedVoiceProviderRepo:

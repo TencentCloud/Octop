@@ -20,6 +20,8 @@ const RemoteDesktopPage = lazy(() => import("../pages/Control/RemoteDesktop"));
 // Lazy-loaded pages — Settings
 const ModelsPage = lazy(() => import("../pages/Settings/Models"));
 
+const TokensPage = lazy(() => import("../pages/Settings/Tokens"));
+
 // Lazy-loaded pages — Admin
 const OctopAdminUsersPage = lazy(() => import("../pages/Admin/Users"));
 const AdminSecurityPage = lazy(() => import("../pages/Settings/Security"));
@@ -85,6 +87,7 @@ export const pathToKey: Record<string, string> = {
   "/subagents": "personalization",
   "/mbti": "personalization",
   "/memory": "personalization",
+  "/tokens": "tokens",
   // Admin
   "/admin/models": "models",
   // Admin
@@ -213,6 +216,7 @@ export const routeConfigs: RouteConfig[] = [
     path: "/memory",
     element: <RedirectPreserveSearch to="/personalization/memory" />,
   },
+  { path: "/tokens", element: <TokensPage /> },
   { path: "/workspace", element: <Navigate to="/experts" replace /> },
 
   // Settings

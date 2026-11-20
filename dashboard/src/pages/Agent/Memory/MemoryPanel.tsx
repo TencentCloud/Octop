@@ -49,7 +49,8 @@ type MemoryTab =
   | "journal"
   | "conversations"
   | "proactive"
-  | "settings";
+  | "settings"
+  | "mcp";
 
 type LibraryView = "tree" | "atoms" | "raw";
 
@@ -135,6 +136,7 @@ export interface MemoryPanelProps {
   agentId: string | null;
   /** Stretch tabs to fill parent height (desktop PageShell / drawer). */
   fill?: boolean;
+  /** Show the user-level "MCP access" tab (personal memory page only). */
 }
 
 /** Memory tabs. Managed experts use the same pages; memory stays off until enabled. */
