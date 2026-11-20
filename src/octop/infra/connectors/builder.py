@@ -74,6 +74,24 @@ def normalize_ragflow_base_url(raw: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
+def normalize_gitea_base_url(raw: str) -> str:
+    """Accept a Gitea origin or its `/api/v1` root; store the origin."""
+    url = validate_mcp_http_url(raw)
+    parsed = urlsplit(url)
+    if (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(tr("gitea.invalid_base_url"))
+    path = parsed.path.rstrip("/")
+    suffix = "/api/v1"
+    if path.endswith(suffix):
+        path = path[: -len(suffix)]
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
 def normalize_ragflow_dataset_ids(raw: Any) -> list[str]:
     """Normalize the dashboard's comma-separated IDs or an API string list."""
     if raw is None:
@@ -615,6 +633,16 @@ def validate_create_credentials(
             if "/mcp/server/" not in mcp_url or not mcp_url.rstrip("/").endswith("/mcp"):
                 raise ValueError("mcp_url must be a Dify MCP Server URL ending in /mcp")
             return {"mcp_url": mcp_url}
+        if entry.kind == "gitea":
+            base_url = normalize_gitea_base_url(str(credentials.get("base_url") or ""))
+            token = str(credentials.get("token") or credentials.get("api_key") or "").strip()
+            if not token or any(char in token for char in "\r\n\x00"):
+                raise ValueError(tr("gitea.token_required"))
+            return {
+                "base_url": base_url,
+                "token": token,
+                "internal_token": new_internal_token(),
+            }
         raise ValueError(f"unsupported custom_fields connector kind: {kind}")
 
     raise ValueError(f"unsupported auth_kind: {entry.auth_kind}")

@@ -1210,6 +1210,19 @@
     "invalid_id": "A valid {field} is required.",
     "unknown_tool": "Unknown RAGFlow tool: {name}"
   },
+  "gitea": {
+    "invalid_base_url": "Gitea instance URL must not contain credentials, a query string, or a fragment.",
+    "token_required": "A valid Gitea Personal Access Token is required.",
+    "http_error": "Gitea request failed: HTTP {status}. {reason}",
+    "network_error": "Unable to reach Gitea. Check the instance URL and network connection.",
+    "invalid_response": "Gitea returned an invalid API response.",
+    "invalid_slug": "A valid {field} is required.",
+    "invalid_index": "A valid issue number is required.",
+    "invalid_path": "A valid repository file path is required.",
+    "query_required": "A search query is required.",
+    "body_required": "Comment text must not be empty.",
+    "unknown_tool": "Unknown Gitea tool: {name}"
+  },
   "migrate": {
     "not_found": "No {source} installation was found. Pass its directory with --from.",
     "nothing": "Nothing to migrate was found in {home}.",

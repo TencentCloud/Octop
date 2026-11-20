@@ -35,6 +35,7 @@ export const INLINE_CREDENTIAL_GUIDE_KINDS = new Set(["qq-mail"]);
 /** Connectors with a top auth button — hide redundant links under form fields. */
 export const HIDE_INLINE_FIELD_GUIDE_KINDS = new Set([
   "github",
+  "gitea",
   "tencent-ima",
   "tencent-lexiang",
   "tencent-meeting",
