@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import sqlite3
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +14,12 @@ from deepagents.backends.local_shell import LocalShellBackend
 from octop_harness.backends import resolve_backend
 from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
+from octop.i18n import tr
+from octop.infra.backup.workspace_archive import (
+    WorkspaceImportMode,
+    export_workspace_zip,
+    import_workspace_zip,
+)
 
 
 @pytest.mark.asyncio
@@ -266,3 +272,186 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
     assert not (ws / ".octop" / "_builtin_skills").exists()
     assert result["imported"] == 1
     assert any("_builtin_skills" in warning for warning in result["warnings"])
+
+
+def _zip_bytes(entries: dict[str, bytes]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, content in entries.items():
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+def _workspace(root: Path, system_files_path: str = "") -> BackendWorkspace:
+    return BackendWorkspace(
+        LocalShellBackend(root_dir=str(root), virtual_mode=False),
+        root,
+        system_files_path=system_files_path,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system_files_path", ["", ".octop", ".state/runtime"])
+async def test_export_skips_only_octop_sqlite_shm(tmp_path: Path, system_files_path: str) -> None:
+    files = {
+        "memory.sqlite": b"memory db",
+        "memory.sqlite-wal": b"memory wal",
+        "memory.sqlite-shm": b"memory shm",
+        "checkpoints.sqlite": b"checkpoints db",
+        "checkpoints.sqlite-wal": b"checkpoints wal",
+        "checkpoints.sqlite-shm": b"checkpoints shm",
+    }
+    system_dir = tmp_path / system_files_path
+    system_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        (system_dir / name).write_bytes(content)
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "memory.sqlite-shm").write_bytes(b"user file")
+    (system_dir / "other.sqlite-shm").write_bytes(b"other db")
+
+    blob = await export_workspace_zip(_workspace(tmp_path, system_files_path))
+
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        names = set(zf.namelist())
+        assert (Path(system_files_path) / "memory.sqlite-shm").as_posix() not in names
+        assert (Path(system_files_path) / "checkpoints.sqlite-shm").as_posix() not in names
+        for name in (
+            "memory.sqlite",
+            "memory.sqlite-wal",
+            "checkpoints.sqlite",
+            "checkpoints.sqlite-wal",
+        ):
+            assert zf.read((Path(system_files_path) / name).as_posix()) == files[name]
+        assert zf.read("notes/memory.sqlite-shm") == b"user file"
+        assert zf.read((Path(system_files_path) / "other.sqlite-shm").as_posix()) == b"other db"
+
+
+@pytest.mark.asyncio
+async def test_export_mountless_skips_exact_shm_and_keeps_distinct_case(tmp_path: Path) -> None:
+    workspace = BackendWorkspace(
+        _MountlessBackend(
+            {
+                "/memory.sqlite-shm": b"legacy shm",
+                "/.octop/checkpoints.sqlite-shm": b"current shm",
+                "/.OCTOP/MEMORY.SQLITE-SHM": b"distinct case",
+                "/.octop/memory.sqlite-wal": b"wal",
+                "/notes/checkpoints.sqlite-shm": b"user file",
+            }
+        ),
+        tmp_path,
+    )
+
+    blob = await export_workspace_zip(workspace)
+
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        assert set(zf.namelist()) == {
+            ".OCTOP/MEMORY.SQLITE-SHM",
+            ".octop/memory.sqlite-wal",
+            "notes/checkpoints.sqlite-shm",
+        }
+        assert zf.read(".OCTOP/MEMORY.SQLITE-SHM") == b"distinct case"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["merge", "replace"])
+@pytest.mark.parametrize("system_files_path", ["", ".octop", ".state/runtime"])
+@pytest.mark.parametrize("locale", ["en", "zh"])
+async def test_import_skips_sqlite_shm_and_counts_uploaded_files(
+    tmp_path: Path,
+    mode: WorkspaceImportMode,
+    system_files_path: str,
+    locale: str,
+) -> None:
+    system_dir = tmp_path / system_files_path
+    system_dir.mkdir(parents=True, exist_ok=True)
+    (system_dir / "memory.sqlite-shm").write_bytes(b"live shm")
+    (tmp_path / "old.txt").write_text("old", encoding="utf-8")
+    data = _zip_bytes(
+        {
+            (Path(system_files_path) / "memory.sqlite-shm").as_posix(): b"stale shm",
+            (Path(system_files_path) / "checkpoints.sqlite-shm").as_posix(): b"stale shm",
+            (Path(system_files_path) / "memory.sqlite").as_posix(): b"db",
+            (Path(system_files_path) / "memory.sqlite-wal").as_posix(): b"wal",
+            "notes/memory.sqlite-shm": b"user file",
+        }
+    )
+
+    result = await import_workspace_zip(
+        _workspace(tmp_path, system_files_path),
+        data,
+        mode=mode,
+        local_workspace_dir=tmp_path,
+        locale=locale,
+    )
+
+    assert (system_dir / "memory.sqlite-shm").read_bytes() == b"live shm"
+    assert not (system_dir / "checkpoints.sqlite-shm").exists()
+    assert (system_dir / "memory.sqlite").read_bytes() == b"db"
+    assert (system_dir / "memory.sqlite-wal").read_bytes() == b"wal"
+    assert (tmp_path / "notes" / "memory.sqlite-shm").read_bytes() == b"user file"
+    assert result["imported"] == 3
+    assert tr("workspace_archive.skipped_sqlite_shm", locale, count=2) in result["warnings"]
+    if mode == "replace":
+        assert not (tmp_path / "old.txt").exists()
+    else:
+        assert (tmp_path / "old.txt").read_text(encoding="utf-8") == "old"
+
+
+@pytest.mark.asyncio
+async def test_import_case_alias_does_not_clobber_live_shm(tmp_path: Path) -> None:
+    system_dir = tmp_path / ".octop"
+    system_dir.mkdir()
+    live = system_dir / "memory.sqlite-shm"
+    live.write_bytes(b"live shm")
+    data = _zip_bytes({".OCTOP/MEMORY.SQLITE-SHM": b"stale shm", "keep.txt": b"keep"})
+
+    result = await import_workspace_zip(
+        _workspace(tmp_path, ".octop"),
+        data,
+        mode="merge",
+        local_workspace_dir=None,
+    )
+
+    assert live.read_bytes() == b"live shm"
+    assert (tmp_path / "keep.txt").read_bytes() == b"keep"
+    alias = tmp_path / ".OCTOP" / "MEMORY.SQLITE-SHM"
+    if alias.exists() and alias.samefile(live):
+        assert result["imported"] == 1
+        assert tr("workspace_archive.skipped_sqlite_shm", "en", count=1) in result["warnings"]
+    else:
+        assert alias.read_bytes() == b"stale shm"
+        assert result["imported"] == 2
+        assert result["warnings"] == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["merge", "replace"])
+async def test_import_leaves_open_sqlite_shm_usable(
+    tmp_path: Path, mode: WorkspaceImportMode
+) -> None:
+    """A live WAL connection must survive an archive that still contains its -shm."""
+    system_dir = tmp_path / ".octop"
+    system_dir.mkdir()
+    conn = sqlite3.connect(system_dir / "memory.sqlite")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE notes (body TEXT)")
+        conn.execute("INSERT INTO notes VALUES ('keep me')")
+        conn.commit()
+        assert (system_dir / "memory.sqlite-shm").is_file()
+        data = _zip_bytes({".octop/memory.sqlite-shm": b"stale shm", "new.txt": b"imported"})
+
+        result = await import_workspace_zip(
+            _workspace(tmp_path, ".octop"),
+            data,
+            mode=mode,
+            local_workspace_dir=tmp_path,
+        )
+
+        assert result["imported"] == 1
+        assert tr("workspace_archive.skipped_sqlite_shm", "en", count=1) in result["warnings"]
+        assert (tmp_path / "new.txt").read_bytes() == b"imported"
+        assert (system_dir / "memory.sqlite-shm").read_bytes() != b"stale shm"
+        assert conn.execute("SELECT body FROM notes").fetchall() == [("keep me",)]
+    finally:
+        conn.close()

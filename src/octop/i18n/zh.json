@@ -1260,5 +1260,8 @@
     "summary_dry_run": "将迁移 {migrated} 项，跳过 {skipped} 项，失败 {failed} 项。",
     "dry_run_hint": "预演模式：没有写入任何内容。去掉 --dry-run 后再运行即可执行迁移。",
     "restart_hint": "如果 `octop run` 正在运行，请重启以加载迁移的模型供应商和通道。"
+  },
+  "workspace_archive": {
+    "skipped_sqlite_shm": "已跳过 {count} 个 SQLite 共享内存文件，SQLite 会根据数据库和 WAL 重新生成。"
   }
 }
