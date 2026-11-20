@@ -242,6 +242,40 @@ def default_workspace_parent_dir() -> str:
     return host_path_text(PathLayout.from_env().agents_dir)
 
 
+def workspace_folder_id(agent_id: str) -> str:
+    """Directory name for one chat agent.
+
+    A bridge id is ``bridge:{connection}:{remote}``. The connection id has no
+    colon, so the remote id is everything after the second colon. That remote
+    id is the folder ``default_agent_workspace_dir`` already creates.
+    """
+    text = agent_id.strip()
+    if not text.startswith("bridge:"):
+        return text
+    rest = text[len("bridge:") :]
+    sep = rest.find(":")
+    return rest[sep + 1 :].strip() if sep >= 0 else ""
+
+
+def default_workspace_for_chat_agent(agent_id: str, *, root_dir: str | None = None) -> str:
+    """Host path of the default workspace for *agent_id*.
+
+    Uses :func:`default_agent_workspace_dir`, including a scoped workspace root.
+    An empty bridge id with no remote part returns ``""``.
+    """
+    folder = workspace_folder_id(agent_id)
+    if not folder:
+        return ""
+    from octop.infra.utils.host_dirs import host_path_text  # noqa: PLC0415
+
+    cfg = None
+    root = (root_dir or "").strip()
+    if root:
+        cfg = {"backend": {"type": "local_shell", "root_dir": root}}
+    path = default_agent_workspace_dir(PathLayout.from_env(), folder, cfg=cfg, ensure=False)
+    return host_path_text(path)
+
+
 def default_agent_workspace_dir(
     paths: PathLayout,
     agent_id: str,
@@ -558,6 +592,7 @@ __all__ = [
     "remove_agent_host_dirs",
     "agent_facing_workspace_root",
     "default_agent_workspace_dir",
+    "default_workspace_for_chat_agent",
     "default_workspace_parent_dir",
     "harness_workspace_path",
     "host_system_dir",
@@ -571,5 +606,6 @@ __all__ = [
     "system_files_path_from_config",
     "uses_scoped_workspace_default",
     "workspace_dir_from_config",
+    "workspace_folder_id",
     "workspace_dir_from_config_json",
 ]

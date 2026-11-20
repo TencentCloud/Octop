@@ -163,6 +163,11 @@ def files_mcp_url(*, config: OctopConfig, token: str) -> str:
     return _loopback_mcp_url(config, "files", token)
 
 
+def team_workspace_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for host-workspace file tools on a managed team turn."""
+    return _loopback_mcp_url(config, "team-workspace", token)
+
+
 def cron_mcp_url(*, config: OctopConfig, token: str) -> str:
     """Loopback URL for cron tools on a managed ACP session."""
     return _loopback_mcp_url(config, "cron", token)
@@ -301,6 +306,16 @@ def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> d
             "url": "https://open.mail.163.com/api/ynote/mcp/sse",
             "headers": {
                 "x-api-key": api_key,
+            },
+        }
+    if entry.kind == "github":
+        token = str(creds.get("token") or creds.get("access_token") or "").strip()
+        return {
+            "transport": "http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+                **_mcp_http_headers(),
+                "Authorization": f"Bearer {token}",
             },
         }
     if is_mcp_oauth_remote(entry):

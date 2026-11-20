@@ -64,6 +64,7 @@ import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
+import LocalExecutionBar from "./components/LocalExecutionBar";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import ModelConfigEmpty from "./components/ModelConfigEmpty";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
@@ -84,7 +85,7 @@ import {
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
-import { isTeamAgent } from "../../utils/teamAgent";
+import { isTeamAgent, teamMemberChatOption } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
 import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
@@ -725,10 +726,18 @@ function ChatPageInner() {
   const teamExpertOptions = useMemo(() => {
     if (!isTeamChat) return chatAgentOptionsPickable;
     const ids = new Set(activeAgent?.member_ids ?? []);
-    return chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const listed = chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const seen = new Set(listed.map((item) => item.agent_id));
+    const extras = (activeAgent?.members ?? [])
+      .filter(
+        (member) => ids.has(member.agent_id) && !seen.has(member.agent_id),
+      )
+      .map(teamMemberChatOption);
+    return [...listed, ...extras];
   }, [
     isTeamChat,
     activeAgent?.member_ids,
+    activeAgent?.members,
     chatAgentOptions,
     chatAgentOptionsPickable,
   ]);
@@ -1994,6 +2003,14 @@ function ChatPageInner() {
             ) : null}
             <ChatInput
               ref={chatInputRef}
+              leading={
+                activeAgent?.bridge && resolvedAgentId ? (
+                  <LocalExecutionBar
+                    agentId={resolvedAgentId}
+                    threadId={activeThreadId}
+                  />
+                ) : null
+              }
               onSend={wrappedHandleSend}
               onQueue={enqueueUnlessSharedBusy}
               queuedItems={displayQueuedItems}

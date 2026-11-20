@@ -154,6 +154,11 @@ export interface FilesystemDefaults {
    */
   default_workspace_dir?: string;
   /**
+   * Full default workspace for the ``agent_id`` query. The server uses the
+   * same rule as agent creation, including a scoped workspace root.
+   */
+  default_agent_workspace?: string;
+  /**
    * True only when a non-root `root_dir` really gets OS-level confinement
    * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
    * the UI must not promise a sandbox.
@@ -163,8 +168,12 @@ export interface FilesystemDefaults {
   in_container?: boolean;
 }
 
-export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {
-  return request<FilesystemDefaults>("/filesystem/defaults");
+export async function fetchFilesystemDefaults(
+  agentId?: string,
+): Promise<FilesystemDefaults> {
+  const id = agentId?.trim();
+  const query = id ? `?agent_id=${encodeURIComponent(id)}` : "";
+  return request<FilesystemDefaults>(`/filesystem/defaults${query}`);
 }
 
 export function isNamedBackend(ref: string): ref is `named:${string}` {

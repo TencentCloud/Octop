@@ -28,6 +28,7 @@ import {
   Route,
   Info,
   Search,
+  Star,
 } from "lucide-react";
 import { Tooltip, Popover } from "antd";
 import cx from "classnames";
@@ -37,6 +38,7 @@ import {
   type AcpSessionMode,
 } from "../../../api/modules/acp";
 import { acpSessionModeText } from "../../../api/modules/acp";
+import { preferencesApi } from "../../../api/modules/preferences";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -286,6 +288,10 @@ export default function ChatInputActionsRow({
   );
   const [plusPanelAlignBottom, setPlusPanelAlignBottom] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
+  const [preferredModelRef, setPreferredModelRef] = useState<string | null>(
+    null,
+  );
+  const [preferredBusy, setPreferredBusy] = useState(false);
   const [isCompact, setIsCompact] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -371,6 +377,20 @@ export default function ChatInputActionsRow({
   const showModelPicker =
     !managed &&
     Boolean(availableModels && availableModels.length > 0 && onModelChange);
+
+  useEffect(() => {
+    if (!showModelPicker) return;
+    let cancelled = false;
+    preferencesApi
+      .get()
+      .then((prefs) => {
+        if (!cancelled) setPreferredModelRef(prefs.preferred_model ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [showModelPicker]);
   const allowWriteTools = conversationMode === "craft";
   const showConnectorPicker = Boolean(
     allowWriteTools && availableConnectors && onConnectorsChange,
@@ -512,7 +532,32 @@ export default function ChatInputActionsRow({
     );
   });
   const autoLabel = t("chat.modelAuto", "Auto");
-  const autoHint = t("chat.modelAutoHint", "Use agent default");
+  const preferredModel = (availableModels ?? []).find(
+    (model) => modelOptionValue(model) === preferredModelRef,
+  );
+  const autoHint = preferredModel
+    ? t("chat.modelAutoPreferredHint", {
+        model: modelOptionLabel(preferredModel),
+      })
+    : t("chat.modelAutoHint", "Use agent default");
+
+  const togglePreferredModel = async (value: string, label: string) => {
+    const next = preferredModelRef === value ? null : value;
+    setPreferredBusy(true);
+    try {
+      const prefs = await preferencesApi.patch({ preferred_model: next });
+      setPreferredModelRef(prefs.preferred_model ?? null);
+      message.success(
+        next
+          ? t("models.preferredModelSet", { model: label })
+          : t("models.preferredModelCleared"),
+      );
+    } catch {
+      message.error(t("models.preferredModelFailed"));
+    } finally {
+      setPreferredBusy(false);
+    }
+  };
   const showAutoModel = !modelQueryNormalized
     ? true
     : autoLabel.toLowerCase().includes(modelQueryNormalized) ||
@@ -690,6 +735,29 @@ export default function ChatInputActionsRow({
                         {modelOptionLabel(model)}
                       </span>
                     </Tooltip>
+                  </button>
+                  <button
+                    type="button"
+                    className={cx(
+                      styles.modelMenuPrefer,
+                      preferredModelRef === value && styles.modelMenuPreferOn,
+                    )}
+                    aria-label={
+                      preferredModelRef === value
+                        ? t("models.clearPreferred")
+                        : t("models.setAsPreferred")
+                    }
+                    disabled={preferredBusy}
+                    onClick={() =>
+                      void togglePreferredModel(value, modelOptionLabel(model))
+                    }
+                  >
+                    <Star
+                      size={14}
+                      fill={
+                        preferredModelRef === value ? "currentColor" : "none"
+                      }
+                    />
                   </button>
                   {capability && onReasoningChange && (
                     <button
