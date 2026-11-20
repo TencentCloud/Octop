@@ -164,3 +164,20 @@ async def test_windows_opencode_skips_auto_install(monkeypatch: pytest.MonkeyPat
     assert result["status"] == "skipped"
     assert result["can_auto_install"] is False
     assert "WSL" in result["install_script"]
+
+
+@pytest.mark.asyncio
+async def test_qwen_code_launches_with_acp_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(acp_host, "_platform_key", lambda: "darwin")
+    monkeypatch.setattr(acp_host, "_which", lambda name, env: f"/bin/{name}")
+
+    async def ok(command: str, args: list[str], env: dict[str, str]) -> tuple[bool, str]:
+        assert command == "qwen"
+        assert args == ["--acp"]
+        assert env
+        return True, ""
+
+    monkeypatch.setattr(acp_host, "_handshake", ok)
+    result = await acp_host.acp_host_status(runner="qwen_code", locale="en")
+    assert result["status"] == "ready"
+    assert "npm install -g @qwen-code/qwen-code" in result["scripts"]["darwin"]

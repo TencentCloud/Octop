@@ -42,7 +42,7 @@ if TYPE_CHECKING:
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
 
-from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_name
+from octop.infra.cron.task_type import normalize_cron_task, require_cron_name
 from octop.infra.db.repos._base import UNSET
 
 logger = logging.getLogger(__name__)
@@ -63,6 +63,10 @@ class CronCreateSpec:
     model: str | None = None
     task_type: str = "agent"
     mcp_servers: list[str] = field(default_factory=list)
+    allow_all: bool = False
+    script_lang: str | None = None
+    script_source: str | None = None
+    script_path: str | None = None
     enabled: bool = True
     meta: dict[str, Any] = field(default_factory=dict)
     username: str | None = None
@@ -182,19 +186,31 @@ class CronManager:
             agent_id=spec.agent_id,
             user_id=spec.user_id,
         )
+        task = normalize_cron_task(
+            task_type=spec.task_type,
+            prompt=spec.prompt,
+            allow_all=spec.allow_all,
+            script_lang=spec.script_lang,
+            script_source=spec.script_source,
+            script_path=spec.script_path,
+        )
         async with self._lock:
             self._repos.cron_repo.create(
                 cron_id=spec.cron_id,
                 agent_id=spec.agent_id,
                 user_id=spec.user_id,
-                name=require_cron_name(spec.name, prompt=spec.prompt, cron_id=spec.cron_id),
+                name=require_cron_name(spec.name, prompt=task.prompt, cron_id=spec.cron_id),
                 trigger=spec.trigger,
-                prompt=spec.prompt,
+                prompt=task.prompt,
                 session_key=session_key,
                 fresh_thread=spec.fresh_thread,
-                model=(spec.model or "").strip() or None,
-                task_type=normalize_cron_task_type(spec.task_type),
-                mcp_servers=list(spec.mcp_servers or []),
+                model=None if task.task_type == "script" else ((spec.model or "").strip() or None),
+                task_type=task.task_type,
+                mcp_servers=list(spec.mcp_servers or []) if task.task_type != "script" else [],
+                allow_all=task.allow_all,
+                script_lang=task.script_lang,
+                script_source=task.script_source,
+                script_path=task.script_path,
                 enabled=spec.enabled,
             )
             row = self._repos.cron_repo.get(spec.cron_id)
@@ -244,6 +260,10 @@ class CronManager:
         task_type: str | None = None,
         model: str | None | object = UNSET,
         mcp_servers: list[str] | None | object = UNSET,
+        allow_all: bool | object = UNSET,
+        script_lang: str | None | object = UNSET,
+        script_source: str | None | object = UNSET,
+        script_path: str | None | object = UNSET,
     ) -> CronJobRow:
         enabled_bool: bool | None = bool(enabled) if enabled is not None else None
         async with self._lock:
@@ -273,15 +293,56 @@ class CronManager:
                 "fresh_thread": fresh_thread,
                 "enabled": enabled_bool,
             }
-            if task_type is not None:
-                repo_kwargs["task_type"] = normalize_cron_task_type(task_type)
-            if model is not UNSET:
-                raw = model if isinstance(model, str) else None
-                repo_kwargs["model"] = (raw or "").strip() or None
-            if mcp_servers is not UNSET:
+            task_touched = (
+                task_type is not None
+                or prompt is not None
+                or allow_all is not UNSET
+                or script_lang is not UNSET
+                or script_source is not UNSET
+                or script_path is not UNSET
+            )
+            if task_touched:
+                task = normalize_cron_task(
+                    task_type=task_type or existing.task_type,
+                    prompt=prompt if prompt is not None else existing.prompt,
+                    allow_all=bool(allow_all)
+                    if allow_all is not UNSET
+                    else bool(existing.allow_all),
+                    script_lang=(
+                        script_lang
+                        if script_lang is not UNSET and isinstance(script_lang, str)
+                        else existing.script_lang
+                    ),
+                    script_source=(
+                        script_source
+                        if script_source is not UNSET and isinstance(script_source, str)
+                        else existing.script_source
+                    ),
+                    script_path=(
+                        script_path
+                        if script_path is not UNSET and isinstance(script_path, str)
+                        else existing.script_path
+                    ),
+                )
+                repo_kwargs["prompt"] = task.prompt
+                repo_kwargs["task_type"] = task.task_type
+                repo_kwargs["allow_all"] = task.allow_all
+                repo_kwargs["script_lang"] = task.script_lang
+                repo_kwargs["script_source"] = task.script_source
+                repo_kwargs["script_path"] = task.script_path
+                if task.task_type == "script":
+                    repo_kwargs["model"] = None
+                    repo_kwargs["mcp_servers"] = []
+            if (
+                mcp_servers is not UNSET
+                and repo_kwargs.get("task_type", existing.task_type) != "script"
+            ):
                 repo_kwargs["mcp_servers"] = (
                     list(mcp_servers) if isinstance(mcp_servers, list) else []
                 )
+            if model is not UNSET and repo_kwargs.get("task_type", existing.task_type) != "script":
+                raw = model if isinstance(model, str) else None
+                repo_kwargs["model"] = (raw or "").strip() or None
             self._repos.cron_repo.update(cron_id, **repo_kwargs)
             row = self._repos.cron_repo.get(cron_id)
             if row is None:

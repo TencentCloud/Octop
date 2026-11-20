@@ -290,6 +290,16 @@ def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> d
                 "x-api-key": api_key,
             },
         }
+    if entry.kind == "github":
+        token = str(creds.get("token") or creds.get("access_token") or "").strip()
+        return {
+            "transport": "http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+                **_mcp_http_headers(),
+                "Authorization": f"Bearer {token}",
+            },
+        }
     if is_mcp_oauth_remote(entry):
         access_token = str(creds.get("access_token") or creds.get("token") or "").strip()
         mcp_url = (entry.mcp_url or "").strip()

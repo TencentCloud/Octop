@@ -708,6 +708,7 @@ class AgentManager:
                 self._harness_manager.team,
                 load_agent=self.get_row,
                 load_user=self._repos.user_repo.get,
+                roster_visible=self._teams.viewer_may_run_roster_member,
             )
             self._harness_manager.set_security_policy(self._security.harness_policy())
 
@@ -934,11 +935,6 @@ class AgentManager:
                 runner = config.get("managed_runner")
                 if isinstance(runner, str) and runner.strip():
                     config["system_files_path"] = managed_project_root(runner)
-            if spec.is_shared and spec.kind == "team":
-                raise OctopError(
-                    ErrorCode.TEAM_NOT_SHAREABLE,
-                    "teams cannot be shared",
-                )
             profile = extract_profile_from_config(config)
             config = strip_profile_config(config)
             package_ids_json = (
@@ -1248,10 +1244,6 @@ class AgentManager:
         existing = self._repos.agent_repo.get(agent_id)
         if existing is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        from octop.infra.agents.teams import is_team_agent
-
-        if shared and is_team_agent(existing):
-            raise OctopError(ErrorCode.TEAM_NOT_SHAREABLE, "teams cannot be shared")
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:

@@ -419,6 +419,77 @@ async def test_install_team_host_dispatch_stream_skips_unknown_job_id(
 
 
 @pytest.mark.asyncio
+async def test_invoke_peer_followup_prefers_streamed_answer(manager: AgentManager) -> None:
+    from dataclasses import replace as dc_replace
+
+    from langchain_core.messages import AIMessage
+    from octop_harness.messages import extract_call_response
+
+    seen: dict[str, object] = {}
+
+    async def build_peer_request(
+        *,
+        from_agent_id: str,
+        to_agent_id: str,
+        message: str,
+        user_id: str | int,
+        source: str,
+        source_thread_id: str | None,
+        source_session_key: str | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(thread_id="t~child")
+
+    async def stream_peer(
+        request: object,
+        *,
+        room_thread_id: str,
+        speaker_id: str,
+    ) -> dict[str, object]:
+        del request, room_thread_id, speaker_id
+        return {
+            "messages": [AIMessage(content="checkpoint fragment")],
+            "stream_text": "live conclusion",
+            "team_live_streamed": True,
+        }
+
+    async def after_peer(call: object, thread_id: str, payload: dict[str, object]) -> None:
+        del call, thread_id
+        seen["fan_in"] = payload["messages"]
+
+    team = MagicMock()
+    team.enabled = True
+    team.call_peer = AsyncMock()
+    team.submit_peer = MagicMock()
+    team._invoke_peer = AsyncMock()
+    team._build_peer_request = build_peer_request
+    team._enrich_request = None
+    team._after_peer = after_peer
+    manager._harness_manager = SimpleNamespace(team=team)
+    manager._team_processor = SimpleNamespace(
+        take_team_peer_prompt=MagicMock(return_value=None),
+        stream_team_peer_to_room=stream_peer,
+    )
+    manager.get_row = MagicMock(  # type: ignore[method-assign]
+        return_value=dc_replace(_row(agent_id="host"), kind="team")
+    )
+    manager._install_team_host_dispatch()
+    _request, payload = await team._invoke_peer(
+        from_agent_id="host",
+        to_agent_id="child",
+        message="go",
+        user_id=1,
+        source="inbox",
+        source_thread_id="t",
+        source_session_key="sk",
+        job_id="job-1",
+    )
+    fan_in = seen["fan_in"]
+    assert isinstance(fan_in, list)
+    assert fan_in[0].content == "checkpoint fragment"
+    assert extract_call_response(payload) == "live conclusion"
+
+
+@pytest.mark.asyncio
 async def test_install_async_dispatch_streams_non_team_inbox(manager: AgentManager) -> None:
     seen: dict[str, object] = {}
 

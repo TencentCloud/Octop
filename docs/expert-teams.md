@@ -12,8 +12,8 @@
 | 2 | 创建团队至少 2 个成员（不含主持人） |
 | 3 | 成员只能是普通专家，不能套团队 |
 | 4 | 可加入：自己的专家 + 分享给自己的专家 |
-| 5 | 分享来的专家可以真正派工；这一轮的文件进主持人工作区，不能改对方配置 |
-| 6 | 第一版团队不分享，只有创建者能聊、改成员、绑通道 |
+| 5 | 分享来的专家可以真正派工；产出进对方工作区/聊天，不能改对方配置 |
+| 6 | 团队按专家的「谁可以用」共享：仅自己、所有人、指定用户分组。被分享的人可以对话，也能让主持人派工给编制里的成员，包括没有单独共享的专家。不能改编制、删除或改配置 |
 | 7 | 有在途派工时，不能移出该成员、不能删除该专家 |
 
 ### 说话与调度
@@ -129,22 +129,22 @@ conversation_id = 主持人 thread_id
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/teams` | 当前用户的团队（含成员摘要） |
-| POST | `/api/teams` | 创建主持人 + 至少 2 名成员 |
-| GET | `/api/teams/{team_id}` | 详情 |
-| PATCH | `/api/teams/{team_id}` | 改名称/模型/欢迎语/头像 `icon_url`/成员（在途则拒改该成员） |
-| DELETE | `/api/teams/{team_id}` | 删除团队主持人 |
+| GET | `/api/teams` | 当前用户能用的团队（自己的，以及别人共享来的；含成员摘要） |
+| POST | `/api/teams` | 创建主持人 + 至少 2 名成员。可带 `visibility` / `group_ids` |
+| GET | `/api/teams/{team_id}` | 详情。能用的人可读，含未单独共享的成员姓名和头像 |
+| PATCH | `/api/teams/{team_id}` | 创建者改名称/模型/欢迎语/头像 `icon_url`/成员/`visibility`（在途则拒改该成员） |
+| DELETE | `/api/teams/{team_id}` | 删除团队主持人（仅创建者或管理员） |
 
-`GET /api/agents` 增加 `kind`；团队行带 `member_ids`。`kind=team` 不可 `is_shared`。
+`GET /api/agents` 增加 `kind`；团队行带 `member_ids` 和 `members`。共享走 `agents.is_shared`，用户分组授权与专家相同（`resource_type=expert`）。
 
-错误码：`TEAM_NOT_FOUND`、`TEAM_MEMBERS_TOO_FEW`、`TEAM_MEMBER_INVALID`、`TEAM_MEMBER_BUSY`、`TEAM_NOT_SHAREABLE`。
+错误码：`TEAM_NOT_FOUND`、`TEAM_MEMBERS_TOO_FEW`、`TEAM_MEMBER_INVALID`、`TEAM_MEMBER_BUSY`。
 
 ## 前端
 
 专家页 tab：`我的专家 | 我的团队 | 专家市场`。专家市场包含门户目录，以及本实例用户发布的模板。
 
 - 我的专家：过滤 `kind !== team`
-- 我的团队：卡片/空态指引；创建/编辑只要名称、模型、头像、颜色、欢迎语、成员；通道走现有通道配置（绑在主持人）
+- 我的团队：卡片/空态指引；创建/编辑有名称、模型、头像、颜色、欢迎语、成员，以及「谁可以使用」。别人共享来的团队只能对话。通道仍绑在主持人，只有创建者能改
 - 侧栏：团队带团队徽章
 - 团队聊天右侧：成员条（不含主持人）
 - 气泡：`speaker_agent_id` 对应专家头像/名称；主持人用自己的头像
@@ -155,7 +155,7 @@ conversation_id = 主持人 thread_id
 
 ## 非目标（第一版）
 
-- 团队分享、嵌套团队、自动拉起停用成员
+- 嵌套团队、自动拉起停用成员
 - 多个专家共用同一 `threads.thread_id`
 - 成员异步往群里拉人
 - 共享团队工作区

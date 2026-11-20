@@ -92,6 +92,41 @@ def _normalize_headers(raw: Any) -> dict[str, str]:
     return out
 
 
+_DROPPED_STDIO_ENV_KEYS = frozenset(
+    {
+        "BASH_ENV",
+        "DYLD_FRAMEWORK_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "ENV",
+        "GIT_EXTERNAL_DIFF",
+        "GIT_SSH_COMMAND",
+        "LD_AUDIT",
+        "LD_BIND_NOW",
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "NODE_OPTIONS",
+        "PERL5OPT",
+        "PS4",
+        "PYTHONINSPECT",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "RUBYOPT",
+        "SHELLOPTS",
+    }
+)
+
+
+def _dropped_stdio_env_key(key: str) -> bool:
+    upper = key.upper()
+    return upper in _DROPPED_STDIO_ENV_KEYS or upper.startswith(("LD_", "DYLD_"))
+
+
+def sanitize_stdio_env(env: dict[str, str]) -> dict[str, str]:
+    """Drop env keys that change how the child loader or interpreter starts."""
+    return {key: value for key, value in env.items() if not _dropped_stdio_env_key(key)}
+
+
 def _normalize_env(raw: Any) -> dict[str, str]:
     if raw is None:
         return {}
@@ -103,7 +138,7 @@ def _normalize_env(raw: Any) -> dict[str, str]:
         if not k:
             raise ValueError("env names must be non-empty")
         out[k] = str(value)
-    return out
+    return sanitize_stdio_env(out)
 
 
 def _normalize_args(raw: Any) -> list[str]:

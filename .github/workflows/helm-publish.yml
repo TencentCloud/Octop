@@ -9,7 +9,10 @@ name: Helm Publish
 #   appVersion = 镜像 tag（v1.0.3b5 → 1.0.3b5）
 #   version    = Helm SemVer（1.0.3b5 → 1.0.3-b5，1.0.3 保持 1.0.3）
 #
-# 触发与 docker-publish.yml 相同：推送 v*，或 workflow_dispatch 填 tag。
+# 触发路径与 docker-publish.yml 相同：
+#   1. 人工推送 v* tag → on.push.tags
+#   2. Auto Tag 用 GITHUB_TOKEN 推 tag 后显式 workflow_dispatch（token push 不会触发 push 工作流）
+#   3. 在任意 ref 上 Run workflow，填 tag=vX.Y.Z。版本以输入的 tag 为准，并检出该 tag。
 on:
   push:
     tags:

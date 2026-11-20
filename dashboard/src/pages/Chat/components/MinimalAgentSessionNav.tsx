@@ -5,6 +5,7 @@ import type { MenuProps } from "antd";
 import {
   ChevronRight,
   GitFork,
+  Link2,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -130,6 +131,7 @@ interface MinimalAgentSessionNavProps {
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  onShare?: (id: string, agentId?: string | null) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
 }
@@ -143,6 +145,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onRename,
   onPin,
   onFork,
+  onShare,
   onContribute,
   shareable,
   forkDisabled,
@@ -159,6 +162,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onShare?: (id: string) => void;
   onContribute: (id: string, contributed: boolean) => void;
   shareable: boolean;
   forkDisabled?: boolean;
@@ -198,6 +202,23 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
 
   const menuItems: MenuProps["items"] = owned
     ? [
+        ...(onShare
+          ? [
+              {
+                key: "share",
+                label: t("chat.publicShare.action", "分享链接"),
+                icon: <Link2 size={14} />,
+                onClick: ({
+                  domEvent,
+                }: {
+                  domEvent: { stopPropagation(): void };
+                }) => {
+                  domEvent.stopPropagation();
+                  onShare(session.id);
+                },
+              },
+            ]
+          : []),
         ...(shareable
           ? [
               {
@@ -347,6 +368,7 @@ export default function MinimalAgentSessionNav({
   onRenameActive,
   onPinActive,
   onFork,
+  onShare,
   activeForkDisabled,
   activeForkDisabledHint,
 }: MinimalAgentSessionNavProps) {
@@ -898,6 +920,11 @@ export default function MinimalAgentSessionNav({
                           handleContribute(agent.agent_id, id, contributed)
                         }
                         shareable={Boolean(agent.is_shared)}
+                        onShare={
+                          onShare
+                            ? (id) => onShare(id, agent.agent_id)
+                            : undefined
+                        }
                         onFork={(id) => onFork(id, agent.agent_id)}
                         forkDisabled={
                           session.id === activeId

@@ -92,6 +92,8 @@ def team_icon_url(stored: str | None) -> str:
 def _user_may_use_member(row: AgentRow, user: Any) -> bool:
     if getattr(user, "is_admin", False):
         return True
+    if str(getattr(user, "role", "") or "") == "admin":
+        return True
     if row.user_id is not None and row.user_id == getattr(user, "id", None):
         return True
     return int(getattr(row, "is_shared", 0) or 0) == 1
@@ -289,12 +291,36 @@ class TeamService:
             changed.append(row.agent_id)
         return changed
 
-    def team_payload(self, row: AgentRow) -> dict[str, Any]:
-        ids = self.visible_member_ids(row.agent_id)
+    def member_summaries(self, team_agent_id: str) -> list[dict[str, Any]]:
+        """Display rows for the roster, including experts the viewer cannot open."""
+        ids = self.visible_member_ids(team_agent_id)
         member_rows = [self._repos.agent_repo.get(member_id) for member_id in ids]
-        return {
+        return [
+            {
+                "agent_id": member.agent_id,
+                "name": member.name,
+                "color": member.color,
+                "icon_name": member.icon_name,
+                "icon_url": member.icon_url,
+                "state": member.last_state or "unknown",
+                "is_shared": bool(int(member.is_shared or 0)),
+                "user_id": member.user_id,
+                "kind": getattr(member, "kind", None) or "expert",
+                "managed_runner": _member_runner(member),
+            }
+            for member in member_rows
+            if member is not None
+        ]
+
+    def team_payload(self, row: AgentRow, *, viewer_user_id: int | None = None) -> dict[str, Any]:
+        from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+
+        ids = self.visible_member_ids(row.agent_id)
+        shared = int(getattr(row, "is_shared", 0) or 0) == 1
+        payload: dict[str, Any] = {
             "team_id": row.agent_id,
             "agent_id": row.agent_id,
+            "user_id": row.user_id,
             "name": row.name,
             "description": row.description,
             "default_model": row.default_model,
@@ -304,31 +330,95 @@ class TeamService:
             "welcome_message": row.welcome_message,
             "state": row.last_state or "unknown",
             "kind": TEAM_KIND,
+            "is_shared": shared,
             "member_ids": ids,
-            "members": [
-                {
-                    "agent_id": member.agent_id,
-                    "name": member.name,
-                    "color": member.color,
-                    "icon_name": member.icon_name,
-                    "icon_url": member.icon_url,
-                    "state": member.last_state or "unknown",
-                    "is_shared": bool(int(member.is_shared or 0)),
-                    "user_id": member.user_id,
-                    "kind": getattr(member, "kind", None) or "expert",
-                    "managed_runner": _member_runner(member),
-                }
-                for member in member_rows
-                if member is not None
-            ],
+            "members": self.member_summaries(row.agent_id),
         }
+        if viewer_user_id is not None:
+            payload["is_owner"] = row.user_id is not None and int(row.user_id) == int(
+                viewer_user_id
+            )
+        payload.update(
+            GroupAccess(self._repos).visibility(
+                RESOURCE_EXPERT,
+                row.agent_id,
+                shared=shared,
+            )
+        )
+        return payload
 
     def list_for_user(self, user_id: int) -> list[dict[str, Any]]:
         return [
-            self.team_payload(row)
+            self.team_payload(row, viewer_user_id=user_id)
             for row in self._repos.agent_repo.list_by_user(user_id)
             if is_team_agent(row)
         ]
+
+    def viewer_may_run_roster_member(
+        self,
+        viewer: Any,
+        member: AgentRow,
+        from_agent_id: str,
+    ) -> bool:
+        """A shared team chat may run roster members that are not themselves shared.
+
+        Adding a member still requires the owner to own that expert or to have
+        it shared with them. Chatting with the team is different: the roster
+        is the work, including private experts that belong to the team owner.
+        """
+        target = str(getattr(member, "agent_id", "") or "")
+        caller_id = str(from_agent_id or "").strip()
+        if not target or is_team_agent(member):
+            return False
+        user_id = getattr(viewer, "id", None)
+        if not isinstance(user_id, int):
+            return False
+        is_admin = (
+            bool(getattr(viewer, "is_admin", False))
+            or str(getattr(viewer, "role", "") or "") == "admin"
+        )
+        caller = self._repos.agent_repo.get(caller_id) if caller_id else None
+        teams = [caller] if is_team_agent(caller) else []
+        if not teams:
+            for row in self._repos.agent_repo.list_all():
+                if not is_team_agent(row):
+                    continue
+                roster = set(self.member_ids(row.agent_id))
+                if caller_id in roster and target in roster:
+                    teams.append(row)
+        from octop.infra.users.groups import expert_visible_to  # noqa: PLC0415
+
+        for team in teams:
+            if team is None:
+                continue
+            roster = set(self.visible_member_ids(team.agent_id))
+            if target not in roster:
+                continue
+            if caller_id and caller_id != team.agent_id and caller_id not in roster:
+                continue
+            if expert_visible_to(
+                self._repos,
+                team,
+                user_id=user_id,
+                is_admin=is_admin,
+            ):
+                return True
+        return False
+
+    def list_visible(self, user: Any) -> list[dict[str, Any]]:
+        """Teams this user owns, plus teams other users have shared with them."""
+        rows: list[AgentRow] = [
+            row for row in self._repos.agent_repo.list_by_user(user.id) if is_team_agent(row)
+        ]
+        owned = {row.agent_id for row in rows}
+        viewer = None if getattr(user, "is_admin", False) else user.id
+        for row in self._repos.agent_repo.list_shared(
+            exclude_user_id=user.id,
+            viewer_user_id=viewer,
+        ):
+            if is_team_agent(row) and row.agent_id not in owned:
+                rows.append(row)
+        return [self.team_payload(row, viewer_user_id=user.id) for row in rows]
 
 
 async def seed_team_template(

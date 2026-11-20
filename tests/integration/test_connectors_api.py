@@ -515,7 +515,7 @@ async def test_catalog_weknora_dify_last(env):
     assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
     assert kinds.index("didi") < kinds.index("weknora")
-    assert kinds[-2:] == ["weknora", "dify"]
+    assert kinds[-3:] == ["weknora", "dify", "github"]
 
 
 async def test_obsidian_cli_install_registers_binary(
@@ -661,6 +661,38 @@ async def test_patch_custom_mcp_server_default_open_only(env):
     )
     assert patch_off.status_code == 200
     assert "default_open" not in patch_off.json()["servers"]["linear"]
+
+
+async def test_custom_mcp_requires_connector_custom_permission(env):
+    c, _, admin_auth, _ = env
+    denied_auth = await create_user(c, admin_auth, username="no_custom_mcp", permissions=[])
+    stdio = {"transport": "stdio", "command": "python"}
+
+    probed = await c.post(
+        "/api/connectors/custom-mcp/test",
+        headers=denied_auth,
+        json={"server": stdio},
+    )
+    assert probed.status_code == 403
+    assert probed.json()["error"]["code"] == "FORBIDDEN"
+    assert probed.json()["error"]["details"]["permission"] == "connector_custom"
+
+    listed = await c.get("/api/connectors/custom-mcp", headers=denied_auth)
+    assert listed.status_code == 403
+
+    saved = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=denied_auth,
+        json={"servers": {"local": stdio}},
+    )
+    assert saved.status_code == 403
+
+    allowed_auth = await create_user(
+        c, admin_auth, username="custom_mcp_user", permissions=["connector_custom"]
+    )
+    listed_ok = await c.get("/api/connectors/custom-mcp", headers=allowed_auth)
+    assert listed_ok.status_code == 200
+    assert listed_ok.json()["servers"] == {}
 
 
 async def test_shared_custom_mcp_is_visible_with_collision_safe_name(env):
@@ -1167,3 +1199,25 @@ async def test_a_failed_token_exchange_is_reported_as_an_error(env):
     pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
     assert pending.json()["status"] == "error"
     assert "invalid_grant" in pending.json()["message"]
+
+
+async def test_custom_mcp_mutation_requires_permission(env):
+    c, _, admin_auth, _ = env
+    user_auth = await create_user(
+        c,
+        admin_auth,
+        username="no_custom_mcp",
+        permissions=["connector_builtin"],
+    )
+    denied = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=user_auth,
+        json={"servers": {"local": {"transport": "stdio", "command": "npx"}}},
+    )
+    assert denied.status_code == 403
+    probe = await c.post(
+        "/api/connectors/custom-mcp/test",
+        headers=user_auth,
+        json={"server": {"transport": "stdio", "command": "npx"}},
+    )
+    assert probe.status_code == 403

@@ -64,6 +64,18 @@ def _tool_by_name(tools: list, name: str):
     raise KeyError(name)
 
 
+def test_cronjob_create_describes_script_jobs(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    create = _tool_by_name(build_cronjob_tools(_make_manager(services)), "cronjob_create")
+    text = create.description
+    assert "never null" in text
+    assert "script_source=file" in text
+    assert "print('helloworld')" in text
+    schema = create.args_schema.model_json_schema()
+    assert "Never null" in schema["properties"]["script_lang"]["description"]
+    assert "inline or file" in schema["properties"]["script_source"]["description"]
+
+
 @pytest.mark.asyncio
 async def test_cronjob_create_and_list(tmp_path: Path) -> None:
     services = _make_services(tmp_path)
@@ -268,6 +280,75 @@ async def test_cronjob_create_persists_task_type(tmp_path: Path) -> None:
     row = mgr.get(data["id"])
     assert row is not None
     assert row.task_type == "text"
+
+
+@pytest.mark.asyncio
+async def test_cronjob_create_script_ignores_allow_all(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    agent_id = new_ulid()
+    user_id = services.repos.user_repo.create(username="sc", password_hash="x", role="user")
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="a")
+    mgr = _make_manager(services)
+    create = _tool_by_name(build_cronjob_tools(mgr), "cronjob_create")
+
+    with _configurable(agent_id=agent_id, user=str(user_id)):
+        out = await create.ainvoke(
+            {
+                "trigger": "interval:30",
+                "prompt": "print(1)",
+                "name": "script",
+                "task_type": "script",
+                "script_lang": "python",
+                "script_source": "inline",
+                "allow_all": True,
+            }
+        )
+    data = json.loads(out)
+    assert data["task_type"] == "script"
+    assert data["allow_all"] is False
+    assert data["script_lang"] == "python"
+    assert data["model"] is None
+
+    with _configurable(agent_id=agent_id, user=str(user_id)):
+        escaped = await create.ainvoke(
+            {
+                "trigger": "interval:30",
+                "prompt": "print(1)",
+                "name": "bad",
+                "task_type": "script",
+                "script_lang": "bash",
+                "script_source": "file",
+                "script_path": "../secret.sh",
+            }
+        )
+    assert "workspace" in json.loads(escaped)["error"]
+
+
+@pytest.mark.asyncio
+async def test_cronjob_create_script_without_lang_defaults_to_python(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    agent_id = new_ulid()
+    user_id = services.repos.user_repo.create(username="py", password_hash="x", role="user")
+    services.repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="a")
+    mgr = _make_manager(services)
+    create = _tool_by_name(build_cronjob_tools(mgr), "cronjob_create")
+
+    with _configurable(agent_id=agent_id, user=str(user_id)):
+        out = await create.ainvoke(
+            {
+                "trigger": "interval:600",
+                "prompt": 'print("helloworld")',
+                "name": "hello",
+                "task_type": "script",
+                "script_lang": None,
+                "script_source": None,
+            }
+        )
+    data = json.loads(out)
+    assert data["task_type"] == "script"
+    assert data["script_lang"] == "python"
+    assert data["script_source"] == "inline"
+    assert "error" not in data
 
 
 @pytest.mark.asyncio
