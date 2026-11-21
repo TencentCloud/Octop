@@ -25,6 +25,17 @@ export type DockTab =
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
   | { id: string; kind: "file"; path: string; agentId?: string }
+  | { id: "git"; kind: "git"; focusPath?: string; focusSeq?: number }
+  | { id: "gitHistory"; kind: "gitHistory" }
+  | {
+      id: string;
+      kind: "turnDiff";
+      agentId: string;
+      threadId: string;
+      messageId: string;
+      path: string;
+      displayPath: string;
+    }
   | {
       id: string;
       kind: "knowledge";
@@ -225,6 +236,79 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openDock();
   }, [openDock]);
 
+  const openGitTab = useCallback(
+    (focusPath?: string) => {
+      const focus = focusPath?.trim() || undefined;
+      setOpenTabs((prev) => {
+        const existing = prev.find(
+          (t): t is Extract<DockTab, { kind: "git" }> => t.kind === "git",
+        );
+        if (existing) {
+          if (!focus) return prev;
+          // Bump focusSeq so the panel re-selects the file even when the
+          // path repeats.
+          return prev.map((t) =>
+            t.id === "git"
+              ? {
+                  ...t,
+                  focusPath: focus,
+                  focusSeq: (existing.focusSeq ?? 0) + 1,
+                }
+              : t,
+          );
+        }
+        return [
+          ...prev,
+          { id: "git", kind: "git" as const, focusPath: focus, focusSeq: 1 },
+        ];
+      });
+      setActiveTabId("git");
+      openDock();
+    },
+    [openDock],
+  );
+
+  const openGitHistoryTab = useCallback(() => {
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === "gitHistory")) return prev;
+      return [...prev, { id: "gitHistory", kind: "gitHistory" as const }];
+    });
+    setActiveTabId("gitHistory");
+    openDock();
+  }, [openDock]);
+
+  const openTurnDiffTab = useCallback(
+    (
+      agentId: string,
+      threadId: string,
+      messageId: string,
+      path: string,
+      displayPath?: string,
+    ) => {
+      const target = path.trim();
+      if (!target) return;
+      const id = `turndiff:${messageId}:${target}`;
+      setOpenTabs((prev) => {
+        if (prev.some((t) => t.id === id)) return prev;
+        return [
+          ...prev,
+          {
+            id,
+            kind: "turnDiff" as const,
+            agentId,
+            threadId,
+            messageId,
+            path: target,
+            displayPath: displayPath?.trim() || target,
+          },
+        ];
+      });
+      setActiveTabId(id);
+      openDock();
+    },
+    [openDock],
+  );
+
   const openKnowledgeCitation = useCallback(
     (citation: KnowledgeCitation) => {
       const kbId = citation.kbId?.trim();
@@ -384,6 +468,9 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleBrowserPanel,
     openTerminalTab,
     toggleTerminalPanel,
+    openGitTab,
+    openGitHistoryTab,
+    openTurnDiffTab,
     openToolUiTab,
     focusToolUiTab,
     closeTab,

@@ -137,6 +137,65 @@ def test_thread_delete_clears_sqlite_file_outside_active_workspace(tmp_path: Pat
     assert _checkpoint_count(other, "thr_side") == 0
 
 
+def test_thread_delete_removes_file_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.file_checkpoints import save_checkpoints
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    workspace = paths.agent_workspace("Ab1")
+    workspace.mkdir(parents=True)
+    save_checkpoints(
+        paths.root,
+        "Ab1",
+        "thr_gone",
+        "msg",
+        [{"path": "a.md", "before": None, "after": "x"}],
+    )
+
+    from octop.infra.agents.memory.thread_cleanup import delete_thread_from_agent_stores
+
+    delete_thread_from_agent_stores(
+        agent_id="Ab1",
+        thread_id="thr_gone",
+        cfg={"workspace_dir": str(workspace)},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        paths=paths,
+    )
+
+    assert not (paths.root / "file_checkpoints" / "Ab1" / "thr_gone").exists()
+
+
+def test_agent_delete_removes_file_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.file_checkpoints import save_checkpoints
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    workspace = paths.agent_workspace("Ab1")
+    workspace.mkdir(parents=True)
+    for thread_id in ("thr_a", "thr_b"):
+        save_checkpoints(
+            paths.root,
+            "Ab1",
+            thread_id,
+            "msg",
+            [{"path": "a.md", "before": None, "after": "x"}],
+        )
+
+    delete_agent_memory_and_checkpoints(
+        agent_id="Ab1",
+        thread_ids={"thr_a", "thr_b"},
+        cfg={"workspace_dir": str(workspace)},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        paths=paths,
+    )
+
+    assert not (paths.root / "file_checkpoints" / "Ab1").exists()
+
+
 def test_delete_agent_drops_its_namespace_and_checkpoints(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     db_path = workspace / "memory.sqlite"
