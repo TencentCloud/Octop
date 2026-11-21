@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Checkbox, Drawer, Empty, Modal, Spin, Switch } from "antd";
-import { Copy, Info } from "lucide-react";
+import { Copy, Info, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
 import { skillPackagesApi } from "../../../../api/modules/skillPackages";
@@ -11,6 +12,8 @@ import type {
 } from "../../../../api/types/skillPackage";
 import { useAgent } from "../../../../context/AgentContext";
 import { PackageIcon } from "../../../SkillPackages/PackageIcon";
+import { OctopEmptyMascot } from "../../../../components/EmptyState";
+import StreamSetupGuide from "../../../../components/StreamSetupGuide/StreamSetupGuide";
 import { showApiError } from "../../../../utils/showApiToast";
 import { createDetailRequestGate } from "../../../../utils/detailRequestGate";
 import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
@@ -67,6 +70,7 @@ export default function SkillPackagesTab({
   toggleEnabled,
 }: SkillPackagesTabProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { agents } = useAgent();
   const agent = useMemo(
     () => agents.find((row) => row.agent_id === agentId) ?? null,
@@ -234,9 +238,31 @@ export default function SkillPackagesTab({
 
   if (catalog.length === 0 && mountedIds.length === 0) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t("skills.noSkillPackages")}
+      <StreamSetupGuide
+        wide
+        plain
+        icon={<OctopEmptyMascot />}
+        title={t("skills.packagesEmptyTitle")}
+        description={t("skills.packagesEmptyDesc")}
+        steps={[
+          {
+            label: t("skills.packagesEmptyStepCreate"),
+            detail: t("skills.packagesEmptyStepCreateDetail"),
+          },
+          {
+            label: t("skills.packagesEmptyStepAdd"),
+            detail: t("skills.packagesEmptyStepAddDetail"),
+          },
+          {
+            label: t("skills.packagesEmptyStepMount"),
+            detail: t("skills.packagesEmptyStepMountDetail"),
+          },
+        ]}
+        primaryAction={{
+          label: t("skills.openSkillPackages"),
+          onClick: () => navigate("/skill-packages"),
+          icon: <Plus size={14} />,
+        }}
       />
     );
   }
@@ -400,7 +426,31 @@ export default function SkillPackagesTab({
               </p>
             ) : null}
             {detailPackage.skills.length === 0 ? (
-              <Empty description={t("skillPackages.emptySkills")} />
+              <StreamSetupGuide
+                plain
+                icon={<OctopEmptyMascot />}
+                title={t("skillPackages.emptySkillsTitle")}
+                description={t("skillPackages.emptySkillsDesc")}
+                steps={[
+                  {
+                    label: t("skillPackages.emptySkillsStepAdd"),
+                    detail: t("skillPackages.emptySkillsStepAddDetail"),
+                  },
+                  {
+                    label: t("skillPackages.emptySkillsStepMarket"),
+                    detail: t("skillPackages.emptySkillsStepMarketDetail"),
+                  },
+                  {
+                    label: t("skillPackages.emptySkillsStepMount"),
+                    detail: t("skillPackages.emptySkillsStepMountDetail"),
+                  },
+                ]}
+                primaryAction={{
+                  label: t("skills.openSkillPackages"),
+                  onClick: () => navigate("/skill-packages"),
+                  icon: <Plus size={14} />,
+                }}
+              />
             ) : (
               <div className={styles.packageSkillRowList}>
                 {detailPackage.skills.map((packageSkill) => {

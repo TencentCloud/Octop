@@ -1,4 +1,4 @@
-/** Matches the desktop shell cap in desktop/src/filedrop.go. */
+/** Matches the desktop shell's per-drop upload cap (500 files). */
 export const MAX_CHAT_UPLOAD_FILES = 500;
 
 export interface DropSnapshot {

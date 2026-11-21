@@ -33,6 +33,10 @@ class CronJob:
         task_type: str,
         mcp_servers: list[str] | None,
         user_id: int,
+        allow_all: bool = False,
+        script_lang: str | None = None,
+        script_source: str | None = None,
+        script_path: str | None = None,
         delivery_service: CronDeliveryService,
         cron_repo: CronJobRepo,
         audit_repo: AuditRepo,
@@ -47,6 +51,10 @@ class CronJob:
         self._task_type = normalize_cron_task_type(task_type)
         self._mcp_servers = list(mcp_servers or [])
         self._user_id = user_id
+        self._allow_all = bool(allow_all)
+        self._script_lang = script_lang
+        self._script_source = script_source
+        self._script_path = script_path
         self._delivery_service = delivery_service
         self._cron_repo = cron_repo
         self._audit_repo = audit_repo
@@ -71,6 +79,10 @@ class CronJob:
             task_type=row.task_type,
             mcp_servers=list(row.mcp_servers),
             user_id=row.user_id,
+            allow_all=bool(row.allow_all),
+            script_lang=row.script_lang,
+            script_source=row.script_source,
+            script_path=row.script_path,
             delivery_service=delivery_service,
             cron_repo=cron_repo,
             audit_repo=audit_repo,
@@ -102,6 +114,10 @@ class CronJob:
                     task_type=self._task_type,
                     model=self._model,
                     mcp_servers=tuple(self._mcp_servers),
+                    allow_all=self._allow_all,
+                    script_lang=self._script_lang,
+                    script_source=self._script_source,
+                    script_path=self._script_path,
                 )
             )
         except Exception as exc:

@@ -18,3 +18,23 @@ export function isLiveAssistantTurn(opts: {
   const { isStreaming, groupIndex, lastUserGroupIndex } = opts;
   return isStreaming && groupIndex > lastUserGroupIndex;
 }
+
+/**
+ * Whether this assistant group's process fold should show a live hint.
+ *
+ * ``isTurnInProgress`` already limits the session-busy flag to groups after
+ * the latest user. A live speaker id of "" matches every unlabeled historical
+ * bubble, so speaker liveness and a leftover streaming row only count for
+ * the turn after that user.
+ */
+export function isAssistantProcessLive(opts: {
+  isTurnInProgress: boolean;
+  afterLatestUser: boolean;
+  hasStreamingMessage: boolean;
+  speakerLive: boolean;
+}): boolean {
+  return (
+    opts.isTurnInProgress ||
+    (opts.afterLatestUser && (opts.hasStreamingMessage || opts.speakerLive))
+  );
+}

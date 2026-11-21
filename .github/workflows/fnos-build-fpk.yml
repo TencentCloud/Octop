@@ -78,7 +78,7 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     outputs:
-      lite: ${{ steps.wait.outputs.lite }}
+      full: ${{ steps.wait.outputs.full }}
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -97,40 +97,40 @@ jobs:
           VER: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          full="${IMAGE}:${VER}"
-          lite="${IMAGE}:${VER}-lite"
-          echo "Waiting for ${full}. ${lite} is optional and must already be multi-arch."
-          # 完整版清单要等两个架构 merge。精简版在完整版出现后再等几轮；缺了就只打完整包。
-          lite_wait=0
+          lite="${IMAGE}:${VER}"
+          full="${IMAGE}:${VER}-full"
+          echo "Waiting for ${lite}. ${full} is optional and must already be multi-arch."
+          # 默认标签是精简版。完整版在精简版出现后再等几轮；缺了就只打精简包。
+          full_wait=0
           for i in $(seq 1 120); do
-            full_ok=0
             lite_ok=0
-            if docker buildx imagetools inspect "$full" >/dev/null 2>&1; then
-              full_ok=1
-            fi
+            full_ok=0
             if docker buildx imagetools inspect "$lite" >/dev/null 2>&1; then
               lite_ok=1
             fi
-            if [ "$full_ok" -eq 1 ] && [ "$lite_ok" -eq 1 ]; then
-              echo "lite=true" >> "$GITHUB_OUTPUT"
-              echo "Images ready: ${full} and ${lite}"
-              docker buildx imagetools inspect "$full" | head -20
+            if docker buildx imagetools inspect "$full" >/dev/null 2>&1; then
+              full_ok=1
+            fi
+            if [ "$lite_ok" -eq 1 ] && [ "$full_ok" -eq 1 ]; then
+              echo "full=true" >> "$GITHUB_OUTPUT"
+              echo "Images ready: ${lite} and ${full}"
               docker buildx imagetools inspect "$lite" | head -20
+              docker buildx imagetools inspect "$full" | head -20
               exit 0
             fi
-            if [ "$full_ok" -eq 1 ]; then
-              lite_wait=$((lite_wait + 1))
-              if [ "$lite_wait" -ge 6 ]; then
-                echo "lite=false" >> "$GITHUB_OUTPUT"
-                echo "::warning::${lite} was not published. The full FnOS package will still be built."
-                docker buildx imagetools inspect "$full" | head -20
+            if [ "$lite_ok" -eq 1 ]; then
+              full_wait=$((full_wait + 1))
+              if [ "$full_wait" -ge 6 ]; then
+                echo "full=false" >> "$GITHUB_OUTPUT"
+                echo "::warning::${full} was not published. The lite FnOS package will still be built."
+                docker buildx imagetools inspect "$lite" | head -20
                 exit 0
               fi
             fi
-            echo "[$i/120] full=${full_ok} lite=${lite_ok}"
+            echo "[$i/120] lite=${lite_ok} full=${full_ok}"
             sleep 20
           done
-          echo "::error::Timed out waiting for ${full}. Ensure Docker Publish finished for v${VER}."
+          echo "::error::Timed out waiting for ${lite}. Ensure Docker Publish finished for v${VER}."
           exit 1
 
   fpk:
@@ -151,13 +151,13 @@ jobs:
       - name: Build Docker FPKs
         env:
           FPK_NAME_PREFIX: Octop-fnos
-          LITE: ${{ needs.ensure-image.outputs.lite }}
+          FULL: ${{ needs.ensure-image.outputs.full }}
         run: |
-          bash scripts/build-fpk.sh docker
-          if [ "$LITE" = "true" ]; then
-            bash scripts/build-fpk.sh docker-lite
+          bash scripts/build-fpk.sh docker-lite
+          if [ "$FULL" = "true" ]; then
+            bash scripts/build-fpk.sh docker
           else
-            echo "::warning::Skipping the lite FnOS package because its image tag was not published."
+            echo "::warning::Skipping the full FnOS package because its image tag was not published."
           fi
 
       - name: Upload docker fpk artifact

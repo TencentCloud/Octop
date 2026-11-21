@@ -74,6 +74,26 @@ beforeEach(() => {
 });
 
 describe("memory storage", () => {
+  it.each([
+    ["first", 7, "memory.storage.checkpointBackup_first"],
+    ["always", 0, "memory.storage.checkpointBackup_always"],
+    ["off", 7, "common.disabled"],
+  ] as const)(
+    "shows the %s checkpoint backup policy",
+    async (mode, days, label) => {
+      api.checkStorage.mockResolvedValue({
+        ...inspection,
+        checkpoint_retention_enabled: true,
+        checkpoint_keep_last: 20,
+        checkpoint_backup_before_prune: mode,
+        checkpoint_backup_keep_days: days,
+      });
+      render(<MemoryStorage agentId="a" />);
+      await screen.findByText("memory.storage.checkpointBackup");
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    },
+  );
+
   it("gives loading and completion feedback when manual inspection returns unchanged data", async () => {
     const user = userEvent.setup();
     render(<MemoryStorage agentId="a" />);

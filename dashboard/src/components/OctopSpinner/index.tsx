@@ -8,13 +8,14 @@ interface OctopSpinnerProps {
 }
 
 /**
- * Loading indicator wired globally as the antd Spin indicator: a plain
- * brand-colored ring at every size. The logo splash is reserved for the
- * first-paint boot screen in index.html.
+ * Loading indicator wired globally as the antd Spin indicator: a faint
+ * track with a short brand arc and an empty center. The logo splash stays
+ * on the first-paint boot screen in index.html.
  */
 export default function OctopSpinner({ className }: OctopSpinnerProps) {
   return (
     <span className={cx(styles.host, className)}>
+      <span className={styles.track} />
       <span className={styles.ring} />
     </span>
   );

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.codex_apply import (
@@ -25,6 +25,7 @@ from octop.infra.agents.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.magpie import MAGPIE_DEFAULT_BASE_URL, discover_local_magpie
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
@@ -38,6 +39,7 @@ from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import (
     clear_stale_pins_for_provider,
+    merge_default_model_extra,
     merge_provider_purpose_extra,
     merge_stream_usage_extra,
     resolve_provider_purpose,
@@ -76,6 +78,8 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    # Model id used by "test connection". Null clears a previously saved choice.
+    model: str | None = None
 
 
 # Fields that affect harness factory / agent runtime when patched.
@@ -169,9 +173,9 @@ def _provider_patch_updates(
     sends ``{"api_key": null}``; treating that the same as "field absent" left
     the key in place and the provider still looked authorized.
 
-    ``stream_usage`` / ``purpose`` are stored inside ``extra_json``. A patch
-    that only sets those flags rewrites the current blob and must not clear
-    the API key.
+    ``stream_usage`` / ``purpose`` / ``model`` are stored inside ``extra_json``.
+    A patch that only sets those flags rewrites the current blob and must not
+    clear the API key. ``model`` is the connection-test default; ``null`` clears it.
     """
     fields = body.model_fields_set
     updates: dict[str, Any] = {}
@@ -181,12 +185,19 @@ def _provider_patch_updates(
         updates["base_url"] = _blank_to_none(body.base_url)
     if "api_key" in fields:
         updates["api_key"] = _blank_to_none(body.api_key)
-    if "extra_json" in fields or "stream_usage" in fields or "purpose" in fields:
+    if (
+        "extra_json" in fields
+        or "stream_usage" in fields
+        or "purpose" in fields
+        or "model" in fields
+    ):
         base = body.extra_json if "extra_json" in fields else current_extra_json
         if "stream_usage" in fields:
             base = merge_stream_usage_extra(base, body.stream_usage)
         if "purpose" in fields:
             base = merge_provider_purpose_extra(base, body.purpose)
+        if "model" in fields:
+            base = merge_default_model_extra(base, body.model)
         updates["extra_json"] = base
     if "models" in fields:
         models = body.models
@@ -257,6 +268,22 @@ async def _maybe_refresh_codex_row(server: Any, row: Any) -> Any:
     return row
 
 
+def _saved_default_model(extra: dict[str, Any]) -> str | None:
+    raw = extra.get("default_model")
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip()
+    return cleaned or None
+
+
+def _public_row(r: Any) -> dict[str, Any]:
+    """Provider list for any signed-in user: never include the stored API key."""
+    data = _row_to_dict(r)
+    data["api_key_set"] = bool(data.get("api_key"))
+    data["api_key"] = None
+    return data
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     models: list[dict[str, Any]] = []
     for stored in r.get_models():
@@ -267,7 +294,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning_config"] = capability
         models.append(model)
     extra = parse_provider_extra(r)
-    return {
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
@@ -276,6 +303,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "model": _saved_default_model(extra),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
         "purpose": resolve_provider_purpose(
             provider_name=r.name,
@@ -284,6 +312,10 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             models=models,
         ),
     }
+    integration = extra.get("integration")
+    if isinstance(integration, str) and integration.strip():
+        payload["integration"] = integration.strip()
+    return payload
 
 
 @router.get("/presets")
@@ -344,13 +376,55 @@ async def list_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all providers. Read-only for regular users."""
-    return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
+    """Return all providers. Read-only for regular users; API keys stay on the admin route."""
+    return [_public_row(r) for r in server.services.provider_repo.list_all()]
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────────────
 
 admin_router = APIRouter()
+
+
+class MagpieDiscoveryResponse(BaseModel):
+    available: bool = Field(
+        description="True when this Octop server reached a local Magpie hello response."
+    )
+    base_url: str = Field(description="OpenAI-compatible base URL of the probed local Magpie.")
+    version: str | None = Field(
+        default=None,
+        description="Magpie version from /api/hello. Empty when discovery did not succeed.",
+    )
+
+
+def _extra_dict(raw: str | None) -> dict[str, Any]:
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+@admin_router.get(
+    "/magpie/discovery",
+    summary="Discover local Magpie",
+    description=(
+        "Read-only probe of Magpie on the Octop server host at the default "
+        "loopback address. Failures return available=false and do not include "
+        "the upstream body. This route has no URL parameter."
+    ),
+    response_model=MagpieDiscoveryResponse,
+)
+async def admin_discover_magpie(
+    _: Any = Depends(require_permission("providers")),
+) -> MagpieDiscoveryResponse:
+    found = await discover_local_magpie()
+    return MagpieDiscoveryResponse(
+        available=found.available,
+        base_url=found.base_url or MAGPIE_DEFAULT_BASE_URL,
+        version=found.version,
+    )
 
 
 @admin_router.get("")
@@ -380,6 +454,11 @@ async def admin_create_provider(
     models_json = _json.dumps(models) if models is not None else None
     extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
     extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
+    if server.services.provider_repo.get_by_name(body.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {body.name!r} already exists",
+        )
     pid = server.services.provider_repo.create(
         name=body.name,
         kind=body.kind,
@@ -512,6 +591,7 @@ async def admin_fetch_provider_models(
         extra_headers=provider_headers(draft) or None,
         locale=resolve_request_locale(request),
         provider_name=(body.name or "").strip() or None,
+        extra=_extra_dict(body.extra_json),
     )
 
 

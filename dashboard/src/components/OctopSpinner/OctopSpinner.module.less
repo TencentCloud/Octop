@@ -3,21 +3,43 @@
 .host {
   position: relative;
   display: inline-block;
-  width: var(--octop-spinner-size, 48px);
-  height: var(--octop-spinner-size, 48px);
+  width: var(--octop-spinner-size, 32px);
+  height: var(--octop-spinner-size, 32px);
   font-size: 0;
   vertical-align: middle;
+}
+
+.track {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: var(--octop-spinner-ring-width, 2.5px) solid
+    color-mix(in srgb, var(--fn-color-brand) 14%, transparent);
+  border-radius: 50%;
 }
 
 .ring {
   position: absolute;
   inset: 0;
-  box-sizing: border-box;
-  border: var(--octop-spinner-ring-width, 4px) solid
-    color-mix(in srgb, var(--fn-color-brand) 20%, transparent);
-  border-top-color: var(--fn-color-brand);
   border-radius: 50%;
-  animation: octopSpinnerSpin 0.85s linear infinite;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0%,
+    transparent 55%,
+    color-mix(in srgb, var(--fn-color-brand) 40%, transparent) 80%,
+    var(--fn-color-brand) 100%
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--octop-spinner-ring-width, 2.5px)),
+    #000 calc(100% - var(--octop-spinner-ring-width, 2.5px) + 0.5px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--octop-spinner-ring-width, 2.5px)),
+    #000 calc(100% - var(--octop-spinner-ring-width, 2.5px) + 0.5px)
+  );
+  animation: octopSpinnerSpin 0.9s linear infinite;
 }
 
 @keyframes octopSpinnerSpin {

@@ -8,7 +8,7 @@ import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from octop_gateway.models import (
@@ -32,6 +32,7 @@ from octop.infra.agents.teams.team_manager import (
 from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
+from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
 from octop.infra.errors import OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
@@ -83,12 +84,12 @@ from octop.infra.history.projection import (
     message_inputs,
 )
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
@@ -161,6 +162,13 @@ class _ResolvedModelRoute:
     automatic: bool
 
 
+class _ResolvedTurnMcp(NamedTuple):
+    """Harness names go to the model; shown names go on history chips."""
+
+    harness: list[str]
+    shown: list[str]
+
+
 class GlobalProcessor:
     """Routes InboundMessages by ``tenant_id`` to the correct HarnessAgent."""
 
@@ -182,7 +190,6 @@ class GlobalProcessor:
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
-        history_archive: Any | None = None,
     ) -> None:
         self._agent_manager = agent_manager
         self._thread_registry = thread_registry
@@ -205,7 +212,6 @@ class GlobalProcessor:
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
-        self._history_archive = history_archive
         self._title_inflight: set[str] = set()
         self._pending_system_prompt: set[str] = set()
         self.teams = TeamManager(
@@ -217,68 +223,11 @@ class GlobalProcessor:
             hitl_coordinator=self._hitl,
         )
 
-    async def _begin_history(
-        self, agent_id: str, thread_id: str, request: dict[str, Any], *, resume: bool = False
-    ) -> TurnHistoryTracker:
-        from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
-
-        archive = self._history_archive
-        if archive is None:
-            return TurnHistoryTracker.from_request(request)
-        anchor = None
-        segments = await asyncio.to_thread(archive.store.segments, thread_id)
-        if archive.enabled and not segments and not resume:
-            # Pin the pre-switch checkpoint only for legacy threads lacking a
-            # usable projection. Do not load or rewrite their message bodies.
-            status = await asyncio.to_thread(archive.messages.projection_status, thread_id)
-            if status != "ready":
-                harness = self._agent_manager.get_agent(agent_id)
-                state = await harness.graph.aget_state({"configurable": {"thread_id": thread_id}})
-                if state is not None and getattr(state, "next", False):
-                    return TurnHistoryTracker.from_request(request)
-                checkpoint_config = getattr(state, "config", None)
-                if checkpoint_config and checkpoint_config.get("configurable", {}).get(
-                    "checkpoint_id"
-                ):
-                    anchor = {"checkpoint_config": checkpoint_config}
-                elif getattr(state, "values", {}).get("messages"):
-                    raise ValueError("Cannot pin the legacy history boundary")
-        turn = await asyncio.to_thread(
-            archive.begin, agent_id, thread_id, anchor=anchor, resume=resume
-        )
-        if turn is None:
-            return TurnHistoryTracker.from_request(request)
-        try:
-            tracker = await asyncio.to_thread(
-                RecordingTracker, archive, turn, list(request.get("messages") or [])
-            )
-            await tracker.flush()
-            return tracker
-        except BaseException:
-            try:
-                await asyncio.to_thread(
-                    archive.finish, turn["id"], "failed", error="initial_capture_failed"
-                )
-            except Exception:
-                logger.exception("failed to finalize history initialization thread=%s", thread_id)
-            raise
-
-    async def _finish_history(self, tracker: TurnHistoryTracker, *, completed: bool) -> None:
-        from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
-
-        if isinstance(tracker, RecordingTracker):
-            if tracker.turn["format"] == "legacy" and completed and not tracker.paused:
-                return  # Finalize only after the legacy append commits.
-            await tracker.finish(completed=completed)
-
     async def _complete_resumed_history(
         self, thread_id: str, tracker: TurnHistoryTracker, *, completed: bool
     ) -> None:
-        try:
-            if completed:
-                await self._record_turn_history(thread_id, tracker)
-        finally:
-            await self._finish_history(tracker, completed=completed)
+        if completed:
+            await self._record_turn_history(thread_id, tracker)
 
     @property
     def hitl_coordinator(self) -> HitlChannelCoordinator:
@@ -639,7 +588,6 @@ class GlobalProcessor:
                 locale=locale,
                 usage_tracker=usage_tracker,
                 outcome=slash_outcome,
-                history_factory=self._begin_history,
                 history_finalize=_finalize,
                 member_hitl=self.teams.deliver_member_hitl,
             )
@@ -652,12 +600,14 @@ class GlobalProcessor:
                 locale=locale,
                 usage_tracker=usage_tracker,
                 outcome=slash_outcome,
-                history_factory=self._begin_history,
                 history_finalize=_finalize,
                 member_hitl=self.teams.deliver_member_hitl,
             )
-        async for ev in stream:
-            yield ev
+        try:
+            async for ev in stream:
+                yield ev
+        finally:
+            await close_event_stream(stream)
         if not slash_outcome.completed_turn:
             return
         thread_id = self._thread_registry.get_bound_thread_id(session_key)
@@ -961,33 +911,23 @@ class GlobalProcessor:
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
-                history_tracker = await self._begin_history(
-                    agent_id, ask_record.thread_id, {}, resume=True
-                )
+                history_tracker = TurnHistoryTracker.from_request({})
                 answer_outcome = HitlAnswerOutcome()
+                answer_stream = self._hitl.iter_answer_resolution(
+                    ask_record,
+                    msg.text,
+                    agent_manager=self._agent_manager,
+                    locale=locale,
+                    usage_tracker=usage_tracker,
+                    history_tracker=history_tracker,
+                    outcome=answer_outcome,
+                    member_hitl=self.teams.deliver_member_hitl,
+                )
                 try:
-                    async for ev in self._hitl.iter_answer_resolution(
-                        ask_record,
-                        msg.text,
-                        agent_manager=self._agent_manager,
-                        locale=locale,
-                        usage_tracker=usage_tracker,
-                        history_tracker=history_tracker,
-                        outcome=answer_outcome,
-                        member_hitl=self.teams.deliver_member_hitl,
-                    ):
+                    async for ev in answer_stream:
                         yield ev
                 finally:
-                    from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
-
-                    if (
-                        isinstance(history_tracker, RecordingTracker)
-                        and answer_outcome.awaiting_more
-                    ):
-                        history_tracker.paused = True
-                    await self._finish_history(
-                        history_tracker, completed=answer_outcome.completed_turn
-                    )
+                    await close_event_stream(answer_stream)
                 if answer_outcome.completed_turn:
                     self._touch_thread_after_turn(ask_record.thread_id, msg.text)
                     if usage_tracker.usage:
@@ -1064,13 +1004,21 @@ class GlobalProcessor:
             needs_multimodal=content_blocks_need_vision(content),
         )
         model_ref = model_route.model_ref
-        mcp_servers = await self._resolve_turn_mcp_servers(
+        reasoning_overrides = self._resolve_reasoning_overrides(
+            user_id=user_id,
+            thread_id=thread_id,
+            model_ref=model_ref,
+            meta=None,
+        )
+        resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=None,
             apply_defaults=True,
             raise_on_failure=False,
         )
+        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
+        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         message_kwargs: dict[str, Any] = {}
         attachments = inbound_attachments_from_parts(msg.content)
         if attachments:
@@ -1084,7 +1032,7 @@ class GlobalProcessor:
             row = self._agent_repo.get(agent_id)
             default_model = (row.default_model if row is not None else None) or None
             composer = build_composer_context(
-                mcp_servers=mcp_servers,
+                mcp_servers=shown_mcp,
                 skills=None,
                 target_agent_ids=None,
                 model_ref=model_ref,
@@ -1102,9 +1050,10 @@ class GlobalProcessor:
             model=model_ref,
             auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
+            reasoning_overrides=reasoning_overrides,
         )
         self.teams.stamp_host_runtime(request, agent_id)
-        self._attach_turn_knowledge_config(
+        knowledge_ids = self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
             is_admin=False,
@@ -1112,6 +1061,9 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        from octop.infra.gateway.process.message_keys import stamp_composer_fields  # noqa: PLC0415
+
+        stamp_composer_fields(request, knowledge_base_ids=knowledge_ids)
         request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
@@ -1128,10 +1080,10 @@ class GlobalProcessor:
         hitl_paused = False
         failure_saved = False
         usage_tracker = UsageTracker()
-        history_tracker = await self._begin_history(agent_id, thread_id, request)
+        history_tracker = TurnHistoryTracker.from_request(request)
         projection_state = StreamProjectionState()
         try:
-            async for ev in project_stream(
+            turn_stream = project_stream(
                 self._agent_manager,
                 agent_id,
                 request,
@@ -1148,8 +1100,12 @@ class GlobalProcessor:
                     session_key=session_key,
                     channel_type=channel_type,
                 ),
-            ):
-                yield ev
+            )
+            try:
+                async for ev in turn_stream:
+                    yield ev
+            finally:
+                await close_event_stream(turn_stream)
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
@@ -1191,8 +1147,6 @@ class GlobalProcessor:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            elif not failure_saved:
-                await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
     def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
@@ -1248,7 +1202,7 @@ class GlobalProcessor:
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
+            slash_stream = self._hitl.iter_slash_resolution(
                 cmd,
                 self._slash_ctx(
                     agent_id=agent_id,
@@ -1261,12 +1215,15 @@ class GlobalProcessor:
                 locale=locale,
                 usage_tracker=usage_tracker,
                 outcome=slash_outcome,
-                history_factory=self._begin_history,
                 history_finalize=self._complete_resumed_history,
                 member_hitl=self.teams.deliver_member_hitl,
-            ):
-                for frame in message_event_to_cli_chunks(ev):
-                    yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            )
+            try:
+                async for ev in slash_stream:
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            finally:
+                await close_event_stream(slash_stream)
             thread_id = self._thread_registry.get_bound_thread_id(session_key)
             if thread_id is None:
                 thread_id = await self._thread_registry.get_or_create_by_key(
@@ -1302,34 +1259,20 @@ class GlobalProcessor:
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
-                history_tracker = await self._begin_history(
-                    agent_id, ask_record.thread_id, {}, resume=True
-                )
+                history_tracker = TurnHistoryTracker.from_request({})
                 answer_outcome = HitlAnswerOutcome()
-                try:
-                    async for ev in self._hitl.iter_answer_resolution(
-                        ask_record,
-                        msg.text,
-                        agent_manager=self._agent_manager,
-                        locale=locale,
-                        usage_tracker=usage_tracker,
-                        history_tracker=history_tracker,
-                        outcome=answer_outcome,
-                        member_hitl=self.teams.deliver_member_hitl,
-                    ):
-                        for frame in message_event_to_cli_chunks(ev):
-                            yield _maybe_stamp_team_host(frame, agent_id, team_host)
-                finally:
-                    from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
-
-                    if (
-                        isinstance(history_tracker, RecordingTracker)
-                        and answer_outcome.awaiting_more
-                    ):
-                        history_tracker.paused = True
-                    await self._finish_history(
-                        history_tracker, completed=answer_outcome.completed_turn
-                    )
+                async for ev in self._hitl.iter_answer_resolution(
+                    ask_record,
+                    msg.text,
+                    agent_manager=self._agent_manager,
+                    locale=locale,
+                    usage_tracker=usage_tracker,
+                    history_tracker=history_tracker,
+                    outcome=answer_outcome,
+                    member_hitl=self.teams.deliver_member_hitl,
+                ):
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
                 if answer_outcome.completed_turn:
                     self._touch_thread_after_turn(ask_record.thread_id, msg.text)
                     if usage_tracker.usage:
@@ -1401,6 +1344,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 command=msg.text,
                 response_lines=slash_lines,
+                user_id=user_id,
             )
             self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
             self.teams.cancel_member_hitl(thread_id)
@@ -1443,7 +1387,7 @@ class GlobalProcessor:
             thread_id=thread_id,
             meta=meta,
         )
-        history_tracker = await self._begin_history(agent_id, thread_id, request)
+        history_tracker = TurnHistoryTracker.from_request(request)
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1482,9 +1426,6 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
-                from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
-
-                await flush_tracker(history_tracker)
                 self._observe_trajectory(
                     agent_id=agent_id,
                     thread_id=thread_id,
@@ -1561,6 +1502,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
             failure_saved = True
@@ -1573,8 +1517,6 @@ class GlobalProcessor:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            elif not failure_saved:
-                await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(
@@ -1603,7 +1545,7 @@ class GlobalProcessor:
     ) -> AsyncIterator[dict[str, Any]]:
         """Resume a dashboard HITL turn with the normal history bookkeeping."""
         usage_tracker = UsageTracker()
-        history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
+        history_tracker = TurnHistoryTracker.from_request({})
         turn_started = time.perf_counter()
         completed = False
         failure_saved = False
@@ -1626,9 +1568,6 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
-                from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
-
-                await flush_tracker(history_tracker)
                 self._observe_trajectory(
                     agent_id=agent_id,
                     thread_id=thread_id,
@@ -1660,6 +1599,9 @@ class GlobalProcessor:
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
                 payload["error_code"] = error_code
+            if error_code == "CONNECTOR_AUTH_REQUIRED" and isinstance(exc, OctopError):
+                # Tells the chat which connectors to authorize before retrying.
+                payload["error_details"] = exc.details
             history_tracker.observe(payload)
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
             failure_saved = True
@@ -1670,8 +1612,6 @@ class GlobalProcessor:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))
             if not failure_saved and not completed:
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
-            elif not failure_saved:
-                await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
                 self._record_turn_usage(
@@ -1740,17 +1680,21 @@ class GlobalProcessor:
         else:
             explicit_mcp = None
             apply_defaults = True
-        mcp_servers = await self._resolve_turn_mcp_servers(
+        resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=explicit_mcp,
             apply_defaults=apply_defaults,
         )
+        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
+        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         if mcp_servers:
-            # Keep history chips aligned with the servers actually injected.
+            # History chips use the viewer's catalog names. The harness request
+            # below keeps the names registered on the shared expert.
+            shown = shown_mcp if shown_mcp is not None else mcp_servers
             if isinstance(composer, dict) and composer:
                 stamped = dict(composer)
-                stamped["connectors"] = list(mcp_servers)
+                stamped["connectors"] = list(shown)
                 message_kwargs[COMPOSER_CTX_KEY] = stamped
             else:
                 from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
@@ -1760,7 +1704,7 @@ class GlobalProcessor:
                 row = self._agent_repo.get(agent_id)
                 default_model = (row.default_model if row is not None else None) or None
                 built = build_composer_context(
-                    mcp_servers=mcp_servers,
+                    mcp_servers=shown,
                     skills=meta.get("skills") if isinstance(meta.get("skills"), list) else None,
                     target_agent_ids=None,
                     model_ref=model_ref,
@@ -1784,7 +1728,7 @@ class GlobalProcessor:
             message_id=client_message_id if isinstance(client_message_id, str) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
-        self._attach_turn_knowledge_config(
+        knowledge_ids = self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
             is_admin=bool(meta.get("user_is_admin")),
@@ -1794,13 +1738,20 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        from octop.infra.gateway.process.message_keys import stamp_composer_fields  # noqa: PLC0415
+
+        stamp_composer_fields(
+            request,
+            connectors=shown_mcp,
+            knowledge_base_ids=knowledge_ids,
+        )
 
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
         if "skills" in meta:
             request["skills"] = meta["skills"]
         self._apply_turn_hitl_policy(thread_id, meta)
-        return self._stamp_turn_conversation_mode(
+        request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1809,6 +1760,10 @@ class GlobalProcessor:
             mcp_servers=mcp_servers,
             locale=locale,
         )
+        from octop.infra.bridge.local_workspace import stamp_bridge_file_target
+
+        stamp_bridge_file_target(request, meta, locale=locale, thread_id=thread_id)
+        return request
 
     def _apply_turn_hitl_policy(self, thread_id: str, meta: dict[str, Any] | None) -> None:
         raw = (meta or {}).get("hitl_policy")
@@ -1867,6 +1822,10 @@ class GlobalProcessor:
     ) -> dict[str, Any]:
         from octop.infra.agents.conversation_mode import execute_user_message
 
+        if self._is_managed_agent(agent_id):
+            return self._stamp_managed_session_mode(
+                request, agent_id=agent_id, thread_id=thread_id, meta=meta
+            )
         mode, execute_path = self._sync_and_resolve_conversation_mode(
             agent_id, thread_id, meta=meta, user_text=user_text
         )
@@ -1878,6 +1837,54 @@ class GlobalProcessor:
             request["skills"] = []
         elif mcp_servers:
             request["mcp_servers"] = mcp_servers
+        return request
+
+    def _is_managed_agent(self, agent_id: str) -> bool:
+        getter = getattr(self._agent_manager, "get_row", None)
+        if not callable(getter):
+            return False
+        try:
+            row = getter(agent_id)
+        except Exception:
+            return False
+        from octop.infra.agents.managed import is_managed_agent
+
+        return is_managed_agent(row)
+
+    def _stamp_managed_session_mode(
+        self,
+        request: dict[str, Any],
+        *,
+        agent_id: str,
+        thread_id: str,
+        meta: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Keep the underlying agent's mode id. Do not apply Ask / Plan / Craft."""
+        from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+        explicit = (meta or {}).get("session_mode")
+        thread = self._thread_registry.get_thread(thread_id)
+        stored = thread.conversation_mode if thread is not None else None
+        config: dict[str, Any] = {}
+        getter = getattr(self._agent_manager, "get_config", None)
+        if callable(getter):
+            try:
+                loaded = getter(agent_id)
+            except Exception:
+                loaded = None
+            if isinstance(loaded, dict):
+                config = loaded
+        pinned = resolve_managed_session_mode(explicit=explicit, stored=None, config={})
+        if pinned:
+            self._thread_registry.update_composer(thread_id, conversation_mode=pinned)
+            stored = pinned
+        mode = resolve_managed_session_mode(explicit=explicit, stored=stored, config=config)
+        if mode:
+            configurable = request.get("configurable")
+            if not isinstance(configurable, dict):
+                configurable = {}
+                request["configurable"] = configurable
+            configurable["acp_session_mode"] = mode
         return request
 
     def _attach_conversation_mode(self, request: dict[str, Any], mode: Any) -> None:
@@ -1921,23 +1928,18 @@ class GlobalProcessor:
         explicit_ids: list[str] | None,
         locale: str,
         agent_id: str | None = None,
-    ) -> None:
+    ) -> list[str]:
         """Expose selected knowledge-base ids for the search_knowledge tool."""
         if self._knowledge_services is None:
-            return
-        bases = (
-            self._knowledge_services.knowledge_repo.list_all()
-            if is_admin
-            else self._knowledge_services.knowledge_repo.list_visible(user_id)
-        )
+            return []
         extra_ids = self._agent_manager.default_knowledge_base_ids(agent_id) if agent_id else None
-        stamp_turn_knowledge_config(
+        return attach_turn_knowledge(
             request,
-            visible_bases=bases,
-            explicit_ids=explicit_ids,
-            owner_user_id=user_id,
-            extra_ids=extra_ids,
+            knowledge_repo=self._knowledge_services.knowledge_repo,
+            user_id=user_id,
             is_admin=is_admin,
+            explicit_ids=explicit_ids,
+            extra_ids=extra_ids,
             locale=locale,
         )
 
@@ -1949,37 +1951,37 @@ class GlobalProcessor:
         explicit: list[str] | None,
         apply_defaults: bool | None = None,
         raise_on_failure: bool = True,
-    ) -> list[str] | None:
+    ) -> _ResolvedTurnMcp | None:
         """Merge turn picks with default_open and ensure tools are loaded.
 
         Dashboard / HTTP paths should keep ``raise_on_failure=True`` so the
         client sees a clear MCP load error. IM ingress uses ``False`` so a
         flaky connector does not abort the whole message turn.
         """
-        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
         # Team hosts only dispatch — never attach MCP tools.
-        if is_team_agent(self._agent_manager.get_row(agent_id)):
-            return None
-
-        extra_defaults = self._agent_manager.default_mcp_servers(agent_id)
-        merged = self._agent_manager.merge_turn_mcp_servers(
-            user_id,
-            explicit,
+        resolved = await resolve_turn_mcp(
+            self._agent_manager,
+            agent_id=agent_id,
+            user_id=user_id,
+            explicit=explicit,
             apply_defaults=apply_defaults,
-            extra_defaults=extra_defaults,
         )
-        if not merged:
+        if resolved is None:
             return None
-        failed = await self._agent_manager.prepare_chat_mcp(
-            agent_id,
-            merged,
-            connector_user_id=user_id,
-        )
+        failed = resolved.failed
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
+                blocked = await self._agent_manager.connector_auth_blocked(user_id, failed)
+                if blocked:
+                    names = ", ".join(str(item["display_name"]) for item in blocked)
+                    raise OctopError(
+                        ErrorCode.CONNECTOR_AUTH_REQUIRED,
+                        f"connector authorization required: {names}",
+                        details={"connectors": blocked, "servers": names},
+                    )
                 raise OctopError(ErrorCode.CONNECTOR_MCP_LOAD_FAILED, detail)
             logger.warning(
                 "skipping turn MCP for agent=%s user=%s (%s)",
@@ -1988,7 +1990,7 @@ class GlobalProcessor:
                 detail,
             )
             return None
-        return merged
+        return _ResolvedTurnMcp(harness=resolved.harness, shown=resolved.shown)
 
     async def _record_stream_error(
         self,
@@ -2165,26 +2167,9 @@ class GlobalProcessor:
     ) -> None:
         """Keep partial tokens (and any error) when a turn is stopped or fails."""
         self._touch_thread_after_turn(thread_id, title_source)
-        await self._record_turn_history(thread_id, tracker, completed=False)
+        await self._record_turn_history(thread_id, tracker)
 
-    async def _record_turn_history(
-        self,
-        thread_id: str,
-        tracker: TurnHistoryTracker,
-        *,
-        completed: bool = True,
-    ) -> None:
-        from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
-
-        if isinstance(tracker, RecordingTracker):
-            if tracker.turn["format"] == "legacy":
-                await asyncio.to_thread(
-                    tracker.archive.messages.append_legacy_interval, thread_id, tracker.inputs
-                )
-                await tracker.finish(completed=completed)
-            elif not completed:
-                await tracker.finish(completed=False)
-            return
+    async def _record_turn_history(self, thread_id: str, tracker: TurnHistoryTracker) -> None:
         if self._thread_message_repo is None:
             return
         try:
@@ -2205,12 +2190,20 @@ class GlobalProcessor:
         thread_id: str,
         command: str,
         response_lines: list[str],
+        user_id: int = 0,
     ) -> None:
         """Save slash history, honoring the command's checkpoint persistence policy."""
+        from octop.infra.gateway.process.message_keys import AUTHOR_USER_ID_KEY  # noqa: PLC0415
+
         turn_id = new_ulid()
         response = "\n".join(response_lines).strip()
+        kwargs = {AUTHOR_USER_ID_KEY: user_id} if user_id > 0 else {}
         canonical: list[HumanMessage | AIMessage] = [
-            HumanMessage(content=command, id=f"slash:{turn_id}:human"),
+            HumanMessage(
+                content=command,
+                id=f"slash:{turn_id}:human",
+                additional_kwargs=kwargs,
+            ),
         ]
         if response:
             canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))

@@ -40,6 +40,7 @@ export default function AppVersionBadge({ isMobile }: AppVersionBadgeProps) {
           isMobile && styles.headerVersionMobile,
           styles.headerVersionClickable,
         )}
+        data-update-badge=""
         onClick={handleClick}
         aria-label={tooltip}
       >

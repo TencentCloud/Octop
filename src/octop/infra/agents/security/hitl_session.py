@@ -86,10 +86,9 @@ class HitlSessionPolicy:
         return {"mode": "ask"}
 
     def to_json(self) -> str | None:
-        data = self.to_dict()
-        if data.get("mode") == "ask":
-            return None
-        return json.dumps(data, ensure_ascii=False)
+        # Ask is stored too. An empty column means the thread never chose, so a
+        # managed expert can apply its own default on the next turn.
+        return json.dumps(self.to_dict(), ensure_ascii=False)
 
 
 def parse_hitl_session_policy(raw: object) -> HitlSessionPolicy:
@@ -181,6 +180,34 @@ def hitl_thread_scope(thread_id: str | None) -> Iterator[None]:
 def current_hitl_thread_id() -> str | None:
     """Thread id bound by :func:`hitl_thread_scope`, or ``None`` if unset."""
     return _CURRENT_HITL_THREAD.get()
+
+
+@contextmanager
+def ephemeral_hitl_policy(
+    store: HitlSessionPolicyStore | None,
+    thread_id: str | None,
+    policy: HitlSessionPolicy | object,
+) -> Iterator[None]:
+    """Apply *policy* for one run without writing ``threads.hitl_policy``.
+
+    A real :meth:`HitlSessionPolicyStore.set` that lands during the run is kept.
+    """
+    tid = (thread_id or "").strip()
+    if store is None or not tid:
+        yield
+        return
+    had = tid in store._cache
+    previous = store._cache.get(tid)
+    revision = store._rev.get(tid, 0)
+    store._cache[tid] = parse_hitl_session_policy(policy)
+    try:
+        yield
+    finally:
+        if store._rev.get(tid, 0) == revision:
+            if had and previous is not None:
+                store._cache[tid] = previous
+            else:
+                store._cache.pop(tid, None)
 
 
 class HitlSessionPolicyStore:
@@ -308,6 +335,7 @@ __all__ = [
     "HitlSessionPolicyStore",
     "apply_session_bypass",
     "current_hitl_thread_id",
+    "ephemeral_hitl_policy",
     "hitl_thread_scope",
     "parse_hitl_session_policy",
     "thread_id_from_interrupt_request",

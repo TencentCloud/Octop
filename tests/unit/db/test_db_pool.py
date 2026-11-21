@@ -21,6 +21,28 @@ def db(tmp_path: Path) -> SqlitePool:
     return pool
 
 
+def test_close_waits_for_in_flight_query(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    entered = threading.Event()
+    result: dict[str, int] = {}
+
+    def query() -> None:
+        with pool.connect() as conn:
+            entered.set()
+            time.sleep(0.2)
+            result["row"] = int(conn.execute("SELECT 1").fetchone()[0])
+
+    worker = threading.Thread(target=query)
+    worker.start()
+    assert entered.wait(2)
+    pool.close()
+    worker.join(2)
+    assert not worker.is_alive()
+    assert result["row"] == 1
+    with pytest.raises(sqlite3.ProgrammingError), pool.connect():
+        pass
+
+
 def test_db_pool_creates_file(tmp_path: Path):
     db_path = tmp_path / "octop.db"
     SqlitePool(db_path)
@@ -33,6 +55,31 @@ def test_db_pool_file_is_0600(tmp_path: Path):
     SqlitePool(db_path)
     mode = db_path.stat().st_mode & 0o777
     assert mode == 0o600
+
+
+def test_close_waits_for_in_flight_connection(db: SqlitePool) -> None:
+    """Closing must not free the connection while another thread is inside it."""
+    started = threading.Event()
+    release = threading.Event()
+
+    def hold() -> None:
+        with db.connect() as conn:
+            started.set()
+            assert release.wait(timeout=5)
+            conn.execute("SELECT 1").fetchone()
+
+    holder = threading.Thread(target=hold)
+    holder.start()
+    assert started.wait(timeout=5)
+    closer = threading.Thread(target=db.close)
+    closer.start()
+    closer.join(timeout=0.2)
+    assert closer.is_alive()
+    release.set()
+    closer.join(timeout=5)
+    holder.join(timeout=5)
+    assert not closer.is_alive()
+    assert not holder.is_alive()
 
 
 def test_run_migrations_creates_tables(db: SqlitePool):
@@ -105,6 +152,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert {"mfa_version", "mfa_failed_count", "mfa_locked_until", "password_version"}.issubset(
         cols
     )
+    assert "last_login_at" in cols
     assert {
         "user_totp",
         "user_webauthn_credentials",
@@ -112,6 +160,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         "auth_challenges",
         "profile_avatars",
         "control_files",
+        "thread_shares",
     }.issubset(table_names)
     assert "preferences_json" in cols
     assert "permissions" in cols
@@ -130,6 +179,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert "task_type" in cron_cols
     assert "mcp_servers" in cron_cols
     assert "name" in cron_cols
+    assert {"allow_all", "script_lang", "script_source", "script_path"}.issubset(cron_cols)
     assert "shared" in connector_cols
     assert "idx_connectors_user_display_name" in connector_indexes
     assert {
@@ -300,6 +350,7 @@ def test_migration_005_preserves_populated_users_and_constraints(tmp_path: Path)
             "mfa_failed_count": 0,
             "mfa_locked_until": 0,
             "password_version": 0,
+            "last_login_at": None,
         }
         assert dict(agent) == {
             "agent_id": "legacy-agent",
