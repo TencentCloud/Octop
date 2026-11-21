@@ -11,7 +11,12 @@ export interface KnowledgeLimits {
   max_document_bytes: number;
 }
 
-export interface KnowledgeCapability {
+export interface KnowledgeRetrievalSettings {
+  retrieval_k: number;
+  context_char_budget: number;
+}
+
+export interface KnowledgeCapability extends KnowledgeRetrievalSettings {
   feature_enabled: boolean;
   backend: "onnx" | "remote";
   selected_model: string;
@@ -213,6 +218,12 @@ export const knowledgeBasesApi = {
   getCapability: (agentId?: string | null) =>
     request<KnowledgeCapability>("/knowledge-bases/capability", {
       headers: bridgeAgentHeaders(agentId),
+    }),
+
+  setRetrievalSettings: (body: KnowledgeRetrievalSettings) =>
+    request<KnowledgeRetrievalSettings>("/knowledge-bases/retrieval-settings", {
+      method: "PATCH",
+      body: JSON.stringify(body),
     }),
 
   setFeature: (body: {

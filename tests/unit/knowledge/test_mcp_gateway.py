@@ -10,10 +10,17 @@ from octop.infra.knowledge.mcp_gateway import handle_knowledge_mcp
 
 
 @pytest.mark.asyncio
-async def test_lists_and_searches(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    ("args", "expected_k"),
+    [({}, None), ({"k": 6}, 6), ({"k": 30}, 20), ({"k": "invalid"}, None)],
+)
+async def test_lists_and_searches(
+    monkeypatch: pytest.MonkeyPatch, args: dict[str, Any], expected_k: int | None
+) -> None:
     async def fake_retrieve(*args: Any, **kwargs: Any) -> str:
         assert kwargs["knowledge_base_ids"] == ["kb1"]
         assert kwargs["query"] == "部署"
+        assert kwargs["k"] == expected_k
         return "passage"
 
     monkeypatch.setattr("octop.infra.knowledge.mcp_gateway.retrieve_context", fake_retrieve)
@@ -35,7 +42,7 @@ async def test_lists_and_searches(monkeypatch: pytest.MonkeyPatch) -> None:
             "jsonrpc": "2.0",
             "id": 2,
             "method": "tools/call",
-            "params": {"name": "search_knowledge", "arguments": {"query": "部署"}},
+            "params": {"name": "search_knowledge", "arguments": {"query": "部署", **args}},
         },
         user_id=1,
         is_admin=False,

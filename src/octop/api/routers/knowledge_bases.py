@@ -55,6 +55,13 @@ from octop.infra.knowledge.ocr import (
     set_ocr_settings,
     validate_ocr_settings,
 )
+from octop.infra.knowledge.params import (
+    MAX_CONTEXT_CHAR_BUDGET,
+    MAX_RETRIEVAL_K,
+    MIN_CONTEXT_CHAR_BUDGET,
+    MIN_RETRIEVAL_K,
+    set_advanced_settings,
+)
 from octop.infra.knowledge.rerank import (
     get_rerank_capability,
     rerank_models,
@@ -81,6 +88,13 @@ def _kb_avatars(server: OctopServer) -> Any:
 
 
 _TEXT_DOC_MAX_LENGTH = upload_mb_to_bytes(MAX_MAX_UPLOAD_MB)
+
+
+class RetrievalSettingsBody(BaseModel):
+    retrieval_k: int = Field(strict=True, ge=MIN_RETRIEVAL_K, le=MAX_RETRIEVAL_K)
+    context_char_budget: int = Field(
+        strict=True, ge=MIN_CONTEXT_CHAR_BUDGET, le=MAX_CONTEXT_CHAR_BUDGET
+    )
 
 
 class FeatureBody(BaseModel):
@@ -478,7 +492,10 @@ def _require_usable(server: OctopServer, request: Request) -> None:
 
 def _capability_payload(server: OctopServer) -> dict[str, Any]:
     assert server.services is not None
-    payload = get_capability(server.services.settings_repo.get, server.services.provider_repo)
+    settings = server.services.settings_repo
+    payload = get_capability(
+        settings.get, server.services.provider_repo, settings_get_many=settings.get_many
+    )
     payload["ocr"] = get_ocr_capability(
         server.services.settings_repo.get, server.services.provider_repo
     )
@@ -602,6 +619,20 @@ async def graph_options(
                 {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
             )
     return {"remote": remote}
+
+
+@router.patch("/retrieval-settings", summary="Update default knowledge retrieval settings")
+async def update_retrieval_settings(
+    body: RetrievalSettingsBody,
+    server: OctopServer = Depends(get_server),
+    _admin: User = Depends(require_permission("knowledge_settings")),
+) -> RetrievalSettingsBody:
+    assert server.services is not None
+    settings = server.services.settings_repo
+    updates: dict[str, str] = {}
+    set_advanced_settings(settings.get, updates.__setitem__, **body.model_dump())
+    settings.set_many(updates)
+    return body
 
 
 @router.put("/feature", summary="Enable or disable knowledge bases")

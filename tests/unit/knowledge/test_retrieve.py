@@ -18,7 +18,7 @@ from octop.infra.knowledge.graph_store import (
     ChunkRelation,
     SqliteKnowledgeGraphStore,
 )
-from octop.infra.knowledge.index import KnowledgeIndex
+from octop.infra.knowledge.index import Hit, KnowledgeIndex
 
 
 def test_retrieve_context_filters_unreadable_knowledge_base(tmp_path, monkeypatch) -> None:
@@ -85,6 +85,44 @@ def test_retrieve_context_skips_empty_non_text_turn() -> None:
     )
 
     assert context == ""
+
+
+def test_retrieve_context_uses_current_settings_and_explicit_k(monkeypatch) -> None:
+    settings: dict[str, str] = {}
+    base = SimpleNamespace(id="kb", name="KB")
+    document = SimpleNamespace(id="doc", filename="manual.md", status="ready", is_dir=False)
+    hits = [Hit(str(i), "doc", i, f"passage-{i:02} " + "x" * 750, 1.0, {}) for i in range(12)]
+    index = SimpleNamespace(search=lambda _vec, *, k: hits[:k])
+    services = SimpleNamespace(
+        settings_repo=SimpleNamespace(
+            get=settings.get,
+            get_many=lambda keys: {key: settings[key] for key in keys if key in settings},
+        ),
+        knowledge_repo=SimpleNamespace(list_documents=lambda _kb: [document]),
+    )
+    monkeypatch.setattr(retrieve_module, "open_knowledge_index", lambda *_: index)
+    monkeypatch.setattr(retrieve_module, "assert_knowledge_usable", lambda *_: None)
+    monkeypatch.setattr(retrieve_module, "embed_knowledge_texts", lambda *_: [[1.0, 0.0]])
+
+    def search(**kwargs):
+        return asyncio.run(
+            retrieve_module.retrieve_context(
+                services,
+                user_id=1,
+                is_admin=True,
+                query="manual",
+                knowledge_base_ids=[base.id],
+                visible_bases=[base],
+                **kwargs,
+            )
+        )
+
+    assert "passage-11" not in search()
+    settings["knowledge_retrieval_k"] = "12"
+    assert "passage-11" not in search()
+    settings["knowledge_context_char_budget"] = "10500"
+    assert "passage-11" in search()
+    assert "passage-08" not in search(k=8)
 
 
 def test_format_context_cites_only_documents_inside_the_budget() -> None:

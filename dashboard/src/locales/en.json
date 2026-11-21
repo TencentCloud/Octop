@@ -740,6 +740,14 @@
     "enable": "Enable",
     "featureEnabled": "Knowledge bases enabled",
     "featureDisabled": "Knowledge bases disabled",
+    "retrievalSettingsTitle": "Retrieval settings",
+    "retrievalK": "Default number of passages",
+    "contextCharBudget": "Context character budget",
+    "saveRetrievalSettings": "Save retrieval settings",
+    "saveRetrievalSettingsFirst": "Save the edited retrieval settings before saving the knowledge base feature.",
+    "saveFeatureSettings": "Save knowledge base feature",
+    "retrievalSettingsSaved": "Retrieval settings saved for the next search",
+    "retrievalSettingsSaveFailed": "Failed to save retrieval settings",
     "featureSaveFailed": "Failed to update knowledge base feature"
   },
   "setupWizard": {

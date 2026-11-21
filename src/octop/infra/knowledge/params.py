@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 DEFAULT_CHUNK_SIZE = 800
 DEFAULT_CHUNK_OVERLAP = 120
@@ -16,12 +16,13 @@ _CONTEXT_CHAR_BUDGET_KEY = "knowledge_context_char_budget"
 
 _MIN_CHUNK_SIZE = 100
 _MAX_CHUNK_SIZE = 8000
-_MIN_RETRIEVAL_K = 1
-_MAX_RETRIEVAL_K = 20
-_MIN_CONTEXT_CHAR_BUDGET = 500
-_MAX_CONTEXT_CHAR_BUDGET = 50_000
+MIN_RETRIEVAL_K = 1
+MAX_RETRIEVAL_K = 20
+MIN_CONTEXT_CHAR_BUDGET = 500
+MAX_CONTEXT_CHAR_BUDGET = 50_000
 
 SettingsGet = Callable[[str], str | None]
+SettingsGetMany = Callable[[Sequence[str]], dict[str, str]]
 SettingsSet = Callable[[str, str], None]
 
 
@@ -45,8 +46,15 @@ def _validate_chunk_window(size: int, overlap: int) -> None:
         raise ValueError("chunk_overlap must be non-negative and smaller than chunk_size")
 
 
-def get_advanced_settings(settings_get: SettingsGet) -> dict[str, int]:
-    """Return resolved indexing/retrieval knobs (missing values use defaults)."""
+def get_advanced_settings(
+    settings_get: SettingsGet, *, settings_get_many: SettingsGetMany | None = None
+) -> dict[str, int]:
+    """Return the resolved settings, using one snapshot when a batch reader is supplied."""
+    if settings_get_many is not None:
+        snapshot = settings_get_many(
+            (_CHUNK_SIZE_KEY, _CHUNK_OVERLAP_KEY, _RETRIEVAL_K_KEY, _CONTEXT_CHAR_BUDGET_KEY)
+        )
+        settings_get = snapshot.get
     size = _as_int(
         settings_get(_CHUNK_SIZE_KEY),
         default=DEFAULT_CHUNK_SIZE,
@@ -67,14 +75,14 @@ def get_advanced_settings(settings_get: SettingsGet) -> dict[str, int]:
         "retrieval_k": _as_int(
             settings_get(_RETRIEVAL_K_KEY),
             default=DEFAULT_RETRIEVAL_K,
-            minimum=_MIN_RETRIEVAL_K,
-            maximum=_MAX_RETRIEVAL_K,
+            minimum=MIN_RETRIEVAL_K,
+            maximum=MAX_RETRIEVAL_K,
         ),
         "context_char_budget": _as_int(
             settings_get(_CONTEXT_CHAR_BUDGET_KEY),
             default=DEFAULT_CONTEXT_CHAR_BUDGET,
-            minimum=_MIN_CONTEXT_CHAR_BUDGET,
-            maximum=_MAX_CONTEXT_CHAR_BUDGET,
+            minimum=MIN_CONTEXT_CHAR_BUDGET,
+            maximum=MAX_CONTEXT_CHAR_BUDGET,
         ),
     }
 
@@ -100,16 +108,14 @@ def set_advanced_settings(
             settings_set(_CHUNK_OVERLAP_KEY, str(next_overlap))
     if retrieval_k is not None:
         value = int(retrieval_k)
-        if value < _MIN_RETRIEVAL_K or value > _MAX_RETRIEVAL_K:
-            raise ValueError(
-                f"retrieval_k must be between {_MIN_RETRIEVAL_K} and {_MAX_RETRIEVAL_K}"
-            )
+        if value < MIN_RETRIEVAL_K or value > MAX_RETRIEVAL_K:
+            raise ValueError(f"retrieval_k must be between {MIN_RETRIEVAL_K} and {MAX_RETRIEVAL_K}")
         settings_set(_RETRIEVAL_K_KEY, str(value))
     if context_char_budget is not None:
         value = int(context_char_budget)
-        if value < _MIN_CONTEXT_CHAR_BUDGET or value > _MAX_CONTEXT_CHAR_BUDGET:
+        if value < MIN_CONTEXT_CHAR_BUDGET or value > MAX_CONTEXT_CHAR_BUDGET:
             raise ValueError(
                 "context_char_budget must be between "
-                f"{_MIN_CONTEXT_CHAR_BUDGET} and {_MAX_CONTEXT_CHAR_BUDGET}"
+                f"{MIN_CONTEXT_CHAR_BUDGET} and {MAX_CONTEXT_CHAR_BUDGET}"
             )
         settings_set(_CONTEXT_CHAR_BUDGET_KEY, str(value))

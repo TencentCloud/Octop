@@ -36,6 +36,28 @@ async def test_feature_toggle_requires_knowledge_settings(env: Any) -> None:
     assert allowed.json()["feature_enabled"] is False
 
 
+async def test_retrieval_settings_require_permission_and_update_capability(env: Any) -> None:
+    client, _server, admin_auth = env
+    path = "/api/knowledge-bases/retrieval-settings"
+    page_auth = await create_user(client, admin_auth, username="kb_retrieval_reader")
+    config = {"retrieval_k": 12, "context_char_budget": 10500}
+
+    denied = await client.patch(path, headers=page_auth, json=config)
+    assert denied.status_code == 403, denied.text
+
+    saved = await client.patch(path, headers=admin_auth, json=config)
+    assert saved.status_code == 200, saved.text
+    assert saved.json() == config
+
+    invalid = await client.patch(
+        path, headers=admin_auth, json={"retrieval_k": 15, "context_char_budget": 499}
+    )
+    assert invalid.status_code == 422, invalid.text
+
+    capability = await client.get("/api/knowledge-bases/capability", headers=admin_auth)
+    assert {field: capability.json()[field] for field in config} == config
+
+
 async def test_embedding_options_require_knowledge_settings(env: Any) -> None:
     client, _server, admin_auth = env
     page_auth = await create_user(client, admin_auth, username="kb_options_user")

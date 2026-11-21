@@ -740,6 +740,14 @@
     "enable": "启用",
     "featureEnabled": "知识库已启用",
     "featureDisabled": "知识库已停用",
+    "retrievalSettingsTitle": "检索参数",
+    "retrievalK": "默认召回段数",
+    "contextCharBudget": "上下文字符预算",
+    "saveRetrievalSettings": "保存检索参数",
+    "saveRetrievalSettingsFirst": "检索参数有未保存的修改。请先保存检索参数，再保存知识库功能。",
+    "saveFeatureSettings": "保存知识库功能",
+    "retrievalSettingsSaved": "已保存检索参数，下次检索生效",
+    "retrievalSettingsSaveFailed": "保存检索参数失败",
     "featureSaveFailed": "更新知识库功能失败"
   },
   "setupWizard": {

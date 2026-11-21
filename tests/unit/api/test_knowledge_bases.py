@@ -19,6 +19,14 @@ def _request() -> Request:
     )
 
 
+def _settings_repo(values: dict[str, str]) -> SimpleNamespace:
+    return SimpleNamespace(
+        get=values.get,
+        get_many=lambda keys: {key: values[key] for key in keys if key in values},
+        set=values.__setitem__,
+    )
+
+
 def _services(**extra: object) -> SimpleNamespace:
     return SimpleNamespace(
         settings_repo=SimpleNamespace(get=lambda _key: None, set=lambda *_: None),
@@ -103,7 +111,7 @@ async def test_enabling_reindexes_documents_when_model_changes(
     calls: list[tuple[object, str]] = []
     server = SimpleNamespace(
         services=SimpleNamespace(
-            settings_repo=SimpleNamespace(get=settings.get, set=settings.__setitem__),
+            settings_repo=_settings_repo(settings),
             provider_repo=SimpleNamespace(list_all=lambda: []),
         )
     )
@@ -131,7 +139,7 @@ async def test_enabling_reindexes_documents_when_model_changes(
     monkeypatch.setattr(
         knowledge_bases,
         "get_capability",
-        lambda get, _provider_repo=None: {
+        lambda get, _provider_repo=None, **_kwargs: {
             "feature_enabled": get("knowledge_bases_enabled") == "true",
             "selected_model": get("knowledge_embedding_model"),
             "backend": get("knowledge_embedding_backend") or "onnx",
@@ -483,7 +491,7 @@ def _feature_server(monkeypatch: pytest.MonkeyPatch, provider: SimpleNamespace) 
 
     values: dict[str, str] = {}
     services = SimpleNamespace(
-        settings_repo=SimpleNamespace(get=values.get, set=values.__setitem__),
+        settings_repo=_settings_repo(values),
         provider_repo=SimpleNamespace(
             list_all=lambda: [provider],
             get=lambda pid: provider if pid == provider.id else None,
@@ -1074,7 +1082,7 @@ def test_capability_payload_reports_graph_settings() -> None:
     provider = _chat_provider()
     server = SimpleNamespace(
         services=SimpleNamespace(
-            settings_repo=SimpleNamespace(get=settings.get),
+            settings_repo=_settings_repo(settings),
             provider_repo=SimpleNamespace(get=lambda _id: provider),
             config=None,
         )
@@ -1099,7 +1107,7 @@ async def test_enabling_graph_without_a_chat_model_is_rejected_before_anything_i
     provider = _chat_provider()
     server = SimpleNamespace(
         services=SimpleNamespace(
-            settings_repo=SimpleNamespace(get=saved.get, set=saved.__setitem__),
+            settings_repo=_settings_repo(saved),
             provider_repo=SimpleNamespace(get=lambda _id: provider, list_all=lambda: [provider]),
         )
     )
@@ -1132,7 +1140,7 @@ async def test_put_feature_saves_graph_settings() -> None:
     provider = _chat_provider()
     server = SimpleNamespace(
         services=SimpleNamespace(
-            settings_repo=SimpleNamespace(get=saved.get, set=saved.__setitem__),
+            settings_repo=_settings_repo(saved),
             provider_repo=SimpleNamespace(get=lambda _id: provider, list_all=lambda: [provider]),
             config=None,
         )

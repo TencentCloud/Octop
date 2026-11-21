@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 from octop.infra.db.pool import DatabasePool
 
 
@@ -16,13 +18,28 @@ class SettingsRepo:
             r = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return r["value"] if r else None
 
+    def get_many(self, keys: Sequence[str]) -> dict[str, str]:
+        if not keys:
+            return {}
+        placeholders = ", ".join("?" for _ in keys)
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT key, value FROM settings WHERE key IN ({placeholders})",
+                tuple(keys),
+            ).fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
     def set(self, key: str, value: str) -> None:
+        self.set_many({key: value})
+
+    def set_many(self, values: Mapping[str, str]) -> None:
         with self._db.transaction() as conn:
-            conn.execute(
-                "INSERT INTO settings(key, value) VALUES(?, ?)"
-                " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, value),
-            )
+            for key, value in values.items():
+                conn.execute(
+                    "INSERT INTO settings(key, value) VALUES(?, ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (key, value),
+                )
 
     def delete(self, key: str) -> None:
         with self._db.transaction() as conn:

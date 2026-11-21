@@ -14,7 +14,7 @@ from octop.infra.agents.providers.onnx_service import (
     local_embedding_deps_available,
     require_embedding_prerequisites_for_model,
 )
-from octop.infra.knowledge.params import get_advanced_settings
+from octop.infra.knowledge.params import SettingsGetMany, get_advanced_settings
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,12 @@ def _remote_ready(provider: Any | None, model: str) -> bool:
     )
 
 
-def get_capability(settings_get: SettingsGet, provider_repo: Any = None) -> dict[str, Any]:
+def get_capability(
+    settings_get: SettingsGet,
+    provider_repo: Any = None,
+    *,
+    settings_get_many: SettingsGetMany | None = None,
+) -> dict[str, Any]:
     """Return feature state and its independent embedding readiness checks."""
     selected_model = (settings_get(_EMBEDDING_MODEL_KEY) or "").strip()
     backend = (settings_get(_EMBEDDING_BACKEND_KEY) or "onnx").strip().lower()
@@ -92,7 +97,7 @@ def get_capability(settings_get: SettingsGet, provider_repo: Any = None) -> dict
             "deps_available": deps_available,
             "provider_ready": provider_ready,
         },
-        **get_advanced_settings(settings_get),
+        **get_advanced_settings(settings_get, settings_get_many=settings_get_many),
     }
 
 

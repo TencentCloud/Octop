@@ -361,6 +361,15 @@ export default function KnowledgeBasesPage() {
   const [onnxProbing, setOnnxProbing] = useState(false);
   const [featureEnabledDraft, setFeatureEnabledDraft] = useState(false);
   const [featureSaving, setFeatureSaving] = useState(false);
+  const [retrievalK, setRetrievalK] = useState<number | null>(null);
+  const [contextCharBudget, setContextCharBudget] = useState<number | null>(
+    null,
+  );
+  const [retrievalSaving, setRetrievalSaving] = useState(false);
+  const hasUnsavedRetrievalSettings =
+    capability !== null &&
+    (retrievalK !== capability.retrieval_k ||
+      contextCharBudget !== capability.context_char_budget);
   const [featureModel, setFeatureModel] = useState<string>();
   const [featureBackend, setFeatureBackend] = useState<"onnx" | "remote">(
     "onnx",
@@ -913,8 +922,10 @@ export default function KnowledgeBasesPage() {
       setRerankEnabledDraft(Boolean(nextCapability.rerank?.enabled));
       setRerankProviderId(nextCapability.rerank?.provider_id || undefined);
       setRerankModel(nextCapability.rerank?.model || undefined);
+      return nextCapability;
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
+      return null;
     }
   }, [t]);
 
@@ -1464,25 +1475,52 @@ export default function KnowledgeBasesPage() {
     }
   };
 
-  const openSettings = () => {
-    const selectedModel = capability?.selected_model || undefined;
-    const selectedBackend = capability?.backend ?? "onnx";
+  const saveRetrievalSettings = async () => {
+    if (retrievalK === null || contextCharBudget === null) return;
+    setRetrievalSaving(true);
+    try {
+      const saved = await knowledgeBasesApi.setRetrievalSettings({
+        retrieval_k: retrievalK,
+        context_char_budget: contextCharBudget,
+      });
+      setCapability((current) => current && { ...current, ...saved });
+      message.success(t("knowledgeBases.retrievalSettingsSaved"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(
+          error,
+          t("knowledgeBases.retrievalSettingsSaveFailed"),
+          t,
+        ),
+      );
+    } finally {
+      setRetrievalSaving(false);
+    }
+  };
+
+  const openSettings = async () => {
+    const current = capability ?? (await loadCapability());
+    if (!current) return;
+    setRetrievalK(current.retrieval_k);
+    setContextCharBudget(current.context_char_budget);
+    const selectedModel = current.selected_model || undefined;
+    const selectedBackend = current.backend;
     onnxExpandedRef.current = false;
     setOnnxExpanded(false);
-    setFeatureEnabledDraft(Boolean(capability?.feature_enabled));
+    setFeatureEnabledDraft(current.feature_enabled);
     setFeatureBackend(selectedBackend);
     setFeatureModel(selectedModel);
-    setFeatureProviderId(capability?.provider_id || undefined);
-    setOcrEnabledDraft(Boolean(capability?.ocr?.enabled));
-    setOcrBackend(capability?.ocr?.backend ?? "onnx");
-    setOcrModel(capability?.ocr?.model || "rapidocr");
-    setOcrProviderId(capability?.ocr?.provider_id || undefined);
-    setRerankEnabledDraft(Boolean(capability?.rerank?.enabled));
-    setRerankProviderId(capability?.rerank?.provider_id || undefined);
-    setRerankModel(capability?.rerank?.model || undefined);
-    setGraphEnabledDraft(Boolean(capability?.graph?.enabled));
-    setGraphProviderId(capability?.graph?.provider_id || undefined);
-    setGraphModel(capability?.graph?.model || undefined);
+    setFeatureProviderId(current.provider_id || undefined);
+    setOcrEnabledDraft(Boolean(current.ocr?.enabled));
+    setOcrBackend(current.ocr?.backend ?? "onnx");
+    setOcrModel(current.ocr?.model || "rapidocr");
+    setOcrProviderId(current.ocr?.provider_id || undefined);
+    setRerankEnabledDraft(Boolean(current.rerank?.enabled));
+    setRerankProviderId(current.rerank?.provider_id || undefined);
+    setRerankModel(current.rerank?.model || undefined);
+    setGraphEnabledDraft(Boolean(current.graph?.enabled));
+    setGraphProviderId(current.graph?.provider_id || undefined);
+    setGraphModel(current.graph?.model || undefined);
     setFeatureModalOpen(true);
     void (async () => {
       const options = await loadEmbeddingOptions(false);
@@ -2306,7 +2344,11 @@ export default function KnowledgeBasesPage() {
       fill
       actions={
         canConfigureKb ? (
-          <Button icon={<Settings size={15} />} onClick={openSettings}>
+          <Button
+            icon={<Settings size={15} />}
+            disabled={loading}
+            onClick={openSettings}
+          >
             {t("knowledgeBases.settingsTitle")}
           </Button>
         ) : undefined
@@ -3973,8 +4015,10 @@ export default function KnowledgeBasesPage() {
               type="primary"
               loading={featureSaving}
               disabled={
-                featureEnabledDraft
-                  ? !featureModel ||
+                hasUnsavedRetrievalSettings ||
+                retrievalSaving ||
+                (featureEnabledDraft &&
+                  (!featureModel ||
                     (featureBackend === "remote" && !featureProviderId) ||
                     (ocrEnabledDraft &&
                       ocrBackend === "remote" &&
@@ -3985,12 +4029,11 @@ export default function KnowledgeBasesPage() {
                       !catalog.find((model) => model.id === featureModel)
                         ?.downloaded) ||
                     featureOptionsLoading ||
-                    onnxDownloading
-                  : false
+                    onnxDownloading))
               }
               onClick={() => void saveFeature()}
             >
-              {t("common.save")}
+              {t("knowledgeBases.saveFeatureSettings")}
             </Button>
           </div>
         }
@@ -4011,6 +4054,67 @@ export default function KnowledgeBasesPage() {
               onChange={setFeatureEnabledDraft}
             />
           </div>
+        </div>
+
+        <div className={styles.settingsBody}>
+          <div className={styles.settingsFieldLabel}>
+            {t("knowledgeBases.retrievalSettingsTitle")}
+          </div>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRow}>
+              <label className={styles.switchLabel} htmlFor="kb-retrieval-k">
+                {t("knowledgeBases.retrievalK")}
+              </label>
+              <InputNumber
+                id="kb-retrieval-k"
+                min={1}
+                max={20}
+                precision={0}
+                value={retrievalK}
+                disabled={retrievalSaving}
+                onChange={setRetrievalK}
+              />
+            </div>
+            <div className={styles.formOptionRow}>
+              <label
+                className={styles.switchLabel}
+                htmlFor="kb-context-char-budget"
+              >
+                {t("knowledgeBases.contextCharBudget")}
+              </label>
+              <InputNumber
+                id="kb-context-char-budget"
+                min={500}
+                max={50000}
+                precision={0}
+                value={contextCharBudget}
+                disabled={retrievalSaving}
+                onChange={setContextCharBudget}
+              />
+            </div>
+          </div>
+          <Button
+            loading={retrievalSaving}
+            disabled={
+              retrievalK === null ||
+              contextCharBudget === null ||
+              !Number.isInteger(retrievalK) ||
+              retrievalK < 1 ||
+              retrievalK > 20 ||
+              !Number.isInteger(contextCharBudget) ||
+              contextCharBudget < 500 ||
+              contextCharBudget > 50000 ||
+              !hasUnsavedRetrievalSettings
+            }
+            onClick={() => void saveRetrievalSettings()}
+          >
+            {t("knowledgeBases.saveRetrievalSettings")}
+          </Button>
+          {hasUnsavedRetrievalSettings && (
+            <span className={styles.formOptionHint} role="status">
+              {t("knowledgeBases.saveRetrievalSettingsFirst")}
+            </span>
+          )}
         </div>
 
         {featureEnabledDraft ? (
