@@ -1,8 +1,8 @@
 """tests/integration/test_cron_api.py — cron CRUD + run-now + trigger validation.
 
-Plan §12.6 mandates this file. Covers list/create/get/patch/delete cycle,
-trigger validation surfacing CRON_TRIGGER_INVALID at create + patch, and
-run-now invoking the cron manager and updating last_status.
+Covers the list/create/get/patch/delete cycle, trigger validation surfacing
+CRON_TRIGGER_INVALID on create and patch, and run-now invoking the cron manager
+and updating last_status.
 """
 
 from __future__ import annotations
@@ -77,8 +77,7 @@ async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
 
 
 async def test_create_with_invalid_trigger_returns_400(env: Any) -> None:
-    """Plan §12.6: ``build_trigger`` is called server-side at create;
-    invalid spec must surface ``CRON_TRIGGER_INVALID`` (HTTP 400)."""
+    """Creation validates triggers and surfaces invalid specs as HTTP 400."""
     c, _srv, alice_auth, _bob_auth, aid = env
     r = await c.post(
         f"/api/agents/{aid}/cron",
