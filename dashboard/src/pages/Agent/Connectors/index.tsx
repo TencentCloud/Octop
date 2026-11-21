@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import PageShell from "../../../layouts/PageShell";
+import PillScroller from "../../../components/PillScroller";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
@@ -65,6 +66,11 @@ import {
   MAIL_PROVIDERS,
   mailProviderById,
 } from "./connectorDefs";
+import {
+  CONNECTOR_CATEGORY_ALL,
+  connectorCategoryOptions,
+  matchesConnectorCategory,
+} from "./connectorCategories";
 import { notifyConnectorsChanged } from "./customMcpUtils";
 import {
   extractHttpUrl,
@@ -2360,6 +2366,7 @@ export default function ConnectorsPage() {
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<ConnectorTab>("enabled");
+  const [activeCategory, setActiveCategory] = useState(CONNECTOR_CATEGORY_ALL);
   const [drawerEntry, setDrawerEntry] = useState<ConnectorCatalogEntry | null>(
     null,
   );
@@ -2397,6 +2404,68 @@ export default function ConnectorsPage() {
   const configuredCount = useMemo(() => {
     return instances.filter((instance) => instance.has_credentials).length;
   }, [instances]);
+
+  const categoryOptions = useMemo(
+    () =>
+      connectorCategoryOptions(
+        catalog.map((entry) => entry.category),
+        (category) => t(`connectors.category.${category}`, category),
+        t("connectors.categoryAll"),
+      ),
+    [catalog, t],
+  );
+  const showCategoryPills = categoryOptions.length > 1;
+
+  useEffect(() => {
+    if (
+      activeCategory &&
+      !categoryOptions.some((option) => option.value === activeCategory)
+    ) {
+      setActiveCategory(CONNECTOR_CATEGORY_ALL);
+    }
+  }, [activeCategory, categoryOptions]);
+
+  const catalogByKind = useMemo(() => {
+    const byKind = new Map<string, ConnectorCatalogEntry>();
+    for (const entry of catalog) byKind.set(entry.kind, entry);
+    return byKind;
+  }, [catalog]);
+
+  const visibleCatalog = useMemo(
+    () =>
+      catalog.filter((entry) =>
+        matchesConnectorCategory(entry.category, activeCategory),
+      ),
+    [activeCategory, catalog],
+  );
+  const categoryInstances = useMemo(
+    () =>
+      visibleInstances.filter((instance) =>
+        matchesConnectorCategory(
+          catalogByKind.get(instance.kind)?.category,
+          activeCategory,
+        ),
+      ),
+    [activeCategory, catalogByKind, visibleInstances],
+  );
+  const visibleConfiguredCount = useMemo(() => {
+    if (!activeCategory) return configuredCount;
+    const kinds = new Set(visibleCatalog.map((entry) => entry.kind));
+    return instances.filter(
+      (instance) => instance.has_credentials && kinds.has(instance.kind),
+    ).length;
+  }, [activeCategory, configuredCount, instances, visibleCatalog]);
+
+  const categoryPills = showCategoryPills ? (
+    <PillScroller
+      className={styles.categoryScroller}
+      options={categoryOptions}
+      active={activeCategory}
+      onSelect={setActiveCategory}
+      prevLabel={t("experts.marketScenePrev")}
+      nextLabel={t("experts.marketSceneNext")}
+    />
+  ) : null;
 
   useEffect(() => {
     const oauthState = searchParams.get("oauth_state");
@@ -2528,7 +2597,7 @@ export default function ConnectorsPage() {
                   <div className={styles.listToolbarStart}>
                     <span className={styles.listToolbarMeta}>
                       {t("connectors.enabledSummary", {
-                        count: visibleInstances.length,
+                        count: categoryInstances.length,
                         defaultValue: "已启用 {{count}} 个连接器实例",
                       })}
                     </span>
@@ -2547,13 +2616,18 @@ export default function ConnectorsPage() {
                     {t("common.refresh")}
                   </Button>
                 </div>
+                {categoryPills}
                 {visibleInstances.length === 0 ? (
                   <div className={styles.filterEmpty}>
                     {t("resourceAudience.empty")}
                   </div>
+                ) : categoryInstances.length === 0 ? (
+                  <div className={styles.filterEmpty}>
+                    {t("connectors.categoryEmpty")}
+                  </div>
                 ) : (
                   <div className={styles.typeGrid}>
-                    {visibleInstances.map((instance) => (
+                    {categoryInstances.map((instance) => (
                       <ConnectorInstanceCard
                         key={instance.instance_id}
                         instance={instance}
@@ -2585,8 +2659,8 @@ export default function ConnectorsPage() {
           <div className={styles.listToolbar}>
             <span className={styles.listToolbarMeta}>
               {t("connectors.listSummary", {
-                total: catalog.length,
-                configured: configuredCount,
+                total: visibleCatalog.length,
+                configured: visibleConfiguredCount,
                 defaultValue:
                   "当前支持 {{total}} 个连接器，已配置 {{configured}} 个",
               })}
@@ -2599,13 +2673,18 @@ export default function ConnectorsPage() {
               {t("common.refresh")}
             </Button>
           </div>
+          {categoryPills}
           {loading ? (
             <div className={styles.loadingState}>
               <Spin />
             </div>
+          ) : activeCategory && visibleCatalog.length === 0 ? (
+            <div className={styles.filterEmpty}>
+              {t("connectors.categoryEmpty")}
+            </div>
           ) : (
             <div className={styles.typeGrid}>
-              {catalog.map((entry) => (
+              {visibleCatalog.map((entry) => (
                 <ConnectorCard
                   key={entry.kind}
                   entry={entry}

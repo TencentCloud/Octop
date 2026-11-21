@@ -15,6 +15,8 @@
 
 /* ---------- Page shell ---------- */
 .chatPage {
+  /* Title, messages, and composer stay one column; the right dock is the other. */
+  --chat-main-min: 320px;
   /* Shared column metrics: title bar + composer alignment. */
   --chat-column-max: 960px;
   --chat-column-pad-x: 32px;
@@ -46,7 +48,7 @@
   display: flex;
   flex-direction: column;
   container: chat-main / inline-size;
-  min-width: 320px;
+  min-width: var(--chat-main-min, 320px);
   height: 100%;
   overflow: hidden;
   background: var(--fn-bg-elevated, #fff);
@@ -62,8 +64,8 @@
   --chat-turn-rail-gutter: 48px;
 
   .chatTitleBar {
-    padding-inline: var(--chat-turn-rail-gutter)
-      max(var(--chat-column-pad-x, 24px), var(--window-controls-inset-end, 0px));
+    padding-inline-start: var(--chat-turn-rail-gutter);
+    padding-inline-end: var(--chat-column-pad-x, 24px);
     padding-block: 0;
   }
 
@@ -100,19 +102,16 @@
   gap: 8px;
   box-sizing: border-box;
   position: relative;
-  flex: 0 0 var(--fn-chat-chrome-height, 57px);
-  height: var(--fn-chat-chrome-height, 57px);
-  min-height: var(--fn-chat-chrome-height, 57px);
-  max-height: var(--fn-chat-chrome-height, 57px);
-  /* Match .chatInput gutters on the left; on desktop grow the right pad so
-     long titles do not sit under the frameless window controls. */
+  flex: 0 0 var(--fn-chat-chrome-height, 58px);
+  height: var(--fn-chat-chrome-height, 58px);
+  min-height: var(--fn-chat-chrome-height, 58px);
+  max-height: var(--fn-chat-chrome-height, 58px);
+  /* Match .chatInput gutters. Caption buttons sit on the menu row above. */
   --chat-title-pad-x: var(--chat-column-pad-x);
-  padding: 0 max(var(--chat-title-pad-x), var(--window-controls-inset-end, 0px))
-    0 var(--chat-title-pad-x);
+  padding: 0 var(--chat-title-pad-x);
   border-bottom: none;
   background: var(--fn-bg-primary);
   color: var(--fn-text-primary);
-  /* Visible so the hover edit control can sit just past the title. */
   overflow: visible;
   z-index: 2;
 
@@ -136,25 +135,29 @@
     background: var(--fn-chat-divider, var(--fn-border-primary));
     pointer-events: none;
   }
+}
 
-  &:hover .chatTitleEditBtn,
-  &:focus-within .chatTitleEditBtn {
-    opacity: 1;
-    pointer-events: auto;
-  }
+/* Welcome/empty chats keep the same top-row bounds as active conversations. */
+.chatTitleBarEmpty {
+  display: flex;
+  align-items: center;
+  flex: 0 0 var(--fn-chat-chrome-height, 58px);
+  width: 100%;
+  --chat-title-pad-x: var(--chat-column-pad-x);
+  padding-inline: var(--chat-title-pad-x);
+  box-sizing: border-box;
 }
 
 .chatTitleLeft {
   flex: 1;
   min-width: 0;
-  max-width: var(--chat-column-max);
-  width: 100%;
-  margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
   box-sizing: border-box;
+  /* Room for the hover actions, which hang off the title without a gap. */
+  padding-inline-end: 60px;
 }
 
 .chatTitleLeadingIcon {
@@ -163,13 +166,20 @@
   opacity: 1;
 }
 
+.chatTitleCluster {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
 .chatTitleHeading {
-  /* Content-sized row: [title…][pin?][edit][more]; shrinks with ellipsis. */
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
-  /* Do not grow — otherwise edit sits far right of a full-width title box. */
   flex: 0 1 auto;
   max-width: 100%;
   overflow: hidden;
@@ -196,6 +206,84 @@
   color: var(--fn-text-tertiary);
 }
 
+.chatTitleActions {
+  position: absolute;
+  inset-inline-start: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  padding-inline-start: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--fn-transition-fast, 0.15s ease);
+}
+
+.chatTitleLeft:hover .chatTitleActions,
+.chatTitleLeft:focus-within .chatTitleActions,
+.chatTitleActionsOpen {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .chatTitleActions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Clears caption buttons when this row reaches the window edge. */
+.chatSideToggleWrap {
+  margin-inline-start: auto;
+  margin-inline-end: max(
+    0px,
+    calc(var(--window-controls-inset-end, 0px) - var(--chat-title-pad-x, 32px))
+  );
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.chatSideToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  /* Same tile as the nav fold icon, one step lighter than title actions. */
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-text-primary);
+    background: var(--fn-sidebar-item-hover);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+/* Side-by-side dock: the toggle sits against the panel, not the window edge.
+   The chat column keeps --chat-main-min; the dock shrinks beside it. */
+.chatPageWithRightDock .chatSideToggleWrap {
+  margin-inline-end: 0;
+}
+
 .chatTitleEditBtn {
   position: static;
   flex-shrink: 0;
@@ -211,37 +299,28 @@
   background: transparent;
   color: var(--fn-text-secondary);
   cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
   transition:
-    opacity var(--fn-transition-fast, 0.15s ease),
     color var(--fn-transition-fast, 0.15s ease),
     background var(--fn-transition-fast, 0.15s ease);
 
-  &:hover {
+  &:hover:not(:disabled) {
     color: var(--fn-text-primary);
     background: var(--fn-bg-secondary);
   }
 
+  &:disabled {
+    color: var(--fn-text-tertiary);
+    cursor: default;
+  }
+
   &:focus-visible {
-    opacity: 1;
-    pointer-events: auto;
     outline: 2px solid var(--fn-color-brand);
     outline-offset: 2px;
   }
-
-  @media (hover: none) {
-    opacity: 1;
-    pointer-events: auto;
-  }
-}
-
-.chatTitleHoverShown {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .chatTitleInput {
+  min-width: 0;
   width: min(420px, 100%);
   height: 30px;
   padding: 0 8px;
@@ -350,12 +429,7 @@
   align-items: center;
   justify-content: center;
   padding: 32px 20px;
-  background: radial-gradient(
-      ellipse 70% 45% at 50% 0%,
-      color-mix(in srgb, var(--fn-color-brand) 10%, transparent),
-      transparent 70%
-    ),
-    var(--fn-bg-elevated, #fff);
+  background: var(--fn-bg-elevated, #fff);
   animation: welcomeFadeIn 0.35s ease both;
 }
 

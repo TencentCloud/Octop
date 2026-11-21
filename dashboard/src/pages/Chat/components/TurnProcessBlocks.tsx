@@ -6,9 +6,15 @@ import { partitionPinnedTools } from "../../../plugins/toolRenderers/isPinnedToo
 import { useToolRendererVersion } from "../../../plugins/toolRenderers";
 import AssistantProcessSummary from "./AssistantProcessSummary";
 import { ToolDetailsInline } from "./MessageBubble";
+import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import { ExpertMessageAvatar } from "./MessageSender";
 import { useAgent } from "../../../context/AgentContext";
-import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
+import {
+  isTeamAgent,
+  isTeamHostSpeaker,
+  resolveSpeakerFace,
+} from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { useTranslation } from "react-i18next";
 import styles from "../index.module.less";
@@ -55,7 +61,7 @@ export function TurnProcessBlocks({
     activeAgent?.agent_id,
   );
   const expert =
-    (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+    resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
     (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
   const avatarTooltip = hostSpeaker
     ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
@@ -88,6 +94,8 @@ export function TurnProcessBlocks({
                 iconUrl={expert?.icon_url}
                 tooltip={avatarTooltip}
                 profileAgentId={avatarProfileId}
+                managedRunner={managedRunnerId(expert)}
+                {...incomingShareProps(expert)}
               />
             </div>
           ) : null}

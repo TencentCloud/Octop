@@ -8,7 +8,12 @@ import type {
   OctopCronPatchBody,
   OctopCronRow,
 } from "../../../api/types";
-import { channelFromSessionKey } from "./cronDisplay";
+import {
+  LATEST_SESSION_TARGET,
+  THREAD_TARGET_PREFIX,
+  channelFromSessionKey,
+  pinnedThreadId,
+} from "./cronDisplay";
 import { presetToCron, cronToPreset } from "./components/constants";
 import {
   isOnceTrigger,
@@ -40,9 +45,16 @@ export interface CronJobFormValues {
   run_at?: string | Dayjs;
   _preset?: string;
   prompt: string;
-  task_type: "text" | "agent";
+  task_type: "text" | "agent" | "script";
+  allow_all: boolean;
+  script_lang?: "python" | "bash" | "powershell";
+  script_source?: "inline" | "file";
+  script_path?: string;
   model?: string;
   fresh_thread: boolean;
+  /** ``latest`` or a historical thread id. Ignored while ``fresh_thread`` is on. */
+  session_target?: string;
+  /** Preserved channel key when the choice is "latest". */
   session_key?: string | null;
   mcp_servers?: string[];
 }
@@ -66,7 +78,10 @@ function fromOctop(row: OctopCronRow, timezone: string): CronJob {
       cron,
       timezone,
     },
-    task_type: row.task_type === "text" ? "text" : "agent",
+    task_type:
+      row.task_type === "text" || row.task_type === "script"
+        ? row.task_type
+        : "agent",
     model: row.model ?? undefined,
     request: {
       input: [
@@ -91,6 +106,10 @@ function fromOctop(row: OctopCronRow, timezone: string): CronJob {
       octop_session_key: row.session_key,
       octop_model: row.model,
       octop_task_type: row.task_type,
+      octop_allow_all: Boolean(row.allow_all),
+      octop_script_lang: row.script_lang,
+      octop_script_source: row.script_source,
+      octop_script_path: row.script_path,
       octop_mcp_servers: row.mcp_servers ?? [],
       octop_last_run_at: row.last_run_at,
       octop_last_status: row.last_status,
@@ -129,14 +148,30 @@ export function jobToFormValues(
     },
     run_at: once ? onceRunAtFromTrigger(rawTrigger) : undefined,
     prompt,
-    task_type: job.task_type === "text" ? "text" : "agent",
+    task_type:
+      job.task_type === "text" || job.task_type === "script"
+        ? job.task_type
+        : "agent",
+    allow_all: Boolean(meta.octop_allow_all),
+    script_lang:
+      meta.octop_script_lang === "bash" ||
+      meta.octop_script_lang === "powershell"
+        ? meta.octop_script_lang
+        : "python",
+    script_source: meta.octop_script_source === "file" ? "file" : "inline",
+    script_path:
+      typeof meta.octop_script_path === "string" ? meta.octop_script_path : "",
     model: defaultModelToForm(
       job.model ??
         (typeof meta.octop_model === "string" ? meta.octop_model : undefined),
     ),
     fresh_thread: Boolean(meta.octop_fresh_thread),
+    session_target: sessionTargetFromKey(
+      typeof meta.octop_session_key === "string" ? meta.octop_session_key : "",
+    ),
     session_key:
-      typeof meta.octop_session_key === "string"
+      typeof meta.octop_session_key === "string" &&
+      !pinnedThreadId(meta.octop_session_key)
         ? meta.octop_session_key
         : null,
     mcp_servers: Array.isArray(meta.octop_mcp_servers)
@@ -178,17 +213,49 @@ function resolveCronExpression(values: CronJobFormValues): string {
   return /^(cron|interval|date|agently):/.test(cron) ? cron : `cron:${cron}`;
 }
 
-function toOctopCreateBody(values: CronJobFormValues) {
+function sessionTargetFromKey(sessionKey: string): string {
+  return pinnedThreadId(sessionKey) || LATEST_SESSION_TARGET;
+}
+
+/** Channel key, ``latest``, or ``thread:{id}``. Fresh runs drop a history pin. */
+function sessionKeyFromForm(values: CronJobFormValues): string | null {
+  const kept =
+    typeof values.session_key === "string" &&
+    values.session_key &&
+    !values.session_key.startsWith(THREAD_TARGET_PREFIX)
+      ? values.session_key
+      : "";
+  if (values.fresh_thread) {
+    return kept || LATEST_SESSION_TARGET;
+  }
+  const target = values.session_target || LATEST_SESSION_TARGET;
+  if (target === LATEST_SESSION_TARGET) {
+    return kept || LATEST_SESSION_TARGET;
+  }
+  return `${THREAD_TARGET_PREFIX}${target}`;
+}
+
+export function toOctopCreateBody(values: CronJobFormValues) {
+  const scriptFile =
+    values.task_type === "script" && values.script_source === "file";
+  const scriptPath = (values.script_path || "").trim();
   return {
     name: (values.name || "").trim(),
     trigger: resolveCronExpression(values),
-    prompt: values.prompt.trim(),
+    prompt: scriptFile ? scriptPath : values.prompt.trim(),
     task_type: values.task_type,
-    session_key: values.fresh_thread ? null : values.session_key || null,
+    session_key: sessionKeyFromForm(values),
     fresh_thread: Boolean(values.fresh_thread),
     enabled: Boolean(values.enabled),
-    model: defaultModelFromForm(values.model),
-    mcp_servers: values.mcp_servers ?? [],
+    model:
+      values.task_type === "script" ? null : defaultModelFromForm(values.model),
+    mcp_servers: values.task_type === "script" ? [] : values.mcp_servers ?? [],
+    allow_all: values.task_type === "agent" && Boolean(values.allow_all),
+    script_lang:
+      values.task_type === "script" ? values.script_lang || "python" : null,
+    script_source:
+      values.task_type === "script" ? values.script_source || "inline" : null,
+    script_path: scriptFile ? scriptPath : null,
   };
 }
 
@@ -220,6 +287,13 @@ export function toOctopPatchBody(
     patch.fresh_thread = next.fresh_thread;
   }
   if (next.enabled !== original.enabled) patch.enabled = next.enabled;
+  if (next.allow_all !== original.allow_all) patch.allow_all = next.allow_all;
+  if (next.script_lang !== original.script_lang)
+    patch.script_lang = next.script_lang;
+  if (next.script_source !== original.script_source)
+    patch.script_source = next.script_source;
+  if (next.script_path !== original.script_path)
+    patch.script_path = next.script_path;
   if (next.model !== original.model) patch.model = next.model;
   if (!sameStringArray(next.mcp_servers, original.mcp_servers)) {
     patch.mcp_servers = next.mcp_servers;
@@ -444,6 +518,10 @@ export function useCronJobs() {
         octop_fresh_thread: values.fresh_thread,
         octop_session_key: values.session_key,
         octop_model: values.model,
+        octop_allow_all: values.task_type === "agent" && values.allow_all,
+        octop_script_lang: values.script_lang,
+        octop_script_source: values.script_source,
+        octop_script_path: values.script_path,
       },
     } as CronJob;
     patchJobs(activeAgentId, (prev) =>
@@ -562,3 +640,4 @@ export function useCronJobs() {
     jobToFormValues,
   };
 }
+

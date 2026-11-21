@@ -22,6 +22,7 @@ from octop.infra.connectors.gateway.adapters.agently_cli import read_auth_status
 from octop.infra.connectors.gateway.agently_watch import AgentlyWatchManager
 from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.job import CronJob
+from octop.infra.cron.session_target import LATEST_TARGET, pinned_thread_id
 from octop.infra.cron.trigger import (
     ONE_SHOT_MISFIRE_GRACE_SECONDS,
     RECURRING_MISFIRE_GRACE_SECONDS,
@@ -41,7 +42,7 @@ if TYPE_CHECKING:
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
 
-from octop.infra.cron.task_type import normalize_cron_task_type, require_cron_name
+from octop.infra.cron.task_type import normalize_cron_task, require_cron_name
 from octop.infra.db.repos._base import UNSET
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,10 @@ class CronCreateSpec:
     model: str | None = None
     task_type: str = "agent"
     mcp_servers: list[str] = field(default_factory=list)
+    allow_all: bool = False
+    script_lang: str | None = None
+    script_source: str | None = None
+    script_path: str | None = None
     enabled: bool = True
     meta: dict[str, Any] = field(default_factory=dict)
     username: str | None = None
@@ -176,28 +181,36 @@ class CronManager:
         if spec is None:
             spec = CronCreateSpec(**kwargs)
         self._mail_source(spec.trigger, spec.user_id)
-        session_key = spec.session_key or ThreadRegistry.dashboard_key(
+        session_key = await self._prepare_session_key(
+            spec.session_key,
             agent_id=spec.agent_id,
             user_id=spec.user_id,
         )
-        await self._ensure_session(
-            session_key,
-            agent_id=spec.agent_id,
-            user_id=spec.user_id,
+        task = normalize_cron_task(
+            task_type=spec.task_type,
+            prompt=spec.prompt,
+            allow_all=spec.allow_all,
+            script_lang=spec.script_lang,
+            script_source=spec.script_source,
+            script_path=spec.script_path,
         )
         async with self._lock:
             self._repos.cron_repo.create(
                 cron_id=spec.cron_id,
                 agent_id=spec.agent_id,
                 user_id=spec.user_id,
-                name=require_cron_name(spec.name, prompt=spec.prompt, cron_id=spec.cron_id),
+                name=require_cron_name(spec.name, prompt=task.prompt, cron_id=spec.cron_id),
                 trigger=spec.trigger,
-                prompt=spec.prompt,
+                prompt=task.prompt,
                 session_key=session_key,
                 fresh_thread=spec.fresh_thread,
-                model=(spec.model or "").strip() or None,
-                task_type=normalize_cron_task_type(spec.task_type),
-                mcp_servers=list(spec.mcp_servers or []),
+                model=None if task.task_type == "script" else ((spec.model or "").strip() or None),
+                task_type=task.task_type,
+                mcp_servers=list(spec.mcp_servers or []) if task.task_type != "script" else [],
+                allow_all=task.allow_all,
+                script_lang=task.script_lang,
+                script_source=task.script_source,
+                script_path=task.script_path,
                 enabled=spec.enabled,
             )
             row = self._repos.cron_repo.get(spec.cron_id)
@@ -247,12 +260,22 @@ class CronManager:
         task_type: str | None = None,
         model: str | None | object = UNSET,
         mcp_servers: list[str] | None | object = UNSET,
+        allow_all: bool | object = UNSET,
+        script_lang: str | None | object = UNSET,
+        script_source: str | None | object = UNSET,
+        script_path: str | None | object = UNSET,
     ) -> CronJobRow:
         enabled_bool: bool | None = bool(enabled) if enabled is not None else None
         async with self._lock:
             existing = self._repos.cron_repo.get(cron_id)
             if existing is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
+            if session_key is not None:
+                session_key = await self._prepare_session_key(
+                    session_key,
+                    agent_id=existing.agent_id,
+                    user_id=existing.user_id,
+                )
             trigger_changed = trigger is not None and trigger != existing.trigger
             enabled_changed = enabled_bool is not None and enabled_bool != bool(existing.enabled)
             # Validate a new trigger, or a mailbox, before persisting. Echoing the
@@ -270,15 +293,56 @@ class CronManager:
                 "fresh_thread": fresh_thread,
                 "enabled": enabled_bool,
             }
-            if task_type is not None:
-                repo_kwargs["task_type"] = normalize_cron_task_type(task_type)
-            if model is not UNSET:
-                raw = model if isinstance(model, str) else None
-                repo_kwargs["model"] = (raw or "").strip() or None
-            if mcp_servers is not UNSET:
+            task_touched = (
+                task_type is not None
+                or prompt is not None
+                or allow_all is not UNSET
+                or script_lang is not UNSET
+                or script_source is not UNSET
+                or script_path is not UNSET
+            )
+            if task_touched:
+                task = normalize_cron_task(
+                    task_type=task_type or existing.task_type,
+                    prompt=prompt if prompt is not None else existing.prompt,
+                    allow_all=bool(allow_all)
+                    if allow_all is not UNSET
+                    else bool(existing.allow_all),
+                    script_lang=(
+                        script_lang
+                        if script_lang is not UNSET and isinstance(script_lang, str)
+                        else existing.script_lang
+                    ),
+                    script_source=(
+                        script_source
+                        if script_source is not UNSET and isinstance(script_source, str)
+                        else existing.script_source
+                    ),
+                    script_path=(
+                        script_path
+                        if script_path is not UNSET and isinstance(script_path, str)
+                        else existing.script_path
+                    ),
+                )
+                repo_kwargs["prompt"] = task.prompt
+                repo_kwargs["task_type"] = task.task_type
+                repo_kwargs["allow_all"] = task.allow_all
+                repo_kwargs["script_lang"] = task.script_lang
+                repo_kwargs["script_source"] = task.script_source
+                repo_kwargs["script_path"] = task.script_path
+                if task.task_type == "script":
+                    repo_kwargs["model"] = None
+                    repo_kwargs["mcp_servers"] = []
+            if (
+                mcp_servers is not UNSET
+                and repo_kwargs.get("task_type", existing.task_type) != "script"
+            ):
                 repo_kwargs["mcp_servers"] = (
                     list(mcp_servers) if isinstance(mcp_servers, list) else []
                 )
+            if model is not UNSET and repo_kwargs.get("task_type", existing.task_type) != "script":
+                raw = model if isinstance(model, str) else None
+                repo_kwargs["model"] = (raw or "").strip() or None
             self._repos.cron_repo.update(cron_id, **repo_kwargs)
             row = self._repos.cron_repo.get(cron_id)
             if row is None:
@@ -623,6 +687,33 @@ class CronManager:
 
     async def resume_mail_watch(self, instance_id: str) -> None:
         await self.sync_mail_watch(instance_id)
+
+    async def _prepare_session_key(
+        self,
+        raw: str | None,
+        *,
+        agent_id: str,
+        user_id: int,
+    ) -> str:
+        """Store a channel key, or ``thread:{id}`` for one historical conversation.
+
+        Empty and ``latest`` mean the owner's Dashboard channel. Each run then
+        follows that channel's most recent conversation unless a thread is pinned.
+        """
+        text = (raw or "").strip()
+        pinned = pinned_thread_id(text)
+        if pinned:
+            row = self._gateway.thread_registry.get_thread(pinned)
+            if row is None or row.agent_id != agent_id:
+                raise OctopError(ErrorCode.NOT_FOUND, f"thread {pinned!r} not found")
+            if row.user_id != user_id:
+                raise OctopError(ErrorCode.FORBIDDEN, "thread not owned by user")
+            await self._ensure_session(row.session_key, agent_id=agent_id, user_id=user_id)
+            return text
+        if not text or text == LATEST_TARGET:
+            text = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+        await self._ensure_session(text, agent_id=agent_id, user_id=user_id)
+        return text
 
     async def _ensure_session(self, session_key: str, *, agent_id: str, user_id: int) -> None:
         registry = self._gateway.thread_registry

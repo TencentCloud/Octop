@@ -60,6 +60,18 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
         }
 
     if provider.startswith("tencent-"):
+        if model == "hy4" and provider in {
+            "tencent-tokenhub",
+            "tencent-token-plan",
+            "tencent-token-plan-enterprise-cn",
+            "tencent-hy-token-plan",
+        }:
+            return {
+                "supported": True,
+                "adapter": "thinking",
+                "toggle": True,
+                "default_mode": "enabled",
+            }
         if model.startswith("minimax-"):
             return {
                 "supported": True,
@@ -335,6 +347,10 @@ def load_provider_presets() -> list[dict[str, Any]]:
             len(out),
         )
         out.insert(insert_at, onnx_preset)
+    if not any(p.get("id") == "magpie" for p in out):
+        from octop.infra.agents.providers.magpie import magpie_preset
+
+        out.insert(0, magpie_preset())
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
     for preset in out:

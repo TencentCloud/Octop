@@ -323,3 +323,63 @@ def test_append_artifacts_dedupes_by_agent_and_path(tmp_path: Path) -> None:
         ThreadArtifact(path="outbound/a.md", agent_id="member-a"),
         ThreadArtifact(path="outbound/a.md", agent_id="member-b"),
     )
+
+
+def test_middleware_records_team_file_target_on_the_host(tmp_path: Path) -> None:
+    from octop.infra.agents.teams.file_target import DIR_KEY, HOST_KEY
+
+    member = _ws(tmp_path / "member")
+    host = _ws(tmp_path / "host")
+    store = _FakeThreads()
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=member, agent_id="member-a")
+    request = _request("write_file", {"path": "docs/note.md"})
+    config = {"configurable": {HOST_KEY: "host-1", DIR_KEY: host.as_posix()}}
+    with (
+        patch(
+            "octop.infra.agents.middleware.thread_artifacts.current_thread_id",
+            return_value="room~member-a",
+        ),
+        patch(
+            "octop.infra.agents.middleware.thread_artifacts.get_config",
+            return_value=config,
+        ),
+    ):
+        mw.wrap_tool_call(
+            request,
+            lambda _req: ToolMessage(content="ok", tool_call_id="tc1"),
+        )
+    path = str((host / "docs/note.md").as_posix())
+    assert store.calls == [
+        ("room~member-a", [path], "host-1"),
+        ("room", [path], "host-1"),
+    ]
+
+
+def test_middleware_records_a_bridge_directory_on_the_member(tmp_path: Path) -> None:
+    from octop.infra.agents.teams.file_target import BRIDGE_TARGET_KEY, DIR_KEY
+
+    member = _ws(tmp_path / "member")
+    local = tmp_path / "local"
+    store = _FakeThreads()
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=member, agent_id="member-a")
+    request = _request("write_file", {"path": "docs/note.md"})
+    config = {"configurable": {BRIDGE_TARGET_KEY: "tok", DIR_KEY: local.as_posix()}}
+    with (
+        patch(
+            "octop.infra.agents.middleware.thread_artifacts.current_thread_id",
+            return_value="room~member-a",
+        ),
+        patch(
+            "octop.infra.agents.middleware.thread_artifacts.get_config",
+            return_value=config,
+        ),
+    ):
+        mw.wrap_tool_call(
+            request,
+            lambda _req: ToolMessage(content="ok", tool_call_id="tc1"),
+        )
+    path = str((local / "docs/note.md").as_posix())
+    assert store.calls == [
+        ("room~member-a", [path], "member-a"),
+        ("room", [path], "member-a"),
+    ]

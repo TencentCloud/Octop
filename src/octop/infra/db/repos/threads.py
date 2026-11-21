@@ -7,7 +7,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.db.repos._base import (
+    DbRow,
+    bool_int,
+    map_rows,
+    now_ts,
+    sql_in_placeholders,
+)
 from octop.infra.utils.thread_artifact import (
     MAX_THREAD_ARTIFACTS,
     ThreadArtifact,
@@ -47,6 +53,7 @@ class ThreadRow:
     conversation_mode: str | None = None
     pending_plan_path: str | None = None
     hitl_policy: str | None = None
+    contributed: bool = False
 
     @classmethod
     def from_row(cls, r: DbRow) -> ThreadRow:
@@ -66,6 +73,10 @@ class ThreadRow:
             hitl_policy = r["hitl_policy"]
         except (KeyError, IndexError):
             hitl_policy = None
+        try:
+            contributed = bool(r["contributed"])
+        except (KeyError, IndexError):
+            contributed = False
         return cls(
             id=r["id"],
             thread_id=r["thread_id"],
@@ -84,6 +95,7 @@ class ThreadRow:
             conversation_mode=str(conversation_mode) if conversation_mode else None,
             pending_plan_path=str(pending_plan_path) if pending_plan_path else None,
             hitl_policy=str(hitl_policy) if hitl_policy else None,
+            contributed=contributed,
         )
 
 
@@ -224,6 +236,24 @@ class ThreadRepo:
             return None
         return int(row[0])
 
+    def latest_activity_by_agent(self, user_id: int, agent_ids: list[str]) -> dict[str, int]:
+        """Latest own-thread touch per agent.
+
+        ``last_active`` of 0 means the thread has no turns yet, so those rows
+        are ignored. Another user's threads on a shared expert do not count.
+        """
+        if not agent_ids:
+            return {}
+        placeholders = sql_in_placeholders(len(agent_ids))
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT agent_id, MAX(last_active) AS last_active FROM threads "
+                f"WHERE user_id = ? AND last_active > 0 AND agent_id IN ({placeholders}) "
+                "GROUP BY agent_id",
+                (user_id, *agent_ids),
+            ).fetchall()
+        return {str(row["agent_id"]): int(row["last_active"]) for row in rows}
+
     def list_by_agent(self, *, agent_id: str, limit: int = 50) -> list[ThreadRow]:
         # last_active=0 is "no turns yet" (has_messages sentinel). Fall back to
         # created_at so brand-new empty threads sort to the top of the sidebar
@@ -251,6 +281,26 @@ class ThreadRepo:
             ).fetchall()
         return map_rows(rows, ThreadRow)
 
+    def list_visible(self, *, agent_id: str, user_id: int, limit: int = 50) -> list[ThreadRow]:
+        """Own threads plus conversations contributed to this shared expert."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM threads WHERE agent_id = ? "
+                "AND (user_id = ? OR contributed = 1) "
+                "ORDER BY pinned DESC, "
+                "CASE WHEN last_active > 0 THEN last_active ELSE created_at END DESC, "
+                "thread_id DESC LIMIT ?",
+                (agent_id, user_id, limit),
+            ).fetchall()
+        return map_rows(rows, ThreadRow)
+
+    def set_contributed(self, thread_id: str, contributed: bool) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE threads SET contributed = ? WHERE thread_id = ?",
+                (bool_int(contributed), thread_id),
+            )
+
     def list_by_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
@@ -261,6 +311,20 @@ class ThreadRepo:
                 (session_key, limit),
             ).fetchall()
         return map_rows(rows, ThreadRow)
+
+    def latest_active_for_session(self, *, session_key: str) -> ThreadRow | None:
+        """Newest conversation on this channel session that already has a turn.
+
+        ``last_active`` of 0 is an empty thread. A blank chat created later must
+        not hide the conversation the user last spoke in.
+        """
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads WHERE session_key = ? AND last_active > 0 "
+                "ORDER BY last_active DESC, thread_id DESC LIMIT 1",
+                (session_key,),
+            ).fetchone()
+        return ThreadRow.from_row(row) if row else None
 
     def set_title_if_null(self, thread_id: str, title: str) -> None:
         with self._db.transaction() as conn:

@@ -5,17 +5,23 @@
  * restated from the size variable.
  */
 
-/* One ring size for page- and section-level loading (`size` default / large). */
+/* Section-level loading (`size` omitted). */
 .octop-spin {
-  --octop-spinner-size: 48px;
-  --octop-spinner-ring-width: 4px;
+  --octop-spinner-size: 20px;
+  --octop-spinner-ring-width: 2px;
+}
+
+/* Full-page waits (`size="large"`): auth gate, route fallback. */
+.octop-spin-lg {
+  --octop-spinner-size: 32px;
+  --octop-spinner-ring-width: 2.5px;
 }
 
 /* `size="small"` marks spins nested in a control — input suffixes, select
-   dropdowns, inline labels — where a 48px ring would stretch its container. */
+   dropdowns, inline labels. */
 .octop-spin-sm {
-  --octop-spinner-size: 18px;
-  --octop-spinner-ring-width: 2px;
+  --octop-spinner-size: 16px;
+  --octop-spinner-ring-width: 1.5px;
 }
 
 .octop-spin .octop-spin-dot {

@@ -19,6 +19,21 @@ def _token(content: str, thread_id: str) -> dict[str, Any]:
     return {"type": "token", "content": content, "thread_id": thread_id}
 
 
+def _user(content: str, thread_id: str, user_id: int = 7) -> dict[str, Any]:
+    return {
+        "type": "user",
+        "content": content,
+        "thread_id": thread_id,
+        "author": {
+            "user_id": user_id,
+            "display_name": "",
+            "username": "",
+            "avatar_icon": None,
+            "avatar_url": f"/api/users/{user_id}/avatar",
+        },
+    }
+
+
 _STEER_PROTOCOL_TYPES = frozenset(
     {
         "turn.started",
@@ -44,6 +59,8 @@ def _stream_frames(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         if ftype == "user" and isinstance(frame.get("meta"), dict) and frame["meta"].get("steer"):
             continue
+        if "turn_id" in frame:
+            frame = {key: value for key, value in frame.items() if key != "turn_id"}
         out.append(frame)
     return out
 
@@ -240,8 +257,16 @@ async def test_ws_channel_streams_chunks() -> None:
     )
     await channel.handle_inbound(msg)
 
-    assert {"type": "token", "content": "hello", "thread_id": "thread-1"} in frames
-    assert {"type": "done", "thread_id": "thread-1"} in frames
+    assert _user("hi", "thread-1") in frames
+    started = next(frame for frame in frames if frame["type"] == "turn.started")
+    turn_id = started["turn_id"]
+    assert {
+        "type": "token",
+        "content": "hello",
+        "thread_id": "thread-1",
+        "turn_id": turn_id,
+    } in frames
+    assert {"type": "done", "thread_id": "thread-1", "turn_id": turn_id} in frames
     assert frames[-1]["type"] == "turn.ended"
     assert frames[-1]["thread_id"] == "thread-1"
     assert hub.is_turn_active("thread-1") is False
@@ -291,7 +316,10 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
+        _token("first", "thread-1"),
+    ]
     assert hub.is_turn_active("thread-1") is True
 
     hub.unsubscribe_connection("a")
@@ -350,13 +378,17 @@ async def test_ws_channel_fans_out_mid_turn_to_all_subscribers() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
+        _token("first", "thread-1"),
+    ]
 
     hub.subscribe("thread-1", "b")
     gate.set()
     await task
 
     assert _stream_frames(a_frames) == [
+        _user("hi", "thread-1"),
         _token("first", "thread-1"),
         _token("second", "thread-1"),
         {"type": "done", "thread_id": "thread-1"},
@@ -1029,7 +1061,13 @@ async def test_ws_channel_preempts_at_tool_boundary_when_steer_pending() -> None
     types = [f["type"] for f in frames]
     assert "steer.drained" in types
     assert "turn.resumed" in types
-    assert {"type": "token", "content": "steered answer", "thread_id": "thread-1"} in frames
+    resumed = next(frame for frame in frames if frame["type"] == "turn.resumed")
+    assert {
+        "type": "token",
+        "content": "steered answer",
+        "thread_id": "thread-1",
+        "turn_id": resumed["turn_id"],
+    } in frames
     assert types[-1] == "turn.ended"
     assert hub.is_turn_active("thread-1") is False
 

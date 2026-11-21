@@ -71,6 +71,28 @@ describe("toOctopPatchBody", () => {
     });
   });
 
+  it("sends an explicit allow-all change", () => {
+    expect(
+      toOctopPatchBody({ ...baseValues, allow_all: true }, baseValues),
+    ).toEqual({ allow_all: true });
+  });
+
+  it("preserves script fields and sends changed script configuration", () => {
+    const script: CronJobFormValues = {
+      ...baseValues,
+      task_type: "script",
+      script_source: "file",
+      script_path: "jobs/task.py",
+      script_lang: "python",
+    };
+    expect(toOctopPatchBody({ ...script, name: "Renamed" }, script)).toEqual({
+      name: "Renamed",
+    });
+    expect(
+      toOctopPatchBody({ ...script, script_lang: "bash" }, script),
+    ).toEqual({ script_lang: "bash" });
+  });
+
   it("changes the schedule without resending model, MCP, or session", () => {
     expect(
       toOctopPatchBody(
@@ -122,3 +144,4 @@ describe("useCronJobs updateJob", () => {
     });
   });
 });
+

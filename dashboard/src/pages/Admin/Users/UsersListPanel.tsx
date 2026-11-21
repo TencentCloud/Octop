@@ -63,8 +63,10 @@ import {
   Trash2,
   User,
   Mail,
+  Monitor,
   X,
 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { request } from "../../../api/request";
@@ -84,13 +86,21 @@ import { useSetCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../../utils/apiError";
-import { formatServerDateTime } from "../../../utils/formatMessageTime";
+import {
+  calendarDaysAgo,
+  formatServerDateTime,
+  formatServerYmd,
+} from "../../../utils/formatMessageTime";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { AgentCard } from "../../Experts/components/AgentCard";
 import EditAgentDrawer from "../../Experts/components/EditAgentDrawer";
 import InviteDrawer from "./InviteDrawer";
 import RootDirSelect from "../../Experts/components/RootDirSelect";
-import { fetchFilesystemDefaults } from "../../Experts/components/agentBackendForm";
+import { getStorageLogo } from "../../../assets/storage";
+import {
+  backendPolicyTypeLabel,
+  fetchFilesystemDefaults,
+} from "../../Experts/components/agentBackendForm";
 import { HOST_FS_ROOT } from "../../Experts/components/rootDirTree";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import expertStyles from "../../Experts/index.module.less";
@@ -121,6 +131,7 @@ interface UserRow {
   login_locked_until?: number;
   login_retry_after_seconds?: number;
   created_at?: number;
+  last_login_at?: number | null;
   permissions?: string[];
   role_name?: string | null;
   avatar_url?: string | null;
@@ -128,6 +139,7 @@ interface UserRow {
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
+  allowed_backend_types?: string[] | null;
   /** Present when the users list includes MFA status from the backend. */
   mfa_active?: boolean;
 }
@@ -152,6 +164,8 @@ export interface PolicyFormValues {
   token_quota?: number | null;
   limit_max_agents?: boolean;
   max_agents?: number | null;
+  limit_allowed_backend_types?: boolean;
+  allowed_backend_types?: string[];
 }
 
 const DEFAULT_EXPERT_TEMPLATE_ID = "general-assistant";
@@ -307,6 +321,10 @@ function policyFieldsFromRole(
     token_quota: role.token_quota ?? undefined,
     limit_max_agents: role.max_agents != null,
     max_agents: role.max_agents ?? undefined,
+    limit_allowed_backend_types: (role.allowed_backend_types?.length ?? 0) > 0,
+    allowed_backend_types: role.allowed_backend_types?.length
+      ? [...role.allowed_backend_types]
+      : undefined,
   };
 }
 
@@ -522,6 +540,19 @@ function formatUserTs(ts: number | undefined, timeZone: string): string {
   return formatServerDateTime(ts, timeZone);
 }
 
+/** Today, yesterday, N days ago, or a calendar date. */
+function formatRelativeLogin(
+  ts: number,
+  timeZone: string,
+  t: TFunction,
+): string {
+  const diff = calendarDaysAgo(ts * 1000, timeZone);
+  if (!Number.isFinite(diff) || diff <= 0) return t("memory.time.today");
+  if (diff === 1) return t("memory.time.yesterday");
+  if (diff < 30) return t("memory.time.daysAgo", { n: diff });
+  return formatServerYmd(new Date(ts * 1000), timeZone);
+}
+
 interface UserCardGridProps {
   rows: UserRow[];
   loading: boolean;
@@ -586,6 +617,7 @@ export function policyPayload(
   workspace_root_dir: string | null;
   token_quota: number | null;
   max_agents: number | null;
+  allowed_backend_types: string[] | null;
 } {
   return {
     workspace_root_dir:
@@ -594,6 +626,10 @@ export function policyPayload(
         : null,
     token_quota: values.limit_token_quota ? values.token_quota ?? null : null,
     max_agents: values.limit_max_agents ? values.max_agents ?? null : null,
+    allowed_backend_types:
+      values.limit_allowed_backend_types && values.allowed_backend_types?.length
+        ? [...values.allowed_backend_types]
+        : null,
   };
 }
 
@@ -614,6 +650,12 @@ export function rolePoliciesFromForm(
   }
   if (flat.max_agents != null) {
     policies.push({ name: "max_agents", value: String(flat.max_agents) });
+  }
+  if (flat.allowed_backend_types?.length) {
+    policies.push({
+      name: "allowed_backend_types",
+      value: flat.allowed_backend_types.join(","),
+    });
   }
   return policies;
 }
@@ -743,6 +785,57 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
   );
 }
 
+const BACKEND_POLICY_GROUPS: { labelKey: string; types: readonly string[] }[] =
+  [
+    {
+      labelKey: "storage.groupLocal",
+      types: ["local_shell", "filesystem"],
+    },
+    {
+      labelKey: "storage.groupObject",
+      types: ["cos", "s3", "oss", "obs", "tos", "custom"],
+    },
+    {
+      labelKey: "storage.groupSandbox",
+      types: ["docker", "opensandbox"],
+    },
+    {
+      labelKey: "storage.groupDatabase",
+      types: ["postgres"],
+    },
+  ];
+
+function backendPolicyTypeLogo(type: string): string | undefined {
+  return getStorageLogo(type === "local_shell" ? "shell" : type);
+}
+
+function BackendTypeOptionLabel({
+  type,
+  text,
+}: {
+  type: string;
+  text: string;
+}) {
+  const logo = backendPolicyTypeLogo(type);
+  return (
+    <span className={styles.backendTypeOption}>
+      <span className={styles.backendTypeIconSlot}>
+        {logo ? (
+          <img
+            src={logo}
+            alt=""
+            className={styles.backendTypeIcon}
+            draggable={false}
+          />
+        ) : (
+          <Monitor size={14} strokeWidth={1.75} />
+        )}
+      </span>
+      <span>{text}</span>
+    </span>
+  );
+}
+
 export function ResourcePolicyFields({
   fsTreeRoots,
   workspaceRootAllowed,
@@ -756,6 +849,62 @@ export function ResourcePolicyFields({
       <div className={styles.createSectionTitle}>
         {t("adminUsers.createSectionPolicy")}
       </div>
+      <Form.Item
+        label={t("adminUsers.policyAllowedBackendTypes")}
+        extra={t("adminUsers.policyAllowedBackendTypesHint")}
+      >
+        <Form.Item
+          name="limit_allowed_backend_types"
+          valuePropName="checked"
+          noStyle
+        >
+          <Switch />
+        </Form.Item>
+      </Form.Item>
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) =>
+          prev.limit_allowed_backend_types !== cur.limit_allowed_backend_types
+        }
+      >
+        {({ getFieldValue }) =>
+          getFieldValue("limit_allowed_backend_types") ? (
+            <Form.Item
+              name="allowed_backend_types"
+              rules={[
+                {
+                  validator: async (_, value) => {
+                    if (!Array.isArray(value) || value.length === 0) {
+                      throw new Error(
+                        t("adminUsers.policyAllowedBackendTypesRequired"),
+                      );
+                    }
+                  },
+                },
+              ]}
+            >
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                optionFilterProp="text"
+                options={BACKEND_POLICY_GROUPS.map((group) => ({
+                  label: t(group.labelKey),
+                  options: group.types.map((type) => {
+                    const text = backendPolicyTypeLabel(type, t);
+                    return {
+                      value: type,
+                      text,
+                      label: <BackendTypeOptionLabel type={type} text={text} />,
+                    };
+                  }),
+                }))}
+                placeholder={t("adminUsers.policyAllowedBackendTypesRequired")}
+              />
+            </Form.Item>
+          ) : null
+        }
+      </Form.Item>
       <Form.Item
         label={t("adminUsers.policyWorkspaceRoot")}
         extra={
@@ -1276,6 +1425,17 @@ function UserCardGrid({
         const remaining = lockRemainingSeconds(row, nowSec);
         const isLocked = remaining > 0;
         const failedCount = row.login_failed_count ?? 0;
+        const cardLead = [
+          row.email?.trim() || t("adminUsers.noEmail"),
+          row.created_at ? formatUserTs(row.created_at, timeZone) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        const cardLogin = row.last_login_at
+          ? t("adminUsers.lastLoginAt", {
+              time: formatRelativeLogin(row.last_login_at, timeZone, t),
+            })
+          : t("adminUsers.lastLoginNever");
         return (
           <div
             key={row.id}
@@ -1327,13 +1487,26 @@ function UserCardGrid({
                 </div>
               </div>
               <p className={styles.userCardDesc}>
-                {row.email?.trim() || t("adminUsers.noEmail")}
-                {row.created_at != null
-                  ? ` · ${formatUserTs(row.created_at, timeZone)}`
-                  : ""}
+                {cardLead}
+                {cardLead ? " · " : null}
+                {row.last_login_at ? (
+                  <Tooltip title={formatUserTs(row.last_login_at, timeZone)}>
+                    <span>{cardLogin}</span>
+                  </Tooltip>
+                ) : (
+                  cardLogin
+                )}
               </p>
               <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
+                <button
+                  type="button"
+                  className={styles.userCardDetailLink}
+                  onClick={() => onShowAgents(row)}
+                >
+                  <Bot size={14} />
+                  {t("adminUsers.colAgents")} {agentsLoading ? "…" : agentCount}
+                </button>
                 {row.directory ? (
                   <span>{t("adminUsers.directoryBadge")}</span>
                 ) : row.sso_linked ? (
@@ -1370,14 +1543,6 @@ function UserCardGrid({
               ) : null}
             </div>
             <div className={styles.userCardFooter}>
-              <button
-                type="button"
-                className={styles.userCardDetailLink}
-                onClick={() => onShowAgents(row)}
-              >
-                <Bot size={14} />
-                {t("adminUsers.colAgents")} {agentsLoading ? "…" : agentCount}
-              </button>
               <span className={styles.userCardFooterSpacer} />
               <Switch
                 size="small"
@@ -1683,9 +1848,7 @@ export default function UsersListPanel() {
       const data = await request<UserRow[]>("/users");
       setRows(data);
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.loadFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.loadFailed"), t));
     } finally {
       setLoading(false);
     }
@@ -1754,9 +1917,7 @@ export default function UsersListPanel() {
         batchMaxAgentsForm.resetFields();
         void refreshUsers();
       } catch (err) {
-        message.error(
-          err instanceof Error ? err.message : t("adminUsers.batchFailed"),
-        );
+        message.error(apiErrorMessage(err, t("adminUsers.batchFailed"), t));
       } finally {
         setBatchSubmitting(false);
       }
@@ -1842,9 +2003,7 @@ export default function UsersListPanel() {
       const data = await request<OctopAgent[]>("/agents?scope=all");
       setAgents(data);
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.loadFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.loadFailed"), t));
       setAgents([]);
     } finally {
       setAgentsLoading(false);
@@ -2025,9 +2184,7 @@ export default function UsersListPanel() {
       setCreateOpen(false);
       void refreshUsers();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.createFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.createFailed"), t));
     } finally {
       setSubmitting(false);
     }
@@ -2053,6 +2210,8 @@ export default function UsersListPanel() {
       token_quota: undefined,
       limit_max_agents: false,
       max_agents: undefined,
+      limit_allowed_backend_types: false,
+      allowed_backend_types: undefined,
       create_default_expert: true,
       expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
       ...(userRole ? policyFieldsFromRole(userRole, workspaceRootAllowed) : {}),
@@ -2085,6 +2244,10 @@ export default function UsersListPanel() {
       token_quota: row.token_quota ?? undefined,
       limit_max_agents: row.max_agents != null,
       max_agents: row.max_agents ?? undefined,
+      limit_allowed_backend_types: (row.allowed_backend_types?.length ?? 0) > 0,
+      allowed_backend_types: row.allowed_backend_types?.length
+        ? [...row.allowed_backend_types]
+        : undefined,
     });
   };
 
@@ -2108,9 +2271,7 @@ export default function UsersListPanel() {
       void refreshUsers();
       return true;
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.updateFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.updateFailed"), t));
       return false;
     }
   };
@@ -2134,9 +2295,7 @@ export default function UsersListPanel() {
       editForm.resetFields();
       void refreshUsers();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.updateFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.updateFailed"), t));
     } finally {
       setEditSubmitting(false);
     }
@@ -2148,9 +2307,7 @@ export default function UsersListPanel() {
       message.success(t("adminUsers.deleteSuccess"));
       void refreshAll();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("common.deleteFailed"),
-      );
+      message.error(apiErrorMessage(err, t("common.deleteFailed"), t));
     }
   };
 
@@ -2166,9 +2323,7 @@ export default function UsersListPanel() {
       setResetTarget(null);
       resetForm.resetFields();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.resetFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.resetFailed"), t));
     } finally {
       setResetSubmitting(false);
     }
@@ -2190,9 +2345,7 @@ export default function UsersListPanel() {
       message.success(t("adminUsers.unlockLoginSuccess"));
       void refreshUsers();
     } catch (err) {
-      message.error(
-        err instanceof Error ? err.message : t("adminUsers.unlockLoginFailed"),
-      );
+      message.error(apiErrorMessage(err, t("adminUsers.unlockLoginFailed"), t));
     }
   };
 
@@ -2368,7 +2521,7 @@ export default function UsersListPanel() {
           loading={loading}
           dataSource={filteredRows}
           pagination={false}
-          scroll={{ x: 1360 }}
+          scroll={{ x: 1540 }}
           rowSelection={{
             selectedRowKeys: selectedIds,
             onChange: (keys) => setSelectedIds(keys.map((key) => Number(key))),
@@ -2498,6 +2651,18 @@ export default function UsersListPanel() {
                 <span className={styles.userCellMuted}>
                   {formatUserTs(ts, timeZone)}
                 </span>
+              ),
+            },
+            {
+              title: t("adminUsers.colLastLogin"),
+              dataIndex: "last_login_at",
+              width: 168,
+              render: (ts: number | null | undefined) => (
+                <Tooltip title={ts ? formatUserTs(ts, timeZone) : undefined}>
+                  <span className={styles.userCellMuted}>
+                    {ts ? formatRelativeLogin(ts, timeZone, t) : "—"}
+                  </span>
+                </Tooltip>
               ),
             },
             {
@@ -2691,6 +2856,7 @@ export default function UsersListPanel() {
             limit_workspace_root: false,
             limit_token_quota: false,
             limit_max_agents: false,
+            limit_allowed_backend_types: false,
             create_default_expert: true,
             expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
           }}

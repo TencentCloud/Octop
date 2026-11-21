@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc -b && vite build",
+    "build:fast": "BUILD_FAST=1 vite build",
     "build:docker": "vite build",
     "build:prod": "tsc -b && vite build --mode production",
     "build:test": "tsc -b && vite build --mode test",
@@ -21,6 +22,7 @@
   },
   "dependencies": {
     "@aiden0z/pptx-renderer": "^1.2.4",
+    "@ant-design/icons": "^5.6.1",
     "@mermaid-js/parser": "^1.1.0",
     "@monaco-editor/react": "^4.7.0",
     "@xterm/addon-fit": "0.10.0",
@@ -31,9 +33,11 @@
     "antd-style": "^3.7.1",
     "build": "^0.1.4",
     "classnames": "^2.5.1",
+    "dayjs": "^1.11.23",
     "docx-preview": "^0.3.2",
     "i18next": "^25.8.4",
     "jszip": "^3.10.1",
+    "katex": "^0.16.47",
     "lucide-react": "^0.562.0",
     "mermaid": "^11.13.0",
     "monaco-editor": "0.57.0",
@@ -84,6 +88,7 @@
     "typescript-eslint": "^8.30.1",
     "vite": "^6.3.5",
     "vite-plugin-pwa": "^0.21.2",
+    "vite-plugin-svgr": "^5.2.0",
     "vitest": "^3.2.6"
   }
 }
