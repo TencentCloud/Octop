@@ -2230,7 +2230,16 @@ class AgentManager:
     # ------------------------------------------------------------------
 
     async def reload(self, agent_id: str) -> None:
-        """Rebuild harness runtime for one agent (e.g. after plugin install)."""
+        """Rebuild harness runtime for one agent (e.g. after plugin install).
+
+        Custom MCP tools are cached per user/server/fingerprint, and the
+        fingerprint only covers the connection spec. A stdio server whose
+        entry file was replaced in place keeps the same spec, so clearing the
+        cache here is what makes an explicit reload pick the new tool list.
+        """
+        row = self._repos.agent_repo.get(agent_id)
+        if row is not None:
+            self.invalidate_mcp_tool_cache(self._connector_uid_for(row))
         await self._reload_agent(agent_id)
 
     async def reload_all(self) -> None:

@@ -250,6 +250,47 @@ async def test_prepare_chat_mcp_attaches_gateway_tools_without_reload() -> None:
     mgr._connector_svc.ensure_fresh_credentials.assert_awaited_once_with(instance_id, "qq-mail")
 
 
+@pytest.mark.asyncio
+async def test_reload_drops_cached_custom_mcp_tools() -> None:
+    """A replaced stdio entry keeps its spec, so reload must clear the cache (#3066)."""
+    from octop.infra.agents.manager import AgentManager
+
+    mgr = object.__new__(AgentManager)
+    mgr._mcp_tool_cache = {(7, "srv", "old-fingerprint"): [MagicMock()]}
+    mgr._mcp_tool_cache_locks = {(7, "srv"): asyncio.Lock()}
+    mgr._connector_user_override = {}
+    mgr._repos = MagicMock()
+    mgr._repos.agent_repo.get.return_value = MagicMock(user_id=7, agent_id="A1")
+    mgr._reload_agent = AsyncMock()
+
+    await mgr.reload("A1")
+
+    assert mgr._mcp_tool_cache == {}
+    assert mgr._mcp_tool_cache_locks == {}
+    mgr._reload_agent.assert_awaited_once_with("A1")
+
+
+@pytest.mark.asyncio
+async def test_reload_clears_all_users_for_shared_agent() -> None:
+    """Shared agents have no owner, so their tools can be cached under any user."""
+    from octop.infra.agents.manager import AgentManager
+
+    mgr = object.__new__(AgentManager)
+    mgr._mcp_tool_cache = {
+        (7, "srv", "a"): [MagicMock()],
+        (8, "srv", "b"): [MagicMock()],
+    }
+    mgr._mcp_tool_cache_locks = {(7, "srv"): asyncio.Lock(), (8, "srv"): asyncio.Lock()}
+    mgr._connector_user_override = {}
+    mgr._repos = MagicMock()
+    mgr._repos.agent_repo.get.return_value = MagicMock(user_id=None, agent_id="A1")
+    mgr._reload_agent = AsyncMock()
+
+    await mgr.reload("A1")
+
+    assert mgr._mcp_tool_cache == {}
+
+
 def test_wrap_tools_for_shared_use() -> None:
     lock = asyncio.Lock()
     inner = MagicMock()
