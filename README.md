@@ -66,7 +66,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, WeChat, Telegram, Discord,
 
 ## 📌 Overview
 
-Octop is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
+Octop is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, WeChat, Telegram, Discord, Slack, WhatsApp, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
 
 > Octop's design goal: keep every conversation, workspace, and credential on your own machine, while giving each user a personal team of specialized agents they can switch between per task.
 
@@ -120,7 +120,7 @@ Instead of an external queue or message broker, Octop routes every surface — W
 - Workspace backends (expert files): local disk, Docker sandbox, PostgreSQL, COS/S3, and other remote stores — distinct from the control-plane database
 
 ### Channels & automation
-- IM channels: Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, and more
+- IM channels: Feishu, DingTalk, QQ, WeChat, Telegram, Discord, Slack, WhatsApp, WeCom, and more
 - Proactive cron jobs with natural-language and slash-command triggers
 - Unified message processing across Web UI, IM, and cron surfaces
 

@@ -576,7 +576,7 @@
     "editDocumentSuccess": "Saved; reindex started",
     "editDocumentFailed": "Failed to save document",
     "filenameRequired": "Please enter a file name",
-    "filenamePlaceholder": "e.g. notes",
+    "filenamePlaceholder": "File name",
     "fileFormat": "Format",
     "fileContent": "Content",
     "fileContentPlaceholder": "Write document content here…",
@@ -597,7 +597,6 @@
     "moveSuccess": "Moved",
     "moveSuccessTo": "Moved to “{{name}}”",
     "moveFailed": "Failed to move",
-    "filenamePlaceholder": "File name",
     "pathBreadcrumb": "Path",
     "deleteFolderConfirm": "Delete this folder and everything inside it?",
     "uploaded": "Documents uploaded",
@@ -3143,7 +3142,13 @@
     "discordAllowAllChannelsHelp": "On by default; no channel IDs needed. Turn off to restrict access to the channels listed below. Mention the bot to get a reply.",
     "discordSetupHelp": "Enable Message Content Intent on the Discord Bot page and invite the bot to your server. All server text channels the bot can access are allowed by default; mention the bot to get a reply. DMs only accept the user IDs listed below; leave empty to disable DMs.",
     "telegramAllowedUsers": "Allowed Telegram user IDs (comma or newline separated)",
-    "telegramAllowedUsersHelp": "Only these numeric user IDs can talk to the bot, in private chats and groups. Leave empty to let anyone who finds the bot use it."
+    "telegramAllowedUsersHelp": "Only these numeric user IDs can talk to the bot, in private chats and groups. Leave empty to let anyone who finds the bot use it.",
+    "slackReplyInThread": "Reply inside threads in channels",
+    "whatsappProvider": "Connection mode",
+    "whatsappProviderHelp": "Use official Meta WhatsApp Business Cloud API, or a self-hosted WAHA / Evolution API QR bridge for personal numbers.",
+    "whatsappBridgeUrl": "QR Bridge URL (WAHA / Evolution)",
+    "whatsappBridgeApiKey": "Bridge API Key",
+    "whatsappSessionName": "Bridge Session / Instance Name"
   },
   "tokenUsage": {
     "title": "Token Usage Analytics",

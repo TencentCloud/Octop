@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path as _FsPath
 from typing import Annotated, Any, Literal, cast
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import AfterValidator, BaseModel, ValidationError
 
 from octop.api.common.agent import require_agent_owner_row
@@ -86,6 +87,23 @@ class YuanbaoBotCreatorStartBody(BaseModel):
 
 class DingTalkRegistrationPollBody(BaseModel):
     registration_id: str
+
+
+def _validate_http_url(value: str) -> str:
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    trimmed = value.strip()
+    parsed = urlparse(trimmed)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("URL must start with http:// or https:// and include a host")
+    return trimmed
+
+
+class WhatsAppBridgeQrBody(BaseModel):
+    bridge_url: Annotated[str, AfterValidator(_validate_http_url)]
+    provider: Literal["waha", "evolution"] = "waha"
+    session_name: str = "default"
+    bridge_api_key: str = ""
 
 
 def _parse_bot_creator_body(model: type[BaseModel], raw: dict[str, Any] | None) -> BaseModel:
@@ -1106,3 +1124,155 @@ async def yuanbao_bot_creator_stop(
         state["proc"] = None
         state["lines"] = []
     return {"status": "stopped"}
+
+
+# ─── WhatsApp Self-Hosted Bridge QR Login & Platform Webhooks ────────────────
+
+
+@router.post("/agents/{agent_id}/channels/whatsapp/qrcode/generate")
+async def whatsapp_bridge_qrcode_generate(
+    agent_id: str,
+    body: WhatsAppBridgeQrBody,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("channels")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Fetch or start a login QR code from a self-hosted WAHA or Evolution API bridge."""
+    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    from octop_gateway.channels.whatsapp import fetch_whatsapp_bridge_qr  # noqa: PLC0415
+
+    try:
+        res = await fetch_whatsapp_bridge_qr(
+            body.bridge_url,
+            provider=body.provider,
+            session_name=body.session_name,
+            api_key=body.bridge_api_key,
+        )
+        return cast(dict[str, Any], res)
+    except Exception as exc:
+        logger.warning("Failed to fetch WhatsApp bridge QR code for agent %s: %s", agent_id, exc)
+        raise HTTPException(
+            status_code=502, detail=f"WhatsApp bridge QR fetch failed: {exc}"
+        ) from exc
+
+
+@router.post("/agents/{agent_id}/channels/whatsapp/qrcode/poll")
+async def whatsapp_bridge_qrcode_poll(
+    agent_id: str,
+    body: WhatsAppBridgeQrBody,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("channels")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Poll the connection status of a self-hosted WAHA or Evolution API WhatsApp session."""
+    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    from octop_gateway.channels.whatsapp import check_whatsapp_bridge_status  # noqa: PLC0415
+
+    try:
+        res = await check_whatsapp_bridge_status(
+            body.bridge_url,
+            provider=body.provider,
+            session_name=body.session_name,
+            api_key=body.bridge_api_key,
+        )
+        return cast(dict[str, Any], res)
+    except Exception as exc:
+        logger.warning("Failed to poll WhatsApp bridge status for agent %s: %s", agent_id, exc)
+        raise HTTPException(
+            status_code=502, detail=f"WhatsApp bridge status poll failed: {exc}"
+        ) from exc
+
+
+def _resolve_live_webhook_channel(server: Any, channel_id: str, expected_kind: str) -> Any:
+    gw = server.app_runtime.gateway
+    manager = gw.channel_manager
+    channel = manager.get_channel(channel_id) if manager is not None else None
+    if channel is None or getattr(channel, "channel_type", "") != expected_kind:
+        raise HTTPException(status_code=404, detail=f"Active {expected_kind} channel not found")
+    return channel
+
+
+@router.get("/channels/webhook/whatsapp/{channel_id}")
+async def whatsapp_webhook_verify(
+    channel_id: str,
+    hub_mode: str = Query(default="", alias="hub.mode"),
+    hub_verify_token: str = Query(default="", alias="hub.verify_token"),
+    hub_challenge: str = Query(default="", alias="hub.challenge"),
+    server: Any = Depends(get_server),
+) -> PlainTextResponse:
+    """Verify Meta WhatsApp Cloud API GET webhook subscription challenge."""
+    channel = _resolve_live_webhook_channel(server, channel_id, "whatsapp")
+    verifier = getattr(channel, "verify_webhook_challenge", None)
+    challenge = (
+        verifier(hub_mode, hub_verify_token, hub_challenge, require_token=True)
+        if callable(verifier)
+        else None
+    )
+    if challenge is None:
+        raise HTTPException(status_code=403, detail="WhatsApp webhook verification failed")
+    return PlainTextResponse(content=str(challenge))
+
+
+@router.post("/channels/webhook/whatsapp/{channel_id}")
+async def whatsapp_webhook_ingest(
+    channel_id: str,
+    request: Request,
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Ingest inbound WhatsApp webhook events (Meta Cloud API, WAHA, or Evolution API)."""
+    channel = _resolve_live_webhook_channel(server, channel_id, "whatsapp")
+    raw_body = await request.body()
+    verify_req = getattr(channel, "verify_webhook_request", None)
+    if callable(verify_req):
+        if not verify_req(request.headers, raw_body, require_secret=True):
+            raise HTTPException(status_code=403, detail="Invalid WhatsApp webhook authentication")
+    else:
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        sig_verifier = getattr(channel, "verify_webhook_signature", None)
+        if not callable(sig_verifier) or not sig_verifier(
+            sig_header, raw_body, require_secret=True
+        ):
+            raise HTTPException(status_code=403, detail="Invalid WhatsApp webhook signature")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+
+    extractor = getattr(channel, "extract_webhook_messages", None)
+    events = extractor(payload) if callable(extractor) else []
+    for ev in events:
+        if hasattr(channel, "note_inbound"):
+            channel.note_inbound()
+        channel.enqueue(ev)
+    return {"ok": True, "enqueued": len(events)}
+
+
+@router.post("/channels/webhook/slack/{channel_id}")
+async def slack_webhook_ingest(
+    channel_id: str,
+    request: Request,
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Ingest Slack HTTP Events API webhooks (url_verification + event_callback)."""
+    channel = _resolve_live_webhook_channel(server, channel_id, "slack")
+    raw_body = await request.body()
+    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
+    signature = request.headers.get("X-Slack-Signature", "")
+    sig_verifier = getattr(channel, "verify_signature", None)
+    if not callable(sig_verifier) or not sig_verifier(
+        timestamp, signature, raw_body, require_secret=True
+    ):
+        raise HTTPException(status_code=403, detail="Invalid Slack webhook signature")
+
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+
+    handler = getattr(channel, "handle_webhook_payload", None)
+    if callable(handler):
+        challenge_resp = handler(payload)
+        if challenge_resp is not None:
+            return cast(dict[str, Any], challenge_resp)
+    return {"ok": True}

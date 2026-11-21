@@ -47,6 +47,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/downloads/link/",
     # Read-only conversation links: the unguessable token is the credential.
     "/api/shares/",
+    # External IM platform webhooks (verified by channel signature / verify_token).
+    "/api/channels/webhook/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",

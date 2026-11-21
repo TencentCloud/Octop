@@ -9,6 +9,8 @@ import weixinIcon from "../../../../assets/channels/weixin.svg";
 import octopIcon from "../../../../assets/channels/octop.svg";
 import consoleIcon from "../../../../assets/channels/console.svg";
 import telegramIcon from "../../../../assets/channels/telegram.svg";
+import slackIcon from "../../../../assets/channels/slack.svg";
+import whatsappIcon from "../../../../assets/channels/whatsapp.svg";
 import mqttIcon from "../../../../assets/channels/mqtt.png";
 import xiaoyiIcon from "../../../../assets/channels/xiaoyi.png";
 
@@ -23,6 +25,8 @@ export type ChannelKey =
   | "qq"
   | "weixin"
   | "discord"
+  | "slack"
+  | "whatsapp"
   | "yuanbao"
   | "xiaoyi"
   | "mqtt"
@@ -44,12 +48,19 @@ export const CHANNEL_KEYS: ChannelKey[] = [
   "dingtalk",
   "telegram",
   "discord",
+  "slack",
+  "whatsapp",
   "xiaoyi",
   "mqtt",
 ];
 
 /** Overseas / less-common kinds hidden behind "更多通道" until expanded. */
-const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>(["telegram", "discord"]);
+const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>([
+  "telegram",
+  "discord",
+  "slack",
+  "whatsapp",
+]);
 
 export function isCollapsedChannelKey(key: ChannelKey): boolean {
   return COLLAPSED_CHANNEL_KEYS.has(key);
@@ -83,6 +94,8 @@ export const CHANNEL_LABEL_KEYS: Record<ChannelKey, string> = {
   qq: "channels.label_qq",
   weixin: "channels.label_weixin",
   discord: "channels.label_discord",
+  slack: "channels.label_slack",
+  whatsapp: "channels.label_whatsapp",
   yuanbao: "channels.label_yuanbao",
   xiaoyi: "channels.label_xiaoyi",
   mqtt: "channels.label_mqtt",
@@ -101,6 +114,8 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   yuanbao: "元宝",
   dingtalk: "钉钉",
   discord: "Discord",
+  slack: "Slack",
+  whatsapp: "WhatsApp",
   xiaoyi: "小艺",
   mqtt: "MQTT",
   telegram: "Telegram",
@@ -116,6 +131,8 @@ export const CHANNEL_ICONS: Record<ChannelKey, string> = {
   qq: qqIcon,
   weixin: weixinIcon,
   discord: discordIcon,
+  slack: slackIcon,
+  whatsapp: whatsappIcon,
   yuanbao: yuanbaoIcon,
   xiaoyi: xiaoyiIcon,
   mqtt: mqttIcon,
@@ -137,6 +154,8 @@ export const CHANNEL_COLORS: Record<ChannelKey, string> = {
   xiaoyi: "#CF0A2C",
   mqtt: "#7C3AED",
   discord: "#5865F2",
+  slack: "#4A154B",
+  whatsapp: "#25D366",
   dashboard: "#6366F1",
   agentchat: "#64748B",
   octopbot: "#10B981",
@@ -155,6 +174,9 @@ export const CHANNEL_URLS: Partial<Record<ChannelKey, string>> = {
   dingtalk: "https://open-dev.dingtalk.com/",
   qq: "https://q.qq.com/qqbot/openclaw/",
   discord: "https://discord.com/developers/applications",
+  slack: "https://api.slack.com/apps",
+  whatsapp:
+    "https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started",
   yuanbao: "https://yuanbao.tencent.com/bot",
   wecom: "https://work.weixin.qq.com/wework_admin/frame#/aiHelper/create",
   telegram: "https://t.me/BotFather",
@@ -170,14 +192,16 @@ export interface ChannelField {
   /** Antd input type. */
   type?: "text" | "password" | "textarea" | "json" | "switch" | "select";
   options?: string[];
-  defaultValue?: string | boolean;
-  legacyDefaultValue?: string | boolean;
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
   required?: boolean;
-  /** Optional i18n key for help beneath the control. */
+  /** Optional i18n key or plain text for the label tooltip. */
   helpKey?: string;
+  /** Default for newly created channels. */
+  defaultValue?: string | number | boolean;
+  /** Value for older saved configurations missing this field. */
+  legacyDefaultValue?: string | number | boolean;
 }
 
 export const QQ_GROUP_VISIBILITIES = [
@@ -198,9 +222,13 @@ export interface QqGroupContextConfig {
   history_limit: number;
   history_ttl_seconds: number;
   clear_after_reply: boolean;
+  owner_commands_only: boolean;
+  owner_tools_only: boolean;
+  social_trigger_enabled: boolean;
+  owner_ids: string[];
   groups?: Record<
     string,
-    Record<string, string | number | boolean | null | undefined>
+    Record<string, string | string[] | number | boolean | null | undefined>
   >;
 }
 
@@ -212,6 +240,10 @@ export const DEFAULT_QQ_GROUP_CONTEXT_CONFIG: QqGroupContextConfig = {
   history_limit: 10,
   history_ttl_seconds: 300,
   clear_after_reply: true,
+  owner_commands_only: true,
+  owner_tools_only: false,
+  social_trigger_enabled: true,
+  owner_ids: [],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -243,6 +275,12 @@ export function normalizeQqGroupContextConfig(
     parsed.activation === "always" ? "always" : ("mention" as const);
   const rawLimit = Number(parsed.history_limit);
   const rawTtl = Number(parsed.history_ttl_seconds);
+  const rawOwnerIds =
+    typeof parsed.owner_ids === "string"
+      ? parsed.owner_ids.split(/[\s,，]+/u)
+      : Array.isArray(parsed.owner_ids)
+      ? parsed.owner_ids
+      : [];
 
   return {
     ...parsed,
@@ -268,6 +306,26 @@ export function normalizeQqGroupContextConfig(
       typeof parsed.clear_after_reply === "boolean"
         ? parsed.clear_after_reply
         : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.clear_after_reply,
+    owner_commands_only:
+      typeof parsed.owner_commands_only === "boolean"
+        ? parsed.owner_commands_only
+        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.owner_commands_only,
+    owner_tools_only:
+      typeof parsed.owner_tools_only === "boolean"
+        ? parsed.owner_tools_only
+        : false,
+    social_trigger_enabled:
+      typeof parsed.social_trigger_enabled === "boolean"
+        ? parsed.social_trigger_enabled
+        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.social_trigger_enabled,
+    owner_ids: [
+      ...new Set(
+        rawOwnerIds
+          .filter((id): id is string => typeof id === "string")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ],
   };
 }
 
@@ -347,6 +405,106 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
       label: "HTTP Proxy Auth",
       type: "password",
       placeholder: "user:password",
+    },
+  ],
+  slack: [
+    {
+      name: "bot_token",
+      label: "Bot Token",
+      type: "password",
+      placeholder: "xoxb-...",
+      required: true,
+    },
+    {
+      name: "app_token",
+      label: "App-Level Token (Socket Mode)",
+      type: "password",
+      placeholder: "xapp-...",
+    },
+    {
+      name: "signing_secret",
+      label: "Signing Secret",
+      type: "password",
+    },
+    {
+      name: "reply_in_thread",
+      label: "channels.slackReplyInThread",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "thread_isolation",
+      label: "channels.telegram_topic_isolation",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "http_proxy",
+      label: "HTTP Proxy",
+      placeholder: "http://127.0.0.1:18118",
+    },
+  ],
+  whatsapp: [
+    {
+      name: "provider",
+      label: "channels.whatsappProvider",
+      type: "select",
+      options: ["cloud", "waha", "evolution"],
+      defaultValue: "cloud",
+      legacyDefaultValue: "cloud",
+      helpKey: "channels.whatsappProviderHelp",
+    },
+    {
+      name: "access_token",
+      label: "Access Token (Cloud API)",
+      type: "password",
+      placeholder: "EAAB...",
+    },
+    {
+      name: "phone_number_id",
+      label: "Phone Number ID (Cloud API)",
+      placeholder: "109876543210",
+    },
+    {
+      name: "verify_token",
+      label: "Webhook Verify Token",
+      type: "password",
+    },
+    {
+      name: "app_secret",
+      label: "App Secret (Cloud API)",
+      type: "password",
+    },
+    {
+      name: "bridge_url",
+      label: "channels.whatsappBridgeUrl",
+      placeholder: "http://127.0.0.1:3000",
+    },
+    {
+      name: "bridge_api_key",
+      label: "channels.whatsappBridgeApiKey",
+      type: "password",
+    },
+    {
+      name: "session_name",
+      label: "channels.whatsappSessionName",
+      placeholder: "default",
+      defaultValue: "default",
+      legacyDefaultValue: "default",
+    },
+    {
+      name: "reply_to_message",
+      label: "channels.telegram_reply_to_message",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "http_proxy",
+      label: "HTTP Proxy",
+      placeholder: "http://127.0.0.1:18118",
     },
   ],
   yuanbao: [
@@ -592,6 +750,24 @@ export function hasRequiredCredentials(
   key: ChannelKey,
   config: Record<string, unknown> | undefined,
 ): boolean {
+  if (key === "whatsapp") {
+    if (!config) return false;
+    const provider = String(config.provider ?? "")
+      .trim()
+      .toLowerCase();
+    const hasBridge = String(config.bridge_url ?? "").trim() !== "";
+    if (
+      provider === "waha" ||
+      provider === "evolution" ||
+      (hasBridge && !String(config.phone_number_id ?? "").trim())
+    ) {
+      return hasBridge;
+    }
+    return (
+      String(config.access_token ?? "").trim() !== "" &&
+      String(config.phone_number_id ?? "").trim() !== ""
+    );
+  }
   const required = REQUIRED_CREDENTIALS[key];
   if (!required || required.length === 0) return true;
   if (!config) return false;
@@ -610,24 +786,57 @@ export interface PluginChannelKindInfo {
   label: string;
   icon: string;
   intro_url: string;
+  description?: string;
   fields?: {
     name: string;
     label?: string;
     type?: string;
     placeholder?: string;
     required?: boolean;
+    helpKey?: string;
+    defaultValue?: ChannelField["defaultValue"];
+    legacyDefaultValue?: ChannelField["legacyDefaultValue"];
   }[];
   plugin_id: string;
 }
 
 /** Kinds registered at runtime through ``registerPluginChannelKind``. */
 const PLUGIN_CHANNEL_KINDS: string[] = [];
+export const CHANNEL_DESCRIPTIONS: Record<string, string> = {};
+// Capture compile-time kinds before any legacy runtime catalogue injection.
+const BUILTIN_CHANNEL_KINDS = new Set<string>(Object.keys(CHANNEL_LABELS));
+const ORIGINAL_CHANNEL_METADATA = new Map<
+  string,
+  {
+    label: string;
+    labelKey: string | undefined;
+    description: string | undefined;
+    icon: string;
+    url: string | undefined;
+    fields: ChannelField[] | undefined;
+  }
+>();
 
 export function replacePluginChannelKinds(
   infos: PluginChannelKindInfo[],
 ): void {
   for (const kind of PLUGIN_CHANNEL_KINDS) {
     const key = kind as ChannelKey;
+    delete CHANNEL_DESCRIPTIONS[kind];
+    const original = ORIGINAL_CHANNEL_METADATA.get(kind);
+    if (original) {
+      CHANNEL_LABELS[key] = original.label;
+      if (original.labelKey !== undefined)
+        CHANNEL_LABEL_KEYS[key] = original.labelKey;
+      else delete (CHANNEL_LABEL_KEYS as Partial<Record<string, string>>)[kind];
+      if (original.description !== undefined)
+        CHANNEL_DESCRIPTIONS[kind] = original.description;
+      CHANNEL_ICONS[key] = original.icon;
+      CHANNEL_URLS[key] = original.url;
+      CHANNEL_FIELDS[key] = original.fields;
+      ORIGINAL_CHANNEL_METADATA.delete(kind);
+      continue;
+    }
     const index = CHANNEL_KEYS.indexOf(key);
     if (index >= 0) CHANNEL_KEYS.splice(index, 1);
     delete (CHANNEL_LABELS as Partial<Record<string, string>>)[kind];
@@ -649,7 +858,9 @@ export function isPluginChannelKind(key: string): boolean {
  *
  * Builtin constants stay compile-time; plugin kinds join the same lookup
  * tables so ChannelCard / ChannelDrawer need no per-kind code. Idempotent
- * within one catalogue snapshot; builtin kinds are never shadowed.
+ * within one catalogue snapshot; builtin kinds are never shadowed. Legacy
+ * runtime entries may be overlaid by the gateway-approved plugin catalogue
+ * and are restored when that plugin is unloaded.
  * Use replacePluginChannelKinds to apply a refreshed snapshot.
  * Returns true when the kind was added.
  */
@@ -659,12 +870,30 @@ export function registerPluginChannelKind(
   const kind = String(info?.kind ?? "")
     .trim()
     .toLowerCase();
-  if (!kind || PLUGIN_CHANNEL_KINDS.includes(kind)) return false;
-  if (CHANNEL_KEYS.includes(kind as ChannelKey)) return false;
+  if (
+    !kind ||
+    PLUGIN_CHANNEL_KINDS.includes(kind) ||
+    BUILTIN_CHANNEL_KINDS.has(kind)
+  )
+    return false;
+  if (CHANNEL_KEYS.includes(kind as ChannelKey)) {
+    const key = kind as ChannelKey;
+    ORIGINAL_CHANNEL_METADATA.set(kind, {
+      label: CHANNEL_LABELS[key],
+      labelKey: CHANNEL_LABEL_KEYS[key],
+      description: CHANNEL_DESCRIPTIONS[kind],
+      icon: CHANNEL_ICONS[key],
+      url: CHANNEL_URLS[key],
+      fields: CHANNEL_FIELDS[key],
+    });
+    delete (CHANNEL_LABEL_KEYS as Partial<Record<string, string>>)[kind];
+    delete CHANNEL_FIELDS[key];
+  }
 
   PLUGIN_CHANNEL_KINDS.push(kind);
   const typed = kind as ChannelKey;
-  CHANNEL_KEYS.push(typed);
+  if (!CHANNEL_KEYS.includes(typed)) CHANNEL_KEYS.push(typed);
+  CHANNEL_DESCRIPTIONS[kind] = String(info.description ?? "");
   // No CHANNEL_LABEL_KEYS entry on purpose: an unknown i18n key would render
   // verbatim, so the label falls back to CHANNEL_LABELS / the raw kind.
   if (info.label) {
@@ -691,6 +920,9 @@ export function registerPluginChannelKind(
             : "text",
         placeholder: f?.placeholder ? String(f.placeholder) : undefined,
         required: f?.required === true,
+        helpKey: f?.helpKey,
+        defaultValue: f?.defaultValue,
+        legacyDefaultValue: f?.legacyDefaultValue,
       }),
     );
   }

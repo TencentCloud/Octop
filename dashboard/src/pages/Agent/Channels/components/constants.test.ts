@@ -7,6 +7,7 @@ import {
   partitionChannelKeys,
   CHANNEL_KEYS,
   CHANNEL_FIELDS,
+  hasRequiredCredentials,
   normalizeChannelFieldValue,
   replacePluginChannelKinds,
   CHANNEL_LABELS,
@@ -99,6 +100,37 @@ describe("normalizeQqGroupContextConfig", () => {
     });
   });
 
+  it("protects legacy group configs and preserves explicit opt-out", () => {
+    expect(normalizeQqGroupContextConfig({ enabled: false })).toMatchObject({
+      enabled: false,
+      owner_commands_only: true,
+      owner_tools_only: false,
+      owner_ids: [],
+    });
+    expect(
+      normalizeQqGroupContextConfig({ owner_commands_only: false }),
+    ).toMatchObject({ owner_commands_only: false });
+    expect(
+      normalizeQqGroupContextConfig({ owner_tools_only: true }),
+    ).toMatchObject({ owner_tools_only: true });
+    expect(
+      normalizeQqGroupContextConfig({ owner_tools_only: false }),
+    ).toMatchObject({ owner_tools_only: false });
+  });
+
+  it("normalizes owner IDs without losing per-group authorization overrides", () => {
+    const groups = { "group-1": { owner_ids: ["group-owner"] } };
+    expect(
+      normalizeQqGroupContextConfig({
+        owner_ids: [" owner-1 ", "owner-2", "owner-1", "", 123],
+        groups,
+      }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"], groups });
+    expect(
+      normalizeQqGroupContextConfig({ owner_ids: "owner-1, owner-2\nowner-1" }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"] });
+  });
+
   it("forces mention-only visibility to discard passive history", () => {
     expect(
       normalizeQqGroupContextConfig({
@@ -178,6 +210,36 @@ describe("Telegram configuration", () => {
     expect(() =>
       normalizeChannelFieldValue("allowed_user_ids", "-42"),
     ).toThrow();
+  });
+});
+
+describe("Slack and WhatsApp configuration", () => {
+  it("exposes Slack and dual-mode WhatsApp in more channels", () => {
+    expect(CHANNEL_KEYS).toContain("slack");
+    expect(CHANNEL_KEYS).toContain("whatsapp");
+    expect(partitionChannelKeys(["slack", "whatsapp"], new Set()).more).toEqual(
+      ["slack", "whatsapp"],
+    );
+    expect(hasRequiredCredentials("slack", { bot_token: "xoxb-123" })).toBe(
+      true,
+    );
+    expect(hasRequiredCredentials("slack", {})).toBe(false);
+    expect(
+      hasRequiredCredentials("whatsapp", {
+        provider: "cloud",
+        access_token: "EAAB",
+        phone_number_id: "123",
+      }),
+    ).toBe(true);
+    expect(
+      hasRequiredCredentials("whatsapp", {
+        provider: "waha",
+        bridge_url: "http://127.0.0.1:3000",
+      }),
+    ).toBe(true);
+    expect(hasRequiredCredentials("whatsapp", { provider: "waha" })).toBe(
+      false,
+    );
   });
 });
 

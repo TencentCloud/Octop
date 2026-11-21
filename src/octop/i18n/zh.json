@@ -742,7 +742,10 @@
         "ak": "AK",
         "sk": "SK",
         "agent_id": "Agent ID",
-        "host": "Broker Host"
+        "host": "Broker Host",
+        "access_token": "Access Token",
+        "phone_number_id": "Phone Number ID",
+        "bridge_url": "扫码桥接服务地址 (Bridge URL)"
       },
       "discord_invalid_token": "Discord Bot Token 无效，请在 Bot 页面重新生成并更新。",
       "discord_intents_required": "请在 Discord 应用的 Bot 页面开启 Message Content Intent。",
