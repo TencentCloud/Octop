@@ -8,9 +8,12 @@ from octop.infra.cron.task_type import (
     CRON_NAME_FALLBACK_LEN,
     CRON_NAME_MAX_LEN,
     CRON_PROMPT_MAX_LEN,
+    CRON_SCRIPT_MAX_LEN,
     default_cron_name,
+    normalize_cron_task,
     require_cron_name,
     require_cron_prompt,
+    require_script_path,
 )
 
 
@@ -47,6 +50,89 @@ def test_require_cron_name_uses_explicit_name() -> None:
 
 def test_require_cron_name_blank_uses_prompt_prefix() -> None:
     assert require_cron_name("  ", prompt="站起来活动", cron_id="cron_x") == "站起来活动"
+
+
+def test_agent_allow_all_is_kept_and_ignored_for_text() -> None:
+    agent = normalize_cron_task(task_type="agent", prompt="summarize", allow_all=True)
+    assert agent.allow_all is True
+    assert agent.script_lang is None
+    text = normalize_cron_task(task_type="text", prompt="hello", allow_all=True)
+    assert text.allow_all is False
+
+
+def test_inline_script_keeps_a_long_body() -> None:
+    body = "print(1)\n" + ("#\n" * 100)
+    spec = normalize_cron_task(
+        task_type="script",
+        prompt=body,
+        script_lang="python",
+        script_source="inline",
+    )
+    assert spec.prompt == body.strip()
+    assert spec.script_source == "inline"
+    assert spec.allow_all is False
+
+
+def test_script_file_uses_workspace_relative_path() -> None:
+    spec = normalize_cron_task(
+        task_type="script",
+        prompt="",
+        script_lang="bash",
+        script_source="file",
+        script_path="scripts/nightly.sh",
+    )
+    assert spec.prompt == "scripts/nightly.sh"
+    assert spec.script_path == "scripts/nightly.sh"
+
+
+def test_script_path_rejects_escape() -> None:
+    with pytest.raises(ValueError, match="workspace"):
+        require_script_path("../etc/passwd")
+    with pytest.raises(ValueError, match="workspace"):
+        require_script_path("/tmp/x.sh")
+
+
+def test_missing_script_lang_defaults_to_python() -> None:
+    spec = normalize_cron_task(task_type="script", prompt='print("helloworld")')
+    assert spec.script_lang == "python"
+    assert spec.script_source == "inline"
+    bash = normalize_cron_task(task_type="script", prompt="#!/bin/bash\necho hi")
+    assert bash.script_lang == "bash"
+    shell = normalize_cron_task(
+        task_type="script",
+        prompt="Write-Output hi",
+        script_lang="null",
+    )
+    assert shell.script_lang == "powershell"
+
+
+def test_script_rejects_empty_body_and_unknown_lang() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        normalize_cron_task(task_type="script", prompt="  ", script_lang="python")
+    with pytest.raises(ValueError, match="script_lang"):
+        normalize_cron_task(task_type="script", prompt="print(1)", script_lang="ruby")
+
+
+def test_script_path_normalizes_slashes_and_rejects_drives() -> None:
+    spec = normalize_cron_task(
+        task_type="script",
+        prompt="",
+        script_lang="powershell",
+        script_source="file",
+        script_path="scripts\\nightly.ps1",
+    )
+    assert spec.script_path == "scripts/nightly.ps1"
+    with pytest.raises(ValueError, match="workspace"):
+        require_script_path("C:/temp/job.ps1")
+
+
+def test_inline_script_rejects_over_limit() -> None:
+    with pytest.raises(ValueError, match=str(CRON_SCRIPT_MAX_LEN)):
+        normalize_cron_task(
+            task_type="script",
+            prompt="x" * (CRON_SCRIPT_MAX_LEN + 1),
+            script_lang="python",
+        )
 
 
 def test_require_cron_name_rejects_too_long() -> None:

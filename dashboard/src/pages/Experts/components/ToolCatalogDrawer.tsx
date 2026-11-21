@@ -7,6 +7,7 @@ interface ToolCatalogDrawerProps {
   agentId: string;
   open: boolean;
   onClose: () => void;
+  managed?: boolean;
 }
 
 /** Experts drawer embedding the full Tools surface (mirrors SkillCatalogDrawer). */
@@ -14,6 +15,7 @@ export default function ToolCatalogDrawer({
   agentId,
   open,
   onClose,
+  managed = false,
 }: ToolCatalogDrawerProps) {
   const { t } = useTranslation();
 
@@ -25,7 +27,7 @@ export default function ToolCatalogDrawer({
       agentId={agentId}
       remoteHintKey="editTools"
     >
-      <ToolsTabs agentId={agentId || null} />
+      <ToolsTabs agentId={agentId || null} managed={managed} />
     </CatalogDrawer>
   );
 }

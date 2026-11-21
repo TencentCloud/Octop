@@ -52,3 +52,31 @@ export function modelShortLabel(modelRefValue: string): string {
   if (slash < 0) return modelRefValue;
   return modelRefValue.slice(slash + 1);
 }
+
+/** Model name only, for the composer chip above the input. */
+export function modelNameLabel(
+  modelRefValue: string,
+  models?: readonly ModelPickerOption[] | null,
+): string {
+  const ref = modelRefValue.trim();
+  if (!ref) return "";
+  const match = models?.find((item) => modelOptionValue(item) === ref);
+  if (match) return match.name || match.model;
+  const slash = ref.indexOf("/");
+  if (slash <= 0 || slash === ref.length - 1) return ref;
+  return ref.slice(slash + 1);
+}
+
+/** Picker and conversation-history text, including the provider. */
+export function modelRefLabel(
+  modelRefValue: string,
+  models?: readonly ModelPickerOption[] | null,
+): string {
+  const ref = modelRefValue.trim();
+  if (!ref) return "";
+  const match = models?.find((item) => modelOptionValue(item) === ref);
+  if (match) return modelOptionLabel(match);
+  const slash = ref.indexOf("/");
+  if (slash <= 0 || slash === ref.length - 1) return ref;
+  return `${ref.slice(0, slash)} / ${ref.slice(slash + 1)}`;
+}

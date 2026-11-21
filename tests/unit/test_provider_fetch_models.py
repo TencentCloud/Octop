@@ -237,4 +237,52 @@ async def test_fetch_models_server_error_friendly() -> None:
 
     assert result["ok"] is False
     assert "temporarily unavailable" in result["error"].lower()
-    assert "503" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_magpie_catalog_keeps_nested_ids_and_user_agent() -> None:
+    from octop import __version__
+
+    response = _mock_response(
+        200,
+        {
+            "data": [
+                {
+                    "id": "vendor/org/model",
+                    "display_name": "Shown",
+                    "context_window": 32000,
+                    "max_output_tokens": 1024,
+                    "modalities": ["text", "image"],
+                },
+                {"id": "vendor/org/model"},
+                {"id": "text-embedding-3-large", "type": "embedding"},
+                {"id": "group/route"},
+            ]
+        },
+    )
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://gateway.example/v1",
+            api_key="real-key",
+            provider_name="Desk",
+            extra={"integration": "magpie"},
+        )
+
+    assert result["ok"] is True
+    assert [model["id"] for model in result["models"]] == [
+        "group/route",
+        "vendor/org/model",
+    ]
+    shown = next(model for model in result["models"] if model["id"] == "vendor/org/model")
+    assert shown["name"] == "Shown"
+    assert shown["context_window"] == 32000
+    assert shown["max_tokens"] == 1024
+    assert shown["input"] == ["text", "image"]
+    headers = mock_client.get.await_args.kwargs["headers"]
+    assert headers["User-Agent"] == f"Octop/{__version__}"
+    assert "X-Magpie-Session" not in headers

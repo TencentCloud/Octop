@@ -45,7 +45,7 @@ from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 logger = logging.getLogger(__name__)
 
-_MEDIA_BLOCK_TYPES = frozenset({"image", "video", "audio", "file"})
+_MEDIA_BLOCK_TYPES = ("image", "video", "audio", "file")
 # Only these tools may push media to the user (dashboard attachments / IM).
 # write_file / read_file / browser dumps often look like media and would re-push
 # prior outbound files if every tool_result were treated as a delivery.
@@ -83,6 +83,20 @@ def tool_name_base(name: str) -> str:
 def is_media_push_tool(name: str | None) -> bool:
     """True when this tool is allowed to push files/images to the user."""
     return tool_name_base(name or "").lower() in MEDIA_PUSH_TOOL_BASES
+
+
+def _delivers_media(message: Any, *, chunk_name: str | None) -> bool:
+    """Allowlisted tool names, or the managed ``send_file_to_user`` marker.
+
+    An external ACP agent reports its own title for the MCP call. The loopback
+    result still carries ``octop_delivery`` so the file reaches the user.
+    """
+    if is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        return True
+    for block in iter_media_blocks(extract_message_content(message)):
+        if block.get("octop_delivery") == "send_file_to_user":
+            return True
+    return False
 
 
 def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | None:
@@ -763,7 +777,7 @@ async def attachment_frames_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             preview_url = block.get("preview_url")
@@ -971,7 +985,7 @@ async def media_events_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             try:

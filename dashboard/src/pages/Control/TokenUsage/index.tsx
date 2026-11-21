@@ -2,8 +2,8 @@
  * Token Usage — account-level analytics.
  *
  * Views (peer Segmented): summary | by day | by expert | by model.
- * Summary composes totals + donut/pie charts from existing
- * ``GET /api/usage/summary`` granularities (no backend changes).
+ * Summary composes totals + donut charts from
+ * ``GET /api/usage/summary`` granularities (including ``by_user``).
  * Dimension views: stacked bar + sortable table.
  */
 
@@ -574,16 +574,20 @@ function DonutCard({
 
 function SummaryView({
   totals,
+  byUser,
   byExpert,
   byModel,
   byDay,
   isMobile,
+  showUsers,
 }: {
   totals: UsageSummary;
+  byUser: UsageBucket[];
   byExpert: UsageBucket[];
   byModel: UsageBucket[];
   byDay: UsageBucket[];
   isMobile: boolean;
+  showUsers: boolean;
 }) {
   const { t, i18n } = useTranslation();
 
@@ -595,6 +599,7 @@ function SummaryView({
     [totals.input_tokens, totals.output_tokens, t],
   );
 
+  const userPie = useMemo(() => toPieData(byUser), [byUser]);
   const expertPie = useMemo(() => toPieData(byExpert), [byExpert]);
   const modelPie = useMemo(() => toPieData(byModel), [byModel]);
   const dayBars = useMemo(() => [...byDay].reverse().slice(-14), [byDay]);
@@ -607,10 +612,11 @@ function SummaryView({
       />
 
       <div
-        className={styles.pieGrid}
-        style={{
-          gridTemplateColumns: isMobile ? "1fr" : "repeat(3, minmax(0, 1fr))",
-        }}
+        className={
+          showUsers
+            ? `${styles.pieGrid} ${styles.pieGridUsers}`
+            : styles.pieGrid
+        }
       >
         <DonutCard
           title={t("tokenUsage.ioBreakdown")}
@@ -621,6 +627,13 @@ function SummaryView({
             [t("tokenUsage.output")]: IO_COLORS.output,
           }}
         />
+        {showUsers ? (
+          <DonutCard
+            title={t("tokenUsage.userBreakdown")}
+            data={userPie}
+            emptyText={t("tokenUsage.noRecordsInRange")}
+          />
+        ) : null}
         <DonutCard
           title={t("tokenUsage.expertBreakdown")}
           data={expertPie}
@@ -863,6 +876,7 @@ export default function TokenUsagePage() {
 
   const [totals, setTotals] = useState<UsageSummary | null>(null);
   const [dimBuckets, setDimBuckets] = useState<UsageBucket[]>([]);
+  const [summaryUser, setSummaryUser] = useState<UsageBucket[]>([]);
   const [summaryExpert, setSummaryExpert] = useState<UsageBucket[]>([]);
   const [summaryModel, setSummaryModel] = useState<UsageBucket[]>([]);
   const [summaryDay, setSummaryDay] = useState<UsageBucket[]>([]);
@@ -980,12 +994,18 @@ export default function TokenUsagePage() {
     setError(null);
     try {
       if (view === "summary") {
-        const [expertRes, modelRes, dayRes] = await Promise.all([
+        const userPromise =
+          adminUserFilter !== null
+            ? fetchSummary(windowKey, "by_user", agentFilter, adminUserFilter)
+            : Promise.resolve(null);
+        const [userRes, expertRes, modelRes, dayRes] = await Promise.all([
+          userPromise,
           fetchSummary(windowKey, "by_agent", agentFilter, adminUserFilter),
           fetchSummary(windowKey, "by_model", agentFilter, adminUserFilter),
           fetchSummary(windowKey, "by_day", agentFilter, adminUserFilter),
         ]);
         setTotals(expertRes);
+        setSummaryUser(userRes?.buckets ?? []);
         setSummaryExpert(resolveAgentLabels(expertRes.buckets, agentNameById));
         setSummaryModel(modelRes.buckets);
         setSummaryDay(dayRes.buckets);
@@ -1125,10 +1145,12 @@ export default function TokenUsagePage() {
             view === "summary" ? (
               <SummaryView
                 totals={totals}
+                byUser={summaryUser}
                 byExpert={summaryExpert}
                 byModel={summaryModel}
                 byDay={summaryDay}
                 isMobile={isMobile}
+                showUsers={isAdmin}
               />
             ) : (
               <DimensionView

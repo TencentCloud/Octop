@@ -1104,12 +1104,17 @@ class BridgeManager:
             # Dial the peer URL directly. The bearer header survives proxies
             # that strip the query string; peers that only read ``token``
             # still see the query.
+            #
+            # Library keepalive is off. A 20s protocol ping_timeout closes the
+            # socket when a busy peer (demo.octop.chat) is late to pong, and
+            # the supervisor immediately redials, so the link flaps. NAT / L7
+            # idle timers are reset by BridgeSession application pings instead.
             async with websockets.connect(
                 url,
                 open_timeout=20,
                 max_size=BRIDGE_WS_MAX_BYTES,
-                ping_interval=20,
-                ping_timeout=20,
+                ping_interval=None,
+                ping_timeout=None,
                 proxy=None,
                 additional_headers={"Authorization": f"Bearer {token}"},
             ) as ws:
@@ -1168,6 +1173,7 @@ class BridgeManager:
                     on_tunnel_request=lambda p: self._handle_inbound_tunnel(connection_id, p),
                     on_turn_frame=lambda p: self._handle_inbound_turn(connection_id, p),
                     on_browser_frame=lambda p: self._handle_inbound_browser(connection_id, p),
+                    on_workspace_call=lambda p: self._handle_workspace_call(connection_id, p),
                     close_transport=close_transport,
                 )
                 await self._register_session(connection_id, session)
@@ -1291,6 +1297,7 @@ class BridgeManager:
             on_tunnel_request=lambda p: self._handle_inbound_tunnel(connection_id, p),
             on_turn_frame=lambda p: self._handle_inbound_turn(connection_id, p),
             on_browser_frame=lambda p: self._handle_inbound_browser(connection_id, p),
+            on_workspace_call=lambda p: self._handle_workspace_call(connection_id, p),
             close_transport=close_transport,
         )
         await self._register_session(connection_id, session)
@@ -1816,6 +1823,17 @@ class BridgeManager:
         async def send_frame(frame: dict[str, Any]) -> None:
             await chunk_queue.put(frame)
 
+        token = str(payload.get("file_target_token") or "").strip()
+        directory = str(payload.get("local_directory") or "").strip()
+        if token and directory:
+            from octop.infra.bridge.local_workspace import register_peer_target
+
+            register_peer_target(
+                token,
+                session=sess,
+                directory=directory,
+                execute=bool(payload.get("local_execute")),
+            )
         runner = self._peer_turn_runner
         if runner is None:
             await sess.send_json(
@@ -2259,6 +2277,69 @@ class BridgeManager:
         if not sess.closed:
             await sess.send_json({"type": "turn.end", "request_id": request_id})
 
+    async def _attach_local_directory(
+        self,
+        connection_id: str,
+        owner_user_id: int,
+        turn_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        directory = str(turn_payload.get("local_directory") or "").strip()
+        if not directory:
+            return turn_payload
+        from octop.i18n import tr
+        from octop.infra.bridge.local_workspace import LocalDirectoryError, open_local_workspace
+        from octop.infra.utils.locale import resolve_user_locale
+
+        try:
+            grant = await asyncio.to_thread(open_local_workspace, directory, connection_id)
+        except LocalDirectoryError as exc:
+            locale = resolve_user_locale(
+                user_repo=self._users,
+                user_id=owner_user_id,
+                channel_type="dashboard",
+            )
+            raise OctopError(
+                ErrorCode.BRIDGE_TUNNEL_FAILED,
+                tr(f"bridge.local_directory_{exc.code}", locale),
+            ) from exc
+        outbound = dict(turn_payload)
+        outbound["local_directory"] = grant.directory
+        outbound["file_target_token"] = grant.token
+        outbound["local_execute"] = grant.execute
+        return outbound
+
+    async def _handle_workspace_call(self, connection_id: str, payload: dict[str, Any]) -> None:
+        sess = self._sessions.get(connection_id)
+        if sess is None or sess.closed:
+            return
+        req_id = str(payload.get("id") or "")
+        from octop.infra.bridge.local_workspace import run_local_workspace_op
+
+        raw_args = payload.get("args")
+        args = raw_args if isinstance(raw_args, dict) else {}
+        try:
+            result = await run_local_workspace_op(
+                token=str(payload.get("token") or ""),
+                connection_id=connection_id,
+                op=str(payload.get("op") or ""),
+                args=args,
+            )
+        except Exception as exc:
+            logger.warning("bridge workspace call failed", exc_info=True)
+            if not sess.closed:
+                await sess.send_json(
+                    {
+                        "type": "workspace.result",
+                        "id": req_id,
+                        "ok": False,
+                        "error": str(exc)[:500],
+                    }
+                )
+            return
+        if sess.closed:
+            return
+        await sess.send_json({"type": "workspace.result", "id": req_id, "ok": True, **result})
+
     async def relay_user_turn(
         self,
         *,
@@ -2273,6 +2354,9 @@ class BridgeManager:
 
         self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
+        turn_payload = await self._attach_local_directory(
+            connection_id, owner_user_id, turn_payload
+        )
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
         try:

@@ -21,6 +21,8 @@ interface AgentMoreActionsProps {
   onMbti: () => void;
   onMemory: () => void;
   onChannels: () => void;
+  /** Managed experts omit MBTI. Tools and plugins stay. */
+  managed?: boolean;
 }
 
 /** Overflow menu for expert catalog actions (skills / subagents / …). */
@@ -33,6 +35,7 @@ export default function AgentMoreActions({
   onMbti,
   onMemory,
   onChannels,
+  managed = false,
 }: AgentMoreActionsProps) {
   const { t } = useTranslation();
 
@@ -61,12 +64,16 @@ export default function AgentMoreActions({
       label: t("experts.pluginsBtn"),
       onClick: onPlugins,
     },
-    {
-      key: "mbti",
-      icon: <Brain size={14} />,
-      label: t("experts.mbtiBtn"),
-      onClick: onMbti,
-    },
+    ...(managed
+      ? []
+      : [
+          {
+            key: "mbti",
+            icon: <Brain size={14} />,
+            label: t("experts.mbtiBtn"),
+            onClick: onMbti,
+          },
+        ]),
     {
       key: "memory",
       icon: <Notebook size={14} />,

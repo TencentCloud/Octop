@@ -57,3 +57,44 @@ describe("GlobalErrorBoundary chunk failures", () => {
     expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
   });
 });
+
+function Detonate() {
+  throw new Error("Cannot read properties of undefined (reading 'rows')");
+}
+
+describe("GlobalErrorBoundary unexpected failures", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    tryReloadOnStaleChunk.mockReset();
+    tryReloadOnStaleChunk.mockReturnValue(false);
+  });
+
+  it("leads with copy a person can act on, not the raw exception", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <GlobalErrorBoundary>
+        <Detonate />
+      </GlobalErrorBoundary>,
+    );
+
+    expect(screen.getByRole("heading")).toHaveTextContent(
+      "errors.unexpectedTitle",
+    );
+    // The message still exists — it just is not the headline any more.
+    expect(screen.getByText(/reading 'rows'/)).toBeInTheDocument();
+  });
+
+  it("keeps the exception behind a disclosure", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <GlobalErrorBoundary>
+        <Detonate />
+      </GlobalErrorBoundary>,
+    );
+
+    const details = screen.getByText(/reading 'rows'/).closest("details");
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false);
+    expect(screen.getByText("errors.details")).toBeInTheDocument();
+  });
+});

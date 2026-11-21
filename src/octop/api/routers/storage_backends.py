@@ -168,9 +168,9 @@ async def patch_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    next_kind = (body.kind or row.kind or "").lower()
-    if body.enabled is True:
-        _ensure_opensandbox_sdk(next_kind)
+
+    # Refuse backup-remote mutations before side effects (SDK install, renames).
+    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
 
     new_name: str | None = None
     if body.name is not None:
@@ -183,6 +183,27 @@ async def patch_storage_backend(
                     f"name {candidate!r} already exists",
                 )
             new_name = candidate
+            raise_if_backup_remote_backend(
+                config_path=server.paths.config,
+                backend_id=backend_id,
+                action="rename",
+            )
+    if body.enabled is False:
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="disable",
+        )
+    if body.kind is not None and (body.kind or "").strip().lower() != (row.kind or "").lower():
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="change_kind",
+        )
+
+    next_kind = (body.kind or row.kind or "").lower()
+    if body.enabled is True:
+        _ensure_opensandbox_sdk(next_kind)
 
     old_name = row.name
     if new_name is not None:
@@ -248,6 +269,19 @@ async def delete_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backup.remote.guards import (
+        raise_if_backup_remote_backend,
+        unlink_backup_remote_backend,
+    )
+
+    # Occupied as the active backup destination → refuse. Otherwise clear a
+    # dangling link (remote disabled) then delete.
+    raise_if_backup_remote_backend(
+        config_path=server.paths.config,
+        backend_id=backend_id,
+        action="delete",
+    )
+    unlink_backup_remote_backend(server=server, backend_id=backend_id)
     assert server.app_runtime is not None
     refs = server.app_runtime.agent_registry.find_agents_using_storage_backend(row.name)
     if refs:
@@ -287,6 +321,10 @@ async def probe_storage_backend_config(
         config_json=body.config_json,
         base=base,
     )
+    if (row.kind or "").lower() == "webdav":
+        from octop.infra.backend.probe import probe_webdav_backend
+
+        return await probe_webdav_backend(row)
     return probe_storage_backend(row)
 
 
@@ -413,8 +451,10 @@ async def test_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    from octop.infra.backend.probe import probe_storage_backend
+    from octop.infra.backend.probe import probe_storage_backend, probe_webdav_backend
 
+    if (row.kind or "").lower() == "webdav":
+        return await probe_webdav_backend(row)
     return probe_storage_backend(row)
 
 
