@@ -89,8 +89,18 @@ class DingTalkRegistrationPollBody(BaseModel):
     registration_id: str
 
 
+def _validate_http_url(value: str) -> str:
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    trimmed = value.strip()
+    parsed = urlparse(trimmed)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("URL must start with http:// or https:// and include a host")
+    return trimmed
+
+
 class WhatsAppBridgeQrBody(BaseModel):
-    bridge_url: str
+    bridge_url: Annotated[str, AfterValidator(_validate_http_url)]
     provider: Literal["waha", "evolution"] = "waha"
     session_name: str = "default"
     bridge_api_key: str = ""
@@ -1193,7 +1203,11 @@ async def whatsapp_webhook_verify(
     """Verify Meta WhatsApp Cloud API GET webhook subscription challenge."""
     channel = _resolve_live_webhook_channel(server, channel_id, "whatsapp")
     verifier = getattr(channel, "verify_webhook_challenge", None)
-    challenge = verifier(hub_mode, hub_verify_token, hub_challenge) if callable(verifier) else None
+    challenge = (
+        verifier(hub_mode, hub_verify_token, hub_challenge, require_token=True)
+        if callable(verifier)
+        else None
+    )
     if challenge is None:
         raise HTTPException(status_code=403, detail="WhatsApp webhook verification failed")
     return PlainTextResponse(content=str(challenge))
@@ -1208,10 +1222,17 @@ async def whatsapp_webhook_ingest(
     """Ingest inbound WhatsApp webhook events (Meta Cloud API, WAHA, or Evolution API)."""
     channel = _resolve_live_webhook_channel(server, channel_id, "whatsapp")
     raw_body = await request.body()
-    sig_header = request.headers.get("X-Hub-Signature-256", "")
-    sig_verifier = getattr(channel, "verify_webhook_signature", None)
-    if callable(sig_verifier) and not sig_verifier(sig_header, raw_body):
-        raise HTTPException(status_code=401, detail="Invalid WhatsApp webhook signature")
+    verify_req = getattr(channel, "verify_webhook_request", None)
+    if callable(verify_req):
+        if not verify_req(request.headers, raw_body, require_secret=True):
+            raise HTTPException(status_code=403, detail="Invalid WhatsApp webhook authentication")
+    else:
+        sig_header = request.headers.get("X-Hub-Signature-256", "")
+        sig_verifier = getattr(channel, "verify_webhook_signature", None)
+        if not callable(sig_verifier) or not sig_verifier(
+            sig_header, raw_body, require_secret=True
+        ):
+            raise HTTPException(status_code=403, detail="Invalid WhatsApp webhook signature")
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))
@@ -1238,9 +1259,11 @@ async def slack_webhook_ingest(
     raw_body = await request.body()
     timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
     signature = request.headers.get("X-Slack-Signature", "")
-    sig_verifier = getattr(channel, "verify_webhook_signature", None)
-    if callable(sig_verifier) and not sig_verifier(timestamp, signature, raw_body):
-        raise HTTPException(status_code=401, detail="Invalid Slack webhook signature")
+    sig_verifier = getattr(channel, "verify_signature", None)
+    if not callable(sig_verifier) or not sig_verifier(
+        timestamp, signature, raw_body, require_secret=True
+    ):
+        raise HTTPException(status_code=403, detail="Invalid Slack webhook signature")
 
     try:
         payload = json.loads(raw_body.decode("utf-8"))

@@ -28,6 +28,17 @@ def test_webhook_paths_are_jwt_exempt() -> None:
     assert is_jwt_exempt_path("/api/channels/webhook/slack/ch-1") is True
 
 
+def test_whatsapp_bridge_qr_body_rejects_non_http_url() -> None:
+    from pydantic import ValidationError
+
+    from octop.api.routers.channels import WhatsAppBridgeQrBody
+
+    valid = WhatsAppBridgeQrBody(bridge_url="http://127.0.0.1:3000")
+    assert valid.bridge_url == "http://127.0.0.1:3000"
+    with pytest.raises(ValidationError):
+        WhatsAppBridgeQrBody(bridge_url="file:///etc/passwd")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("channel_type", ["slack", "whatsapp", "discord", "feishu", "wecom"])
 async def test_quote_context_injected_for_new_and_enhanced_channels(channel_type: str) -> None:

@@ -175,7 +175,8 @@ export const CHANNEL_URLS: Partial<Record<ChannelKey, string>> = {
   qq: "https://q.qq.com/qqbot/openclaw/",
   discord: "https://discord.com/developers/applications",
   slack: "https://api.slack.com/apps",
-  whatsapp: "https://developers.facebook.com/apps/",
+  whatsapp:
+    "https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started",
   yuanbao: "https://yuanbao.tencent.com/bot",
   wecom: "https://work.weixin.qq.com/wework_admin/frame#/aiHelper/create",
   telegram: "https://t.me/BotFather",
