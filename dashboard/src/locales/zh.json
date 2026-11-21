@@ -2116,6 +2116,7 @@
     "unavailableHint": "插件未全局启用或未加载，请先在「插件管理」中启用该插件。",
     "pluginToolCount": "{{count}} 个工具",
     "tabs": {
+      "sharing": "共享记忆",
       "builtin": "内置工具",
       "acp": "智能体协作",
       "plugin": "插件工具"
@@ -4785,6 +4786,34 @@
       "settings": "设置",
       "userFile": "用户档案",
       "mcp": "终端接入"
+    },
+    "sharing": {
+      "title": "共享记忆",
+      "connectHint": "在运行 octop-memory 的机器上执行 octop-memory auth code --space <空间>，把一次性授权码粘贴到这里。",
+      "connect": "连接空间",
+      "connected": "已连接空间 {{space}}",
+      "connectedTo": "当前空间：{{space}}",
+      "disconnect": "断开",
+      "bound": "当前专家已绑定空间 {{space}}",
+      "unbound": "当前专家尚未绑定空间",
+      "bind": "绑定当前专家",
+      "tokens": "客户端 Token",
+      "client": "客户端",
+      "clientRequired": "填写客户端名称",
+      "create": "生成 Token",
+      "scopes": "权限",
+      "hint": "提示",
+      "lastUsed": "最近使用",
+      "status": "状态",
+      "revoked": "已撤销",
+      "active": "有效",
+      "actions": "操作",
+      "rotate": "轮换",
+      "revoke": "撤销",
+      "revokeConfirm": "撤销这个 Token？",
+      "createdTitle": "Token 只显示这一次，请立即复制",
+      "clientHint": "客户端 MCP 配置：url 填 http://<memory-host>:8790/mcp/，headers 里带 Authorization: Bearer <token>。",
+      "failed": "操作失败"
     },
     "mcp": {
       "title": "终端接入",

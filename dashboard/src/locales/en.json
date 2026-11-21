@@ -2116,6 +2116,7 @@
     "unavailableHint": "This plugin is not enabled globally. Enable it under Plugins first.",
     "pluginToolCount": "{{count}} tools",
     "tabs": {
+      "sharing": "Shared memory",
       "builtin": "Built-in tools",
       "acp": "Agent collaboration",
       "plugin": "Plugin tools"
@@ -4785,6 +4786,34 @@
       "settings": "Settings",
       "userFile": "User profile",
       "mcp": "Terminal access"
+    },
+    "sharing": {
+      "title": "Shared memory",
+      "connectHint": "Run octop-memory auth code --space <space> on the machine hosting octop-memory, then paste the one-time code here.",
+      "connect": "Connect space",
+      "connected": "Connected to {{space}}",
+      "connectedTo": "Current space: {{space}}",
+      "disconnect": "Disconnect",
+      "bound": "This expert is bound to {{space}}",
+      "unbound": "This expert is not bound to a space yet",
+      "bind": "Bind this expert",
+      "tokens": "Client tokens",
+      "client": "Client",
+      "clientRequired": "Enter a client name",
+      "create": "Create token",
+      "scopes": "Scopes",
+      "hint": "Hint",
+      "lastUsed": "Last used",
+      "status": "Status",
+      "revoked": "Revoked",
+      "active": "Active",
+      "actions": "Actions",
+      "rotate": "Rotate",
+      "revoke": "Revoke",
+      "revokeConfirm": "Revoke this token?",
+      "createdTitle": "The token is shown once — copy it now",
+      "clientHint": "MCP config: url http://<memory-host>:8790/mcp/ with Authorization: Bearer <token>.",
+      "failed": "Operation failed"
     },
     "mcp": {
       "title": "Terminal access",
