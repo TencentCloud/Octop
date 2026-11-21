@@ -8,11 +8,14 @@ import dify from "./dify.svg";
 import agentlyCli from "./agently-cli.png";
 import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
+import github from "./github.svg";
+import gitea from "./gitea.svg";
 import meituanTravel from "./meituan-travel.png";
 import notion from "./notion.png";
 import obsidianCli from "./obsidian-cli.svg";
 import openalex from "./openalex.svg";
 import qcc from "./qcc.png";
+import ragflow from "./ragflow.svg";
 import qqMail from "./qq-mail.png";
 import qqMusic from "./qq-music.png";
 import tencentDocs from "./tencent-docs.png";
@@ -37,6 +40,8 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   fliggy,
   "ctrip-wendao": ctripWendao,
   didi,
+  github,
+  gitea,
   "meituan-travel": meituanTravel,
   yuandian,
   "tencent-ima": tencentIma,
@@ -50,6 +55,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "obsidian-cli": obsidianCli,
   openalex,
   qcc,
+  ragflow,
   dida365: dida365,
   dify,
   "tencent-news": tencentNews,

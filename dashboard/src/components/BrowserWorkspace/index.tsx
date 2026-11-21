@@ -15,6 +15,7 @@ import {
   RefreshCw,
   User,
 } from "lucide-react";
+import cx from "classnames";
 import { api } from "../../api";
 import { bridgeApi } from "../../api/modules/bridge";
 import type {
@@ -229,24 +230,6 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
   const isAuthNeeded =
     stateLabel === "awaiting_user_auth" || stateLabel === "authenticating";
 
-  // Keyboard input — only forward when the user is in control.
-  useEffect(() => {
-    if (!isStreaming || !isInteractive) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only when the panel itself is focused (avoids capturing chat input).
-      if (!panelRef.current?.contains(document.activeElement)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        sendEvent({ type: "type", text: e.key });
-      } else {
-        sendEvent({ type: "keydown", key: e.key });
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isStreaming, isInteractive, sendEvent]);
-
   // -------------------------------------------------------------------------
   // Top URL bar — "Go" button so the user can navigate the agent's browser.
   // -------------------------------------------------------------------------
@@ -396,11 +379,12 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
         {hasSession ? (
           <>
             <div className={styles.footerLeft}>
-              <span className={`${styles.statusDot} ${styles[controlOwner]}`} />
+              <span className={cx(styles.statusDot, styles[controlOwner])} />
               <span
-                className={`${styles.controlLabel} ${
-                  controlOwner === "user" ? styles.takeoverActive : ""
-                }`}
+                className={cx(
+                  styles.controlLabel,
+                  controlOwner === "user" && styles.takeoverActive,
+                )}
               >
                 {controlOwner === "agent"
                   ? t("browserWorkspace.agentControl")
@@ -412,9 +396,11 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
                 </Tag>
               )}
               <Tag
-                className={`${styles.stateTag} ${
-                  isStreaming ? styles.stateTagStreaming : ""
-                } ${controlOwner === "user" ? styles.stateTagTakeover : ""}`}
+                className={cx(
+                  styles.stateTag,
+                  isStreaming && styles.stateTagStreaming,
+                  controlOwner === "user" && styles.stateTagTakeover,
+                )}
               >
                 {streamStatusLabel}
               </Tag>

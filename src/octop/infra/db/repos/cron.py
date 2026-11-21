@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +14,7 @@ from octop.infra.cron.task_type import (
     normalize_cron_task_type,
     require_cron_task_type,
 )
+from octop.infra.db.lease import cell, opt_int, unix_now_sql
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import (
     UNSET,
@@ -52,6 +54,14 @@ def _decode_mcp_servers(raw: Any) -> list[str]:
     return [str(n).strip() for n in parsed if str(n).strip()]
 
 
+def _flag(r: DbRow, key: str) -> bool:
+    try:
+        value = r[key]
+    except (KeyError, IndexError):
+        return False
+    return bool(value)
+
+
 def _optional_str(r: DbRow, key: str) -> str | None:
     try:
         value = r[key]
@@ -76,11 +86,18 @@ class CronJobRow:
     enabled: int
     task_type: str
     mcp_servers: list[str]
+    allow_all: int
+    script_lang: str | None
+    script_source: str | None
+    script_path: str | None
     last_run_at: int | None
     last_status: str | None
     last_error: str | None
     created_at: int
     updated_at: int
+    run_lease_owner: str | None = None
+    run_lease_token: str | None = None
+    run_lease_until: int | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> CronJobRow:
@@ -98,11 +115,18 @@ class CronJobRow:
             enabled=r["enabled"],
             task_type=normalize_cron_task_type(str(r["task_type"])),
             mcp_servers=_decode_mcp_servers(r["mcp_servers"]),
+            allow_all=1 if _flag(r, "allow_all") else 0,
+            script_lang=_optional_str(r, "script_lang"),
+            script_source=_optional_str(r, "script_source"),
+            script_path=_optional_str(r, "script_path"),
             last_run_at=r["last_run_at"],
             last_status=r["last_status"],
             last_error=r["last_error"],
             created_at=r["created_at"],
             updated_at=r["updated_at"],
+            run_lease_owner=cell(r, "run_lease_owner") or None,
+            run_lease_token=cell(r, "run_lease_token") or None,
+            run_lease_until=opt_int(cell(r, "run_lease_until")),
         )
 
     def to_public_dict(self, *, include_agent: bool = False) -> dict[str, Any]:
@@ -117,6 +141,10 @@ class CronJobRow:
             "enabled": bool(self.enabled),
             "task_type": self.task_type,
             "mcp_servers": list(self.mcp_servers),
+            "allow_all": bool(self.allow_all),
+            "script_lang": self.script_lang,
+            "script_source": self.script_source,
+            "script_path": self.script_path,
             "last_run_at": self.last_run_at,
             "last_status": self.last_status,
         }
@@ -143,6 +171,10 @@ class CronJobRepo:
         model: str | None = None,
         task_type: CronTaskType = DEFAULT_CRON_TASK_TYPE,
         mcp_servers: list[str] | None = None,
+        allow_all: bool = False,
+        script_lang: str | None = None,
+        script_source: str | None = None,
+        script_path: str | None = None,
         enabled: bool = True,
         name: str | None = None,
     ) -> str:
@@ -150,9 +182,9 @@ class CronJobRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO cron_jobs(cron_id, name, agent_id, user_id, schedule_spec, prompt, "
-                "session_key, model, fresh_thread, task_type, mcp_servers, enabled, "
-                "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "session_key, model, fresh_thread, task_type, mcp_servers, allow_all, "
+                "script_lang, script_source, script_path, enabled, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cron_id,
                     (name or "").strip() or default_cron_name(prompt, cron_id),
@@ -165,6 +197,10 @@ class CronJobRepo:
                     bool_int(fresh_thread),
                     task_type,
                     _encode_mcp_servers(mcp_servers),
+                    bool_int(allow_all),
+                    script_lang,
+                    script_source,
+                    script_path,
                     bool_int(enabled),
                     ts,
                     ts,
@@ -205,6 +241,76 @@ class CronJobRepo:
             rows = conn.execute(sql).fetchall()
         return map_rows(rows, CronJobRow)
 
+    def _now_sql(self) -> str:
+        return unix_now_sql(self._db.dialect)
+
+    def claim_run(
+        self,
+        cron_id: str,
+        *,
+        owner: str,
+        lease_seconds: int,
+        force: bool = False,
+    ) -> CronJobRow | None:
+        """Take the run lease when it is free or expired. ``force`` ignores enabled."""
+        token = uuid.uuid4().hex
+        now = self._now_sql()
+        sql = (
+            "UPDATE cron_jobs SET run_lease_owner = ?, run_lease_token = ?, "
+            f"run_lease_until = {now} + ? "
+            "WHERE cron_id = ? AND (? = 1 OR enabled = 1) "
+            f"AND (run_lease_until IS NULL OR run_lease_until < {now}) "
+            "RETURNING *"
+        )
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                sql,
+                (owner, token, int(lease_seconds), cron_id, bool_int(force)),
+            ).fetchone()
+        return CronJobRow.from_row(row) if row else None
+
+    def renew_run_lease(self, cron_id: str, *, token: str, lease_seconds: int) -> bool:
+        now = self._now_sql()
+        sql = (
+            "UPDATE cron_jobs SET "
+            f"run_lease_until = {now} + ? "
+            "WHERE cron_id = ? AND run_lease_token = ? "
+            f"AND run_lease_until >= {now}"
+        )
+        with self._db.transaction() as conn:
+            cur = conn.execute(sql, (int(lease_seconds), cron_id, token))
+            return int(cur.rowcount or 0) > 0
+
+    def finish_run(
+        self,
+        cron_id: str,
+        *,
+        token: str,
+        ts: int,
+        status: str,
+        error: str | None = None,
+        disable: bool = False,
+    ) -> bool:
+        """Record the terminal status and clear the lease, only for ``token``."""
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE cron_jobs SET last_run_at = ?, last_status = ?, last_error = ?, "
+                "enabled = CASE WHEN ? = 1 THEN 0 ELSE enabled END, "
+                "run_lease_owner = NULL, run_lease_token = NULL, run_lease_until = NULL, "
+                "updated_at = ? WHERE cron_id = ? AND run_lease_token = ?",
+                (ts, status, error, bool_int(disable), now_ts(), cron_id, token),
+            )
+            return int(cur.rowcount or 0) > 0
+
+    def release_run_lease(self, cron_id: str, *, token: str) -> bool:
+        with self._db.transaction() as conn:
+            cur = conn.execute(
+                "UPDATE cron_jobs SET run_lease_owner = NULL, run_lease_token = NULL, "
+                "run_lease_until = NULL WHERE cron_id = ? AND run_lease_token = ?",
+                (cron_id, token),
+            )
+            return int(cur.rowcount or 0) > 0
+
     def set_run_status(
         self,
         cron_id: str,
@@ -220,17 +326,22 @@ class CronJobRepo:
                 (ts, status, error, now_ts(), cron_id),
             )
 
-    def mark_missed(self, cron_id: str) -> None:
+    def mark_missed(self, cron_id: str) -> bool:
         """Disable a one-shot that never ran and record ``last_status='missed'``.
 
-        ``last_run_at`` stays empty: the job did not execute.
+        Only one instance wins. A live or expired-but-still-recorded run is left
+        alone, and ``last_run_at`` stays empty because the job did not execute.
         """
+        now = self._now_sql()
         with self._db.transaction() as conn:
-            conn.execute(
+            cur = conn.execute(
                 "UPDATE cron_jobs SET enabled = 0, last_status = ?, last_error = NULL, "
-                "updated_at = ? WHERE cron_id = ?",
+                "updated_at = ? WHERE cron_id = ? AND enabled = 1 "
+                "AND last_run_at IS NULL AND (last_status IS NULL OR last_status = '') "
+                f"AND (run_lease_until IS NULL OR run_lease_until < {now})",
                 ("missed", now_ts(), cron_id),
             )
+            return int(cur.rowcount or 0) > 0
 
     def update(
         self,
@@ -245,6 +356,10 @@ class CronJobRepo:
         task_type: CronTaskType | None = None,
         model: str | None | object = UNSET,
         mcp_servers: list[str] | None | object = UNSET,
+        allow_all: bool | object = UNSET,
+        script_lang: str | None | object = UNSET,
+        script_source: str | None | object = UNSET,
+        script_path: str | None | object = UNSET,
     ) -> None:
         fields, params = partial_updates(
             [
@@ -266,6 +381,18 @@ class CronJobRepo:
             params.append(
                 _encode_mcp_servers(mcp_servers if isinstance(mcp_servers, list) else None)
             )
+        if allow_all is not UNSET:
+            fields.append("allow_all = ?")
+            params.append(bool_int(bool(allow_all)))
+        if script_lang is not UNSET:
+            fields.append("script_lang = ?")
+            params.append(script_lang)
+        if script_source is not UNSET:
+            fields.append("script_source = ?")
+            params.append(script_source)
+        if script_path is not UNSET:
+            fields.append("script_path = ?")
+            params.append(script_path)
         if enabled is not None:
             fields.append("enabled = ?")
             params.append(bool_int(enabled))

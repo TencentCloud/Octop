@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { envsApi } from "../../../api/modules/env";
 import api from "../../../api";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
@@ -45,6 +46,14 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     configured: false,
   },
   {
+    id: "deepseek",
+    name: "DeepSeek Search",
+    descriptionKey: "setupWizard.search.providers.deepseek.desc",
+    docs_url: "https://api-docs.deepseek.com/guides/search/",
+    required_keys: ["DEEPSEEK_API_KEY"],
+    configured: false,
+  },
+  {
     id: "google",
     name: "Google Search",
     descriptionKey: "setupWizard.search.providers.google.desc",
@@ -58,6 +67,14 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     descriptionKey: "setupWizard.search.providers.kimi.desc",
     docs_url: "https://platform.moonshot.cn/",
     required_keys: ["MOONSHOT_API_KEY"],
+    configured: false,
+  },
+  {
+    id: "yuanbao",
+    name: "元宝搜索",
+    descriptionKey: "setupWizard.search.providers.yuanbao.desc",
+    docs_url: "https://cloud.tencent.com/document/product/1806/130615",
+    required_keys: ["TENCENTCLOUD_WSA_APIKEY"],
     configured: false,
   },
 ];
@@ -330,9 +347,7 @@ export default function SearchConfigPage() {
     <>
       <p className={styles.intro}>{t("advancedSettings.search.desc")}</p>
 
-      <div
-        className={`${styles.status} ${activeSource ? styles.statusOk : ""}`}
-      >
+      <div className={cx(styles.status, activeSource && styles.statusOk)}>
         <span className={styles.statusIcon} aria-hidden="true">
           {activeSource ? <CheckCircle size={18} /> : <Search size={18} />}
         </span>
@@ -368,13 +383,11 @@ export default function SearchConfigPage() {
           const isActive = activeSource?.id === provider.id;
           const needsSetup = !provider.configured;
           const logo = searchProviderLogo(provider.id);
-          const cardClass = [
+          const cardClass = cx(
             styles.card,
-            isActive ? styles.cardActive : "",
-            needsSetup ? styles.cardSetup : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
+            isActive && styles.cardActive,
+            needsSetup && styles.cardSetup,
+          );
 
           return (
             <div
@@ -410,16 +423,16 @@ export default function SearchConfigPage() {
                 </div>
                 <div className={styles.badges}>
                   {isActive ? (
-                    <span className={`${styles.badge} ${styles.badgeActive}`}>
+                    <span className={cx(styles.badge, styles.badgeActive)}>
                       <Check size={11} />
                       {t("setupWizard.search.configured")}
                     </span>
                   ) : provider.configured ? (
-                    <span className={`${styles.badge} ${styles.badgeOk}`}>
+                    <span className={cx(styles.badge, styles.badgeOk)}>
                       {t("setupWizard.search.configured")}
                     </span>
                   ) : (
-                    <span className={`${styles.badge} ${styles.badgeSetup}`}>
+                    <span className={cx(styles.badge, styles.badgeSetup)}>
                       {t("setupWizard.search.unconfigured")}
                     </span>
                   )}

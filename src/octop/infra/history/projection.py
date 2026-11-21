@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from langchain_core.messages import AIMessage, convert_to_messages, message_to_dict
@@ -21,6 +22,54 @@ from octop.infra.gateway.process.message_keys import (
 
 _USER_ROLES = frozenset({"human", "user"})
 _ASSISTANT_ROLES = frozenset({"ai", "assistant"})
+_TURN_DURATION_KEY = "turn_duration_ms"
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _compact(text: str) -> str:
+    return "".join(text.split())
+
+
+def _assistant_visible(text: str) -> str:
+    """Spoken text, without the reasoning block stored beside it."""
+    return _THINK_BLOCK.sub(" ", text)
+
+
+def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[ThreadMessageInput]:
+    """Put the turn wall time on the last assistant reply in this projection."""
+    fallback: int | None = None
+    for index in range(len(items) - 1, -1, -1):
+        item = items[index]
+        if item.role not in _ASSISTANT_ROLES:
+            continue
+        try:
+            wire = json.loads(item.message_json)
+        except json.JSONDecodeError:
+            return items
+        data = wire.get("data") if isinstance(wire, dict) else None
+        if not isinstance(data, dict):
+            return items
+        if data.get("tool_calls"):
+            if fallback is None:
+                fallback = index
+            continue
+        fallback = index
+        break
+    if fallback is None:
+        return items
+    item = items[fallback]
+    wire = json.loads(item.message_json)
+    data = wire["data"]
+    extra = data.get("additional_kwargs")
+    if not isinstance(extra, dict):
+        extra = {}
+        data["additional_kwargs"] = extra
+    extra[_TURN_DURATION_KEY] = duration_ms
+    items[fallback] = replace(
+        item,
+        message_json=json.dumps(wire, ensure_ascii=False, default=str),
+    )
+    return items
 
 
 def _role(message: Any) -> str:
@@ -161,6 +210,12 @@ class TurnHistoryTracker:
     _reasoning_text: str = field(default="", init=False)
     _error_message: str = field(default="", init=False)
     _error_code: str | None = field(default=None, init=False)
+    _turn_duration_ms: int | None = field(default=None, init=False)
+
+    def note_turn_duration(self, duration_ms: int) -> None:
+        if duration_ms < 0:
+            return
+        self._turn_duration_ms = int(duration_ms)
 
     @classmethod
     def from_request(cls, request: dict[str, Any]) -> TurnHistoryTracker:
@@ -213,12 +268,26 @@ class TurnHistoryTracker:
         return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
 
     def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
-        if not self._stream_text:
+        """True when the streamed tokens are already in the checkpoint messages.
+
+        A host turn speaks once, calls a tool, then speaks again. No single
+        assistant row contains the whole stream, so appending it would store
+        a second copy of the same reply.
+        """
+        stream = _compact(self._stream_text)
+        if not stream:
             return False
-        return any(
-            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
-            for item in items
-        )
+        visible: list[str] = []
+        for item in items:
+            if item.role not in _ASSISTANT_ROLES:
+                continue
+            text = _wire_text(item)
+            if self._stream_text in text:
+                return True
+            piece = _compact(_assistant_visible(text))
+            if piece:
+                visible.append(piece)
+        return bool(visible) and stream in "".join(visible)
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:
@@ -237,4 +306,6 @@ class TurnHistoryTracker:
         error = self._error_input()
         if error is not None:
             items.append(error)
+        if isinstance(self._turn_duration_ms, int):
+            items = _stamp_duration(items, self._turn_duration_ms)
         return items

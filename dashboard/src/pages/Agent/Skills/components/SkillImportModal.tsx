@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Checkbox, Modal, Segmented } from "antd";
 import { Upload as UploadIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "../index.module.less";
 import { parseSkillZip, type ParsedZipSkill } from "./parseSkillZip";
 
@@ -261,9 +262,11 @@ export function SkillImportModal({
           </div>
 
           <div
-            className={`${styles.zipDragDrop} ${
-              isDragging ? styles.zipDragDropActive : ""
-            } ${zipFile ? styles.zipDragDropHasFile : ""}`}
+            className={cx(
+              styles.zipDragDrop,
+              isDragging && styles.zipDragDropActive,
+              zipFile && styles.zipDragDropHasFile,
+            )}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}

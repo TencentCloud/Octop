@@ -12,6 +12,7 @@ API_ROOT = pathlib.Path("src/octop/api")
 GATED_FILES = [
     "routers/users.py",
     "routers/admin.py",
+    "routers/app_config.py",
     "routers/backup.py",
     "routers/security.py",
     "routers/providers.py",
@@ -27,6 +28,7 @@ GATED_FILES = [
     "routers/ollama_models.py",
     "routers/onnx_models.py",
     "routers/connectors.py",
+    "routers/bridge.py",
     "routers/knowledge_bases.py",
     "routers/browser/uninstall.py",
     "routers/browser/env.py",

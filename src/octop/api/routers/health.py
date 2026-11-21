@@ -19,10 +19,17 @@ async def health(server: Any = Depends(get_server)) -> dict[str, Any]:
     agents = (
         len(server.app_runtime.agent_registry.list_rows()) if server.app_runtime is not None else 0
     )
+    channels: list[dict[str, Any]] = []
+    runtime = getattr(server, "app_runtime", None)
+    gateway = getattr(runtime, "gateway", None) if runtime is not None else None
+    report = getattr(gateway, "channel_health", None)
+    if callable(report):
+        channels = report()
     return {
         "ok": True,
         "started_at": server._started_at,
         "db": bound,
         "users_loaded": users,
         "agents_running": agents,
+        "channels": channels,
     }

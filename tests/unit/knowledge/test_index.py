@@ -29,3 +29,4 @@ def test_index_replaces_document_chunks_and_returns_cosine_top_k(tmp_path, monke
 
     index.delete_doc("doc-2")
     assert [hit.doc_id for hit in index.search([1.0, 0.0], k=5)] == ["doc-1"]
+    assert index.list_doc_chunks("doc-1") == [(0, "replacement")]

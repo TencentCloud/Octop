@@ -17,7 +17,7 @@ import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import {
   PERSONALIZATION_TAB_PERMISSIONS,
-  userCan,
+  userCanKey,
 } from "../../../utils/permissions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import SkillsTabs from "../Skills/components/SkillsTabs";
@@ -66,7 +66,7 @@ export default function PersonalizationPage() {
   const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
   const isAllowed = useCallback(
     (tab: PersonalizationTab) =>
-      userCan(user, PERSONALIZATION_TAB_PERMISSIONS[tab]),
+      userCanKey(user, PERSONALIZATION_TAB_PERMISSIONS[tab]),
     [user],
   );
   const defaultTab =
@@ -102,14 +102,28 @@ export default function PersonalizationPage() {
     `personalization.tabs.${activeTab}`,
   )}`;
   const showTeams = activeTab === "memory" || activeTab === "channels";
+  const hideManaged = activeTab === "mbti";
   const expertOnlyBlocked = isTeamAgent(activeAgent) && !showTeams;
+  const managedAgent = activeAgent?.kind === "managed";
   const teamNeedsExpert = t("agentSelector.teamNeedsExpert", {
     name: activeAgent?.name ?? "",
     defaultValue: "当前是团队「{{name}}」，此页请选择专家",
   });
+  const managedNeedsExpert = t("agentSelector.managedNeedsExpert", {
+    name: activeAgent?.name ?? "",
+    defaultValue: "当前是托管专家「{{name}}」，此页请选择其他专家",
+  });
   const expertOnly = (node: ReactNode) =>
     expertOnlyBlocked ? (
       <Empty style={{ marginTop: 24 }} description={teamNeedsExpert} />
+    ) : (
+      node
+    );
+  const withoutManaged = (node: ReactNode) =>
+    expertOnlyBlocked ? (
+      <Empty style={{ marginTop: 24 }} description={teamNeedsExpert} />
+    ) : managedAgent ? (
+      <Empty style={{ marginTop: 24 }} description={managedNeedsExpert} />
     ) : (
       node
     );
@@ -120,6 +134,7 @@ export default function PersonalizationPage() {
       subtitle={t("personalization.description")}
       agentScoped
       showTeams={showTeams}
+      hideManaged={hideManaged}
       fill={!isMobile}
       pathTabs={pathTabs}
     >
@@ -165,7 +180,7 @@ export default function PersonalizationPage() {
           >
             {expertOnly(
               <div className={pageShellStyles.fillChild}>
-                <ToolsTabs agentId={activeAgentId} />
+                <ToolsTabs agentId={activeAgentId} managed={managedAgent} />
               </div>,
             )}
           </div>
@@ -215,21 +230,21 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "mbti" ? "flex" : "none" }}
             aria-hidden={activeTab !== "mbti"}
           >
-            {!activeAgentId || expertOnlyBlocked ? (
+            {!activeAgentId ? (
               <Empty
                 style={{ marginTop: 24 }}
-                description={
-                  expertOnlyBlocked ? teamNeedsExpert : t("mbtiPage.pickAgent")
-                }
+                description={t("mbtiPage.pickAgent")}
               />
             ) : (
-              <div className={pageShellStyles.fillChild}>
-                <MBTISelector
-                  key={activeAgentId}
-                  showHeader={false}
-                  showTestAction
-                />
-              </div>
+              withoutManaged(
+                <div className={pageShellStyles.fillChild}>
+                  <MBTISelector
+                    key={activeAgentId}
+                    showHeader={false}
+                    showTestAction
+                  />
+                </div>,
+              )
             )}
           </div>
         )}

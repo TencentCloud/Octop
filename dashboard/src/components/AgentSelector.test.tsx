@@ -122,6 +122,24 @@ describe("AgentSelector groups", () => {
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
+  it("hides managed experts when the page does not use them", () => {
+    const hosted = fakeAgent({
+      agent_id: "hosted",
+      name: "托管写手",
+      kind: "managed",
+    });
+    state.agents = [writer, hosted];
+    state.activeAgentId = "hosted";
+    render(<AgentSelector hideManaged />);
+    const chips = within(screen.getByTestId("agent-selector-chips"));
+    expect(chips.getByText("写手")).toBeInTheDocument();
+    expect(chips.queryByText("托管写手")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("当前是托管专家「托管写手」，此页请选择其他专家"),
+    ).toBeInTheDocument();
+    expect(setActiveAgent).not.toHaveBeenCalled();
+  });
+
   it("keeps a hidden team selection and asks the user to pick an expert", () => {
     state.activeAgentId = "crew";
     render(<AgentSelector />);

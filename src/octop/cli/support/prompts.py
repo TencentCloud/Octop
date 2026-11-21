@@ -6,10 +6,19 @@ from typing import Any, cast
 
 
 def _ask(kind: str, **kwargs: Any) -> Any:
-    """Indirection point for tests; dispatches to the matching questionary call."""
+    """Indirection point for tests; dispatches to the matching questionary call.
+
+    questionary swallows Ctrl-C and returns ``None`` (printing "Cancelled by
+    user") instead of raising ``KeyboardInterrupt``. Treat that as a cancel so
+    callers cannot continue with an empty answer.
+    """
     import questionary
 
-    return getattr(questionary, kind)(**kwargs).ask()
+    value = getattr(questionary, kind)(**kwargs).ask()
+    if value is None:
+        print("cancelled", file=sys.stderr)
+        sys.exit(130)
+    return value
 
 
 def _guard[T](callable_: Callable[[], T]) -> T:

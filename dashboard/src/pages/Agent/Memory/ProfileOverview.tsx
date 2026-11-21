@@ -22,6 +22,7 @@ import {
   formatServerYmd,
 } from "../../../utils/formatMessageTime";
 import type { TFunction } from "i18next";
+import cx from "classnames";
 
 import {
   memoryDashboardApi,
@@ -242,9 +243,7 @@ function Stat({
 }) {
   return (
     <div className={styles.statItem}>
-      <span
-        className={`${styles.statValue} ${warn ? styles.statValueWarn : ""}`}
-      >
+      <span className={cx(styles.statValue, warn && styles.statValueWarn)}>
         {value}
       </span>
       <span className={styles.statLabel}>{label}</span>
@@ -331,7 +330,7 @@ function ProfileGroup({
               {onViewAll ? (
                 <button
                   type="button"
-                  className={`${styles.groupRow} ${styles.groupRowClickable}`}
+                  className={cx(styles.groupRow, styles.groupRowClickable)}
                   onMouseEnter={() => setHoveredId(it.id)}
                   onMouseLeave={() => setHoveredId(null)}
                   onClick={() => onViewAll(it.entityId)}
@@ -340,11 +339,10 @@ function ProfileGroup({
                   <span className={styles.groupRowMeta}>
                     {it.meta}
                     <span
-                      className={`${styles.rowGoLibraryLabel} ${
-                        hoveredId === it.id
-                          ? styles.rowGoLibraryLabelVisible
-                          : ""
-                      }`}
+                      className={cx(
+                        styles.rowGoLibraryLabel,
+                        hoveredId === it.id && styles.rowGoLibraryLabelVisible,
+                      )}
                     >
                       {t("memory.overview.rowGoLibrary", "去记忆库 →")}
                     </span>

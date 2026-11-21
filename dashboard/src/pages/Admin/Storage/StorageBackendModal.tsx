@@ -16,6 +16,8 @@ import { message } from "@/utils/antdMessage";
 import { Activity } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
+import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
 import {
   clearFormDraft,
   loadFormDraft,
@@ -26,8 +28,30 @@ import {
   STORAGE_TYPE_DEFS,
   type StorageBackendRow,
 } from "./useStorageBackends";
+import CodeEditor from "../../Agent/Workspace/components/CodeEditor";
 import { DockerEnvFooter } from "./DockerEnvFooter";
 import { storageProbeMessage } from "./storageProbeMessage";
+import styles from "./storage.module.less";
+
+/** Ant Design Form-compatible Monaco JSON editor. */
+function JsonConfigEditor({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (next: string) => void;
+}) {
+  return (
+    <div className={styles.jsonEditorFrame}>
+      <CodeEditor
+        path="storage-backend-config.json"
+        language="json"
+        value={value ?? ""}
+        onChange={(next) => onChange?.(next)}
+      />
+    </div>
+  );
+}
 
 interface StorageBackendDrawerProps {
   open: boolean;
@@ -65,6 +89,8 @@ export function StorageBackendDrawer({
   const { t } = useTranslation();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
+  const [visibility, setVisibility] = useState<ResourceVisibilityMode>("all");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [form] = Form.useForm<StorageForm>();
   const isEdit = editing !== undefined;
   const draftScope = editing
@@ -82,6 +108,8 @@ export function StorageBackendDrawer({
   useEffect(() => {
     if (open) {
       if (editing) {
+        setVisibility(editing.visibility === "groups" ? "groups" : "all");
+        setGroupIds(editing.group_ids ?? []);
         setActiveKind(editing.kind);
         let cfg: Record<string, unknown> = {};
         try {
@@ -112,6 +140,8 @@ export function StorageBackendDrawer({
           username: typeof cfg.username === "string" ? cfg.username : "",
         });
       } else {
+        setVisibility("all");
+        setGroupIds([]);
         const kind = presetKind ?? "cos";
         setActiveKind(kind);
         form.resetFields();
@@ -139,6 +169,10 @@ export function StorageBackendDrawer({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      if (visibility === "groups" && groupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       setSaving(true);
 
       const body: Record<string, unknown> = {
@@ -148,6 +182,8 @@ export function StorageBackendDrawer({
         endpoint: values.endpoint?.trim() || null,
         config_json: values.config_json?.trim() || null,
         note: values.note?.trim() || null,
+        visibility: visibility === "groups" ? "groups" : "all",
+        group_ids: visibility === "groups" ? groupIds : [],
       };
       if (values.access_key?.trim()) body.access_key = values.access_key.trim();
       if (values.secret_key?.trim()) body.secret_key = values.secret_key.trim();
@@ -306,6 +342,13 @@ export function StorageBackendDrawer({
     return typeDef.fields.some((f) => f.key === key);
   };
 
+  /** Prefer type-def ``secret``; ``secret_key`` defaults to password input. */
+  const fieldIsSecret = (key: string) => {
+    const f = typeDef?.fields.find((fd) => fd.key === key);
+    if (f?.secret !== undefined) return !!f.secret;
+    return key === "secret_key";
+  };
+
   const handleProbe = async () => {
     try {
       const fieldNames: (keyof StorageForm)[] = ["kind"];
@@ -443,14 +486,25 @@ export function StorageBackendDrawer({
               isEdit && editing?.access_key ? editing.access_key : undefined
             }
           >
-            <Input.Password
-              placeholder={
-                isEdit
-                  ? t("common.unchanged")
-                  : fieldPlaceholder("access_key", "AKIDxxx")
-              }
-              visibilityToggle
-            />
+            {fieldIsSecret("access_key") ? (
+              <Input.Password
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("access_key", "AKIDxxx")
+                }
+                visibilityToggle
+              />
+            ) : (
+              <Input
+                autoComplete="username"
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("access_key", "AKIDxxx")
+                }
+              />
+            )}
           </Form.Item>
         )}
 
@@ -470,14 +524,24 @@ export function StorageBackendDrawer({
                 : []
             }
           >
-            <Input.Password
-              placeholder={
-                isEdit
-                  ? t("common.unchanged")
-                  : fieldPlaceholder("secret_key", "SKEYxxx")
-              }
-              visibilityToggle
-            />
+            {fieldIsSecret("secret_key") ? (
+              <Input.Password
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("secret_key", "SKEYxxx")
+                }
+                visibilityToggle
+              />
+            ) : (
+              <Input
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("secret_key", "SKEYxxx")
+                }
+              />
+            )}
           </Form.Item>
         )}
 
@@ -616,12 +680,10 @@ export function StorageBackendDrawer({
                 <Form.Item
                   name="config_json"
                   extra={t("storage.advancedConfigExtra")}
+                  trigger="onChange"
+                  getValueFromEvent={(next: string) => next}
                 >
-                  <Input.TextArea
-                    rows={5}
-                    placeholder='{"addressing_style": "path"}'
-                    style={{ fontFamily: "monospace", fontSize: 12 }}
-                  />
+                  <JsonConfigEditor />
                 </Form.Item>
               ),
             },
@@ -632,6 +694,20 @@ export function StorageBackendDrawer({
         <Form.Item name="note" label={t("storage.noteLabel")}>
           <Input.TextArea rows={2} />
         </Form.Item>
+
+        <ResourceVisibilityCollapse
+          allowOwner={false}
+          visibility={visibility === "groups" ? "groups" : "all"}
+          groupIds={groupIds}
+          hint={t("resourceVisibility.groupAccessHint")}
+          defaultOpen={visibility === "groups"}
+          onChange={(next) => {
+            const nextVisibility =
+              next.visibility === "groups" ? "groups" : "all";
+            setVisibility(nextVisibility);
+            setGroupIds(nextVisibility === "groups" ? next.groupIds : []);
+          }}
+        />
       </Form>
 
       {activeKind === "docker" ? <DockerEnvFooter /> : null}

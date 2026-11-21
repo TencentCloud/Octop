@@ -221,6 +221,30 @@ def test_delete_stored_thread_failure_raises(
     assert _checkpoint_count(workspace / "memory.sqlite", "thr_keep") == 1
 
 
+def test_delete_only_skips_incremental_vacuum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "ws"
+    db_path = workspace / "memory.sqlite"
+    _seed_checkpoint(db_path, "thr_only")
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("delete-only must not vacuum")
+
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.nudge_vacuum", _boom)
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.compact_vacuum", _boom)
+
+    delete_stored_thread(
+        agent_id="ag1",
+        thread_id="thr_only",
+        cfg={},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        reclaim=False,
+    )
+    assert _checkpoint_count(db_path, "thr_only") == 0
+
+
 def test_reclaim_failure_still_deletes_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -275,7 +299,7 @@ def test_gc_orphans_reports_then_deletes(tmp_path: Path) -> None:
         _seed_checkpoint(db_path, "thr_live", b"live")
         _seed_checkpoint(db_path, "thr_orphan", b"orphan-bytes")
 
-        reported = gc_orphan_checkpoints(services, agent_id="ag1", apply=False)
+        reported = gc_orphan_checkpoints(services, agent_id="ag1", apply=False).orphans
         assert [item.thread_id for item in reported] == ["thr_orphan"]
         assert reported[0].nbytes == len(b"orphan-bytes")
         assert _checkpoint_count(db_path, "thr_orphan") == 1
@@ -376,3 +400,19 @@ def test_compact_rebuilds_sqlite_after_delete(tmp_path: Path) -> None:
         is True
     )
     assert sqlite_freelist_bytes(db_path) == 0
+
+
+def test_describe_sweep_mentions_postgres_leftovers_and_skipped_databases() -> None:
+    from octop.infra.agents.memory.thread_cleanup import describe_sweep
+
+    base = {"namespaces": 0, "threads": 2, "directories": 0}
+    assert describe_sweep(base, "en").count("\n") == 0
+
+    text = describe_sweep(
+        {**base, "postgres_kept": {"threads": 3, "namespaces": 1}, "skipped_databases": 2},
+        "en",
+    )
+    lines = text.splitlines()
+    assert len(lines) == 3
+    assert "3 checkpoint threads" in lines[1]
+    assert "2 external PostgreSQL" in lines[2]

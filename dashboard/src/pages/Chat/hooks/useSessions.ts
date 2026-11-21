@@ -25,11 +25,16 @@ export interface Session {
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
   conversationMode?: "ask" | "plan" | "craft" | null;
+  sessionMode?: string | null;
   pendingPlanPath?: string | null;
   hitlPolicy?: HitlSessionPolicy | null;
   artifacts?: ThreadArtifact[];
   turnActive?: boolean;
   awaitingUser?: boolean;
+  unreadCount?: number;
+  contributed?: boolean;
+  /** False when another user contributed this conversation. */
+  owned?: boolean;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -48,6 +53,7 @@ export function toSession(row: {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
   pending_plan_path?: string | null;
   hitl_policy?: HitlSessionPolicy | null;
   artifacts?: Array<string | ThreadArtifact> | null;
@@ -55,6 +61,9 @@ export function toSession(row: {
   agent_id?: string | null;
   turn_active?: boolean;
   awaiting_user?: boolean;
+  unread_count?: number;
+  contributed?: boolean;
+  owned?: boolean;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -78,6 +87,7 @@ export function toSession(row: {
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,
     conversationMode: row.conversation_mode ?? null,
+    sessionMode: row.session_mode ?? null,
     pendingPlanPath: row.pending_plan_path ?? null,
     hitlPolicy: row.hitl_policy
       ? parseHitlSessionPolicy(row.hitl_policy)
@@ -89,7 +99,19 @@ export function toSession(row: {
     ),
     turnActive: Boolean(row.turn_active),
     awaitingUser: Boolean(row.awaiting_user),
+    unreadCount: row.unread_count ?? 0,
+    contributed: Boolean(row.contributed),
+    owned: row.owned !== false,
   };
+}
+
+/** Update one thread already held in the chat session store. */
+export function patchStoredSession(id: string, patch: Partial<Session>) {
+  setModuleSessions((prev) =>
+    prev.map((session) =>
+      session.id === id ? { ...session, ...patch } : session,
+    ),
+  );
 }
 
 /** Mirror server order: pinned first, then recency (empty chats use created_at). */
@@ -156,6 +178,23 @@ export function syncSessionHitlPolicy(
     }
     const next = [...prev];
     next[idx] = { ...current, hitlPolicy: nextPolicy };
+    return next;
+  });
+}
+
+/** Patch the managed agent's session mode for one thread. */
+export function syncSessionMode(
+  threadId: string,
+  mode: string | null | undefined,
+) {
+  if (!threadId) return;
+  const nextMode = mode?.trim() || null;
+  setModuleSessions((prev) => {
+    const idx = prev.findIndex((s) => s.id === threadId);
+    if (idx < 0) return prev;
+    if ((prev[idx].sessionMode ?? null) === nextMode) return prev;
+    const next = [...prev];
+    next[idx] = { ...prev[idx], sessionMode: nextMode };
     return next;
   });
 }
@@ -322,6 +361,10 @@ async function fetchSessionsPage(
   const hasMore = rows.length > limit;
   const sessions = sortSessions(
     rows.slice(0, limit).map((row) => toSession({ ...row, agent_id: agentId })),
+  ).map((session) =>
+    chatStore.hostWorkDelegated(session.id)
+      ? { ...session, turnActive: false }
+      : session,
   );
   return { sessions, hasMore };
 }
@@ -518,6 +561,32 @@ export function useSessions(agentId: string | null) {
 
   useEffect(() => {
     return onSessionEvent((event) => {
+      if (event.kind === "sessionRenamed") {
+        const title = formatThreadTitle(event.title);
+        if (!title) return;
+        if (event.agentId && event.agentId !== _storeAgentId) return;
+        setModuleSessions((prev) => {
+          const hasId = prev.some((session) => session.id === event.sessionId);
+          return prev.map((session) => {
+            const matches =
+              session.id === event.sessionId ||
+              (Boolean(event.agentId) &&
+                event.agentId === _storeAgentId &&
+                !hasId &&
+                session.id === "__pending__");
+            if (!matches) return session;
+            if (
+              event.provisional &&
+              session.name &&
+              session.name !== "New Chat"
+            ) {
+              return session;
+            }
+            return { ...session, name: title };
+          });
+        });
+        return;
+      }
       if (event.kind !== "sessionDeleted") return;
       const { sessionId } = event;
       setModuleSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -579,7 +648,7 @@ export function useSessions(agentId: string | null) {
     async (id: string, compact: boolean) => {
       if (!agentId || !id) return false;
       const deleted = await deleteConversation(agentId, id, compact, t);
-      if (!deleted) return false;
+      if (deleted !== true) return deleted;
       setModuleSessions((prev) => prev.filter((s) => s.id !== id));
       chatStore.removeSession(id);
       chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });

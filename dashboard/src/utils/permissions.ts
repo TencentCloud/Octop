@@ -18,6 +18,8 @@ export const PERM = {
   /** Personalization tabs other than channels, which has its own nav item. */
   personalization: [
     "skills",
+    "skill_builtin",
+    "skill_market",
     "subagents",
     "tools",
     "agent_plugins",
@@ -25,22 +27,56 @@ export const PERM = {
     "memory",
   ],
   channels: ["channels"],
-  connectors: ["connectors"],
+  connectors: ["connector_enabled", "connector_builtin", "connector_custom"],
   skillPackages: ["skill_packages"],
   knowledgeBases: ["knowledge_bases"],
   knowledgeSettings: ["knowledge_settings"],
   knowledgeBasesPage: ["knowledge_bases", "knowledge_settings"],
-  workbench: ["browser", "terminal"],
+  bridge: ["bridge"],
+  workbench: ["browser", "terminal", "cloud"],
   browser: ["browser"],
   terminal: ["terminal"],
+  cloud: ["cloud"],
   desktop: ["desktop"],
   mobile: ["mobile"],
-  usersPage: ["users", "sso"],
-  modelsPage: ["providers", "ollama_models", "onnx_models", "voice", "search"],
+  usersPage: [
+    "users",
+    "user_roles",
+    "user_groups",
+    "sso_feishu",
+    "sso_wecom",
+    "sso_dingtalk",
+    "sso_oidc",
+    "sso_ldap",
+  ],
+  modelsPage: [
+    "providers",
+    "ollama_models",
+    "onnx_models",
+    "model_generation",
+    "voice",
+    "model_decision",
+    "search",
+  ],
   storage: ["storage_backends"],
-  plugins: ["plugins"],
-  securityPage: ["security", "admin_console"],
-  advancedPage: ["update", "envs", "tls", "observability", "backup", "captcha"],
+  plugins: ["plugins", "plugin_market"],
+  securityPage: [
+    "security_hitl",
+    "security_filesystem",
+    "security_pii",
+    "security_tool_guard",
+    "security_skill_scan",
+    "admin_console",
+  ],
+  advancedPage: [
+    "update",
+    "envs",
+    "tls",
+    "observability",
+    "backup",
+    "captcha",
+    "app_config",
+  ],
   experts: ["experts"],
   tasks: ["tasks"],
   tokenUsage: ["token_usage"],
@@ -48,13 +84,24 @@ export const PERM = {
 
 /** Sidebar item key → permission keys. Shared with path guards. */
 export const PERSONALIZATION_TAB_PERMISSIONS = {
-  skills: "skills",
+  skills: ["skills", "skill_builtin", "skill_market"],
   subagents: "subagents",
   tools: "tools",
   plugins: "agent_plugins",
   mbti: "mbti",
   memory: "memory",
   channels: "channels",
+} as const;
+
+export const CONNECTOR_TAB_PERMISSIONS = {
+  enabled: "connector_enabled",
+  builtin: "connector_builtin",
+  custom: "connector_custom",
+} as const;
+
+export const PLUGIN_TAB_PERMISSIONS = {
+  installed: "plugins",
+  market: "plugin_market",
 } as const;
 
 export const NAV_PERMISSIONS = {
@@ -66,6 +113,7 @@ export const NAV_PERMISSIONS = {
   connectors: PERM.connectors,
   "skill-packages": PERM.skillPackages,
   "knowledge-bases": PERM.knowledgeBasesPage,
+  bridge: PERM.bridge,
   workbench: PERM.workbench,
   "remote-desktop": ["desktop", "mobile"],
   "remote-phone": PERM.mobile,
@@ -82,12 +130,13 @@ export type NavPermissionKey = keyof typeof NAV_PERMISSIONS;
 
 export const USERS_TAB_PERMISSIONS = {
   local: "users",
-  roles: "users",
-  feishu: "sso",
-  wecom: "sso",
-  dingtalk: "sso",
-  oidc: "sso",
-  ldap: "sso",
+  roles: "user_roles",
+  groups: "user_groups",
+  feishu: "sso_feishu",
+  wecom: "sso_wecom",
+  dingtalk: "sso_dingtalk",
+  oidc: "sso_oidc",
+  ldap: "sso_ldap",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {
@@ -96,15 +145,18 @@ export const ADVANCED_TAB_PERMISSIONS = {
   backup: "backup",
   https: "tls",
   updates: "update",
+  config: "app_config",
   captcha: "captcha",
+  // Same gate as /api/settings/webauthn (require_permission("captcha")).
+  webauthn: "captcha",
 } as const;
 
 export const SECURITY_TAB_PERMISSIONS = {
-  hitl: "security",
-  filesystem: "security",
-  pii: "security",
-  tool_guard: "security",
-  skill_scan: "security",
+  hitl: "security_hitl",
+  filesystem: "security_filesystem",
+  pii: "security_pii",
+  tool_guard: "security_tool_guard",
+  skill_scan: "security_skill_scan",
   audit: "admin_console",
 } as const;
 
@@ -217,7 +269,7 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
       PERSONALIZATION_TAB_PERMISSIONS[
         tab as keyof typeof PERSONALIZATION_TAB_PERMISSIONS
       ];
-    if (key) return [key];
+    if (key) return typeof key === "string" ? [key] : [...key];
     if (tab) return null;
     return [...PERM.personalization, ...PERM.channels];
   }
@@ -237,7 +289,7 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     return PERM.knowledgeBasesPage;
   }
   if (pathname === "/bridge" || pathname.startsWith("/bridge/")) {
-    return null;
+    return PERM.bridge;
   }
   if (pathname === "/remote-desktop/desktop") {
     return PERM.desktop;
@@ -256,6 +308,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     pathname.startsWith("/remote-desktop/")
   ) {
     return ["desktop", "mobile"];
+  }
+  if (pathname === "/workbench/cloud") {
+    return PERM.cloud;
   }
   if (pathname === "/workbench/terminal" || pathname === "/terminal") {
     return PERM.terminal;

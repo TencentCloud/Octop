@@ -20,6 +20,16 @@ from octop.infra.history.projection import (
 )
 
 
+def test_note_turn_duration_stamps_the_assistant_reply() -> None:
+    tracker = TurnHistoryTracker.from_request({"messages": []})
+    tracker.observe({"type": "token", "content": "你好"})
+    tracker.note_turn_duration(3200)
+    items = tracker.inputs
+    assert items
+    wire = json.loads(items[-1].message_json)
+    assert wire["data"]["additional_kwargs"]["turn_duration_ms"] == 3200
+
+
 def test_message_input_preserves_existing_checkpoint_ts() -> None:
     item = message_input(
         HumanMessage(
@@ -118,6 +128,40 @@ def test_turn_tracker_keeps_streamed_tokens_and_error() -> None:
     assert any("余额或额度不足" in text for text in texts)
     error = next(item for item in tracker.inputs if "余额或额度不足" in _wire_text(item))
     assert STREAM_ERROR_FLAG in error.message_json
+
+
+def test_turn_tracker_does_not_duplicate_split_assistant_stream() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "写一篇", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "先看看团队。"})
+    tracker.observe({"type": "token", "content": "已安排，稍等。"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "写一篇", "id": "u1"},
+                    {
+                        "role": "assistant",
+                        "content": "<think>派工</think>先看看团队。",
+                        "id": "a1",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "<think>等待</think>已安排，稍等。",
+                        "id": "a2",
+                    },
+                ]
+            },
+        }
+    )
+
+    texts = [_wire_text(item) for item in tracker.inputs if item.role in ("ai", "assistant")]
+    assert texts == [
+        "<think>派工</think>先看看团队。",
+        "<think>等待</think>已安排，稍等。",
+    ]
 
 
 def test_turn_tracker_does_not_duplicate_state_assistant() -> None:

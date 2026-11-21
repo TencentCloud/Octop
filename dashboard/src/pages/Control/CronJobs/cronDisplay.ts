@@ -2,7 +2,19 @@
 
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 
+/** Form value and API token for "follow the channel's latest conversation". */
+export const LATEST_SESSION_TARGET = "latest";
+
+/** Stored ``session_key`` prefix that pins a job to one historical thread. */
+export const THREAD_TARGET_PREFIX = "thread:";
+
+export function pinnedThreadId(sessionKey: string): string {
+  if (!sessionKey.startsWith(THREAD_TARGET_PREFIX)) return "";
+  return sessionKey.slice(THREAD_TARGET_PREFIX.length).trim();
+}
+
 export function channelFromSessionKey(sessionKey: string): string {
+  if (pinnedThreadId(sessionKey)) return "";
   const parts = sessionKey.split(":");
   return parts.length >= 2 ? parts[1] : "dashboard";
 }

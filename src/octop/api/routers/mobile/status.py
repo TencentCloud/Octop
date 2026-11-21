@@ -9,12 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
-from octop.infra.mobile.adb import device_info, list_devices
-from octop.infra.mobile.agent_control import (
+from octop.infra.control.mobile.adb import device_info, list_devices
+from octop.infra.control.mobile.agent_control import (
     get_mobile_agent_control,
     set_mobile_agent_control,
 )
-from octop.infra.mobile.setup import mobile_status
+from octop.infra.control.mobile.setup import mobile_status
 from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
 

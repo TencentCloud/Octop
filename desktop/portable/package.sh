@@ -18,6 +18,8 @@
 #     README.txt
 #
 # Public filename is Octop-portable-<plat>-<version>.zip (see portable_zip_basename).
+# Extras match the published image: browser only. Desktop, OCR, and local
+# embedding stay on the Docker :full image, not in this zip.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -105,8 +107,11 @@ assemble_one() {
   octop_whl="$(build_octop_wheel "$wheel_dir")"
 
   local req_file="${GREEN_ROOT}/requirements-${plat}.txt"
+  # browser only. desktop / local-embedding / knowledge-ocr are the Docker full image.
+  local export_extra=(--extra browser)
   echo "[package] ${plat}: exporting frozen deps → ${req_file}" >&2
-  uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes \
+    "${export_extra[@]}" -o "$req_file" >/dev/null
   # Online --target upgrades need uv to reuse the bundled dependencies. pip
   # ignores installed packages with --target and resolves/downloads them again.
   echo "uv==${GREEN_UV_VERSION}" >> "$req_file"
@@ -128,9 +133,11 @@ assemble_one() {
     --target "${staging}/packages"
     --python-platform "$pyplat"
     --python-version 3.12
-    # Never compile cryptography from sdist: on Intel macOS that links
-    # Homebrew OpenSSL and breaks portable zips on machines without brew.
+    # Never compile these from sdist. cryptography on Intel macOS links Homebrew
+    # OpenSSL. shapely's sdist needs GEOS; 2.2.0 publishes wheels for every
+    # portable target, including win_arm64.
     --only-binary cryptography
+    --only-binary shapely
   )
   if [[ -n "$override_file" ]]; then
     common_args+=( --overrides "$override_file" )
@@ -246,6 +253,13 @@ assemble_one() {
       echo "[package] WARNING: pywin32 DLL fix failed — Windows runtime may miss pywintypes" >&2
     }
   fi
+
+  # Drop discovery documents, debug symbols, and third-party tests before the
+  # zip. The desktop installer copies this same tree (Windows copies the zip).
+  local prune_py
+  prune_py="$(runtime_python "${staging}/runtime")"
+  echo "[package] ${plat}: pruning site-packages"
+  "$prune_py" "${REPO_ROOT}/desktop/portable/prune_packages.py" "${staging}/packages"
 
   # macOS: reject Homebrew-linked native extensions before zipping.
   verify_no_homebrew_dylibs "${staging}/packages" "$plat"

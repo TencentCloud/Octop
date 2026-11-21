@@ -1,4 +1,9 @@
 import { getApiUrl } from "./config";
+import {
+  isLocalDesktopUser,
+  registerDeviceSession,
+  renewDesktopSession,
+} from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
@@ -110,6 +115,16 @@ export function applyRenewedAccessToken(response: Response): void {
 
 let _redirectingToSetup = false;
 
+/** Login, setup, invites, and read-only share links stay outside the app shell. */
+function isGuestShellPath(path: string): boolean {
+  return (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite") ||
+    /(?:^|\/)share\/[^/]+/.test(path)
+  );
+}
+
 /**
  * Hard-redirect once when the backend reports the wizard isn't done.
  * The flag prevents N parallel API calls from each issuing a navigate.
@@ -119,12 +134,7 @@ function handleSetupRequired(): void {
   if (_redirectingToSetup) return;
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  ) {
+  if (isGuestShellPath(window.location.pathname)) {
     return;
   }
   _redirectingToSetup = true;
@@ -303,7 +313,11 @@ function buildAuthHeaders(path: string): Record<string, string> {
 let _redirectingToLogin = false;
 
 /** 401 codes that mean this Octop session is no longer valid. */
-const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+const SESSION_UNAUTHORIZED_CODES = new Set([
+  "AUTH_FAILED",
+  "MISSING_CREDENTIALS",
+  "TOKEN_EXPIRED",
+]);
 
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
@@ -311,13 +325,7 @@ const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
  */
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  )
-    return;
+  if (isGuestShellPath(window.location.pathname)) return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(
@@ -379,6 +387,43 @@ async function throwIfUnauthorized(
   throw new Error(message);
 }
 
+/**
+ * Retry a 401 once with a JWT minted by the desktop shell.
+ *
+ * A desktop user has no password to type, so an expired session used to be a
+ * dead end. The shell holds a device credential and can issue a new token; on
+ * the web this returns null immediately and the caller falls through to the
+ * ordinary login redirect.
+ */
+async function retryWithDesktopSession(
+  path: string,
+  url: string,
+  options: RequestInit,
+  response: Response,
+): Promise<Response | null> {
+  if (response.status !== 401) return null;
+  // A rejected login is a credential problem, not an expired session.
+  if (path.startsWith("/auth/login") || path.startsWith("/auth/device/")) {
+    return null;
+  }
+  // Business 401s (peer login, setup guards) would only be retried in vain.
+  const code = await errorCodeOf(response);
+  if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
+  const current = getAuthToken();
+  // A password account's expired token must land on the login page. Only the
+  // desktop local user is renewed in place.
+  if (current && !isLocalDesktopUser(current)) return null;
+  const issued = await renewDesktopSession();
+  if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
+    return null;
+  }
+  setAuthToken(issued.access_token, !isSessionOnlyAuth());
+  return fetch(url, {
+    ...options,
+    headers: buildHeaders(path, options.headers),
+  });
+}
+
 export async function request<T = unknown>(
   path: string,
   options: RequestInit = {},
@@ -389,10 +434,13 @@ export async function request<T = unknown>(
 
   const headers = buildHeaders(path, options.headers);
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   });
+
+  const retried = await retryWithDesktopSession(path, url, options, response);
+  if (retried) response = retried;
 
   if (await check503ForSetupRequired(path, response)) {
     throw new SetupRequiredError();
@@ -400,6 +448,9 @@ export async function request<T = unknown>(
 
   await throwIfUnauthorized(path, response);
   applyRenewedAccessToken(response);
+  // Desktop: bind the shell's device credential the first chance we get, so the
+  // next cold start can renew instead of landing on /login.
+  if (response.ok) void registerDeviceSession(getAuthToken());
 
   if (!response.ok) {
     if (response.status === 403 && isAgentScopedPath(path)) {

@@ -4,7 +4,7 @@ import {
   octopThreadsApi,
   type ThreadDeleteResult,
 } from "../../../api/modules/octopThreads";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
 import { message as antMessage } from "../../../utils/antdMessage";
 import { modal } from "../../../utils/antdModal";
 
@@ -20,23 +20,38 @@ function deleteResultText(
   return t("chat.deleteSessionLater");
 }
 
+/**
+ * ``true`` when the thread was deleted.
+ * ``null`` when DELETE returned 409 ``THREAD_TURN_ACTIVE`` — the thread stays,
+ * and the confirmation dialog must stay open.
+ * ``false`` for any other failure.
+ */
+export type DeleteConversationResult = boolean | null;
+
 /** Delete one conversation. ``compact`` rebuilds the database before returning. */
 export async function deleteConversation(
   agentId: string,
   threadId: string,
   compact: boolean,
   t: TFunction,
-): Promise<boolean> {
+  isActive: () => boolean = () => true,
+): Promise<DeleteConversationResult> {
+  if (!isActive()) return false;
   const closeLoading = compact
     ? antMessage.loading(t("chat.deleteSessionCompacting"), 0)
     : undefined;
   try {
     const result = await octopThreadsApi.delete(agentId, threadId, compact);
     if (typeof closeLoading === "function") closeLoading();
-    antMessage.success(deleteResultText(t, compact, result));
+    if (isActive()) antMessage.success(deleteResultText(t, compact, result));
     return true;
   } catch (error) {
     if (typeof closeLoading === "function") closeLoading();
+    if (!isActive()) return false;
+    if (parseApiError(error)?.code === "THREAD_TURN_ACTIVE") {
+      antMessage.error(t("apiErrors.THREAD_TURN_ACTIVE"));
+      return null;
+    }
     antMessage.error(apiErrorMessage(error, t("sessions.deleteFailed"), t));
     return false;
   }
@@ -50,17 +65,34 @@ export async function deleteConversation(
  */
 export function confirmDeleteConversation(
   t: TFunction,
-  onConfirm: (compact: boolean) => void | Promise<void>,
-): void {
+  onConfirm: (
+    compact: boolean,
+  ) =>
+    | DeleteConversationResult
+    | void
+    | Promise<DeleteConversationResult | void>,
+): ReturnType<typeof modal.confirm> {
   const mobile =
     typeof window !== "undefined" && window.innerWidth < MOBILE_BREAKPOINT;
-  let chosen = false;
+  let inflight = false;
   const handle: { destroy?: () => void } = {};
   const choose = (compact: boolean) => {
-    if (chosen) return;
-    chosen = true;
-    handle.destroy?.();
-    void onConfirm(compact);
+    if (inflight) return;
+    inflight = true;
+    // Wait for DELETE. A 409 THREAD_TURN_ACTIVE (`null`) leaves this dialog
+    // open; success and other failures close it after the request settles.
+    void Promise.resolve()
+      .then(() => onConfirm(compact))
+      .then((result) => {
+        if (result === null) {
+          inflight = false;
+          return;
+        }
+        handle.destroy?.();
+      })
+      .catch(() => {
+        handle.destroy?.();
+      });
   };
   const buttonStyle = mobile ? { width: "100%" } : undefined;
   const opened = modal.confirm({
@@ -104,4 +136,5 @@ export function confirmDeleteConversation(
     ),
   });
   handle.destroy = opened.destroy;
+  return opened;
 }

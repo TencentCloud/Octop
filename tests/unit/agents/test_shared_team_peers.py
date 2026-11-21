@@ -86,7 +86,11 @@ def _registry(tmp_path: Path) -> tuple[HarnessAgentManager, dict[str, SimpleName
 
 
 def _wire(
-    mgr: HarnessAgentManager, rows: dict[str, SimpleNamespace], *, admin: bool = False
+    mgr: HarnessAgentManager,
+    rows: dict[str, SimpleNamespace],
+    *,
+    admin: bool = False,
+    roster_visible: Any = None,
 ) -> None:
     def load_user(user_id: int) -> Any:
         return SimpleNamespace(id=user_id, is_admin=admin)
@@ -95,6 +99,7 @@ def _wire(
         mgr.team,
         load_agent=rows.get,
         load_user=load_user,
+        roster_visible=roster_visible,
     )
 
 
@@ -152,6 +157,21 @@ def test_wire_twice_does_not_duplicate_members(tmp_path: Path) -> None:
     _wire(mgr, rows)
     peers = mgr.team.list_peers(3, exclude_agent_id="host")
     assert [entry.agent_id for entry in peers].count("exp-a") == 1
+
+
+def test_shared_team_viewer_may_dispatch_unshared_roster_member(tmp_path: Path) -> None:
+    mgr, rows = _registry(tmp_path)
+    private = rows["private"]
+
+    def roster_visible(viewer: Any, row: SimpleNamespace, from_agent_id: str) -> bool:
+        return getattr(viewer, "id", None) == 9 and from_agent_id == "host" and row is private
+
+    _wire(mgr, rows, roster_visible=roster_visible)
+    peers = mgr.team.list_peers(9, exclude_agent_id="host")
+    assert {entry.agent_id for entry in peers} == {"exp-a", "exp-b", "private"}
+    assert mgr.team._resolve_peer_entry("host", "private", 9).agent_id == "private"
+    with pytest.raises(ValueError, match="not owned by user"):
+        mgr.team._resolve_peer_entry("host", "mine", 9)
 
 
 def test_admin_may_dispatch_private_member_on_roster(tmp_path: Path) -> None:

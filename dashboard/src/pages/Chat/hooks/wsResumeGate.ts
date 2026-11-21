@@ -59,14 +59,29 @@ export function shouldProbeActiveTurn(opts: {
 }
 
 /**
- * Overscroll refresh / force-reload must not be frozen by sticky isStreaming
- * after a dropped socket. Only block while a live socket is bound.
+ * Overscroll refresh replaces the list with history. A live turn is not in
+ * that page until the reply finishes, so refresh briefly drops tokens already
+ * on screen.
+ *
+ * Block only while the socket is still up and something is clearly still
+ * generating (stream flag, live speakers after the composer unlocks, or a
+ * bubble still marked streaming). A dropped socket keeps the recovery path:
+ * sticky isStreaming alone must not freeze refresh.
  */
 export function shouldBlockHistoryRefresh(opts: {
   isStreaming: boolean;
   hasLiveSocket: boolean;
+  /** Speakers still generating after the host composer unlocks. */
+  liveSpeakerCount?: number;
+  /** An assistant/tool bubble is still `status: "streaming"`. */
+  hasStreamingMessage?: boolean;
 }): boolean {
-  return opts.isStreaming && opts.hasLiveSocket;
+  if (!opts.hasLiveSocket) return false;
+  return (
+    opts.isStreaming ||
+    (opts.liveSpeakerCount ?? 0) > 0 ||
+    Boolean(opts.hasStreamingMessage)
+  );
 }
 
 /**

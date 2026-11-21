@@ -39,22 +39,36 @@ class SqlitePool:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         first_create = not self.path.exists()
-        self._conn = sqlite3.connect(
+        conn = sqlite3.connect(
             str(self.path),
             check_same_thread=False,
             isolation_level=None,
         )
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        self._conn.execute("PRAGMA journal_mode = WAL")
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA journal_mode = WAL")
+        # WAL + FULL fsyncs every autocommit statement. On Windows that is
+        # FlushFileBuffers and dominates pytest (and the app), so only Windows
+        # drops to NORMAL (SQLite's recommended WAL setting): an OS crash can
+        # drop the last transaction, an application crash cannot corrupt the
+        # file. Other platforms keep the default FULL.
+        if os.name == "nt":
+            conn.execute("PRAGMA synchronous = NORMAL")
+        self._conn: sqlite3.Connection | None = conn
         self._lock = threading.RLock()
         if first_create and os.name == "posix":
             os.chmod(self.path, 0o600)
 
+    def _live_connection(self) -> sqlite3.Connection:
+        conn = self._conn
+        if conn is None:
+            raise sqlite3.ProgrammingError("sqlite pool is closed")
+        return conn
+
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         with self._lock:
-            yield self._conn
+            yield self._live_connection()
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -66,16 +80,23 @@ class SqlitePool:
             # SQLITE_BUSY_SNAPSHOT ("database is locked") *immediately*; the 5s busy timeout
             # cannot wait that out. Taking the write lock up front makes the competing writer
             # wait instead of aborting us.
-            self._conn.execute("BEGIN IMMEDIATE")
+            conn = self._live_connection()
+            conn.execute("BEGIN IMMEDIATE")
             try:
-                yield self._conn
-                self._conn.execute("COMMIT")
+                yield conn
+                conn.execute("COMMIT")
             except Exception:
-                self._conn.execute("ROLLBACK")
+                conn.execute("ROLLBACK")
                 raise
 
     def close(self) -> None:
-        self._conn.close()
+        # Wait for an in-flight query. Closing the shared connection underneath
+        # another thread is an access violation on Windows.
+        with self._lock:
+            conn = self._conn
+            self._conn = None
+            if conn is not None:
+                conn.close()
 
 
 class _CompatRow(Mapping[str, Any]):
@@ -113,13 +134,21 @@ def _compat_row_factory(cursor: Any) -> Any:
 
 
 class _PgConnectionProxy:
-    """Expose sqlite-like ``execute`` / ``executescript`` on a psycopg connection."""
+    """Expose sqlite-like ``execute`` / ``executemany`` / ``executescript`` on a psycopg connection."""
 
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
     def execute(self, sql: str, params: Any = None) -> Any:
         return self._conn.execute(qmark_to_pyformat(sql), params)
+
+    def executemany(self, sql: str, seq_of_params: Any) -> None:
+        # psycopg put executemany on the cursor, not the connection; without
+        # this shim the attribute lookup falls through ``__getattr__`` and
+        # raises AttributeError on SQLite-shaped batch inserts (e.g.
+        # care_push records on a PostgreSQL control plane).
+        with self._conn.cursor() as cur:
+            cur.executemany(qmark_to_pyformat(sql), seq_of_params)
 
     def executescript(self, sql: str) -> None:
         # Used only if something still calls it; prefer migrate splitter.
