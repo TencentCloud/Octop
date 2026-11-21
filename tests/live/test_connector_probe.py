@@ -88,9 +88,12 @@ def test_connector_probe_with_real_credentials(kind: str) -> None:
     # limitation, not a product defect — skip rather than turn the build red.
     # An auth/format failure, by contrast, means the credential is genuinely
     # bad and must fail loudly.
-    if result.get("error_type") == "connection":
+    err = str(result.get("error") or "")
+    # Upstream billing/quota (Tencent News 4007 / 积分余额不足) is an account
+    # limit, same as a network failure: not a bad credential or a product bug.
+    if result.get("error_type") == "connection" or "[4007]" in err or "积分余额不足" in err:
         pytest.skip(
-            f"{kind} probe failed due to a network/connection issue "
+            f"{kind} probe failed due to a network/connection or upstream-usage issue "
             f"(not a credential problem): {result.get('error')}"
         )
     pytest.fail(f"{kind} probe failed: {result}")

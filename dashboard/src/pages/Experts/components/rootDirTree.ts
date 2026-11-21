@@ -42,6 +42,30 @@ export function makeRootNode(path: string): DirTreeNode {
   return { value, title, isLeaf: false };
 }
 
+/** Deduplicated root list; accepts a bare string for single-root callers. */
+export function normalizeTreeRoots(roots: string | string[]): string[] {
+  const list = Array.isArray(roots) ? roots : [roots];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of list) {
+    const value = normalizeTreeRoot(raw);
+    const key = compareKey(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out.length > 0 ? out : [HOST_FS_ROOT];
+}
+
+export function makeRootNodes(roots: string | string[]): DirTreeNode[] {
+  return normalizeTreeRoots(roots).map(makeRootNode);
+}
+
+export function isTreeRoot(path: string, roots: string | string[]): boolean {
+  const key = compareKey(normalizeTreeRoot(path));
+  return normalizeTreeRoots(roots).some((root) => compareKey(root) === key);
+}
+
 /** True when *path* is *home* or a subdirectory of *home*. */
 export function isPathUnderHome(path: string, home: string): boolean {
   const target = compareKey(path);
@@ -66,18 +90,17 @@ export function pathExistsInTree(nodes: DirTreeNode[], path: string): boolean {
   return false;
 }
 
-/** Keep a single tree under *treeRoot* — orphans duplicate keys and break expand. */
+/** Keep one tree per root under *treeRoots* — orphans duplicate keys and break expand. */
 export function sanitizeTree(
   nodes: DirTreeNode[],
-  treeRoot: string = HOST_FS_ROOT,
+  treeRoots: string | string[] = HOST_FS_ROOT,
 ): DirTreeNode[] {
-  const rootValue = normalizeTreeRoot(treeRoot);
-  const rootKey = compareKey(rootValue);
-  const root = nodes.find((node) => compareKey(node.value) === rootKey);
-  if (!root) return nodes;
+  const rootKeys = normalizeTreeRoots(treeRoots).map(compareKey);
 
   // Ant Design TreeSelect virtual scroll renders duplicate rows when the same
-  // value appears more than once anywhere in treeData (antd#37228).
+  // value appears more than once anywhere in treeData (antd#37228). The set is
+  // shared across roots: every drive root is a distinct path, so global
+  // uniqueness is still the correct rule.
   const seen = new Set<string>();
 
   const walk = (node: DirTreeNode): DirTreeNode | null => {
@@ -93,23 +116,42 @@ export function sanitizeTree(
     };
   };
 
-  const cleaned = walk(root);
-  return cleaned ? [cleaned] : [root];
+  const cleaned: DirTreeNode[] = [];
+  for (const node of nodes) {
+    if (!rootKeys.includes(compareKey(node.value))) continue;
+    const walked = walk(node);
+    if (walked) cleaned.push(walked);
+  }
+  // Safety valve: a rename/mkdir that moved every root away should not blank
+  // the picker — keep the caller's nodes rather than rendering nothing.
+  return cleaned.length > 0 ? cleaned : nodes;
 }
 
 /**
- * Ancestor directories from *treeRoot* down to the parent of *path* (excludes *path*).
+ * Ancestor directories from the most specific containing root down to the
+ * parent of *path* (excludes *path*). Returns [] when *path* sits outside
+ * every configured root, or when it *is* a root.
  */
 export function ancestorDirPaths(
   path: string,
-  treeRoot: string = HOST_FS_ROOT,
+  treeRoots: string | string[] = HOST_FS_ROOT,
 ): string[] {
   const normalized = normalizeTreeRoot(path);
-  const root = normalizeTreeRoot(treeRoot);
-  if (!normalized || compareKey(normalized) === compareKey(root)) return [];
-  if (root !== HOST_FS_ROOT && !isPathUnderHome(normalized, root)) {
-    return [];
-  }
+  if (!normalized) return [];
+  const roots = normalizeTreeRoots(treeRoots);
+  // Longest-prefix wins so Windows `D:/x/y` expands under `D:/` even when
+  // `C:/` is listed first.
+  const root = roots
+    .filter((candidate) => isPathUnderHome(normalized, candidate))
+    .reduce<string | null>(
+      (best, candidate) =>
+        best === null || compareKey(candidate).length > compareKey(best).length
+          ? candidate
+          : best,
+      null,
+    );
+  if (root === null) return [];
+  if (compareKey(normalized) === compareKey(root)) return [];
 
   if (/^[A-Za-z]:\/$/.test(root)) {
     // Windows drive root: build from ``C:/Users/...`` under ``C:/``.

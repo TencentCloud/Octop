@@ -24,7 +24,7 @@ export type DockTab =
   | { id: "workspace"; kind: "workspace" }
   | { id: "browser"; kind: "browser" }
   | { id: "terminal"; kind: "terminal" }
-  | { id: string; kind: "file"; path: string }
+  | { id: string; kind: "file"; path: string; agentId?: string }
   | {
       id: string;
       kind: "knowledge";
@@ -162,26 +162,35 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
   }, [openDock]);
 
   const openFileAt = useCallback(
-    (path?: string | null) => {
+    (path?: string | null, fileAgentId?: string | null) => {
       if (!path?.trim()) {
         openFileList();
         return;
       }
+      const ownerId = (fileAgentId || agentId || "").trim() || null;
       const hostAbs = normalizeDockFilePath(path);
       // Keep host-absolute tool paths. Collapsing ``~/.octop/agents/<id>/…`` to a
       // relative key breaks virtual ``root_dir`` nests (bytes live under
       // ``{root}/Users/…/.octop/agents/<id>/…``, not the real agent home).
       const tabPath = isHostAbsolutePath(hostAbs)
         ? hostAbs
-        : canonicalizeDockFilePath(path, agentId);
+        : canonicalizeDockFilePath(path, ownerId);
       if (!tabPath) {
         openFileList();
         return;
       }
-      const id = dockFileTabId(tabPath, agentId);
+      const id = dockFileTabId(tabPath, ownerId);
       setOpenTabs((prev) => {
         if (prev.some((t) => t.id === id)) return prev;
-        return [...prev, { id, kind: "file", path: tabPath }];
+        return [
+          ...prev,
+          {
+            id,
+            kind: "file" as const,
+            path: tabPath,
+            ...(ownerId ? { agentId: ownerId } : {}),
+          },
+        ];
       });
       setActiveTabId(id);
       openDock();
@@ -294,6 +303,15 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleDockTab({ id: "workspace", kind: "workspace" });
   }, [toggleDockTab]);
 
+  /** Corner control: open the workspace, or close whatever dock is showing. */
+  const toggleSidePanel = useCallback(() => {
+    if (dockOpen) {
+      handleClose();
+      return;
+    }
+    openWorkspaceTab();
+  }, [dockOpen, handleClose, openWorkspaceTab]);
+
   const toggleBrowserPanel = useCallback(() => {
     toggleDockTab({ id: "browser", kind: "browser" });
   }, [toggleDockTab]);
@@ -361,6 +379,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openKnowledgeCitation,
     openWorkspaceTab,
     toggleWorkspacePanel,
+    toggleSidePanel,
     openBrowserTab,
     toggleBrowserPanel,
     openTerminalTab,

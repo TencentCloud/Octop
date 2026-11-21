@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="skillGenericBg" x1="10" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#skillGenericBg)"/>
+  <path d="M32 12.5 35.4 28.6 51.5 32 35.4 35.4 32 51.5 28.6 35.4 12.5 32 28.6 28.6Z" fill="#fff"/>
+</svg>

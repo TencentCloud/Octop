@@ -1,10 +1,16 @@
 import type { ChatAttachment } from "../hooks/sseHelpers";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 
-const THINKING_TAG_RE = /<think>[\s\S]*?<\/redacted_thinking>\s*/gi;
+const THINKING_TAG_RE =
+  /<(?:think|thinking)>[\s\S]*?<\/(?:think|thinking)>\s*/gi;
 
 export function stripThinkingTags(text: string): string {
-  return text.replace(THINKING_TAG_RE, "").trim();
+  let result = text.replace(THINKING_TAG_RE, "");
+  const unclosed = result.search(/<(?:think|thinking)>/i);
+  if (unclosed >= 0) {
+    result = result.slice(0, unclosed);
+  }
+  return result.trim();
 }
 
 export function isImageMediaType(mime?: string): boolean {

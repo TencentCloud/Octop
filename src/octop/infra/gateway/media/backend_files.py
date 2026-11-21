@@ -2,7 +2,7 @@
 
 Dashboard / gateway code uses this module — **not**
 :class:`~octop.infra.gateway.media.ingress.AgentBackedMediaBackend`,
-which is only the harness-gateway ``MediaBackend`` adapter for IM ingress.
+which is only the octop-gateway ``MediaBackend`` adapter for IM ingress.
 
 Path rule for ``BackendWorkspace``
 ----------------------------------
@@ -31,9 +31,10 @@ from typing import TYPE_CHECKING
 from octop.infra.gateway.media.attachment_hints import is_preview_media_type
 from octop.infra.gateway.media.constants import OUTBOUND_DIR
 from octop.infra.utils.browser_media import legacy_harness_screenshots_dir
+from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
-    from harness_agent.backends.workspace import BackendWorkspace
+    from octop_harness.backends.workspace import BackendWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -41,58 +42,14 @@ logger = logging.getLogger(__name__)
 # Host filesystem path guards
 # ---------------------------------------------------------------------------
 
-_BLOCKED_UNIX_PREFIXES = (
-    "/users/",
-    "/tmp/",
-    "/home/",
-    "/var/",
-    "/private/",
-    "/appdata/local/temp/",
-    "/appdata/local/microsoft/windows/inetcache/",
-)
-
-_BLOCKED_WIN_DRIVE_PREFIXES = (
-    "c:/users/",
-    "c:/windows/temp/",
-    "c:/program files/",
-    "c:/program files (x86)/",
-)
+# New default is ``~/.octop-browser``; keep ``~/.harness-browser`` as a deny
+# source so leftover profiles cannot be downloaded after migration.
+_DENIED_BROWSER_HOME_SEGMENTS = (".harness-browser", ".octop-browser")
 
 
-def _normalize_host_path(raw: str) -> str:
-    """Lowercase path with forward slashes for prefix checks."""
-    text = raw.strip().replace("\\", "/")
-    if len(text) >= 2 and text[1] == ":":
-        return text.lower()
-    if text and not text.startswith("/"):
-        text = "/" + text
-    return text.lower()
-
-
-def is_blocked_host_download_path(raw: str) -> bool:
-    """True when *raw* looks like a host absolute path that must not be downloaded.
-
-    Workspace-relative keys (``tmp/foo``, ``var/data.json``) must **not** be blocked —
-    only paths that are already host-absolute (leading ``/``, ``file://``, or a drive
-    letter on Windows).
-    """
-    text = raw.strip()
-    if not text:
-        return False
-
+def _contains_denied_browser_home(text: str) -> bool:
     lowered = text.replace("\\", "/").lower()
-    if ".harness-browser" in lowered:
-        return True
-
-    if len(text) >= 2 and text[1] == ":":
-        norm = _normalize_host_path(text)
-        return norm.startswith(_BLOCKED_WIN_DRIVE_PREFIXES)
-
-    if text.startswith("/"):
-        norm = _normalize_host_path(text)
-        return norm.startswith(_BLOCKED_UNIX_PREFIXES)
-
-    return False
+    return any(segment in lowered for segment in _DENIED_BROWSER_HOME_SEGMENTS)
 
 
 def is_allowed_host_temp_path(resolved: Path) -> bool:
@@ -157,40 +114,26 @@ def resolve_media_agent_id(chat_agent_id: str, raw_url: str) -> str:
     return agent_id_from_workspace_path(raw_url) or chat_agent_id
 
 
+def _has_parent_segment(path: str) -> bool:
+    return any(part == ".." for part in path.replace("\\", "/").split("/"))
+
+
 def extract_workspace_rel(path: str) -> str | None:
     """Return ``outbound/…`` or ``inbound/…`` when present in *path* (any common shape)."""
     raw = path.strip()
     fs_path = file_url_to_abs_path(raw) if raw.startswith("file://") else raw.lstrip("/")
     normalized = fs_path.replace("\\", "/")
+    if _has_parent_segment(normalized):
+        return None
     if normalized.startswith(("outbound/", "inbound/")):
         return normalized
     for marker in ("/outbound/", "/inbound/"):
         if marker in normalized:
-            return normalized[normalized.index(marker) + 1 :]
+            rel = normalized[normalized.index(marker) + 1 :]
+            if _has_parent_segment(rel):
+                return None
+            return rel
     return None
-
-
-def normalize_workspace_media_path(path: str) -> str:
-    """Return ``outbound/…`` or ``inbound/…`` for tool/browser media URLs."""
-    rel = extract_workspace_rel(path)
-    if rel:
-        return rel
-    raise ValueError(f"not a workspace media path: {path.strip()!r}")
-
-
-def normalize_workspace_download_path(path: str) -> str:
-    """Backend-relative path for workspace download; rejects host absolute paths."""
-    raw = path.strip()
-    if not raw:
-        raise ValueError("empty path")
-    rel = extract_workspace_rel(raw)
-    if rel:
-        return rel
-    if raw.startswith("file://"):
-        raise ValueError(f"not a workspace file URL: {raw!r}")
-    if is_blocked_host_download_path(raw):
-        raise ValueError(f"host path not allowed: {raw!r}")
-    return raw.lstrip("/")
 
 
 def workspace_download_url(agent_id: str, workspace_path: str) -> str:
@@ -319,9 +262,20 @@ _DENIED_WIN_DOWNLOAD_PREFIXES = (
 )
 
 
+def _is_under(child: Path, parent: Path) -> bool:
+    try:
+        child.relative_to(parent)
+        return True
+    except ValueError:
+        return False
+
+
 def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
-    """Allow host-absolute download when under workspace / agents / temp, or
-    non-system user paths (e.g. Desktop tool outputs). Deny OS system roots.
+    """Allow host-absolute download under this workspace, OS temp, or a
+    non-system path outside the control-plane home (Desktop tool outputs).
+
+    Deny the filesystem root, OS system roots, and the rest of the Octop home
+    (database, secrets, other agents).
     """
     raw = path.strip()
     if not raw:
@@ -347,17 +301,19 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
         return False
 
     norm = str(resolved).replace("\\", "/").lower()
-    if ".harness-browser" in norm:
+    if _contains_denied_browser_home(norm):
+        return False
+    if resolved == Path(resolved.anchor):
         return False
 
+    ws = workspace.resolve()
+    if _is_under(resolved, ws):
+        return True
     try:
-        resolved.relative_to(workspace.resolve())
-        return True
-    except ValueError:
-        pass
-
-    if "/.octop/agents/" in norm:
-        return True
+        if _is_under(resolved, PathLayout.from_env().root.resolve()):
+            return False
+    except OSError:
+        return False
     if is_allowed_host_temp_path(resolved):
         return True
 
@@ -473,6 +429,9 @@ async def read_file_url_bytes(
         if data is not None:
             return data
 
+    if _is_host_absolute(path) and not _abs_path_allowed(path, workspace=workspace.workspace_dir):
+        return None
+
     data = await _download_via_workspace(workspace, path)
     if data is not None:
         return data
@@ -531,6 +490,9 @@ async def ensure_workspace_media_path(
     if not _is_host_absolute(abs_path):
         return existing
 
+    if not _abs_path_allowed(abs_path, workspace=workspace.workspace_dir):
+        return None
+
     dest = _outbound_dest_rel(filename=filename, abs_path=abs_path, mime=mime)
     data = await _download_via_workspace(workspace, abs_path)
     if data is None:
@@ -551,12 +513,9 @@ __all__ = [
     "file_url_to_abs_path",
     "is_allowed_host_download_abs_path",
     "is_allowed_host_temp_path",
-    "is_blocked_host_download_path",
     "is_host_absolute_path",
     "is_previewable_mime",
     "media_preview_url",
-    "normalize_workspace_download_path",
-    "normalize_workspace_media_path",
     "read_file_url_bytes",
     "resolve_dashboard_media_url",
     "resolve_media_agent_id",

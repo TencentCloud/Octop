@@ -213,6 +213,67 @@ def delete_chat(thread_id: str, agent_id: str | None, as_user: str | None, yes: 
     click.echo("deleted")
 
 
+@chats.command("gc-orphans")
+@click.option("--agent", "agent_id", default=None, help="Limit the scan to one agent.")
+@click.option("--yes", is_flag=True, default=False, help="Delete the orphan checkpoints.")
+def gc_orphans(agent_id: str | None, yes: bool) -> None:
+    """Report checkpoint rows whose thread was already removed.
+
+    Without ``--yes`` this only prints the orphans. With ``--yes`` it
+    deletes them from SQLite memory stores. PostgreSQL checkpoints are only
+    reported: their tables are shared and record no owner.
+    """
+    from octop.cli.support.db import open_cli_services, resolve_cli_locale
+    from octop.i18n import tr
+    from octop.infra.agents.memory.thread_cleanup import gc_orphan_checkpoints
+    from octop.infra.errors import OctopError
+
+    try:
+        with open_cli_services(None) as svc:
+            scan = gc_orphan_checkpoints(svc, agent_id=agent_id, apply=yes)
+    except OctopError as exc:
+        raise click.ClickException(exc.message) from exc
+    orphans = scan.orphans
+    payload = [
+        {"agent_id": item.agent_id, "thread_id": item.thread_id, "bytes": item.nbytes}
+        for item in orphans
+    ]
+    if json_output_enabled():
+        skipped = [
+            {
+                "agent_id": kept.agent_id,
+                "reason": kept.reason,
+                "threads": kept.threads,
+                "bytes": kept.nbytes,
+            }
+            for kept in scan.skipped
+        ]
+        click.echo(_json.dumps({"deleted": yes, "orphans": payload, "skipped": skipped}, indent=2))
+        return
+    locale = resolve_cli_locale()
+    for kept in scan.skipped:
+        if kept.reason == "external_database":
+            click.echo(tr("threads.gc_kept_external", locale, agent=kept.agent_id))
+        else:
+            click.echo(
+                tr(
+                    "threads.gc_kept_postgres",
+                    locale,
+                    agent=kept.agent_id,
+                    threads=kept.threads,
+                    bytes=kept.nbytes,
+                )
+            )
+    if not payload:
+        click.echo(tr("threads.gc_none", locale))
+        return
+    total = sum(item.nbytes for item in orphans)
+    for item in orphans:
+        click.echo(f"{item.agent_id} {item.thread_id} {item.nbytes}")
+    key = "threads.gc_deleted" if yes else "threads.gc_would_delete"
+    click.echo(tr(key, locale, count=len(payload), bytes=total))
+
+
 @chats.command("send")
 @click.argument("prompt")
 @click.option("--agent", "agent_id", default=None)
@@ -358,7 +419,21 @@ def repl(
                     if text in ("/exit", "/quit"):
                         break
                     if text == "/help":
-                        print_slash_help()
+                        from octop.cli.support.db import resolve_cli_locale
+
+                        include_hitl = False
+                        if server.app_runtime is not None:
+                            from octop.infra.agents.security import (
+                                tool_execution_may_pause,
+                            )
+
+                            include_hitl = tool_execution_may_pause(
+                                server.app_runtime.agent_registry.security.load()
+                            )
+                        print_slash_help(
+                            locale=resolve_cli_locale(),
+                            include_hitl_approval=include_hitl,
+                        )
                         continue
                     if text == "/clear":
                         click.echo()

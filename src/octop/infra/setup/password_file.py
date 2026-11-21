@@ -15,10 +15,47 @@ def _password_path(home: Path) -> Path:
     return home / WIZARD_FILE_NAME
 
 
-def ensure_password(home: Path) -> str | None:
-    """Generate the file if missing; return password or ``None`` if present."""
+def resolve_password_path(home: Path, legacy_home: Path | None = None) -> Path:
+    """Return the primary password file path, or the legacy path if only the latter exists."""
+    primary = _password_path(home)
+    if primary.exists():
+        return primary
+    legacy = _password_path(legacy_home or Path.home())
+    if legacy != primary and legacy.is_file():
+        return legacy
+    return primary
+
+
+def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
+    """Generate the file if missing; return password or ``None`` if present.
+
+    If ``<home>/octop-login.txt`` is missing but a legacy password exists at
+    ``<legacy_home>/octop-login.txt`` (defaulting to the OS home), reuse that
+    legacy password and write it to the primary path so both locations stay
+    consistent and no conflicting secret is generated.
+    """
     home.mkdir(parents=True, exist_ok=True)
     target = _password_path(home)
+    if target.exists():
+        return None
+    legacy = _password_path(legacy_home or Path.home())
+    if legacy != target and legacy.is_file():
+        legacy_pw = read_password(legacy.parent)
+        if legacy_pw is not None:
+            try:
+                fd = os.open(
+                    str(target),
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+                try:
+                    os.write(fd, (legacy_pw + "\n").encode("utf-8"))
+                finally:
+                    os.close(fd)
+                os.chmod(target, 0o600)
+                return legacy_pw
+            except FileExistsError:
+                return None
     pw = secrets.token_urlsafe(_TOKEN_BYTES)
     try:
         fd = os.open(
@@ -36,8 +73,11 @@ def ensure_password(home: Path) -> str | None:
     return pw
 
 
-def read_password(home: Path) -> str | None:
+def read_password(home: Path, legacy_home: Path | None = None) -> str | None:
     """Return the wizard password, or ``None`` if the file is absent/empty.
+
+    Checks ``<home>/octop-login.txt`` first. If absent, falls back to
+    ``<legacy_home>/octop-login.txt`` (defaulting to the OS home).
 
     Supports two layouts:
       * Plain — the password is the file's first non-empty line, as written
@@ -48,7 +88,7 @@ def read_password(home: Path) -> str | None:
         first so a labeled file always wins; falls back to the plain layout
         so existing callers/tests are unaffected.
     """
-    target = _password_path(home)
+    target = resolve_password_path(home, legacy_home=legacy_home)
     if not target.exists():
         return None
     lines = target.read_text(encoding="utf-8").splitlines()
@@ -65,7 +105,7 @@ def read_password(home: Path) -> str | None:
     return None
 
 
-def boot_self_heal(home: Path, user_count: int) -> str | None:
+def boot_self_heal(home: Path, user_count: int, legacy_home: Path | None = None) -> str | None:
     """Reconcile the wizard password file at server boot.
 
     When setup is still open (``user_count == 0``), ensure a password file exists
@@ -77,5 +117,5 @@ def boot_self_heal(home: Path, user_count: int) -> str | None:
     """
     if user_count > 0:
         return None
-    created = ensure_password(home)
-    return created if created is not None else read_password(home)
+    created = ensure_password(home, legacy_home=legacy_home)
+    return created if created is not None else read_password(home, legacy_home=legacy_home)

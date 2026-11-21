@@ -8,6 +8,8 @@ export interface UsageStatItem {
   key: string;
   label: string;
   value: string | number;
+  /** Exact figure shown under `value` when the card text is abbreviated. */
+  exact?: string;
 }
 
 const STAT_CARD_MIN_PX = 160;
@@ -27,26 +29,26 @@ export function visibleStatCount(width: number, total: number): number {
   return Math.max(1, Math.min(total - 1, withMore));
 }
 
-function StatBlock({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
+function StatBlock({ label, value, exact }: Omit<UsageStatItem, "key">) {
   return (
     <div className={styles.statBlock}>
       <div className={styles.statLabel}>{label}</div>
       <div className={styles.statValue}>{value}</div>
+      {exact ? <div className={styles.statExact}>{exact}</div> : null}
     </div>
   );
 }
 
-function StatRow({ label, value }: { label: string; value: string | number }) {
+function StatRow({ label, value, exact }: Omit<UsageStatItem, "key">) {
   return (
     <div className={styles.statsDrawerRow}>
       <span className={styles.statsDrawerLabel}>{label}</span>
-      <span className={styles.statsDrawerValue}>{value}</span>
+      <span className={styles.statsDrawerFigures}>
+        <span className={styles.statsDrawerValue}>{value}</span>
+        {exact ? (
+          <span className={styles.statsDrawerExact}>{exact}</span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -107,8 +109,8 @@ export function UsageStats({
               : undefined
           }
         >
-          {shown.map((item) => (
-            <StatBlock key={item.key} label={item.label} value={item.value} />
+          {shown.map(({ key, ...item }) => (
+            <StatBlock key={key} {...item} />
           ))}
         </div>
         {overflow.length > 0 ? (
@@ -117,12 +119,8 @@ export function UsageStats({
             placement="bottomRight"
             content={
               <div className={styles.statsDrawerList}>
-                {overflow.map((item) => (
-                  <StatRow
-                    key={item.key}
-                    label={item.label}
-                    value={item.value}
-                  />
+                {overflow.map(({ key, ...item }) => (
+                  <StatRow key={key} {...item} />
                 ))}
               </div>
             }

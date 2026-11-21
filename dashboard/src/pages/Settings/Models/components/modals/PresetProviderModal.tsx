@@ -18,7 +18,18 @@ import type {
 import { isEmbeddingModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import {
+  MAGPIE_LOCAL_API_KEY,
+  MAGPIE_PRESET_ID,
+  isMagpieDefaultBaseUrl,
+  magpieIntegrationExtra,
+  magpieModelFromCatalog,
+} from "../../magpie";
+import { MagpieServerNotice } from "../MagpieServerNotice";
+import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
+import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
+import { TestStreamHint } from "../TestStreamHint";
 import styles from "../../index.module.less";
 
 interface PresetProviderModalProps {
@@ -33,6 +44,7 @@ interface PresetForm {
   base_url: string;
   api_key?: string;
   kind: string;
+  stream_usage?: boolean;
 }
 
 export function PresetProviderModal({
@@ -48,8 +60,18 @@ export function PresetProviderModal({
   const [draftModels, setDraftModels] = useState<ProviderModel[]>([]);
   const [form] = Form.useForm<PresetForm>();
   const isCodexOAuth = preset.auth_method === "codex_oauth";
+  const isMagpie =
+    preset.id === MAGPIE_PRESET_ID || preset.integration === "magpie";
+  const baseUrlValue = Form.useWatch("base_url", form) as string | undefined;
+  const embeddingLane =
+    preset.purpose === "embedding" || preset.provider_variant === "embedding";
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
   const canTest = !!apiKey?.trim();
+  const setupStep = !apiKey?.trim()
+    ? 0
+    : draftModels.some((m) => m.enabled !== false)
+    ? 2
+    : 1;
 
   const draftProvider = useMemo<ProviderRow>(
     () => ({
@@ -63,8 +85,16 @@ export function PresetProviderModal({
       models: draftModels,
       note: null,
       enabled: true,
+      purpose: embeddingLane ? "embedding" : "chat",
     }),
-    [draftModels, form, preset.base_url, preset.name, preset.protocol],
+    [
+      draftModels,
+      embeddingLane,
+      form,
+      preset.base_url,
+      preset.name,
+      preset.protocol,
+    ],
   );
 
   useEffect(() => {
@@ -83,6 +113,10 @@ export function PresetProviderModal({
         if (meta.reasoning) entry.reasoning = true;
         if (ctx) entry.context_window = ctx;
         if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
+        if (embeddingLane || m.embedding || m.task === "embedding") {
+          entry.embedding = true;
+          entry.task = "embedding";
+        }
         return entry;
       });
       setDraftModels(baseModels);
@@ -91,9 +125,27 @@ export function PresetProviderModal({
         name: preset.name,
         base_url: preset.base_url,
         kind: preset.protocol,
+        stream_usage: preset.protocol === "openai",
+        ...(isMagpie
+          ? { api_key: preset.default_api_key || MAGPIE_LOCAL_API_KEY }
+          : {}),
       });
     }
-  }, [open, preset, form, t]);
+  }, [open, preset, form, t, embeddingLane, isMagpie]);
+
+  useEffect(() => {
+    if (!open || !isMagpie) return;
+    const current = (form.getFieldValue("api_key") as string | undefined) || "";
+    if (isMagpieDefaultBaseUrl(baseUrlValue)) {
+      if (!current.trim()) {
+        form.setFieldValue("api_key", MAGPIE_LOCAL_API_KEY);
+      }
+      return;
+    }
+    if (current.trim() === MAGPIE_LOCAL_API_KEY) {
+      form.setFieldValue("api_key", "");
+    }
+  }, [open, isMagpie, baseUrlValue, form]);
 
   const handleFetchModels = async () => {
     if (isCodexOAuth) return;
@@ -109,6 +161,8 @@ export function PresetProviderModal({
         kind: "openai",
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
+        name: preset.id,
+        extra_json: isMagpie ? magpieIntegrationExtra() : undefined,
       });
       if (!result.ok) {
         message.error(
@@ -118,21 +172,36 @@ export function PresetProviderModal({
         );
         return;
       }
-      const fetched = result.models ?? [];
+      const fetched = (result.models ?? []).filter((m) => {
+        if (!embeddingLane) return true;
+        const id = m.id.toLowerCase();
+        if (id.includes("rerank")) return false;
+        return /embed|bge-|e5-|gte-/.test(id);
+      });
       if (fetched.length === 0) {
-        message.info(t("models.fetchModelsNoNew"));
+        message.info(
+          embeddingLane
+            ? t("models.embeddingFetchModelsNone")
+            : t("models.fetchModelsNoNew"),
+        );
         return;
       }
       const existingIds = new Set(draftModels.map((m) => m.id));
       const missing: ProviderModel[] = fetched
         .filter((m) => !existingIds.has(m.id))
-        .map((m) => ({
-          id: m.id,
-          name: m.name || m.id,
-          enabled: false,
-          input: ["text"],
-          thinking: null,
-        }));
+        .map((m) => {
+          if (isMagpie) return magpieModelFromCatalog(m);
+          return {
+            id: m.id,
+            name: m.name || m.id,
+            enabled: false,
+            input: ["text"],
+            thinking: null,
+            ...(embeddingLane
+              ? { embedding: true as const, task: "embedding" as const }
+              : {}),
+          };
+        });
       if (missing.length === 0) {
         message.info(t("models.fetchModelsNoNew"));
         return;
@@ -151,7 +220,11 @@ export function PresetProviderModal({
     }
   };
 
-  const testDraftModel = async (modelId: string) => {
+  const testDraftModel = async (
+    modelId: string,
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ) => {
     const values = await form.validateFields(["name", "base_url", "api_key"]);
     const key = values.api_key?.trim();
     if (!key) {
@@ -163,7 +236,11 @@ export function PresetProviderModal({
       api_key: key,
       base_url: values.base_url?.trim() || preset.base_url,
       model_id: modelId,
-      embedding: isEmbeddingModel(draftModels.find((m) => m.id === modelId)),
+      api_mode: apiMode,
+      api_fallback: apiFallback,
+      embedding:
+        embeddingLane ||
+        isEmbeddingModel(draftModels.find((m) => m.id === modelId)),
     });
   };
 
@@ -183,14 +260,22 @@ export function PresetProviderModal({
         return;
       }
       setTesting(true);
-      const result = await testDraftModel(modelId);
+      const result = await testDraftModel(
+        modelId,
+        draftModels.find((m) => m.id === modelId)?.api_mode,
+        draftModels.find((m) => m.id === modelId)?.api_fallback,
+      );
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: values.name,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: values.name,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testConnectionFailed", {
@@ -212,8 +297,19 @@ export function PresetProviderModal({
     if (isCodexOAuth) return;
     try {
       const values = await form.validateFields();
+      if (isMagpie && draftModels.length === 0) {
+        message.warning(t("models.magpieNoModels"));
+        return;
+      }
       setSaving(true);
 
+      const models = embeddingLane
+        ? draftModels.map((m) => ({
+            ...m,
+            embedding: true,
+            task: "embedding",
+          }))
+        : draftModels;
       await request<ProviderRow>("/admin/providers", {
         method: "POST",
         body: JSON.stringify({
@@ -221,11 +317,20 @@ export function PresetProviderModal({
           kind: preset.protocol,
           base_url: values.base_url?.trim() || null,
           api_key: values.api_key?.trim() || null,
-          models: draftModels,
+          models,
+          purpose: embeddingLane ? "embedding" : "chat",
+          ...(isMagpie ? { extra_json: magpieIntegrationExtra() } : {}),
+          ...(preset.protocol === "openai" && !embeddingLane
+            ? { stream_usage: values.stream_usage !== false }
+            : {}),
         }),
       });
       message.success(
-        t("models.providerCreatedSimple", { name: values.name.trim() }),
+        embeddingLane
+          ? t("models.embeddingProviderCreated", {
+              name: values.name.trim(),
+            })
+          : t("models.providerCreatedSimple", { name: values.name.trim() }),
       );
       await onSaved();
       onClose();
@@ -233,7 +338,10 @@ export function PresetProviderModal({
       if (err && typeof err === "object" && "errorFields" in err) return;
       const msg =
         err instanceof Error ? err.message : t("models.createFailedSimple");
-      if (typeof msg === "string" && msg.includes("UNIQUE")) {
+      if (
+        typeof msg === "string" &&
+        (msg.includes("UNIQUE") || msg.includes("PROVIDER_NAME_TAKEN"))
+      ) {
         message.error(t("models.presetNameExists"));
       } else {
         message.error(msg);
@@ -284,7 +392,9 @@ export function PresetProviderModal({
         />
       ) : (
         <>
-          <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <SetupDrawerSteps current={setupStep} />
+          {isMagpie ? <MagpieServerNotice /> : null}
+          <Form form={form} layout="vertical">
             <Form.Item
               name="name"
               label={t("models.nameLabel")}
@@ -300,7 +410,11 @@ export function PresetProviderModal({
             <Form.Item
               name="base_url"
               label="Base URL"
-              extra={t("models.baseUrlExtra")}
+              extra={
+                isMagpie
+                  ? t("models.magpieAddressHint")
+                  : t("models.baseUrlExtra")
+              }
             >
               <Input placeholder={preset.base_url || "https://..."} />
             </Form.Item>
@@ -308,6 +422,11 @@ export function PresetProviderModal({
             <Form.Item
               name="api_key"
               label="API Key"
+              extra={
+                isMagpie && !isMagpieDefaultBaseUrl(baseUrlValue)
+                  ? t("models.magpieRemoteKey")
+                  : undefined
+              }
               rules={[
                 {
                   required: true,
@@ -320,6 +439,8 @@ export function PresetProviderModal({
                 visibilityToggle
               />
             </Form.Item>
+
+            {preset.protocol === "openai" ? <StreamUsageAdvanced /> : null}
           </Form>
 
           <div style={{ marginBottom: 16 }}>
@@ -338,6 +459,9 @@ export function PresetProviderModal({
             >
               {t("models.fetchModels")}
             </Button>
+            {preset.protocol === "openai" && !embeddingLane ? (
+              <TestStreamHint />
+            ) : null}
           </div>
 
           <Divider orientation="left" style={{ fontSize: 13 }}>
@@ -349,7 +473,10 @@ export function PresetProviderModal({
             onModelsChange={setDraftModels}
             apiPrefix="/admin/providers"
             canTest={canTest}
-            onTestModel={(modelId) => testDraftModel(modelId)}
+            forcePurpose={embeddingLane ? "embedding" : undefined}
+            onTestModel={(modelId, _modelName, apiMode, apiFallback) =>
+              testDraftModel(modelId, apiMode, apiFallback)
+            }
           />
         </>
       )}

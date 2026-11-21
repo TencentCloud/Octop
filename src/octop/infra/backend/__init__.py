@@ -2,7 +2,7 @@
 
 - :mod:`adapter` — ``storage_backends`` row → harness spec (no I/O)
 - :mod:`resolver` — agent config ``named`` / ``composite`` expansion
-- :mod:`probe` — admin connectivity checks (delegates round-trip to harness-agent)
+- :mod:`probe` — admin connectivity checks (delegates round-trip to octop-harness)
 """
 
 from octop.infra.backend.adapter import row_to_backend_spec

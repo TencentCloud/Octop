@@ -1,10 +1,12 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Bot } from "lucide-react";
+import { Bot, Info } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
+import { message } from "@/utils/antdMessage";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import styles from "../index.module.less";
 
@@ -13,6 +15,7 @@ interface SubagentPickerPopoverProps {
   selectedSlugs: string[];
   onSelect: (subagent: AgentSubagentSummary) => void;
   onNavigateAway?: () => void;
+  remoteManaged?: boolean;
 }
 
 export default function SubagentPickerPopover({
@@ -20,6 +23,7 @@ export default function SubagentPickerPopover({
   selectedSlugs,
   onSelect,
   onNavigateAway,
+  remoteManaged = false,
 }: SubagentPickerPopoverProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -39,9 +43,24 @@ export default function SubagentPickerPopover({
       searchPlaceholder={t("chat.subagentPickerSearch")}
       emptyMessage={t("chat.subagentPickerEmpty")}
       width="compact"
-      footerIcon={<Bot size={15} aria-hidden />}
-      footerLabel={t("chat.subagentPickerManage")}
+      footerIcon={
+        remoteManaged ? (
+          <Info size={15} aria-hidden />
+        ) : (
+          <Bot size={15} aria-hidden />
+        )
+      }
+      footerLabel={
+        remoteManaged
+          ? t("chat.remoteExpert.manageOnPeer")
+          : t("chat.subagentPickerManage")
+      }
+      footerMuted={remoteManaged}
       onFooterClick={() => {
+        if (remoteManaged) {
+          message.info(t("chat.remoteExpert.manageToast"));
+          return;
+        }
         onNavigateAway?.();
         navigate("/personalization/subagents");
       }}
@@ -51,9 +70,10 @@ export default function SubagentPickerPopover({
           <button
             key={subagent.slug}
             type="button"
-            className={`${styles.skillPickerItem} ${
-              active ? styles.subagentPickerItemActive : ""
-            }`}
+            className={cx(
+              styles.skillPickerItem,
+              active && styles.subagentPickerItemActive,
+            )}
             onClick={() => onSelect(subagent)}
           >
             <span className={styles.skillPickerAvatar} aria-hidden>

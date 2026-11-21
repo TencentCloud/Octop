@@ -3,15 +3,17 @@ import { connectorsApi } from "../../../api/modules/connectors";
 import { providerApi } from "../../../api/modules/provider";
 import { preferencesApi } from "../../../api/modules/preferences";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
-import { request } from "../../../api/request";
 import {
   knowledgeBasesApi,
   type KnowledgeBase,
+  type KnowledgeCapability,
 } from "../../../api/modules/knowledgeBases";
 import type { ResolvedModel } from "../../../api/types";
 import { CONNECTORS_CHANGED_EVENT } from "../../Agent/Connectors/customMcpUtils";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
+import { useAcpSessionModes } from "../../../hooks/useAcpSessionModes";
+import { isUnattendedSessionMode } from "../../../api/modules/acp";
 import { activeModelToRef } from "./useChatContextWindow";
 import {
   hasSavedConnectors,
@@ -27,7 +29,12 @@ import {
   peekPendingAttachKnowledgeBaseId,
 } from "../utils/pendingAttachKnowledgeBase";
 import { withDefaultOpenKnowledgeBases } from "../utils/withDefaultOpenKnowledgeBases";
-import { isPendingThread, syncSessionConversationMode } from "./useSessions";
+import {
+  isPendingThread,
+  syncSessionConversationMode,
+  syncSessionHitlPolicy,
+  syncSessionMode,
+} from "./useSessions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import * as chatStore from "./chatStore";
 import {
@@ -35,6 +42,27 @@ import {
   parseConversationMode,
   type ConversationMode,
 } from "../utils/conversationMode";
+import {
+  DEFAULT_HITL_SESSION_POLICY,
+  parseHitlSessionPolicy,
+  type HitlSessionPolicy,
+} from "../utils/hitlSessionPolicy";
+
+const EMPTY_MODELS: ResolvedModel[] = [];
+
+type ChatConnectorOption = {
+  mcp_server_name: string;
+  label: string;
+  kind: string;
+  default_open?: boolean;
+};
+
+function sameIds(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
+  );
+}
 
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
@@ -43,14 +71,41 @@ export function useChatComposerResources(
   stickyReasoningMode?: "auto" | "enabled" | "disabled" | null,
   stickyReasoningEffort?: string | null,
   stickyConversationMode?: ConversationMode | null,
+  stickyHitlPolicy?: HitlSessionPolicy | null,
+  stickySessionMode?: string | null,
+  persistThreadSettings = true,
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
-  const { agents } = useAgent();
+  const { agents, loading: agentsLoading } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
+  const expertDefaultMode = parseConversationMode(
+    expert?.config?.conversation_mode,
+  );
+  const expertYolo =
+    expert?.kind === "managed" &&
+    expert.config?.managed_permission_mode === "yolo";
+  const managedRunner =
+    expert?.kind === "managed" &&
+    typeof expert.config?.managed_runner === "string"
+      ? expert.config.managed_runner
+      : "";
+  const sessionModes = useAcpSessionModes(managedRunner);
+  const pinnedSessionMode =
+    typeof expert?.config?.managed_session_mode === "string"
+      ? expert.config.managed_session_mode.trim()
+      : "";
   const teamHost = isTeamAgent(expert);
+  const bridgeConnectionId =
+    expert?.bridge && expert.bridge_connection_id
+      ? expert.bridge_connection_id
+      : null;
+  const remoteBridge = Boolean(bridgeConnectionId);
+  // Peer experts carry the same composer defaults as local ones (mapped onto
+  // the shadow row). Team hosts still have no connectors.
   const expertMcpServers = teamHost ? [] : expert?.mcp_servers;
   const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
+  const expertDefaultModel = (expert?.default_model || "").trim() || null;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
   const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
@@ -62,15 +117,27 @@ export function useChatComposerResources(
   const [chatKnowledgeBases, setChatKnowledgeBases] = useState<
     KnowledgeBase[] | undefined
   >(undefined);
-  const [chatConnectors, setChatConnectors] = useState<
-    {
-      mcp_server_name: string;
-      label: string;
-      kind: string;
-      default_open?: boolean;
-    }[]
-  >([]);
-  const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
+  const [chatConnectors, setChatConnectors] = useState<ChatConnectorOption[]>(
+    [],
+  );
+  const knowledgeCatalogRef = useRef<{
+    agentId: string | null;
+    bases: KnowledgeBase[];
+  } | null>(null);
+  const connectorCatalogRef = useRef<{
+    agentId: string | null;
+    options: ChatConnectorOption[];
+  } | null>(null);
+  const [modelCatalog, setModelCatalog] = useState<{
+    agentId: string | null | undefined;
+    models: ResolvedModel[];
+  } | null>(null);
+  const modelsReady =
+    modelCatalog !== null && modelCatalog.agentId === resolvedAgentId;
+  const availableModels =
+    modelCatalog && modelCatalog.agentId === resolvedAgentId
+      ? modelCatalog.models
+      : EMPTY_MODELS;
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [preferredModel, setPreferredModel] = useState<string | null>(null);
@@ -87,6 +154,10 @@ export function useChatComposerResources(
   const [conversationMode, setConversationMode] = useState<ConversationMode>(
     DEFAULT_CONVERSATION_MODE,
   );
+  const [hitlPolicy, setHitlPolicy] = useState<HitlSessionPolicy>(
+    DEFAULT_HITL_SESSION_POLICY,
+  );
+  const [sessionMode, setSessionMode] = useState("");
   const [conversationOverrides, setConversationOverrides] = useState<
     Record<
       string,
@@ -100,30 +171,35 @@ export function useChatComposerResources(
 
   useEffect(() => {
     composerTouchedRef.current = false;
+    knowledgeCatalogRef.current = null;
+    connectorCatalogRef.current = null;
     // Selections are remembered per expert (localStorage below); never carry
-    // the previous expert's in-memory selection across the switch. Connectors
-    // get the same reset so their per-agent saved prefs resolve cleanly.
+    // the previous expert's catalog or in-memory selection across the switch.
     setSelectedKnowledgeBaseIds([]);
     setSelectedConnectors([]);
+    setChatKnowledgeBases(undefined);
+    setChatConnectors([]);
   }, [resolvedAgentId]);
 
   useEffect(() => {
     if (isNewSession) composerTouchedRef.current = false;
   }, [isNewSession]);
 
-  // Auto = omit turn model; backend applies the expert default.
+  // The chat picker shows an explicit choice only: this thread's override, or
+  // the expert's default model. Account preferred model is an auto-route
+  // priority on the server and stays unselected here (Auto).
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
       : undefined;
     setSelectedModel(
-      local ? local.model : stickyModel || preferredModel || null,
+      local ? local.model : stickyModel || expertDefaultModel || null,
     );
   }, [
     resolvedAgentId,
     activeThreadId,
     stickyModel,
-    preferredModel,
+    expertDefaultModel,
     conversationOverrides,
   ]);
 
@@ -164,56 +240,119 @@ export function useChatComposerResources(
   useEffect(() => {
     setConversationMode(
       isNewSession
-        ? DEFAULT_CONVERSATION_MODE
+        ? expertDefaultMode
         : parseConversationMode(stickyConversationMode),
     );
-  }, [isNewSession, stickyConversationMode, activeThreadId]);
+  }, [isNewSession, stickyConversationMode, activeThreadId, expertDefaultMode]);
 
   useEffect(() => {
+    setHitlPolicy(
+      isNewSession
+        ? expertYolo
+          ? { mode: "allow_all" }
+          : DEFAULT_HITL_SESSION_POLICY
+        : parseHitlSessionPolicy(stickyHitlPolicy),
+    );
+  }, [isNewSession, stickyHitlPolicy, activeThreadId, expertYolo]);
+
+  const expertSessionMode =
+    pinnedSessionMode ||
+    (expertYolo
+      ? sessionModes.find((mode) => isUnattendedSessionMode(mode.id))?.id ?? ""
+      : "") ||
+    sessionModes[0]?.id ||
+    "";
+
+  useEffect(() => {
+    if (expert?.kind !== "managed") {
+      setSessionMode("");
+      return;
+    }
+    const sticky =
+      !isNewSession && stickySessionMode ? stickySessionMode.trim() : "";
+    setSessionMode(sticky || expertSessionMode);
+  }, [
+    expert?.kind,
+    isNewSession,
+    stickySessionMode,
+    activeThreadId,
+    expertSessionMode,
+  ]);
+
+  useEffect(() => {
+    if (agentsLoading) return;
     if (teamHost) {
+      connectorCatalogRef.current = null;
       setSelectedConnectors([]);
       setChatConnectors([]);
       return;
     }
     let cancelled = false;
-    const loadConnectors = () => {
-      void connectorsApi.listInstances().then((instances) => {
-        if (cancelled) return;
-        const options = (instances ?? [])
-          .filter((i) => i.status === "active" && i.has_credentials)
-          .map((i) => ({
-            mcp_server_name: i.mcp_server_name,
-            label:
-              currentUserId !== null && i.owner_user_id !== currentUserId
-                ? `${i.display_name} · ${
-                    i.owner_display_name || i.owner_username || i.owner_user_id
-                  }`
-                : i.display_name,
-            kind: i.kind,
-            default_open:
-              i.default_open === true && i.owner_user_id === currentUserId,
-          }));
-        setChatConnectors(options);
-        const allowed = new Set(options.map((o) => o.mcp_server_name));
-        const defaults = withDefaultOpenKnowledgeBases(
-          options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
-          expertMcpServers ?? [],
-        );
-        setSelectedConnectors((prev) =>
-          resolveInitialConnectors({
-            prev,
-            saved: resolvedAgentId ? loadSavedConnectors(resolvedAgentId) : [],
-            hasSaved: resolvedAgentId
-              ? hasSavedConnectors(resolvedAgentId)
-              : false,
-            defaults,
-            allowed,
-            ignorePrev: isNewSession && !composerTouchedRef.current,
-            ignoreSaved: isNewSession,
-            preferPrev: composerTouchedRef.current,
-          }),
-        );
+    const agentKey = resolvedAgentId ?? null;
+    const applyConnectorOptions = (options: ChatConnectorOption[]) => {
+      connectorCatalogRef.current = { agentId: agentKey, options };
+      setChatConnectors((current) => (current === options ? current : options));
+      const allowed = new Set(options.map((o) => o.mcp_server_name));
+      const defaults = withDefaultOpenKnowledgeBases(
+        options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
+        expertMcpServers ?? [],
+      );
+      setSelectedConnectors((prev) => {
+        const next = resolveInitialConnectors({
+          prev,
+          saved: resolvedAgentId ? loadSavedConnectors(resolvedAgentId) : [],
+          hasSaved: resolvedAgentId
+            ? hasSavedConnectors(resolvedAgentId)
+            : false,
+          defaults,
+          allowed,
+          // Untouched selection is not a user choice. A refresh resolves
+          // once before the expert row exists; that partial result must
+          // not block expert / default-open picks when they arrive.
+          ignorePrev: !composerTouchedRef.current,
+          ignoreSaved: isNewSession,
+          preferPrev: composerTouchedRef.current,
+        });
+        return sameIds(prev, next) ? prev : next;
       });
+    };
+    // Keep the chips that are already on screen. A new chat or a later
+    // expert default updates the selection in place while the list refreshes.
+    const cachedConnectors = connectorCatalogRef.current;
+    if (cachedConnectors && cachedConnectors.agentId === agentKey) {
+      applyConnectorOptions(cachedConnectors.options);
+    }
+    const loadConnectors = () => {
+      void connectorsApi
+        .listInstances(remoteBridge ? resolvedAgentId : undefined)
+        .then((instances) => {
+          if (cancelled) return;
+          const options = (instances ?? [])
+            .filter(
+              (i) =>
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
+            .map((i) => ({
+              mcp_server_name: i.mcp_server_name,
+              label:
+                !remoteBridge &&
+                currentUserId !== null &&
+                i.owner_user_id !== currentUserId
+                  ? `${i.display_name} · ${
+                      i.owner_display_name ||
+                      i.owner_username ||
+                      i.owner_user_id
+                    }`
+                  : i.display_name,
+              kind: i.kind,
+              default_open: remoteBridge
+                ? i.default_open === true
+                : i.default_open === true && i.owner_user_id === currentUserId,
+            }));
+          applyConnectorOptions(options);
+        });
     };
     loadConnectors();
     const onFocus = () => loadConnectors();
@@ -224,88 +363,137 @@ export function useChatComposerResources(
       window.removeEventListener("focus", onFocus);
       window.removeEventListener(CONNECTORS_CHANGED_EVENT, loadConnectors);
     };
-  }, [resolvedAgentId, currentUserId, isNewSession, expertMcpKey, teamHost]);
+  }, [
+    resolvedAgentId,
+    currentUserId,
+    isNewSession,
+    expertMcpKey,
+    teamHost,
+    remoteBridge,
+    agentsLoading,
+  ]);
 
   useEffect(() => {
+    if (agentsLoading) return;
     if (teamHost) {
+      knowledgeCatalogRef.current = null;
       setSelectedKnowledgeBaseIds([]);
       setChatKnowledgeBases(undefined);
       return;
     }
     let cancelled = false;
     const pendingId = peekPendingAttachKnowledgeBaseId();
-    if (isNewSession && !composerTouchedRef.current) {
-      setSelectedKnowledgeBaseIds(pendingId ? [pendingId] : []);
+    const agentKey = resolvedAgentId ?? null;
+    const applyKnowledgeBases = (
+      bases: KnowledgeBase[],
+      consumePending: boolean,
+    ) => {
+      knowledgeCatalogRef.current = { agentId: agentKey, bases };
+      setChatKnowledgeBases((current) => (current === bases ? current : bases));
+      const ownedDefaults = bases
+        .filter(
+          (base) =>
+            base.default_open &&
+            currentUserId != null &&
+            base.owner_user_id === currentUserId,
+        )
+        .map((base) => base.id);
+      const allowed = new Set(bases.map((base) => base.id));
+      // Peer owner_user_id rarely matches local user id — for remote
+      // experts, treat default_open flags on the peer list as usable.
+      const bridgeDefaults = remoteBridge
+        ? bases.filter((base) => base.default_open).map((base) => base.id)
+        : ownedDefaults;
+      const defaults = withDefaultOpenKnowledgeBases(
+        bridgeDefaults,
+        (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
+      );
+      setSelectedKnowledgeBaseIds((previous) => {
+        const base = resolveInitialConnectors({
+          // resolver is selection-generic (string ids)
+          prev: previous,
+          saved: resolvedAgentId
+            ? loadSavedKnowledgeBaseIds(resolvedAgentId)
+            : [],
+          hasSaved: resolvedAgentId
+            ? hasSavedKnowledgeBaseIds(resolvedAgentId)
+            : false,
+          defaults,
+          allowed,
+          ignorePrev: !composerTouchedRef.current,
+          ignoreSaved: isNewSession,
+          preferPrev: composerTouchedRef.current,
+        });
+        const next =
+          pendingId && allowed.has(pendingId) && !base.includes(pendingId)
+            ? [...base, pendingId]
+            : base;
+        return sameIds(previous, next) ? previous : next;
+      });
+      if (consumePending && pendingId) consumePendingAttachKnowledgeBaseId();
+    };
+    // Same expert: recompute chips from the list already on screen so a new
+    // chat or a refreshed default does not blank the picker while the
+    // request is in flight.
+    const cachedKnowledge = knowledgeCatalogRef.current;
+    if (cachedKnowledge && cachedKnowledge.agentId === agentKey) {
+      applyKnowledgeBases(cachedKnowledge.bases, false);
     }
-    setChatKnowledgeBases(undefined);
-    void knowledgeBasesApi
-      .getCapability()
+
+    const loadCapability = (): Promise<KnowledgeCapability> =>
+      knowledgeBasesApi.getCapability(resolvedAgentId);
+    const loadBases = (): Promise<KnowledgeBase[]> =>
+      knowledgeBasesApi.list(resolvedAgentId);
+
+    void loadCapability()
       .then((capability) => {
         if (cancelled) return;
         if (!capability.usable) {
           if (pendingId) consumePendingAttachKnowledgeBaseId();
+          knowledgeCatalogRef.current = null;
+          setChatKnowledgeBases(undefined);
+          setSelectedKnowledgeBaseIds([]);
           return;
         }
-        return knowledgeBasesApi.list().then((bases) => {
+        return loadBases().then((bases) => {
           if (cancelled) return;
-          setChatKnowledgeBases(bases);
-          const ownedDefaults = bases
-            .filter(
-              (base) =>
-                base.default_open &&
-                currentUserId != null &&
-                base.owner_user_id === currentUserId,
-            )
-            .map((base) => base.id);
-          const allowed = new Set(bases.map((base) => base.id));
-          const defaults = withDefaultOpenKnowledgeBases(
-            ownedDefaults,
-            (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
-          );
-          setSelectedKnowledgeBaseIds((previous) => {
-            const base = resolveInitialConnectors({
-              // resolver is selection-generic (string ids)
-              prev: previous,
-              saved: resolvedAgentId
-                ? loadSavedKnowledgeBaseIds(resolvedAgentId)
-                : [],
-              hasSaved: resolvedAgentId
-                ? hasSavedKnowledgeBaseIds(resolvedAgentId)
-                : false,
-              defaults,
-              allowed,
-              ignorePrev: isNewSession && !composerTouchedRef.current,
-              ignoreSaved: isNewSession,
-              preferPrev: composerTouchedRef.current,
-            });
-            return pendingId &&
-              allowed.has(pendingId) &&
-              !base.includes(pendingId)
-              ? [...base, pendingId]
-              : base;
-          });
-          if (pendingId) consumePendingAttachKnowledgeBaseId();
+          applyKnowledgeBases(bases, true);
         });
       })
       .catch(() => {
-        if (!cancelled) setChatKnowledgeBases(undefined);
+        if (cancelled) return;
+        if (knowledgeCatalogRef.current?.agentId !== agentKey) {
+          setChatKnowledgeBases(undefined);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [resolvedAgentId, currentUserId, isNewSession, expertKbKey, teamHost]);
+  }, [
+    resolvedAgentId,
+    currentUserId,
+    isNewSession,
+    expertKbKey,
+    teamHost,
+    remoteBridge,
+    agentsLoading,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
+    let latestRequest = 0;
+    setModelCatalog(null);
     const loadModels = () => {
+      const request = ++latestRequest;
       void providerApi
-        .listResolvedModels()
+        .listResolvedModels(resolvedAgentId)
         .then((data) => {
-          if (!cancelled) setAvailableModels(data);
+          if (!cancelled && request === latestRequest) {
+            setModelCatalog({ agentId: resolvedAgentId, models: data });
+          }
         })
-        .catch(() => {
-          if (!cancelled) setAvailableModels([]);
-        });
+        // An unavailable catalog is not proof that a saved model was disabled.
+        .catch(() => undefined);
     };
     loadModels();
     const onFocus = () => loadModels();
@@ -314,7 +502,7 @@ export function useChatComposerResources(
       cancelled = true;
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [resolvedAgentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -334,9 +522,8 @@ export function useChatComposerResources(
   useEffect(() => {
     let cancelled = false;
     const loadActiveModel = () => {
-      void request<{ provider_name: string; model: string }>(
-        "/providers/active-model",
-      )
+      void providerApi
+        .getActiveModel(resolvedAgentId)
         .then((active) => {
           if (!cancelled) setActiveModelRef(activeModelToRef(active));
         })
@@ -351,7 +538,7 @@ export function useChatComposerResources(
       cancelled = true;
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [resolvedAgentId]);
 
   const handleConnectorsChange = useCallback(
     (names: string[]) => {
@@ -401,6 +588,7 @@ export function useChatComposerResources(
         }));
       }
       if (
+        persistThreadSettings &&
         resolvedAgentId &&
         activeThreadId &&
         !isPendingThread(activeThreadId)
@@ -412,8 +600,43 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, availableModels, modelReasoning, resolvedAgentId],
+    [
+      activeThreadId,
+      availableModels,
+      modelReasoning,
+      persistThreadSettings,
+      resolvedAgentId,
+    ],
   );
+
+  // Clear a saved thread override that this catalog no longer contains, and
+  // persist Auto so reopening the thread cannot restore that disabled model.
+  // The expert's own default stays selected even when the viewer's catalog
+  // omits it — shared and peer experts must still show that default.
+  useEffect(() => {
+    if (!modelsReady) return;
+    const local = activeThreadId
+      ? conversationOverrides[activeThreadId]
+      : undefined;
+    const override = local ? local.model : stickyModel || null;
+    if (
+      override &&
+      override !== expertDefaultModel &&
+      !availableModels.some(
+        (item) => `${item.provider_name}/${item.model}` === override,
+      )
+    ) {
+      handleModelChange(null);
+    }
+  }, [
+    activeThreadId,
+    stickyModel,
+    expertDefaultModel,
+    conversationOverrides,
+    availableModels,
+    modelsReady,
+    handleModelChange,
+  ]);
 
   const handleReasoningChange = useCallback(
     (mode: "auto" | "enabled" | "disabled", effort: string | null) => {
@@ -430,6 +653,7 @@ export function useChatComposerResources(
         }));
       }
       if (
+        persistThreadSettings &&
         resolvedAgentId &&
         activeThreadId &&
         !isPendingThread(activeThreadId)
@@ -440,7 +664,7 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, resolvedAgentId, selectedModel],
+    [activeThreadId, persistThreadSettings, resolvedAgentId, selectedModel],
   );
 
   const handleConversationModeChange = useCallback(
@@ -454,6 +678,7 @@ export function useChatComposerResources(
         );
       }
       if (
+        persistThreadSettings &&
         (options?.persist ?? true) &&
         resolvedAgentId &&
         activeThreadId &&
@@ -464,7 +689,51 @@ export function useChatComposerResources(
         });
       }
     },
-    [activeThreadId, resolvedAgentId],
+    [activeThreadId, persistThreadSettings, resolvedAgentId],
+  );
+
+  const handleHitlPolicyChange = useCallback(
+    (policy: HitlSessionPolicy, options?: { persist?: boolean }) => {
+      const next = parseHitlSessionPolicy(policy);
+      setHitlPolicy(next);
+      if (activeThreadId) {
+        syncSessionHitlPolicy(activeThreadId, next);
+      }
+      if (
+        persistThreadSettings &&
+        (options?.persist ?? true) &&
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
+        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+          hitl_policy: next,
+        });
+      }
+    },
+    [activeThreadId, persistThreadSettings, resolvedAgentId],
+  );
+
+  const handleSessionModeChange = useCallback(
+    (modeId: string) => {
+      const next = modeId.trim();
+      if (!next) return;
+      setSessionMode(next);
+      if (activeThreadId) {
+        syncSessionMode(activeThreadId, next);
+      }
+      if (
+        persistThreadSettings &&
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
+        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+          session_mode: next,
+        });
+      }
+    },
+    [activeThreadId, persistThreadSettings, resolvedAgentId],
   );
 
   return {
@@ -475,12 +744,19 @@ export function useChatComposerResources(
     handleReasoningChange,
     conversationMode,
     handleConversationModeChange,
+    hitlPolicy,
+    handleHitlPolicyChange,
+    sessionModes,
+    sessionMode,
+    handleSessionModeChange,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
+    modelsReady,
     activeModelRef,
+    preferredModel,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   };

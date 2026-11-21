@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getAuthToken } from "../api/request";
+import { resolveWsUrl } from "../utils/desktopWsUrl";
 import { normalizeUrl } from "../utils/normalizeUrl";
 import {
   closeBrowserTabOptimistic,
@@ -31,12 +32,22 @@ interface BrowserStreamCallbacks {
 interface ConnectOptions {
   /** Harness profile for the current user. The WebSocket also binds from JWT. */
   sessionId?: string | null;
+  /** When set, screencast is relayed to the peer Octop via Bridge. */
+  bridgeConnectionId?: string | null;
 }
 
-function buildWsUrl(width: number, height: number): string {
+function buildWsUrl(
+  width: number,
+  height: number,
+  bridgeConnectionId?: string | null,
+): string {
   const token = getAuthToken();
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const base = `${protocol}://${window.location.host}/api/browser-stream/ws`;
+  const path = bridgeConnectionId
+    ? `/bridge/connections/${encodeURIComponent(
+        bridgeConnectionId,
+      )}/browser-stream/ws`
+    : "/browser-stream/ws";
+  const base = resolveWsUrl(`/api${path}`);
   const params = new URLSearchParams({
     width: String(width),
     height: String(height),
@@ -95,7 +106,7 @@ export function useBrowserStream() {
         wsRef.current.close();
       }
 
-      const wsUrl = buildWsUrl(width, height);
+      const wsUrl = buildWsUrl(width, height, options.bridgeConnectionId);
       let ws: WebSocket;
       try {
         ws = new WebSocket(wsUrl);

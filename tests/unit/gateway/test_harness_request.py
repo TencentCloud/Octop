@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from harness_gateway.models import (
+from octop_gateway.models import (
     ChannelSubject,
     FileContent,
     GroupContext,
@@ -11,6 +11,35 @@ from harness_gateway.models import (
 )
 
 from octop.infra.gateway.process.harness_request import build_content_from_message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel_type", ["telegram", "qq"])
+@pytest.mark.parametrize("locale,label", [("en", "[Quoted message]"), ("zh", "[引用消息]")])
+@pytest.mark.parametrize(
+    "own_reply,explicit", [(False, False), (False, True), (True, False), (True, True)]
+)
+async def test_quoted_message_is_added_only_to_model_content(
+    channel_type, locale, label, own_reply, explicit
+):
+    msg = InboundMessage(
+        channel_id="tg",
+        channel_type=channel_type,
+        content=[TextContent(text="explain this")],
+        metadata={
+            "reply_to_text": "whole message",
+            "reply_to_is_own_bot": own_reply,
+            "reply_quote_text": "selection" if explicit else "",
+        },
+    )
+    result = await build_content_from_message(msg, locale=locale)
+    assert msg.text == "explain this"
+    if channel_type == "qq" and own_reply and not explicit:
+        assert result == "explain this"
+    else:
+        assert result.startswith(label)
+        assert ("selection" if explicit else "whole message") in result
+        assert result.endswith("explain this")
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { bridgeAgentHeaders, request } from "../request";
 import type {
   ProviderInfo,
   ProviderConfigRequest,
@@ -24,7 +24,16 @@ export interface ModelTemplate {
 export const providerApi = {
   listProviders: () => request<ProviderInfo[]>("/models"),
 
-  listResolvedModels: () => request<ResolvedModel[]>("/providers/resolved"),
+  listResolvedModels: (agentId?: string | null) =>
+    request<ResolvedModel[]>("/providers/resolved", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
+
+  getActiveModel: (agentId?: string | null) =>
+    request<{ provider_name: string; model: string }>(
+      "/providers/active-model",
+      { headers: bridgeAgentHeaders(agentId) },
+    ),
 
   configureProvider: (providerId: string, body: ProviderConfigRequest) =>
     request<ProviderInfo>(`/models/${encodeURIComponent(providerId)}/config`, {

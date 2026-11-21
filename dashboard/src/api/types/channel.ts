@@ -5,8 +5,31 @@ export interface BaseChannelConfig {
 
 export interface DiscordConfig extends BaseChannelConfig {
   bot_token: string;
+  allow_all_channels?: boolean;
   http_proxy: string;
   http_proxy_auth: string;
+  allowed_channel_ids?: string[];
+  allowed_user_ids?: string[];
+}
+
+export interface TelegramConfig extends BaseChannelConfig {
+  bot_token: string;
+  http_proxy?: string;
+  group_activation?: "always" | "mention" | "mention_or_reply";
+  allowed_user_ids?: string[];
+  allowed_chat_ids?: string[];
+  allow_unaddressed_commands?: boolean;
+  topic_isolation?: boolean;
+  reply_to_message?: boolean;
+  edited_messages?: boolean;
+  streaming_mode?: "off" | "auto" | "edit" | "draft";
+  status_reactions?: boolean;
+  disable_notification?: boolean;
+  protect_content?: boolean;
+  link_preview?: boolean;
+  command_menu?: boolean;
+  albums?: boolean;
+  audio_as_voice?: boolean;
 }
 
 export interface DingTalkConfig extends BaseChannelConfig {
@@ -91,6 +114,7 @@ export interface OctopBotConfig extends BaseChannelConfig {
 }
 
 export interface ChannelConfig {
+  telegram: TelegramConfig;
   discord: DiscordConfig;
   dingtalk: DingTalkConfig;
   feishu: FeishuConfig;

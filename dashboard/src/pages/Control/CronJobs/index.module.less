@@ -426,9 +426,34 @@
   }
 }
 
+.cronCardFooterActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cronCardToggleBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--fn-radius-sm);
+  border: 1px solid var(--fn-border-primary);
+  background: transparent;
+  cursor: pointer;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover);
+  }
+}
+
 /* Primary action button — right-aligned, accent-colored */
 .cronCardRunBtn {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -458,6 +483,10 @@
   align-items: center;
   padding: 64px 24px 48px;
   text-align: center;
+
+  @media (max-width: 767px) {
+    padding: 12px 16px 24px;
+  }
 }
 
 .emptyStateIcon {

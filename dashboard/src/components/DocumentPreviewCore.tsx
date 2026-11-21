@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, Image, Tabs } from "antd";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { isNotFoundApiError } from "../utils/apiError";
 import type { DocKind } from "../utils/docKind";
 import styles from "./DocumentPreviewCore.module.less";
@@ -26,8 +27,13 @@ export interface DocumentPreviewCoreProps {
     onProgress?: (loaded: number, total: number) => void,
     signal?: AbortSignal,
   ) => Promise<Blob>;
-  /** Optional download when the kind cannot be rendered (e.g. legacy ``.ppt``). */
+  /** Optional download when the kind cannot be rendered (legacy ``.ppt`` / ``.doc``). */
   onDownload?: () => void | Promise<void>;
+}
+
+/** Office binaries with no in-browser renderer (legacy ``.ppt`` / ``.doc``). */
+function isDownloadOnlyKind(kind: DocKind): boolean {
+  return kind === "ppt" || kind === "doc";
 }
 
 function isAbortError(err: unknown): boolean {
@@ -131,6 +137,16 @@ async function extractXlsxMediaDataUrls(
   }
   return items;
 }
+
+/** docx-preview options; the narrow-layout CSS targets the DOM they produce. */
+export const DOCX_RENDER_OPTIONS = {
+  className: "docx-doc",
+  inWrapper: true,
+  breakPages: true,
+  ignoreWidth: false,
+  ignoreHeight: false,
+  useBase64URL: true,
+};
 
 /** Absolute lengths beyond this (≈ 27″) are treated as corrupt DOCX metrics. */
 const DOCX_MAX_LENGTH_PT = 2000;
@@ -398,7 +414,7 @@ export default function DocumentPreviewCore({
     pptxViewerRef.current?.destroy();
     pptxViewerRef.current = null;
     if (containerRef.current) containerRef.current.innerHTML = "";
-    if (kind === "ppt") {
+    if (isDownloadOnlyKind(kind)) {
       setLoading(false);
       return;
     }
@@ -435,14 +451,12 @@ export default function DocumentPreviewCore({
           }
           const { renderAsync } = await import("docx-preview");
           if (containerRef.current && !cancelled) {
-            await renderAsync(buf, containerRef.current, undefined, {
-              className: "docx-doc",
-              inWrapper: true,
-              breakPages: true,
-              ignoreWidth: false,
-              ignoreHeight: false,
-              useBase64URL: true,
-            });
+            await renderAsync(
+              buf,
+              containerRef.current,
+              undefined,
+              DOCX_RENDER_OPTIONS,
+            );
             if (!cancelled && containerRef.current) {
               neutralizeDocxPreviewChrome(containerRef.current);
               sanitizeDocxPreviewLayout(containerRef.current);
@@ -510,6 +524,13 @@ export default function DocumentPreviewCore({
         if (!cancelled) setLoading(false);
       } catch (err) {
         if (cancelled || isAbortError(err)) return;
+        // Surface the real cause (chunk load / ZIP parse / library error) —
+        // the UI only shows a generic "无法加载预览".
+        console.error(
+          "[DocumentPreviewCore] preview failed",
+          { kind, filename },
+          err,
+        );
         setError(isNotFoundApiError(err) ? "missing" : "error");
         setLoading(false);
       }
@@ -560,7 +581,7 @@ export default function DocumentPreviewCore({
     );
   }
 
-  if (kind === "ppt") {
+  if (isDownloadOnlyKind(kind)) {
     return (
       <div className={styles.viewerEmpty}>
         <p
@@ -716,9 +737,10 @@ export default function DocumentPreviewCore({
           ) : null}
         </div>
         <div
-          className={`${styles.documentLoading}${
-            loading ? "" : ` ${styles.documentLoadingHidden}`
-          }`}
+          className={cx(
+            styles.documentLoading,
+            !loading && styles.documentLoadingHidden,
+          )}
           aria-hidden={!loading}
         >
           <DocumentPreviewLoading
@@ -737,9 +759,10 @@ export default function DocumentPreviewCore({
         ref={containerRef}
       />
       <div
-        className={`${styles.documentLoading}${
-          loading ? "" : ` ${styles.documentLoadingHidden}`
-        }`}
+        className={cx(
+          styles.documentLoading,
+          !loading && styles.documentLoadingHidden,
+        )}
         aria-hidden={!loading}
       >
         <DocumentPreviewLoading

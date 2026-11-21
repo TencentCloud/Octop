@@ -1,0 +1,103 @@
+/*
+ * Shared baseline for the shell's own pages (splash + fatal error).
+ *
+ * Light is the default. `html[data-theme="dark"]` is set from the `theme`
+ * query before styles apply, matching the window `backgroundColor`, so a dark
+ * device preference does not flash white.
+ */
+:root {
+  color-scheme: light;
+
+  /* Copied from dashboard theme-vars.css (rose, light). */
+  --brand: #e85d75;
+  --brand-strong: #d14a62;
+  --brand-surface: #fdf1f3;
+  --brand-border: #f3cdd4;
+
+  --text: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  /* --fn-bg-layout. Cards and buttons use --surface (--fn-bg-elevated). */
+  --page: #f5f6f8;
+  --surface: #ffffff;
+  --surface-sunken: #f7f8fa;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dark values from the same theme-vars.css block, including the lightened rose. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand: #f08b9a;
+  --brand-strong: #e85d75;
+  --text: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-tertiary: rgba(255, 255, 255, 0.35);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --page: #0e0e0e;
+  --surface: #1e1e1e;
+  --surface-sunken: #1a1a1a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  cursor: default;
+  overflow: hidden;
+
+  /* 与 CHROME_ROW_HEIGHT 一致：仅顶部 58px 可拖动，正文仍可选择和滚动。
+     这条必须盖在页面上并接收点击。pointer-events: none 会让命中落到下面的
+     非拖动层，窗口就拖不动。 */
+  &::before {
+    content: "";
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 58px;
+    user-select: none;
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+}
+
+/*
+ * `no-drag` is not cosmetic: while the pointer is over a drag region the OS
+ * consumes the mouse-down to move the window, so a button or a disclosure
+ * inside one never fires. `pre` is in the list so the failure detail stays
+ * selectable.
+ */
+button,
+summary,
+a,
+input,
+textarea,
+select,
+pre,
+[role="button"],
+[contenteditable] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

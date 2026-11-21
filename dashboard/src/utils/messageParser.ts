@@ -227,6 +227,7 @@ export function extractToolData(
           typeof b.returncode === "number"
             ? (b.returncode as number)
             : undefined,
+        ...(b.artifact != null ? { artifact: b.artifact } : {}),
       },
     };
   }

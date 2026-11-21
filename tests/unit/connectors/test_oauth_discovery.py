@@ -120,7 +120,7 @@ def test_mark_oauth_reauth_required_clears_tokens():
         ),
     }
     marked = mark_oauth_reauth_required(spec)
-    assert marked["oauth"] == {"required": True}
+    assert marked["oauth"] == {"required": True, "expired": True}
     preview = redact_server_for_api(marked)
     assert preview["oauth"] == {"configured": False, "required": True}
 

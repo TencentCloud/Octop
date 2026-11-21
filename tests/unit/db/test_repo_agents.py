@@ -105,6 +105,24 @@ def test_update_config_can_clear_default_model(repo: AgentRepo, user_id: int):
     assert row.default_model is None
 
 
+def test_delete_removes_care_push_records(repo: AgentRepo, user_id: int, db: SqlitePool):
+    aid = new_ulid()
+    repo.create(agent_id=aid, user_id=user_id, name="bot")
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO care_push_records(id, agent_id, session_key, episode_id, pushed_at) "
+            "VALUES ('push-1', ?, 'sess', 'ep', 1)",
+            (aid,),
+        )
+    repo.delete(aid)
+    with db.connect() as conn:
+        left = conn.execute(
+            "SELECT COUNT(*) FROM care_push_records WHERE agent_id = ?",
+            (aid,),
+        ).fetchone()
+    assert left[0] == 0
+
+
 def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     aid = new_ulid()
     repo.create(agent_id=aid, user_id=user_id, name="bot")
@@ -112,6 +130,22 @@ def test_cascade_delete_on_user(repo: AgentRepo, user_id: int, db: SqlitePool):
     with db.transaction() as conn:
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
     assert repo.get(aid) is None
+
+
+def test_from_row_coerces_text_datetime_timestamps(repo: AgentRepo, user_id: int, db: SqlitePool):
+    aid = new_ulid()
+    repo.create(agent_id=aid, user_id=user_id, name="bot")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE agents SET created_at = ?, updated_at = ? WHERE agent_id = ?",
+            ("2026-10-08 16:00:00", "2026-10-08 17:56:48", aid),
+        )
+    row = repo.get(aid)
+    assert row is not None
+    assert isinstance(row.created_at, int)
+    assert isinstance(row.updated_at, int)
+    assert row.created_at > 0
+    assert row.updated_at > row.created_at
 
 
 def test_create_and_update_profile_fields(repo: AgentRepo, user_id: int):

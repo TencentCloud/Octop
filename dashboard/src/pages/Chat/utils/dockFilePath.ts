@@ -101,10 +101,17 @@ export function dockFileBasename(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
-/** Stable tab id for an open file path. */
+/** Stable tab id for an open file path (scoped by producer agent when set). */
 export function dockFileTabId(path: string, agentId?: string | null): string {
-  return `file:${canonicalizeDockFilePath(path, agentId)}`;
+  const key = canonicalizeDockFilePath(path, agentId);
+  const aid = (agentId || "").trim();
+  return aid ? `file:${aid}:${key}` : `file:${key}`;
 }
+
+export type DockFileRef = {
+  path: string;
+  agentId?: string;
+};
 
 /** Prefer a richer on-disk path for tree display after canonical dedupe. */
 function preferDisplayPath(current: string, candidate: string): string {
@@ -127,34 +134,60 @@ function preferDisplayPath(current: string, candidate: string): string {
 
 /**
  * Deduplicate artifact paths for the dock file list, preferring absolute paths.
+ * Entries are keyed by ``agentId + path`` so team rooms can list the same
+ * relative path from multiple members.
  */
 export function listDockFilePathsForTree(
-  paths: string[],
+  paths: Array<string | DockFileRef>,
   agentId?: string | null,
-): string[] {
-  return dedupeDockFilePaths(paths, agentId);
+): DockFileRef[] {
+  return dedupeDockFileRefs(paths, agentId);
 }
 
-/** Deduplicate by canonical workspace path; keep the richest display path. */
+/** @deprecated Prefer ``listDockFilePathsForTree`` (returns refs). */
 export function dedupeDockFilePaths(
   paths: string[],
   agentId?: string | null,
 ): string[] {
-  const bestByKey = new Map<string, string>();
+  return dedupeDockFileRefs(paths, agentId).map((ref) => ref.path);
+}
+
+/** Deduplicate by producer agent + canonical workspace path. */
+export function dedupeDockFileRefs(
+  paths: Array<string | DockFileRef>,
+  defaultAgentId?: string | null,
+): DockFileRef[] {
+  const bestByKey = new Map<string, DockFileRef>();
   const order: string[] = [];
+  const fallback = (defaultAgentId || "").trim();
   for (const raw of paths) {
-    const key = canonicalizeDockFilePath(raw, agentId);
-    if (!key) continue;
-    const display = normalizeDockFilePath(raw) || key;
+    const pathRaw = typeof raw === "string" ? raw : raw.path;
+    const aid =
+      (typeof raw === "string" ? fallback : raw.agentId?.trim() || fallback) ||
+      "";
+    const keyPath = canonicalizeDockFilePath(pathRaw, aid || defaultAgentId);
+    if (!keyPath) continue;
+    const display = normalizeDockFilePath(pathRaw) || keyPath;
+    const key = `${aid}\0${keyPath}`;
     const prev = bestByKey.get(key);
     if (!prev) {
-      bestByKey.set(key, preferDisplayPath(key, display));
+      bestByKey.set(key, {
+        path: preferDisplayPath(keyPath, display),
+        ...(aid ? { agentId: aid } : {}),
+      });
       order.push(key);
       continue;
     }
-    bestByKey.set(key, preferDisplayPath(prev, display));
+    bestByKey.set(key, {
+      path: preferDisplayPath(prev.path, display),
+      ...(aid
+        ? { agentId: aid }
+        : prev.agentId
+        ? { agentId: prev.agentId }
+        : {}),
+    });
   }
-  return order.map((key) => bestByKey.get(key) || key);
+  return order.map((key) => bestByKey.get(key)!);
 }
 
 export type DockPathTreeNode = {
@@ -163,6 +196,8 @@ export type DockPathTreeNode = {
   /** Full path for files; directory prefix for folders. */
   path: string;
   isDir: boolean;
+  /** Producer agent for file leaves (team room multi-member artifacts). */
+  agentId?: string;
   children: DockPathTreeNode[];
 };
 
@@ -171,13 +206,14 @@ export type DockPathTreeNode = {
  * chains into ``a / b / c`` labels (PR “Files changed” style).
  */
 export function buildDockPathTree(
-  paths: string[],
+  paths: Array<string | DockFileRef>,
   agentId?: string | null,
 ): DockPathTreeNode[] {
   type Trie = {
     name: string;
     path: string;
     isDir: boolean;
+    agentId?: string;
     children: Map<string, Trie>;
   };
 
@@ -188,7 +224,9 @@ export function buildDockPathTree(
     children: new Map(),
   };
 
-  for (const raw of listDockFilePathsForTree(paths, agentId)) {
+  for (const ref of listDockFilePathsForTree(paths, agentId)) {
+    const raw = ref.path;
+    const fileAgent = (ref.agentId || agentId || "").trim();
     const parts = raw.replace(/\\/g, "/").split("/").filter(Boolean);
     if (parts.length === 0) continue;
     // Preserve leading slash for absolute paths in the root segment join.
@@ -200,15 +238,17 @@ export function buildDockPathTree(
       const isLast = i === parts.length - 1;
       acc =
         acc === "" && abs ? `/${part}` : acc === "" ? part : `${acc}/${part}`;
-      let child = node.children.get(part);
+      const childKey = isLast && fileAgent ? `${part}\0${fileAgent}` : part;
+      let child = node.children.get(childKey);
       if (!child) {
         child = {
           name: part,
           path: acc,
           isDir: !isLast,
+          ...(isLast && fileAgent ? { agentId: fileAgent } : {}),
           children: new Map(),
         };
-        node.children.set(part, child);
+        node.children.set(childKey, child);
       } else if (!isLast) {
         child.isDir = true;
       }
@@ -235,6 +275,7 @@ export function buildDockPathTree(
       name: names.filter(Boolean).join(" / "),
       path: cur.path,
       isDir: cur.isDir || children.length > 0,
+      ...(cur.agentId ? { agentId: cur.agentId } : {}),
       children,
     };
   }

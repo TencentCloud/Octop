@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Checkbox, Drawer, Empty, Modal, Spin, Switch } from "antd";
-import { Copy, Info } from "lucide-react";
+import { Copy, Info, Plus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
 import { skillPackagesApi } from "../../../../api/modules/skillPackages";
@@ -11,8 +12,12 @@ import type {
 } from "../../../../api/types/skillPackage";
 import { useAgent } from "../../../../context/AgentContext";
 import { PackageIcon } from "../../../SkillPackages/PackageIcon";
+import { OctopEmptyMascot } from "../../../../components/EmptyState";
+import StreamSetupGuide from "../../../../components/StreamSetupGuide/StreamSetupGuide";
 import { showApiError } from "../../../../utils/showApiToast";
+import { createDetailRequestGate } from "../../../../utils/detailRequestGate";
 import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
+import { resolveFigurativeSkillIcon } from "../builtinSkillIcon";
 import type { SkillSpec } from "../useSkills";
 import styles from "../index.module.less";
 
@@ -35,14 +40,22 @@ function resolvePackageSkillIcon(
 function PackageSkillIcon({
   iconUrl,
   emoji,
+  slug,
+  name,
 }: {
   iconUrl?: string;
   emoji?: string;
+  slug?: string;
+  name?: string;
 }) {
   if (iconUrl) {
     return (
       <img src={iconUrl} alt="" className={styles.packageSkillRowIconImg} />
     );
+  }
+  const figurative = resolveFigurativeSkillIcon(slug ?? "", emoji, name, 32);
+  if (figurative) {
+    return figurative.node;
   }
   if (emoji) {
     return <span className={styles.packageSkillRowEmoji}>{emoji}</span>;
@@ -57,6 +70,7 @@ export default function SkillPackagesTab({
   toggleEnabled,
 }: SkillPackagesTabProps) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { agents } = useAgent();
   const agent = useMemo(
     () => agents.find((row) => row.agent_id === agentId) ?? null,
@@ -82,6 +96,10 @@ export default function SkillPackagesTab({
   const [copying, setCopying] = useState(false);
   const [selectedCopySlugs, setSelectedCopySlugs] = useState<string[]>([]);
   const [copyOverwrite, setCopyOverwrite] = useState(false);
+  // The drawer and the copy modal fetch the same endpoint for different surfaces,
+  // so each keeps its own gate: one opening must not invalidate the other.
+  const detailRequestGate = useRef(createDetailRequestGate());
+  const copyRequestGate = useRef(createDetailRequestGate());
 
   useEffect(() => {
     let cancelled = false;
@@ -145,21 +163,27 @@ export default function SkillPackagesTab({
   };
 
   const openDetail = async (pack: SkillPackage) => {
+    const requestId = detailRequestGate.current.begin();
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailPackage(null);
     try {
       const detail = await skillPackagesApi.get(pack.id);
+      if (!detailRequestGate.current.isCurrent(requestId)) return;
       setDetailPackage(detail);
     } catch (error) {
+      if (!detailRequestGate.current.isCurrent(requestId)) return;
       showApiError(error, t("skills.packagesLoadFailed"), t);
       setDetailOpen(false);
     } finally {
-      setDetailLoading(false);
+      if (detailRequestGate.current.isCurrent(requestId)) {
+        setDetailLoading(false);
+      }
     }
   };
 
   const openCopyModal = async (pack: SkillPackage) => {
+    const requestId = copyRequestGate.current.begin();
     setCopyModalOpen(true);
     setCopyLoading(true);
     setCopyPackage(null);
@@ -167,13 +191,17 @@ export default function SkillPackagesTab({
     setCopyOverwrite(false);
     try {
       const detail = await skillPackagesApi.get(pack.id);
+      if (!copyRequestGate.current.isCurrent(requestId)) return;
       setCopyPackage(detail);
       setSelectedCopySlugs(detail.skills.map((skill) => skill.slug));
     } catch (error) {
+      if (!copyRequestGate.current.isCurrent(requestId)) return;
       showApiError(error, t("skills.packagesLoadFailed"), t);
       setCopyModalOpen(false);
     } finally {
-      setCopyLoading(false);
+      if (copyRequestGate.current.isCurrent(requestId)) {
+        setCopyLoading(false);
+      }
     }
   };
 
@@ -208,20 +236,53 @@ export default function SkillPackagesTab({
     return <Spin className={styles.skillPackagesLoading} />;
   }
 
-  if (catalog.length === 0) {
+  if (catalog.length === 0 && mountedIds.length === 0) {
     return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={t("skills.noSkillPackages")}
+      <StreamSetupGuide
+        wide
+        plain
+        icon={<OctopEmptyMascot />}
+        title={t("skills.packagesEmptyTitle")}
+        description={t("skills.packagesEmptyDesc")}
+        steps={[
+          {
+            label: t("skills.packagesEmptyStepCreate"),
+            detail: t("skills.packagesEmptyStepCreateDetail"),
+          },
+          {
+            label: t("skills.packagesEmptyStepAdd"),
+            detail: t("skills.packagesEmptyStepAddDetail"),
+          },
+          {
+            label: t("skills.packagesEmptyStepMount"),
+            detail: t("skills.packagesEmptyStepMountDetail"),
+          },
+        ]}
+        primaryAction={{
+          label: t("skills.openSkillPackages"),
+          onClick: () => navigate("/skill-packages"),
+          icon: <Plus size={14} />,
+        }}
       />
     );
   }
+
+  const catalogIds = new Set(catalog.map((pack) => pack.id));
+  const lostIds = mountedIds.filter((id) => !catalogIds.has(id));
 
   const detailMounted =
     detailPackage != null && mountedSet.has(detailPackage.id);
 
   return (
     <>
+      {lostIds.length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          className={styles.packageMountAlert}
+          message={t("skills.packagesLostAccess", { ids: lostIds.join(", ") })}
+        />
+      ) : null}
       {packagesSupported ? (
         <p className={styles.packageMountHint}>
           {t("skills.mountBackendHint")}
@@ -321,6 +382,12 @@ export default function SkillPackagesTab({
                     <button
                       type="button"
                       className={styles.detailBtn}
+                      disabled={pack.can_copy === false}
+                      title={
+                        pack.can_copy === false
+                          ? t("skills.copyDenied")
+                          : undefined
+                      }
                       onClick={() => void openCopyModal(pack)}
                     >
                       <Copy size={14} />
@@ -359,7 +426,31 @@ export default function SkillPackagesTab({
               </p>
             ) : null}
             {detailPackage.skills.length === 0 ? (
-              <Empty description={t("skillPackages.emptySkills")} />
+              <StreamSetupGuide
+                plain
+                icon={<OctopEmptyMascot />}
+                title={t("skillPackages.emptySkillsTitle")}
+                description={t("skillPackages.emptySkillsDesc")}
+                steps={[
+                  {
+                    label: t("skillPackages.emptySkillsStepAdd"),
+                    detail: t("skillPackages.emptySkillsStepAddDetail"),
+                  },
+                  {
+                    label: t("skillPackages.emptySkillsStepMarket"),
+                    detail: t("skillPackages.emptySkillsStepMarketDetail"),
+                  },
+                  {
+                    label: t("skillPackages.emptySkillsStepMount"),
+                    detail: t("skillPackages.emptySkillsStepMountDetail"),
+                  },
+                ]}
+                primaryAction={{
+                  label: t("skills.openSkillPackages"),
+                  onClick: () => navigate("/skill-packages"),
+                  icon: <Plus size={14} />,
+                }}
+              />
             ) : (
               <div className={styles.packageSkillRowList}>
                 {detailPackage.skills.map((packageSkill) => {
@@ -369,6 +460,12 @@ export default function SkillPackagesTab({
                     installed,
                   );
                   const displayName = packageSkill.name || packageSkill.slug;
+                  const figurative = resolveFigurativeSkillIcon(
+                    packageSkill.slug,
+                    emoji,
+                    displayName,
+                    32,
+                  );
                   const displayDesc =
                     packageSkill.description || t("skills.noDescription");
                   const shadows = workspaceSlugs.has(packageSkill.slug);
@@ -382,10 +479,18 @@ export default function SkillPackagesTab({
                             className={styles.packageSkillRowIcon}
                             style={{
                               color: "#059669",
-                              background: iconUrl ? "transparent" : "#0596691a",
+                              background:
+                                iconUrl || figurative
+                                  ? "transparent"
+                                  : "#0596691a",
                             }}
                           >
-                            <PackageSkillIcon iconUrl={iconUrl} emoji={emoji} />
+                            <PackageSkillIcon
+                              iconUrl={iconUrl}
+                              emoji={emoji}
+                              slug={packageSkill.slug}
+                              name={displayName}
+                            />
                           </div>
                           <div className={styles.packageSkillRowMeta}>
                             <div className={styles.packageSkillRowLabel}>

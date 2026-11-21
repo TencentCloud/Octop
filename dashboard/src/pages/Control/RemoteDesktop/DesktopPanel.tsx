@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamConnectingIndicator from "../../../components/StreamConnectingIndicator";
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
@@ -139,6 +140,7 @@ export default function DesktopPanel({
   const { status, connect, sendEvent, disconnect } = useDesktopStream();
 
   const setupInstalled = envStatus?.setup_state === "ready";
+  const desktopBundled = envStatus?.setup_state === "needs_start";
   const envReady = Boolean(setupInstalled && envStatus?.ok);
   const permissionLabels = (envStatus?.permissions_needed ?? []).map((p) =>
     p === "screen_recording"
@@ -682,9 +684,10 @@ export default function DesktopPanel({
                 disabled={item.disabled}
               >
                 <span
-                  className={`${styles.shortcutIcon} ${
-                    shortcutIconToneClass[item.tone]
-                  }`}
+                  className={cx(
+                    styles.shortcutIcon,
+                    shortcutIconToneClass[item.tone],
+                  )}
                 >
                   <Icon size={16} strokeWidth={2} />
                 </span>
@@ -736,7 +739,7 @@ export default function DesktopPanel({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -769,7 +772,9 @@ export default function DesktopPanel({
     <div className={styles.installProgress}>
       <RefreshCw size={32} className={styles.streamLoadingIcon} />
       <div className={styles.installProgressTitle}>
-        {t("remoteDesktop.installProgress", "正在安装中…")}
+        {desktopBundled
+          ? t("remoteDesktop.enabling", "正在启用桌面…")
+          : t("remoteDesktop.installProgress", "正在安装中…")}
       </div>
       {renderInstallLog()}
       <div className={styles.installProgressActions}>
@@ -923,6 +928,17 @@ export default function DesktopPanel({
       );
     }
 
+    if (desktopBundled) {
+      return (
+        <Alert
+          type="info"
+          showIcon
+          message={t("remoteDesktop.enableTitle", "桌面组件已安装")}
+          description={t("remoteDesktop.enableDesc")}
+        />
+      );
+    }
+
     return (
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <Alert
@@ -979,7 +995,9 @@ export default function DesktopPanel({
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
           <Button type="primary" onClick={startInstall}>
-            {envStatus?.native_capture
+            {desktopBundled
+              ? t("remoteDesktop.enable", "启用桌面")
+              : envStatus?.native_capture
               ? t("remoteDesktop.installDeps", "安装依赖")
               : t("remoteDesktop.install", "安装桌面环境")}
           </Button>
@@ -996,11 +1014,9 @@ export default function DesktopPanel({
   const pageTitle = t("nav.remoteDesktop", "远程桌面");
   const pageSubtitle = t(
     "pageShell.desktop.subtitle",
-    "查看并操控 Octop 主机操作系统桌面",
+    "查看并操控 Octop 主机操作系统桌面，远程完成桌面操作",
   );
-  const setupMascot = (
-    <OctopEmptyMascot size={120} className={styles.setupMascot} />
-  );
+  const setupMascot = <OctopEmptyMascot />;
 
   if (user === null) {
     const loading = (
@@ -1022,66 +1038,73 @@ export default function DesktopPanel({
     return <ForbiddenPage />;
   }
 
-  const headerActions = (
+  const headerActions = isStreaming ? (
     <Space size={8} wrap>
-      <Tooltip title={t("remoteDesktop.checkInstallTip")}>
+      <Tooltip title={t("remoteDesktop.disconnect", "断开")}>
         <Button
           size={isMobile ? "small" : "middle"}
-          icon={<Monitor size={14} />}
-          onClick={openEnvModal}
-          type={envReady ? "default" : "primary"}
+          danger
+          icon={<Unplug size={14} />}
+          onClick={handleDisconnect}
+          aria-label={t("remoteDesktop.disconnect", "断开")}
         >
-          {t("remoteDesktop.checkInstallShort", "检查")}
-          {envReady && !envLoading && (
-            <CheckCircle2
-              size={14}
-              style={{
-                marginLeft: 4,
-                color: "var(--fn-color-success,#52c41a)",
-              }}
-            />
-          )}
+          {!isMobile && t("remoteDesktop.disconnect", "断开")}
         </Button>
       </Tooltip>
-      {!isStreaming ? (
-        <Tooltip
-          title={
-            envReady
-              ? undefined
-              : needsMacPermissions
-              ? t(
-                  "remoteDesktop.connectDisabledPerms",
-                  "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
-                )
-              : t("remoteDesktop.connectDisabled")
-          }
-        >
-          <Button
-            size={isMobile ? "small" : "middle"}
-            type="primary"
-            icon={<PlugZap size={14} />}
-            onClick={handleConnect}
-            disabled={!envReady}
-            aria-label={t("remoteDesktop.connect", "连接")}
-          >
-            {!isMobile && t("remoteDesktop.connect", "连接")}
-          </Button>
-        </Tooltip>
-      ) : (
-        <Tooltip title={t("remoteDesktop.disconnect", "断开")}>
-          <Button
-            size={isMobile ? "small" : "middle"}
-            danger
-            icon={<Unplug size={14} />}
-            onClick={handleDisconnect}
-            aria-label={t("remoteDesktop.disconnect", "断开")}
-          >
-            {!isMobile && t("remoteDesktop.disconnect", "断开")}
-          </Button>
-        </Tooltip>
-      )}
     </Space>
-  );
+  ) : undefined;
+
+  const checkGuideAction = needsMacPermissions
+    ? {
+        label: t("remoteDesktop.recheck", "重新检测"),
+        onClick: () => void refreshEnv(),
+        icon: <RefreshCw size={14} />,
+        loading: envLoading,
+        type: envReady ? ("default" as const) : ("primary" as const),
+      }
+    : {
+        label: t("remoteDesktop.checkInstallShort", "检查"),
+        onClick: openEnvModal,
+        icon:
+          envReady && !envLoading ? (
+            <CheckCircle2
+              size={14}
+              style={{ color: "var(--fn-color-success,#52c41a)" }}
+            />
+          ) : (
+            <Monitor size={14} />
+          ),
+        type: envReady ? ("default" as const) : ("primary" as const),
+        title: t("remoteDesktop.checkInstallTip"),
+      };
+
+  const connectGuideAction = {
+    label: t("remoteDesktop.connect", "连接"),
+    onClick: handleConnect,
+    icon: <PlugZap size={14} />,
+    disabled: !envReady,
+    type: envReady ? ("primary" as const) : ("default" as const),
+    title: envReady
+      ? undefined
+      : needsMacPermissions
+      ? t(
+          "remoteDesktop.connectDisabledPerms",
+          "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 Octop",
+        )
+      : t("remoteDesktop.connectDisabled"),
+  };
+
+  const uninstallGuideAction = canUninstall
+    ? {
+        label: t("remoteDesktop.uninstall", "卸载"),
+        onClick: handleUninstall,
+        icon: <Trash2 size={14} />,
+        loading: uninstalling,
+        disabled: uninstalling || envLoading,
+        danger: true,
+        type: "default" as const,
+      }
+    : undefined;
 
   const pageBody = (
     <>
@@ -1099,9 +1122,9 @@ export default function DesktopPanel({
       </Modal>
 
       <div className={styles.remoteDesktopPage}>
-        {embedded && (
+        {embedded && headerActions ? (
           <div className={styles.embeddedActions}>{headerActions}</div>
-        )}
+        ) : null}
         {needsMacPermissions && !showStream && (
           <Alert
             type="warning"
@@ -1140,9 +1163,7 @@ export default function DesktopPanel({
         )}
         <div
           ref={viewportRef}
-          className={`${styles.viewport} ${
-            isMobile ? styles.viewportMobile : ""
-          }`}
+          className={cx(styles.viewport, isMobile && styles.viewportMobile)}
         >
           {!showStream ? (
             installPhase === "installing" ? (
@@ -1151,6 +1172,8 @@ export default function DesktopPanel({
               renderViewportUninstallProgress()
             ) : (
               <StreamSetupGuide
+                wide
+                plain
                 icon={setupMascot}
                 title={
                   envReady
@@ -1183,15 +1206,17 @@ export default function DesktopPanel({
                   envReady
                     ? [
                         {
-                          label: t(
-                            "remoteDesktop.idleStep1",
-                            "点击「连接」建立远程桌面会话",
+                          label: t("remoteDesktop.idleStep1", "建立会话"),
+                          detail: t(
+                            "remoteDesktop.idleStep1Detail",
+                            "点击「连接」，打开远程桌面会话。",
                           ),
                         },
                         {
-                          label: t(
-                            "remoteDesktop.idleStep2",
-                            "在画面中点击、拖动与输入，即可操控远程桌面",
+                          label: t("remoteDesktop.idleStep2", "直接操作"),
+                          detail: t(
+                            "remoteDesktop.idleStep2Detail",
+                            "在画面里点击、拖动和输入，就能操控主机桌面。",
                           ),
                         },
                       ]
@@ -1200,76 +1225,90 @@ export default function DesktopPanel({
                         {
                           label: t(
                             "remoteDesktop.macPermStep1",
-                            "打开「系统设置 → 隐私与安全性」",
+                            "打开系统设置",
+                          ),
+                          detail: t(
+                            "remoteDesktop.macPermStep1Detail",
+                            "进入「系统设置 → 隐私与安全性」。",
                           ),
                         },
                         {
-                          label: t("remoteDesktop.macPermStep2", {
+                          label: t("remoteDesktop.macPermStep2", "勾选权限"),
+                          detail: t("remoteDesktop.macPermStep2Detail", {
                             permissions: permissionLabels.join(
                               t("remoteDesktop.permJoin", "、"),
                             ),
+                            defaultValue:
+                              "在「{{permissions}}」里勾选正在运行 Octop 的终端或应用。",
                           }),
                         },
                         {
                           label: t(
                             "remoteDesktop.macPermStep3",
-                            "重启 Octop（octop run），再回到本页点击「重新检测」",
+                            "重启后再检测",
+                          ),
+                          detail: t(
+                            "remoteDesktop.macPermStep3Detail",
+                            "重启 Octop（octop run），回到本页点击「重新检测」。",
+                          ),
+                        },
+                      ]
+                    : desktopBundled
+                    ? [
+                        {
+                          label: t(
+                            "remoteDesktop.enableStep1",
+                            "组件已在镜像里",
+                          ),
+                          detail: t(
+                            "remoteDesktop.enableStep1Detail",
+                            "虚拟桌面和浏览器已经打包好，当前没有运行。",
+                          ),
+                        },
+                        {
+                          label: t("remoteDesktop.enableStep2", "启用桌面"),
+                          detail: t(
+                            "remoteDesktop.enableStep2Detail",
+                            "点击「启用桌面」确认启动。启动后会占用一些内存。",
+                          ),
+                        },
+                        {
+                          label: t("remoteDesktop.enableStep3", "开始操控"),
+                          detail: t(
+                            "remoteDesktop.enableStep3Detail",
+                            "启动完成后点击「连接」，即可看屏并用键鼠操作。",
                           ),
                         },
                       ]
                     : [
                         {
-                          label: t(
-                            "remoteDesktop.setupStep1",
-                            "点击「检查」，检测 Python 依赖与桌面环境状态",
+                          label: t("remoteDesktop.setupStep1", "检查环境"),
+                          detail: t(
+                            "remoteDesktop.setupStep1Detail",
+                            "点击「检查」，确认 Python 依赖和桌面环境是否已经装好。",
                           ),
                         },
                         {
-                          label: t(
-                            "remoteDesktop.setupStep2",
-                            "若未安装，在弹窗中按引导完成安装（Linux 无图形服务器可一键搭建虚拟桌面）",
+                          label: t("remoteDesktop.setupStep2", "按引导安装"),
+                          detail: t(
+                            "remoteDesktop.setupStep2Detail",
+                            "还没装好时，在弹窗里完成安装。Linux 没有图形界面时可以一键搭虚拟桌面。",
                           ),
                         },
                         {
-                          label: t(
-                            "remoteDesktop.setupStep3",
-                            "环境就绪后，点击「连接」开始实时看屏与键鼠操控",
+                          label: t("remoteDesktop.setupStep3", "连接桌面"),
+                          detail: t(
+                            "remoteDesktop.setupStep3Detail",
+                            "环境就绪后点击「连接」，在浏览器里看屏幕并用键鼠操作。",
                           ),
                         },
                       ]
                 }
-                primaryAction={
-                  envReady
-                    ? {
-                        label: t("remoteDesktop.connect", "连接"),
-                        onClick: handleConnect,
-                        icon: <PlugZap size={14} />,
-                      }
-                    : needsMacPermissions
-                    ? {
-                        label: t("remoteDesktop.recheck", "重新检测"),
-                        onClick: () => void refreshEnv(),
-                        icon: <RefreshCw size={14} />,
-                        loading: envLoading,
-                      }
-                    : {
-                        label: t("remoteDesktop.checkInstallShort", "检查"),
-                        onClick: openEnvModal,
-                        icon: <Monitor size={14} />,
-                      }
-                }
+                primaryAction={envReady ? connectGuideAction : checkGuideAction}
                 secondaryAction={
-                  (envReady || needsMacPermissions) && canUninstall
-                    ? {
-                        label: t("remoteDesktop.uninstall", "卸载"),
-                        onClick: handleUninstall,
-                        icon: <Trash2 size={14} />,
-                        loading: uninstalling,
-                        disabled: uninstalling || envLoading,
-                        danger: true,
-                      }
-                    : undefined
+                  envReady ? checkGuideAction : connectGuideAction
                 }
+                extraAction={uninstallGuideAction}
               />
             )
           ) : (
@@ -1305,9 +1344,11 @@ export default function DesktopPanel({
               />
               <canvas
                 ref={canvasRef}
-                className={`${styles.canvas} ${
-                  isMobile ? styles.canvasMobile : ""
-                } ${!frameReady ? styles.canvasHidden : ""}`}
+                className={cx(
+                  styles.canvas,
+                  isMobile && styles.canvasMobile,
+                  !frameReady && styles.canvasHidden,
+                )}
                 onPointerDown={interaction.onPointerDown}
                 onPointerMove={interaction.onPointerMove}
                 onPointerLeave={interaction.onPointerLeave}

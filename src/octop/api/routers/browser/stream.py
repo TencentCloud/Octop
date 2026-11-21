@@ -1,4 +1,4 @@
-"""WebSocket browser screencast — attaches to harness-browser sessions.
+"""WebSocket browser screencast — attaches to octop-browser sessions.
 
 Wire protocol matches the dashboard ``useBrowserStream`` hook (screencast)
 and ``useBrowserSessionState`` (listen-only status):
@@ -34,6 +34,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -52,7 +53,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_FRAME_INTERVAL_S = 0.25  # ~4 fps
+_FRAME_INTERVAL_S = 1 / 12
+_SESSION_INTERVAL_S = 1.0
 
 
 def _normalize_nav_url(raw: str) -> str:
@@ -97,15 +99,14 @@ async def _send_json(ws: WebSocket, payload: dict[str, Any]) -> None:
 
 
 async def _send_session_snapshot(
-    ws: WebSocket,
+    send_json: Any,
     profile: str,
     *,
     sess: Any | None,
 ) -> None:
     """Push one session_update (+ tabs) frame for *profile*."""
     if sess is None:
-        await _send_json(
-            ws,
+        await send_json(
             {
                 "type": "session_update",
                 "session_id": profile,
@@ -116,12 +117,11 @@ async def _send_session_snapshot(
                 "current_url": "",
             },
         )
-        await _send_json(ws, {"type": "tabs", "tabs": []})
+        await send_json({"type": "tabs", "tabs": []})
         return
 
     url = await harness_page_url(sess)
-    await _send_json(
-        ws,
+    await send_json(
         {
             "type": "session_update",
             "session_id": profile,
@@ -133,43 +133,52 @@ async def _send_session_snapshot(
         },
     )
     tabs = await harness_list_tabs(sess)
-    await _send_json(ws, {"type": "tabs", "tabs": tabs})
+    await send_json({"type": "tabs", "tabs": tabs})
 
 
 async def _stream_loop(
-    ws: WebSocket,
+    send_json: Any,
+    is_connected: Any,
     sess: Any,
     profile: str,
     *,
     listen_only: bool,
 ) -> None:
-    await _send_json(ws, {"type": "status", "status": "browser_started"})
-    await _send_json(ws, {"type": "status", "status": "streaming"})
+    await send_json({"type": "status", "status": "browser_started"})
+    await send_json({"type": "status", "status": "streaming"})
 
-    while ws.application_state == WebSocketState.CONNECTED:
-        await _send_session_snapshot(ws, profile, sess=sess)
+    next_snapshot = 0.0
+    while is_connected():
+        started = time.monotonic()
+        if started >= next_snapshot:
+            await _send_session_snapshot(send_json, profile, sess=sess)
+            next_snapshot = started + _SESSION_INTERVAL_S
 
         if not listen_only:
             frame = await _capture_jpeg(sess)
             if frame:
-                await _send_json(ws, {"type": "frame", "data": frame})
+                await send_json({"type": "frame", "data": frame})
 
-        await asyncio.sleep(_FRAME_INTERVAL_S)
+        await asyncio.sleep(max(0, _FRAME_INTERVAL_S - (time.monotonic() - started)))
 
 
-async def _listen_state_loop(ws: WebSocket, profile: str) -> None:
+async def _listen_state_loop(
+    send_json: Any,
+    is_connected: Any,
+    profile: str,
+) -> None:
     """Push session_update events without launching Chrome or capturing frames.
 
     Re-resolves the harness registry each tick so a browser started later by
     the agent becomes visible without reconnecting. Idle (no session) ticks
     use a longer interval to avoid a request/render storm on the dashboard.
     """
-    await _send_json(ws, {"type": "status", "status": "streaming"})
+    await send_json({"type": "status", "status": "streaming"})
 
-    while ws.application_state == WebSocketState.CONNECTED:
+    while is_connected():
         sess = await resolve_harness_session(profile, create=False)
-        await _send_session_snapshot(ws, profile, sess=sess)
-        await asyncio.sleep(_FRAME_INTERVAL_S if sess is not None else 2.0)
+        await _send_session_snapshot(send_json, profile, sess=sess)
+        await asyncio.sleep(_SESSION_INTERVAL_S if sess is not None else 2.0)
 
 
 _CDP_BUTTON_MASK = {"left": 1, "right": 2, "middle": 4, "none": 0}
@@ -219,6 +228,52 @@ def _cdp_click_count(msg: dict[str, Any]) -> int:
         return max(1, int(raw))
     except (TypeError, ValueError):
         return 1
+
+
+_KEY_CODES = {
+    "Backspace": 8,
+    "Tab": 9,
+    "Enter": 13,
+    "Escape": 27,
+    "PageUp": 33,
+    "PageDown": 34,
+    "End": 35,
+    "Home": 36,
+    "ArrowLeft": 37,
+    "ArrowUp": 38,
+    "ArrowRight": 39,
+    "ArrowDown": 40,
+    "Delete": 46,
+}
+
+
+async def _dispatch_key(sess: Any, msg: dict[str, Any]) -> None:
+    key = str(msg.get("key") or "")
+    if not key or key in {"Process", "Dead", "Unidentified"}:
+        return
+    modifiers = sum(
+        bit
+        for field, bit in (("altKey", 1), ("ctrlKey", 2), ("metaKey", 4), ("shiftKey", 8))
+        if msg.get(field)
+    )
+    key_code = _KEY_CODES.get(key, ord(key.upper()) if len(key) == 1 and key.isascii() else 0)
+    params: dict[str, Any] = {
+        "key": key,
+        "code": str(msg.get("code") or key),
+        "windowsVirtualKeyCode": int(msg.get("keyCode") or key_code),
+        "modifiers": modifiers,
+    }
+    down = {**params, "type": "rawKeyDown", "autoRepeat": bool(msg.get("repeat"))}
+    if key == "Enter":
+        down.update(type="keyDown", text="\r", unmodifiedText="\r")
+    if key.lower() == "a" and modifiers & 6 and not modifiers & 1:
+        # Chromium's native editing shortcuts depend on the server OS. Keep
+        # Ctrl+A / Cmd+A working when the dashboard and Chrome run on different OSes.
+        down["commands"] = ["selectAll"]
+    await sess._internal.client.send("Input.dispatchKeyEvent", down)  # noqa: SLF001
+    await sess._internal.client.send(  # noqa: SLF001
+        "Input.dispatchKeyEvent", {**params, "type": "keyUp"}
+    )
 
 
 async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
@@ -298,11 +353,11 @@ async def _handle_client_event(sess: Any, msg: dict[str, Any]) -> None:
     elif t == "type":
         text = str(msg.get("text") or "")
         if text:
-            await sess.type(text)
+            # Committed IME / pasted text is one insertion, not one CDP round
+            # trip per character. The page's input event still reaches the recorder.
+            await sess._internal.client.send("Input.insertText", {"text": text})  # noqa: SLF001
     elif t == "keydown":
-        key = str(msg.get("key") or "")
-        if key in ("Enter",):
-            await sess.type("\n")
+        await _dispatch_key(sess, msg)
     elif t == "tab_switch":
         tab_id = msg.get("tab_id")
         if tab_id is not None:
@@ -348,22 +403,64 @@ async def browser_stream_ws(
         return
 
     await websocket.accept()
-    sess: Any | None = None
-    profile = user_browser_profile(user.id)
-    stream_task: asyncio.Task[None] | None = None
-    listen = bool(listen_only)
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        await _send_json(websocket, payload)
+
+    def is_connected() -> bool:
+        return websocket.application_state == WebSocketState.CONNECTED
+
+    async def receive_text() -> str:
+        return await websocket.receive_text()
 
     try:
-        # Wait for the client's ``start`` message (sent on ws.onopen).
-        raw = await asyncio.wait_for(websocket.receive_text(), timeout=15.0)
-        start_msg = json.loads(raw)
-        if start_msg.get("type") != "start":
-            await _send_json(websocket, {"type": "error", "message": "expected start message"})
+        await run_browser_stream_session(
+            send_json=send_json,
+            is_connected=is_connected,
+            receive_text=receive_text,
+            user_id=int(user.id),
+            listen_only=bool(listen_only),
+            default_width=width,
+            default_height=height,
+        )
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if websocket.application_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await websocket.close()
+
+
+async def run_browser_stream_session(
+    *,
+    send_json: Any,
+    is_connected: Any,
+    receive_text: Any,
+    user_id: int,
+    listen_only: bool = False,
+    default_width: int = 1280,
+    default_height: int = 800,
+    start_msg: dict[str, Any] | None = None,
+) -> None:
+    """Run one screencast / listen-only session over arbitrary send/receive hooks.
+
+    Used by the local dashboard WebSocket and by Bridge peer relay so both share
+    the same Chrome / harness lifecycle.
+    """
+    sess: Any | None = None
+    profile = user_browser_profile(user_id)
+    stream_task: asyncio.Task[None] | None = None
+
+    try:
+        if start_msg is None:
+            raw = await asyncio.wait_for(receive_text(), timeout=15.0)
+            start_msg = json.loads(raw)
+        if not isinstance(start_msg, dict) or start_msg.get("type") != "start":
+            await send_json({"type": "error", "message": "expected start message"})
             return
 
-        if listen:
-            # Status-only clients (chat browser badge) must not spawn Chrome.
-            stream_task = asyncio.create_task(_listen_state_loop(websocket, profile))
+        if listen_only:
+            stream_task = asyncio.create_task(_listen_state_loop(send_json, is_connected, profile))
         else:
             sess = await resolve_harness_session(profile)
             assert sess is not None  # create=True always returns or raises
@@ -373,20 +470,16 @@ async def browser_stream_ws(
                 try:
                     await sess.navigate(start_url)
                 except Exception as exc:
-                    # Don't let a bad/unreachable initial URL kill the whole
-                    # session — surface a warning and keep streaming so the
-                    # user can navigate manually.
                     logger.warning("initial navigate to %s failed: %s", start_url, exc)
-                    await _send_json(
-                        websocket,
+                    await send_json(
                         {
                             "type": "error",
                             "message": f"导航到 {start_url} 失败：{exc}",
                         },
                     )
 
-            vw = int(start_msg.get("width") or width)
-            vh = int(start_msg.get("height") or height)
+            vw = int(start_msg.get("width") or default_width)
+            vh = int(start_msg.get("height") or default_height)
             if vw > 0 and vh > 0:
                 with contextlib.suppress(Exception):
                     await sess._internal.client.send(  # noqa: SLF001
@@ -400,17 +493,25 @@ async def browser_stream_ws(
                     )
 
             stream_task = asyncio.create_task(
-                _stream_loop(websocket, sess, profile, listen_only=False)
+                _stream_loop(
+                    send_json,
+                    is_connected,
+                    sess,
+                    profile,
+                    listen_only=False,
+                )
             )
 
-        while websocket.application_state == WebSocketState.CONNECTED:
+        while is_connected():
             try:
-                raw = await websocket.receive_text()
+                raw = await receive_text()
             except WebSocketDisconnect:
                 break
             try:
-                msg = json.loads(raw)
+                msg = json.loads(raw) if isinstance(raw, str) else raw
             except json.JSONDecodeError:
+                continue
+            if not isinstance(msg, dict):
                 continue
             if msg.get("type") == "stop":
                 break
@@ -418,19 +519,16 @@ async def browser_stream_ws(
                 with contextlib.suppress(Exception):
                     await _handle_client_event(sess, msg)
     except TimeoutError:
-        await _send_json(websocket, {"type": "error", "message": "timed out waiting for start"})
+        await send_json({"type": "error", "message": "timed out waiting for start"})
     except WebSocketDisconnect:
         pass
     except Exception as exc:
         logger.exception("browser stream failed")
-        if websocket.application_state == WebSocketState.CONNECTED:
-            await _send_json(websocket, {"type": "error", "message": str(exc)})
-            await _send_json(websocket, {"type": "status", "status": "error"})
+        if is_connected():
+            await send_json({"type": "error", "message": str(exc)})
+            await send_json({"type": "status", "status": "error"})
     finally:
         if stream_task is not None:
             stream_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await stream_task
-        if websocket.application_state == WebSocketState.CONNECTED:
-            with contextlib.suppress(Exception):
-                await websocket.close()

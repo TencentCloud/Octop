@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from octop.infra.agents.workspace_dir import (
+import pytest
+
+from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
+    apply_explicit_workspace_dir,
     default_agent_workspace_dir,
+    default_workspace_parent_dir,
     harness_workspace_path,
     join_agent_facing,
     resolve_workspace_host_path,
@@ -15,7 +19,33 @@ from octop.infra.agents.workspace_dir import (
     seed_workspace_dir_on_create,
     workspace_dir_from_config,
 )
+from octop.infra.utils.host_dirs import host_path_text
 from octop.infra.utils.paths import PathLayout
+
+
+def test_chat_agent_default_uses_the_remote_id_and_a_scoped_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from octop.infra.agents.workspace.dir import (
+        default_workspace_for_chat_agent,
+        workspace_folder_id,
+    )
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    assert workspace_folder_id("bridge:conn:EXPERT1") == "EXPERT1"
+    assert default_workspace_for_chat_agent("bridge:conn:EXPERT1") == host_path_text(
+        tmp_path / "agents" / "EXPERT1"
+    )
+    root = tmp_path / "jail"
+    scoped = default_workspace_for_chat_agent("bridge:conn:EXPERT1", root_dir=str(root))
+    assert scoped == host_path_text(root / ".octop" / "workspaces" / "EXPERT1")
+
+
+def test_default_workspace_parent_dir_follows_octop_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    assert default_workspace_parent_dir() == host_path_text(tmp_path / "agents")
 
 
 def _scoped_cfg(root: Path, **extra: object) -> dict:
@@ -85,6 +115,23 @@ def test_host_rooted_default_uses_octop_home(tmp_path: Path) -> None:
     assert host == (tmp_path / ".octop" / "agents" / "A1").resolve()
 
 
+@pytest.mark.parametrize("root_dir", ["C:/", "C:\\", "D:", "d:/"])
+def test_windows_drive_root_is_host_sentinel(tmp_path: Path, root_dir: str) -> None:
+    """Drive roots must use OCTOP_HOME agents/, not {drive}/.octop/workspaces/."""
+    paths = PathLayout(tmp_path / ".octop")
+    cfg = {
+        "backend": {
+            "type": "local_shell",
+            "root_dir": root_dir,
+            "virtual_mode": True,
+        },
+    }
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="WIN1")
+    assert cfg["workspace_dir"] == str(host)
+    assert host == (tmp_path / ".octop" / "agents" / "WIN1").resolve()
+    assert ".octop/workspaces" not in cfg["workspace_dir"].replace("\\", "/")
+
+
 def test_harness_workspace_keeps_absolute_persisted_value(tmp_path: Path) -> None:
     root = tmp_path / "home"
     cfg = _scoped_cfg(root, workspace_dir=str(tmp_path / "ws"))
@@ -123,3 +170,64 @@ def test_default_workspace_ensure_false_does_not_mkdir(tmp_path: Path) -> None:
     out = default_agent_workspace_dir(paths, "A1", ensure=False)
     assert out == paths.agent_workspace("A1")
     assert not out.exists()
+
+
+def test_workspace_dir_from_config_falls_back_when_unwritable(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / "octop-home")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+    cfg = {"workspace_dir": str(stale)}
+    out = workspace_dir_from_config(cfg, paths=paths, agent_id="YZQ7X4")
+    assert out == paths.agent_workspace("YZQ7X4")
+    assert out.is_dir()
+    assert not stale.exists()
+
+
+def test_default_workspace_falls_back_when_scoped_root_unwritable(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / "octop-home")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    cfg = _scoped_cfg(blocker)
+    out = default_agent_workspace_dir(paths, "F46T8Y", cfg=cfg)
+    assert out == paths.agent_workspace("F46T8Y")
+    assert out.is_dir()
+
+
+def test_neutralize_unwritable_local_root(tmp_path: Path) -> None:
+    from octop.infra.agents.workspace.dir import neutralize_unwritable_local_root
+
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    cfg = _scoped_cfg(blocker, workspace_dir="/.octop/workspaces/F46T8Y")
+    out = neutralize_unwritable_local_root(cfg)
+    assert out["backend"]["root_dir"] == "/"
+    writable = tmp_path / "home"
+    writable.mkdir()
+    keep = neutralize_unwritable_local_root(_scoped_cfg(writable))
+    assert keep["backend"]["root_dir"] == str(writable)
+
+
+def test_apply_explicit_workspace_dir_keeps_host_root_only() -> None:
+    host = {"backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True}}
+    apply_explicit_workspace_dir(host, "  /data/work  ")
+    assert host["workspace_dir"] == "/data/work"
+
+    omitted = {"backend": {"type": "filesystem", "virtual_mode": True}}
+    apply_explicit_workspace_dir(omitted, "/data/work")
+    assert omitted["workspace_dir"] == "/data/work"
+
+    scoped = {
+        "backend": {"type": "local_shell", "root_dir": "/data/jail", "virtual_mode": True},
+        "workspace_dir": "/.octop/workspaces/A1",
+    }
+    apply_explicit_workspace_dir(scoped, "/data/work")
+    assert scoped["workspace_dir"] == "/.octop/workspaces/A1"
+
+    named = {"backend": {"type": "named", "name": "cos"}}
+    apply_explicit_workspace_dir(named, "/data/work")
+    assert "workspace_dir" not in named
+
+    blank = {"backend": {"type": "local_shell", "root_dir": "/"}}
+    apply_explicit_workspace_dir(blank, "  ")
+    assert "workspace_dir" not in blank

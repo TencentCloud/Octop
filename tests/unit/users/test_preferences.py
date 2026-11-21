@@ -8,12 +8,17 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.preferences import (
     ModelReasoningPreference,
     get_model_reasoning_from_json,
+    get_onboarding_completed_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
+    get_sidebar_nav_from_json,
     get_timezone_from_preferences_json,
     merge_model_preferences_json,
+    merge_onboarding_completed_json,
     merge_preferences_json,
+    merge_sidebar_nav_json,
     validate_remote_browser_bookmarks,
+    validate_sidebar_nav,
 )
 
 
@@ -102,6 +107,46 @@ def test_model_preferences_roundtrip_and_preserve_other_keys() -> None:
     )
 
 
+def test_sidebar_nav_roundtrip_preserves_other_keys() -> None:
+    layout = {
+        "groups": [
+            {"id": "settings", "name": "配置"},
+            {"id": "c_aabbccdd11223344", "name": "常用"},
+        ],
+        "items": [
+            {"key": "chat"},
+            {"key": "personalization", "group": "settings"},
+            {"key": "tasks", "hidden": True, "group": "settings"},
+        ],
+    }
+    merged = merge_sidebar_nav_json('{"foo": 1}', layout)
+    saved = get_sidebar_nav_from_json(merged)
+    assert saved is not None
+    assert saved["groups"][0] == {"id": "settings", "name": "配置"}
+    assert saved["groups"][1]["id"] == "c_aabbccdd11223344"
+    hidden = next(item for item in saved["items"] if item["key"] == "tasks")
+    assert hidden == {"key": "tasks", "hidden": True}
+    assert '"foo": 1' in merged or '"foo":1' in merged
+
+
+def test_sidebar_nav_rejects_unknown_item_and_dangling_group() -> None:
+    with pytest.raises(OctopError) as ei:
+        validate_sidebar_nav({"groups": [], "items": [{"key": "not-a-nav"}]})
+    assert ei.value.code is ErrorCode.SLASH_BAD_ARGS
+    with pytest.raises(OctopError):
+        validate_sidebar_nav({"groups": [], "items": [{"key": "chat", "group": "settings"}]})
+    with pytest.raises(OctopError):
+        validate_sidebar_nav({"groups": [{"id": "c_short", "name": "X"}], "items": []})
+
+
+def test_sidebar_nav_clear_and_invalid_payload() -> None:
+    merged = merge_sidebar_nav_json("{}", {"groups": [], "items": [{"key": "chat"}]})
+    cleared = merge_sidebar_nav_json(merged, None)
+    assert get_sidebar_nav_from_json(cleared) is None
+    assert get_sidebar_nav_from_json('{"sidebar_nav": "nope"}') is None
+    assert get_sidebar_nav_from_json("{}") is None
+
+
 def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     raw = merge_model_preferences_json(
         "{}",
@@ -111,3 +156,26 @@ def test_clear_preferred_model_keeps_reasoning_defaults() -> None:
     cleared = merge_model_preferences_json(raw, preferred_model=None)
     assert get_preferred_model_from_json(cleared) is None
     assert "token/glm-5" in get_model_reasoning_from_json(cleared)
+
+
+def test_onboarding_completed_defaults_to_false() -> None:
+    assert get_onboarding_completed_from_json(None) is False
+    assert get_onboarding_completed_from_json("") is False
+    assert get_onboarding_completed_from_json("not json") is False
+    # Only a real boolean counts; stray truthy values do not hide the guide.
+    assert get_onboarding_completed_from_json('{"onboarding_completed": "yes"}') is False
+
+
+def test_onboarding_completed_roundtrip_preserves_other_keys() -> None:
+    raw = merge_preferences_json(
+        None,
+        validate_remote_browser_bookmarks([{"url": "https://a.example", "title": "A"}]),
+    )
+    done = merge_onboarding_completed_json(raw, True)
+    assert get_onboarding_completed_from_json(done) is True
+    assert get_remote_browser_bookmarks_from_json(done)[0].url == "https://a.example"
+
+    reset = merge_onboarding_completed_json(done, False)
+    assert get_onboarding_completed_from_json(reset) is False
+    assert "onboarding_completed" not in reset
+    assert get_remote_browser_bookmarks_from_json(reset)[0].url == "https://a.example"

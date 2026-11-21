@@ -6,6 +6,26 @@
 
 /* ── Card Grid ─────────────────────────────────────────────────── */
 
+.featureAccess {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-container);
+}
+
+.featureAccessTitle {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.featureAccessHint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
 .cardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -359,6 +379,19 @@
 
 /* ── Browse drawer ─────────────────────────────────────────────── */
 
+.browsePreviewBody {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.browsePreviewFill {
+  height: 70vh;
+  min-height: 320px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .browseRefreshBtn {
   display: inline-flex;
   align-items: center;
@@ -378,6 +411,17 @@
   &:not(:disabled):hover {
     background: var(--fn-sidebar-item-hover);
   }
+}
+
+.jsonEditorFrame {
+  display: flex;
+  flex-direction: column;
+  height: 220px;
+  width: 100%;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: var(--fn-radius-md);
+  overflow: hidden;
+  background: var(--fn-bg-elevated, var(--fn-bg-primary));
 }
 
 .browseTree {

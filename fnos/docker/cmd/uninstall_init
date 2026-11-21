@@ -1,7 +1,7 @@
 #!/bin/bash
 # Octop — 卸载前回调
 # 根据卸载向导 wizard_delete_data 的选择：
-#   - 保留数据：不清理 /vol1/@appshare/octop/data。
+#   - 保留数据：不清理 TRIM_DATA_SHARE_PATHS（一般为 /volX/@appshare/octop/data）。
 #   - 完全删除：在 uninstall_callback 中清理 data-share。
 # 同时释放 Octop 端口（8088=Docker 版，8089=本地版），避免卸载后残留进程占端口。
 set -euo pipefail
@@ -18,9 +18,9 @@ log() { echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || tru
 free_octop_ports
 
 if [ "${wizard_delete_data:-no}" = "yes" ]; then
-    log "用户选择完全删除数据，将在 uninstall_callback 中清理 /vol1/@appshare/octop/data"
+    log "用户选择完全删除数据，将在 uninstall_callback 中清理 data-share"
 else
-    log "用户选择保留数据，/vol1/@appshare/octop/data 将保留"
+    log "用户选择保留数据，data-share 将保留"
 fi
 
 exit 0

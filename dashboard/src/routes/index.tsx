@@ -7,6 +7,7 @@ const CronJobsPage = lazy(() => import("../pages/Control/CronJobs"));
 const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
+const BridgePage = lazy(() => import("../pages/Settings/Bridge"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
@@ -53,6 +54,7 @@ export const pathToKey: Record<string, string> = {
   "/connectors": "connectors",
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
+  "/bridge": "bridge",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
@@ -70,6 +72,7 @@ export const pathToKey: Record<string, string> = {
   "/workbench": "workbench",
   "/workbench/terminal": "workbench",
   "/workbench/browser": "workbench",
+  "/workbench/cloud": "workbench",
   "/terminal": "workbench",
   "/remote-browser": "workbench",
   "/remote-desktop": "remote-desktop",
@@ -99,6 +102,7 @@ export const FULLSCREEN_PATHS = new Set([
   "/workbench",
   "/workbench/terminal",
   "/workbench/browser",
+  "/workbench/cloud",
   "/chat",
   "/remote-desktop",
   "/remote-desktop/desktop",
@@ -153,6 +157,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/connectors", element: <ConnectorsPage /> },
   { path: "/skill-packages", element: <SkillPackagesPage /> },
   { path: "/knowledge-bases", element: <KnowledgeBasesPage /> },
+  { path: "/bridge", element: <BridgePage /> },
   {
     path: "/personalization/acp",
     element: <RedirectPreserveSearch to="/acp" />,
@@ -174,6 +179,7 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/workbench", element: null },
   { path: "/workbench/terminal", element: null },
   { path: "/workbench/browser", element: null },
+  { path: "/workbench/cloud", element: null },
   {
     path: "/terminal",
     element: <RedirectPreserveSearch to="/workbench/terminal" />,

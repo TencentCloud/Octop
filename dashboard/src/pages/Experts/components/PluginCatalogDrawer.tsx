@@ -22,6 +22,8 @@ export default function PluginCatalogDrawer({
       title={t("personalization.tabs.plugins")}
       open={open}
       onClose={onClose}
+      agentId={agentId}
+      remoteHintKey="editPlugins"
     >
       <AgentPluginsPanel agentId={agentId || null} />
     </CatalogDrawer>

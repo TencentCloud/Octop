@@ -67,4 +67,43 @@ describe("TeamMemberPicker", () => {
       ),
     ).toEqual(["a", "b"]);
   });
+
+  it("does not pick peer (cloud-collab) experts for a local team", () => {
+    expect(
+      selectedRosterIds(
+        ["a", "bridge:c1:x", "b"],
+        [
+          ...experts,
+          {
+            agent_id: "bridge:c1:x",
+            name: "Peer",
+            kind: "expert",
+            is_owner: true,
+            bridge: true,
+          },
+        ],
+      ),
+    ).toEqual(["a", "b"]);
+  });
+
+  it("keeps the first-load order when toggling selection", () => {
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <TeamMemberPicker value={["c"]} onChange={onChange} experts={experts} />,
+    );
+    const names = () =>
+      screen.getAllByRole("button").map((el) => el.textContent ?? "");
+    expect(names()[0]).toMatch(/Gamma/);
+
+    fireEvent.click(screen.getByRole("button", { name: /Alpha/ }));
+    expect(onChange).toHaveBeenCalledWith(["c", "a"]);
+    rerender(
+      <TeamMemberPicker
+        value={["c", "a"]}
+        onChange={onChange}
+        experts={experts}
+      />,
+    );
+    expect(names()[0]).toMatch(/Gamma/);
+  });
 });

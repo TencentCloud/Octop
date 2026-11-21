@@ -60,12 +60,12 @@ def test_probe_env_harness_browser_without_chromium() -> None:
     from octop.api.routers.browser import env as br
 
     try:
-        import harness_browser  # noqa: F401
+        import octop_browser  # noqa: F401
     except ImportError:
         return
 
     with patch(
-        "harness_browser.cdp.launcher.find_chrome",
+        "octop_browser.cdp.launcher.find_chrome",
         return_value=None,
     ):
         out = br._probe_env()
@@ -79,21 +79,21 @@ def test_probe_env_accepts_system_chrome() -> None:
     from octop.api.routers.browser import env as br
 
     try:
-        import harness_browser  # noqa: F401
+        import octop_browser  # noqa: F401
     except ImportError:
         return
 
     with (
         patch(
-            "harness_browser.cdp.launcher.find_chrome",
+            "octop_browser.cdp.launcher.find_chrome",
             return_value="/usr/bin/google-chrome",
         ),
         patch(
-            "octop.infra.browser.setup.playwright_chromium_installed",
+            "octop.infra.control.browser.setup.playwright_chromium_installed",
             return_value=False,
         ),
         patch(
-            "octop.infra.browser.setup.chrome_source_for_path",
+            "octop.infra.control.browser.setup.chrome_source_for_path",
             return_value="system",
         ),
     ):
@@ -103,6 +103,39 @@ def test_probe_env_accepts_system_chrome() -> None:
     assert out["chrome_path"] == "/usr/bin/google-chrome"
     assert out["chrome_source"] == "system"
     assert out["playwright_chromium"] is False
+    assert out["needs_enable"] is False
+
+
+def test_probe_env_bundled_chrome_stays_disabled_until_confirm() -> None:
+    from octop.api.routers.browser import env as br
+
+    try:
+        import octop_browser  # noqa: F401
+    except ImportError:
+        return
+
+    with (
+        patch(
+            "octop_browser.cdp.launcher.find_chrome",
+            return_value="/usr/bin/chromium",
+        ),
+        patch(
+            "octop.infra.control.browser.setup.playwright_chromium_installed",
+            return_value=False,
+        ),
+        patch(
+            "octop.infra.control.browser.setup.chrome_source_for_path",
+            return_value="system",
+        ),
+        patch(
+            "octop.infra.control.browser.bundled.browser_enabled",
+            return_value=False,
+        ),
+    ):
+        out = br._probe_env()
+    assert out["browsers_ok"] is False
+    assert out["needs_enable"] is True
+    assert out["chrome_path"] == "/usr/bin/chromium"
 
 
 def test_verify_browser_binary_ok(tmp_path: Path) -> None:
@@ -209,7 +242,7 @@ async def test_shutdown_ignores_client_profile(env: Any) -> None:
     c, _srv, auth = env
     result = SimpleNamespace(success=True, error=None)
     with patch(
-        "harness_browser.tool_interface.browser_tool",
+        "octop_browser.tool_interface.browser_tool",
         new=AsyncMock(return_value=result),
     ) as tool:
         r = await c.post("/api/browser/shutdown?profile=work", headers=auth)
@@ -233,7 +266,7 @@ async def test_install_returns_pid(env: Any) -> None:
         yield {"done": True, "success": True}
 
     with patch(
-        "harness_browser.install_chromium_stream",
+        "octop_browser.install_chromium_stream",
         side_effect=lambda: fake_stream(),
     ):
         r = await c.post("/api/browser/install", headers=auth)

@@ -2,11 +2,49 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyQqChannelSaveConfig,
-  DEFAULT_CHANNEL_DISPLAY_CONFIG,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,
+  CHANNEL_KEYS,
+  CHANNEL_FIELDS,
+  normalizeChannelFieldValue,
+  replacePluginChannelKinds,
+  CHANNEL_LABELS,
 } from "./constants";
+
+describe("Discord configuration", () => {
+  it("exposes Discord in more channels and keeps configured bots visible", () => {
+    expect(CHANNEL_KEYS).toContain("discord");
+    expect(partitionChannelKeys(["discord"], new Set()).more).toEqual([
+      "discord",
+    ]);
+    expect(
+      partitionChannelKeys(["discord"], new Set(["discord"])).featured,
+    ).toEqual(["discord"]);
+    expect(
+      CHANNEL_FIELDS.discord?.find((f) => f.name === "bot_token"),
+    ).toMatchObject({ required: true, type: "password" });
+    expect(
+      CHANNEL_FIELDS.discord?.find((f) => f.name === "http_proxy_auth"),
+    ).toMatchObject({ type: "password" });
+  });
+
+  it("preserves snowflake IDs exactly and validates user input", () => {
+    expect(
+      normalizeChannelFieldValue(
+        "allowed_channel_ids",
+        "1234567890123456789, 2345678901234567890\n1234567890123456789",
+      ),
+    ).toEqual(["1234567890123456789", "2345678901234567890"]);
+    expect(normalizeChannelFieldValue("allowed_user_ids", "")).toEqual([]);
+    expect(normalizeChannelFieldValue("allowed_user_ids", ["123"])).toEqual([
+      "123",
+    ]);
+    expect(() =>
+      normalizeChannelFieldValue("allowed_channel_ids", "#general"),
+    ).toThrow();
+  });
+});
 
 describe("partitionChannelKeys", () => {
   it("hides telegram until expanded unless already configured", () => {
@@ -93,5 +131,75 @@ describe("normalizeQqGroupContextConfig", () => {
       history_limit: 25,
       groups,
     });
+  });
+});
+
+describe("Telegram configuration", () => {
+  it("exposes typed activation and streaming choices with Gateway defaults", () => {
+    const fields = CHANNEL_FIELDS.telegram!;
+    expect(fields.find((f) => f.name === "group_activation")).toMatchObject({
+      type: "select",
+      options: ["always", "mention", "mention_or_reply"],
+      defaultValue: "always",
+      legacyDefaultValue: "always",
+    });
+    expect(fields.find((f) => f.name === "topic_isolation")).toMatchObject({
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    });
+    expect(fields.find((f) => f.name === "edited_messages")?.defaultValue).toBe(
+      false,
+    );
+    expect(fields.find((f) => f.name === "streaming_mode")?.options).toEqual([
+      "off",
+      "auto",
+      "edit",
+      "draft",
+    ]);
+  });
+
+  it("serializes signed chat IDs as exact strings without weakening user ID validation", () => {
+    expect(
+      normalizeChannelFieldValue(
+        "allowed_chat_ids",
+        "-1001234567890123456,42 -1001234567890123456",
+      ),
+    ).toEqual(["-1001234567890123456", "42"]);
+    expect(normalizeChannelFieldValue("allowed_chat_ids", "")).toEqual([]);
+    expect(
+      normalizeChannelFieldValue("allowed_chat_ids", [-100123, "42"]),
+    ).toEqual(["-100123", "42"]);
+    for (const invalid of ["@group", "1.2", "-", "1e3"]) {
+      expect(() =>
+        normalizeChannelFieldValue("allowed_chat_ids", invalid),
+      ).toThrow();
+    }
+    expect(() =>
+      normalizeChannelFieldValue("allowed_user_ids", "-42"),
+    ).toThrow();
+  });
+});
+
+describe("plugin channel catalogue reconciliation", () => {
+  it("replaces metadata, removes disabled kinds and preserves builtins", () => {
+    const entry = {
+      kind: "acme",
+      label: "Acme",
+      icon: "",
+      intro_url: "",
+      plugin_id: "owner",
+    };
+    try {
+      replacePluginChannelKinds([entry]);
+      expect(CHANNEL_KEYS).toContain("acme");
+      replacePluginChannelKinds([{ ...entry, label: "Updated" }]);
+      expect((CHANNEL_LABELS as Record<string, string>).acme).toBe("Updated");
+      replacePluginChannelKinds([]);
+      expect(CHANNEL_KEYS).not.toContain("acme");
+      expect(CHANNEL_KEYS).toContain("telegram");
+    } finally {
+      replacePluginChannelKinds([]);
+    }
   });
 });

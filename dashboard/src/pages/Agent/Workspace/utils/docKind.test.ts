@@ -28,9 +28,11 @@ describe("getEditableDocLanguage", () => {
 });
 
 describe("getDocKind (regression)", () => {
-  it("still classifies word docs as word", () => {
+  it("classifies OOXML word separately from legacy .doc", () => {
     expect(getDocKind("/a.docx")).toBe("word");
-    expect(getDocKind("/a.doc")).toBe("word");
+    expect(getDocKind("/a.DOCX")).toBe("word");
+    expect(getDocKind("/a.doc")).toBe("doc");
+    expect(getDocKind("/work/dir/a.DOC")).toBe("doc");
   });
 
   it("classifies spreadsheet variants as excel", () => {

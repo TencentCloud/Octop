@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { bridgeAgentHeaders, request } from "../request";
 
 export interface OctopTimezoneSettings {
   timezone: string;
@@ -7,6 +7,12 @@ export interface OctopTimezoneSettings {
 export interface OctopUploadSettings {
   max_upload_mb: number;
   max_upload_bytes: number;
+}
+
+export interface OctopHitlSettings {
+  enabled: boolean;
+  tool_guard_require_approval: boolean;
+  show_approval_ui: boolean;
 }
 
 export interface OctopCapabilitiesSettings {
@@ -40,9 +46,25 @@ export interface CaptchaSettingsPut {
   providers?: Record<string, CaptchaPairBody>;
 }
 
+export interface WebauthnSettings {
+  rp_id: string | null;
+  origins: string[];
+  passwordless_login: boolean;
+}
+
+export interface WebauthnSettingsPut {
+  rp_id?: string | null;
+  origins?: string[];
+  passwordless_login?: boolean;
+}
+
 export const octopSettingsApi = {
   timezone: () => request<OctopTimezoneSettings>("/settings/timezone"),
   upload: () => request<OctopUploadSettings>("/settings/upload"),
+  hitl: (agentId?: string | null) =>
+    request<OctopHitlSettings>("/settings/hitl", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
   capabilities: () =>
     request<OctopCapabilitiesSettings>("/settings/capabilities", {
       cache: "no-store",
@@ -50,6 +72,12 @@ export const octopSettingsApi = {
   captcha: () => request<CaptchaSettings>("/settings/captcha"),
   putCaptcha: (body: CaptchaSettingsPut) =>
     request<CaptchaSettings>("/settings/captcha", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  webauthn: () => request<WebauthnSettings>("/settings/webauthn"),
+  putWebauthn: (body: WebauthnSettingsPut) =>
+    request<WebauthnSettings>("/settings/webauthn", {
       method: "PUT",
       body: JSON.stringify(body),
     }),
