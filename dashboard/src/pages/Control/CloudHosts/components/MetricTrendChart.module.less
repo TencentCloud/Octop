@@ -1,0 +1,187 @@
+.wrap {
+  --sc-accent: #ea580c;
+  --sc-accent-soft: rgba(234, 88, 12, 0.06);
+  --sc-muted: #71717a;
+  --sc-danger: #ef4444;
+  --sc-mono: var(
+    --fn-font-mono,
+    ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace
+  );
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+:global(html[data-theme="dark"]) .wrap {
+  --sc-accent: #ff9f0a;
+  --sc-accent-soft: rgba(255, 159, 10, 0.1);
+  --sc-muted: #a1a1aa;
+  --sc-danger: #f87171;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+
+.headerLeft {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.headerLeft :global(.octop-segmented) {
+  font-family: var(--sc-mono);
+  font-size: 11px;
+}
+
+.title {
+  font-family: var(--sc-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.5;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.chip,
+.chipMuted {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--sc-mono);
+  font-size: 11px;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 3px;
+  transition:
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.chip:hover,
+.chipMuted:hover {
+  border-color: var(--fn-border-strong);
+}
+
+.chipMuted {
+  opacity: 0.4;
+}
+
+.chipDot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.chipName {
+  opacity: 0.65;
+}
+
+.chipValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.focusChip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  max-width: 190px;
+  padding: 2px 8px;
+  font-family: var(--sc-mono);
+  font-size: 11px;
+  color: var(--sc-accent);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--sc-accent) 45%, transparent);
+  border-radius: 3px;
+}
+
+.focusChip:hover {
+  background: var(--sc-accent-soft);
+}
+
+.focusRange {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.focusClose {
+  flex: 0 0 auto;
+  font-size: 9px;
+}
+
+.tooltip {
+  min-width: 130px;
+  padding: 8px 10px;
+  font-family: var(--sc-mono);
+  font-size: 11px;
+  background: var(--fn-bg-elevated);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 4px;
+  box-shadow: var(--fn-shadow-sm);
+}
+
+.tooltipTime {
+  margin-bottom: 5px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  opacity: 0.5;
+}
+
+.tooltipRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  line-height: 1.9;
+}
+
+.tooltipDot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.tooltipName {
+  flex: 1;
+  opacity: 0.7;
+}
+
+.tooltipValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.noData {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  font-family: var(--sc-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  opacity: 0.5;
+}

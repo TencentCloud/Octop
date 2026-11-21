@@ -24,7 +24,7 @@ Everything runs in a single Python process served by uvicorn. There is no extern
 
 | Benefit | Cost |
 |---------|------|
-| Zero external dependencies | Vertical scaling only (one machine) |
+| Zero external dependencies | One process per Pod; extra replicas share requests, cron and channels stay on one Pod |
 | Simple deployment (one process, one port) | Heavy CPU tasks block the event loop |
 | Fast local dev | No horizontal worker scaling |
 
@@ -32,4 +32,5 @@ Everything runs in a single Python process served by uvicorn. There is no extern
 
 - All async; blocking calls must use `run_in_executor`.
 - `SharedServices` (DI container) is process-global — safe because the process owns all state.
-- Future scale-out would require extracting the worker into a separate process and adding a queue; that seam is already partially visible in `infra/gateway/processor.py`.
+- Future scale-out of a single conversation would require extracting the worker into a separate process and adding a queue; that seam is already partially visible in `infra/gateway/processor.py`.
+- A Kubernetes Deployment may run more than one Pod. Each Pod is still one process. Replicas share the PostgreSQL control plane and split browser traffic. Cron jobs and IM channels stay single-active through a database lease. There is no HorizontalPodAutoscaler. See [deploy/helm/octop/README.md](../../deploy/helm/octop/README.md).

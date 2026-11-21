@@ -27,6 +27,27 @@ async def test_create_and_list(env):
     assert any(a["id"] == agent_id for a in r.json())
 
 
+async def test_list_survives_text_datetime_updated_at(env):
+    c, srv, auth = env
+    created = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={"name": "dirty-ts"},
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    local = f"/api/agents/{agent_id}/avatar"
+    with srv.services.db.transaction() as conn:
+        conn.execute(
+            "UPDATE agents SET updated_at = ?, icon_url = ? WHERE agent_id = ?",
+            ("2026-10-08 17:56:48", local, agent_id),
+        )
+    listed = await c.get("/api/agents", headers=auth)
+    assert listed.status_code == 200, listed.text
+    row = next(a for a in listed.json() if a["agent_id"] == agent_id)
+    assert row["icon_url"].startswith(f"{local}?v=")
+
+
 async def test_agent_runtime_fields_are_first_class_api_fields(env):
     c, _, auth = env
     r = await c.post(
@@ -62,6 +83,113 @@ async def test_agent_runtime_fields_are_first_class_api_fields(env):
     assert updated["temperature"] is None
     assert "max_iters" not in updated["config"]
     assert "temperature" not in updated["config"]
+
+
+async def test_agent_call_guard_fields_round_trip(env):
+    c, _, auth = env
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={
+            "name": "call-guard",
+            "tool_call_run_limit": 12,
+            "model_retry_max_retries": 4,
+            "tool_retry_enabled": False,
+        },
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    agent_id = created["agent_id"]
+    assert created["tool_call_run_limit"] == 12
+    assert created["model_retry_max_retries"] == 4
+    assert created["tool_retry_enabled"] is False
+    assert created["tool_call_limit_enabled"] is None
+    assert created["tool_retry_max_retries"] is None
+    assert "tool_call_run_limit" not in created["config"]
+    assert "tool_retry_enabled" not in created["config"]
+
+    r = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={
+            "tool_call_limit_enabled": False,
+            "tool_call_run_limit": None,
+            "tool_retry_enabled": None,
+        },
+    )
+    assert r.status_code == 200, r.text
+    updated = r.json()
+    assert updated["tool_call_limit_enabled"] is False
+    assert updated["tool_call_run_limit"] is None
+    assert updated["tool_retry_enabled"] is None
+    assert updated["model_retry_max_retries"] == 4
+
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={
+            "name": "call-guard-invalid",
+            "model_retry_initial_delay": 30,
+            "model_retry_max_delay": 2,
+        },
+    )
+    assert r.status_code == 422
+
+
+async def test_agent_compaction_is_per_expert_and_preserved(env):
+    c, _, auth = env
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={
+            "name": "compaction-config",
+            "compaction": {
+                "trigger_fraction": 0.7,
+                "keep_fraction": 0.2,
+                "trim_tokens": 4000,
+            },
+        },
+    )
+    assert r.status_code == 201, r.text
+    created = r.json()
+    agent_id = created["agent_id"]
+    assert created["compaction"] == {
+        "trigger_fraction": 0.7,
+        "keep_fraction": 0.2,
+        "trim_tokens": 4000,
+    }
+    assert "compaction" not in created["config"]
+
+    r = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"config": {"plugins": {}}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["compaction"]["trigger_fraction"] == 0.7
+
+    r = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"compaction": {"enabled": False}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["compaction"] == {"enabled": False}
+
+    r = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"compaction": None},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["compaction"] is None
+
+    r = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={"name": "compaction-invalid", "compaction": {"keep_fraction": 0.9}},
+    )
+    assert r.status_code == 422
 
 
 async def test_create_keeps_legacy_runtime_values_from_config(env):

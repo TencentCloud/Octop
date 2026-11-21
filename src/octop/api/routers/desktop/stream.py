@@ -14,8 +14,8 @@ from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from octop.api.deps import resolve_user_from_token
-from octop.infra.desktop.input import canvas_to_screen, run_desktop_action
-from octop.infra.desktop.session import (
+from octop.infra.control.desktop.input import canvas_to_screen, run_desktop_action
+from octop.infra.control.desktop.session import (
     DesktopSession,
     DesktopSessionLimitError,
     acquire_session,
@@ -25,7 +25,7 @@ from octop.infra.desktop.session import (
     release_session,
     supersede_user_stream,
 )
-from octop.infra.desktop.setup import desktop_status
+from octop.infra.control.desktop.setup import desktop_status
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.permissions import user_has_permission

@@ -2,10 +2,22 @@
 #
 # Octop — FnOS 生命周期管理（docker-project）
 # start/stop 由 fnOS 应用中心根据 config/resource 的 docker-project 自动管理；
-# 本脚本仅负责状态检查（供系统健康检查轮询）。
+# start 仍先恢复 compose 插值用的 .env（target/ 被替换后从 @appdata 拷回），
+# 并把卷指到 TRIM_DATA_SHARE_PATHS，避免重启后再次走首次配置。
 #
 
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
 FILE_PATH="${TRIM_APPDEST}/docker/docker-compose.yaml"
+ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
+
+ensure_persist() {
+    if type octop_prepare_docker_persist >/dev/null 2>&1; then
+        octop_prepare_docker_persist "$ENV_FILE" >/dev/null
+    fi
+}
 
 is_docker_running() {
     DOCKER_NAME=""
@@ -21,6 +33,7 @@ is_docker_running() {
 
 case $1 in
 start)
+    ensure_persist
     # docker 应用由 appcenter 启动
     exit 0
     ;;

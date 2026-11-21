@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any
 
-from harness_agent.security.models import SecurityPolicy
+from octop_harness.security.models import SecurityPolicy
 
 from octop.infra.db.repos.settings import SettingsRepo
 
@@ -51,3 +51,15 @@ class SecuritySettingsStore:
 
     def harness_policy(self) -> SecurityPolicy:
         return self.load()
+
+
+def tool_execution_may_pause(policy: SecurityPolicy) -> bool:
+    """True when a tool call can pause for human approval.
+
+    Covers the admin HITL switch and command-guard ``require_approval``.
+    ``ask_user_question`` is a separate collaboration pause and is ignored here.
+    """
+    if policy.hitl.enabled:
+        return True
+    guard = policy.tool_guard
+    return bool(guard.enabled and guard.mode == "require_approval")

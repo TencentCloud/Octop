@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { Button, Spin, Tooltip } from "antd";
-import { Bot, Send, X } from "lucide-react";
+import { Bot, Send, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { OctopAgent } from "../context/AgentContext";
 import AgentSelector from "./AgentSelector";
 import { useAgentThreadChat } from "../hooks/useAgentThreadChat";
@@ -31,9 +32,10 @@ export default function MobileAiPanel({
   layout = "right",
 }: MobileAiPanelProps) {
   const { t } = useTranslation();
-  const panelClassName = `${styles.panel}${
-    layout === "bottom" ? ` ${styles.panelBottom}` : ""
-  }`;
+  const panelClassName = cx(
+    styles.panel,
+    layout === "bottom" && styles.panelBottom,
+  );
   const [inputValue, setInputValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const imeComposingRef = useRef(false);
@@ -171,7 +173,7 @@ export default function MobileAiPanel({
         </div>
       </div>
 
-      <div className={`${styles.messages} ${chatStyles.messageListWrapper}`}>
+      <div className={cx(styles.messages, chatStyles.messageListWrapper)}>
         {booting ? (
           <div className={styles.messagesLoading}>
             <Spin size="small" />
@@ -183,7 +185,6 @@ export default function MobileAiPanel({
             messages={messages}
             isStreaming={isStreaming}
             sessionKey={threadId ?? undefined}
-            onCancel={cancelStream}
           />
         )}
       </div>
@@ -212,11 +213,15 @@ export default function MobileAiPanel({
           <button
             type="button"
             className={styles.sendBtn}
-            disabled={!inputValue.trim() || isStreaming || booting}
-            onClick={handleSend}
-            title={t("terminal.ai.send", "发送")}
+            disabled={isStreaming ? booting : !inputValue.trim() || booting}
+            onClick={isStreaming ? cancelStream : handleSend}
+            title={
+              isStreaming
+                ? t("chat.stop", "停止")
+                : t("terminal.ai.send", "发送")
+            }
           >
-            <Send size={16} />
+            {isStreaming ? <Square size={16} /> : <Send size={16} />}
           </button>
         </div>
       </div>

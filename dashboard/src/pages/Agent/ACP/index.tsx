@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Empty, Form, Switch } from "antd";
+import { Alert, App, Button, Empty, Form, Switch } from "antd";
 
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
-import { acpApi } from "../../../api/modules/acp";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
+import { acpApi, type AcpHostStatus } from "../../../api/modules/acp";
 import {
   ACP_DEFAULT_STDIO_BUFFER_LIMIT_BYTES,
   type ACPRunnerConfig,
 } from "../../../api/types/acp";
 import { useAgent } from "../../../context/AgentContext";
+import { blocksAcpOutboundFromConfig } from "../../Experts/components/agentBackendForm";
 import { ACPCard } from "./components/ACPCard";
 import {
   ACPDrawer,
@@ -22,11 +25,43 @@ import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
+function probeFailureText(t: TFunction, status: AcpHostStatus): string {
+  const statusText = t(`acp.host.status.${status.status}`, {
+    defaultValue: t("acp.host.status.degraded"),
+  });
+  const detail = status.detail?.trim() ?? "";
+  if (!detail || detail === statusText) {
+    return t("acp.saveNeedsInstall", { status: statusText });
+  }
+  return t("acp.saveNeedsInstallDetail", { status: statusText, detail });
+}
+
+async function runnerIsInstalled(
+  runnerKey: string,
+  runner: ACPRunnerConfig,
+): Promise<AcpHostStatus> {
+  return acpApi.probeHost({
+    runner: runnerKey,
+    command: runner.command.trim(),
+    args: runner.args,
+    env: runner.env,
+  });
+}
+
+interface ACPPanelProps {
+  /** When set (Experts tools drawer), use this agent instead of the chat selection. */
+  agentId?: string | null;
+}
+
 /** ACP runners manager — shared by `/acp` and Personalization → Tools. */
-export function ACPPanel() {
+export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId: contextAgentId, agents } = useAgent();
+  const activeAgentId =
+    agentIdProp !== undefined ? agentIdProp : contextAgentId;
+  /** Only the Experts tools drawer should tunnel account-global ACP runners. */
+  const runnersScopeId = agentIdProp;
   const [runners, setRunners] =
     useState<Record<string, ACPRunnerConfig>>(EMPTY_RUNNERS);
   const [toolEnabled, setToolEnabled] = useState(false);
@@ -42,6 +77,17 @@ export function ACPPanel() {
   const [form] = Form.useForm();
   const activeAgentIdRef = useRef(activeAgentId);
 
+  const activeAgent = useMemo(
+    () => agents.find((row) => row.agent_id === activeAgentId) ?? null,
+    [agents, activeAgentId],
+  );
+  const outboundBlocked = blocksAcpOutboundFromConfig(
+    activeAgent?.config ?? null,
+  );
+  // Under directory sandbox: lock runner enable/edit only. The per-agent
+  // acp_runner tool toggle stays available (host-spawned runners may already
+  // be enabled for other agents on this account).
+
   useEffect(() => {
     activeAgentIdRef.current = activeAgentId;
   }, [activeAgentId]);
@@ -51,7 +97,7 @@ export function ACPPanel() {
     setRunnersLoading(true);
     void (async () => {
       try {
-        const data = await acpApi.getGlobalRunners();
+        const data = await acpApi.getGlobalRunners(runnersScopeId);
         if (!cancelled) {
           setRunners(data.runners || EMPTY_RUNNERS);
         }
@@ -68,7 +114,7 @@ export function ACPPanel() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [t, runnersScopeId]);
 
   useEffect(() => {
     if (!activeAgentId) {
@@ -124,11 +170,11 @@ export function ACPPanel() {
 
   const persistRunners = useCallback(
     async (next: Record<string, ACPRunnerConfig>) => {
-      const saved = await acpApi.updateGlobalRunners(next);
+      const saved = await acpApi.updateGlobalRunners(next, runnersScopeId);
       setRunners(saved.runners || EMPTY_RUNNERS);
       return saved.runners;
     },
-    [],
+    [runnersScopeId],
   );
 
   const persistToolEnabled = useCallback(
@@ -157,7 +203,8 @@ export function ACPPanel() {
   };
 
   const handleToggleEnabled = async (runnerKey: string, checked: boolean) => {
-    if (runnersLoading) return;
+    // Runners are account-global; only block *enabling* under sandbox.
+    if (runnersLoading || (outboundBlocked && checked)) return;
     const runner = runners[runnerKey];
     if (!runner) return;
     if (!runner.command?.trim() && checked) {
@@ -166,6 +213,13 @@ export function ACPPanel() {
     }
     setToggleLoadingKey(runnerKey);
     try {
+      if (checked) {
+        const probe = await runnerIsInstalled(runnerKey, runner);
+        if (probe.status !== "ready" && probe.status !== "installed") {
+          message.error(probeFailureText(t, probe));
+          return;
+        }
+      }
       const nextRunners = {
         ...runners,
         [runnerKey]: { ...runner, enabled: checked },
@@ -180,6 +234,7 @@ export function ACPPanel() {
   };
 
   const openEdit = (key: string) => {
+    if (outboundBlocked) return;
     const cfg = runners[key];
     setIsCreateMode(false);
     setActiveKey(key);
@@ -207,13 +262,26 @@ export function ACPPanel() {
   const handleSubmit = async (values: Record<string, unknown>) => {
     const targetKey = String(values.runnerKey || activeKey || "").trim();
     if (!targetKey) return;
-    if ((isCreateMode || targetKey !== activeKey) && runners[targetKey]) {
+    const existing = runners[targetKey];
+    const renaming =
+      !isCreateMode && activeKey !== null && targetKey !== activeKey;
+    if ((isCreateMode || renaming) && existing?.enabled) {
       message.error(t("acp.runnerKeyExists"));
       return;
     }
+    const reenable = Boolean(
+      (isCreateMode || renaming) && existing && !existing.enabled,
+    );
     const runner = formValuesToRunner(values);
     setSaving(true);
     try {
+      if (runner.enabled) {
+        const probe = await runnerIsInstalled(targetKey, runner);
+        if (probe.status !== "ready" && probe.status !== "installed") {
+          message.error(probeFailureText(t, probe));
+          return;
+        }
+      }
       const nextRunners = { ...runners };
       if (!isCreateMode && activeKey && activeKey !== targetKey) {
         delete nextRunners[activeKey];
@@ -222,7 +290,11 @@ export function ACPPanel() {
       await persistRunners(nextRunners);
       setDrawerOpen(false);
       message.success(
-        isCreateMode ? t("acp.createSuccess") : t("acp.configSaved"),
+        reenable && runner.enabled
+          ? t("acp.runnerReenabled")
+          : isCreateMode
+          ? t("acp.createSuccess")
+          : t("acp.configSaved"),
       );
     } catch {
       message.error(t("acp.configFailed"));
@@ -249,18 +321,23 @@ export function ACPPanel() {
     });
   };
 
+  const toolToggleDisabled = !activeAgentId || toolLoading;
+
   const toolSwitch = (
     <Switch
       key={activeAgentId ?? "none"}
       checked={toolEnabled}
       loading={toolLoading || toolToggleLoading}
-      disabled={!activeAgentId || toolLoading}
+      disabled={toolToggleDisabled}
       onChange={handleToolToggle}
     />
   );
 
   return (
     <>
+      {agentIdProp === undefined ? (
+        <PeerOnlyRemoteAlert hintKey="peerOnlyAcp" />
+      ) : null}
       <div className={styles.toolbar}>
         <div className={styles.toolbarText}>
           <div className={styles.description}>{t("acp.description")}</div>
@@ -270,6 +347,15 @@ export function ACPPanel() {
           {t("acp.create")}
         </Button>
       </div>
+
+      {activeAgentId && outboundBlocked ? (
+        <Alert
+          type="info"
+          showIcon
+          className={styles.outboundBlockedAlert}
+          message={t("acp.outboundBlockedHint")}
+        />
+      ) : null}
 
       {runnersLoading && cards.length === 0 ? (
         <CardSkeleton count={4} />
@@ -282,6 +368,7 @@ export function ACPPanel() {
               config={cfg}
               isHover={hoverKey === key}
               toggleLoading={toggleLoadingKey === key}
+              interactionDisabled={outboundBlocked}
               onClick={() => openEdit(key)}
               onMouseEnter={() => setHoverKey(key)}
               onMouseLeave={() => setHoverKey(null)}

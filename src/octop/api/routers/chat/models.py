@@ -13,6 +13,13 @@ _MAX_DECISIONS = 16
 _MAX_DECISION_MESSAGE_CHARS = 8000
 
 
+class HitlSessionPolicyBody(BaseModel):
+    """Dashboard chat bypass for tool approval (does not change global HITL)."""
+
+    mode: Literal["ask", "allow_all", "allow_tools"] = "ask"
+    tools: list[str] = Field(default_factory=list)
+
+
 class ChatTurnBody(BaseModel):
     """User turn payload — same fields for WebSocket ``user_turn`` and legacy HTTP bodies."""
 
@@ -50,6 +57,15 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Turn permission mode: ask (read-only), plan (write plans/*.md), craft (default).",
     )
+    session_mode: str | None = Field(
+        default=None,
+        max_length=64,
+        description="ACP session mode id for a managed expert, such as plan or bypassPermissions.",
+    )
+    hitl_policy: HitlSessionPolicyBody | None = Field(
+        default=None,
+        description="Thread-scoped tool-approval bypass for this turn (does not change global HITL).",
+    )
     target_agent_ids: list[str] | None = Field(
         default=None,
         description="Optional agent ids to involve via @mention (same user only).",
@@ -59,6 +75,18 @@ class ChatTurnBody(BaseModel):
         description="Deprecated — locale is read from the user profile. Ignored when set.",
     )
     text: str | None = Field(default=None, description="Plain-text user message (WS shorthand).")
+    delivery: Literal["auto", "steer", "follow_up"] | None = Field(
+        default=None,
+        description="Send routing: auto (steer while busy), steer, or follow_up (idle-only).",
+    )
+    client_pending_id: str | None = Field(
+        default=None,
+        description="Client UUID for mid-turn steer correlation (required while busy).",
+    )
+    expected_turn_id: str | None = Field(
+        default=None,
+        description="Active turn_id from turn.started / turn.resumed (required while busy).",
+    )
 
     @classmethod
     def from_ws_payload(cls, payload: dict[str, Any]) -> ChatTurnBody:
@@ -94,12 +122,29 @@ class ChatTurnBody(BaseModel):
             conversation_mode=payload.get("conversation_mode")
             if payload.get("conversation_mode") in ("ask", "plan", "craft")
             else None,
+            session_mode=str(payload["session_mode"]).strip()
+            if isinstance(payload.get("session_mode"), str) and str(payload["session_mode"]).strip()
+            else None,
+            hitl_policy=payload.get("hitl_policy")
+            if isinstance(payload.get("hitl_policy"), dict)
+            else None,
             target_agent_ids=(
                 [str(x) for x in payload["target_agent_ids"]]
                 if isinstance(payload.get("target_agent_ids"), list)
                 else None
             ),
             text=text or None,
+            delivery=payload.get("delivery")
+            if payload.get("delivery") in ("auto", "steer", "follow_up")
+            else None,
+            client_pending_id=str(payload["client_pending_id"]).strip()
+            if isinstance(payload.get("client_pending_id"), str)
+            and str(payload["client_pending_id"]).strip()
+            else None,
+            expected_turn_id=str(payload["expected_turn_id"]).strip()
+            if isinstance(payload.get("expected_turn_id"), str)
+            and str(payload["expected_turn_id"]).strip()
+            else None,
         )
 
 
@@ -115,11 +160,16 @@ class UserTurnWsFrame(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    session_mode: str | None = None
+    hitl_policy: HitlSessionPolicyBody | None = None
     mcp_servers: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
     target_agent_ids: list[str] | None = None
+    delivery: Literal["auto", "steer", "follow_up"] | None = None
+    client_pending_id: str | None = None
+    expected_turn_id: str | None = None
 
     def to_turn_body(self) -> ChatTurnBody:
         return ChatTurnBody.from_ws_payload(self.model_dump(exclude_none=True))
@@ -153,10 +203,20 @@ class ForkThreadBody(BaseModel):
 class RenameThreadBody(BaseModel):
     title: str | None = None
     pinned: bool | None = None
+    contributed: bool | None = Field(
+        default=None,
+        description="Share this conversation with other users of the expert.",
+    )
     model_ref: str | None = None
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    session_mode: str | None = Field(
+        default=None,
+        max_length=64,
+        description="ACP session mode id for a managed expert.",
+    )
+    hitl_policy: HitlSessionPolicyBody | None = None
 
 
 class HitlResumeBody(BaseModel):
@@ -170,6 +230,14 @@ class HitlResumeBody(BaseModel):
             '[{"type": "reject", "message": "..."}] or '
             '[{"type": "respond", "message": "<answer>"}].'
         ),
+    )
+    hitl_policy: HitlSessionPolicyBody | None = Field(
+        default=None,
+        description="Optional thread-scoped tool-approval bypass applied before resume.",
+    )
+    pending_id: str | None = Field(
+        default=None,
+        description="Approval card to resume. Required when several cards are open.",
     )
 
     @field_validator("decisions")

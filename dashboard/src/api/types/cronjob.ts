@@ -35,7 +35,7 @@ export interface CronJobSpecInput {
   name: string;
   enabled?: boolean;
   schedule: CronJobSchedule;
-  task_type?: "text" | "agent";
+  task_type?: "text" | "agent" | "script";
   text?: string;
   request?: CronJobRequest;
   dispatch: CronJobDispatch;
@@ -74,9 +74,13 @@ export interface OctopCronRow {
   session_key: string;
   fresh_thread: boolean;
   enabled: boolean;
-  task_type: "text" | "agent";
+  task_type: "text" | "agent" | "script";
   model: string | null;
   mcp_servers?: string[];
+  allow_all?: boolean;
+  script_lang?: "python" | "bash" | "powershell" | null;
+  script_source?: "inline" | "file" | null;
+  script_path?: string | null;
   last_run_at: number | null;
   last_status: string | null;
   last_error: string | null;
@@ -91,8 +95,12 @@ export interface OctopCronCreateBody {
   fresh_thread?: boolean;
   enabled?: boolean;
   model?: string | null;
-  task_type?: "text" | "agent";
+  task_type?: "text" | "agent" | "script";
   mcp_servers?: string[];
+  allow_all?: boolean;
+  script_lang?: "python" | "bash" | "powershell" | null;
+  script_source?: "inline" | "file" | null;
+  script_path?: string | null;
 }
 
 /** Body sent to PATCH /api/agents/:id/cron/:cron_id */
@@ -104,6 +112,10 @@ export interface OctopCronPatchBody {
   fresh_thread?: boolean;
   enabled?: boolean;
   model?: string | null;
-  task_type?: "text" | "agent";
+  task_type?: "text" | "agent" | "script";
   mcp_servers?: string[];
+  allow_all?: boolean;
+  script_lang?: "python" | "bash" | "powershell" | null;
+  script_source?: "inline" | "file" | null;
+  script_path?: string | null;
 }

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, map_rows, now_ts, partial_updates
+from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts, partial_updates
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,9 @@ class SkillPackageRow:
     skill_count: int
     icon_name: str
     icon_url: str
+    copy_policy: str
+    allow_download: bool
+    shared: bool
     created_at: str
     updated_at: str
 
@@ -34,6 +37,9 @@ class SkillPackageRow:
             skill_count=r["skill_count"],
             icon_name=str(r["icon_name"]) if "icon_name" in keys else "",
             icon_url=str(r["icon_url"]) if "icon_url" in keys else "",
+            copy_policy=str(r["copy_policy"]) if "copy_policy" in keys else "snapshot",
+            allow_download=bool(int(r["allow_download"])) if "allow_download" in keys else True,
+            shared=bool(int(r["shared"])) if "shared" in keys else False,
             created_at=r["created_at"],
             updated_at=r["updated_at"],
         )
@@ -46,6 +52,15 @@ class SkillPackageRepo:
     def list_all(self) -> list[SkillPackageRow]:
         with self._db.connect() as conn:
             rows = conn.execute("SELECT * FROM skill_packages ORDER BY name").fetchall()
+        return map_rows(rows, SkillPackageRow)
+
+    def list_visible(self, user_id: int | str) -> list[SkillPackageRow]:
+        """Packages owned by *user_id* or marked shared."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM skill_packages WHERE created_by = ? OR shared = 1 ORDER BY name",
+                (str(user_id),),
+            ).fetchall()
         return map_rows(rows, SkillPackageRow)
 
     def get(self, package_id: str) -> SkillPackageRow | None:
@@ -73,15 +88,31 @@ class SkillPackageRepo:
         created_by: str,
         icon_name: str = "",
         icon_url: str = "",
+        shared: bool = False,
+        copy_policy: str = "snapshot",
+        allow_download: bool = True,
     ) -> SkillPackageRow:
         ts = str(now_ts())
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO skill_packages("
                 "skill_package_id, name, description, created_by, skill_count, "
-                "icon_name, icon_url, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
-                (id, name, description, created_by, icon_name, icon_url, ts, ts),
+                "icon_name, icon_url, copy_policy, allow_download, shared, "
+                "created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    id,
+                    name,
+                    description,
+                    created_by,
+                    icon_name,
+                    icon_url,
+                    copy_policy,
+                    bool_int(allow_download),
+                    bool_int(shared),
+                    ts,
+                    ts,
+                ),
             )
         row = self.get(id)
         if row is None:
@@ -96,6 +127,9 @@ class SkillPackageRepo:
         description: str | None = None,
         icon_name: str | None = None,
         icon_url: str | None = None,
+        copy_policy: str | None = None,
+        allow_download: int | None = None,
+        shared: int | None = None,
     ) -> None:
         fields, params = partial_updates(
             [
@@ -103,6 +137,9 @@ class SkillPackageRepo:
                 ("description", description),
                 ("icon_name", icon_name),
                 ("icon_url", icon_url),
+                ("copy_policy", copy_policy),
+                ("allow_download", allow_download),
+                ("shared", shared),
             ]
         )
         if not fields:

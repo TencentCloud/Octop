@@ -87,6 +87,18 @@ vi.mock("../pages/Agent/Workspace/components/WorkspaceDrawer", () => ({
   default: () => null,
 }));
 
+vi.mock("../context/AgentContext", () => ({
+  useAgent: () => ({
+    agents: [],
+    activeAgent: null,
+    activeAgentId: null,
+    loading: false,
+    error: null,
+    setActiveAgent: () => undefined,
+    refresh: async () => undefined,
+  }),
+}));
+
 import AgentProfileDrawer from "./AgentProfileDrawer";
 
 const agent = {

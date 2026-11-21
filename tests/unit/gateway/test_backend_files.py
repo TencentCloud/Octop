@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.gateway.media.backend_files import (
     dashboard_media_url,
@@ -16,6 +16,19 @@ from octop.infra.gateway.media.backend_files import (
     extract_workspace_rel,
     resolve_preview_payload,
 )
+
+
+def test_extract_workspace_rel_rejects_parent_segments() -> None:
+    assert extract_workspace_rel("outbound/../../etc/passwd") is None
+    assert extract_workspace_rel("/tmp/outbound/../../etc/passwd") is None
+
+
+@pytest.mark.asyncio
+async def test_ensure_does_not_import_disallowed_host_file(tmp_path: Path) -> None:
+    workspace = _workspace(str(tmp_path))
+    imported = await ensure_workspace_media_path(workspace, "file:///etc/passwd")
+    assert imported is None
+    assert not (tmp_path / "outbound").exists()
 
 
 def test_extract_workspace_rel_handles_backslashes() -> None:

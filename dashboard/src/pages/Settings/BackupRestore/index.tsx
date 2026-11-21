@@ -33,15 +33,19 @@ import { useTranslation } from "react-i18next";
 import {
   backupApi,
   type AutoBackupSettings,
+  type BackupDestinationOption,
   type BackupFileItem,
+  type RemoteBackupSummary,
 } from "../../../api/modules/backup";
 import { useBackupOperation } from "../../../context/BackupOperationContext";
 import { useServiceRestartContext } from "../../../context/ServiceRestartContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
+import { MirrorStatusTag, RemoteBackupSection } from "./RemoteBackupSection";
 import styles from "./index.module.less";
 
 const SCHEDULE_DAILY = "cron:0 4 * * *";
@@ -55,11 +59,7 @@ const PRESET_SCHEDULES = new Set([
 ]);
 
 function triggerDownload(blob: Blob, filename: string) {
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  return saveBlobAsFile(blob, filename);
 }
 
 function BackupContentsTags({ row }: { row: BackupFileItem }) {
@@ -96,6 +96,7 @@ interface BackupFileCardProps {
   restoringThis: boolean;
   busy: boolean;
   timeZone: string;
+  cloudDestination: boolean;
   onDownload: (row: BackupFileItem) => void;
   onRestore: (row: BackupFileItem) => void;
   onDelete: (row: BackupFileItem) => void;
@@ -107,6 +108,7 @@ function BackupFileCard({
   restoringThis,
   busy,
   timeZone,
+  cloudDestination,
   onDownload,
   onRestore,
   onDelete,
@@ -128,6 +130,9 @@ function BackupFileCard({
           {t("backup.colModified")}:{" "}
           {formatServerIsoDateTime(row.modified_at, timeZone)}
         </span>
+        {!cloudDestination ? (
+          <MirrorStatusTag status={row.remote_status} />
+        ) : null}
       </div>
       <BackupContentsTags row={row} />
       <div className={styles.backupCardActions}>
@@ -187,6 +192,7 @@ export default function BackupRestorePanel() {
 
   const [items, setItems] = useState<BackupFileItem[]>([]);
   const [dir, setDir] = useState("");
+  const [listSource, setListSource] = useState<"local" | "remote">("local");
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [includeConfig, setIncludeConfig] = useState(true);
@@ -216,8 +222,17 @@ export default function BackupRestorePanel() {
   const [autoScheduled, setAutoScheduled] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [autoSaving, setAutoSaving] = useState(false);
+  const [remoteEnabled, setRemoteEnabled] = useState(false);
+  const [remoteBackendId, setRemoteBackendId] = useState<number | null>(null);
+  const [remoteSummary, setRemoteSummary] =
+    useState<RemoteBackupSummary | null>(null);
+  const [destinations, setDestinations] = useState<BackupDestinationOption[]>(
+    [],
+  );
+  const [remoteToggling, setRemoteToggling] = useState(false);
 
-  const busy = opBusy || isRestarting || autoSaving;
+  const cloudDestination = listSource === "remote" || remoteEnabled;
+  const busy = opBusy || isRestarting || autoSaving || remoteToggling;
   const backingUp = creating || autoRunning || kind === "export";
   const restoringThisName = restoring ? restoreTarget : null;
 
@@ -234,6 +249,10 @@ export default function BackupRestorePanel() {
     setAutoIncludeKnowledge(data.include_knowledge);
     setAutoIncludeChats(data.include_chats);
     setAutoScheduled(Boolean(data.scheduled));
+    setRemoteEnabled(Boolean(data.remote_enabled));
+    setRemoteBackendId(data.remote_backend_id ?? null);
+    setRemoteSummary(data.remote ?? null);
+    setDestinations(Array.isArray(data.destinations) ? data.destinations : []);
     setSchedulePreset(
       PRESET_SCHEDULES.has(data.schedule) ? data.schedule : "custom",
     );
@@ -245,9 +264,9 @@ export default function BackupRestorePanel() {
       const data = await backupApi.listBackups();
       setItems(data.items);
       setDir(data.dir);
+      setListSource(data.source === "remote" ? "remote" : "local");
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message : String(err);
-      message.error(detail || t("backup.listFailed"));
+      message.error(apiErrorMessage(err, t("backup.listFailed"), t));
     } finally {
       setLoading(false);
     }
@@ -323,6 +342,8 @@ export default function BackupRestorePanel() {
         include_plugins: autoIncludePlugins,
         include_knowledge: autoIncludeKnowledge,
         include_chats: autoIncludeChats,
+        remote_enabled: remoteEnabled,
+        remote_backend_id: remoteBackendId,
       });
       applyAutoSettings(data);
       message.success(t("backup.autoSaveSuccess"));
@@ -341,7 +362,7 @@ export default function BackupRestorePanel() {
     setDownloading(row.name);
     try {
       const blob = await backupApi.downloadBackup(row.name);
-      triggerDownload(blob, row.name);
+      await triggerDownload(blob, row.name);
     } catch (err: unknown) {
       const detail = err instanceof Error ? err.message : String(err);
       message.error(detail || t("backup.exportFailed"));
@@ -376,6 +397,45 @@ export default function BackupRestorePanel() {
     });
   };
 
+  const onSelectDestination = async (backendId: number | null) => {
+    setRemoteToggling(true);
+    try {
+      const nextEnabled = backendId != null;
+      const selected = nextEnabled
+        ? destinations.find((d) => d.id === backendId)
+        : null;
+      const selectedName =
+        selected?.label?.trim() ||
+        selected?.name ||
+        t("backup.destinationRemote");
+      const data = await backupApi.updateAutoSettings({
+        auto_enabled: autoEnabled,
+        schedule: autoSchedule.trim() || SCHEDULE_DAILY,
+        retention_count: autoRetention,
+        include_config: autoIncludeConfig,
+        include_workspaces: autoIncludeWorkspaces,
+        include_skill_packages: autoIncludeSkillPackages,
+        include_plugins: autoIncludePlugins,
+        include_knowledge: autoIncludeKnowledge,
+        include_chats: autoIncludeChats,
+        remote_enabled: nextEnabled,
+        remote_backend_id: nextEnabled ? backendId : remoteBackendId,
+      });
+      applyAutoSettings(data);
+      message.success(
+        nextEnabled
+          ? t("backup.remoteEnabledOn", { name: selectedName })
+          : t("backup.remoteEnabledOff"),
+      );
+      // Destination is already saved; remote list may still fail independently.
+      await refresh();
+    } catch (err: unknown) {
+      message.error(apiErrorMessage(err, t("backup.remoteEnableFailed"), t));
+    } finally {
+      setRemoteToggling(false);
+    }
+  };
+
   const columns: ColumnsType<BackupFileItem> = [
     {
       title: t("backup.colName"),
@@ -394,20 +454,32 @@ export default function BackupRestorePanel() {
       title: t("backup.colCreated"),
       dataIndex: "created_at",
       key: "created_at",
-      width: 160,
+      width: 150,
       render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
     {
       title: t("backup.colModified"),
       dataIndex: "modified_at",
       key: "modified_at",
-      width: 160,
+      width: 150,
       render: (v: string) => formatServerIsoDateTime(v, serverTimezone),
     },
+    ...(cloudDestination
+      ? []
+      : [
+          {
+            title: t("backup.colRemote"),
+            key: "remote_status",
+            width: 110,
+            render: (_: unknown, row: BackupFileItem) => (
+              <MirrorStatusTag status={row.remote_status} />
+            ),
+          } as ColumnsType<BackupFileItem>[number],
+        ]),
     {
       title: t("backup.colContents"),
       key: "contents",
-      width: 220,
+      width: 200,
       render: (_: unknown, row: BackupFileItem) => (
         <BackupContentsTags row={row} />
       ),
@@ -461,13 +533,30 @@ export default function BackupRestorePanel() {
 
   return (
     <>
+      <RemoteBackupSection
+        summary={remoteSummary}
+        destinations={destinations}
+        busy={busy}
+        timeZone={serverTimezone}
+        onSelectDestination={onSelectDestination}
+        selectingDestination={remoteToggling}
+      />
+
+      <Divider style={{ margin: "40px 0" }} />
+
       <TabPanelHeader
         icon={<Archive size={22} />}
-        title={t("backup.storedTitle")}
+        title={t(
+          cloudDestination ? "backup.storedTitleRemote" : "backup.storedTitle",
+        )}
         description={
           <>
-            {t("backup.storedDesc")}
-            {dir ? (
+            {t(
+              cloudDestination
+                ? "backup.storedDescRemote"
+                : "backup.storedDesc",
+            )}
+            {!cloudDestination && dir ? (
               <>
                 <br />
                 <code className={styles.dirPath}>{dir}</code>
@@ -555,6 +644,7 @@ export default function BackupRestorePanel() {
                     restoringThis={restoringThisName === row.name}
                     busy={busy}
                     timeZone={serverTimezone}
+                    cloudDestination={cloudDestination}
                     onDownload={onDownload}
                     onRestore={(item) => {
                       setPendingRestore(item);

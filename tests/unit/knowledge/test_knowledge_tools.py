@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from langgraph.config import var_child_runnable_config
 
-from octop.infra.knowledge.tools import build_knowledge_tools
+from octop.config import DatabaseConfig, OctopConfig
+from octop.infra.knowledge.plane import postgres_database
+from octop.infra.knowledge.tools import KnowledgeToolServices, build_knowledge_tools
 
 
 @contextmanager
@@ -26,6 +28,30 @@ def _tool_by_name(tools: list, name: str):
         if tool.name == name:
             return tool
     raise KeyError(name)
+
+
+def test_tool_services_follow_control_plane_driver() -> None:
+    """Search must see a driver swap; indexing already reads services.config."""
+    manager = SimpleNamespace(
+        _config=OctopConfig(database=DatabaseConfig(driver="sqlite")),
+        _repos=SimpleNamespace(
+            knowledge_repo=object(),
+            settings_repo=object(),
+            provider_repo=object(),
+        ),
+    )
+    services = KnowledgeToolServices(manager)
+    assert postgres_database(services) is None
+
+    manager._config = OctopConfig(
+        database=DatabaseConfig(
+            driver="postgresql",
+            host="db.example",
+            database="octop",
+            user="octop",
+        )
+    )
+    assert postgres_database(services) is manager._config.database
 
 
 def test_search_knowledge_default_description_is_empty_catalog_fallback() -> None:

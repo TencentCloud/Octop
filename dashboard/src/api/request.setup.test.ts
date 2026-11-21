@@ -23,6 +23,7 @@ describe("setup lockdown handling", () => {
   beforeEach(async () => {
     vi.resetModules();
     localStorage.clear();
+    sessionStorage.clear();
     replace.mockClear();
     Object.defineProperty(window, "location", {
       configurable: true,

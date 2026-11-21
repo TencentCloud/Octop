@@ -114,7 +114,7 @@ async def live_agent_manager(
     )
     # Real HarnessAgentManager starts memory GC on a daemon thread. Live
     # tests create/delete many agents quickly; closing SQLite while GC is
-    # in ``list_candidates`` segfaults (see AgentManager._quiesce_harness_memory).
+    # in ``list_candidates`` segfaults (see AgentManager._quiesce_octop_memory).
     # These tests do not exercise memory — keep it off.
     _create = manager.create
 

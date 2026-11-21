@@ -41,7 +41,7 @@ async def test_create_user_writes_db(manager: UserManager):
         username="alice", password="TestPass12", role=Role.ADMIN, display_name="Alice"
     )
     assert user.username == "alice"
-    assert user.role is Role.ADMIN
+    assert user.role == Role.ADMIN
     assert manager.get("alice") is not None
 
 
@@ -57,6 +57,22 @@ async def test_authenticate_success(manager: UserManager):
     user = await manager.authenticate("a", "TestPass12")
     assert user is not None
     assert user.username == "a"
+
+
+async def test_authenticate_records_last_login(manager: UserManager):
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
+    before = manager._services.user_repo.get_by_username("a")
+    assert before is not None
+    assert before.last_login_at is None
+    assert await manager.authenticate("a", "wrong-password") is None
+    untouched = manager._services.user_repo.get_by_username("a")
+    assert untouched is not None
+    assert untouched.last_login_at is None
+    assert await manager.authenticate("a", "TestPass12") is not None
+    after = manager._services.user_repo.get_by_username("a")
+    assert after is not None
+    assert after.last_login_at is not None
+    assert after.last_login_at > 0
 
 
 async def test_authenticate_by_email(manager: UserManager):
@@ -123,10 +139,12 @@ async def test_authenticate_rejects_null_password_hash(manager: UserManager):
 
 
 async def test_change_password_rejects_null_password_hash(manager: UserManager):
+    """Directory/SSO-provisioned accounts have no local password to change."""
     manager._services.user_repo.create(username="sso_user", password_hash=None, role="user")
     with pytest.raises(OctopError) as ei:
         await manager.change_password("sso_user", "any", "NewPass12")
-    assert ei.value.code is ErrorCode.AUTH_FAILED
+    assert ei.value.code is ErrorCode.PASSWORD_NOT_SET
+    assert ei.value.status == 400
 
 
 async def test_sso_create_then_updates_same_subject(manager: UserManager):
@@ -137,8 +155,12 @@ async def test_sso_create_then_updates_same_subject(manager: UserManager):
         claims={"preferred_username": "alice", "email": "Alice@Example.com", "name": "Alice"},
     )
 
-    assert user.role is Role.USER
+    assert user.role == Role.USER
+    assert "channels" in user.permissions
     row = manager.get_row(user.id)
+    assert row is not None
+    assert row.role_name == "用户"
+    assert row.role == "user"
     assert row.password_hash is None
     assert row.email == "alice@example.com"
     assert row.display_name == "Alice"
@@ -403,7 +425,7 @@ async def test_create_rejects_weak_password(manager: UserManager):
 async def test_set_role(manager: UserManager):
     await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.set_role("a", Role.ADMIN)
-    assert manager.get("a").role is Role.ADMIN
+    assert manager.get("a").role == Role.ADMIN
 
 
 async def test_disable_removes_from_memory(manager: UserManager):

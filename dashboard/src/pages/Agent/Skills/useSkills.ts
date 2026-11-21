@@ -2,9 +2,10 @@ import { useCallback, useState } from "react";
 import { App } from "antd";
 
 import { useTranslation } from "react-i18next";
-import { request } from "../../../api/request";
+import { request, requestBlob } from "../../../api/request";
 import { useAsyncResource } from "../../../hooks/useAsyncResource";
 import { parseApiError } from "../../../utils/apiError";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import { showApiError } from "../../../utils/showApiToast";
 
 /**
@@ -119,9 +120,12 @@ export function useSkills(
   } = useAsyncResource<SkillSpec[]>(
     [],
     async () => {
-      const rows = await request<ServerSummary[]>(`/agents/${agentId}/skills`, {
-        cache: "no-store",
-      });
+      const rows = await request<ServerSummary[]>(
+        `/agents/${encodeURIComponent(agentId!)}/skills`,
+        {
+          cache: "no-store",
+        },
+      );
       const list = rows || [];
       const corrupt = list.filter((row) => row.corrupt);
       if (corrupt.length > 0) {
@@ -147,7 +151,9 @@ export function useSkills(
       if (!agentId) return null;
       try {
         const row = await request<ServerDetail>(
-          `/agents/${agentId}/skills/${slug}`,
+          `/agents/${encodeURIComponent(agentId)}/skills/${encodeURIComponent(
+            slug,
+          )}`,
           { cache: "no-store" },
         );
         return toDetail(row);
@@ -261,6 +267,32 @@ export function useSkills(
     [agentId, fetchSkills, t],
   );
 
+  const exportSkills = useCallback(
+    async (slugs: string[]): Promise<boolean> => {
+      if (!agentId || slugs.length === 0) return false;
+      try {
+        const blob = await requestBlob(
+          `/agents/${encodeURIComponent(agentId)}/skills/export`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slugs }),
+          },
+        );
+        await saveBlobAsFile(
+          blob,
+          slugs.length === 1 ? `${slugs[0]}.zip` : "skills.zip",
+        );
+        return true;
+      } catch (error) {
+        console.error("Failed to export skills", error);
+        showApiError(error, t("skills.exportSkillFailed"), t);
+        return false;
+      }
+    },
+    [agentId, t],
+  );
+
   const [importing, setImporting] = useState(false);
 
   const importFromUrl = useCallback(
@@ -354,6 +386,7 @@ export function useSkills(
     updateSkill,
     importFromUrl,
     importFromZip,
+    exportSkills,
     importing,
     toggleEnabled,
     deleteSkill,

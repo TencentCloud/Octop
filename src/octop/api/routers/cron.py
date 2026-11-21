@@ -10,11 +10,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import assert_agent_access, require_agent_row, user_owns_agent
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.catalog import resolve_agent_display_task_examples
-from octop.infra.cron.task_type import (
-    normalize_cron_task_type,
-    require_cron_name,
-    require_cron_prompt,
-)
+from octop.infra.cron.task_type import normalize_cron_task, require_cron_name
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_cron_id
@@ -24,7 +20,9 @@ router = APIRouter()
 
 class CronCreateBody(BaseModel):
     name: str | None = None
-    trigger: str
+    trigger: str = Field(
+        description="Examples: cron:0 9 * * *, interval:3600, date:2030-01-01T08:00:00, or agently:INSTANCE_ID for new mail events."
+    )
     prompt: str
     session_key: str | None = None
     fresh_thread: bool = False
@@ -32,11 +30,18 @@ class CronCreateBody(BaseModel):
     model: str | None = None
     task_type: str = "text"
     mcp_servers: list[str] = Field(default_factory=list)
+    allow_all: bool = False
+    script_lang: str | None = None
+    script_source: str | None = None
+    script_path: str | None = None
 
 
 class CronPatchBody(BaseModel):
     name: str | None = None
-    trigger: str | None = None
+    trigger: str | None = Field(
+        default=None,
+        description="Time schedule or agently:INSTANCE_ID for new mail events.",
+    )
     prompt: str | None = None
     session_key: str | None = None
     fresh_thread: bool | None = None
@@ -44,6 +49,10 @@ class CronPatchBody(BaseModel):
     model: str | None = None
     task_type: str | None = None
     mcp_servers: list[str] | None = None
+    allow_all: bool | None = None
+    script_lang: str | None = None
+    script_source: str | None = None
+    script_path: str | None = None
 
 
 class CronExamplesResponse(BaseModel):
@@ -124,13 +133,20 @@ async def create_cron(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Schedule a recurring prompt. `trigger` uses cron syntax or natural `@every` aliases."""
+    """Schedule a prompt on a timer or on new mail from a visible Agent Mail instance."""
     from octop.api.common.validators import validate_chat_mcp_servers  # noqa: PLC0415
     from octop.infra.cron.manager import CronCreateSpec  # noqa: PLC0415
 
     agent_row = require_agent_row(agent_id, user=user, as_user=None, server=server)
     _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user)
-    prompt = require_cron_prompt(body.prompt)
+    task = normalize_cron_task(
+        task_type=body.task_type,
+        prompt=body.prompt,
+        allow_all=body.allow_all,
+        script_lang=body.script_lang,
+        script_source=body.script_source,
+        script_path=body.script_path,
+    )
     cron_id = new_cron_id()
     mcp_servers = (
         await validate_chat_mcp_servers(server, user_id=user.id, names=body.mcp_servers) or []
@@ -139,15 +155,19 @@ async def create_cron(
         cron_id=cron_id,
         agent_id=agent_id,
         user_id=user.id,
-        name=require_cron_name(body.name, prompt=prompt, cron_id=cron_id),
+        name=require_cron_name(body.name, prompt=task.prompt, cron_id=cron_id),
         trigger=body.trigger,
-        prompt=prompt,
+        prompt=task.prompt,
         session_key=body.session_key,
         fresh_thread=body.fresh_thread,
         enabled=body.enabled,
         model=(body.model or "").strip() or None,
-        task_type=normalize_cron_task_type(body.task_type),
+        task_type=task.task_type,
         mcp_servers=mcp_servers,
+        allow_all=task.allow_all,
+        script_lang=task.script_lang,
+        script_source=task.script_source,
+        script_path=task.script_path,
         username=user.username,
     )
     row = await _get_cron_manager(server).create(spec)
@@ -191,7 +211,38 @@ async def patch_cron(
     if body.trigger is not None:
         build_trigger(body.trigger)
     patch_fields = body.model_dump(exclude_unset=True)
-    prompt = require_cron_prompt(body.prompt) if body.prompt is not None else None
+    task_keys = {
+        "task_type",
+        "prompt",
+        "allow_all",
+        "script_lang",
+        "script_source",
+        "script_path",
+    }
+    task_kwargs: dict[str, Any] = {}
+    prompt_for_name = existing.prompt
+    if task_keys & patch_fields.keys():
+        task = normalize_cron_task(
+            task_type=body.task_type or existing.task_type,
+            prompt=body.prompt if isinstance(body.prompt, str) else existing.prompt,
+            allow_all=(
+                body.allow_all if isinstance(body.allow_all, bool) else bool(existing.allow_all)
+            ),
+            script_lang=body.script_lang if "script_lang" in patch_fields else existing.script_lang,
+            script_source=(
+                body.script_source if "script_source" in patch_fields else existing.script_source
+            ),
+            script_path=body.script_path if "script_path" in patch_fields else existing.script_path,
+        )
+        prompt_for_name = task.prompt
+        task_kwargs = {
+            "prompt": task.prompt,
+            "task_type": task.task_type,
+            "allow_all": task.allow_all,
+            "script_lang": task.script_lang,
+            "script_source": task.script_source,
+            "script_path": task.script_path,
+        }
     mcp_arg: object = UNSET
     if "mcp_servers" in patch_fields:
         mcp_arg = await validate_chat_mcp_servers(
@@ -201,15 +252,14 @@ async def patch_cron(
         cron_id,
         trigger=body.trigger,
         name=(
-            require_cron_name(body.name, prompt=prompt or existing.prompt, cron_id=cron_id)
+            require_cron_name(body.name, prompt=prompt_for_name, cron_id=cron_id)
             if "name" in patch_fields
             else None
         ),
-        prompt=prompt,
         session_key=body.session_key,
         fresh_thread=body.fresh_thread,
         enabled=int(body.enabled) if body.enabled is not None else None,
-        task_type=normalize_cron_task_type(body.task_type) if body.task_type is not None else None,
+        **task_kwargs,
         **({"model": (body.model or "").strip() or None} if "model" in patch_fields else {}),
         mcp_servers=mcp_arg,
     )

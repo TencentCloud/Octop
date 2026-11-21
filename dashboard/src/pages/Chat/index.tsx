@@ -11,14 +11,17 @@ import {
   Terminal,
   FolderOpen,
   Activity,
+  Link2,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
+import cx from "classnames";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
 import { useIsMobile } from "../../hooks/useIsMobile";
+import { useHitlEnabled } from "../../hooks/useHitlEnabled";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { userCan } from "../../utils/permissions";
+import { navAllowed, userCan } from "../../utils/permissions";
 import { useChat } from "./hooks/useChat";
 import { useSessions, fetchAndSyncSessionArtifacts } from "./hooks/useSessions";
 import * as chatStore from "./hooks/chatStore";
@@ -36,7 +39,16 @@ import { useChatNavigation } from "./hooks/useChatNavigation";
 import { useChatSessionActions } from "./hooks/useChatSessionActions";
 
 import { useChatComposerResources } from "./hooks/useChatComposerResources";
+import type { HitlSessionPolicy } from "./utils/hitlSessionPolicy";
+import {
+  mergeAllowTools,
+  parseHitlSessionPolicy,
+} from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
+import {
+  disableProviderStreamUsage,
+  providerIdForTurn,
+} from "../../utils/disableProviderStreamUsage";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { listDockFilePathsForTree } from "./utils/dockFilePath";
@@ -52,7 +64,9 @@ import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
+import LocalExecutionBar from "./components/LocalExecutionBar";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
+import ModelConfigEmpty from "./components/ModelConfigEmpty";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
 import TrajectoryDrawer from "./components/TrajectoryDrawer";
 import { useExpertChatWelcome } from "./hooks/useExpertQuickCards";
@@ -67,11 +81,13 @@ import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import {
+  canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
-import { isTeamAgent } from "../../utils/teamAgent";
+import { isTeamAgent, teamMemberChatOption } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
+import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
 import { ChatAgentProfileProvider } from "./ChatAgentProfileContext";
 import {
@@ -79,11 +95,20 @@ import {
   dockTabIdForToolCall,
 } from "./ChatToolDockContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
-import ChatTitleBar from "./components/ChatTitleBar";
+import ChatTitleBar, { ChatSidePanelToggle } from "./components/ChatTitleBar";
+import ShareConversationDialog from "./components/ShareConversationDialog";
+import { saveSessionShared } from "./utils/shareSession";
+import { publicShareAvailable } from "./utils/publicShareHost";
+import SessionShareMark from "./components/SessionShareMark";
 import TeamChatBadge from "./components/TeamChatBadge";
+import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
-import { findPendingAsk, hasPendingHitl } from "./utils/pendingHitl";
+import {
+  findAutoResumableApproval,
+  findPendingAsk,
+  hasPendingHitl,
+} from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
 import MemoryMaintenanceBanner from "./components/MemoryMaintenanceBanner";
@@ -121,7 +146,17 @@ function ChatPageInner() {
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
   const canTerminal = userCan(user, "terminal");
+  const canConfigureModels = navAllowed(user, "models");
   const chatHistoryRail = useChatHistoryRail();
+  const [shareTarget, setShareTarget] = useState<{
+    agentId: string;
+    threadId: string;
+  } | null>(null);
+  const shareLinks = publicShareAvailable();
+  const openShare = useCallback((threadId: string, agentId?: string | null) => {
+    if (!publicShareAvailable() || !agentId || !threadId) return;
+    setShareTarget({ agentId, threadId });
+  }, []);
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
     null,
@@ -185,15 +220,17 @@ function ChatPageInner() {
     loading: agentsLoading,
   } = useAgent();
   const resolvedAgentId = routeAgentId || activeAgentId;
+  const hitlEnabled = useHitlEnabled(resolvedAgentId);
   const activeAgent = useMemo(
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
   );
-  const agentChatReady = isAgentChatReady(activeAgent?.state);
+  const agentChatReady = isAgentChatReady(activeAgent?.state, activeAgent);
   const trajectoryEnabled =
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
-  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
+  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {}, user);
   const isTeamChat = isTeamAgent(activeAgent);
+  const isManagedChat = activeAgent?.kind === "managed";
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [profileAgentId, setProfileAgentId] = useState<string | null>(null);
   const profileAgent = useMemo(() => {
@@ -228,12 +265,24 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
 
+  /**
+   * Experts the user owns that are not chat-ready. The history rail only lists
+   * agents that can chat, so it needs this to tell "you have no experts" apart
+   * from "none of yours are running" before offering the create-expert nudge.
+   */
+  const unreadyExperts = Math.max(0, agents.length - sidebarAgents.length);
+
   const {
     status: memoryMaint,
     visible: memoryMaintVisible,
     blocking: memoryMaintBlocking,
     connectionLost: memoryMaintConnectionLost,
-  } = useMemoryMaintenance(resolvedAgentId, agentChatReady && !noAgents);
+  } = useMemoryMaintenance(
+    resolvedAgentId,
+    agentChatReady &&
+      !noAgents &&
+      canReadAgentRuntimeStatus(activeAgent ?? {}, user),
+  );
   const historyMigration = useHistoryMigration(
     resolvedAgentId,
     agentChatReady && !noAgents && !sharedExpertViewer,
@@ -336,8 +385,11 @@ function ChatPageInner() {
     historyLoadingMore,
     historyRefreshing,
     historyHydrated,
+    runUsage,
     contextUsage,
     pendingPlanPath,
+    liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -354,6 +406,7 @@ function ChatPageInner() {
     [messages],
   );
   const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
+  const autoResumedApprovalRef = useRef<string | null>(null);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
 
@@ -369,7 +422,11 @@ function ChatPageInner() {
     controlOwner: browserControlOwner,
     environment: browserEnvironment,
     refresh: refreshBrowserSession,
-  } = useBrowserSessionState(threadId, hasBrowserTool);
+  } = useBrowserSessionState(
+    threadId,
+    hasBrowserTool,
+    activeAgent?.bridge ? activeAgent.bridge_connection_id : null,
+  );
 
   refreshBrowserRef.current = refreshBrowserSession;
 
@@ -386,9 +443,12 @@ function ChatPageInner() {
     openFileList,
     openFileAt,
     openKnowledgeCitation,
+    openWorkspaceTab,
     openBrowserTab,
+    openTerminalTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
+    toggleSidePanel,
     toggleTerminalPanel,
     openToolUiTab,
     focusToolUiTab,
@@ -397,38 +457,96 @@ function ChatPageInner() {
   } = useChatDockPanel(isMobile, resolvedAgentId);
 
   const chromeCheckInFlightRef = useRef(false);
-  const handleToggleBrowserPanel = useCallback(async () => {
-    // A live session means Chrome is already running — skip the probe.
-    if (browserSessionId) {
-      toggleBrowserPanel();
-      return;
-    }
-    if (chromeCheckInFlightRef.current) return;
-    chromeCheckInFlightRef.current = true;
-    try {
-      const env = await browserApi.checkEnvStatus();
-      if (shouldJumpToChromeInstall(env)) {
-        showConfirmModal(
-          {
-            title: t("browserWorkspace.chromeMissingTitle"),
-            content: t("browserWorkspace.chromeMissingJumpToInstall"),
-            okText: t("common.confirm"),
-            cancelText: t("common.cancel"),
-            onOk: () => {
-              navigate(WORKBENCH_BROWSER_PATH);
-            },
-          },
-          { isMobile },
-        );
-        return;
+  const bridgeConnectionId =
+    activeAgent?.bridge && activeAgent.bridge_connection_id
+      ? activeAgent.bridge_connection_id
+      : null;
+  const ensureChromeThen = useCallback(
+    async (then: () => void) => {
+      // A live session means Chrome is already running — skip the probe.
+      if (!browserSessionId) {
+        if (chromeCheckInFlightRef.current) return;
+        chromeCheckInFlightRef.current = true;
+        try {
+          const env = await browserApi.checkEnvStatus(resolvedAgentId);
+          if (shouldJumpToChromeInstall(env)) {
+            // Peer Chromium install is not tunneled — only nudge local install UX.
+            if (bridgeConnectionId) {
+              showConfirmModal(
+                {
+                  title: t("browserWorkspace.chromeMissingTitle"),
+                  content: t("chat.remoteExpert.manageToast"),
+                  okText: t("common.confirm"),
+                  cancelText: t("common.cancel"),
+                },
+                { isMobile },
+              );
+              return;
+            }
+            showConfirmModal(
+              {
+                title: t("browserWorkspace.chromeMissingTitle"),
+                content: t("browserWorkspace.chromeMissingJumpToInstall"),
+                okText: t("common.confirm"),
+                cancelText: t("common.cancel"),
+                onOk: () => {
+                  navigate(WORKBENCH_BROWSER_PATH);
+                },
+              },
+              { isMobile },
+            );
+            return;
+          }
+        } catch {
+          // Probe failed — keep the existing open-panel behavior.
+        } finally {
+          chromeCheckInFlightRef.current = false;
+        }
       }
-    } catch {
-      // Probe failed — keep the existing open-panel behavior.
-    } finally {
-      chromeCheckInFlightRef.current = false;
+      then();
+    },
+    [
+      browserSessionId,
+      bridgeConnectionId,
+      isMobile,
+      navigate,
+      resolvedAgentId,
+      t,
+    ],
+  );
+
+  const handleToggleBrowserPanel = useCallback(() => {
+    void ensureChromeThen(toggleBrowserPanel);
+  }, [ensureChromeThen, toggleBrowserPanel]);
+
+  const handleOpenBrowserTab = useCallback(() => {
+    void ensureChromeThen(openBrowserTab);
+  }, [ensureChromeThen, openBrowserTab]);
+
+  const dockAddTab = useMemo((): ChatDockAddTabHandlers => {
+    const handlers: ChatDockAddTabHandlers = {
+      onOpenBrowser: handleOpenBrowserTab,
+    };
+    if (!sharedExpertViewer) {
+      handlers.onOpenWorkspace = openWorkspaceTab;
+      handlers.workspaceDisabled = !agentChatReady;
+      handlers.workspaceDisabledHint = t("workspace.requiresRunning");
+      handlers.onOpenFiles = openFileList;
     }
-    toggleBrowserPanel();
-  }, [browserSessionId, isMobile, navigate, t, toggleBrowserPanel]);
+    if (canTerminal) {
+      handlers.onOpenTerminal = openTerminalTab;
+    }
+    return handlers;
+  }, [
+    agentChatReady,
+    canTerminal,
+    handleOpenBrowserTab,
+    openFileList,
+    openTerminalTab,
+    openWorkspaceTab,
+    sharedExpertViewer,
+    t,
+  ]);
 
   const closeToolUiPanel = useCallback(
     (callId: string) => {
@@ -453,13 +571,27 @@ function ChatPageInner() {
   const panelFilePaths = useMemo(() => {
     const fromTabs = openTabs
       .filter((tab) => tab.kind === "file")
-      .map((tab) => tab.path);
-    const fromThread = composerSession?.artifacts ?? [];
+      .map((tab) => ({
+        path: tab.path,
+        ...(tab.agentId ? { agentId: tab.agentId } : {}),
+      }));
+    const fromThread = (composerSession?.artifacts ?? []).map((item) => ({
+      path: item.path,
+      ...(item.agent_id ? { agentId: item.agent_id } : {}),
+    }));
     return listDockFilePathsForTree(
       [...fromThread, ...fromTabs],
       resolvedAgentId,
     );
   }, [openTabs, resolvedAgentId, composerSession?.artifacts]);
+
+  const dockAgentNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of agents) {
+      if (a.agent_id) map[a.agent_id] = a.name || a.agent_id;
+    }
+    return map;
+  }, [agents]);
 
   const {
     selectedModel,
@@ -469,12 +601,19 @@ function ChatPageInner() {
     chatConnectors,
     chatKnowledgeBases,
     availableModels,
+    modelsReady,
     activeModelRef,
+    preferredModel,
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
     conversationMode,
     handleConversationModeChange,
+    hitlPolicy,
+    handleHitlPolicyChange,
+    sessionModes,
+    sessionMode,
+    handleSessionModeChange,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
@@ -484,6 +623,9 @@ function ChatPageInner() {
     composerSession?.reasoningMode,
     composerSession?.reasoningEffort,
     composerSession?.conversationMode,
+    composerSession?.hitlPolicy,
+    composerSession?.sessionMode,
+    composerSession?.owned !== false,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -492,7 +634,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
-    activeModelRef,
+    preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -514,17 +656,29 @@ function ChatPageInner() {
       if (typeof u.total_tokens === "number") {
         acc.total_tokens = (acc.total_tokens || 0) + u.total_tokens;
       }
+      if (typeof u.decision_saved === "number") {
+        acc.decision_saved = (acc.decision_saved || 0) + u.decision_saved;
+      }
     }
-    if (!acc.input_tokens && !acc.output_tokens && !acc.total_tokens) {
+    if (
+      !acc.input_tokens &&
+      !acc.output_tokens &&
+      !acc.total_tokens &&
+      !acc.decision_saved
+    ) {
       return null;
     }
     return acc;
   }, [messages]);
+  const decisionSaved =
+    (sessionUsage?.decision_saved ?? 0) +
+    (isStreaming ? runUsage?.decision_saved ?? 0 : 0);
   const sessionUsageLabel = formatRunUsage(sessionUsage, {
     input: t("chatUsage.input"),
     output: t("chatUsage.output"),
     total: t("chatUsage.total"),
     cacheHit: t("chatUsage.cacheHit"),
+    decisionSaved: t("chatUsage.decisionSaved"),
   });
 
   const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({
@@ -553,20 +707,37 @@ function ChatPageInner() {
   // Subset for the chat-side *pickers* (`@` button popover, `@` mention menu).
   // Only running experts — picking a stopped one would dispatch into an
   // unloaded harness and silently fail.
-  const chatAgentOptionsPickable = useMemo(
-    () =>
-      selectEnabledExperts(agents, null, { pinActive: false })
-        .filter((item) => !isTeamAgent(item))
-        .map(projectChatAgentOption),
-    [agents],
-  );
+  // Bridge sessions: only peers on the same connection (local ask_agent
+  // cannot reach them; peer ask_agent cannot reach local experts).
+  const chatAgentOptionsPickable = useMemo(() => {
+    let list = selectEnabledExperts(agents, null, { pinActive: false }).filter(
+      (item) => !isTeamAgent(item),
+    );
+    if (activeAgent?.bridge && activeAgent.bridge_connection_id) {
+      const cid = activeAgent.bridge_connection_id;
+      list = list.filter(
+        (item) => item.bridge && item.bridge_connection_id === cid,
+      );
+    } else {
+      list = list.filter((item) => !item.bridge);
+    }
+    return list.map(projectChatAgentOption);
+  }, [agents, activeAgent?.bridge, activeAgent?.bridge_connection_id]);
   const teamExpertOptions = useMemo(() => {
     if (!isTeamChat) return chatAgentOptionsPickable;
     const ids = new Set(activeAgent?.member_ids ?? []);
-    return chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const listed = chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const seen = new Set(listed.map((item) => item.agent_id));
+    const extras = (activeAgent?.members ?? [])
+      .filter(
+        (member) => ids.has(member.agent_id) && !seen.has(member.agent_id),
+      )
+      .map(teamMemberChatOption);
+    return [...listed, ...extras];
   }, [
     isTeamChat,
     activeAgent?.member_ids,
+    activeAgent?.members,
     chatAgentOptions,
     chatAgentOptionsPickable,
   ]);
@@ -577,25 +748,31 @@ function ChatPageInner() {
       connectors: chatConnectors,
       knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
+      models: availableModels,
     }),
-    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
+    [
+      chatSkills,
+      chatConnectors,
+      chatKnowledgeBases,
+      chatAgentOptions,
+      availableModels,
+    ],
   );
 
   const { handleSend } = useChatSend({
     resolvedAgentId,
     activeThreadId,
-    sessions,
-    messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     reasoningMode,
     reasoningEffort,
     conversationMode,
+    sessionMode,
+    hitlPolicy,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
-    renameSession,
     onAutoRecordingStarted: useCallback((recordingId: string) => {
       setBrowserRecording(true);
       setBrowserRecordingId(recordingId);
@@ -615,6 +792,33 @@ function ChatPageInner() {
     setBrowserLastRecordingId,
   });
 
+  const sharedTurnBusy = useCallback(
+    (threadId?: string | null) => {
+      const id = threadId || activeThreadId || "";
+      if (!id) return false;
+      const session =
+        id === activeThreadId
+          ? composerSession
+          : sessions.find((item) => item.id === id);
+      if (!session?.contributed) return false;
+      return chatStore.sharedTurnBlocksSender(id, user?.id, true);
+    },
+    [activeThreadId, composerSession, sessions, user?.id],
+  );
+
+  useEffect(() => {
+    return chatStore.onSharedTurnBusy((event) => {
+      if (
+        event.sessionId &&
+        activeThreadId &&
+        event.sessionId !== activeThreadId
+      ) {
+        return;
+      }
+      antMessage.warning(t("chat.sharedTurnBusy"));
+    });
+  }, [activeThreadId, t]);
+
   // Wrap handleSend: skill-recording keywords, then pending HITL routing.
   // An open ask pause must become respond-resume (not a new turn); any other
   // pending HITL must not start a turn that would cancel the interrupt.
@@ -624,11 +828,15 @@ function ChatPageInner() {
       attachments?: ChatAttachment[],
       overrides?: ChatSendOverrides,
     ) => {
+      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
+      if (sharedTurnBusy(targetThreadId)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return;
+      }
       if (interceptUserMessage(text)) {
         // The workflow intercepted the message — don't send it to the agent
         return;
       }
-      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
       const ask =
         targetThreadId && targetThreadId === activeThreadId
           ? pendingAsk
@@ -667,6 +875,7 @@ function ChatPageInner() {
       hasPendingHitlPause,
       activeThreadId,
       resumeHitl,
+      sharedTurnBusy,
       t,
     ],
   );
@@ -698,9 +907,22 @@ function ChatPageInner() {
     [handleSend, t],
   );
 
-  const shouldDeferQueueFlush = useCallback((threadId: string) => {
-    return hasPendingHitl(chatStore.getSnapshot(threadId).messages);
-  }, []);
+  const membersStillTalking =
+    isTeamChat &&
+    liveSpeakers.some(
+      (id) => id.trim() && id !== (activeAgent?.agent_id ?? ""),
+    );
+
+  const shouldDeferQueueFlush = useCallback(
+    (threadId: string) => {
+      const snap = chatStore.getSnapshot(threadId);
+      if (hasPendingHitl(snap.messages)) return true;
+      if (!isTeamChat) return false;
+      const hostId = activeAgent?.agent_id ?? "";
+      return snap.liveSpeakers.some((id) => id.trim() && id !== hostId);
+    },
+    [activeAgent?.agent_id, isTeamChat],
+  );
 
   const {
     items: queuedItems,
@@ -711,10 +933,73 @@ function ChatPageInner() {
   } = useChatMessageQueue({
     agentId: resolvedAgentId,
     threadId: activeThreadId,
-    isStreaming,
+    isStreaming: isStreaming || membersStillTalking,
     onFlush: flushQueuedItem,
     shouldDeferFlush: shouldDeferQueueFlush,
   });
+
+  // While streaming, Enter/Send parks a local chip; ↑ Steer on the chip row
+  // commits sendSteerWhileBusy. The click always acts: the
+  // server routes delivery=auto (busy → steer queue, idle → new turn); a
+  // dead socket degrades to the normal send path — never a silent no-op.
+  const enqueueUnlessSharedBusy = useCallback<typeof enqueueQueued>(
+    (input) => {
+      if (sharedTurnBusy(activeThreadId)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return "empty";
+      }
+      return enqueueQueued(input);
+    },
+    [activeThreadId, enqueueQueued, sharedTurnBusy, t],
+  );
+
+  const handleSteerQueued = useCallback(
+    (id: string) => {
+      const key = activeThreadId || "";
+      const item = queuedItems.find((q) => q.id === id);
+      if (!item || !key) return;
+      if (sharedTurnBusy(key)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return;
+      }
+      const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
+      const result = chatStore.sendSteerWhileBusy(key, item.text, {
+        expectedTurnId: turnId || undefined,
+        attachments: item.attachments,
+      });
+      if (result === "empty") return;
+      removeQueued(id);
+      if (result === "no_socket") {
+        wrappedHandleSend(item.text, item.attachments);
+      }
+    },
+    [
+      activeThreadId,
+      activeTurnId,
+      queuedItems,
+      removeQueued,
+      sharedTurnBusy,
+      t,
+      wrappedHandleSend,
+    ],
+  );
+
+  const handleWithdrawSteer = useCallback(
+    (messageId: string) => {
+      const key = activeThreadId || "";
+      if (!key) return;
+      const result = chatStore.withdrawCommittedSteer(key, messageId);
+      if (result === "pending_ack") {
+        antMessage.info(t("chat.steer.withdrawPending"));
+      }
+    },
+    [activeThreadId, t],
+  );
+
+  // Committed steers live in the transcript (optimistic row settled by
+  // server frames) — the chip panel holds only uncommitted local drafts
+  // (the queue row settles on commit).
+  const displayQueuedItems = queuedItems;
 
   const {
     handleNewChat: startNewChat,
@@ -778,11 +1063,94 @@ function ChatPageInner() {
   );
 
   const handleHitlDecision = useCallback(
-    (decisions: Array<{ type: string; message?: string }>) => {
-      resumeHitl(decisions, activeThreadId ?? undefined);
+    (
+      decisions: Array<{ type: string; message?: string }>,
+      policy?: HitlSessionPolicy,
+      pendingId?: string,
+    ) => {
+      if (policy) {
+        const next =
+          policy.mode === "allow_tools"
+            ? mergeAllowTools(hitlPolicy, policy.tools ?? [])
+            : policy;
+        const pending = findAutoResumableApproval(next, messages);
+        if (pending && activeThreadId) {
+          autoResumedApprovalRef.current = `${activeThreadId}:${pending.messageId}`;
+        }
+        handleHitlPolicyChange(next, { persist: false });
+        resumeHitl(
+          decisions,
+          activeThreadId ?? undefined,
+          undefined,
+          next,
+          pendingId ?? pending?.pendingId,
+        );
+        return;
+      }
+      resumeHitl(
+        decisions,
+        activeThreadId ?? undefined,
+        undefined,
+        undefined,
+        pendingId,
+      );
     },
-    [resumeHitl, activeThreadId],
+    [resumeHitl, activeThreadId, handleHitlPolicyChange, hitlPolicy, messages],
   );
+
+  const handleComposerHitlPolicyChange = useCallback(
+    (policy: HitlSessionPolicy) => {
+      const pending = findAutoResumableApproval(policy, messages);
+      handleHitlPolicyChange(policy, { persist: !pending });
+      if (!pending) return;
+      if (activeThreadId) {
+        autoResumedApprovalRef.current = `${activeThreadId}:${pending.messageId}`;
+      }
+      resumeHitl(
+        pending.actions.map(() => ({ type: "approve" })),
+        activeThreadId ?? undefined,
+        undefined,
+        policy,
+        pending.pendingId,
+      );
+    },
+    [handleHitlPolicyChange, messages, resumeHitl, activeThreadId],
+  );
+
+  useEffect(() => {
+    if (isStreaming || !activeThreadId) return;
+    const sessionPolicy = parseHitlSessionPolicy(composerSession?.hitlPolicy);
+    const threadId = activeThreadId;
+    // A pause can be projected twice. Wait until the latest card is the one
+    // we resume, instead of approving an id the next frame already expired.
+    const timer = window.setTimeout(() => {
+      const pending = findAutoResumableApproval(
+        sessionPolicy,
+        chatStore.getSnapshot(threadId).messages,
+      );
+      if (!pending?.pendingId) {
+        autoResumedApprovalRef.current = null;
+        return;
+      }
+      const resumeKey = `${threadId}:${pending.messageId}`;
+      if (autoResumedApprovalRef.current === resumeKey) return;
+      autoResumedApprovalRef.current = resumeKey;
+      resumeHitl(
+        pending.actions.map(() => ({ type: "approve" })),
+        threadId,
+        undefined,
+        sessionPolicy,
+        pending.pendingId,
+      );
+    }, 50);
+    return () => window.clearTimeout(timer);
+  }, [
+    composerSession?.hitlPolicy,
+    messages,
+    activeThreadId,
+    resumeHitl,
+    isStreaming,
+  ]);
 
   /** Close an ask pause without answering: ``respond`` is the only decision
    *  the agent allows for ``ask_user_question``, so tell it to wrap up. */
@@ -840,6 +1208,43 @@ function ChatPageInner() {
     },
     [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
+
+  const handleDisableStreamUsage = useCallback(async () => {
+    let lastUserModel: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") {
+        lastUserModel = messages[i].composerContext?.model ?? null;
+        break;
+      }
+    }
+    const providerId = providerIdForTurn(availableModels, [
+      lastUserModel,
+      selectedModel,
+      activeAgent?.default_model,
+      preferredModel,
+      activeModelRef,
+    ]);
+    if (providerId == null) {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+    try {
+      await disableProviderStreamUsage(providerId);
+      antMessage.success(t("chat.disableStreamUsageSuccess"));
+      return true;
+    } catch {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+  }, [
+    availableModels,
+    selectedModel,
+    activeAgent?.default_model,
+    preferredModel,
+    activeModelRef,
+    messages,
+    t,
+  ]);
 
   // Edit user message: truncate history from that message onwards, replace
   // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
@@ -1014,6 +1419,7 @@ function ChatPageInner() {
       isSidebarResizing={isSidebarResizing}
       sidebarElRef={sidebarElRef}
       agents={sidebarAgents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
@@ -1040,6 +1446,7 @@ function ChatPageInner() {
       onRenameSession={renameSession}
       onPinSession={pinSession}
       onForkSession={handleForkSession}
+      onShareSession={shareLinks ? openShare : undefined}
       forkDisabled={sessionForkDisabled}
       forkDisabledHint={sessionForkDisabledHint}
       onSidebarOpenChange={setSidebarOpen}
@@ -1048,6 +1455,15 @@ function ChatPageInner() {
       navEmbedded={isMinimalLayout}
     />
   );
+
+  const sidePanelToggle = !sharedExpertViewer ? (
+    <ChatSidePanelToggle
+      open={dockOpen}
+      disabled={!agentChatReady}
+      disabledHint={t("workspace.requiresRunning")}
+      onToggle={toggleSidePanel}
+    />
+  ) : null;
 
   return (
     <ChatFilePreviewProvider
@@ -1066,22 +1482,22 @@ function ChatPageInner() {
           ? createPortal(chatSidebarPanel, chatHistoryRail)
           : null}
         <div
-          className={`${styles.chatPage} ${
-            dockIsResizing ? styles.panelResizeActive : ""
-          } ${
-            dockOpen && dockMode === "bottom"
-              ? styles.chatPageWithBottomDock
-              : ""
-          }`}
+          className={cx(
+            styles.chatPage,
+            dockIsResizing && styles.panelResizeActive,
+            dockOpen && dockMode === "bottom" && styles.chatPageWithBottomDock,
+            dockOpen &&
+              dockMode === "right" &&
+              !isMobile &&
+              styles.chatPageWithRightDock,
+          )}
         >
           {/* Main chat area */}
           <div
-            className={[
+            className={cx(
               styles.chatMain,
-              turnRailVisible ? styles.chatMainWithTurnRail : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              turnRailVisible && styles.chatMainWithTurnRail,
+            )}
           >
             {/* Mobile toolbar — session list + optional title + agent profile */}
             {isMobile && (
@@ -1107,9 +1523,30 @@ function ChatPageInner() {
                     <span className={styles.mobileTitleText}>
                       {activeSessionTitle}
                     </span>
+                    <SessionShareMark
+                      contributed={activeSession?.contributed}
+                      owned={activeSession?.owned}
+                    />
                     <TeamChatBadge show={isTeamChat} />
+                    <RemoteExpertHint agent={activeAgent} />
                   </div>
                 )}
+                {shareLinks &&
+                activeSession &&
+                activeSession.owned !== false &&
+                resolvedAgentId ? (
+                  <button
+                    type="button"
+                    className={styles.menuBtn}
+                    onClick={() =>
+                      openShare(activeSession.threadId, resolvedAgentId)
+                    }
+                    title={t("chat.publicShare.action", "分享链接")}
+                    aria-label={t("chat.publicShare.action", "分享链接")}
+                  >
+                    <Link2 size={18} strokeWidth={1.8} />
+                  </button>
+                ) : null}
                 {resolvedAgentId && !sharedExpertViewer && (
                   <div className={styles.mobileToolbarRight}>
                     <button
@@ -1162,19 +1599,47 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile && activeSession && activeSessionTitle && (
-              <ChatTitleBar
-                session={activeSession}
-                title={activeSessionTitle}
-                onRename={renameSession}
-                onPin={pinSession}
-                onFork={handleForkSession}
-                onDelete={handleDeleteSession}
-                forkDisabled={sessionForkDisabled}
-                forkDisabledHint={sessionForkDisabledHint}
-                isTeam={isTeamChat}
-              />
-            )}
+            {!isMobile &&
+              (activeSession && activeSessionTitle ? (
+                <ChatTitleBar
+                  session={activeSession}
+                  title={activeSessionTitle}
+                  onRename={renameSession}
+                  onPin={pinSession}
+                  onFork={handleForkSession}
+                  onDelete={handleDeleteSession}
+                  onShare={
+                    !shareLinks || activeSession.owned === false
+                      ? undefined
+                      : () => openShare(activeSession.threadId, resolvedAgentId)
+                  }
+                  onContribute={
+                    activeAgent?.is_shared && activeSession.owned !== false
+                      ? (contributed) => {
+                          if (!resolvedAgentId) return;
+                          void saveSessionShared(
+                            resolvedAgentId,
+                            activeSession.id,
+                            contributed,
+                            () => undefined,
+                            t("chat.shareFailed"),
+                          );
+                        }
+                      : undefined
+                  }
+                  forkDisabled={sessionForkDisabled}
+                  forkDisabledHint={sessionForkDisabledHint}
+                  isTeam={isTeamChat}
+                  agent={activeAgent}
+                  sideSlot={sidePanelToggle}
+                />
+              ) : (
+                /* Empty chat: same row, same bounds — the composer must not
+                   jump up before the first message exists. */
+                <div className={styles.chatTitleBarEmpty}>
+                  {sidePanelToggle}
+                </div>
+              ))}
 
             {memoryMaintVisible && memoryMaint && (
               <MemoryMaintenanceBanner
@@ -1217,57 +1682,62 @@ function ChatPageInner() {
                   agent={activeAgent}
                   noAgents={noAgents}
                   loading={agentsLoading}
+                  canConfigureModels={canConfigureModels}
                 />
+              ) : showWelcome && modelsReady && availableModels.length === 0 ? (
+                <ModelConfigEmpty canConfigure={canConfigureModels} />
               ) : showWelcome ? (
                 <WelcomeScreen
                   agentName={activeAgent?.name ?? null}
                   welcomeSuffix={welcomeSuffix}
                   quickCards={expertQuickCards}
                   onPromptClick={handlePromptClick}
-                  hideMascot={isStreaming}
+                  hideMascot={isStreaming || liveSpeakers.length > 0}
                   isTeam={isTeamChat}
                 />
               ) : (
-                <ChatAgentProfileProvider
-                  canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
-                  onOpen={(agentId) => {
-                    setProfileAgentId(
-                      agentId && agentId !== resolvedAgentId ? agentId : null,
-                    );
-                    setAgentProfileOpen(true);
-                  }}
-                  isTeam={isTeamChat}
-                >
-                  <MessageList
-                    messages={messages}
-                    agentId={resolvedAgentId}
-                    composerLookups={composerLookups}
-                    loading={awaitingThreadHistory}
-                    historyHasMore={historyHasMore}
-                    historyLoadingMore={historyLoadingMore}
-                    historyRefreshing={historyRefreshing}
-                    onLoadMoreHistory={loadMoreHistory}
-                    onRefreshHistory={refreshHistory}
-                    isStreaming={isStreaming}
-                    thinkingStartedAt={thinkingStartedAt}
-                    sessionKey={activeThreadId ?? undefined}
-                    onCancel={cancelStream}
-                    onRegenerate={handleRegenerate}
-                    onEditUserMessage={handleEditUserMessage}
-                    onForkAssistantMessage={handleForkAssistantMessage}
-                    forkDisabled={forkDisabled}
-                    forkDisabledHint={forkDisabledHint}
-                    onAcpPermissionSelect={handleAcpPermissionSelect}
-                    onHitlDecision={handleHitlDecision}
-                    onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
-                    onEditFile={
-                      !sharedExpertViewer && panelFilePaths.length > 0
-                        ? openFileList
-                        : undefined
-                    }
-                  />
-                </ChatAgentProfileProvider>
+                <>
+                  <ChatAgentProfileProvider
+                    canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                    onOpen={(agentId) => {
+                      setProfileAgentId(
+                        agentId && agentId !== resolvedAgentId ? agentId : null,
+                      );
+                      setAgentProfileOpen(true);
+                    }}
+                    isTeam={isTeamChat}
+                  >
+                    <MessageList
+                      messages={messages}
+                      agentId={resolvedAgentId}
+                      composerLookups={composerLookups}
+                      loading={awaitingThreadHistory}
+                      historyHasMore={historyHasMore}
+                      historyLoadingMore={historyLoadingMore}
+                      historyRefreshing={historyRefreshing}
+                      onLoadMoreHistory={loadMoreHistory}
+                      onRefreshHistory={refreshHistory}
+                      isStreaming={isStreaming}
+                      liveSpeakers={liveSpeakers}
+                      thinkingStartedAt={thinkingStartedAt}
+                      sessionKey={activeThreadId ?? undefined}
+                      onRegenerate={handleRegenerate}
+                      onDisableStreamUsage={handleDisableStreamUsage}
+                      onEditUserMessage={handleEditUserMessage}
+                      onWithdrawSteer={handleWithdrawSteer}
+                      onForkAssistantMessage={handleForkAssistantMessage}
+                      forkDisabled={forkDisabled}
+                      forkDisabledHint={forkDisabledHint}
+                      onAcpPermissionSelect={handleAcpPermissionSelect}
+                      onHitlDecision={handleHitlDecision}
+                      onTurnRailVisibilityChange={setTurnRailVisible}
+                      onOpenBrowser={
+                        hasBrowserTool ? openBrowserTab : undefined
+                      }
+                      onEditFile={sharedExpertViewer ? undefined : openFileList}
+                    />
+                  </ChatAgentProfileProvider>
+                </>
               )}
             </div>
 
@@ -1305,7 +1775,12 @@ function ChatPageInner() {
                         mouseEnterDelay={0.35}
                         placement="left"
                       >
-                        <span className={styles.chatFloatBtnWrap}>
+                        <span
+                          className={cx(
+                            styles.chatFloatBtnWrap,
+                            styles.chatFloatHideNarrow,
+                          )}
+                        >
                           <button
                             type="button"
                             className={styles.chatFloatBtn}
@@ -1328,7 +1803,12 @@ function ChatPageInner() {
                       mouseEnterDelay={0.35}
                       placement="left"
                     >
-                      <span className={styles.chatFloatBtnWrap}>
+                      <span
+                        className={cx(
+                          styles.chatFloatBtnWrap,
+                          styles.chatFloatHideNarrow,
+                        )}
+                      >
                         <button
                           type="button"
                           className={styles.chatFloatBtn}
@@ -1356,7 +1836,12 @@ function ChatPageInner() {
                       mouseEnterDelay={0.35}
                       placement="left"
                     >
-                      <span className={styles.chatFloatBtnWrap}>
+                      <span
+                        className={cx(
+                          styles.chatFloatBtnWrap,
+                          styles.chatFloatHideNarrow,
+                        )}
+                      >
                         <button
                           type="button"
                           className={styles.terminalFloatBtn}
@@ -1413,29 +1898,27 @@ function ChatPageInner() {
                     <span className={styles.chatFloatBtnWrap}>
                       <button
                         type="button"
-                        className={[
+                        className={cx(
                           styles.browserStatusBtn,
-                          browserSessionId ? styles.browserStatusActive : "",
+                          browserSessionId && styles.browserStatusActive,
                           browserSessionId &&
-                          (browserSessionState === "awaiting_user_auth" ||
-                            browserSessionState === "authenticating")
-                            ? styles.browserStatusAuth
-                            : "",
-                          browserSessionId && browserControlOwner === "user"
-                            ? styles.browserStatusTakeover
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                            (browserSessionState === "awaiting_user_auth" ||
+                              browserSessionState === "authenticating") &&
+                            styles.browserStatusAuth,
+                          browserSessionId &&
+                            browserControlOwner === "user" &&
+                            styles.browserStatusTakeover,
+                        )}
                         onClick={() => void handleToggleBrowserPanel()}
                         aria-label={t("chat.openBrowser")}
                       >
                         <Globe size={20} strokeWidth={2.1} />
                         {browserSessionId && (
                           <span
-                            className={`${styles.browserStatusDot} ${
-                              styles[`browserStatus_${browserControlOwner}`]
-                            }`}
+                            className={cx(
+                              styles.browserStatusDot,
+                              styles[`browserStatus_${browserControlOwner}`],
+                            )}
                           />
                         )}
                       </button>
@@ -1452,6 +1935,7 @@ function ChatPageInner() {
                     key={pendingAsk.messageId}
                     questions={pendingAsk.questions}
                     status="pending"
+                    docked
                     onSubmit={(answer) =>
                       handleHitlDecision(
                         pendingAsk.actions.map(() => ({
@@ -1487,18 +1971,64 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            {!showWelcome &&
+            !isManagedChat &&
+            modelsReady &&
+            availableModels.length === 0 ? (
+              <div className={styles.modelConfigDock}>
+                <div className={styles.modelConfigDockInner}>
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={t("modelConfig.promptTitle")}
+                    description={
+                      canConfigureModels
+                        ? t("modelConfig.promptMessage")
+                        : t("modelConfig.promptMessageNoPermission")
+                    }
+                    action={
+                      canConfigureModels ? (
+                        <Button
+                          type="primary"
+                          size="small"
+                          onClick={() => navigate("/admin/models")}
+                        >
+                          {t("modelConfig.configureButton")}
+                        </Button>
+                      ) : null
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             <ChatInput
               ref={chatInputRef}
+              leading={
+                activeAgent?.bridge && resolvedAgentId ? (
+                  <LocalExecutionBar
+                    agentId={resolvedAgentId}
+                    threadId={activeThreadId}
+                  />
+                ) : null
+              }
               onSend={wrappedHandleSend}
-              onQueue={enqueueQueued}
-              queuedItems={queuedItems}
+              onQueue={enqueueUnlessSharedBusy}
+              queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
+              onSteerQueued={handleSteerQueued}
               onCancel={cancelStream}
               onNewChat={handleNewChat}
               isStreaming={isStreaming}
+              holdSend={membersStillTalking}
               isTeam={isTeamChat}
-              disabled={!agentChatReady || noAgents || memoryMaintBlocking}
+              disabled={
+                !agentChatReady ||
+                noAgents ||
+                memoryMaintBlocking ||
+                (!isManagedChat &&
+                  (!modelsReady || availableModels.length === 0))
+              }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
                 prefillInputRef.current = "";
@@ -1511,6 +2041,16 @@ function ChatPageInner() {
               onReasoningChange={handleReasoningChange}
               conversationMode={conversationMode}
               onConversationModeChange={handleConversationModeChange}
+              sessionModes={sessionModes}
+              sessionMode={sessionMode}
+              onSessionModeChange={handleSessionModeChange}
+              hitlPolicy={hitlPolicy}
+              onHitlPolicyChange={
+                hitlEnabled || isManagedChat
+                  ? handleComposerHitlPolicyChange
+                  : undefined
+              }
+              lockThreadSettings={composerSession?.owned === false}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={
@@ -1533,9 +2073,11 @@ function ChatPageInner() {
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
+              managed={isManagedChat}
               defaultModel={activeAgent?.default_model ?? null}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}
+              decisionSaved={decisionSaved}
             />
           </div>
 
@@ -1547,17 +2089,20 @@ function ChatPageInner() {
             panelSizes={dockPanelSizes}
             agentId={resolvedAgentId ?? ""}
             filePaths={sharedExpertViewer ? [] : panelFilePaths}
+            agentNameById={dockAgentNameById}
             openTabs={openTabs}
             activeTabId={activeTabId}
             onSelectTab={setDockActiveTab}
             onCloseTab={closeDockTab}
             onOpenFile={openFileAt}
             browserEnvironment={browserEnvironment}
+            bridgeConnectionId={bridgeConnectionId}
             threadId={activeThreadId}
             isStreamingTurn={isStreaming}
             onModeChange={handleDockModeChange}
             onClose={handleDockClose}
             onResizeStart={dockHandleResizeStart}
+            addTab={dockAddTab}
           />
 
           {!sharedExpertViewer && (
@@ -1579,6 +2124,14 @@ function ChatPageInner() {
               onClose={() => setTrajectoryDrawerOpen(false)}
             />
           )}
+          {shareTarget ? (
+            <ShareConversationDialog
+              open
+              agentId={shareTarget.agentId}
+              threadId={shareTarget.threadId}
+              onClose={() => setShareTarget(null)}
+            />
+          ) : null}
         </div>
       </ChatToolDockProvider>
     </ChatFilePreviewProvider>

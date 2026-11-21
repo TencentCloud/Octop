@@ -8,7 +8,7 @@
  * pipeline card hint on the Overview tab.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Input, Select, Space, Tag, Typography } from "antd";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -20,6 +20,7 @@ import {
 } from "../../../api/modules/memoryDashboard";
 import MemoryLayerView from "./shared/MemoryLayerView";
 import MemoryPipelineEmpty from "./shared/MemoryPipelineEmpty";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 
@@ -78,8 +79,21 @@ export default function RawEventsList({ agentId }: Props) {
   const [eventType, setEventType] = useState<string>("");
   const [query, setQuery] = useState<string>("");
   const [selected, setSelected] = useState<RawEventItem | null>(null);
+  const listGate = useMemoryRequestGate(
+    JSON.stringify([agentId, page, eventType, query]),
+  );
+
+  useLayoutEffect(() => {
+    setItems([]);
+    setTotal(0);
+    setPage(1);
+    setLoading(Boolean(agentId));
+    setSelected(null);
+  }, [agentId]);
 
   const load = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setLoading(true);
     const body: ListRawEventsBody = {
       offset: (page - 1) * PAGE_SIZE,
@@ -89,12 +103,15 @@ export default function RawEventsList({ agentId }: Props) {
     if (query.trim()) body.query = query.trim();
     try {
       const r = await memoryDashboardApi.listRawEvents(agentId, body);
+      if (!isCurrent()) return;
       setItems(r.items);
       setTotal(r.total);
+    } catch (error) {
+      if (isCurrent()) throw error;
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [agentId, page, eventType, query]);
+  }, [agentId, page, eventType, query, listGate]);
 
   useEffect(() => {
     if (!agentId) return;

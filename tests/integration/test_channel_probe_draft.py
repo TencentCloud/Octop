@@ -13,7 +13,11 @@ async def env(env_alice_bob_agent):
     yield env_alice_bob_agent
 
 
-async def test_probe_draft_config(env: Any) -> None:
+@pytest.mark.parametrize(
+    "kind,config",
+    [("qq", {"app_id": "1", "client_secret": "sec"}), ("discord", {"bot_token": "fake"})],
+)
+async def test_probe_draft_config(env: Any, kind: str, config: dict) -> None:
     c, srv, alice_auth, _bob_auth, aid = env
     with patch.object(
         srv.app_runtime.gateway,
@@ -23,7 +27,7 @@ async def test_probe_draft_config(env: Any) -> None:
         r = await c.post(
             f"/api/agents/{aid}/channels/probe",
             headers=alice_auth,
-            json={"kind": "qq", "config": {"app_id": "1", "client_secret": "sec"}},
+            json={"kind": kind, "config": config},
         )
     assert r.status_code == 200, r.text
     assert r.json()["ok"] is True

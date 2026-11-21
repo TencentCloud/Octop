@@ -15,7 +15,16 @@ async def test_list_providers(env):
 
     r = await c.get("/api/providers", headers=auth)
     assert r.status_code == 200
-    assert any(p["name"] == "openai" for p in r.json())
+    listed = r.json()
+    assert any(p["name"] == "openai" for p in listed)
+    openai = next(p for p in listed if p["name"] == "openai")
+    assert openai["api_key"] is None
+    assert openai["api_key_set"] is True
+
+    admin = await c.get("/api/admin/providers", headers=auth)
+    assert admin.status_code == 200
+    admin_row = next(p for p in admin.json() if p["name"] == "openai")
+    assert admin_row["api_key"] == "k"
 
 
 async def test_admin_creates_provider(env):
@@ -30,6 +39,18 @@ async def test_admin_creates_provider(env):
     body = r.json()
     assert body["name"] == "openai"
     assert "user_id" not in body
+
+
+async def test_duplicate_provider_name_is_conflict(env):
+    """POST /admin/providers with a taken name is 409, not an unhandled 500."""
+    c, _, auth = env
+    body = {"name": "taken-name", "kind": "openai", "api_key": "k"}
+    created = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert created.status_code == 201
+
+    again = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
 
 
 async def test_regular_user_cannot_create_provider(env):
@@ -90,3 +111,156 @@ async def test_admin_cannot_delete_local_runtime_provider(env):
     r = await c.get("/api/admin/providers", headers=auth)
     ids = [p["id"] for p in r.json()]
     assert pid in ids
+
+
+async def test_admin_can_delete_custom_provider_on_local_url(env):
+    """Custom OpenAI-compat rows stay deletable even on Ollama-like URLs."""
+    c, _, auth = env
+    for name, base_url in (
+        ("my-local-llm", "http://127.0.0.1:8000/v1"),
+        ("new-api", "http://192.168.1.10:3000/v1"),
+        ("company-ollama", "http://127.0.0.1:11434"),
+        ("docker-ollama", "http://ollama:11434"),
+    ):
+        r = await c.post(
+            "/api/admin/providers",
+            headers=auth,
+            json={
+                "name": name,
+                "kind": "openai",
+                "api_key": "sk-local",
+                "base_url": base_url,
+                "models": [{"id": "custom-qwen", "name": "custom-qwen", "enabled": True}],
+            },
+        )
+        assert r.status_code == 201, name
+        pid = r.json()["id"]
+
+        r = await c.delete(f"/api/admin/providers/{pid}", headers=auth)
+        assert r.status_code in (200, 204), name
+
+        r = await c.get("/api/admin/providers", headers=auth)
+        ids = [p["id"] for p in r.json()]
+        assert pid not in ids, name
+
+
+async def test_admin_cannot_delete_ollama_runtime_by_identity(env):
+    """Onboard Ollama is protected by placeholder key / exact name, not URL."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "Ollama (Local)",
+            "kind": "openai",
+            "api_key": "ollama",
+            "base_url": "http://127.0.0.1:11434",
+        },
+    )
+    assert r.status_code == 201
+    pid = r.json()["id"]
+
+    r = await c.delete(f"/api/admin/providers/{pid}", headers=auth)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "PROVIDER_LOCAL_PROTECTED"
+
+
+async def test_admin_stream_usage_defaults_and_patch(env):
+    """Custom providers default stream_usage off; presets stay on until patched."""
+    c, _, auth = env
+    custom = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "mindie-arm", "kind": "openai", "api_key": "k"},
+    )
+    assert custom.status_code == 201
+    assert custom.json()["stream_usage"] is False
+
+    preset = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "DeepSeek", "kind": "openai", "api_key": "k"},
+    )
+    assert preset.status_code == 201
+    assert preset.json()["stream_usage"] is True
+
+    patched = await c.patch(
+        f"/api/admin/providers/{preset.json()['id']}",
+        headers=auth,
+        json={"stream_usage": False},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["stream_usage"] is False
+
+
+async def test_magpie_discovery_is_typed_and_permissioned(env, monkeypatch):
+    from octop.infra.agents.providers.magpie import MagpieDiscovery
+
+    async def found():
+        return MagpieDiscovery(available=True, version="1.4.0")
+
+    monkeypatch.setattr("octop.api.routers.providers.discover_local_magpie", found)
+    c, _, auth = env
+    ok = await c.get("/api/admin/providers/magpie/discovery", headers=auth)
+    assert ok.status_code == 200
+    assert ok.json() == {
+        "available": True,
+        "base_url": "http://127.0.0.1:3425/v1",
+        "version": "1.4.0",
+    }
+
+    async def missing():
+        return MagpieDiscovery(available=False, version=None)
+
+    monkeypatch.setattr("octop.api.routers.providers.discover_local_magpie", missing)
+    quiet = await c.get("/api/admin/providers/magpie/discovery", headers=auth)
+    assert quiet.status_code == 200
+    assert quiet.json()["available"] is False
+    assert quiet.json()["version"] is None
+    assert "error" not in quiet.json()
+
+    await c.post(
+        "/api/users",
+        headers=auth,
+        json={"username": "magpie-user", "password": "TestPass12", "role": "user"},
+    )
+    token = (
+        await c.post(
+            "/api/auth/login",
+            json={"username": "magpie-user", "password": "TestPass12"},
+        )
+    ).json()["access_token"]
+    denied = await c.get(
+        "/api/admin/providers/magpie/discovery",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert denied.status_code == 403
+
+
+async def test_duplicate_magpie_create_does_not_overwrite(env):
+    c, _, auth = env
+    body = {
+        "name": "Magpie",
+        "kind": "openai",
+        "base_url": "http://127.0.0.1:3425/v1",
+        "api_key": "magpie-octop",
+        "extra_json": '{"integration": "magpie"}',
+        "models": [{"id": "vendor/org/model", "name": "Shown", "enabled": True}],
+        "stream_usage": True,
+    }
+    created = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert created.status_code == 201
+    saved = created.json()
+    assert saved["integration"] == "magpie"
+    assert saved["api_key"] == "magpie-octop"
+    assert saved["models"][0]["id"] == "vendor/org/model"
+
+    again = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
+
+    listed = await c.get("/api/admin/providers", headers=auth)
+    rows = [row for row in listed.json() if row["name"] == "Magpie"]
+    assert len(rows) == 1
+    assert rows[0]["api_key"] == "magpie-octop"
+    assert rows[0]["models"][0]["id"] == "vendor/org/model"

@@ -88,6 +88,97 @@ def test_storage_backend_kind_agent_resolvable() -> None:
     assert storage_backend_kind_agent_resolvable("filesystem")
     assert storage_backend_kind_agent_resolvable("docker")
     assert storage_backend_kind_agent_resolvable("opensandbox")
+    assert storage_backend_kind_agent_resolvable("postgres")
+
+
+def test_row_to_backend_spec_postgres_discrete_fields() -> None:
+    row = BackendRow(
+        id=1,
+        name="pg",
+        kind="postgres",
+        endpoint="db.internal:5433",
+        access_key="octop",
+        secret_key="p@ss/word#1",
+        bucket="octop",
+        region="agent",
+        config_json='{"table": "files"}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec == {
+        "type": "postgres",
+        "host": "db.internal",
+        "port": 5433,
+        "user": "octop",
+        "password": "p@ss/word#1",
+        "database": "octop",
+        "schema": "agent",
+        "table": "files",
+    }
+    assert "connection_string" not in spec
+
+
+def test_row_to_backend_spec_postgres_parses_uri() -> None:
+    row = BackendRow(
+        id=1,
+        name="pg",
+        kind="postgres",
+        endpoint=None,
+        access_key=None,
+        secret_key=None,
+        bucket=None,
+        region=None,
+        config_json='{"connection_string": "postgresql://alice:s3cret@pg.example:5432/app?sslmode=require"}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec is not None
+    assert spec["host"] == "pg.example"
+    assert spec["port"] == 5432
+    assert spec["user"] == "alice"
+    assert spec["password"] == "s3cret"
+    assert spec["database"] == "app"
+    assert spec["sslmode"] == "require"
+    assert "connection_string" not in spec
+
+
+def test_resolve_inline_postgres_drops_connection_string() -> None:
+    resolved = resolve_agent_backend_spec(
+        {"type": "postgres", "connection_string": "postgresql://u:p@localhost/db"},
+        repo=None,
+    )
+    assert resolved["type"] == "postgres"
+    assert resolved["host"] == "localhost"
+    assert resolved["user"] == "u"
+    assert resolved["password"] == "p"
+    assert resolved["database"] == "db"
+    assert "connection_string" not in resolved
+
+
+def test_row_to_backend_spec_tos_requires_endpoint() -> None:
+    row = BackendRow(
+        id=1,
+        name="tos",
+        kind="tos",
+        endpoint=None,
+        access_key="AK",
+        secret_key="SK",
+        bucket="b",
+        region="cn-beijing",
+        config_json=None,
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    assert row_to_backend_spec(row) is None
+    assert storage_backend_kind_agent_resolvable("tos")
 
 
 def test_row_to_backend_spec_opensandbox() -> None:
@@ -180,6 +271,90 @@ def test_enrich_docker_backend_spec_defaults() -> None:
     )
     assert docker_spec_previewable(fixed) is True
     assert "agent_id" not in fixed or fixed.get("agent_id") == "ZE6GR2"
+
+
+def test_omit_docker_volumes_drops_host_mounts(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend.docker_spec import (
+        enrich_docker_backend_spec,
+        omit_docker_volumes,
+    )
+
+    monkeypatch.setattr(
+        "octop.infra.backend.docker_spec.running_in_container",
+        lambda: False,
+    )
+    mounted = {
+        "type": "docker",
+        "image": "python:3.12-slim",
+        "volumes": {"/var/lib/octop": {"bind": "/host", "mode": "rw"}},
+    }
+    stripped = omit_docker_volumes(mounted)
+    assert "volumes" not in stripped
+    assert stripped["image"] == "python:3.12-slim"
+    assert "volumes" in mounted
+
+    composite = omit_docker_volumes(
+        {
+            "type": "composite",
+            "default": {"type": "local_shell", "root_dir": "workspace-root"},
+            "routes": {
+                "/box": {
+                    "type": "docker",
+                    "image": "python:3.12-slim",
+                    "volumes": ["/etc:/host:ro"],
+                }
+            },
+        }
+    )
+    assert "volumes" not in composite["routes"]["/box"]
+    assert composite["default"]["root_dir"] == "workspace-root"
+
+    enriched = enrich_docker_backend_spec(mounted, agent_id="ZE6GR2")
+    assert "volumes" not in enriched
+    assert enriched["agent_id"] == "ZE6GR2"
+
+
+def test_omit_docker_volumes_keeps_mounts_in_container(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend.docker_spec import (
+        enrich_docker_backend_spec,
+        omit_docker_volumes,
+    )
+
+    monkeypatch.setattr(
+        "octop.infra.backend.docker_spec.running_in_container",
+        lambda: True,
+    )
+    mounted = {
+        "type": "docker",
+        "image": "python:3.12-slim",
+        "volumes": {"/var/lib/octop": {"bind": "/host", "mode": "rw"}},
+    }
+    assert omit_docker_volumes(mounted) is mounted
+    enriched = enrich_docker_backend_spec(mounted, agent_id="ZE6GR2")
+    assert enriched["volumes"] == mounted["volumes"]
+    assert enriched["agent_id"] == "ZE6GR2"
+
+
+def test_row_to_backend_spec_docker_keeps_volumes() -> None:
+    row = BackendRow(
+        id=1,
+        name="sandbox",
+        kind="docker",
+        endpoint=None,
+        access_key=None,
+        secret_key=None,
+        bucket="python:3.12-slim",
+        region=None,
+        config_json='{"memory": "512m", "volumes": {"/": {"bind": "/host", "mode": "rw"}}}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec is not None
+    assert spec["memory"] == "512m"
+    assert spec["volumes"] == {"/": {"bind": "/host", "mode": "rw"}}
 
 
 def test_inject_docker_global_environment_sets_file() -> None:

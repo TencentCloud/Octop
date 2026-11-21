@@ -105,6 +105,17 @@ def test_assert_backend_supports_skill_packages_accepts_host_root(
     )
 
 
+def test_assert_backend_supports_skill_packages_accepts_windows_drive_root(
+    manager: AgentManager,
+) -> None:
+    manager.assert_backend_supports_skill_packages(
+        {"type": "local_shell", "root_dir": "C:/", "virtual_mode": True}
+    )
+    manager.assert_backend_supports_skill_packages(
+        {"type": "filesystem", "root_dir": "D:\\", "virtual_mode": True}
+    )
+
+
 def test_assert_backend_supports_skill_packages_accepts_workspace_scoped_default(
     manager: AgentManager,
     tmp_path: Path,
@@ -149,6 +160,50 @@ def test_backend_supports_host_skill_packages_accepts_workspace_root(
             workspace_dir=tmp_path / "other",
         )
         is False
+    )
+
+
+def test_backend_blocks_acp_outbound_allows_host_and_workspace_root(
+    manager: AgentManager,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    assert (
+        manager._backend_blocks_acp_outbound(
+            {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+            workspace_dir=workspace,
+        )
+        is False
+    )
+    assert (
+        manager._backend_blocks_acp_outbound(
+            {
+                "type": "local_shell",
+                "root_dir": str(workspace.resolve()),
+                "virtual_mode": True,
+            },
+            workspace_dir=workspace,
+        )
+        is False
+    )
+    assert (
+        manager._backend_blocks_acp_outbound(
+            {
+                "type": "local_shell",
+                "root_dir": str((tmp_path / "project").resolve()),
+                "virtual_mode": True,
+            },
+            workspace_dir=workspace,
+        )
+        is True
+    )
+    assert (
+        manager._backend_blocks_acp_outbound(
+            {"type": "named", "name": "docker"},
+            workspace_dir=workspace,
+        )
+        is True
     )
 
 

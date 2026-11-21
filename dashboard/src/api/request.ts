@@ -1,8 +1,15 @@
 import { getApiUrl } from "./config";
+import {
+  isLocalDesktopUser,
+  registerDeviceSession,
+  renewDesktopSession,
+} from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
 const AUTH_TOKEN_KEY = "auth_token";
+/** sessionStorage handoff for SSO redirects / popups (default = remember). */
+const AUTH_REMEMBER_PREF_KEY = "auth_remember_pref";
 
 /**
  * Fired when the session is no longer valid. Cancelable: a listener inside the
@@ -42,20 +49,58 @@ export function isSetupRequiredKnown(): boolean {
   return _setupRequiredKnown;
 }
 
-/** Save JWT token to localStorage */
-export function setAuthToken(token: string) {
-  localStorage.setItem(AUTH_TOKEN_KEY, token);
+/** Stash the login-page "remember me" choice for SSO redirects / popups. */
+export function setRememberLoginPreference(remember: boolean): void {
+  sessionStorage.setItem(AUTH_REMEMBER_PREF_KEY, remember ? "1" : "0");
+}
+
+/** Read the stashed remember preference (defaults to true). */
+export function getRememberLoginPreference(): boolean {
+  return sessionStorage.getItem(AUTH_REMEMBER_PREF_KEY) !== "0";
+}
+
+/**
+ * Whether the current token is session-only (not "remember me").
+ * Session-only tokens live in ``sessionStorage`` so a new tab does not
+ * share — or erase — another tab's login.
+ */
+export function isSessionOnlyAuth(): boolean {
+  return (
+    sessionStorage.getItem(AUTH_TOKEN_KEY) != null &&
+    localStorage.getItem(AUTH_TOKEN_KEY) == null
+  );
+}
+
+/**
+ * Save JWT token. When ``remember`` is false the token is kept in
+ * ``sessionStorage`` (cleared when the tab/window closes). SSO popups must
+ * post the token back to the opener — ``sessionStorage`` is not shared.
+ */
+export function setAuthToken(token: string, remember: boolean = true) {
+  if (remember) {
+    localStorage.setItem(AUTH_TOKEN_KEY, token);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  } else {
+    sessionStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
   clearSetupRequired();
 }
 
-/** Get JWT token from localStorage */
+/** Get JWT token from localStorage or (session-only) sessionStorage. */
 export function getAuthToken(): string {
-  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+  return (
+    localStorage.getItem(AUTH_TOKEN_KEY) ||
+    sessionStorage.getItem(AUTH_TOKEN_KEY) ||
+    ""
+  );
 }
 
-/** Remove JWT token from localStorage */
+/** Remove JWT token from both storages. */
 export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
+  sessionStorage.removeItem(AUTH_REMEMBER_PREF_KEY);
   localStorage.removeItem("octop:active-agent");
   setActiveAgentId(null);
 }
@@ -64,11 +109,21 @@ export function clearAuthToken() {
 export function applyRenewedAccessToken(response: Response): void {
   const renewed = response.headers.get(ACCESS_TOKEN_RESPONSE_HEADER);
   if (renewed) {
-    setAuthToken(renewed);
+    setAuthToken(renewed, !isSessionOnlyAuth());
   }
 }
 
 let _redirectingToSetup = false;
+
+/** Login, setup, invites, and read-only share links stay outside the app shell. */
+function isGuestShellPath(path: string): boolean {
+  return (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite") ||
+    /(?:^|\/)share\/[^/]+/.test(path)
+  );
+}
 
 /**
  * Hard-redirect once when the backend reports the wizard isn't done.
@@ -79,12 +134,7 @@ function handleSetupRequired(): void {
   if (_redirectingToSetup) return;
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  ) {
+  if (isGuestShellPath(window.location.pathname)) {
     return;
   }
   _redirectingToSetup = true;
@@ -166,10 +216,26 @@ export function getActiveAgentId(): string | null {
 }
 
 /**
+ * Optional ``X-Octop-Agent-Id`` for caller-opted header tunnels (composer
+ * GETs, connector lists). Do not auto-attach these on settings pages.
+ */
+export function bridgeAgentHeaders(
+  agentId?: string | null,
+): Record<string, string> | undefined {
+  const id = (agentId ?? "").trim();
+  if (!id) return undefined;
+  return { "X-Octop-Agent-Id": id };
+}
+
+/**
  * Decide whether a request path is "agent-scoped" — i.e. talking to a
  * concrete agent's resource — and therefore should carry the
  * ``X-Octop-Agent-Id`` header. Health, admin, auth, setup, providers, and
  * personas don't need it.
+ *
+ * Composer / knowledge / browser host GETs are NOT auto-scoped: those
+ * settings pages must keep talking to this instance. Callers that need a
+ * remote hop pass ``bridgeAgentHeaders(agentId)`` explicitly.
  */
 function isAgentScopedPath(path: string): boolean {
   // Match `/agents/<id>/...` (one trailing segment after the id).
@@ -177,6 +243,10 @@ function isAgentScopedPath(path: string): boolean {
   if (/^\/agents\/[^/]+(\/|$)/.test(path)) return true;
   // MBTI endpoints that read/write the active agent's persona config.
   if (/^\/mbti\//.test(path)) return true;
+  if (path === "/cron/settings") return true;
+  if (path === "/subagent-catalog" || path.startsWith("/subagent-catalog/")) {
+    return true;
+  }
   return false;
 }
 
@@ -242,19 +312,20 @@ function buildAuthHeaders(path: string): Record<string, string> {
 
 let _redirectingToLogin = false;
 
+/** 401 codes that mean this Octop session is no longer valid. */
+const SESSION_UNAUTHORIZED_CODES = new Set([
+  "AUTH_FAILED",
+  "MISSING_CREDENTIALS",
+  "TOKEN_EXPIRED",
+]);
+
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
  * requests report an expired session.
  */
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  )
-    return;
+  if (isGuestShellPath(window.location.pathname)) return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(
@@ -270,11 +341,32 @@ function handleUnauthorized(): void {
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().
  */
+async function errorCodeOf(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { code?: string };
+    };
+    const code = body?.error?.code;
+    return typeof code === "string" && code.trim() ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function throwIfUnauthorized(
   path: string,
   response: Response,
 ): Promise<void> {
   if (response.status !== 401 || path.startsWith("/auth/")) {
+    return;
+  }
+  const code = await errorCodeOf(response);
+  // Business 401s (peer login, etc.) are not a dead local session.
+  if (
+    code &&
+    !SESSION_UNAUTHORIZED_CODES.has(code) &&
+    !path.startsWith("/setup/")
+  ) {
     return;
   }
   clearAuthToken();
@@ -295,6 +387,43 @@ async function throwIfUnauthorized(
   throw new Error(message);
 }
 
+/**
+ * Retry a 401 once with a JWT minted by the desktop shell.
+ *
+ * A desktop user has no password to type, so an expired session used to be a
+ * dead end. The shell holds a device credential and can issue a new token; on
+ * the web this returns null immediately and the caller falls through to the
+ * ordinary login redirect.
+ */
+async function retryWithDesktopSession(
+  path: string,
+  url: string,
+  options: RequestInit,
+  response: Response,
+): Promise<Response | null> {
+  if (response.status !== 401) return null;
+  // A rejected login is a credential problem, not an expired session.
+  if (path.startsWith("/auth/login") || path.startsWith("/auth/device/")) {
+    return null;
+  }
+  // Business 401s (peer login, setup guards) would only be retried in vain.
+  const code = await errorCodeOf(response);
+  if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
+  const current = getAuthToken();
+  // A password account's expired token must land on the login page. Only the
+  // desktop local user is renewed in place.
+  if (current && !isLocalDesktopUser(current)) return null;
+  const issued = await renewDesktopSession();
+  if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
+    return null;
+  }
+  setAuthToken(issued.access_token, !isSessionOnlyAuth());
+  return fetch(url, {
+    ...options,
+    headers: buildHeaders(path, options.headers),
+  });
+}
+
 export async function request<T = unknown>(
   path: string,
   options: RequestInit = {},
@@ -305,10 +434,13 @@ export async function request<T = unknown>(
 
   const headers = buildHeaders(path, options.headers);
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   });
+
+  const retried = await retryWithDesktopSession(path, url, options, response);
+  if (retried) response = retried;
 
   if (await check503ForSetupRequired(path, response)) {
     throw new SetupRequiredError();
@@ -316,6 +448,9 @@ export async function request<T = unknown>(
 
   await throwIfUnauthorized(path, response);
   applyRenewedAccessToken(response);
+  // Desktop: bind the shell's device credential the first chance we get, so the
+  // next cold start can renew instead of landing on /login.
+  if (response.ok) void registerDeviceSession(getAuthToken());
 
   if (!response.ok) {
     if (response.status === 403 && isAgentScopedPath(path)) {

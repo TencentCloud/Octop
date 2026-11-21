@@ -8,6 +8,7 @@ import {
   Check,
   RotateCcw,
   Pencil,
+  Undo2,
   Volume2,
   Settings,
   GitFork,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import cx from "classnames";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
 import UserMessageComposerTags, {
   hasUserComposerTags,
@@ -29,6 +31,7 @@ import {
   isDataUrl,
   workspacePathFromAccessUrl,
 } from "../../../utils/toolMediaBlocks";
+import { isImeComposing } from "../../../utils/ime";
 import { formatMessageTime } from "../../../utils/formatMessageTime";
 import { copyText } from "../../../utils/copyText";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
@@ -41,25 +44,36 @@ import {
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
+import {
+  ConnectorAuthAction,
+  isConnectorAuthError,
+} from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
+import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
 import {
   isTeamAgent,
   isTeamHostSpeaker as isTeamHostSpeakerId,
+  resolveSpeakerFace,
 } from "../../../utils/teamAgent";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
+import { accountDisplayName } from "../utils/accountDisplayName";
+import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
 import {
-  accountDisplayName,
-  accountInitials,
-} from "../utils/accountDisplayName";
-import { extractAskQuestions, isAskHitl } from "../../../api/types/hitl";
+  extractAskQuestions,
+  isAskHitl,
+  type HitlDecisionHandler,
+} from "../../../api/types/hitl";
 import styles from "../index.module.less";
 import {
   DefaultToolRenderer,
   builtinPluginHost,
   createPluginUiHost,
   parseOctopToolOutput,
+  resolvePluginUiData,
   resolveToolRenderer,
   useToolRendererVersion,
   type ToolRenderProps,
@@ -67,7 +81,11 @@ import {
 } from "../../../plugins/toolRenderers";
 import { BuiltinOctopUiFallback } from "../../../plugins/toolRenderers/builtin/BuiltinOctopUiFallback";
 import { ToolUiErrorBoundary } from "../../../plugins/toolRenderers/ToolUiErrorBoundary";
-import { lookupPluginIdForTool } from "../../../plugins/toolRenderers/toolPluginIndex";
+import { remotePluginUiUnavailable } from "../../../plugins/toolRenderers/remotePluginUi";
+import {
+  lookupPluginIdForTool,
+  useToolPluginIndexVersion,
+} from "../../../plugins/toolRenderers/toolPluginIndex";
 import { useChatToolDock } from "../ChatToolDockContext";
 import { useToolUiDockButtonStyle } from "../hooks/useToolUiDockButtonStyle";
 import type { ParsedToolOutput } from "../../../plugins/toolRenderers/types";
@@ -78,13 +96,14 @@ interface MessageBubbleProps {
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
+  /** Turn off streamed token usage then retry (invalid_request / MindIE). */
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
-  onHitlDecision?: (
-    decisions: Array<{ type: string; message?: string }>,
-  ) => void;
+  onHitlDecision?: HitlDecisionHandler;
 
   /** When true, the outer bubble uses reduced spacing (part of a group). */
   compact?: boolean;
@@ -95,11 +114,31 @@ interface MessageBubbleProps {
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  /** Public transcripts hide this. It calls the signed-in voice API. */
+  readAloud?: boolean;
+}
+
+function formatElapsedSeconds(durationMs: number | undefined): string | null {
+  if (
+    typeof durationMs !== "number" ||
+    !Number.isFinite(durationMs) ||
+    durationMs < 0
+  ) {
+    return null;
+  }
+  const seconds = durationMs / 1000;
+  return seconds < 10 ? seconds.toFixed(1) : String(Math.round(seconds));
 }
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string; cacheHit: string },
+  labels: {
+    input: string;
+    output: string;
+    total: string;
+    cacheHit: string;
+    decisionSaved: string;
+  },
 ): string[] {
   if (!usage) return [];
 
@@ -124,6 +163,9 @@ function formatTokenUsage(
   }
   if (typeof usage.total_tokens === "number") {
     parts.push(`${usage.total_tokens} ${labels.total}`);
+  }
+  if (typeof usage.decision_saved === "number" && usage.decision_saved > 0) {
+    parts.push(`${usage.decision_saved} ${labels.decisionSaved}`);
   }
   return parts;
 }
@@ -373,9 +415,15 @@ export function ToolDetailsInline({
   const toolDock = useChatToolDock();
   // Plugin UIs load async after mount — bump forces resolve() to re-run.
   const rendererVersion = useToolRendererVersion();
+  useToolPluginIndexVersion();
   const parsed = useMemo(
     () => parseOctopToolOutput(toolData.output),
     [toolData.output],
+  );
+  // Offloaded octop_ui payloads: explicit data wins; data_ref → artifact.
+  const resolvedData = useMemo(
+    () => resolvePluginUiData(parsed, toolData.artifact, toolData.output),
+    [parsed, toolData.artifact, toolData.output],
   );
   const pluginId =
     toolData.pluginId ?? lookupPluginIdForTool(toolData.name) ?? "builtin";
@@ -413,12 +461,7 @@ export function ToolDetailsInline({
     callId: toolData.callId,
     status,
     args,
-    data:
-      parsed.data !== undefined
-        ? parsed.data
-        : parsed.isJson
-        ? parsed.raw
-        : toolData.output,
+    data: resolvedData,
     textFallback: parsed.text,
     host:
       registration && registration.pluginId !== "builtin"
@@ -508,13 +551,21 @@ export function ToolDetailsInline({
 
   // Structured plugin envelope without a loaded custom renderer — still show a card.
   if (parsed.octopUi) {
+    const annotateMissingPlugin = remotePluginUiUnavailable({
+      agentId,
+      toolName: toolData.name,
+      hasOctopUi: true,
+    });
     return (
       <div
         ref={wrapRef}
         data-octop-tool-renderer=""
         className={styles.toolUiRendererWrap}
       >
-        <BuiltinOctopUiFallback {...props} />
+        <BuiltinOctopUiFallback
+          {...props}
+          annotateMissingPlugin={annotateMissingPlugin}
+        />
         {dockActions}
       </div>
     );
@@ -532,7 +583,9 @@ function MessageBubble({
   agentId = null,
   composerLookups,
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
+  onWithdrawSteer,
   onForkAssistantMessage,
   forkDisabled,
   forkDisabledHint,
@@ -543,30 +596,54 @@ function MessageBubble({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
-  const { agents, activeAgent } = useAgent();
-  const speakerId = message.speakerAgentId || agentId;
-  const expert = useMemo(
-    () =>
-      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
-      activeAgent,
-    [speakerId, agents, activeAgent],
+  const isOwnMessage =
+    message.author == null ||
+    (user != null && message.author.userId === user.id);
+  const authorName = accountDisplayName(
+    isOwnMessage
+      ? user
+      : {
+          display_name: message.author?.displayName,
+          username: message.author?.username,
+        },
   );
+  const userAvatarUrl = isOwnMessage
+    ? user?.avatar_url
+    : message.author?.avatarUrl;
+  const userAvatarIcon = isOwnMessage
+    ? user?.avatar_icon
+    : message.author?.avatarIcon;
+  const { agents, activeAgent } = useAgent();
   const isTeamRoom = isTeamAgent(activeAgent);
+  const speakerId =
+    rewritePeerSpeakerId(
+      activeAgent?.agent_id,
+      message.speakerAgentId || agentId,
+    ) ||
+    message.speakerAgentId ||
+    agentId;
   const isTeamHostSpeaker = isTeamHostSpeakerId(
     isTeamRoom,
-    message.speakerAgentId,
+    speakerId,
     activeAgent?.agent_id,
+  );
+  const expert = useMemo(
+    () =>
+      resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
+      (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
+    [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );
   const avatarTooltip = isTeamHostSpeaker
     ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
     : expert?.name;
   const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
-  const userName = accountDisplayName(user);
+  const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -601,9 +678,15 @@ function MessageBubble({
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
         cacheHit: t("chatUsage.cacheHit"),
+        decisionSaved: t("chatUsage.decisionSaved"),
       }),
     [message.usage, t],
   );
+  const elapsedText = formatElapsedSeconds(message.durationMs);
+  const usageLine = [
+    elapsedText ? t("chatUsage.elapsed", { seconds: elapsedText }) : "",
+    ...usageParts,
+  ].filter(Boolean);
   const errorDebugTags = useMemo(
     () => formatErrorDebugTags(message.errorInfo),
     [message.errorInfo],
@@ -622,46 +705,41 @@ function MessageBubble({
     const actions = message.hitlData.action_requests ?? [];
     const hitlStatus = message.hitlData.status ?? "pending";
     if (isAskHitl(actions)) {
-      // Pending questions are rendered in ChatPage's composer dock so they
-      // stay immediately above the input even when message history scrolls.
-      if (hitlStatus === "pending") return null;
+      // Recoverable pending questions stay in ChatPage's composer dock.
+      // Reconstructed history without pending_id stays in the transcript.
+      if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
       const questions = extractAskQuestions(actions);
       return (
         <div
-          className={`${styles.messageBubble} ${styles.assistantBubble} ${
-            compact ? styles.compactBubble : ""
-          }`}
+          className={cx(
+            styles.messageBubble,
+            styles.assistantBubble,
+            compact && styles.compactBubble,
+          )}
         >
           <div className={styles.bubbleContent}>
-            <AskQuestionCard
-              questions={questions}
-              status={hitlStatus}
-              onSubmit={
-                onHitlDecision
-                  ? (answer) =>
-                      onHitlDecision(
-                        actions.map(() => ({
-                          type: "respond",
-                          message: answer,
-                        })),
-                      )
-                  : undefined
-              }
-            />
+            <AskQuestionCard questions={questions} status={hitlStatus} />
           </div>
         </div>
       );
     }
     return (
       <div
-        className={`${styles.messageBubble} ${styles.assistantBubble} ${
-          compact ? styles.compactBubble : ""
-        }`}
+        className={cx(
+          styles.messageBubble,
+          styles.assistantBubble,
+          compact && styles.compactBubble,
+        )}
       >
         <div className={styles.bubbleContent}>
           <HitlApprovalCard
             actions={actions}
             status={hitlStatus}
+            resolution={message.hitlData.resolution}
+            pendingId={message.hitlData.pending_id}
+            speakerName={
+              isTeamRoom && !isTeamHostSpeaker ? expert?.name : undefined
+            }
             onDecision={onHitlDecision}
           />
         </div>
@@ -674,13 +752,18 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const looksLikeStreamError =
-    !isUser && !hasToolData && !isStreaming && isChatStreamError(textContent);
-  const isError = message.status === "error" || looksLikeStreamError;
-  const errorBodyText = isError
-    ? formatChatStreamError(textContent, t)
+  const isError =
+    message.status === "error" ||
+    (!isUser && !hasToolData && isChatStreamError(textContent));
+  const errorSource = isError
+    ? message.errorInfo?.message?.trim() || textContent
     : textContent;
-  const errorAction = isError ? chatStreamErrorAction(textContent) : null;
+  const errorBodyText = isError
+    ? formatChatStreamError(errorSource, t)
+    : textContent;
+  const errorAction = isError ? chatStreamErrorAction(errorSource) : null;
+  const connectorAuthError =
+    isError && isConnectorAuthError(message.errorInfo?.code, errorSource);
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -720,11 +803,18 @@ function MessageBubble({
   const isLastInGroup = groupPosition === "last" || groupPosition === "only";
 
   // For skip-render checks: answer bubble only shows text and attachments.
-  if (!isUser && !textContent && !hasAttachments) {
+  // An error still renders its box when the body is only a title.
+  if (!isUser && !isError && !textContent && !hasAttachments) {
     return null;
   }
 
-  if (!isUser && !hasAttachments && textContent && !textContent.trim()) {
+  if (
+    !isUser &&
+    !isError &&
+    !hasAttachments &&
+    textContent &&
+    !textContent.trim()
+  ) {
     return null;
   }
 
@@ -744,32 +834,41 @@ function MessageBubble({
     (isUser || groupPosition === "first" || groupPosition === "only") &&
     (isUser || showAvatar);
   const senderAvatar = !showSender ? null : isUser ? (
-    <MessageSender
-      name={userName}
-      avatar={
-        <span className={styles.msgUserAvatar}>
-          {accountInitials(userName)}
-        </span>
-      }
-    />
-  ) : expert ? (
+    <Tooltip title={userName || undefined} mouseEnterDelay={0.35}>
+      <MessageSender
+        name={userName}
+        avatar={
+          <ProfileAvatar
+            url={userAvatarUrl}
+            icon={userAvatarIcon}
+            kind="user"
+            className={styles.msgUserAvatar}
+          />
+        }
+      />
+    </Tooltip>
+  ) : expert || avatarProfileId ? (
     <ExpertMessageAvatar
-      name={expert.name}
-      color={expert.color}
-      iconName={expert.icon_name}
-      iconUrl={expert.icon_url}
+      name={expert?.name || avatarProfileId}
+      color={expert?.color}
+      iconName={expert?.icon_name}
+      iconUrl={expert?.icon_url}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
+      managedRunner={managedRunnerId(expert)}
+      {...incomingShareProps(expert)}
     />
   ) : null;
 
   return (
     <div
-      className={`${styles.messageBubble} ${
-        isUser ? styles.userBubble : styles.assistantBubble
-      } ${showUserComposerTags ? styles.userBubbleWithTags : ""} ${
-        isError ? styles.errorBubble : ""
-      } ${compact ? styles.compactBubble : ""}`}
+      className={cx(
+        styles.messageBubble,
+        isUser ? styles.userBubble : styles.assistantBubble,
+        showUserComposerTags && styles.userBubbleWithTags,
+        isError && styles.errorBubble,
+        compact && styles.compactBubble,
+      )}
     >
       {!isUser && senderAvatar ? (
         <div className={styles.avatarCol}>{senderAvatar}</div>
@@ -794,6 +893,7 @@ function MessageBubble({
                     autoFocus
                     rows={4}
                     onKeyDown={(e) => {
+                      if (isImeComposing(e)) return;
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleEditSubmit();
@@ -886,9 +986,33 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {(errorAction || onRegenerate) && (
+                {(errorAction || onRegenerate || connectorAuthError) && (
                   <div className={styles.errorActionRow}>
-                    {errorAction && (
+                    {connectorAuthError ? (
+                      <ConnectorAuthAction
+                        details={message.errorInfo?.details}
+                        onAuthorized={
+                          onRegenerate
+                            ? () => onRegenerate(message.id)
+                            : undefined
+                        }
+                      />
+                    ) : null}
+                    {errorAction?.fix === "disable_stream_usage" &&
+                    onDisableStreamUsage ? (
+                      <button
+                        className={styles.errorRetryBtn}
+                        onClick={() => {
+                          void onDisableStreamUsage().then((ok) => {
+                            if (ok) onRegenerate?.(message.id);
+                          });
+                        }}
+                        type="button"
+                      >
+                        <RotateCcw size={13} />
+                        {t(errorAction.labelKey)}
+                      </button>
+                    ) : errorAction ? (
                       <button
                         className={styles.errorConfigBtn}
                         onClick={() => navigate(errorAction.path)}
@@ -897,7 +1021,7 @@ function MessageBubble({
                         <Settings size={13} />
                         {t(errorAction.labelKey)}
                       </button>
-                    )}
+                    ) : null}
                     {onRegenerate && (
                       <button
                         className={styles.errorRetryBtn}
@@ -912,7 +1036,7 @@ function MessageBubble({
                 )}
               </div>
             ) : (
-              <div className={`${styles.assistantText} ${groupCls}`}>
+              <div className={cx(styles.assistantText, groupCls)}>
                 {imageAttachments.length > 0 && (
                   <ImageGallery images={imageAttachments} agentId={agentId} />
                 )}
@@ -969,21 +1093,37 @@ function MessageBubble({
         {isLastInGroup &&
           !hasToolData &&
           (message.timestamp > 0 ||
-            usageParts.length > 0 ||
+            usageLine.length > 0 ||
             (isUser &&
               !isEditing &&
-              Boolean(message.content || onEditUserMessage))) && (
+              Boolean(
+                message.content || onEditUserMessage || message.steerPending,
+              ))) && (
             <div
-              className={`${styles.msgMetaRow} ${
-                isUser ? styles.msgMetaRowRight : ""
-              }`}
+              className={cx(
+                styles.msgMetaRow,
+                isUser && styles.msgMetaRowRight,
+              )}
             >
               {isUser &&
                 !isEditing &&
-                (message.content || onEditUserMessage) && (
+                (message.content ||
+                  onEditUserMessage ||
+                  message.steerPending) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
                       <CopyButton text={message.content} />
+                    ) : null}
+                    {onWithdrawSteer && message.steerPending ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => onWithdrawSteer(message.id)}
+                        title={t("chat.steer.withdraw")}
+                        type="button"
+                        aria-label={t("chat.steer.withdraw")}
+                      >
+                        <Undo2 size={14} />
+                      </button>
                     ) : null}
                     {onEditUserMessage ? (
                       <button
@@ -1003,20 +1143,18 @@ function MessageBubble({
                 )}
               {message.timestamp > 0 && (
                 <div
-                  className={`${styles.msgTime} ${
-                    isUser ? styles.msgTimeRight : ""
-                  }`}
+                  className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
-                  {!isUser && !isStreaming && speechText && (
+                  {!isUser && !isStreaming && readAloud && speechText && (
                     <>
                       <CopyButton text={textContent} />
                       <button
-                        className={`${styles.msgActionBtn} ${
-                          speakingId === message.id
-                            ? styles.msgActionBtnActive
-                            : ""
-                        }`}
+                        className={cx(
+                          styles.msgActionBtn,
+                          speakingId === message.id &&
+                            styles.msgActionBtnActive,
+                        )}
                         onClick={(e) => {
                           e.stopPropagation();
                           speak(message.id, textContent);
@@ -1056,8 +1194,8 @@ function MessageBubble({
                   )}
                 </div>
               )}
-              {usageParts.length > 0 && (
-                <div className={styles.msgUsage}>{usageParts.join(" / ")}</div>
+              {usageLine.length > 0 && (
+                <div className={styles.msgUsage}>{usageLine.join(" / ")}</div>
               )}
             </div>
           )}

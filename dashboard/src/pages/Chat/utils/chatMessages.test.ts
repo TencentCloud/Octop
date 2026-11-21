@@ -36,6 +36,11 @@ describe("resolveTurnModelRef", () => {
     expect(resolveTurnModelRef(null, null)).toBeNull();
     expect(resolveTurnModelRef("", null)).toBeNull();
   });
+
+  it("omits a selection that matches the expert default", () => {
+    expect(resolveTurnModelRef("p/expert", "p/expert")).toBeNull();
+    expect(resolveTurnModelRef("p/other", "p/expert")).toBe("p/other");
+  });
 });
 
 describe("userTurnsFromEnd", () => {

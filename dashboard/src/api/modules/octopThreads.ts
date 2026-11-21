@@ -1,5 +1,46 @@
-import type { HitlPendingPayload } from "../types/hitl";
+import type { HitlPendingPayload, HitlSessionPolicy } from "../types/hitl";
 import { request } from "../request";
+
+/** Workspace file produced in a thread; ``agent_id`` is the producer. */
+export type ThreadArtifact = {
+  path: string;
+  agent_id?: string;
+};
+
+/**
+ * Prefer ``artifact_refs``; fall back to legacy ``artifacts`` (strings or
+ * objects) so older servers / clients keep working.
+ */
+export function normalizeThreadArtifacts(
+  raw: unknown,
+  fallbackAgentId?: string | null,
+  refs?: unknown,
+): ThreadArtifact[] {
+  const source = Array.isArray(refs) && refs.length > 0 ? refs : raw;
+  if (!Array.isArray(source)) return [];
+  const out: ThreadArtifact[] = [];
+  const seen = new Set<string>();
+  const fallback = (fallbackAgentId || "").trim();
+  for (const item of source) {
+    let path = "";
+    let agentId = fallback;
+    if (typeof item === "string") {
+      path = item.trim();
+    } else if (item && typeof item === "object") {
+      const row = item as { path?: unknown; agent_id?: unknown };
+      if (typeof row.path === "string") path = row.path.trim();
+      if (typeof row.agent_id === "string" && row.agent_id.trim()) {
+        agentId = row.agent_id.trim();
+      }
+    }
+    if (!path) continue;
+    const key = `${agentId}\0${path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(agentId ? { path, agent_id: agentId } : { path });
+  }
+  return out;
+}
 
 export interface OctopThread {
   thread_id: string;
@@ -16,8 +57,21 @@ export interface OctopThread {
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
   pending_plan_path?: string | null;
-  artifacts?: string[];
+  hitl_policy?: HitlSessionPolicy | null;
+  /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
+  artifacts?: Array<string | ThreadArtifact>;
+  /** Structured refs with producer ``agent_id``. */
+  artifact_refs?: ThreadArtifact[];
+  /** True while a turn is still streaming server-side for this thread. */
+  turn_active?: boolean;
+  /** True when this thread is paused on a HITL approval or question. */
+  awaiting_user?: boolean;
+  /** Shared with other users who can open this expert. */
+  contributed?: boolean;
+  /** False when the thread was contributed by someone else. */
+  owned?: boolean;
 }
 
 export interface OctopThreadHistory {
@@ -32,13 +86,16 @@ export interface OctopThreadHistory {
     error_code?: string;
     agent_id?: string;
     team_wrapup?: boolean;
+    decision?: unknown;
   }>;
   pinned?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
   pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
   has_more?: boolean;
   limit?: number;
   offset?: number;
@@ -51,16 +108,28 @@ export interface OctopThreadHistory {
   turn_active?: boolean;
   /** Pending tool approval for this thread (survives page reload). */
   hitl_pending?: HitlPendingPayload | null;
-  artifacts?: string[];
+  /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
+  artifacts?: Array<string | ThreadArtifact>;
+  /** Structured refs with producer ``agent_id``. */
+  artifact_refs?: ThreadArtifact[];
+}
+
+/** Result of deleting a thread when the client asks about compaction. */
+export interface ThreadDeleteResult {
+  compacted?: boolean;
+  scheduled?: boolean;
 }
 
 export interface OctopThreadPatch {
   title?: string;
   pinned?: boolean;
+  contributed?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
   conversation_mode?: "ask" | "plan" | "craft" | null;
+  session_mode?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
 }
 
 export type ContextUsageSegmentKey =
@@ -81,6 +150,8 @@ export interface ContextUsageBreakdown {
   max_tokens: number;
   used_tokens: number;
   segments: ContextUsageSegment[];
+  /** Tokens the decision filter kept out of the latest model request. */
+  decision_saved?: number;
 }
 
 export interface HistoryMigrationStatus {
@@ -97,15 +168,52 @@ export interface HistoryMigrationStatus {
 
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
+export interface ThreadShareLink {
+  active: boolean;
+  share_id?: string | null;
+  created_at?: number | null;
+}
+
+export interface PublicShareMessage {
+  role: "user" | "assistant" | "tool";
+  content: unknown;
+  timestamp?: number;
+  author_name?: string;
+  speaker_name?: string;
+  decision?: unknown;
+}
+
+export interface PublicShareView {
+  title: string;
+  agent_name: string;
+  timezone: string;
+  ready: boolean;
+  truncated: boolean;
+  messages: PublicShareMessage[];
+}
+
+function threadSharePath(agentId: string, threadId: string): string {
+  return `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+    threadId,
+  )}/share`;
+}
+
+/** Read-only transcript. The share token is the credential. */
+export function fetchPublicShare(shareId: string): Promise<PublicShareView> {
+  return request<PublicShareView>(`/shares/${encodeURIComponent(shareId)}`);
+}
+
 export const octopThreadsApi = {
   list: (agentId: string, limit = 50) =>
     request<OctopThread[]>(
       `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,
     ),
 
-  create: (agentId: string) =>
+  create: (agentId: string, options?: { rebind?: boolean }) =>
     request<{ thread_id: string; session_key: string }>(
-      `/agents/${encodeURIComponent(agentId)}/threads`,
+      `/agents/${encodeURIComponent(agentId)}/threads${
+        options?.rebind === false ? "?rebind=false" : ""
+      }`,
       { method: "POST" },
     ),
 
@@ -175,11 +283,15 @@ export const octopThreadsApi = {
       thread_id: string;
       title: string | null;
       pinned?: boolean;
+      contributed?: boolean;
+      owned?: boolean;
       model_ref?: string | null;
       reasoning_mode?: "auto" | "enabled" | "disabled" | null;
       reasoning_effort?: string | null;
       conversation_mode?: "ask" | "plan" | "craft" | null;
+      session_mode?: string | null;
       pending_plan_path?: string | null;
+      hitl_policy?: HitlSessionPolicy | null;
     }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
@@ -187,11 +299,11 @@ export const octopThreadsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
-  delete: (agentId: string, threadId: string) =>
-    request<void>(
+  delete: (agentId: string, threadId: string, compact: boolean) =>
+    request<ThreadDeleteResult>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
-      )}`,
+      )}?compact=${compact ? "true" : "false"}`,
       { method: "DELETE" },
     ),
 
@@ -226,6 +338,18 @@ export const octopThreadsApi = {
       )}/read`,
       { method: "POST" },
     ),
+
+  shareStatus: (agentId: string, threadId: string) =>
+    request<ThreadShareLink>(threadSharePath(agentId, threadId)),
+
+  createShare: (agentId: string, threadId: string, rotate = false) =>
+    request<ThreadShareLink>(threadSharePath(agentId, threadId), {
+      method: "POST",
+      body: JSON.stringify({ rotate }),
+    }),
+
+  revokeShare: (agentId: string, threadId: string) =>
+    request<void>(threadSharePath(agentId, threadId), { method: "DELETE" }),
 
   rebind: (agentId: string, threadId: string) =>
     request<{ session_key: string; thread_id: string }>(

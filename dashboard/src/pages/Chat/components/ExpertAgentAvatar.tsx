@@ -1,4 +1,8 @@
+import cx from "classnames";
+
+import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
 import { ExpertIcon } from "../../Experts/components/iconForName";
+import { ManagedAvatarMark } from "../../Experts/components/ManagedAvatarMark";
 import styles from "../index.module.less";
 
 export interface ChatAgentOption {
@@ -10,6 +14,15 @@ export interface ChatAgentOption {
   is_shared?: boolean;
   is_owner?: boolean;
   owner_username?: string | null;
+  /** Remote cloud-collab shadow expert. */
+  bridge?: boolean;
+  bridge_connection_id?: string | null;
+  bridge_connection_name?: string | null;
+  bridge_connection_icon?: string | null;
+  bridge_disconnected?: boolean;
+  bridge_inbound?: boolean;
+  /** Bound ACP runner when this expert is managed. */
+  managed_runner?: string | null;
 }
 
 interface ExpertAgentAvatarProps {
@@ -23,6 +36,12 @@ interface ExpertAgentAvatarProps {
   className?: string;
   /** Neutral styling for read-only history tags. */
   muted?: boolean;
+  /** ACP runner id drawn at the bottom-right, same as the expert card. */
+  managedRunner?: string | null;
+  /** Incoming share. The pip stacks above the runner mark when both apply. */
+  shared?: boolean;
+  owned?: boolean;
+  ownerName?: string | null;
 }
 
 export default function ExpertAgentAvatar({
@@ -33,6 +52,10 @@ export default function ExpertAgentAvatar({
   size = 32,
   className,
   muted = false,
+  managedRunner,
+  shared,
+  owned = true,
+  ownerName,
 }: ExpertAgentAvatarProps) {
   const accent = muted ? "#94a3b8" : color || "#6366f1";
   const photo = Boolean(iconUrl?.trim());
@@ -40,9 +63,9 @@ export default function ExpertAgentAvatar({
     ? size
     : iconSize ?? Math.max(12, Math.round(size * 0.55));
 
-  return (
+  const avatar = (
     <span
-      className={`${styles.expertAgentAvatar} ${className ?? ""}`}
+      className={cx(styles.expertAgentAvatar, className)}
       style={{
         width: size,
         height: size,
@@ -53,5 +76,10 @@ export default function ExpertAgentAvatar({
     >
       <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={inner} />
     </span>
+  );
+  return (
+    <SharedAvatarMark shared={shared} owned={owned} ownerName={ownerName}>
+      <ManagedAvatarMark runner={managedRunner}>{avatar}</ManagedAvatarMark>
+    </SharedAvatarMark>
   );
 }

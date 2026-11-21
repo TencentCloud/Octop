@@ -15,8 +15,22 @@ class ThreadRegistry:
 
     CHANNEL_DASHBOARD = "dashboard"
     CHANNEL_CLI = "cli"
+    CHANNEL_MCP = "mcp"
     CHAT_TYPE_DM = "dm"
     CHAT_TYPE_GROUP = "group"
+
+    @classmethod
+    def is_virtual_channel(cls, channel_type: str) -> bool:
+        """In-process channels are not IM outbound targets."""
+        return channel_type in {
+            cls.CHANNEL_DASHBOARD,
+            cls.CHANNEL_CLI,
+            cls.CHANNEL_MCP,
+        }
+
+    @classmethod
+    def is_im_session(cls, session: SessionRow) -> bool:
+        return bool(session.channel_id) and not cls.is_virtual_channel(session.channel_type)
 
     @staticmethod
     def make_key(
@@ -85,6 +99,16 @@ class ThreadRegistry:
             channel_type=ThreadRegistry.CHANNEL_CLI,
             channel_subject_id=str(user_id),
             channel_chat_type=ThreadRegistry.CHAT_TYPE_DM,
+        )
+
+    @staticmethod
+    def mcp_key(*, agent_id: str, user_id: int, call_id: str) -> str:
+        """Return an isolated session key for one external MCP conversation."""
+        return ThreadRegistry.make_key(
+            agent_id=agent_id,
+            channel_type=ThreadRegistry.CHANNEL_MCP,
+            channel_subject_id=str(user_id),
+            channel_chat_type=f"call-{call_id}",
         )
 
     def __init__(self, *, session_repo: SessionRepo, thread_repo: ThreadRepo) -> None:
@@ -235,7 +259,25 @@ class ThreadRegistry:
     def get_session(self, session_key: str) -> SessionRow | None:
         return self._sessions.get(session_key)
 
-    async def rebind(self, *, session_key: str, thread_id: str, agent_id: str) -> None:
+    def sessions_for_thread(self, thread_id: str) -> list[SessionRow]:
+        """Return every session still bound to *thread_id*."""
+        tid = str(thread_id or "").strip()
+        if not tid:
+            return []
+        return self._sessions.list_by_thread(tid)
+
+    def im_sessions_for_thread(self, thread_id: str) -> list[SessionRow]:
+        """IM sessions bound to *thread_id* (excludes dashboard / CLI)."""
+        return [row for row in self.sessions_for_thread(thread_id) if self.is_im_session(row)]
+
+    async def rebind(
+        self,
+        *,
+        session_key: str,
+        thread_id: str,
+        agent_id: str,
+        acting_user_id: int | None = None,
+    ) -> None:
         row = self._threads.get(thread_id)
         if row is None:
             msg = f"thread {thread_id!r} not found"
@@ -261,10 +303,14 @@ class ThreadRegistry:
                 metadata = {"channel_type": row.channel_type, "user_id": row.user_id}
                 channel_id = None
             if session is None:
+                session_user_id = acting_user_id if acting_user_id is not None else row.user_id
+                if acting_user_id is not None:
+                    subject_id = str(acting_user_id)
+                    metadata = {"channel_type": channel_type, "user_id": acting_user_id}
                 self._sessions.upsert(
                     session_key=session_key,
                     agent_id=agent_id,
-                    user_id=row.user_id,
+                    user_id=session_user_id,
                     channel_type=channel_type,
                     chat_type=chat_type,
                     thread_id=thread_id,
@@ -371,6 +417,7 @@ class ThreadRegistry:
         reasoning_effort: str | None | object = ...,
         conversation_mode: str | None | object = ...,
         pending_plan_path: str | None | object = ...,
+        hitl_policy: str | None | object = ...,
     ) -> None:
         self._threads.update_composer(
             thread_id,
@@ -379,13 +426,20 @@ class ThreadRegistry:
             reasoning_effort=reasoning_effort,
             conversation_mode=conversation_mode,
             pending_plan_path=pending_plan_path,
+            hitl_policy=hitl_policy,
         )
 
     def touch_last_active(self, thread_id: str) -> None:
         self._threads.touch_last_active(thread_id)
 
-    def append_artifacts(self, thread_id: str, paths: list[str] | tuple[str, ...]) -> None:
-        self._threads.append_artifacts(thread_id, paths)
+    def append_artifacts(
+        self,
+        thread_id: str,
+        paths: list[str] | tuple[str, ...],
+        *,
+        agent_id: str = "",
+    ) -> None:
+        self._threads.append_artifacts(thread_id, paths, agent_id=agent_id)
 
     def get_thread(self, thread_id: str) -> ThreadRow | None:
         return self._threads.get(thread_id)
@@ -393,8 +447,21 @@ class ThreadRegistry:
     def list_threads(self, *, agent_id: str, user_id: int, limit: int = 50) -> list[ThreadRow]:
         return self._threads.list_by_agent_user(agent_id=agent_id, user_id=user_id, limit=limit)
 
+    def list_visible_threads(
+        self, *, agent_id: str, user_id: int, limit: int = 50
+    ) -> list[ThreadRow]:
+        """Threads this user owns, plus ones contributed on the same expert."""
+        return self._threads.list_visible(agent_id=agent_id, user_id=user_id, limit=limit)
+
+    def set_contributed(self, thread_id: str, contributed: bool) -> None:
+        self._threads.set_contributed(thread_id, contributed)
+
     def list_threads_for_session(self, *, session_key: str, limit: int = 50) -> list[ThreadRow]:
         return self._threads.list_by_session(session_key=session_key, limit=limit)
+
+    def latest_active_thread(self, *, session_key: str) -> ThreadRow | None:
+        """Most recent conversation on this channel, ignoring empty threads."""
+        return self._threads.latest_active_for_session(session_key=session_key)
 
     def create_thread(
         self,
@@ -452,6 +519,9 @@ class ThreadRegistry:
     def mark_thread_read(self, thread_id: str) -> None:
         self._sessions.clear_unread_for_thread(thread_id)
 
+    def mark_thread_read_for_user(self, thread_id: str, user_id: int) -> None:
+        self._sessions.clear_unread_for_user_thread(thread_id, user_id)
+
     def mark_agent_read(self, agent_id: str, user_id: int) -> None:
         self._sessions.clear_unread_for_agent(agent_id, user_id)
 
@@ -464,6 +534,15 @@ class ThreadRegistry:
 
 def _new_thread_id() -> str:
     return f"thr_{new_ulid()}"
+
+
+def thread_visible_to(row: ThreadRow, user_id: int) -> bool:
+    """Owner, or anyone who can open an expert that this thread was contributed to.
+
+    Rows that predate the column, and test fakes, have no ``contributed`` flag.
+    Those stay private to the owner.
+    """
+    return row.user_id == user_id or bool(getattr(row, "contributed", False))
 
 
 def thread_row_has_messages(row: ThreadRow) -> bool:

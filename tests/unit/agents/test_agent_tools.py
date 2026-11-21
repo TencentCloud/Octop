@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from harness_agent.messages import extract_call_response
-from harness_agent.teams.tools import build_team_tools
+from octop_harness.messages import extract_call_response
+from octop_harness.teams.tools import build_team_tools
 
 
 def test_extract_call_response_last_assistant() -> None:

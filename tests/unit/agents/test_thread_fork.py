@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from octop.infra.agents.thread_fork import (
+from octop.infra.agents.threads.fork import (
     _fork_title,
     find_assistant_fork_index,
     fork_dashboard_thread,

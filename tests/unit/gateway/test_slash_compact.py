@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from harness_agent.compaction import CompactResult
+from octop_harness.compaction import CompactResult
 
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager

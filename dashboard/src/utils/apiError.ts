@@ -108,6 +108,25 @@ export function apiErrorMessage(
   return fallback;
 }
 
+/** Probe responses carry `error_code` beside a raw `error` string. Prefer the locale copy. */
+export function probeErrorMessage(
+  result: {
+    error?: string;
+    error_code?: string;
+    details?: Record<string, unknown>;
+  },
+  fallback: string,
+  t?: TFunction,
+): string {
+  if (result.error_code && t) {
+    const key = `apiErrors.${result.error_code}`;
+    const translated = t(key, result.details ?? {});
+    if (translated !== key) return translated;
+  }
+  if (result.error?.trim()) return result.error.trim();
+  return fallback;
+}
+
 /** Resolve a desktop/browser WebSocket error payload for display. */
 export function wsStreamErrorMessage(
   error: { code?: string; message: string; details?: Record<string, unknown> },

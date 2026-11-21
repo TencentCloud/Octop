@@ -1,7 +1,10 @@
 import { ShieldAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { HitlActionRequest } from "../../../api/types/hitl";
 import { useToolDisplayNames } from "../hooks/toolDisplayNames";
+import type { HitlRequestResolution } from "../hooks/sseHelpers";
+import type { HitlDecisionHandler } from "../utils/hitlSessionPolicy";
 import {
   summarizeHitlAction,
   type HitlTranslate,
@@ -11,17 +14,58 @@ import styles from "./HitlApprovalCard.module.less";
 export interface HitlApprovalCardProps {
   actions: HitlActionRequest[];
   status: "pending" | "approved" | "rejected";
-  onDecision?: (decisions: Array<{ type: string; message?: string }>) => void;
+  resolution?: HitlRequestResolution;
+  onDecision?: HitlDecisionHandler;
+  pendingId?: string;
+  /** Team member who asked for this approval. */
+  speakerName?: string;
+}
+
+function uniqueToolNames(actions: HitlActionRequest[]): string[] {
+  return [
+    ...new Set(
+      actions
+        .map((action) => action.name.trim())
+        .filter((name) => name.length > 0),
+    ),
+  ];
 }
 
 export default function HitlApprovalCard({
   actions,
   status,
+  resolution,
   onDecision,
+  pendingId,
+  speakerName,
 }: HitlApprovalCardProps) {
   const { t } = useTranslation();
   const toolLabelOf = useToolDisplayNames();
   const interactive = status === "pending" && Boolean(onDecision);
+  const emit = (
+    decisions: Array<{ type: string; message?: string }>,
+    policy?: Parameters<NonNullable<HitlDecisionHandler>>[1],
+  ) => {
+    if (pendingId) onDecision?.(decisions, policy, pendingId);
+    else if (policy) onDecision?.(decisions, policy);
+    else onDecision?.(decisions);
+  };
+  const toolNames = uniqueToolNames(actions);
+  const allowToolsLabel =
+    toolNames.length > 1
+      ? t("chat.hitl.allowTools", "Allow these tools for this chat")
+      : t("chat.hitl.allowTool", "Allow this tool for this chat");
+
+  const resolvedLabel =
+    status === "rejected"
+      ? t("chat.hitl.rejectedLabel", "Rejected")
+      : resolution === "allow_all"
+      ? t("chat.hitl.allowedAll", "Allowed all for this chat")
+      : resolution === "allow_tool"
+      ? toolNames.length > 1
+        ? t("chat.hitl.allowedTools", "Allowed these tools for this chat")
+        : t("chat.hitl.allowedTool", "Allowed this tool for this chat")
+      : t("chat.hitl.approved", "Approved");
 
   return (
     <div className={styles.card} role="status">
@@ -33,6 +77,14 @@ export default function HitlApprovalCard({
           {t("chat.hitl.title", "Confirm this action")}
         </div>
       </div>
+      {speakerName ? (
+        <p className={styles.member}>
+          {t("chat.hitl.memberRequest", {
+            name: speakerName,
+            defaultValue: "{{name}} is asking to run this",
+          })}
+        </p>
+      ) : null}
       {actions.map((action, idx) => {
         const view = summarizeHitlAction(
           action.name,
@@ -63,40 +115,69 @@ export default function HitlApprovalCard({
         );
       })}
       {interactive ? (
-        <div className={styles.actions}>
+        <>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={cx(styles.actionButton, styles.primaryAction)}
+              onClick={() => emit(actions.map(() => ({ type: "approve" })))}
+            >
+              {t("chat.hitl.approve", "Approve")}
+            </button>
+            <button
+              type="button"
+              className={cx(styles.actionButton, styles.secondaryAction)}
+              title={allowToolsLabel}
+              onClick={() =>
+                emit(
+                  actions.map(() => ({ type: "approve" })),
+                  {
+                    mode: "allow_tools",
+                    tools: toolNames,
+                  },
+                )
+              }
+            >
+              {t("chat.hitl.allowSession", "Allow for this chat")}
+            </button>
+            <button
+              type="button"
+              className={cx(styles.actionButton, styles.dangerAction)}
+              onClick={() =>
+                emit(
+                  actions.map(() => ({
+                    type: "reject",
+                    message: t("chat.hitl.rejected", "Rejected by user"),
+                  })),
+                )
+              }
+            >
+              {t("chat.hitl.reject", "Reject")}
+            </button>
+          </div>
           <button
             type="button"
-            className={`${styles.actionButton} ${styles.primaryAction}`}
+            className={styles.allowAllLink}
             onClick={() =>
-              onDecision?.(actions.map(() => ({ type: "approve" })))
-            }
-          >
-            {t("chat.hitl.approve", "Approve")}
-          </button>
-          <button
-            type="button"
-            className={`${styles.actionButton} ${styles.dangerAction}`}
-            onClick={() =>
-              onDecision?.(
-                actions.map(() => ({
-                  type: "reject",
-                  message: t("chat.hitl.rejected", "Rejected by user"),
-                })),
+              emit(
+                actions.map(() => ({ type: "approve" })),
+                {
+                  mode: "allow_all",
+                },
               )
             }
           >
-            {t("chat.hitl.reject", "Reject")}
+            {t("chat.hitl.allowAllLink", "Allow all tools in this chat")}
           </button>
-        </div>
+        </>
       ) : status !== "pending" ? (
         <div
-          className={`${styles.resolved} ${
-            status === "approved" ? styles.approved : styles.rejected
-          }`}
+          className={cx(
+            styles.resolved,
+            status === "approved" ? styles.approved : styles.rejected,
+          )}
         >
-          {status === "approved"
-            ? t("chat.hitl.approved", "Approved")
-            : t("chat.hitl.rejectedLabel", "Rejected")}
+          {resolvedLabel}
         </div>
       ) : null}
     </div>

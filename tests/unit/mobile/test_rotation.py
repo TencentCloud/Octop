@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from octop.infra.mobile.adb import (
+from octop.infra.control.mobile.adb import (
     get_display_rotation,
     get_user_rotation,
     is_emulator_device,
@@ -15,7 +15,7 @@ from octop.infra.mobile.adb import (
 
 def test_get_user_rotation_parses_value() -> None:
     with patch(
-        "octop.infra.mobile.adb.shell",
+        "octop.infra.control.mobile.adb.shell",
         return_value=(0, "1"),
     ):
         assert get_user_rotation("emulator-5554", adb="/adb") == 1
@@ -23,7 +23,7 @@ def test_get_user_rotation_parses_value() -> None:
 
 def test_get_user_rotation_null_is_portrait() -> None:
     with patch(
-        "octop.infra.mobile.adb.shell",
+        "octop.infra.control.mobile.adb.shell",
         return_value=(0, "null"),
     ):
         assert get_user_rotation("emulator-5554", adb="/adb") == 0
@@ -35,7 +35,7 @@ def test_is_emulator_device_by_serial() -> None:
 
 def test_get_display_rotation_parses_window_manager() -> None:
     dumpsys = "DisplayRotation\n    mRotation=1 mDeferredRotationPauseCount=0\n  Display"
-    with patch("octop.infra.mobile.adb.shell", return_value=(0, dumpsys)):
+    with patch("octop.infra.control.mobile.adb.shell", return_value=(0, dumpsys)):
         assert get_display_rotation("device", adb="/adb") == 1
 
 
@@ -50,7 +50,7 @@ def test_set_user_rotation_success_when_display_matches() -> None:
             return 0, "1"
         return 0, ""
 
-    with patch("octop.infra.mobile.adb.shell", side_effect=fake_shell):
+    with patch("octop.infra.control.mobile.adb.shell", side_effect=fake_shell):
         result = set_user_rotation("redmi-phone", 1, adb="/adb")
 
     assert result.ok is True
@@ -68,7 +68,7 @@ def test_set_user_rotation_physical_falls_back_to_settings() -> None:
             return 0, "1"
         return 0, ""
 
-    with patch("octop.infra.mobile.adb.shell", side_effect=fake_shell):
+    with patch("octop.infra.control.mobile.adb.shell", side_effect=fake_shell):
         result = set_user_rotation("redmi-phone", 1, adb="/adb")
 
     assert result.ok is True
@@ -84,8 +84,8 @@ def test_set_user_rotation_emulator_reports_unsupported() -> None:
         return 0, ""
 
     with (
-        patch("octop.infra.mobile.adb.shell", side_effect=fake_shell),
-        patch("octop.infra.mobile.adb._try_emulator_rotate"),
+        patch("octop.infra.control.mobile.adb.shell", side_effect=fake_shell),
+        patch("octop.infra.control.mobile.adb._try_emulator_rotate"),
     ):
         result = set_user_rotation("emulator-5554", 1, adb="/adb")
 
@@ -102,7 +102,7 @@ def test_set_user_rotation_verifies_readback() -> None:
             return 0, "0"
         return 0, ""
 
-    with patch("octop.infra.mobile.adb.shell", side_effect=fake_shell):
+    with patch("octop.infra.control.mobile.adb.shell", side_effect=fake_shell):
         result = set_user_rotation("redmi-phone", 1, adb="/adb")
 
     assert result.ok is False
@@ -112,10 +112,10 @@ def test_set_user_rotation_verifies_readback() -> None:
 
 def test_toggle_portrait_landscape_from_portrait() -> None:
     with (
-        patch("octop.infra.mobile.adb.get_display_rotation", return_value=0),
-        patch("octop.infra.mobile.adb.set_user_rotation") as set_rot,
+        patch("octop.infra.control.mobile.adb.get_display_rotation", return_value=0),
+        patch("octop.infra.control.mobile.adb.set_user_rotation") as set_rot,
     ):
-        from octop.infra.mobile.adb import RotationResult
+        from octop.infra.control.mobile.adb import RotationResult
 
         set_rot.return_value = RotationResult(True, 1, "")
         result = toggle_portrait_landscape("device", adb="/adb")
@@ -126,10 +126,10 @@ def test_toggle_portrait_landscape_from_portrait() -> None:
 
 def test_toggle_portrait_landscape_from_landscape() -> None:
     with (
-        patch("octop.infra.mobile.adb.get_display_rotation", return_value=1),
-        patch("octop.infra.mobile.adb.set_user_rotation") as set_rot,
+        patch("octop.infra.control.mobile.adb.get_display_rotation", return_value=1),
+        patch("octop.infra.control.mobile.adb.set_user_rotation") as set_rot,
     ):
-        from octop.infra.mobile.adb import RotationResult
+        from octop.infra.control.mobile.adb import RotationResult
 
         set_rot.return_value = RotationResult(True, 0, "")
         toggle_portrait_landscape("device", adb="/adb")

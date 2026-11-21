@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
+import cx from "classnames";
 
+import { useIsMobile } from "../../hooks/useIsMobile";
 import styles from "./StreamSetupGuide.module.less";
 
 export interface SetupGuideStep {
@@ -21,21 +23,33 @@ export interface SetupGuideAction {
 
 interface StreamSetupGuideProps {
   icon: ReactNode;
-  title: string;
+  title?: string;
   description?: string;
   steps: SetupGuideStep[];
   primaryAction?: SetupGuideAction;
   secondaryAction?: SetupGuideAction;
   /** Optional third action (e.g. uninstall) rendered after the main pair. */
   extraAction?: SetupGuideAction;
+  /** Further actions rendered after ``extraAction``. */
+  moreActions?: SetupGuideAction[];
+  /** Callout rendered immediately above the action buttons. */
+  notice?: ReactNode;
   className?: string;
   /** Widen the card for longer explanatory copy. */
   wide?: boolean;
+  /**
+   * Borderless tip layout (no card chrome), closer to Tasks empty state.
+   * Prefer for page-level empty guides that sit directly in PageShell.
+   */
+  plain?: boolean;
 }
 
 function ActionButton({ action }: { action: SetupGuideAction }) {
+  const isMobile = useIsMobile();
   const button = (
     <Button
+      block={isMobile}
+      autoInsertSpace={false}
       type={action.type ?? "primary"}
       danger={action.danger}
       icon={action.icon}
@@ -47,7 +61,12 @@ function ActionButton({ action }: { action: SetupGuideAction }) {
     </Button>
   );
   if (!action.title) return button;
-  return <Tooltip title={action.title}>{button}</Tooltip>;
+  // Span wrapper so tooltips still work on disabled buttons.
+  return (
+    <Tooltip title={action.title}>
+      <span className={styles.actionTooltipWrap}>{button}</span>
+    </Tooltip>
+  );
 }
 
 export default function StreamSetupGuide({
@@ -58,19 +77,26 @@ export default function StreamSetupGuide({
   primaryAction,
   secondaryAction,
   extraAction,
+  moreActions,
+  notice,
   className,
   wide,
+  plain,
 }: StreamSetupGuideProps) {
-  const hasActions = primaryAction || secondaryAction || extraAction;
-  const wrapClass = [styles.wrap, wide ? styles.wide : "", className ?? ""]
-    .filter(Boolean)
-    .join(" ");
+  const hasActions =
+    primaryAction || secondaryAction || extraAction || moreActions?.length;
+  const wrapClass = cx(
+    styles.wrap,
+    wide && styles.wide,
+    plain && styles.plain,
+    className,
+  );
 
   return (
     <div className={wrapClass}>
       <div className={styles.card}>
         <div className={styles.icon}>{icon}</div>
-        <h3 className={styles.title}>{title}</h3>
+        {title ? <h3 className={styles.title}>{title}</h3> : null}
         {description ? (
           <p className={styles.description}>{description}</p>
         ) : null}
@@ -89,11 +115,15 @@ export default function StreamSetupGuide({
             ))}
           </ol>
         ) : null}
+        {notice ? <div className={styles.notice}>{notice}</div> : null}
         {hasActions ? (
           <div className={styles.actions}>
             {primaryAction ? <ActionButton action={primaryAction} /> : null}
             {secondaryAction ? <ActionButton action={secondaryAction} /> : null}
             {extraAction ? <ActionButton action={extraAction} /> : null}
+            {moreActions?.map((action) => (
+              <ActionButton key={String(action.label)} action={action} />
+            ))}
           </div>
         ) : null}
       </div>
