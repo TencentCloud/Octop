@@ -1,4 +1,2 @@
--- 026: retire the user-level memory MCP token table (see the SQLite variant).
-DROP TABLE IF EXISTS memory_mcp_tokens;
-
+-- 026: user-level memory MCP tokens are retired (see the SQLite variant).
 UPDATE _schema_version SET version = 26;

@@ -8,7 +8,6 @@ session can be added later without changing this interface.
 
 from __future__ import annotations
 
-import json
 import os
 import threading
 import time
@@ -76,6 +75,11 @@ def get_session(user_id: int) -> SharingSession | None:
 
 def clear_session(user_id: int) -> None:
     _sessions.clear(user_id)
+
+
+def adopt_session(user_id: int, session: SharingSession) -> None:
+    """Fill the in-process cache from a persisted (encrypted) session."""
+    _sessions.set(user_id, session)
 
 
 def _request(method: str, path: str, *, session: str | None = None, body: dict[str, Any] | None = None) -> dict[str, Any]:

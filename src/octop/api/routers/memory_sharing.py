@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import assert_agent_access_row
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents import memory_sharing
+from octop.infra.crypto.fernet import open_text, seal_text
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
@@ -24,6 +25,60 @@ router = APIRouter(
     prefix="/memory-sharing",
     dependencies=[Depends(require_permission("memory"))],
 )
+
+_SESSION_KEY = "memory_sharing.session.{user_id}"
+_SECRET_PURPOSE = "memory_sharing_fernet"
+
+
+def _save_session(server: OctopServer, user_id: int, session: Any) -> None:
+    """Persist the management session encrypted at rest (survives restarts)."""
+    repos = server.services.repos if server.services else None
+    if repos is None:
+        return
+    payload = json.dumps(
+        {
+            "token": session.token,
+            "space_id": session.space_id,
+            "scopes": list(session.scopes),
+            "expires_at": session.expires_at,
+            "stored_at": session.stored_at,
+        },
+        ensure_ascii=False,
+    )
+    sealed = seal_text(repos.secret_repo, _SECRET_PURPOSE, payload)
+    if sealed is not None:
+        repos.settings_repo.set(_SESSION_KEY.format(user_id=user_id), sealed)
+
+
+def _load_session(server: OctopServer, user_id: int) -> None:
+    repos = server.services.repos if server.services else None
+    if repos is None or memory_sharing.get_session(user_id) is not None:
+        return
+    sealed = repos.settings_repo.get(_SESSION_KEY.format(user_id=user_id))
+    raw = open_text(repos.secret_repo, _SECRET_PURPOSE, sealed)
+    if not raw:
+        return
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    session = memory_sharing.SharingSession(
+        token=str(data.get("token") or ""),
+        space_id=str(data.get("space_id") or ""),
+        scopes=tuple(data.get("scopes") or ()),
+        expires_at=str(data.get("expires_at") or ""),
+        stored_at=float(data.get("stored_at") or 0),
+    )
+    if not session.token:
+        return
+    memory_sharing.adopt_session(user_id, session)
+
+
+def _drop_session(server: OctopServer, user_id: int) -> None:
+    repos = server.services.repos if server.services else None
+    if repos is not None:
+        repos.settings_repo.delete(_SESSION_KEY.format(user_id=user_id))
+    memory_sharing.clear_session(user_id)
 
 
 class ExchangeBody(BaseModel):
@@ -53,7 +108,11 @@ def _session_payload(user_id: int) -> dict[str, Any]:
 
 
 @router.get("/session", summary="Current memory sharing session")
-def get_session(user: User = Depends(current_user)) -> dict[str, Any]:
+def get_session(
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _load_session(server, int(user.id))
     return _session_payload(int(user.id))
 
 
@@ -61,14 +120,19 @@ def get_session(user: User = Depends(current_user)) -> dict[str, Any]:
 def connect(
     body: ExchangeBody,
     user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
 ) -> dict[str, Any]:
-    memory_sharing.exchange_code(int(user.id), body.code)
+    session = memory_sharing.exchange_code(int(user.id), body.code)
+    _save_session(server, int(user.id), session)
     return _session_payload(int(user.id))
 
 
 @router.delete("/session", summary="Forget the local management session")
-def disconnect(user: User = Depends(current_user)) -> dict[str, Any]:
-    memory_sharing.clear_session(int(user.id))
+def disconnect(
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _drop_session(server, int(user.id))
     return {"connected": False}
 
 
