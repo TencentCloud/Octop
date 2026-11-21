@@ -10,10 +10,8 @@ describe("expert avatar presets", () => {
       "scene-design": "general-assistant",
       "ai-coding-coach": "scene-tech",
       "scene-finance": "scene-office",
-      "stock-assistant": "scene-office",
       "scene-legal": "scene-education",
       "scene-content-creation": "scene-marketing",
-      "news-trend": "scene-marketing",
       "scene-media": "scene-marketing",
     };
     for (const [id, canonical] of Object.entries(aliases)) {

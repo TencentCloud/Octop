@@ -24,7 +24,6 @@ import {
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import { PublishedExpertCard } from "./PublishedExpertCard";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
-import { FadeInImg } from "../../../components/FadeInImg";
 import { CardSkeleton } from "../../../components/Skeleton";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -35,7 +34,7 @@ import {
   parseWorkflowFrontmatterMeta,
   splitMarkdownFrontmatter,
 } from "../../../utils/markdown";
-import { iconForName } from "./iconForName";
+import { ExpertIcon, iconForName } from "./iconForName";
 import { MARKET_SCENE_FEATURED, visibleMarketExperts } from "./marketFeatured";
 import styles from "../index.module.less";
 
@@ -446,22 +445,19 @@ export default function ExpertMarketTab({
                       )}
                     >
                       <div
-                        className={styles.agentCardIcon}
+                        className={styles.agentCard2Icon}
                         style={{
                           color: accent,
-                          background: `${accent}18`,
+                          background: expert.icon_url
+                            ? "transparent"
+                            : `${accent}1a`,
                         }}
                       >
-                        {expert.icon_url ? (
-                          <FadeInImg
-                            src={expert.icon_url}
-                            alt=""
-                            crossOrigin="anonymous"
-                            className={styles.marketIconImg}
-                          />
-                        ) : (
-                          iconForName(expert.icon_name || "zap", 20)
-                        )}
+                        <ExpertIcon
+                          iconUrl={expert.icon_url}
+                          iconName={expert.icon_name || "zap"}
+                          size={expert.icon_url ? 42 : 22}
+                        />
                       </div>
                       <div className={styles.agentCardTitleBlock}>
                         <div className={styles.agentCardName}>{label}</div>
@@ -491,7 +487,7 @@ export default function ExpertMarketTab({
                       <Button
                         size="small"
                         type="primary"
-                        icon={<Download size={14} />}
+                        className={styles.marketCreateBtn}
                         onClick={(e) => {
                           e.stopPropagation();
                           openCreate(expert);

@@ -576,7 +576,7 @@
     "editDocumentSuccess": "已保存，正在重建索引",
     "editDocumentFailed": "保存文档失败",
     "filenameRequired": "请输入文件名",
-    "filenamePlaceholder": "例如 notes",
+    "filenamePlaceholder": "文件名",
     "fileFormat": "格式",
     "fileContent": "内容",
     "fileContentPlaceholder": "在此编写文档内容…",
@@ -1368,6 +1368,12 @@
       "yolo": "YOLO",
       "yoloHint": "新会话默认不审批。底层智能体会直接执行，包括改文件和运行命令。对话里仍可改回每次审批。",
       "sessionModeHint": "按当前托管智能体提供的模式。新对话默认用这里的选择，单个对话里还可以改。"
+    },
+    "chips": {
+      "workspace": "工作区",
+      "subagents": "子智能体",
+      "skills": "技能",
+      "startChat": "开始对话"
     }
   },
   "subagents": {

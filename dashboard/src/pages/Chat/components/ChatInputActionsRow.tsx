@@ -1262,7 +1262,7 @@ export default function ChatInputActionsRow({
         aria-label={t("chat.composerMore", "更多工具")}
         data-testid="composer-plus"
       >
-        <Plus size={16} />
+        <Plus size={18} strokeWidth={1.5} />
         {overflowBadgeCount > 0 && (
           <span className={styles.toolbarBadge}>{overflowBadgeCount}</span>
         )}
@@ -1415,7 +1415,7 @@ export default function ChatInputActionsRow({
                 type="button"
                 aria-label={t("shortcut.title", "快捷指令")}
               >
-                <Zap size={16} />
+                <Zap size={18} strokeWidth={1.5} />
               </button>
             </Tooltip>
           </Popover>
@@ -1440,7 +1440,7 @@ export default function ChatInputActionsRow({
                 aria-label={t("upload.tooltip", "Upload")}
                 aria-haspopup="menu"
               >
-                <Paperclip size={16} />
+                <Paperclip size={18} strokeWidth={1.5} />
               </button>
             </Tooltip>
           </Popover>
@@ -1485,7 +1485,7 @@ export default function ChatInputActionsRow({
               onClick={onNewChat}
               type="button"
             >
-              <MessageSquarePlus size={16} strokeWidth={1.75} />
+              <MessageSquarePlus size={18} strokeWidth={1.5} />
             </button>
           </Tooltip>
         ) : (
@@ -1496,7 +1496,7 @@ export default function ChatInputActionsRow({
                 onClick={onNewChat}
                 type="button"
               >
-                <MessageSquarePlus size={16} strokeWidth={1.75} />
+                <MessageSquarePlus size={18} strokeWidth={1.5} />
               </button>
             </Tooltip>
             <Tooltip title={t("chat.polish.tooltip")} mouseEnterDelay={0.4}>
@@ -1560,7 +1560,7 @@ export default function ChatInputActionsRow({
                 : undefined
             }
           >
-            <Mic size={16} />
+            <Mic size={18} strokeWidth={1.5} />
           </button>
         </Tooltip>
         {(onStartBrowserRecording || onStopBrowserRecording) &&

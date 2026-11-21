@@ -383,13 +383,7 @@ function ActiveAgentCard({
   const sessionsEnabled = isAgentChatReady(agent.state);
 
   return (
-    <div
-      className={styles.agentCardActive}
-      style={{
-        background: `${accent}08`,
-        borderColor: `${accent}18`,
-      }}
-    >
+    <div className={styles.agentCardActive}>
       <div className={styles.agentCardProfile}>
         <SharedExpertHint agent={agent}>
           <ManagedAvatarMark runner={managedRunnerId(agent)}>
@@ -404,7 +398,7 @@ function ActiveAgentCard({
               <ExpertIcon
                 iconUrl={agent.icon_url}
                 iconName={agent.icon_name}
-                size={agent.icon_url?.trim() ? 28 : 16}
+                size={agent.icon_url?.trim() ? 26 : 14}
               />
             </div>
           </ManagedAvatarMark>
@@ -450,16 +444,15 @@ function ActiveAgentCard({
         </div>
       </div>
 
+      {/* Skip the (padded) sessions container entirely when there is nothing
+          to show, so the card bottom matches the collapsed row spacing. */}
+      {!sessionsEnabled || sessions.length !== 0 || showExpandMore ? (
       <div className={styles.agentCardSessions}>
         {!sessionsEnabled ? (
           <div className={styles.agentCardSessionsEmpty}>
             {t("chat.agentNotRunningHint")}
           </div>
-        ) : sessions.length === 0 ? (
-          <div className={styles.agentCardSessionsEmpty}>
-            {t("chat.noSessionsYet", "直接发消息即可开始对话")}
-          </div>
-        ) : filteredSessions.length === 0 ? (
+        ) : sessions.length === 0 ? null : filteredSessions.length === 0 ? (
           <div className={styles.agentCardSessionsEmpty}>
             {t("chat.noSearchResults", "没有匹配的会话")}
           </div>
@@ -504,6 +497,7 @@ function ActiveAgentCard({
           </>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

@@ -92,25 +92,20 @@
     background 0.15s ease;
 
   &:hover {
-    border-color: color-mix(
-      in srgb,
-      var(--fn-color-brand) 45%,
-      var(--fn-border-secondary)
-    ) !important;
-    box-shadow: var(--fn-shadow-sm);
-    transform: translateY(-1px);
+    /* 1px #000 20% stroke, matching the selected card's black outline. */
+    border-color: rgba(0, 0, 0, 0.2) !important;
   }
 }
 
 .active {
+  /* 1px stroke at 50% ink: flips to white 50% in dark mode. */
   border-color: color-mix(
     in srgb,
-    var(--fn-color-brand) 65%,
-    var(--fn-border-secondary)
+    var(--fn-tab-ink) 50%,
+    transparent
   ) !important;
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--fn-color-brand) 30%, transparent),
-    0 8px 20px color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
+  /* Single 1px stroke only: no glow ring, no large drop shadow. */
+  box-shadow: none;
 }
 
 .listName {
@@ -408,10 +403,12 @@
   position: relative;
   flex-shrink: 0;
   align-self: stretch;
-  width: 8px;
-  margin: 0 -1px;
+  /* Wide transparent hit-area for dragging, drawn as a hairline separator. */
+  width: 9px;
+  margin: 0;
   z-index: 2;
-  background: var(--fn-border-secondary);
+  background: transparent;
+  border-left: 1px solid var(--fn-border-secondary);
 }
 
 .splitDividerCollapsed {

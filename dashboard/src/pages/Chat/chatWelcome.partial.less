@@ -28,25 +28,19 @@
 .welcomeInner {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* Figma 904 — heading is left-aligned with the cards below, not centred. */
+  align-items: flex-start;
   width: 100%;
-  // Match the inputWrapper max-width and chatInput horizontal padding so
-  // the quick-start cards align with the chat input box below.
-  max-width: 960px;
+  // The inner content (after this padding) must equal the inputWrapper width:
+  // column max (1000px) + this container's own 2×32px padding.
+  max-width: calc(var(--chat-column-max, 1000px) + 2 * var(--chat-column-pad-x, 32px));
   padding: 0 var(--chat-column-pad-x, 32px);
-  gap: 12px;
+  /* Figma 904:19855 — 40px between the greeting block and the cards. */
+  gap: 40px;
 
   @media (max-width: 767px) {
     padding: 0 12px;
-    gap: 10px;
-  }
-
-  @media (min-width: 1200px) {
-    gap: 16px;
-  }
-
-  @media (min-width: 1600px) {
-    gap: 20px;
+    gap: 24px;
   }
 }
 
@@ -72,13 +66,14 @@
   }
 }
 
-// Mascot image shown above the greeting title
+// Mascot image shown above the greeting title (Figma 904:19958 — 80px, left-aligned)
 .welcomeMascot {
-  width: 132px;
+  width: 80px;
   aspect-ratio: 352 / 320;
   height: auto;
   object-fit: contain;
-  margin-bottom: -12px;
+  /* 20px down, 8px left of the text column edge. */
+  margin: 20px 0 -20px -8px;
   cursor: pointer;
   background: transparent;
   transition: transform 0.18s ease;
@@ -98,62 +93,55 @@
   }
 
   @media (max-width: 767px) {
-    width: 110px;
-    margin-bottom: -10px;
-  }
-
-  @media (min-width: 1200px) {
-    width: 172px;
-    margin-bottom: -16px;
+    width: 66px;
   }
 }
 
 .welcomeHeading {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
+  align-items: flex-start;
+}
+
+.welcomeHeadingText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* Mascot → title 12px, title → subtitle 8px (Figma 904:19856). */
+  gap: 8px;
+}
+
+.welcomeHeadingText .welcomeMascot {
+  /* Keep the 12px mascot → title rhythm under the 8px column gap. */
+  margin-bottom: -16px;
 }
 
 .welcomeTitle {
+  /* Figma 904:19857 — 24px Semibold #111827. */
   font-size: 24px;
   font-weight: 600;
   margin: 0;
   color: var(--fn-text-primary);
-  line-height: 1.4;
-  text-align: center;
+  line-height: 36px;
+  letter-spacing: 0.43px;
+  text-align: left;
 
   @media (max-width: 767px) {
-    font-size: 23px;
-  }
-
-  @media (min-width: 1200px) {
-    font-size: 26px;
-  }
-
-  @media (min-width: 1600px) {
-    font-size: 28px;
+    font-size: 22px;
+    line-height: 32px;
   }
 }
 
 .welcomeSubtitle {
-  font-size: 13px;
+  /* Figma 904:19858 — 14px / 22px, single line with the @mention inline. */
+  font-size: 14px;
   font-weight: 400;
   margin: 0;
   color: var(--fn-text-secondary);
-  line-height: 1.55;
-  text-align: center;
+  line-height: 22px;
+  text-align: left;
   max-width: 560px;
   overflow-wrap: break-word;
-
-  @media (max-width: 767px) {
-    font-size: 13px;
-  }
-
-  @media (min-width: 1200px) {
-    font-size: 14px;
-  }
 }
 
 .welcomeAgentLine {
@@ -166,15 +154,15 @@
 }
 
 .welcomeAgentMention {
+  /* Figma 904:19859 — PingFang Medium 14px, #FF4447; inline with subtitle. */
   display: inline-block;
-  margin-right: 0;
-  font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", ui-serif,
-    Georgia, serif;
-  font-size: 1.02em;
-  font-weight: 800;
+  margin-right: 8px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
   font-style: normal;
-  color: var(--fn-color-brand);
-  letter-spacing: 0.01em;
+  color: #ff4447;
+  letter-spacing: 0.16px;
 }
 
 .welcomeSubtitleText {
@@ -188,20 +176,7 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 28px;
-
-  @media (max-width: 767px) {
-    margin-top: 14px;
-  }
-}
-
-.quickSectionTitle {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--fn-text-quaternary, #9ca3af);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  align-items: flex-start;
 }
 
 .quickCards {
@@ -226,8 +201,8 @@
   align-items: center;
   gap: 11px;
   padding: 12px 14px;
-  background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-border-primary);
+  background: #fafafa;
+  border: none;
   border-radius: var(--fn-radius-lg, 12px);
   cursor: pointer;
   text-align: left;
@@ -238,9 +213,8 @@
   animation: promptCardIn 0.35s ease both;
 
   &:hover {
-    border-color: var(--fn-color-brand);
-    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.07);
-    transform: translateY(-1px);
+    /* Only the fill changes; the stroke stays as-is. */
+    background: #f7f7f7;
   }
 
   &:active {
@@ -253,6 +227,10 @@
   }
 }
 
+.quickCardVisual {
+  display: contents;
+}
+
 .quickCardIcon {
   width: 36px;
   height: 36px;
@@ -261,12 +239,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 7px;
+  padding: 9px;
   overflow: hidden;
 
   svg {
     width: 100%;
     height: 100%;
+    stroke-width: 2;
   }
 }
 
@@ -368,6 +347,10 @@
   @media (max-width: 479px) {
     width: calc(100vw - 24px);
   }
+}
+
+.quickCardProbeVisual {
+  min-height: 0;
 }
 
 // ── (legacy, unused) ──────────────────────────────────────────────────────────

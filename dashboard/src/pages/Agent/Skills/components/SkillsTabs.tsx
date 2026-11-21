@@ -10,12 +10,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { Empty } from "antd";
-import { Blocks, Package, Sparkles, Store } from "lucide-react";
+import { Empty, Tabs } from "antd";
 import { useTranslation } from "react-i18next";
-import TabBar, {
-  type TabBarItem,
-} from "../../../../components/TabLabel/TabBar";
 import InstalledSkillsTab from "./InstalledSkillsTab";
 import SkillPackagesTab from "./SkillPackagesTab";
 import SkillHubTab from "./SkillHubTab";
@@ -26,11 +22,11 @@ import { userCan, userCanAny, PERM } from "../../../../utils/permissions";
 
 type SkillsTab = "custom" | "builtin" | "skillhub" | "packages";
 
-const SKILL_TABS: TabBarItem<SkillsTab>[] = [
-  { key: "custom", labelKey: "skills.customizedSkills", icon: Sparkles },
-  { key: "builtin", labelKey: "skills.builtinSkills", icon: Blocks },
-  { key: "skillhub", labelKey: "skills.tencentSkillHub", icon: Store },
-  { key: "packages", labelKey: "skills.skillPackages", icon: Package },
+const SKILL_TABS: { key: SkillsTab; labelKey: string }[] = [
+  { key: "custom", labelKey: "skills.customizedSkills" },
+  { key: "builtin", labelKey: "skills.builtinSkills" },
+  { key: "skillhub", labelKey: "skills.tencentSkillHub" },
+  { key: "packages", labelKey: "skills.skillPackages" },
 ];
 
 interface SkillsTabsProps {
@@ -74,36 +70,54 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
     />
   );
 
+  const contentFor = (tab: SkillsTab) => {
+    if (tab === "custom" || tab === "builtin") {
+      return agentId ? (
+        <InstalledSkillsTab
+          key={agentId}
+          agentId={agentId}
+          kind={tab === "builtin" ? "builtin" : "custom"}
+          {...installedSkills}
+        />
+      ) : (
+        noAgent
+      );
+    }
+    if (tab === "skillhub") {
+      return agentId ? (
+        <SkillHubTab key={agentId} target={{ type: "agent", agentId }} />
+      ) : (
+        noAgent
+      );
+    }
+    return agentId && canSkillPackages ? (
+      <SkillPackagesTab
+        key={agentId}
+        agentId={agentId}
+        skills={installedSkills.skills}
+        fetchSkills={installedSkills.fetchSkills}
+        toggleEnabled={installedSkills.toggleEnabled}
+      />
+    ) : (
+      noAgent
+    );
+  };
+
   return (
     <div className={styles.skillsTabs}>
-      <TabBar tabs={tabs} activeKey={resolvedTab} onChange={setActiveTab} />
-
-      <div className={styles.skillsTabsContent}>
-        {resolvedTab === "custom" || resolvedTab === "builtin" ? (
-          agentId ? (
-            <InstalledSkillsTab
-              key={agentId}
-              agentId={agentId}
-              kind={resolvedTab === "builtin" ? "builtin" : "custom"}
-              {...installedSkills}
-            />
-          ) : (
-            noAgent
-          )
-        ) : resolvedTab === "skillhub" && agentId ? (
-          <SkillHubTab key={agentId} target={{ type: "agent", agentId }} />
-        ) : resolvedTab === "packages" && agentId && canSkillPackages ? (
-          <SkillPackagesTab
-            key={agentId}
-            agentId={agentId}
-            skills={installedSkills.skills}
-            fetchSkills={installedSkills.fetchSkills}
-            toggleEnabled={installedSkills.toggleEnabled}
-          />
-        ) : (
-          noAgent
-        )}
-      </div>
+      <Tabs
+        activeKey={resolvedTab}
+        onChange={(k) => setActiveTab(k as SkillsTab)}
+        items={tabs.map((tab) => ({
+          key: tab.key,
+          label: t(tab.labelKey),
+          children: (
+            <div className={styles.skillsTabsContent}>
+              {contentFor(tab.key)}
+            </div>
+          ),
+        }))}
+      />
     </div>
   );
 }

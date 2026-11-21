@@ -9,9 +9,9 @@
 import { useMemo, useState } from "react";
 import { Spin, Tabs } from "antd";
 import { HardDrive, LayoutGrid } from "lucide-react";
+
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
-import TabLabel from "../../../components/TabLabel";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import {
@@ -168,18 +168,12 @@ export default function AdminStoragePage() {
         items={[
           {
             key: "my",
-            label: (
-              <TabLabel icon={HardDrive}>{t("storage.myStorage")}</TabLabel>
-            ),
+            label: t("storage.myStorage"),
             children: myStorageContent,
           },
           {
             key: "types",
-            label: (
-              <TabLabel icon={LayoutGrid}>
-                {t("storage.supportedTypes")}
-              </TabLabel>
-            ),
+            label: t("storage.supportedTypes"),
             children: typesContent,
           },
         ]}

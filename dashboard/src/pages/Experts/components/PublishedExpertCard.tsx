@@ -26,14 +26,16 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
     >
       <div className={styles.marketCardHeader}>
         <div
-          className={styles.agentCardIcon}
-          style={{ color: accent, background: `${accent}18` }}
+          className={styles.agentCard2Icon}
+          style={{
+            color: accent,
+            background: expert.icon_url ? "transparent" : `${accent}1a`,
+          }}
         >
           <ExpertIcon
             iconUrl={expert.icon_url}
             iconName={expert.icon_name}
-            size={expert.icon_url ? 36 : 20}
-            className={expert.icon_url ? styles.marketIconImg : undefined}
+            size={expert.icon_url ? 42 : 22}
           />
         </div>
         <div className={styles.agentCardTitleBlock}>

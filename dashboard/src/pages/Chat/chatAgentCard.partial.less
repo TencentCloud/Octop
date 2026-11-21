@@ -1,10 +1,12 @@
 /* Active agent card + session row highlights */
 /* ── Session sidebar: bordered active agent block + session row highlights ─ */
 .agentCardActive {
-  margin: 0 0 10px;
-  padding: 6px 6px 8px;
-  border-radius: 14px;
-  border: 1px solid transparent;
+  margin: 0;
+  padding: 12px 4px;
+  border-radius: 8px;
+  border: none;
+  /* Selected entry: #000 4% (same on hover). */
+  background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
   box-shadow: none;
 }
 
@@ -12,13 +14,14 @@
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin-bottom: 4px;
-  padding: 4px 4px 2px;
+  /* No bottom margin — it would leak into the card height when the sessions
+     block is absent, making the active card taller than a hovered row. */
+  padding: 0 8px;
 }
 
 .agentCardAvatar {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -37,7 +40,6 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  margin-bottom: 1px;
 }
 
 /* Name + shared flag stay packed left; unread / new-chat sit at the row end. */
@@ -80,7 +82,8 @@
 
   &:hover {
     color: var(--fn-text-secondary);
-    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+    /* Neutral gray hover: #000 8% (auto-inverts in dark mode). */
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   }
 }
 
@@ -106,10 +109,10 @@
 }
 
 .agentCardName {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--fn-text-primary);
-  line-height: 1.35;
+  line-height: 22px;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -180,28 +183,32 @@
 }
 
 .agentCardDesc {
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.35;
-  color: var(--fn-text-tertiary);
+  line-height: 21px;
+  color: color-mix(in srgb, var(--fn-text-primary) 30%, transparent);
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
 .agentCardDescMuted {
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.35;
-  color: var(--fn-text-quaternary);
+  line-height: 21px;
+  color: color-mix(in srgb, var(--fn-text-primary) 30%, transparent);
 }
 
 .agentCardSessions {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px 2px 2px;
+  /* 8px top = the former profile margin-bottom (4px) + old top padding (4px),
+     so the desc → first-session rhythm is unchanged. */
+  padding: 8px 2px 2px;
   border-top: none;
 }
 
@@ -241,7 +248,8 @@
 }
 
 .sessionRowActive {
-  background: color-mix(in srgb, var(--fn-text-primary) 6%, transparent);
+  /* Figma spec: the active session row sits as a white card on the grey agent card. */
+  background: var(--fn-bg-primary);
   color: var(--fn-text-primary);
 }
 
@@ -312,7 +320,15 @@
 }
 
 .sessionRowActive:hover {
-  background: color-mix(in srgb, var(--fn-text-primary) 6%, transparent);
+  /* Figma: white card lifts with a dual soft shadow on hover. */
+  background: var(--fn-bg-primary);
+  box-shadow:
+    var(--shadow-sm-offsetx-1, 0) var(--shadow-sm-offsety-1, 2px)
+      var(--shadow-sm-blur-1, 4px) var(--shadow-sm-spread-1, 2px)
+      var(--shadow-sm-color-1, rgba(0, 0, 0, 0.05)),
+    var(--shadow-sm-offsetx-2, 0) var(--shadow-sm-offsety-2, 2px)
+      var(--shadow-sm-blur-2, 8px) var(--shadow-sm-spread-2, -1px)
+      var(--shadow-sm-color-2, rgba(0, 0, 0, 0.05));
 }
 
 .sessionRowTitleGroup {
@@ -451,8 +467,20 @@
 .agentRowList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
   padding: 0;
+}
+
+/* 4px rhythm between plain entries, but the expanded (active) agent card
+   sits flush against its neighbours. */
+.agentRowList > * + * {
+  margin-top: 4px;
+}
+
+.agentRowList > .agentCardActive,
+.agentRowList > * + .agentCardActive,
+.agentRowList > .agentCardActive + * {
+  margin-top: 0;
 }
 
 .agentRow {
@@ -461,19 +489,16 @@
   gap: 8px;
   flex: none;
   min-width: 0;
-  padding: 7px 8px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  padding: 12px 12px;
+  border: none;
+  border-radius: 8px;
   background: transparent;
   cursor: pointer;
   text-align: left;
-  transition:
-    background 0.15s,
-    border-color 0.15s;
+  transition: background 0.15s;
 
   &:hover {
-    background: var(--fn-sidebar-item-hover, rgba(0, 0, 0, 0.03));
-    border-color: var(--fn-border-primary, rgba(0, 0, 0, 0.05));
+    background: color-mix(in srgb, var(--fn-text-primary) 4%, transparent);
   }
 }
 
@@ -501,10 +526,10 @@
 }
 
 .agentRowName {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
-  color: var(--fn-text-secondary);
-  line-height: 1.35;
+  color: var(--fn-text-primary);
+  line-height: 22px;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -512,11 +537,11 @@
 }
 
 .agentRowDesc {
-  margin-top: 1px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 13px;
   font-weight: 400;
-  line-height: 1.35;
-  color: var(--fn-text-tertiary);
+  line-height: 21px;
+  color: color-mix(in srgb, var(--fn-text-primary) 30%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

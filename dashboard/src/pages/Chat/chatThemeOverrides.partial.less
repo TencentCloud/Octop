@@ -22,8 +22,9 @@
 
   .sidebar {
     height: 100%;
-    /* Vertical line drawn by RailEdgeControl */
-    border-right: none;
+    /* Figma: 1px right stroke #000 8% (RailEdgeControl only draws on hover). */
+    border-right: 1px solid
+      color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   }
 }
 
@@ -65,7 +66,8 @@
   background: var(--fn-bg-elevated, #fff);
   box-shadow: none;
   border: none;
-  border-right: none;
+  border-right: 1px solid
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
 
   @media (max-width: 767px) {
     left: 16px;
@@ -255,7 +257,8 @@
 
   &:hover {
     color: var(--fn-text-secondary);
-    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+    /* Neutral gray hover: #000 8% (same as default agent action buttons). */
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   }
 }
 
@@ -853,28 +856,36 @@
 }
 
 .inputWrapper {
-  max-width: 960px;
+  max-width: 1000px;
   min-width: 280px;
+  min-height: 140px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
-  border-radius: 24px;
-  padding: 10px 12px 10px 16px;
-  background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-assistant-bubble-border);
-  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+  /* 16px radius, 0.5px #000 8% stroke, dual shadow,
+     16px top / 20px side padding. */
+  border-radius: 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 4px 8px 0 rgba(0, 0, 0, 0.03),
+    0 8px 24px -8px rgba(0, 0, 0, 0.05);
 
   @media (max-width: 767px) {
-    padding: 6px 10px 6px 14px;
-    border-radius: 20px;
+    padding: 12px 14px;
   }
 }
 
+.inputWrapper:hover,
 .inputWrapper:focus-within {
-  border-color: color-mix(in srgb, var(--fn-color-brand) 30%, transparent);
+  /* Hover/focus spec: 0.5px #ccc stroke, rest unchanged. */
+  border-color: #ccc;
+  border-radius: 16px;
+  background: #fff;
   box-shadow:
-    0 0 0 4px var(--fn-color-brand-glow),
-    0 22px 46px var(--fn-color-brand-shadow);
+    0 4px 8px 0 rgba(0, 0, 0, 0.03),
+    0 8px 24px -8px rgba(0, 0, 0, 0.05);
 }
 
 .textarea {
@@ -890,7 +901,8 @@
 .actionsRow {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid var(--fn-color-brand-glow);
+  /* Figma: no divider line above the action bar. */
+  border-top: none;
 
   @media (max-width: 767px) {
     margin-top: 4px;
@@ -900,22 +912,25 @@
 
 .secondaryBtn,
 .newChatBtn {
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--fn-color-brand-glow);
-  background: var(--fn-bg-secondary);
+  width: 28px;
+  height: 28px;
+  /* Figma: 1px #000 8% stroke, transparent fill. */
+  border: 1px solid
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  background: transparent;
 }
 
 .secondaryBtn:hover,
 .newChatBtn:hover {
-  background: var(--fn-color-brand-bg);
+  /* Figma: #F9F9F9 hover fill, icon colour unchanged. */
+  background: #f9f9f9;
 }
 
 .sendBtn {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  box-shadow: var(--fn-shadow-brand);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--fn-radius-full);
+  box-shadow: none;
 }
 
 .shortcutPopover {

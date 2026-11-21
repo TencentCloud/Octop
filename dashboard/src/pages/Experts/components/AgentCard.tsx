@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Popconfirm, Switch, Tag, Tooltip } from "antd";
+import { Modal, Switch, Tag, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 import { copyText } from "@/utils/copyText";
 
@@ -10,11 +10,11 @@ import {
   Copy,
   Pencil,
   Trash2,
-  ChevronRight,
   AlertCircle,
   FolderOpen,
   RefreshCw,
-  MessageSquare,
+  Bot,
+  Sparkles,
 } from "lucide-react";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -27,8 +27,6 @@ import PluginCatalogDrawer from "./PluginCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
-import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
-import BackendFlag from "./BackendFlag";
 import { ExpertIcon } from "./iconForName";
 import { ManagedAvatarMark } from "./ManagedAvatarMark";
 import {
@@ -56,16 +54,13 @@ import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
 import AgentMoreActions from "./AgentMoreActions";
 
-const STATE_META: Record<
-  string,
-  { color: string; bg: string; spin?: boolean }
-> = {
-  running: { color: "#52c41a", bg: "rgba(82,196,26,0.12)" },
-  stopped: { color: "#8c8c8c", bg: "rgba(140,140,140,0.10)" },
-  created: { color: "#8c8c8c", bg: "rgba(140,140,140,0.10)" },
-  failed: { color: "#ff4d4f", bg: "rgba(255,77,79,0.10)" },
-  starting: { color: "#1677ff", bg: "rgba(22,119,255,0.10)", spin: true },
-  stopping: { color: "#1677ff", bg: "rgba(22,119,255,0.10)", spin: true },
+const STATE_META: Record<string, { color: string; bg: string }> = {
+  running: { color: "#088f50", bg: "#e7f8f0" },
+  stopped: { color: "rgba(0,0,0,0.6)", bg: "rgba(0,0,0,0.04)" },
+  created: { color: "rgba(0,0,0,0.6)", bg: "rgba(0,0,0,0.04)" },
+  failed: { color: "#d93026", bg: "#fdecec" },
+  starting: { color: "#1a73e8", bg: "#e8f0fe" },
+  stopping: { color: "#1a73e8", bg: "#e8f0fe" },
 };
 
 function getStateMeta(state: string) {
@@ -247,15 +242,25 @@ export const AgentCard = memo(function AgentCard({
     [agent.agent_id, agent.name, t, onStateChange],
   );
 
-  const handleDelete = useCallback(async () => {
-    try {
-      await request(`/agents/${agent.agent_id}`, { method: "DELETE" });
-      message.success(t("experts.agentDeleted", { name: agent.name }));
-      onDeleted(agent.agent_id);
-    } catch {
-      message.error(t("experts.agentDeleteFailed"));
-    }
-  }, [agent.agent_id, agent.name, t, onDeleted]);
+  const handleDelete = useCallback(() => {
+    const confirm = expertDeleteConfirm(agent, t);
+    Modal.confirm({
+      title: confirm.title,
+      content: confirm.description,
+      okText: t("common.delete", "Delete"),
+      cancelText: t("common.cancel"),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await request(`/agents/${agent.agent_id}`, { method: "DELETE" });
+          message.success(t("experts.agentDeleted", { name: agent.name }));
+          onDeleted(agent.agent_id);
+        } catch {
+          message.error(t("experts.agentDeleteFailed"));
+        }
+      },
+    });
+  }, [agent, t, onDeleted]);
 
   const handleReload = useCallback(async () => {
     setActionLoading(true);
@@ -308,7 +313,6 @@ export const AgentCard = memo(function AgentCard({
   const chatReady = isAgentChatReady(localState);
   const sharedViewer = isSharedExpertViewer(agent);
   const canManage = canManageExpert(agent, user);
-  const deleteConfirm = expertDeleteConfirm(agent, t);
 
   return (
     <>
@@ -316,9 +320,6 @@ export const AgentCard = memo(function AgentCard({
         className={styles.agentCard2}
         style={{ "--agent-accent": accent } as React.CSSProperties}
       >
-        {/* Accent top bar */}
-        <div className={styles.agentCard2Accent} />
-
         {/* Header */}
         <div className={styles.agentCard2Header}>
           <SharedAvatarMark
@@ -336,7 +337,11 @@ export const AgentCard = memo(function AgentCard({
             >
               <div
                 className={styles.agentCard2Icon}
-                style={{ color: accent, background: `${accent}1a` }}
+                style={{
+                  color: accent,
+                  background:
+                    iconUrl ?? agent.icon_url ? "transparent" : `${accent}1a`,
+                }}
               >
                 <ExpertIcon
                   iconUrl={iconUrl ?? agent.icon_url}
@@ -350,6 +355,15 @@ export const AgentCard = memo(function AgentCard({
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>
               <div className={styles.agentCard2Name}>{agent.name}</div>
+              <div
+                className={styles.agentCard2State}
+                style={{ color: meta.color, background: meta.bg }}
+              >
+                {formatAgentState(localState, t)}
+              </div>
+              {memorySlimming && (
+                <Tag color="processing">{t("experts.memorySlimming")}</Tag>
+              )}
               <SharedResourceBadge
                 shared={Boolean(agent.is_shared) && !sharedViewer}
                 owned
@@ -374,30 +388,6 @@ export const AgentCard = memo(function AgentCard({
                 </button>
               </Tooltip>
             </div>
-            <div className={styles.agentCard2Meta}>
-              <div
-                className={styles.agentCard2State}
-                style={{ color: meta.color, background: meta.bg }}
-              >
-                <span
-                  className={meta.spin ? styles.stateDotSpin : styles.stateDot2}
-                  style={!meta.spin ? { background: meta.color } : undefined}
-                />
-                {formatAgentState(localState, t)}
-              </div>
-              {memorySlimming && (
-                <Tag color="processing">{t("experts.memorySlimming")}</Tag>
-              )}
-              <BackendFlag config={agent.config} />
-              {agent.kind === "managed" ? null : (
-                <MbtiPersonaTag
-                  value={agent.persona_mbti}
-                  onClick={
-                    canManage ? () => setMbtiCatalogOpen(true) : undefined
-                  }
-                />
-              )}
-            </div>
           </div>
 
           {canManage && (
@@ -408,6 +398,44 @@ export const AgentCard = memo(function AgentCard({
                 loading={isTransient || actionLoading}
                 onChange={(checked) => void handleToggle(checked)}
                 className={styles.agentCard2Switch}
+              />
+              <PublishTemplateButton
+                agent={agent}
+                published={publishedExpert}
+                onChanged={onPublishedChange}
+                buttonClassName={styles.agentCard2More}
+              />
+              <AgentMoreActions
+                buttonClassName={styles.agentCard2More}
+                extraItems={[
+                  {
+                    key: "reload",
+                    icon: <RefreshCw size={14} />,
+                    label: t("experts.reloadAgent"),
+                    disabled: isTransient || actionLoading,
+                    onClick: () => void handleReload(),
+                  },
+                  {
+                    key: "edit",
+                    icon: <Pencil size={14} />,
+                    label: t("common.edit", "Edit"),
+                    onClick: () => onEdit(agent.agent_id),
+                  },
+                  {
+                    key: "delete",
+                    icon: <Trash2 size={14} />,
+                    label: t("common.delete", "Delete"),
+                    danger: true,
+                    onClick: () => void handleDelete(),
+                  },
+                ]}
+                onSkills={() => setSkillCatalogOpen(true)}
+                onSubagents={openSubagentCatalog}
+                onTools={() => setToolSettingsOpen(true)}
+                onPlugins={() => setPluginCatalogOpen(true)}
+                onMbti={() => setMbtiCatalogOpen(true)}
+                onMemory={() => setMemoryCatalogOpen(true)}
+                onChannels={() => setChannelCatalogOpen(true)}
               />
             </div>
           )}
@@ -443,121 +471,67 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Footer actions */}
         <div className={styles.agentCard2Footer}>
-          {canManage && (
-            <>
-              <Tooltip
-                title={
-                  chatReady
-                    ? t("pageShell.workspace.title")
-                    : t("workspace.requiresRunning")
-                }
-                mouseEnterDelay={0.5}
-              >
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  disabled={!chatReady}
-                  onClick={() => setWorkspaceDrawerOpen(true)}
-                  aria-label={t("pageShell.workspace.title")}
-                >
-                  <FolderOpen size={13} />
-                </button>
-              </Tooltip>
-
-              <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  disabled={isTransient || actionLoading}
-                  onClick={() => void handleReload()}
-                  aria-label={t("experts.reloadAgent")}
-                >
-                  <RefreshCw size={13} />
-                </button>
-              </Tooltip>
-
-              <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
-                <button
-                  type="button"
-                  className={styles.agentCard2EditBtn}
-                  onClick={() => onEdit(agent.agent_id)}
-                  aria-label={t("common.edit", "Edit")}
-                >
-                  <Pencil size={13} />
-                </button>
-              </Tooltip>
-
-              <Popconfirm
-                title={deleteConfirm.title}
-                description={deleteConfirm.description}
-                onConfirm={() => void handleDelete()}
-                okText={t("common.delete", "Delete")}
-                cancelText={t("common.cancel")}
-                okButtonProps={{ danger: true }}
-              >
-                <Tooltip
-                  title={t("common.delete", "Delete")}
-                  mouseEnterDelay={0.5}
-                >
-                  <button
-                    type="button"
-                    className={styles.agentCard2DelBtn}
-                    aria-label={t("common.delete", "Delete")}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </Tooltip>
-              </Popconfirm>
-
-              {onPublishedChange && (
-                <PublishTemplateButton
-                  agent={agent}
-                  published={publishedExpert}
-                  onChanged={onPublishedChange}
-                  buttonClassName={styles.agentCard2EditBtn}
-                />
-              )}
-
-              <AgentMoreActions
-                buttonClassName={styles.agentCard2EditBtn}
-                managed={agent.kind === "managed"}
-                onSkills={() => setSkillCatalogOpen(true)}
-                onSubagents={openSubagentCatalog}
-                onTools={() => setToolSettingsOpen(true)}
-                onPlugins={() => setPluginCatalogOpen(true)}
-                onMbti={() => setMbtiCatalogOpen(true)}
-                onMemory={() => setMemoryCatalogOpen(true)}
-                onChannels={() => setChannelCatalogOpen(true)}
-              />
-            </>
-          )}
-
-          {chatReady ? (
-            <button
-              className={styles.agentCard2ChatBtn}
-              style={{ color: accent, borderColor: `${accent}55` }}
-              onClick={handleOpenChat}
+          <div className={styles.agentCard2Chips}>
+            <Tooltip
+              title={
+                chatReady
+                  ? t("pageShell.workspace.title")
+                  : t("workspace.requiresRunning")
+              }
+              mouseEnterDelay={0.5}
             >
-              <MessageSquare size={13} />
-              {t("experts.openChat", "对话")}
-              <ChevronRight size={13} />
-            </button>
-          ) : canManage &&
-            (localState === "failed" ||
-              localState === "stopped" ||
-              localState === "created") ? (
+              <button
+                type="button"
+                className={styles.agentCard2Chip}
+                disabled={!chatReady}
+                onClick={() => setWorkspaceDrawerOpen(true)}
+              >
+                <FolderOpen size={12} />
+                {t("experts.chips.workspace", "工作区")}
+              </button>
+            </Tooltip>
             <button
               type="button"
-              className={styles.agentCard2ChatBtn}
-              style={{ color: accent, borderColor: `${accent}55` }}
-              disabled={isTransient || actionLoading}
-              onClick={() => void handleToggle(true)}
+              className={styles.agentCard2Chip}
+              onClick={() => setSubagentCatalogOpen(true)}
             >
-              {localState === "failed"
-                ? t("experts.retryStart", "重试启动")
-                : t("experts.startAgent", "启动")}
+              <Bot size={12} />
+              {t("experts.chips.subagents", "子智能体")}
             </button>
-          ) : null}
+            <button
+              type="button"
+              className={styles.agentCard2Chip}
+              onClick={() => setSkillCatalogOpen(true)}
+            >
+              <Sparkles size={12} />
+              {t("experts.chips.skills", "技能")}
+            </button>
+          </div>
+          <div className={styles.agentCard2FooterRight}>
+            {chatReady ? (
+              <button
+                type="button"
+                className={styles.agentCard2ChatBtn}
+                onClick={handleOpenChat}
+              >
+                {t("experts.chips.startChat", "开始对话")}
+              </button>
+            ) : canManage &&
+              (localState === "failed" ||
+                localState === "stopped" ||
+                localState === "created") ? (
+              <button
+                type="button"
+                className={styles.agentCard2ChatBtn}
+                disabled={isTransient || actionLoading}
+                onClick={() => void handleToggle(true)}
+              >
+                {localState === "failed"
+                  ? t("experts.retryStart", "重试启动")
+                  : t("experts.startAgent", "启动")}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
       <WorkspaceDrawer

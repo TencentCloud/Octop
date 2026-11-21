@@ -91,26 +91,38 @@
 
 .inputWrapper {
   position: relative;
-  max-width: var(--chat-column-max, 960px);
+  max-width: var(--chat-column-max, 1000px);
   min-width: 280px;
+  min-height: 140px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-border-primary);
-  border-radius: 20px;
-  padding: 8px 10px 8px 16px;
+  /* Figma 904:19936 — white card, 0.5px #000 8% stroke, 16px radius,
+     dual drop shadow, 16px top / 20px side padding. */
+  background: #fff;
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  padding: 16px 20px;
+  box-shadow:
+    0 4px 8px 0 rgba(0, 0, 0, 0.03),
+    0 8px 24px -8px rgba(0, 0, 0, 0.05);
   transition:
     border-color var(--fn-transition-fast),
     box-shadow var(--fn-transition-fast);
 
+  &:hover,
   &:focus-within {
-    border-color: var(--fn-color-brand);
-    box-shadow: 0 0 0 2px var(--fn-color-brand-glow);
+    /* Hover/focus spec: 0.5px #ccc stroke, rest unchanged. */
+    border-color: #ccc;
+    border-radius: 16px;
+    background: #fff;
+    box-shadow:
+      0 4px 8px 0 rgba(0, 0, 0, 0.03),
+      0 8px 24px -8px rgba(0, 0, 0, 0.05);
   }
 
   @media (max-width: 767px) {
-    padding: 8px 8px 6px 14px;
+    padding: 12px 14px;
   }
 }
 
@@ -125,7 +137,8 @@
   align-items: center;
   justify-content: flex-start;
   padding-top: 6px;
-  border-top: 1px solid var(--fn-border-secondary);
+  /* Figma: no divider line above the action bar. */
+  border-top: none;
   margin-top: 4px;
   overflow: visible;
 }
@@ -252,12 +265,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--fn-radius-full);
-  border: none;
+  /* Figma: 1px #000 8% stroke, transparent fill. */
+  border: 1px solid
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   background: transparent;
-  color: var(--fn-text-quaternary);
+  /* Icon ink #000 90%. */
+  color: color-mix(in srgb, var(--fn-text-primary) 90%, transparent);
   cursor: pointer;
   transition:
     color var(--fn-transition-fast),
@@ -266,8 +282,8 @@
     transform 0.15s ease;
 
   &:hover {
-    color: var(--fn-text-brand);
-    background: var(--fn-color-brand-bg);
+    /* Figma: #F9F9F9 hover fill, icon colour unchanged. */
+    background: #f9f9f9;
   }
 
   &:disabled {
@@ -383,20 +399,23 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--fn-radius-full);
-  border: none;
+  /* Figma: 1px #000 8% stroke, transparent fill. */
+  border: 1px solid
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   background: transparent;
-  color: var(--fn-text-quaternary);
+  /* Icon ink #000 90%. */
+  color: color-mix(in srgb, var(--fn-text-primary) 90%, transparent);
   cursor: pointer;
   transition:
     color var(--fn-transition-fast),
     background var(--fn-transition-fast);
 
   &:hover {
-    color: var(--fn-text-brand);
-    background: var(--fn-color-brand-bg);
+    /* Figma: #F9F9F9 hover fill, icon colour unchanged. */
+    background: #f9f9f9;
   }
 
   &:focus-visible {
@@ -410,13 +429,20 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-  border: none;
+  /* Circular stroke matching the surrounding action icons. */
+  border: 1px solid
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  border-radius: var(--fn-radius-full);
   background: transparent;
   cursor: pointer;
   padding: 0;
+
+  &:hover {
+    background: #f9f9f9;
+  }
 }
 
 /* App uses ConfigProvider prefixCls="octop"; keep ant-* as fallback. */
@@ -530,13 +556,14 @@
 }
 
 .contextRingSvg {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   display: block;
 }
 
 .contextRingTrack {
-  stroke: var(--fn-border-secondary, rgba(0, 0, 0, 0.08));
+  /* No track stroke — only the usage arc is drawn. */
+  stroke: none;
 }
 
 .contextRingProgress {
@@ -575,15 +602,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--fn-radius-full);
+  /* Enabled (text entered): solid #000 circle, white icon. */
   border: none;
-  background: linear-gradient(
-    135deg,
-    var(--fn-color-brand),
-    var(--fn-color-brand-soft)
-  );
+  background: #000;
   color: #fff;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -597,8 +621,11 @@
     transform: scale(0.97);
   }
 
+  /* Empty input: muted #000 10% circle, white icon (no opacity fade). */
   &:disabled {
-    opacity: 0.35;
+    background: color-mix(in srgb, var(--fn-text-primary) 10%, transparent);
+    color: #fff;
+    opacity: 1;
     cursor: not-allowed;
   }
 

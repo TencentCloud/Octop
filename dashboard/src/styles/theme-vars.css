@@ -13,7 +13,7 @@ html[data-theme="light"] {
   --fn-bg-secondary: #f7f8fa;
   --fn-bg-tertiary: #f0f1f3;
   --fn-bg-elevated: #ffffff;
-  --fn-bg-layout: #f5f6f8;
+  --fn-bg-layout: #ffffff;
   --fn-bg-container: #ffffff;
   --fn-bg-hover: rgba(232, 93, 117, 0.04);
   --fn-bg-active: rgba(232, 93, 117, 0.08);
@@ -27,9 +27,9 @@ html[data-theme="light"] {
   --fn-bg-warning-light: #fffbeb;
   --fn-bg-info-light: #eff6ff;
   --fn-bg-glass: rgba(255, 255, 255, 0.8);
-  --fn-bg-sidebar: #ffffff;
+  --fn-bg-sidebar: #f9f9f9;
   --fn-bg-base: #ffffff;
-  --fn-bg-page: #f5f6f8;
+  --fn-bg-page: #ffffff;
   --fn-bg-quaternary: rgba(0, 0, 0, 0.03);
   --fn-bg-subtle: #f3f4f6;
   --fn-bg-secondary-hover: #f0f1f3;
@@ -44,6 +44,11 @@ html[data-theme="light"] {
   --fn-text-secondary: #4b5563;
   --fn-text-tertiary: #9ca3af;
   --fn-text-quaternary: #d1d5db;
+  /* Tab labels: idle / selected (spec: #000 70% / #000 90%) */
+  --fn-tab-text: rgba(0, 0, 0, 0.7);
+  --fn-tab-text-active: rgba(0, 0, 0, 0.9);
+  /* Tab ink bar / active underline (matches antd inkBarColor) */
+  --fn-tab-ink: #000000;
   --fn-text-placeholder: #c0c5ce;
   --fn-text-disabled: #d1d5db;
   --fn-text-inverse: #ffffff;
@@ -156,12 +161,23 @@ html[data-theme="light"] {
 
   /* ---- Sidebar ---- */
   --fn-sidebar-width: 240px;
-  --fn-sidebar-bg: #ffffff;
+  --fn-sidebar-bg: #f9f9f9;
+  --fn-btn-solid-bg: #000000;
+  --fn-btn-solid-bg-hover: rgba(0, 0, 0, 0.8);
+  --fn-btn-solid-text: #ffffff;
+  --fn-btn-outline-bg: #ffffff;
+  --fn-btn-outline-bg-hover: #f9f9f9;
+  --fn-btn-outline-text: rgba(0, 0, 0, 0.7);
+  --fn-btn-outline-border: rgba(0, 0, 0, 0.08);
+  --fn-card-border-subtle: rgba(0, 0, 0, 0.08);
+  --fn-card-hover-bg: #f9f9f9;
+  --fn-card-desc-text: rgba(0, 0, 0, 0.5);
+  --fn-sidebar-item-text: rgba(0, 0, 0, 0.65);
   --fn-sidebar-border: #ebebeb;
   --fn-sidebar-item-hover: #f5f5f5;
-  --fn-sidebar-item-active-bg: #fde8ec;
+  --fn-sidebar-item-active-bg: #efefef;
   --fn-sidebar-item-active: rgba(232, 93, 117, 0.08);
-  --fn-sidebar-item-active-text: #e85d75;
+  --fn-sidebar-item-active-text: rgba(0, 0, 0, 0.9);
   --fn-sidebar-group-text: #b0b5be;
 
   /* ---- Header ---- */
@@ -228,6 +244,10 @@ html[data-theme="dark"] {
   --fn-text-secondary: rgba(255, 255, 255, 0.6);
   --fn-text-tertiary: rgba(255, 255, 255, 0.35);
   --fn-text-quaternary: rgba(255, 255, 255, 0.2);
+  /* Tab labels: idle / selected (dark counterparts of the light spec) */
+  --fn-tab-text: rgba(255, 255, 255, 0.7);
+  --fn-tab-text-active: rgba(255, 255, 255, 0.9);
+  --fn-tab-ink: #ffffff;
   --fn-text-placeholder: rgba(255, 255, 255, 0.16);
   --fn-text-disabled: rgba(255, 255, 255, 0.16);
   --fn-text-inverse: #0e0e0e;
@@ -338,6 +358,17 @@ html[data-theme="dark"] {
   /* ---- Sidebar ---- */
   --fn-sidebar-width: 240px;
   --fn-sidebar-bg: #141414;
+  --fn-btn-solid-bg: #ffffff;
+  --fn-btn-solid-bg-hover: rgba(255, 255, 255, 0.85);
+  --fn-btn-solid-text: #000000;
+  --fn-btn-outline-bg: transparent;
+  --fn-btn-outline-bg-hover: rgba(255, 255, 255, 0.06);
+  --fn-btn-outline-text: rgba(255, 255, 255, 0.7);
+  --fn-btn-outline-border: rgba(255, 255, 255, 0.12);
+  --fn-card-border-subtle: rgba(255, 255, 255, 0.08);
+  --fn-card-hover-bg: rgba(255, 255, 255, 0.04);
+  --fn-card-desc-text: rgba(255, 255, 255, 0.5);
+  --fn-sidebar-item-text: rgba(255, 255, 255, 0.65);
   --fn-sidebar-border: rgba(255, 255, 255, 0.06);
   --fn-sidebar-item-hover: rgba(255, 255, 255, 0.05);
   --fn-sidebar-item-active-bg: rgba(232, 93, 117, 0.14);

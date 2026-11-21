@@ -16,7 +16,9 @@
   flex-direction: column;
   position: relative;
   background: var(--fn-bg-sidebar);
-  border-right: none;
+  /* Figma: 1px right stroke, #000 8%. */
+  border-right: 1px solid
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   transition:
     width var(--fn-transition),
     min-width var(--fn-transition),
@@ -127,7 +129,8 @@
 .sessionItems {
   flex: 1;
   overflow-y: auto;
-  padding: 0 0 12px;
+  /* Figma 477:2114 — 8px inset around the entry list. */
+  padding: 8px 8px 12px;
 }
 
 .sessionItem {

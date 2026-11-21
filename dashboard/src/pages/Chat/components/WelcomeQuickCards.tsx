@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { ExpertIcon } from "../../Experts/components/iconForName";
-import { pastelIconBackground } from "../../../utils/pastelIconBackground";
 import { expertMentionToken, withExpertMention } from "../utils/expertMention";
 import type { WelcomeQuickCard } from "./WelcomeScreen";
 import styles from "../index.module.less";
@@ -12,7 +11,6 @@ interface WelcomeQuickCardsProps {
   expanded: boolean;
   onToggle: () => void;
   onPromptClick: (text: string, options?: { prefill?: boolean }) => void;
-  sectionTitleRef: React.Ref<HTMLSpanElement>;
 }
 
 export default function WelcomeQuickCards({
@@ -21,7 +19,6 @@ export default function WelcomeQuickCards({
   expanded,
   onToggle,
   onPromptClick,
-  sectionTitleRef,
 }: WelcomeQuickCardsProps) {
   const { t } = useTranslation();
 
@@ -29,9 +26,6 @@ export default function WelcomeQuickCards({
 
   return (
     <div className={styles.quickSection}>
-      <span className={styles.quickSectionTitle} ref={sectionTitleRef}>
-        {t("chatWelcome.promptSectionTitle")}
-      </span>
       <div className={styles.quickCards}>
         {cards.map((card, i) => {
           const mention = card.expertName
@@ -55,8 +49,8 @@ export default function WelcomeQuickCards({
               <div
                 className={styles.quickCardIcon}
                 style={{
-                  background: pastelIconBackground(card.color, i),
-                  color: "rgba(15,23,42,0.55)",
+                  background: "#fff1f1",
+                  color: "#ff0004",
                 }}
               >
                 <ExpertIcon

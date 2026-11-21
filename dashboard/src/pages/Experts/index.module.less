@@ -7,6 +7,7 @@
 .tabBetaBadge {
   display: inline-flex;
   align-items: center;
+  margin-left: 6px;
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 700;
@@ -37,44 +38,36 @@
 
 .agentCard2 {
   background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-card-border-normal);
+  border: 1px solid var(--fn-card-border-subtle);
   border-radius: var(--fn-radius-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 320px;
   min-height: 196px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+  transition: transform 0.2s;
 
   @media (max-width: 640px) {
     min-width: 0;
   }
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
   }
 }
 
-.agentCard2Accent {
-  height: 2px;
-  background: var(--agent-accent, #6366f1);
-}
-
 .agentCard2Header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 14px 16px 10px;
+  /* Figma 970:21394 — 19px inset. */
+  padding: 19px 20px 0;
 }
 
 .agentCard2Icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -194,20 +187,21 @@
 }
 
 .agentCard2Name {
+  /* 14px PingFang Medium. */
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--fn-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 1.3;
+  line-height: 24px;
   min-width: 0;
 }
 
 .agentCard2NameRow {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -372,26 +366,39 @@
 }
 
 .agentCard2State {
+  /* Figma 970:21403 — 20px pill, 4px radius, 12px text. */
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.6;
-}
-
-.stateDot2 {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
+  height: 20px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: -0.45px;
+  line-height: 20px;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
 .agentCard2Switch {
   flex-shrink: 0;
+}
+
+.agentCard2More {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary, rgba(0, 0, 0, 0.6));
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
 }
 
 .agentCard2HeaderActions {
@@ -402,11 +409,12 @@
 }
 
 .agentCard2Desc {
-  font-size: 12px;
-  color: var(--fn-text-secondary);
-  line-height: 1.55;
-  margin: 0 16px 2px;
-  min-height: 2.4em;
+  /* 13px / 22px, two lines, 50% black. */
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 22px;
+  margin: 16px 20px 0;
+  height: 44px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -414,11 +422,61 @@
 }
 
 .agentCard2Footer {
+  /* Figma 975:24992 — 48px bar, #FBFBFB, 5% black top stroke, 20px inset. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 48px;
+  padding: 0 20px;
+  margin-top: auto;
+  background: #fbfbfb;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.agentCard2Chips {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 16px 14px;
-  margin-top: auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.agentCard2FooterRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.agentCard2Chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #999;
+  line-height: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.16s ease;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }
 
 .agentCard2EditBtn {
@@ -466,25 +524,31 @@
 }
 
 .agentCard2ChatBtn {
-  margin-left: auto;
+  /* Figma 975:24993 — 32px tall, 0.923px #000 12% stroke, 13px Medium. */
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 5px 12px;
-  font-size: 12px;
+  justify-content: center;
+  height: 32px;
+  padding: 0 16px;
+  font-size: 13px;
   font-weight: 500;
-  border-radius: var(--fn-radius-sm);
-  border: 1px solid;
-  background: transparent;
+  line-height: 21px;
+  border-radius: 6px;
+  border: 0.923px solid rgba(0, 0, 0, 0.12);
+  background: #fff;
+  color: rgba(0, 0, 0, 0.7);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition:
-    opacity 0.15s,
-    background 0.15s;
+  transition: box-shadow 0.16s ease;
 
-  &:hover {
-    opacity: 0.8;
+  &:hover:not(:disabled) {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }
 
@@ -783,12 +847,10 @@
 }
 
 .agentCardPortrait {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: transparent;
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--fn-border, #e2e8f0) 80%, transparent);
 }
 
 .agentCardTitleBlock {
@@ -862,7 +924,7 @@
 
 .agentCardDesc {
   font-size: 12px;
-  color: var(--fn-text-secondary);
+  color: var(--fn-card-desc-text);
   line-height: 1.5;
   min-height: 2.4em;
   max-height: 3em;
@@ -875,7 +937,7 @@
 }
 
 .agentCardErrorWrap {
-  margin: 4px 16px 8px;
+  margin: 0 20px 8px;
   min-width: 0;
 }
 
@@ -1065,7 +1127,7 @@
 
 .expertTemplateCard {
   background: var(--fn-bg-primary);
-  border: 2px solid var(--fn-card-border-normal);
+  border: 1px solid var(--fn-card-border-subtle);
   border-radius: var(--fn-radius-lg);
   padding: 20px;
   display: flex;
@@ -1081,14 +1143,9 @@
     box-shadow 0.2s;
 
   &:hover {
-    border-color: var(--expert-accent, var(--fn-color-brand));
-    background: color-mix(
-      in srgb,
-      var(--expert-accent, var(--fn-color-brand)) 4%,
-      var(--fn-bg-primary)
-    );
+    background: var(--fn-card-hover-bg);
     transform: translateY(-2px);
-    box-shadow: var(--fn-shadow-brand-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+    box-shadow: none;
   }
 
   &:active {
@@ -1298,22 +1355,32 @@
 
 .marketIconImg {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .marketCardFooter {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-top: auto;
+  gap: 16px;
+  /* 通栏贴卡片左右/底部边缘（卡片内边距为 20px） */
+  margin: auto -20px -20px;
+  padding: 0 20px;
+  min-height: 48px;
   min-width: 0;
+  background: var(--fn-bg-quaternary);
+  border-top: 1px solid var(--fn-border-subtle);
+  border-radius: 0 0 calc(var(--fn-radius-lg) - 1px)
+    calc(var(--fn-radius-lg) - 1px);
 
   @media (max-width: 640px) {
     align-items: stretch;
     flex-direction: column;
+    padding: 10px 20px;
+    gap: 10px;
+    min-height: 0;
   }
 }
 
@@ -1645,15 +1712,15 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid var(--fn-color-brand);
+  border: 1px solid var(--fn-btn-outline-border);
   background: transparent;
-  color: var(--fn-color-brand);
+  color: var(--fn-btn-outline-text);
   border-radius: var(--fn-radius-md);
   cursor: pointer;
   transition: background 0.15s;
 
   &:hover {
-    background: var(--fn-color-brand-light, #e6f4ff);
+    background: var(--fn-btn-outline-bg-hover);
   }
 }
 
@@ -2072,9 +2139,9 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid var(--fn-color-brand);
-  background: var(--fn-color-brand);
-  color: #fff;
+  border: 1px solid var(--fn-btn-solid-bg);
+  background: var(--fn-btn-solid-bg);
+  color: var(--fn-btn-solid-text, #fff);
   border-radius: var(--fn-radius-md);
   cursor: pointer;
   transition: opacity 0.15s;
@@ -2326,14 +2393,34 @@
 }
 
 .catalogCardActionBtnPrimary {
-  color: #fff;
-  background: var(--fn-color-brand);
-  border-color: var(--fn-color-brand);
+  color: var(--fn-btn-solid-text, #fff);
+  background: var(--fn-btn-solid-bg);
+  border-color: var(--fn-btn-solid-bg);
 
   &:hover:not(:disabled) {
-    color: #fff;
-    background: color-mix(in srgb, var(--fn-color-brand) 88%, #000);
-    border-color: color-mix(in srgb, var(--fn-color-brand) 88%, #000);
+    color: var(--fn-btn-solid-text, #fff);
+    background: var(--fn-btn-solid-bg-hover);
+    border-color: var(--fn-btn-solid-bg-hover);
+  }
+}
+
+.marketCreateBtn {
+  &.marketCreateBtn:global(.octop-btn-primary) {
+    flex-shrink: 0;
+    color: var(--fn-btn-outline-text);
+    font-size: 12px;
+    background: var(--fn-bg-elevated);
+    border: 1px solid var(--fn-border-subtle);
+    border-radius: var(--fn-radius-md);
+    box-shadow: none;
+    height: 32px;
+    padding: 0 16px;
+
+    &:not(:disabled):not(:global(.octop-btn-disabled)):hover {
+      color: var(--fn-btn-outline-text);
+      background: var(--fn-bg-elevated);
+      border-color: var(--fn-border-primary);
+    }
   }
 }
 
@@ -2889,4 +2976,278 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* ── Expert card grid (Figma 970:21393) ───────────────────────────────────── */
+
+.expertsGridWrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.expertsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.expertCard {
+  display: flex;
+  flex-direction: column;
+  background: var(--fn-bg-primary, #fff);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: box-shadow 0.16s ease;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+  }
+}
+
+.expertCardBody {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 19px;
+  flex: 1;
+}
+
+.expertCardTop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.expertCardIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.expertCardInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.expertCardNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.expertCardNameWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.expertCardName {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--fn-text-primary, #000);
+  line-height: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expertStatePill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 20px;
+  letter-spacing: -0.45px;
+
+  &.stateRunning {
+    background: #e7f8f0;
+    color: #088f50;
+  }
+
+  &.stateStarting,
+  &.stateStopping {
+    background: #e8f0fe;
+    color: #1a73e8;
+  }
+
+  &.stateFailed {
+    background: #fdecec;
+    color: #d93026;
+  }
+
+  &.stateStopped,
+  &.stateCreated {
+    background: rgba(0, 0, 0, 0.04);
+    color: rgba(0, 0, 0, 0.6);
+  }
+}
+
+.expertCardTopRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.expertCardMore {
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary, rgba(0, 0, 0, 0.6));
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+}
+
+.expertCardId {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #999;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+
+  svg {
+    flex-shrink: 0;
+    opacity: 0.6;
+  }
+
+  &:hover {
+    color: #666;
+  }
+}
+
+.expertCardDesc {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 22px;
+  height: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  width: 100%;
+}
+
+.expertCardError {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: -8px 0 0;
+  font-size: 12px;
+  color: #d93026;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expertCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 48px;
+  padding: 0 20px;
+  background: #fbfbfb;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.expertCardChips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.expertChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  color: #999;
+  line-height: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.16s ease;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  &:hover:not(:disabled) {
+    background: rgba(0, 0, 0, 0.03);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.expertChatBtn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 16px;
+  background: #fff;
+  border: 0.923px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.7);
+  line-height: 21px;
+  transition: box-shadow 0.16s ease;
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 }

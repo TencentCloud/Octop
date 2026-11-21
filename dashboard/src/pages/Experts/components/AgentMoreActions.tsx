@@ -23,6 +23,8 @@ interface AgentMoreActionsProps {
   onChannels: () => void;
   /** Managed experts omit MBTI. Tools and plugins stay. */
   managed?: boolean;
+  /** Extra entries rendered at the top of the menu (edit / delete / …). */
+  extraItems?: MenuProps["items"];
 }
 
 /** Overflow menu for expert catalog actions (skills / subagents / …). */
@@ -36,10 +38,14 @@ export default function AgentMoreActions({
   onMemory,
   onChannels,
   managed = false,
+  extraItems,
 }: AgentMoreActionsProps) {
   const { t } = useTranslation();
 
   const items: MenuProps["items"] = [
+    ...(extraItems && extraItems.length > 0
+      ? [...extraItems, { type: "divider" as const }]
+      : []),
     {
       key: "skills",
       icon: <Sparkles size={14} />,
