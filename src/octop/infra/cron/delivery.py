@@ -17,6 +17,7 @@ from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
+from octop.infra.gateway.process.response_mode import withhold_pretool_stream_chunks
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import TurnHistoryTracker, message_inputs
@@ -226,6 +227,7 @@ class CronDeliveryService:
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
+        error_message: str | None = None
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
@@ -238,7 +240,8 @@ class CronDeliveryService:
                 HitlSessionPolicy(mode="allow_all"),
             )
             with write_scope(allowed=False), policy:
-                async for chunk in self._agent_manager.stream(command.agent_id, request):
+                stream = self._agent_manager.stream(command.agent_id, request)
+                async for chunk in withhold_pretool_stream_chunks(stream):
                     tracker.observe(chunk)
                     usage.observe(chunk)
                     kind = chunk.get("type")
@@ -256,6 +259,12 @@ class CronDeliveryService:
                         parts.append(str(chunk.get("content") or chunk.get("text") or ""))
                     elif kind == "hitl_required":
                         interaction_required = True
+                    elif kind == "error":
+                        error_message = str(
+                            chunk.get("message") or chunk.get("content") or "cron agent run failed"
+                        )
+            if error_message:
+                raise RuntimeError(error_message)
             if interaction_required:
                 raise RuntimeError("cron agent run requires user interaction")
             outbound = strip_thinking("".join(parts)).strip()
