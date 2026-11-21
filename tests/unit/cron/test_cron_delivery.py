@@ -922,3 +922,182 @@ async def test_telegram_cron_reloads_topic_routing_from_persisted_session(tmp_pa
     assert subject.metadata["channel_id"] == "telegram-bot"
     assert "message_id" not in subject.metadata
     db.close()
+
+
+@pytest.fixture
+def _fake_read_file_url(monkeypatch) -> None:
+    """Resolve file:// URIs in tool media blocks to fixed bytes."""
+    from octop.infra.gateway.media import tool_media
+
+    async def fake_read(_workspace, _url, *, filename, mime):
+        return b"# report"
+
+    monkeypatch.setattr(tool_media, "read_file_url_bytes", fake_read)
+
+
+def _media_tool_chunk(call_id: str = "call1") -> dict[str, Any]:
+    """A tool_result chunk shaped like send_file_to_user output."""
+    return {
+        "type": "tool_result",
+        "name": "send_file_to_user",
+        "messages": [
+            {
+                "tool_call_id": call_id,
+                "name": "send_file_to_user",
+                "content": [
+                    {
+                        "type": "file",
+                        "filename": "report.md",
+                        "media_type": "text/markdown",
+                        "path": "outbound/report.md",
+                        "source": {
+                            "type": "url",
+                            "url": "file:///C:/ws/outbound/report.md",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_agent_media_tool_result_pushes_files_to_im(_fake_read_file_url) -> None:
+    """Delivery-tool results during a cron agent run push files after the text."""
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "tool_call_chunk", "id": "call1", "name": "send_file_to_user", "args": "{}"}
+        yield _media_tool_chunk()
+        yield {"type": "token", "content": "报告已生成"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    workspace = MagicMock()
+    agent_manager.get_agent.return_value.workspace = workspace
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.push_content = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    gateway.push_session_text.assert_awaited_once()
+    gateway.push_content.assert_awaited_once()
+    push_args = gateway.push_content.await_args
+    assert push_args.args[0] == "feishu"
+    assert push_args.args[1] == "ch-1"
+    parts = push_args.args[3]
+    assert len(parts) == 1
+    assert parts[0].filename == "report.md"
+    gateway.notify_dashboard_push.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_agent_media_skipped_without_workspace() -> None:
+    """No workspace handle — cron text still delivers, media silently dropped."""
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "tool_call_chunk", "id": "call1", "name": "send_file_to_user", "args": "{}"}
+        yield _media_tool_chunk()
+        yield {"type": "token", "content": "报告已生成"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    agent_manager.get_agent.side_effect = RuntimeError("no agent")
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.push_content = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    gateway.push_session_text.assert_awaited_once()
+    gateway.push_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_non_delivery_tool_result_pushes_nothing(_fake_read_file_url) -> None:
+    """write_file results must NOT auto-push (matches interactive pipeline gate)."""
+    session = _session(channel_type="feishu")
+
+    chunk = {
+        "type": "tool_result",
+        "name": "write_file",
+        "messages": [
+            {
+                "tool_call_id": "call2",
+                "name": "write_file",
+                "content": [{"type": "file", "filename": "x.md", "path": "outbound/x.md"}],
+            }
+        ],
+    }
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "tool_call_chunk", "id": "call2", "name": "write_file", "args": "{}"}
+        yield chunk
+        yield {"type": "token", "content": "写好了"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    workspace = MagicMock()
+    agent_manager.get_agent.return_value.workspace = workspace
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.push_content = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    gateway.push_session_text.assert_awaited_once()
+    gateway.push_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_media_push_failure_does_not_break_delivery(_fake_read_file_url) -> None:
+    """A failed channel media push must not fail the whole cron run."""
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "tool_call_chunk", "id": "call1", "name": "send_file_to_user", "args": "{}"}
+        yield _media_tool_chunk()
+        yield {"type": "token", "content": "报告已生成"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+    workspace = MagicMock()
+    agent_manager.get_agent.return_value.workspace = workspace
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+    gateway.push_content = AsyncMock(side_effect=RuntimeError("channel gone"))
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    await service.deliver(_command(task_type="agent", prompt="run"))
+
+    gateway.push_session_text.assert_awaited_once()
+    gateway.push_content.assert_awaited_once()
