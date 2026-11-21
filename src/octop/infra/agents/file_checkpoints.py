@@ -13,6 +13,7 @@ import contextlib
 import difflib
 import json
 import os
+import shutil
 import threading
 import uuid
 import weakref
@@ -74,6 +75,24 @@ def save_checkpoints(
     path = _store_path(home, agent_id, thread_id, message_id)
     with _store_lock(path):
         _write_atomic(path, json.dumps({"reverted": False, "changes": changes}, ensure_ascii=False))
+
+
+def delete_thread_checkpoints(home: Path, agent_id: str, thread_id: str) -> None:
+    """Remove a deleted thread's snapshots (best effort)."""
+    thread_dir = home / "file_checkpoints" / agent_id / thread_id
+    with contextlib.suppress(OSError):
+        shutil.rmtree(thread_dir)
+    with contextlib.suppress(OSError):
+        thread_dir.parent.rmdir()
+
+
+def delete_agent_checkpoints(home: Path, agent_id: str) -> None:
+    """Remove every snapshot belonging to a deleted agent (best effort)."""
+    agent_dir = home / "file_checkpoints" / agent_id
+    with contextlib.suppress(OSError):
+        shutil.rmtree(agent_dir)
+    with contextlib.suppress(OSError):
+        agent_dir.parent.rmdir()
 
 
 def latest_message_id(home: Path, agent_id: str, thread_id: str) -> str | None:

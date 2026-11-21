@@ -21,6 +21,10 @@ from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig
+from octop.infra.agents.file_checkpoints import (
+    delete_agent_checkpoints,
+    delete_thread_checkpoints,
+)
 from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.agents.workspace.dir import (
     agent_host_data_dirs,
@@ -151,6 +155,15 @@ def delete_thread_from_agent_stores(
             workspace_dir=workspace_dir,
             reclaim=reclaim,
         )
+    delete_thread_checkpoints(_octop_home(paths), agent_id, thread_id)
+
+
+def _octop_home(paths: Any | None) -> Path:
+    if paths is not None:
+        return Path(paths.root)
+    from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+    return PathLayout.from_env().root
 
 
 def delete_agent_memory_and_checkpoints(
@@ -196,6 +209,7 @@ def delete_agent_memory_and_checkpoints(
             octop_config=octop_config,
             workspace_dir=workspace_dir,
         )
+    delete_agent_checkpoints(_octop_home(paths), agent_id)
 
 
 def delete_stored_thread(
