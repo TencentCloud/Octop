@@ -22,6 +22,7 @@ dependencies = [
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
     "octop-harness[all]>=1.0.11",
+    "agent-client-protocol>=0.11.0",
     "octop-memory>=1.0.5",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.4",

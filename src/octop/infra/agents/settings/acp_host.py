@@ -8,6 +8,7 @@ agent prompt. A successful probe means the process answered ACP ``initialize``.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 import os
 import platform
@@ -427,7 +428,33 @@ def _merge_text(client: _ProbeClient, text: str) -> None:
     client.text += text
 
 
+_ACP_RUNTIME_SYMBOLS = ("PROTOCOL_VERSION", "spawn_agent_process", "text_block")
+
+
+def _acp_sdk_error() -> str:
+    """Describe an installed ``acp`` module that cannot run Octop's ACP runtime."""
+    try:
+        module = importlib.import_module("acp")
+    except ImportError as exc:
+        return (
+            f"ACP SDK is not installed ({type(exc).__name__}: {exc}); "
+            "install agent-client-protocol>=0.11.0"
+        )
+    missing = [name for name in _ACP_RUNTIME_SYMBOLS if not hasattr(module, name)]
+    if not missing:
+        return ""
+    location = getattr(module, "__file__", "") or "unknown path"
+    return (
+        f"incompatible ACP SDK at {location}: missing {', '.join(missing)}. "
+        "Uninstall any unrelated 'acp' distribution and install "
+        "agent-client-protocol>=0.11.0."
+    )
+
+
 async def _handshake(command: str, args: list[str], env: dict[str, str]) -> tuple[bool, str]:
+    sdk_error = _acp_sdk_error()
+    if sdk_error:
+        return False, sdk_error
     from acp import PROTOCOL_VERSION, spawn_agent_process
     from acp.schema import ClientCapabilities, Implementation
 
@@ -468,6 +495,9 @@ async def _handshake(command: str, args: list[str], env: dict[str, str]) -> tupl
 
 async def _ask(command: str, args: list[str], env: dict[str, str]) -> tuple[bool, str]:
     """Open one ACP session, send a fixed prompt, and return the assistant text."""
+    sdk_error = _acp_sdk_error()
+    if sdk_error:
+        return False, sdk_error
     from acp import PROTOCOL_VERSION, spawn_agent_process
     from acp.schema import ClientCapabilities, Implementation, TextContentBlock
 

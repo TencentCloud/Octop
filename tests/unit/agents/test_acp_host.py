@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from octop.infra.agents.settings import acp_host
@@ -164,6 +166,50 @@ async def test_windows_opencode_skips_auto_install(monkeypatch: pytest.MonkeyPat
     assert result["status"] == "skipped"
     assert result["can_auto_install"] is False
     assert "WSL" in result["install_script"]
+
+
+def test_acp_sdk_error_reports_missing_runtime_symbols(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = SimpleNamespace(PROTOCOL_VERSION="1", spawn_agent_process=lambda **_: None)
+    monkeypatch.setattr(
+        acp_host,
+        "importlib",
+        SimpleNamespace(import_module=lambda _name: module),
+    )
+    error = acp_host._acp_sdk_error()
+    assert "text_block" in error
+    assert "agent-client-protocol>=0.11.0" in error
+
+
+@pytest.mark.asyncio
+async def test_handshake_skips_spawn_when_sdk_is_incompatible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(acp_host, "_acp_sdk_error", lambda: "incompatible ACP SDK")
+    ok, detail = await acp_host._handshake("my-agent", ["--acp"], {})
+    assert ok is False
+    assert detail == "incompatible ACP SDK"
+
+
+@pytest.mark.asyncio
+async def test_probe_surfaces_incompatible_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(acp_host, "_platform_key", lambda: "linux")
+    monkeypatch.setattr(acp_host, "_which", lambda name, env: f"/bin/{name}")
+    monkeypatch.setattr(
+        acp_host,
+        "_acp_sdk_error",
+        lambda: "incompatible ACP SDK: missing text_block",
+    )
+    result = await acp_host.acp_host_status(
+        runner="custom",
+        command="my-agent",
+        args=["--acp"],
+        locale="en",
+    )
+    assert result["status"] == "degraded"
+    assert result["reason"] == "handshake_failed"
+    assert "text_block" in result["detail"]
 
 
 @pytest.mark.asyncio

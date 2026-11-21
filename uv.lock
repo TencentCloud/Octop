@@ -2593,6 +2593,7 @@ version = "1.0.3b7"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
+    { name = "agent-client-protocol" },
     { name = "apscheduler" },
     { name = "argon2-cffi" },
     { name = "boto3" },
