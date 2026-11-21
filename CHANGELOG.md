@@ -13,9 +13,13 @@
 - 会话可以生成只读分享链接。打开后能看到对话、思考和工具调用；用 localhost 或 127.0.0.1 打开时不提供分享
 - ACP 协作新增内置 Qwen Code Runner（`qwen --acp`），含主机探测、安装脚本与托管专家会话模式
 - 新增内置 Gitea 连接器：填写自建实例地址与个人访问令牌（按用户加密保存）后，智能体可浏览仓库、查询 Issue 与评论、查看 PR、读取文件并发表评论。
+- 新增独立 `image-inspector` 工具插件：生成图片后可按需调用 `inspect_image`，将工作区原图送回当前多模态模型检查排版、遮挡、裁切和间距（#2283）
 
 ### 修复
 - 修复 PostgreSQL 控制面凭证在配置保存重载时被重复编码的问题，并保留用户名和密码中的空格。
+- `image-inspector` 的视觉检查模型调用与父级会话流隔离，内部质检文本不会再被推送到 IM 或保存成额外的 AI 消息（#2286）
+- `image-inspector` 支持自定义 `OCTOP_HOME` / `OCTOP_DATA_DIR` 和 Docker sandbox 的 `.harness-materialize` 文件路径，避免可见图片被误报为不存在
+- `image-inspector` 遇到宿主机不可访问的沙箱路径时，继续尝试已允许的数据目录与 materialized 路径，避免在找到可读图片前提前报错（#2286）
 
 ## [1.0.3b7] - 2026-11-17
 
