@@ -18,16 +18,17 @@ import {
   PictureInPicture2,
   X,
 } from "lucide-react";
+import cx from "classnames";
 import { beginPointerDragSession } from "../../hooks/usePointerDragSession";
 import type { PanelMode } from "./index";
 import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
 import {
   DOCK_WINDOW_CONTROLS_PAD_PX,
-  isDesktopShell,
   resolveDesktopChromeStyle,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
 } from "../../utils/desktopChrome";
+import { isDesktopShell } from "../../utils/desktopBridge";
 import styles from "./ChatBrowserPanel.module.less";
 
 interface ChatDockPanelShellProps {
@@ -39,6 +40,11 @@ interface ChatDockPanelShellProps {
   title?: React.ReactNode;
   /** Content actions left of the layout/close group (mode, refresh, download…). */
   toolbarActions?: React.ReactNode;
+  /**
+   * True while a portaled overlay (e.g. add-tab menu) is open so popup mask
+   * clicks do not close the dock while the menu is dismissing.
+   */
+  overlayMenuOpen?: boolean;
   children: React.ReactNode;
 }
 
@@ -55,6 +61,9 @@ const POPUP_Z = {
   panel: 1101,
   menu: 2100,
 } as const;
+
+/** z-index for dock dropdowns portaled to ``document.body`` over popup mode. */
+export const CHAT_DOCK_POPUP_MENU_Z = POPUP_Z.menu;
 
 /**
  * Clear drag/placement offsets written outside React.
@@ -117,6 +126,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   style,
   title,
   toolbarActions,
+  overlayMenuOpen = false,
   children,
 }) => {
   const { t } = useTranslation();
@@ -126,6 +136,8 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     (isDesktopShell() ? resolveDesktopChromeStyle() : null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevModeRef = useRef<PanelMode>(mode);
+  const styleRef = useRef(style);
+  styleRef.current = style;
   const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(
     null,
   );
@@ -160,22 +172,27 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     else panel.removeAttribute("data-dock-resizing");
   }, []);
 
-  // Only when leaving popup: drop drag state + rogue inline geometry.
-  // Do not run clear on ordinary right/bottom mounts (wipes React width).
+  // Only when the dock mode actually changes: drop drag state + rogue
+  // inline geometry. Right/bottom ``style`` is a fresh object on every chat
+  // render (width/height literals), so it must not be a dependency — that
+  // was closing the layout menu a couple of seconds after it opened.
+  // Do not clear size on ordinary right/bottom mounts (wipes React width).
   useEffect(() => {
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
+    if (prev === mode) return;
+
+    setLayoutMenuOpen(false);
     if (mode === "popup") return;
 
     setPopupPos(null);
     setIsPopupDragging(false);
     setIsPopupResizing(false);
     setPopupFullscreen(false);
-    setLayoutMenuOpen(false);
     if (prev === "popup") {
-      clearWhenLeavingPopup(panelRef.current, style);
+      clearWhenLeavingPopup(panelRef.current, styleRef.current);
     }
-  }, [mode, style]);
+  }, [mode]);
 
   // Esc exits fullscreen only (keeps popup open).
   useEffect(() => {
@@ -349,25 +366,20 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     [mode, popupFullscreen, popupPos, setResizingFlag],
   );
 
+  const blockMaskClose = layoutMenuOpen || overlayMenuOpen || popupFullscreen;
+
   const handleMaskClick = useCallback(() => {
     if (
       suppressMaskCloseRef.current ||
       isPopupDragging ||
       isPopupResizing ||
-      layoutMenuOpen ||
-      popupFullscreen
+      blockMaskClose
     ) {
-      // Fullscreen covers the mask visually; don't close on stray clicks.
+      // Fullscreen / open menus cover the mask visually; don't close on stray clicks.
       return;
     }
     onClose();
-  }, [
-    isPopupDragging,
-    isPopupResizing,
-    layoutMenuOpen,
-    onClose,
-    popupFullscreen,
-  ]);
+  }, [blockMaskClose, isPopupDragging, isPopupResizing, onClose]);
 
   const applyLayoutMode = useCallback(
     (next: PanelMode) => {
@@ -437,11 +449,14 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     <div
       ref={panelRef}
       data-dock-panel=""
-      className={`${styles.chatBrowserPanel} ${styles[mode]} ${
-        popupPos && !popupFullscreen ? styles.popupPlaced : ""
-      } ${isPopupDragging ? styles.popupDragging : ""} ${
-        isPopupResizing ? styles.popupResizing : ""
-      } ${popupFullscreen ? styles.popupFullscreen : ""}`}
+      className={cx(
+        styles.chatBrowserPanel,
+        styles[mode],
+        popupPos && !popupFullscreen && styles.popupPlaced,
+        isPopupDragging && styles.popupDragging,
+        isPopupResizing && styles.popupResizing,
+        popupFullscreen && styles.popupFullscreen,
+      )}
       style={popupStyle}
     >
       <div
@@ -549,16 +564,13 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   return (
     <>
       <div
-        className={`${styles.popupMask} ${
-          popupFullscreen ? styles.popupMaskFullscreen : ""
-        }`}
+        className={cx(
+          styles.popupMask,
+          popupFullscreen && styles.popupMaskFullscreen,
+        )}
         onClick={handleMaskClick}
         aria-hidden
-        style={
-          layoutMenuOpen || popupFullscreen
-            ? { pointerEvents: "none" }
-            : undefined
-        }
+        style={blockMaskClose ? { pointerEvents: "none" } : undefined}
       />
       {panel}
     </>

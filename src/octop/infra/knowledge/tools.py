@@ -68,6 +68,33 @@ def _tool_ctx() -> tuple[int, bool, list[str], str]:
     return user_id, is_admin, ids, locale
 
 
+class KnowledgeToolServices:
+    """Live repos and control-plane config for ``search_knowledge``.
+
+    Indexing selects pgvector from ``services.config``. The chat tool has to
+    read the same config, including after setup replaces it.
+    """
+
+    def __init__(self, manager: Any) -> None:
+        self._manager = manager
+
+    @property
+    def config(self) -> Any:
+        return self._manager._config
+
+    @property
+    def knowledge_repo(self) -> Any:
+        return self._manager._repos.knowledge_repo
+
+    @property
+    def settings_repo(self) -> Any:
+        return self._manager._repos.settings_repo
+
+    @property
+    def provider_repo(self) -> Any:
+        return self._manager._repos.provider_repo
+
+
 def build_knowledge_tools(services: Any) -> list[StructuredTool]:
     """Return built-in knowledge retrieval tools (wired via HarnessAgentConfig.tools)."""
 

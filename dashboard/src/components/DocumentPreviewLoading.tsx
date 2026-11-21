@@ -5,6 +5,7 @@
 
 import { Progress, Spin } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "./DocumentPreviewLoading.module.less";
 
 export type DocumentPreviewLoadingPhase = "file" | "parse" | "render";
@@ -36,9 +37,7 @@ export default function DocumentPreviewLoading({
 
   return (
     <div
-      className={[styles.root, fill ? styles.fill : "", className ?? ""]
-        .filter(Boolean)
-        .join(" ")}
+      className={cx(styles.root, fill && styles.fill, className)}
       role="status"
       aria-live="polite"
       aria-busy="true"

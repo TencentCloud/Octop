@@ -8,8 +8,8 @@ Security notes:
   ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
   with home ``/root`` can use the default picker path).
 - All authenticated users may browse from host root ``/`` (denylist still applies).
-  The UI default ``root_dir`` is the process home on bare metal, or host ``/``
-  when Octop runs inside a container (override with ``OCTOP_IN_CONTAINER``).
+  The UI default ``root_dir`` is host filesystem root (POSIX ``/``), unless the
+  user has a ``workspace_root_dir`` policy jail.
 - Directory listing is capped and skips unreadable entries.
 - Write probe creates a short-lived dotfile only for non-``/`` selections.
 - mkdir / rename only allow basename-safe names under already-browsable parents.
@@ -24,6 +24,10 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.workspace.dir import (
+    default_workspace_for_chat_agent,
+    default_workspace_parent_dir,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.resource_policy import (
@@ -34,9 +38,9 @@ from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
-    default_host_root_dir,
+    host_browse_roots,
     host_fs_tree_root,
-    host_home_dir,
+    host_jail_enforced,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
@@ -78,30 +82,73 @@ class RenameBody(BaseModel):
 async def filesystem_defaults(
     user: User = Depends(current_user),
     server: Any = Depends(get_server),
+    agent_id: str = Query("", description="Chat agent id, including a bridge id"),
 ) -> dict[str, Any]:
-    """Return the process home path and browse-tree root (host ``/`` on POSIX).
+    """Return browse-tree / default root_dir for the current user.
 
-    When Octop runs inside a container, ``default_root_dir`` is filesystem
-    root (not home) unless the user has a workspace-root policy jail.
+    Unrestricted users get filesystem root; a workspace-root policy jail sets
+    both ``default_root_dir`` and ``tree_root`` to that path.
+
+    ``browse_roots`` is the *list* of tree roots the picker may show — every
+    ready drive on Windows, not just the one holding the server's home
+    directory. ``jail_enforced`` reports whether a non-root ``root_dir`` really
+    gets OS-level confinement (Linux + bubblewrap) or only bounds the agent's
+    tool paths, so the UI does not promise a sandbox it cannot deliver.
+
+    ``default_workspace_dir`` is ``{OCTOP_HOME}/agents``. Create forms append
+    the new expert id, which is the path the server assigns when the caller
+    does not choose one.
+
+    ``agent_id`` adds ``default_agent_workspace``, the same path
+    ``default_agent_workspace_dir`` would assign for that expert, including a
+    scoped workspace root. A ``bridge:{connection}:{remote}`` id uses the
+    remote expert id as the folder name.
     """
-    home = host_path_text(host_home_dir())
     in_container = running_in_container()
+    workspace_parent = default_workspace_parent_dir()
     allowed = _user_workspace_root(server, user)
+    body: dict[str, Any]
     if allowed:
-        return {
-            "home": home,
+        body = {
             "default_root_dir": allowed,
-            "allow_outside_home": False,
             "tree_root": allowed,
+            "browse_roots": [allowed],
+            "default_workspace_dir": workspace_parent,
+            "jail_enforced": host_jail_enforced(),
             "in_container": in_container,
         }
-    return {
-        "home": home,
-        "default_root_dir": default_host_root_dir(allow_outside_home=True),
-        "allow_outside_home": True,
-        "tree_root": host_fs_tree_root(allow_outside_home=True),
-        "in_container": in_container,
-    }
+    else:
+        root = host_fs_tree_root()
+        body = {
+            "default_root_dir": root,
+            "tree_root": root,
+            "browse_roots": host_browse_roots(),
+            "default_workspace_dir": workspace_parent,
+            "jail_enforced": host_jail_enforced(),
+            "in_container": in_container,
+        }
+    folder = agent_id.strip()
+    if folder:
+        body["default_agent_workspace"] = default_workspace_for_chat_agent(folder, root_dir=allowed)
+    return body
+
+
+@router.get(
+    "/roots",
+    summary="Browse-tree roots available to the current user",
+)
+async def filesystem_roots(
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """List the roots the root_dir picker may browse.
+
+    A workspace-root policy jail collapses this to that single path; otherwise
+    unrestricted users get host ``/`` (POSIX) or every ready Windows drive.
+    """
+    allowed = _user_workspace_root(server, user)
+    roots = [allowed] if allowed else host_browse_roots()
+    return {"roots": roots}
 
 
 @router.get("/dirs")

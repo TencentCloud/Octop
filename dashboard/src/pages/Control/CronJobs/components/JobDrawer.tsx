@@ -8,20 +8,31 @@ import {
   Button,
   Divider,
   Typography,
+  Alert,
+  DatePicker,
 } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import { providerApi } from "../../../../api/modules/provider";
 import { connectorsApi } from "../../../../api/modules/connectors";
 import { octopThreadsApi } from "../../../../api/modules/octopThreads";
+import { isBridgeAgentId } from "../../../../utils/remoteExpert";
 import {
   buildDefaultFormValues,
   SCHEDULE_PRESETS,
   cronToPreset,
   presetToCron,
 } from "./constants";
-import { CRON_NAME_MAX_LEN, CRON_PROMPT_MAX_LEN } from "../constants";
-import { channelFromSessionKey } from "../cronDisplay";
+import { ScriptPathSelect } from "./ScriptPathSelect";
+import {
+  CRON_NAME_MAX_LEN,
+  CRON_PROMPT_MAX_LEN,
+  CRON_SCRIPT_MAX_LEN,
+} from "../constants";
+import { CHANNEL_LABEL_KEYS } from "../../../Agent/Channels/components/constants";
+import { LATEST_SESSION_TARGET, channelFromSessionKey } from "../cronDisplay";
+import { defaultOnceRunAt, isFutureWallClock } from "../onceSchedule";
 import type { CronJobFormValues } from "../useCronJobs";
 import {
   buildModelSelectOptions,
@@ -29,7 +40,6 @@ import {
   MODEL_AUTO_VALUE,
   type ModelPickerOption,
 } from "../../../../utils/modelOptions";
-
 const { Text } = Typography;
 
 interface JobDrawerProps {
@@ -60,12 +70,12 @@ function SectionHeader({
       </Divider>
       {description && (
         <Text
-          type="secondary"
           style={{
             fontSize: 12,
             lineHeight: 1.5,
             display: "block",
             marginBottom: 4,
+            color: "var(--fn-text-tertiary)",
           }}
         >
           {description}
@@ -85,12 +95,20 @@ export function JobDrawer({
   onSubmit,
 }: JobDrawerProps) {
   const { t } = useTranslation();
+  const remote = isBridgeAgentId(activeAgentId);
   const scheduleMode = Form.useWatch("_scheduleMode", form);
   const freshThread = Form.useWatch("fresh_thread", form);
+  const sessionTarget = Form.useWatch("session_target", form);
+  const taskType = Form.useWatch("task_type", form);
+  const scriptSource = Form.useWatch("script_source", form);
+  const scriptLang = Form.useWatch("script_lang", form);
+  const scriptFile = taskType === "script" && scriptSource === "file";
+  const promptMax =
+    taskType === "script" ? CRON_SCRIPT_MAX_LEN : CRON_PROMPT_MAX_LEN;
 
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [sessionOptions, setSessionOptions] = useState<
+  const [historyOptions, setHistoryOptions] = useState<
     Array<{ label: string; value: string }>
   >([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -98,6 +116,9 @@ export function JobDrawer({
     Array<{ label: string; value: string }>
   >([]);
   const [connectorsLoading, setConnectorsLoading] = useState(false);
+  const [mailOptions, setMailOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
 
   const presetOptions = useMemo(
     () =>
@@ -108,15 +129,48 @@ export function JobDrawer({
     [t],
   );
 
+  const sessionSelectOptions = useMemo(() => {
+    const history = [...historyOptions];
+    if (
+      sessionTarget &&
+      sessionTarget !== LATEST_SESSION_TARGET &&
+      !history.some((option) => option.value === sessionTarget)
+    ) {
+      history.unshift({
+        value: sessionTarget,
+        label: `${t("cronJobs.form.sessionKeyHistory")} · ${sessionTarget.slice(
+          -6,
+        )}`,
+      });
+    }
+    const latest = {
+      value: LATEST_SESSION_TARGET,
+      label: t("cronJobs.form.sessionKeyLatest"),
+    };
+    if (history.length === 0) return [latest];
+    return [
+      latest,
+      { label: t("cronJobs.form.sessionKeyHistory"), options: history },
+    ];
+  }, [historyOptions, sessionTarget, t]);
+
   useEffect(() => {
     if (!open) return;
     if (editingJob) {
       const matchedPreset = cronToPreset(editingJob.schedule?.cron || "");
+      const mode =
+        editingJob._scheduleMode === "once" ||
+        editingJob._scheduleMode === "agently"
+          ? editingJob._scheduleMode
+          : matchedPreset
+          ? "preset"
+          : "custom";
       form.setFieldsValue({
         ...editingJob,
         model: defaultModelToForm(editingJob.model),
-        _scheduleMode: matchedPreset ? "preset" : "custom",
+        _scheduleMode: mode,
         _preset: matchedPreset || editingJob._preset || "daily_9am",
+        run_at: editingJob.run_at ? dayjs(editingJob.run_at) : undefined,
       });
     } else {
       form.resetFields();
@@ -128,40 +182,42 @@ export function JobDrawer({
     if (!open) return;
     setModelsLoading(true);
     void providerApi
-      .listResolvedModels()
+      .listResolvedModels(activeAgentId)
       .then((data) => setModels((data || []) as ModelPickerOption[]))
       .catch(() => setModels([]))
       .finally(() => setModelsLoading(false));
-  }, [open]);
+  }, [open, activeAgentId]);
 
   useEffect(() => {
     if (!open || !activeAgentId) {
-      setSessionOptions([]);
+      setHistoryOptions([]);
       return;
     }
     setSessionsLoading(true);
     octopThreadsApi
       .list(activeAgentId, 100)
       .then((threads) => {
-        const seen = new Set<string>();
         const options: Array<{ label: string; value: string }> = [];
         for (const th of threads || []) {
-          if (!th.session_key || seen.has(th.session_key)) continue;
-          seen.add(th.session_key);
-          const channel = channelFromSessionKey(th.session_key);
+          if (th.owned === false) continue;
           const title = th.title?.trim();
+          if (!title && !(th.last_active > 0)) continue;
+          const channel = channelFromSessionKey(th.session_key);
+          const labelKey =
+            CHANNEL_LABEL_KEYS[channel as keyof typeof CHANNEL_LABEL_KEYS];
+          const channelName = labelKey ? t(labelKey) : channel;
           options.push({
-            value: th.session_key,
+            value: th.thread_id,
             label: title
-              ? `${channel} · ${title}`
-              : `${channel} · ${th.session_key}`,
+              ? `${channelName} · ${title}`
+              : `${channelName} · ${th.thread_id.slice(-6)}`,
           });
         }
-        setSessionOptions(options);
+        setHistoryOptions(options);
       })
-      .catch(() => setSessionOptions([]))
+      .catch(() => setHistoryOptions([]))
       .finally(() => setSessionsLoading(false));
-  }, [open, activeAgentId]);
+  }, [open, activeAgentId, t]);
 
   useEffect(() => {
     if (!open) {
@@ -170,11 +226,30 @@ export function JobDrawer({
     }
     setConnectorsLoading(true);
     void connectorsApi
-      .listInstances()
+      .listInstances(remote ? activeAgentId : undefined)
       .then((instances) => {
+        setMailOptions(
+          (instances || [])
+            .filter(
+              (i) =>
+                i.kind === "agently-cli" &&
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
+            .map((i) => ({
+              value: i.instance_id,
+              label: i.display_name || i.instance_id,
+            })),
+        );
         setConnectorOptions(
           (instances || [])
-            .filter((i) => i.status === "active" && i.has_credentials)
+            .filter(
+              (i) =>
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
             .map((i) => ({
               value: i.mcp_server_name,
               label: i.display_name?.trim()
@@ -187,9 +262,12 @@ export function JobDrawer({
             })),
         );
       })
-      .catch(() => setConnectorOptions([]))
+      .catch(() => {
+        setConnectorOptions([]);
+        setMailOptions([]);
+      })
       .finally(() => setConnectorsLoading(false));
-  }, [open]);
+  }, [open, activeAgentId, remote]);
 
   const modelOptions = buildModelSelectOptions(
     models,
@@ -205,6 +283,15 @@ export function JobDrawer({
       onClose={onClose}
       destroyOnHidden
     >
+      {remote ? (
+        <Alert
+          type="info"
+          showIcon
+          message={t("chat.remoteExpert.editBanner")}
+          description={t("chat.remoteExpert.editTasks")}
+          style={{ marginBottom: 16 }}
+        />
+      ) : null}
       <Form
         form={form}
         layout="vertical"
@@ -270,17 +357,80 @@ export function JobDrawer({
           label={t("cronJobs.form.scheduleMode")}
           tooltip={t("cronJobs.form.scheduleModeTooltip")}
         >
-          <Select>
+          <Select
+            onChange={(mode) => {
+              if (mode === "once" && !form.getFieldValue("run_at")) {
+                form.setFieldValue(
+                  "run_at",
+                  dayjs(defaultOnceRunAt(cronTimezone)),
+                );
+              }
+            }}
+          >
+            <Select.Option value="once">
+              {t("cronJobs.form.scheduleModeOnce")}
+            </Select.Option>
             <Select.Option value="preset">
               {t("cronJobs.form.scheduleModePreset")}
             </Select.Option>
             <Select.Option value="custom">
               {t("cronJobs.form.scheduleModeCustom")}
             </Select.Option>
+            {(mailOptions.length > 0 || scheduleMode === "agently") && (
+              <Select.Option value="agently">
+                {t("cronJobs.form.agentlyNewMail")}
+              </Select.Option>
+            )}
           </Select>
         </Form.Item>
 
-        {scheduleMode === "preset" ? (
+        {scheduleMode === "once" ? (
+          <Form.Item
+            name="run_at"
+            label={t("cronJobs.form.onceAt")}
+            dependencies={["enabled"]}
+            rules={[
+              {
+                validator: (_, value: Dayjs | undefined) => {
+                  if (!value || !dayjs.isDayjs(value)) {
+                    return Promise.reject(
+                      new Error(t("cronJobs.form.pleaseSelectOnceTime")),
+                    );
+                  }
+                  const enabled = Boolean(form.getFieldValue("enabled"));
+                  const text = value.format("YYYY-MM-DDTHH:mm:ss");
+                  if (enabled && !isFutureWallClock(text, cronTimezone)) {
+                    return Promise.reject(
+                      new Error(t("cronJobs.form.onceMustBeFuture")),
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
+            extra={t("cronJobs.form.onceHint")}
+          >
+            <DatePicker
+              showTime={{ format: "HH:mm" }}
+              format="YYYY-MM-DD HH:mm"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+        ) : scheduleMode === "agently" ? (
+          <Form.Item
+            name="mail_instance_id"
+            label={t("cronJobs.form.agentlyMailbox")}
+            rules={[
+              {
+                required: true,
+                message: t("cronJobs.form.agentlySelectMailbox"),
+              },
+            ]}
+            extra={t("cronJobs.form.agentlyHint")}
+          >
+            <Select options={mailOptions} loading={connectorsLoading} />
+          </Form.Item>
+        ) : scheduleMode === "preset" ? (
           <Form.Item
             name="_preset"
             label={t("cronJobs.form.preset")}
@@ -317,11 +467,7 @@ export function JobDrawer({
                 { required: true, message: t("cronJobs.pleaseInputCron") },
               ]}
               tooltip={t("cronJobs.form.cronTooltip")}
-              extra={
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t("cronJobs.form.cronExamples")}
-                </Text>
-              }
+              extra={t("cronJobs.form.cronExamples")}
             >
               <Input
                 placeholder="0 9 * * *"
@@ -359,69 +505,164 @@ export function JobDrawer({
             <Select.Option value="text">
               {t("cronJobs.form.taskTypeText")}
             </Select.Option>
+            <Select.Option value="script">
+              {t("cronJobs.form.taskTypeScript")}
+            </Select.Option>
           </Select>
         </Form.Item>
 
+        {taskType === "agent" ? (
+          <Form.Item
+            name="allow_all"
+            label={t("cronJobs.form.allowAll")}
+            valuePropName="checked"
+            tooltip={t("cronJobs.form.allowAllTooltip")}
+          >
+            <Switch />
+          </Form.Item>
+        ) : null}
+
+        {taskType === "script" ? (
+          <>
+            <Form.Item
+              name="script_lang"
+              label={t("cronJobs.form.scriptLang")}
+              rules={[
+                {
+                  required: true,
+                  message: t("cronJobs.form.scriptLangRequired"),
+                },
+              ]}
+            >
+              <Select>
+                <Select.Option value="python">
+                  {t("cronJobs.form.scriptLangPython")}
+                </Select.Option>
+                <Select.Option value="bash">
+                  {t("cronJobs.form.scriptLangBash")}
+                </Select.Option>
+                <Select.Option value="powershell">
+                  {t("cronJobs.form.scriptLangPowershell")}
+                </Select.Option>
+              </Select>
+            </Form.Item>
+            <Form.Item
+              name="script_source"
+              label={t("cronJobs.form.scriptSource")}
+              initialValue="inline"
+            >
+              <Select>
+                <Select.Option value="inline">
+                  {t("cronJobs.form.scriptSourceInline")}
+                </Select.Option>
+                <Select.Option value="file">
+                  {t("cronJobs.form.scriptSourceFile")}
+                </Select.Option>
+              </Select>
+            </Form.Item>
+            {scriptFile ? (
+              <Form.Item
+                name="script_path"
+                label={t("cronJobs.form.scriptPath")}
+                tooltip={t("cronJobs.form.scriptPathTooltip")}
+                rules={[
+                  {
+                    required: true,
+                    message: t("cronJobs.form.scriptPathRequired"),
+                  },
+                ]}
+              >
+                <ScriptPathSelect
+                  agentId={activeAgentId}
+                  lang={scriptLang || "python"}
+                />
+              </Form.Item>
+            ) : null}
+          </>
+        ) : null}
+
         <Form.Item
           name="prompt"
-          label={t("cronJobs.form.agentPrompt")}
-          rules={[
-            { required: true, message: t("cronJobs.form.agentPromptRequired") },
-            {
-              max: CRON_PROMPT_MAX_LEN,
-              message: t("cronJobs.form.agentPromptTooLong", {
-                max: CRON_PROMPT_MAX_LEN,
-              }),
-            },
-          ]}
-          tooltip={t("cronJobs.form.agentPromptTooltip")}
+          hidden={scriptFile}
+          label={
+            taskType === "script"
+              ? t("cronJobs.form.scriptBody")
+              : t("cronJobs.form.agentPrompt")
+          }
+          rules={
+            scriptFile
+              ? []
+              : [
+                  {
+                    required: true,
+                    message:
+                      taskType === "script"
+                        ? t("cronJobs.form.scriptBodyRequired")
+                        : t("cronJobs.form.agentPromptRequired"),
+                  },
+                  {
+                    max: promptMax,
+                    message: t(
+                      taskType === "script"
+                        ? "cronJobs.form.scriptBodyTooLong"
+                        : "cronJobs.form.agentPromptTooLong",
+                      { max: promptMax },
+                    ),
+                  },
+                ]
+          }
+          tooltip={
+            taskType === "script"
+              ? t("cronJobs.form.scriptBodyTooltip")
+              : t("cronJobs.form.agentPromptTooltip")
+          }
         >
           <Input.TextArea
-            rows={4}
-            maxLength={CRON_PROMPT_MAX_LEN}
+            rows={taskType === "script" ? 10 : 4}
+            maxLength={promptMax}
             showCount
             placeholder={t("cronJobs.form.agentPromptPlaceholder")}
           />
         </Form.Item>
 
-        <Form.Item
-          name="model"
-          label={t("cronJobs.form.model")}
-          tooltip={t("cronJobs.form.modelTooltip")}
-          initialValue={MODEL_AUTO_VALUE}
-        >
-          <Select
-            showSearch
-            loading={modelsLoading}
-            options={modelOptions}
-            filterOption={(input, option) =>
-              (option?.label?.toString() || "")
-                .toLowerCase()
-                .includes(input.toLowerCase())
-            }
-          />
-        </Form.Item>
+        {taskType !== "script" ? (
+          <>
+            <Form.Item
+              name="model"
+              label={t("cronJobs.form.model")}
+              tooltip={t("cronJobs.form.modelTooltip")}
+              initialValue={MODEL_AUTO_VALUE}
+            >
+              <Select
+                showSearch
+                loading={modelsLoading}
+                options={modelOptions}
+                filterOption={(input, option) =>
+                  (option?.label?.toString() || "")
+                    .toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+              />
+            </Form.Item>
 
-        <Form.Item
-          name="mcp_servers"
-          label={t("cronJobs.form.connectors")}
-          tooltip={t("cronJobs.form.connectorsTooltip")}
-          extra={
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t("cronJobs.form.connectorsHint")}
-            </Text>
-          }
-        >
-          <Select
-            mode="multiple"
-            allowClear
-            showSearch
-            loading={connectorsLoading}
-            placeholder={t("cronJobs.form.connectorsPlaceholder")}
-            options={connectorOptions}
-            optionFilterProp="label"
-          />
-        </Form.Item>
+            <Form.Item
+              name="mcp_servers"
+              label={t("cronJobs.form.connectors")}
+              tooltip={t("cronJobs.form.connectorsTooltip")}
+              extra={t("cronJobs.form.connectorsHint")}
+            >
+              <Select
+                mode="multiple"
+                allowClear
+                showSearch
+                loading={connectorsLoading}
+                placeholder={t("cronJobs.form.connectorsPlaceholder")}
+                options={connectorOptions}
+                optionFilterProp="label"
+              />
+            </Form.Item>
+          </>
+        ) : null}
 
         <Form.Item
           name="fresh_thread"
@@ -429,13 +670,7 @@ export function JobDrawer({
           valuePropName="checked"
           tooltip={t("cronJobs.form.freshThreadTooltip")}
         >
-          <Switch
-            onChange={(checked) => {
-              if (checked) {
-                form.setFieldValue("session_key", undefined);
-              }
-            }}
-          />
+          <Switch />
         </Form.Item>
 
         {!freshThread && (
@@ -446,26 +681,17 @@ export function JobDrawer({
             />
 
             <Form.Item
-              name="session_key"
+              name="session_target"
               label={t("cronJobs.form.sessionKey")}
               tooltip={t("cronJobs.form.sessionKeyTooltip")}
-              extra={
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t("cronJobs.form.sessionKeyDefault")}
-                </Text>
-              }
+              initialValue={LATEST_SESSION_TARGET}
+              extra={t("cronJobs.form.sessionKeyDefault")}
             >
               <Select
-                allowClear
                 showSearch
                 loading={sessionsLoading}
-                placeholder={t("cronJobs.form.sessionKeyPlaceholder")}
-                options={sessionOptions}
-                filterOption={(input, option) =>
-                  (option?.label?.toString() || "")
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
+                options={sessionSelectOptions}
+                optionFilterProp="label"
               />
             </Form.Item>
           </>

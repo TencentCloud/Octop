@@ -19,6 +19,13 @@ def test_chats_group_help_lists_all_subcommands() -> None:
         assert sub in result.output
 
 
+def test_chats_send_help_lists_mode() -> None:
+    runner = CliRunner()
+    result = runner.invoke(cli, ["chats", "send", "--help"])
+    assert result.exit_code == 0
+    assert "--mode" in result.output
+
+
 def test_chats_list_requires_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     import octop.cli.support.ctx as ctx_mod
 

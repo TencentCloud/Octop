@@ -33,7 +33,10 @@ type ConnectStreamFn = (
     onStatusChange?: (status: string) => void;
     onError?: (message: string) => void;
   },
-  options?: { sessionId?: string | null },
+  options?: {
+    sessionId?: string | null;
+    bridgeConnectionId?: string | null;
+  },
 ) => void;
 
 interface UseBrowserViewControllerOptions {
@@ -51,6 +54,8 @@ interface UseBrowserViewControllerOptions {
   onError: (message: string) => void;
   onBeforeConnect?: (sessionId: string) => void;
   onAfterConnect?: (sessionId: string) => void;
+  /** When set, screencast is relayed to the peer Octop via Bridge. */
+  bridgeConnectionId?: string | null;
 }
 
 /**
@@ -74,6 +79,7 @@ export function useBrowserViewController({
   onError,
   onBeforeConnect,
   onAfterConnect,
+  bridgeConnectionId = null,
 }: UseBrowserViewControllerOptions) {
   // Hold the caller-provided callbacks/flags in a ref so ``startStream`` keeps
   // a stable identity even when those inline functions are recreated each
@@ -85,6 +91,7 @@ export function useBrowserViewController({
     onError,
     onBeforeConnect,
     onAfterConnect,
+    bridgeConnectionId,
   });
   cfgRef.current = {
     isMobile,
@@ -92,6 +99,7 @@ export function useBrowserViewController({
     onError,
     onBeforeConnect,
     onAfterConnect,
+    bridgeConnectionId,
   };
 
   const startStream = useCallback(
@@ -102,6 +110,7 @@ export function useBrowserViewController({
         onError: err,
         onBeforeConnect: before,
         onAfterConnect: after,
+        bridgeConnectionId: bridgeId,
       } = cfgRef.current;
       const containerEl = containerRef.current;
       const cw = containerEl?.clientWidth ?? 0;
@@ -126,7 +135,10 @@ export function useBrowserViewController({
           onFrame: (base64Data) => viewerRef.current?.paintFrame(base64Data),
           onError: err,
         },
-        { sessionId: sessionId || undefined },
+        {
+          sessionId: sessionId || undefined,
+          bridgeConnectionId: bridgeId || undefined,
+        },
       );
       after?.(sessionId);
     },

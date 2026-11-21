@@ -1,6 +1,6 @@
 """Unit tests for the terminal session machinery and WS handler.
 
-These run without the full ``OctopServer`` / ``harness_gateway`` stack:
+These run without the full ``OctopServer`` / ``octop_gateway`` stack:
 the ``terminal`` router module imports cleanly on its own, so we drive
 it with lightweight fakes for the server, the WebSocket and the PTY
 spawn. Pure-logic cases run on any platform; PTY-path cases are gated

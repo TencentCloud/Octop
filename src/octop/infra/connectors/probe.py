@@ -159,17 +159,35 @@ async def _maybe_attach_oauth_discovery(
     *,
     url: str,
     headers: dict[str, str],
+    oauth_client: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """When auth fails without a bearer token, try MCP OAuth discovery."""
+    """When auth fails without a bearer token, try MCP OAuth discovery.
+
+    ``oauth.available`` means the authorize button can work right now.
+    ``oauth.client_required`` marks an authorization server without dynamic
+    registration: it only becomes available once the server has an
+    ``oauth_client``. A client with explicit endpoints needs no discovery.
+    """
     if result.get("ok") is not False or result.get("error_type") != "auth":
         return result
     auth_header = str(headers.get("Authorization") or "").strip()
     if auth_header.lower().startswith("bearer ") and len(auth_header) > 7:
         return result
+    has_client = bool(oauth_client and oauth_client.get("client_id"))
+    if has_client and oauth_client and oauth_client.get("token_endpoint"):
+        result["oauth"] = {"available": True}
+        return result
     discovery = await discover_oauth_from_mcp_url(url)
     if discovery.get("available"):
         result["oauth"] = {
             "available": True,
+            "issuer": discovery.get("issuer"),
+            "resource": discovery.get("resource"),
+        }
+    elif discovery.get("client_required"):
+        result["oauth"] = {
+            "available": has_client,
+            "client_required": True,
             "issuer": discovery.get("issuer"),
             "resource": discovery.get("resource"),
         }
@@ -333,38 +351,69 @@ async def probe_streamable_http_mcp(
     *,
     kind: str,
 ) -> dict[str, Any]:
-    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE)."""
+    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE).
+
+    A single retry tolerates transient connection drops (e.g. a proxy or the
+    upstream closing the session on the first ``initialize``), matching
+    :func:`_probe_mcp_sse`. Auth rejections (HTTP 401/403) are definitive and
+    returned immediately so a bad key is never masked by a retry.
+    """
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
-    try:
-        async with (
-            streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
-                read,
-                write,
-                _get_session_id,
-            ),
-            ClientSession(read, write) as session,
-        ):
-            await session.initialize()
-            listed = await session.list_tools()
-            tools = normalize_tools(
-                [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-            )
-            return {"ok": True, "tool_count": len(tools), "tools": tools}
-    except httpx.HTTPStatusError as exc:
-        return _probe_mcp_http_error(exc, kind=kind)
-    except McpError as exc:
-        return _probe_mcp_mcp_error(exc, kind=kind)
-    except BaseExceptionGroup as exc:
-        result = _unwrap_probe_exception_group(exc, kind=kind)
-        if result is not None:
-            return result
-        logger.exception("streamable HTTP MCP probe failed for %s", kind)
-        return {"ok": False, "error": str(exc)}
-    except Exception as exc:
-        logger.exception("streamable HTTP MCP probe failed for %s", kind)
-        return {"ok": False, "error": str(exc)}
+    for attempt in range(2):
+        try:
+            async with (
+                streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
+                    read,
+                    write,
+                    _get_session_id,
+                ),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                listed = await session.list_tools()
+                tools = normalize_tools(
+                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                )
+                return {"ok": True, "tool_count": len(tools), "tools": tools}
+        except httpx.HTTPStatusError as exc:
+            result = _probe_mcp_http_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
+            continue
+        except McpError as exc:
+            result = _probe_mcp_mcp_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
+            continue
+        except BaseExceptionGroup as exc:
+            unwrapped = _unwrap_probe_exception_group(exc, kind=kind)
+            if unwrapped is not None:
+                if unwrapped.get("error_type") != "connection" or attempt > 0:
+                    return unwrapped
+                logger.warning(
+                    "%s streamable HTTP probe connection failure, retrying: %s", kind, exc
+                )
+                continue
+            if attempt == 0:
+                logger.warning(
+                    "%s streamable HTTP probe transient failure, retrying: %s", kind, exc
+                )
+                continue
+            logger.exception("streamable HTTP MCP probe failed for %s", kind)
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            if attempt == 0:
+                logger.warning(
+                    "%s streamable HTTP probe transient failure, retrying: %s", kind, exc
+                )
+                continue
+            logger.exception("streamable HTTP MCP probe failed for %s", kind)
+            return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "streamable HTTP probe failed after retry"}
 
 
 async def probe_connector(
@@ -374,6 +423,11 @@ async def probe_connector(
     instance_id: str,
     config: OctopConfig,
 ) -> dict[str, Any]:
+    if entry.kind == "qcc":
+        from octop.infra.connectors.qcc import bearer_token, probe
+
+        return await probe(bearer_token(cred_payload))
+
     if entry.mcp_mode == "gateway":
         try:
             await asyncio.to_thread(probe_gateway_credentials, entry.kind, cred_payload)
@@ -392,6 +446,12 @@ async def probe_connector(
             (resp.get("result") or {}).get("tools") if isinstance(resp, dict) else None
         )
         return {"ok": True, "tool_count": len(tools), "tools": tools}
+
+    if entry.mcp_mode == "stdio":
+        spec = build_http_mcp_spec(
+            entry=entry, instance_id=instance_id, creds=cred_payload, config=config
+        )
+        return await _probe_stdio_mcp(spec)
 
     if entry.kind == "youdao-note":
         api_key = str(
@@ -506,6 +566,7 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
             "ok": False,
             "error": exc.message,
             "error_code": exc.code.value,
+            "details": exc.details,
             "error_type": "validation",
         }
     except ValueError as exc:
@@ -520,7 +581,12 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
         # Ensure streamable Accept if caller omitted it.
         headers.setdefault("Accept", "application/json, text/event-stream")
         result = await probe_streamable_http_mcp(url, headers, kind="custom-mcp")
-        return await _maybe_attach_oauth_discovery(result, url=url, headers=headers)
+        return await _maybe_attach_oauth_discovery(
+            result,
+            url=url,
+            headers=headers,
+            oauth_client=normalized.get("oauth_client"),
+        )
 
     if transport == "stdio":
         return await _probe_stdio_mcp(connection)
@@ -533,12 +599,14 @@ async def _probe_stdio_mcp(connection: dict[str, Any]) -> dict[str, Any]:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
+    from octop.infra.connectors.custom_mcp import sanitize_stdio_env  # noqa: PLC0415
+
     command = str(connection.get("command") or "").strip()
     if not command:
         return {"ok": False, "error": "command is required"}
     args = [str(a) for a in (connection.get("args") or [])]
     env = connection.get("env")
-    env_map = {str(k): str(v) for k, v in dict(env or {}).items()} or None
+    env_map = sanitize_stdio_env({str(k): str(v) for k, v in dict(env or {}).items()}) or None
     params = StdioServerParameters(command=command, args=args, env=env_map)
 
     try:

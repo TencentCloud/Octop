@@ -54,19 +54,42 @@ def list_jobs(agent_id: str | None, as_user: str | None) -> None:
 @click.option("--user", "as_user", default=None)
 @click.option("--trigger", required=True)
 @click.option("--prompt", required=True)
-@click.option("--fresh-thread", is_flag=True, default=False)
+@click.option(
+    "--fresh-thread",
+    is_flag=True,
+    default=False,
+    help="Start a new conversation on every run. Cannot be combined with --thread.",
+)
+@click.option(
+    "--thread",
+    "thread_id",
+    default=None,
+    help=(
+        "Pin the job to this historical conversation. "
+        "Omit to follow the latest conversation on the Dashboard channel."
+    ),
+)
 @click.option("--task-type", default="agent")
+@click.option("--allow-all", is_flag=True, default=False, help="Skip tool approval on agent runs.")
+@click.option("--script-lang", default=None, help="python, bash, or powershell.")
+@click.option("--script-path", default=None, help="Workspace-relative script path.")
 def create_job(
     agent_id: str | None,
     as_user: str | None,
     trigger: str,
     prompt: str,
     fresh_thread: bool,
+    thread_id: str | None,
     task_type: str,
+    allow_all: bool,
+    script_lang: str | None,
+    script_path: str | None,
 ) -> None:
     """Create a cron job."""
     from octop.cli.support.offline_ops import create_cron_offline, resolve_cron_user_id
 
+    if fresh_thread and (thread_id or "").strip():
+        raise click.UsageError("--thread cannot be combined with --fresh-thread")
     aid = require_agent(agent_id)
     try:
         uid = resolve_cron_user_id(aid, as_user)
@@ -77,6 +100,11 @@ def create_job(
             prompt=prompt,
             fresh_thread=fresh_thread,
             task_type=task_type,
+            thread_id=thread_id,
+            allow_all=allow_all,
+            script_lang=script_lang,
+            script_source="file" if (script_path or "").strip() else None,
+            script_path=script_path,
         )
     except OctopError as exc:
         fail_octop(exc)
@@ -106,7 +134,7 @@ def delete_job(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
 @click.option("--agent", "agent_id", default=None)
 @click.option("--user", "as_user", default=None)
 def run_now(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
-    """Trigger a cron job immediately (embedded server)."""
+    """Run a cron job to completion (embedded server)."""
     from octop.cli.support.embedded_ops import cron_run_now
     from octop.cli.support.offline_ops import resolve_cron_user_id
 
@@ -116,4 +144,6 @@ def run_now(agent_id: str | None, cron_id: str, as_user: str | None) -> None:
         cron_run_now(aid, cron_id)
     except OctopError as exc:
         fail_octop(exc)
+    except Exception as exc:
+        raise click.ClickException(str(exc) or type(exc).__name__) from exc
     click.echo("ok")

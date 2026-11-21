@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { emitSessionEvent } from "./chatStore";
 import {
   resetSessionStoreForTests,
   sortSessions,
@@ -9,16 +10,18 @@ import {
 } from "./useSessions";
 
 const listMock = vi.fn();
+const createMock = vi.fn();
 
 vi.mock("../../../api/modules/octopThreads", () => ({
   octopThreadsApi: {
     list: (...args: unknown[]) => listMock(...args),
-    create: vi.fn(),
+    create: (...args: unknown[]) => createMock(...args),
     delete: vi.fn(),
     patch: vi.fn(),
     rename: vi.fn(),
     rebind: vi.fn(),
   },
+  normalizeThreadArtifacts: () => [],
 }));
 
 function threadRow(threadId: string, agentExtra?: Partial<{ title: string }>) {
@@ -74,12 +77,25 @@ describe("toSession / sortSessions ordering", () => {
       "thr_recent",
     ]);
   });
+
+  it("maps turn_active and awaiting_user onto the session", () => {
+    const session = toSession({
+      thread_id: "thr_work",
+      title: "busy",
+      last_active: 1,
+      turn_active: true,
+      awaiting_user: true,
+    });
+    expect(session.turnActive).toBe(true);
+    expect(session.awaitingUser).toBe(true);
+  });
 });
 
 describe("useSessions agent switch", () => {
   beforeEach(() => {
     resetSessionStoreForTests();
     listMock.mockReset();
+    createMock.mockReset();
   });
 
   afterEach(() => {
@@ -165,5 +181,40 @@ describe("useSessions agent switch", () => {
     });
     expect(probe).toBe("found");
     expect(listMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps another agent's delayed title off the pending chat", async () => {
+    listMock.mockResolvedValue([]);
+    createMock.mockReturnValue(new Promise(() => {}));
+
+    const { result } = renderHook(() => useSessions("agent-b"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    act(() => {
+      result.current.createSession();
+    });
+    expect(result.current.sessions[0]?.id).toBe("__pending__");
+
+    act(() => {
+      emitSessionEvent({
+        kind: "sessionRenamed",
+        sessionId: "thr_a",
+        agentId: "agent-a",
+        title: "来自 A",
+      });
+    });
+    expect(result.current.sessions[0]?.name).toBe("New Chat");
+
+    act(() => {
+      emitSessionEvent({
+        kind: "sessionRenamed",
+        sessionId: "thr_b",
+        agentId: "agent-b",
+        title: "本会话",
+        provisional: true,
+      });
+    });
+    expect(result.current.sessions[0]?.name).toBe("本会话");
   });
 });

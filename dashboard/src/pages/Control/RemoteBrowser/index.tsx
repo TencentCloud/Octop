@@ -1,5 +1,5 @@
 /**
- * Remote Browser page — harness-browser sessions (same backend as chat).
+ * Remote Browser page — octop-browser sessions (same backend as chat).
  *
  * UI matches the original Playwright page: install flow, address bar,
  * tab bar, canvas interaction, viewport / refresh controls.
@@ -38,17 +38,22 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import PageShell from "../../../layouts/PageShell";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import BrowserAiPanel from "../../../components/BrowserAiPanel";
+import {
+  readAssistantPlacement,
+  type AssistantPlacement,
+} from "../../../components/AssistantFrame/AssistantFrame";
 import SkillRecordGuideModal from "../../../components/SkillRecordGuideModal";
 import BrowserViewer, {
   type BrowserViewerHandle,
 } from "../../../components/BrowserViewer";
-import { useAgent } from "../../../context/AgentContext";
 import { browserApi } from "../../../api/modules/browser";
 import * as chatStore from "../../Chat/hooks/chatStore";
 import { request } from "../../../api/request";
@@ -106,6 +111,8 @@ interface EnvStatus {
   /** "system" | "playwright" when browsers_ok */
   chrome_source?: "system" | "playwright" | null;
   error: string | null;
+  /** Image shipped Chromium; the user has not confirmed enablement. */
+  needs_enable?: boolean;
 }
 
 type InstallPhase =
@@ -122,12 +129,7 @@ const STREAM_ACTIVE_KEY = "octop:remote-browser:stream-active";
 const DEFAULT_REFRESH_INTERVAL = 500;
 const DEFAULT_START_URL = "https://cloud.tencent.com";
 const BROWSER_AI_PANEL_KEY = "octop:remote-browser:ai-panel-open";
-const BROWSER_AI_PANEL_WIDTH_KEY = "octop:remote-browser:ai-panel-width";
-const BROWSER_AI_PANEL_HEIGHT_KEY = "octop:remote-browser:ai-panel-height";
-const BROWSER_AI_PANEL_MIN_WIDTH = 260;
-const BROWSER_AI_PANEL_MAX_WIDTH = 620;
-const BROWSER_AI_PANEL_MIN_HEIGHT = 200;
-const BROWSER_AI_PANEL_MAX_HEIGHT = 520;
+const BROWSER_AI_PLACEMENT_KEY = "octop:remote-browser:ai-placement";
 
 function profileStorageKey(userId?: number): string {
   return userId == null
@@ -296,7 +298,6 @@ export default function RemoteBrowserPage({
   const isMobile = useIsMobile();
   const currentUser = useCurrentUser();
   const browserProfile = resolveBrowserProfile(currentUser?.id);
-  const { activeAgent, activeAgentId, agents } = useAgent();
   const [searchParams] = useSearchParams();
   const threadFromUrl =
     searchParams.get("thread") ??
@@ -334,41 +335,12 @@ export default function RemoteBrowserPage({
       return false;
     }
   });
-  const [aiPanelWidth, setAiPanelWidth] = useState(() => {
-    try {
-      const saved = localStorage.getItem(BROWSER_AI_PANEL_WIDTH_KEY);
-      const n = saved ? Number(saved) : 340;
-      if (Number.isFinite(n)) {
-        return Math.min(
-          Math.max(n, BROWSER_AI_PANEL_MIN_WIDTH),
-          BROWSER_AI_PANEL_MAX_WIDTH,
-        );
-      }
-    } catch {
-      /* ignore */
-    }
-    return 340;
-  });
-  const [aiPanelHeight, setAiPanelHeight] = useState(() => {
-    try {
-      const saved = localStorage.getItem(BROWSER_AI_PANEL_HEIGHT_KEY);
-      const n = saved ? Number(saved) : 320;
-      if (Number.isFinite(n)) {
-        return Math.min(
-          Math.max(n, BROWSER_AI_PANEL_MIN_HEIGHT),
-          BROWSER_AI_PANEL_MAX_HEIGHT,
-        );
-      }
-    } catch {
-      /* ignore */
-    }
-    return 320;
-  });
-  const aiDragRef = useRef<{
-    startX: number;
-    startY: number;
-    startSize: number;
-  } | null>(null);
+  const [aiPlacement, setAiPlacement] = useState<AssistantPlacement>(() =>
+    readAssistantPlacement(BROWSER_AI_PLACEMENT_KEY, "right"),
+  );
+  const assistantPlacement: AssistantPlacement = isMobile
+    ? "bottom"
+    : aiPlacement;
 
   const {
     mode: viewportMode,
@@ -426,11 +398,6 @@ export default function RemoteBrowserPage({
   } = useBrowserStream();
 
   const isStreaming = status === "streaming" || status === "browser_started";
-  const effectiveActiveAgent =
-    activeAgent ??
-    (activeAgentId
-      ? agents.find((agent) => agent.agent_id === activeAgentId) ?? null
-      : null);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -817,107 +784,6 @@ export default function RemoteBrowserPage({
     }
   }, []);
 
-  const handleAiResizeMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      if (isMobile) {
-        aiDragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          startSize: aiPanelHeight,
-        };
-        const onMove = (mv: MouseEvent) => {
-          if (!aiDragRef.current) return;
-          const delta = aiDragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(
-              aiDragRef.current.startSize + delta,
-              BROWSER_AI_PANEL_MIN_HEIGHT,
-            ),
-            BROWSER_AI_PANEL_MAX_HEIGHT,
-          );
-          setAiPanelHeight(next);
-        };
-        const onUp = (mv: MouseEvent) => {
-          if (!aiDragRef.current) return;
-          const delta = aiDragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(
-              aiDragRef.current.startSize + delta,
-              BROWSER_AI_PANEL_MIN_HEIGHT,
-            ),
-            BROWSER_AI_PANEL_MAX_HEIGHT,
-          );
-          setAiPanelHeight(next);
-          try {
-            localStorage.setItem(BROWSER_AI_PANEL_HEIGHT_KEY, String(next));
-          } catch {
-            /* ignore */
-          }
-          aiDragRef.current = null;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-        return;
-      }
-
-      aiDragRef.current = {
-        startX: e.clientX,
-        startY: e.clientY,
-        startSize: aiPanelWidth,
-      };
-      const onMove = (mv: MouseEvent) => {
-        if (!aiDragRef.current) return;
-        const delta = aiDragRef.current.startX - mv.clientX;
-        const next = Math.min(
-          Math.max(
-            aiDragRef.current.startSize + delta,
-            BROWSER_AI_PANEL_MIN_WIDTH,
-          ),
-          BROWSER_AI_PANEL_MAX_WIDTH,
-        );
-        setAiPanelWidth(next);
-      };
-      const onUp = (mv: MouseEvent) => {
-        if (!aiDragRef.current) return;
-        const delta = aiDragRef.current.startX - mv.clientX;
-        const next = Math.min(
-          Math.max(
-            aiDragRef.current.startSize + delta,
-            BROWSER_AI_PANEL_MIN_WIDTH,
-          ),
-          BROWSER_AI_PANEL_MAX_WIDTH,
-        );
-        setAiPanelWidth(next);
-        try {
-          localStorage.setItem(BROWSER_AI_PANEL_WIDTH_KEY, String(next));
-        } catch {
-          /* ignore */
-        }
-        aiDragRef.current = null;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [aiPanelHeight, aiPanelWidth, isMobile],
-  );
-
-  const handleCanvasKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLCanvasElement>) => {
-      e.preventDefault();
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        sendEvent({ type: "type", text: e.key });
-      } else {
-        sendEvent({ type: "keydown", key: e.key });
-      }
-    },
-    [sendEvent],
-  );
-
   // --- Skill recording guide ---
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
@@ -978,6 +844,7 @@ export default function RemoteBrowserPage({
   }, [antMessage, t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
+  const needsEnable = Boolean(envStatus?.needs_enable) && !envReady;
   const showEdgeControls = Boolean(session) && isStreaming && frameReady;
 
   const renderInstallLog = (
@@ -987,7 +854,7 @@ export default function RemoteBrowserPage({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -1137,7 +1004,7 @@ export default function RemoteBrowserPage({
     }
 
     if (!envStatus?.playwright) {
-      // harness-browser works without Playwright, so this is informational
+      // octop-browser works without Playwright, so this is informational
       // rather than a blocking error
       if (envStatus?.harness_browser) {
         return (
@@ -1150,7 +1017,7 @@ export default function RemoteBrowserPage({
             )}
             description={t(
               "remoteBrowser.playwrightOptionalDesc",
-              "harness-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
+              "octop-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
             )}
           />
         );
@@ -1168,11 +1035,19 @@ export default function RemoteBrowserPage({
     return (
       <Result
         icon={<AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />}
-        title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
-        subTitle={t(
-          "remoteBrowser.notInstalledHint",
-          "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
-        )}
+        title={
+          needsEnable
+            ? t("remoteBrowser.enableTitle", "浏览器已安装，尚未启用")
+            : t("remoteBrowser.notInstalled", "未检测到可用浏览器")
+        }
+        subTitle={
+          needsEnable
+            ? t("remoteBrowser.enableHint")
+            : t(
+                "remoteBrowser.notInstalledHint",
+                "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+              )
+        }
         style={{ padding: "8px 0" }}
       />
     );
@@ -1204,7 +1079,9 @@ export default function RemoteBrowserPage({
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
           <Button type="primary" onClick={startInstall}>
-            {t("remoteBrowser.install", "安装浏览器")}
+            {needsEnable
+              ? t("remoteBrowser.enable", "启用浏览器")
+              : t("remoteBrowser.install", "安装浏览器")}
           </Button>
         </Space>
       );
@@ -1294,24 +1171,18 @@ export default function RemoteBrowserPage({
   );
 
   const checkAction = {
-    label: (
-      <>
-        {t("remoteBrowser.checkInstallShort", "检查")}
-        {envReady && !envLoading ? (
-          <CheckCircle2
-            size={14}
-            style={{
-              marginLeft: 4,
-              color: "var(--fn-color-success,#52c41a)",
-              verticalAlign: "-2px",
-            }}
-          />
-        ) : null}
-      </>
-    ),
+    label: t("remoteBrowser.checkInstallShort", "检查"),
     onClick: openEnvModal,
-    icon: <Globe size={14} />,
-    type: "default" as const,
+    icon:
+      envReady && !envLoading ? (
+        <CheckCircle2
+          size={14}
+          style={{ color: "var(--fn-color-success,#52c41a)" }}
+        />
+      ) : (
+        <Globe size={14} />
+      ),
+    type: envReady ? ("default" as const) : ("primary" as const),
     title: t(
       "remoteBrowser.checkInstallTip",
       "检查本机是否已准备好浏览器，未安装时可一键安装",
@@ -1366,10 +1237,18 @@ export default function RemoteBrowserPage({
       </Drawer>
 
       <div className={styles.pageBody}>
+        {!embedded ? (
+          <PeerOnlyRemoteAlert
+            hintKey="peerOnlyBrowser"
+            style={{ marginBottom: 0 }}
+          />
+        ) : null}
         <div
-          className={`${styles.mainRow} ${
-            isMobile ? styles.mainRowMobile : ""
-          }`}
+          className={cx(
+            styles.mainRow,
+            (isMobile || (isAiPanelOpen && assistantPlacement === "bottom")) &&
+              styles.mainRowMobile,
+          )}
         >
           <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
@@ -1462,7 +1341,6 @@ export default function RemoteBrowserPage({
                       onOpenControls={openControlsDrawer}
                     />
                   }
-                  onCanvasKeyDown={handleCanvasKeyDown}
                   onFrameReadyChange={handleFrameReadyChange}
                 />
               </>
@@ -1474,12 +1352,8 @@ export default function RemoteBrowserPage({
                   renderViewportUninstallProgress()
                 ) : (
                   <StreamSetupGuide
-                    icon={
-                      <OctopEmptyMascot
-                        size={120}
-                        className={styles.setupMascot}
-                      />
-                    }
+                    plain
+                    icon={<OctopEmptyMascot />}
                     title={
                       envReady
                         ? t("remoteBrowser.startBrowserTitle", "启动远程浏览器")
@@ -1558,38 +1432,27 @@ export default function RemoteBrowserPage({
           </div>
 
           {isAiPanelOpen && (
-            <div
-              className={isMobile ? styles.aiPanelBottom : styles.aiPanelRight}
-              style={
-                isMobile ? { height: aiPanelHeight } : { width: aiPanelWidth }
-              }
-            >
-              <div
-                className={
-                  isMobile ? styles.resizeHandleTop : styles.resizeHandleLeft
-                }
-                onMouseDown={handleAiResizeMouseDown}
-              />
-              <BrowserAiPanel
-                activeAgent={effectiveActiveAgent}
-                tabs={tabs}
-                currentUrl={session?.url || navUrl}
-                profileId={profileIdRef.current}
-                layout={isMobile ? "bottom" : "right"}
-                onClose={handleAiPanelClose}
-                browserRecording={browserRecording}
-                browserRecordingId={browserRecordingId}
-                browserLastRecordingId={browserLastRecordingId}
-                setBrowserRecording={setBrowserRecording}
-                setBrowserRecordingId={setBrowserRecordingId}
-                setBrowserLastRecordingId={setBrowserLastRecordingId}
-                skillName={skillName}
-                onSkillNameSet={setSkillName}
-                browserSessionActive={!!session}
-                browserStarting={creating}
-                onStartBrowser={() => void createSession()}
-              />
-            </div>
+            <BrowserAiPanel
+              tabs={tabs}
+              currentUrl={session?.url || navUrl}
+              profileId={profileIdRef.current}
+              placement={assistantPlacement}
+              placementLocked={isMobile}
+              hidden={!isVisible}
+              onPlacementChange={setAiPlacement}
+              onClose={handleAiPanelClose}
+              browserRecording={browserRecording}
+              browserRecordingId={browserRecordingId}
+              browserLastRecordingId={browserLastRecordingId}
+              setBrowserRecording={setBrowserRecording}
+              setBrowserRecordingId={setBrowserRecordingId}
+              setBrowserLastRecordingId={setBrowserLastRecordingId}
+              skillName={skillName}
+              onSkillNameSet={setSkillName}
+              browserSessionActive={!!session}
+              browserStarting={creating}
+              onStartBrowser={() => void createSession()}
+            />
           )}
         </div>
       </div>
@@ -1605,7 +1468,7 @@ export default function RemoteBrowserPage({
       title={t("pageShell.browser.title", "浏览器 AI+")}
       subtitle={t(
         "pageShell.browser.subtitle",
-        "基于 Chromium 的无头浏览器会话",
+        "查看并操控远端无头浏览器，实时接管专家的网页操作",
       )}
       fill
     >

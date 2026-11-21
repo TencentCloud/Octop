@@ -2,8 +2,15 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Input } from "antd";
 import { Check } from "lucide-react";
+import cx from "classnames";
 import { isOwnedExpert } from "../../../utils/sharedExpert";
+import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark, managedRunnerId } from "./ManagedAvatarMark";
+import {
+  incomingShareProps,
+  SharedAvatarMark,
+} from "../../../components/SharedResourceBadge";
 import styles from "../index.module.less";
 
 export interface TeamMemberOption {
@@ -14,8 +21,12 @@ export interface TeamMemberOption {
   icon_name?: string | null;
   icon_url?: string | null;
   kind?: string;
+  config?: Record<string, unknown> | null;
   is_shared?: boolean;
   is_owner?: boolean;
+  user_id?: number | null;
+  owner_username?: string | null;
+  bridge?: boolean | null;
 }
 
 interface TeamMemberPickerProps {
@@ -26,6 +37,7 @@ interface TeamMemberPickerProps {
 
 export function isPickableExpert(item: TeamMemberOption): boolean {
   if (item.kind === "team") return false;
+  if (item.bridge || isBridgeAgentId(item.agent_id)) return false;
   return isOwnedExpert(item) || Boolean(item.is_shared);
 }
 
@@ -59,6 +71,10 @@ export default function TeamMemberPicker({
     [value, experts],
   );
   const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const [frozenFrontIds, setFrozenFrontIds] = useState<Set<string> | null>(
+    null,
+  );
+  const frontIds = frozenFrontIds ?? selectedSet;
 
   const candidates = useMemo(() => {
     const byId = new Map<string, TeamMemberOption>();
@@ -79,14 +95,17 @@ export default function TeamMemberPicker({
         })
       : candidates;
     return [...rows].sort((left, right) => {
-      const leftOn = selectedSet.has(left.agent_id) ? 0 : 1;
-      const rightOn = selectedSet.has(right.agent_id) ? 0 : 1;
+      const leftOn = frontIds.has(left.agent_id) ? 0 : 1;
+      const rightOn = frontIds.has(right.agent_id) ? 0 : 1;
       if (leftOn !== rightOn) return leftOn - rightOn;
       return left.name.localeCompare(right.name);
     });
-  }, [candidates, query, selectedSet]);
+  }, [candidates, frontIds, query]);
 
   const toggle = (id: string) => {
+    if (frozenFrontIds == null) {
+      setFrozenFrontIds(new Set(selected));
+    }
     onChange?.(
       selectedSet.has(id)
         ? selected.filter((item) => item !== id)
@@ -118,9 +137,10 @@ export default function TeamMemberPicker({
               <button
                 key={expert.agent_id}
                 type="button"
-                className={`${styles.memberPickCard}${
-                  active ? ` ${styles.memberPickCardSelected}` : ""
-                }`}
+                className={cx(
+                  styles.memberPickCard,
+                  active && styles.memberPickCardSelected,
+                )}
                 onClick={() => toggle(expert.agent_id)}
                 aria-pressed={active}
               >
@@ -129,16 +149,20 @@ export default function TeamMemberPicker({
                     <Check size={11} strokeWidth={3} />
                   </span>
                 )}
-                <div
-                  className={styles.memberPickIcon}
-                  style={{ color: accent, background: `${accent}1a` }}
-                >
-                  <ExpertIcon
-                    iconUrl={expert.icon_url}
-                    iconName={expert.icon_name}
-                    size={expert.icon_url ? 36 : 18}
-                  />
-                </div>
+                <SharedAvatarMark {...incomingShareProps(expert)}>
+                  <ManagedAvatarMark runner={managedRunnerId(expert)}>
+                    <div
+                      className={styles.memberPickIcon}
+                      style={{ color: accent, background: `${accent}1a` }}
+                    >
+                      <ExpertIcon
+                        iconUrl={expert.icon_url}
+                        iconName={expert.icon_name}
+                        size={expert.icon_url ? 36 : 18}
+                      />
+                    </div>
+                  </ManagedAvatarMark>
+                </SharedAvatarMark>
                 <div className={styles.memberPickBody}>
                   <div className={styles.memberPickName}>{expert.name}</div>
                   <div className={styles.memberPickDesc}>

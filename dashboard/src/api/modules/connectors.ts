@@ -18,7 +18,7 @@ export interface ConnectorCatalogEntry {
   icon: string;
   color: string;
   phase: "available" | "coming_soon";
-  mcp_mode: "remote" | "gateway";
+  mcp_mode: "remote" | "gateway" | "internal";
   category: ConnectorCategory;
   quick_auth_url?: string | null;
   login_url?: string | null;
@@ -60,13 +60,21 @@ export interface ConnectorInstance {
   /** When true, chat composer pre-selects this connector. */
   default_open?: boolean;
   shared: boolean;
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
+  /** False when this instance is not usable by the current user. */
+  usable?: boolean;
   owner_user_id: number;
   owner_username?: string | null;
   owner_display_name?: string | null;
   can_manage: boolean;
+  /** Custom MCP servers using OAuth: whether the user has to authorize (again). */
+  auth_status?: ConnectorAuthStatus;
   created_at: number;
   updated_at: number;
 }
+
+export type ConnectorAuthStatus = "ok" | "required" | "expired";
 
 export interface ConnectorCredentialsPreview {
   [key: string]: unknown;
@@ -110,10 +118,14 @@ export interface ConnectorProbeResult {
   tool_count?: number;
   tools?: { name: string; description: string }[];
   error?: string;
+  error_code?: string;
+  details?: Record<string, unknown>;
   error_type?: string;
   status_code?: number;
   oauth?: {
     available: boolean;
+    /** The authorization server has no dynamic registration: needs `oauth_client`. */
+    client_required?: boolean;
     issuer?: string;
     resource?: string;
   };
@@ -133,6 +145,17 @@ export interface CustomMcpOAuthPreview {
   expires_at?: number;
 }
 
+/** Pre-registered OAuth app for servers without dynamic client registration. */
+export interface CustomMcpOAuthClient {
+  client_id: string;
+  /** Write-only: omit to keep the saved secret. */
+  client_secret?: string;
+  has_client_secret?: boolean;
+  scope?: string;
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+}
+
 export interface CustomMcpServerSpec {
   transport: CustomMcpTransport;
   url?: string;
@@ -147,11 +170,23 @@ export interface CustomMcpServerSpec {
   default_open?: boolean;
   shared?: boolean;
   oauth?: CustomMcpOAuthPreview;
+  oauth_client?: CustomMcpOAuthClient;
 }
 
 export type OAuthStartTarget =
   | { type: "catalog"; kind: string }
   | { type: "custom_mcp"; server_name: string };
+
+/** Result of an authorization started from the dashboard. */
+export interface OAuthPendingResult {
+  /** ``ok`` unless the user cancelled or the provider / token exchange failed. */
+  status?: "ok" | "cancelled" | "error";
+  message?: string | null;
+  kind: string;
+  tokens: Record<string, unknown>;
+  server_name?: string;
+  applied?: boolean;
+}
 
 export type CustomMcpServers = Record<string, CustomMcpServerSpec>;
 
@@ -190,13 +225,26 @@ export interface FeishuUserAuthCompleteResult {
   cli_config_key: string;
 }
 
+export interface AgentlyAuthStatus {
+  status: "idle" | "pending" | "authorized" | "expired" | "error";
+  verification_url: string | null;
+  user_code: string | null;
+  expires_at: number | null;
+  error: string | null;
+}
+
 export const connectorsApi = {
   catalog: () => request<ConnectorCatalogEntry[]>("/connectors/catalog"),
 
   detectLocalWeKnora: () =>
     request<WeKnoraLocalDetection>("/connectors/weknora/detect-local"),
 
-  listInstances: () => request<ConnectorInstance[]>("/connector-instances"),
+  listInstances: (agentId?: string | null) =>
+    request<ConnectorInstance[]>("/connector-instances", {
+      headers: agentId?.trim()
+        ? { "X-Octop-Agent-Id": agentId.trim() }
+        : undefined,
+    }),
 
   getInstance: (instanceId: string) =>
     request<ConnectorInstanceDetail>(
@@ -210,6 +258,8 @@ export const connectorsApi = {
     credentials: Record<string, unknown>;
     default_open?: boolean;
     shared?: boolean;
+    visibility?: "owner" | "all" | "groups";
+    group_ids?: string[];
   }) =>
     request<ConnectorInstance>("/connector-instances", {
       method: "POST",
@@ -230,6 +280,8 @@ export const connectorsApi = {
       description?: string;
       credentials?: Record<string, unknown>;
       shared?: boolean;
+      visibility?: "owner" | "all" | "groups";
+      group_ids?: string[];
     },
   ) =>
     request<ConnectorInstance>(
@@ -268,12 +320,7 @@ export const connectorsApi = {
     ),
 
   oauthPending: (stateId: string) =>
-    request<{
-      kind: string;
-      tokens: Record<string, unknown>;
-      server_name?: string;
-      applied?: boolean;
-    }>(`/connectors/oauth/pending/${stateId}`),
+    request<OAuthPendingResult>(`/connectors/oauth/pending/${stateId}`),
 
   authorizeUrl: (kind: string) =>
     request<{ authorize_url: string | null }>(
@@ -310,6 +357,17 @@ export const connectorsApi = {
     request<ConnectorCliInstallResult>(
       `/connectors/${encodeURIComponent(kind)}/install-cli`,
       { method: "POST" },
+    ),
+
+  agentlyAuth: (
+    instanceId: string,
+    action: "start" | "status" | "logout" | "refresh",
+  ) =>
+    request<AgentlyAuthStatus>(
+      `/connector-instances/${encodeURIComponent(
+        instanceId,
+      )}/agently-auth/${action}`,
+      { method: action === "status" ? "GET" : "POST" },
     ),
 
   feishuUserAuthStart: (body: {

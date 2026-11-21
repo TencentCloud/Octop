@@ -8,6 +8,7 @@ from octop.infra.utils.locale import Locale
 __all__ = [
     "attachment_empty_image",
     "attachment_empty_message",
+    "attachment_extracted_body",
     "attachment_image_unavailable",
     "attachment_path_hint",
 ]
@@ -30,6 +31,17 @@ def attachment_path_hint(
     if size is not None and size > 0:
         lines.append(tr("attachment.size", locale, size=size))
     return "\n".join(lines)
+
+
+def attachment_extracted_body(
+    *,
+    filename: str,
+    body: str,
+    locale: str | Locale = "en",
+) -> str:
+    """Inline document text extracted for the model (kept separate from path hints)."""
+    header = tr("attachment.extracted_header", locale, filename=filename)
+    return f"{header}\n{body.strip()}"
 
 
 def attachment_empty_message(locale: str | Locale = "en") -> str:

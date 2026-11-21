@@ -12,7 +12,9 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
-from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
+from octop.infra.agents.providers.headers import assemble_provider_headers
+from octop.infra.agents.providers.magpie import is_magpie_provider, magpie_catalog_model
+from octop.infra.agents.providers.presets import load_provider_presets
 
 logger = logging.getLogger(__name__)
 
@@ -21,50 +23,59 @@ _FETCH_MODELS_TIMEOUT_S = 30.0
 _EMBEDDING_PROBE_TEXT = "ping"
 
 
-def provider_headers(row: Any) -> dict[str, str]:
+def parse_provider_extra(row: Any) -> dict[str, Any]:
+    """Return the provider ``extra_json`` object, or ``{}`` when missing / invalid."""
     raw = getattr(row, "extra_json", None)
-    if not raw:
+    if not isinstance(raw, str) or not raw.strip():
         return {}
     try:
         extra = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    if not isinstance(extra, dict):
-        return {}
-    headers = extra.get("headers")
+    return extra if isinstance(extra, dict) else {}
+
+
+def provider_headers(row: Any) -> dict[str, str]:
+    headers = parse_provider_extra(row).get("headers")
     return dict(headers) if isinstance(headers, dict) else {}
 
 
-def _is_codex_base_url(base_url: str | None) -> bool:
-    return bool(base_url and "chatgpt.com/backend-api/codex" in base_url)
-
-
-def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
+def build_probe_chat_model(
+    row: Any,
+    *,
+    model_id: str | None = None,
+    api_mode: str | None = None,
+    api_fallback: str | None = None,
+) -> Any:
     """Construct a chat model from a provider row for probing."""
-    from harness_agent.config import ModelConfig, ProviderConfig
-    from harness_agent.llm.factory import build_chat_model
+    from octop_harness.config import ModelConfig, ProviderConfig
+    from octop_harness.llm.factory import build_chat_model
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
     base_url = row.base_url or "https://api.openai.com/v1"
-    headers = ensure_opencode_session_header(base_url, provider_headers(row))
+    extra = parse_provider_extra(row)
+    headers = assemble_provider_headers(
+        row.name,
+        provider_headers(row),
+        base_url=base_url,
+        extra=extra,
+        probe=True,
+    )
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
-    display_name = (entry or {}).get("name") or mid
-    model = ModelConfig(id=mid, name=display_name)
+    model_data = dict(entry) if isinstance(entry, dict) else {}
+    model_data["id"] = mid
+    model_data.setdefault("name", mid)
+    if api_mode is not None:
+        model_data["api_mode"] = api_mode
+    if api_fallback is not None:
+        model_data["api_fallback"] = api_fallback
+    elif api_mode is not None and api_mode != "responses":
+        model_data["api_fallback"] = "none"
+    model = ModelConfig.from_dict(model_data)
 
-    if _is_codex_base_url(base_url):
-        from langchain_openai import ChatOpenAI
-
-        kwargs: dict[str, Any] = {
-            "model": model.id,
-            "base_url": base_url,
-            "api_key": row.api_key or "",
-            "use_responses_api": True,
-        }
-        if headers:
-            kwargs["default_headers"] = dict(headers)
-        return ChatOpenAI(**kwargs)
+    from octop.infra.agents.providers.store import resolve_provider_stream_usage
 
     provider = ProviderConfig(
         id=row.name,
@@ -73,6 +84,10 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
         base_url=base_url,
         api_key=row.api_key or "",
         headers=headers,
+        stream_usage=resolve_provider_stream_usage(
+            provider_name=row.name,
+            extra=extra,
+        ),
     )
     return build_chat_model(provider, model)
 
@@ -84,11 +99,18 @@ def make_probe_provider_row(
     api_key: str | None,
     base_url: str | None,
     model_id: str,
+    api_mode: str = "chat_completions",
+    api_fallback: str = "none",
     extra_json: str | None = None,
     embedding: bool = False,
 ) -> Any:
     """Build a ProviderRow-like object for connectivity probes."""
-    model: dict[str, Any] = {"id": model_id, "name": model_id}
+    model: dict[str, Any] = {
+        "id": model_id,
+        "name": model_id,
+        "api_mode": api_mode,
+        "api_fallback": api_fallback,
+    }
     if embedding:
         model["embedding"] = True
         model["task"] = "embedding"
@@ -165,7 +187,13 @@ async def _probe_embedding_endpoint(
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
-    extra = ensure_opencode_session_header(getattr(row, "base_url", None), provider_headers(row))
+    extra = assemble_provider_headers(
+        getattr(row, "name", None),
+        provider_headers(row),
+        base_url=getattr(row, "base_url", None),
+        extra=parse_provider_extra(row),
+        probe=True,
+    )
     headers.update(extra)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
@@ -216,6 +244,8 @@ async def probe_provider_row(
     row: Any,
     *,
     model_id: str | None = None,
+    api_mode: str | None = None,
+    api_fallback: str | None = None,
     embedding: bool | None = None,
     locale: str = "en",
 ) -> dict[str, Any]:
@@ -241,7 +271,12 @@ async def probe_provider_row(
         return await _probe_embedding_endpoint(row, model_id=mid, locale=locale)
     started = time.perf_counter()
     try:
-        chat = build_probe_chat_model(row, model_id=mid)
+        chat = build_probe_chat_model(
+            row,
+            model_id=mid,
+            api_mode=api_mode,
+            api_fallback=api_fallback,
+        )
         result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
     except Exception as exc:
         logger.info(
@@ -253,7 +288,18 @@ async def probe_provider_row(
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
     latency_ms = int((time.perf_counter() - started) * 1000)
     _ = getattr(result, "content", None)
-    return {"ok": True, "latency_ms": latency_ms}
+    metadata = getattr(result, "response_metadata", None)
+    fallback_used = bool(
+        isinstance(metadata, dict) and metadata.get("api_fallback") == "chat_completions"
+    )
+    entry = _probe_model_entry(row, mid)
+    selected_mode = api_mode or str(entry.get("api_mode") or "chat_completions")
+    return {
+        "ok": True,
+        "latency_ms": latency_ms,
+        "fallback_used": fallback_used,
+        "api_mode_used": "chat_completions" if fallback_used else selected_mode,
+    }
 
 
 def _models_list_url(base_url: str | None) -> str:
@@ -267,13 +313,38 @@ async def fetch_openai_compatible_models(
     api_key: str,
     extra_headers: dict[str, str] | None = None,
     locale: str = "en",
+    provider_name: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """List models via OpenAI-compatible ``GET {base}/models``."""
+    """Use Tencent plan catalogs; otherwise list models via ``GET {base}/models``."""
     url = _models_list_url(base_url)
+    # Token Plan and HY Token Plan share a URL, so also match the selected preset.
+    for preset in load_provider_presets():
+        if (
+            preset["id"]
+            in {
+                "tencent-coding-plan",
+                "tencent-token-plan",
+                "tencent-token-plan-enterprise-cn",
+                "tencent-hy-token-plan",
+            }
+            and provider_name in {preset["id"], preset["name"]}
+            and url == _models_list_url(preset.get("base_url"))
+        ):
+            return {"ok": True, "models": preset["models"]}
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
-    extra_headers = ensure_opencode_session_header(base_url, extra_headers)
-    if extra_headers:
-        headers.update(extra_headers)
+    # Model listing is not a chat turn. OpenCode still needs a throwaway
+    # session; Magpie listing must not invent one.
+    magpie = is_magpie_provider(provider_name=provider_name, base_url=base_url, extra=extra)
+    merged_headers = assemble_provider_headers(
+        provider_name,
+        extra_headers,
+        base_url=base_url,
+        extra=extra,
+        probe=not magpie,
+    )
+    if merged_headers:
+        headers.update(merged_headers)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
             response = await client.get(url, headers=headers)
@@ -310,18 +381,28 @@ async def fetch_openai_compatible_models(
             "error": "response is not OpenAI-compatible (expected {data: [{id, …}]})",
         }
 
-    models: list[dict[str, str]] = []
+    models: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
             continue
-        mid = item.get("id")
-        if not isinstance(mid, str) or not mid.strip():
+        if magpie:
+            mapped = magpie_catalog_model(item)
+            if mapped is None:
+                continue
+            mid = str(mapped["id"])
+            if mid in seen:
+                continue
+            seen.add(mid)
+            models.append(mapped)
             continue
-        mid = mid.strip()
+        raw_id = item.get("id")
+        if not isinstance(raw_id, str) or not raw_id.strip():
+            continue
+        mid = raw_id.strip()
         if mid in seen:
             continue
         seen.add(mid)
         models.append({"id": mid, "name": mid})
-    models.sort(key=lambda m: m["id"])
+    models.sort(key=lambda m: str(m["id"]))
     return {"ok": True, "models": models}

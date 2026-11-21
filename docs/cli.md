@@ -23,6 +23,7 @@ Commands:
   admin      Admin commands.
   agent      Agent lifecycle commands.
   backup     Export and restore Octop backups.
+  bridge     Manage remote Octop bridge peers.
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
   channel    Channel management commands.
@@ -31,6 +32,7 @@ Commands:
   config     CLI state (base URL, defaults).
   cron       Cron job management commands.
   init       Bootstrap an Octop server install.
+  migrate    Migrate an OpenClaw or Hermes Agent setup into an expert.
   models     Model catalog and active-model settings.
   plugin     Install and manage plugins.
   provider   Provider management (admin write).
@@ -56,13 +58,14 @@ Commands:
 
 ## Transport layers
 
-Octop commands pick one of three transports:
+Octop commands pick one of these transports:
 
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
-| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active` |
+| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `bridge list/get` |
 | **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
 | **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
+| **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep the WS after exit | No | `bridge probe/create/patch/delete/connect/disconnect/agents` |
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
 share `~/.octop/cli_state.json`.
@@ -70,7 +73,7 @@ share `~/.octop/cli_state.json`.
 ## `octop init`
 
 Bootstrap a fresh install (DB migrations, JWT secret, first admin).
-Idempotent on the DB; pass `--force` to wipe `~/.octop` first.
+Idempotent on the DB; pass `--force` to delete application state under `~/.octop` first. The install runtime (`venv/`, `bin/`) is kept.
 
 ```
 Usage: octop init [OPTIONS]
@@ -81,7 +84,7 @@ Options:
   --admin-username TEXT       [env: OCTOP_ADMIN_USERNAME]
   --admin-password TEXT       [env: OCTOP_ADMIN_PASSWORD]
   --admin-display-name TEXT   [env: OCTOP_ADMIN_DISPLAY_NAME]
-  --force                     Wipe existing ~/.octop contents before bootstrapping.
+  --force                     Delete Octop data under ~/.octop. Keeps venv/ and bin/.
   --yes                       Skip all interactive prompts.
   -h, --help                  Show this message and exit.
 ```
@@ -98,7 +101,7 @@ Usage: octop run [OPTIONS]
 
 Options:
   --host TEXT                 Override OCTOP_BIND_HOST.
-  --port INTEGER              Override OCTOP_PORT.
+  --port INTEGER RANGE        Override OCTOP_PORT (0-65535, 0 = OS-assigned).
   --reload / --no-reload      Enable uvicorn auto-reload (dev only).
   --ssl / --no-ssl            Enable HTTPS with a self-signed cert (or a real one).
   --certfile PATH             TLS certificate (PEM).
@@ -208,6 +211,36 @@ Commands:
 `octop chat` is a deprecated alias that prints a stderr warning and
 forwards to `chats`.
 
+## `octop bridge`
+
+User-scoped Octop-to-Octop peer links (same surface as Dashboard **远程桥接**).
+`--user` / pinned `default_user` selects the local owner. `--peer-user` is
+the **remote** login. `probe` talks HTTP only; `create --connect` /
+`connect` / `agents` verify the Bridge WebSocket then close it — start
+`octop run` to keep a link alive (auto-reconnect).
+
+```
+Usage: octop bridge [OPTIONS] COMMAND [ARGS]...
+
+  Manage remote Octop bridge peers (add / edit / probe / connect).
+
+Commands:
+  list        List saved bridge connections.
+  get         Show one saved connection.
+  probe       Test peer credentials (login + list experts).
+  create      Add a peer (optional Bridge WS handshake).
+  patch       Update name / notes / icon / credentials / auto-reconnect.
+  delete      Delete a saved connection.
+  connect     Dial and verify Bridge WS, then close the CLI session.
+  disconnect  Mark a connection disconnected in the local DB.
+  agents      Dial, list remote experts via the tunnel, then close.
+```
+
+`probe` without `CONNECTION_ID` requires `--url` and `--peer-user`.
+`probe CONNECTION_ID` reuses the stored password when `--peer-password`
+is omitted. `create` always needs the remote password: pass
+`--peer-password` or type it at the hidden prompt.
+
 ## `octop channel`
 
 Local DB channel CRUD plus platform-specific bot creators. The
@@ -250,10 +283,13 @@ Commands:
 ```
 
 `create --trigger` accepts cron expressions (`"0 9 * * *"`) and the
-`interval:N` / `date:ISO8601` aliases. `--task-type text` pushes the
-prompt verbatim; `--task-type agent` (default) runs the LLM and
-pushes the reply. `--prompt` is required, must be non-empty and ≤
-2000 characters.
+`interval:N` / `date:ISO8601` aliases. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails. If the
+server is down for more than 24 hours past that time and the job
+never ran, it is marked `missed` and disabled. The row stays in the
+list. `--task-type text` pushes the prompt verbatim; `--task-type
+agent` (default) runs the LLM and pushes the reply. `--prompt` is
+required, must be non-empty and ≤ 2000 characters.
 
 ## `octop provider`
 
@@ -281,7 +317,7 @@ Usage: octop models [OPTIONS] COMMAND [ARGS]...
   Model catalog and active-model settings.
 
 Commands:
-  presets       List built-in provider templates from harness-agent.
+  presets       List built-in provider templates from octop-harness.
   list          List all resolved models across enabled providers.
   active        Show or set the global default model (admin).
   config        Interactively create a provider from presets and set the active model.
@@ -421,6 +457,56 @@ Commands:
   reload     Reload all installed plugins without restart.
 ```
 
+## `octop migrate`
+
+Bring an existing OpenClaw or Hermes Agent setup into one Octop expert. The
+source is read where it lives (`~/.openclaw`, `~/.hermes`, or `--from`) and is
+never modified.
+
+```
+Usage: octop migrate openclaw [OPTIONS]
+       octop migrate hermes [OPTIONS]
+
+Options:
+  --from DIRECTORY     Source home directory (default: auto-detect).
+  --agent TEXT         Expert to migrate into.
+  --user TEXT          Owner of the migrated connectors.
+  --skip [models|files|skills|mcp|channels]
+                       Leave one kind of content out (repeatable).
+  --overwrite          Replace existing workspace files and skills, and the
+                       default model.
+  --dry-run            Show what would happen; write nothing.
+  -h, --help           Show this message and exit.
+```
+
+| Section | OpenClaw | Hermes Agent | Lands in Octop as |
+|---------|----------|--------------|-------------------|
+| `models` | `models.providers`, `agents.defaults.model`, keys from `.env` / `env` / legacy `auth-profiles.json` | `model`, `providers` / `custom_providers`, keys from `.env` | Model providers and, when none is set yet, the default model |
+| `files` | Workspace `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `MEMORY.md`, `TOOLS.md`, `HEARTBEAT.md`, `memory/*.md` | `SOUL.md`, `memories/MEMORY.md`, `memories/USER.md` | Files in the expert's workspace |
+| `skills` | `<workspace>/skills`, `~/.openclaw/skills` | `~/.hermes/skills` except the bundled ones | Workspace skills of the expert |
+| `mcp` | `mcp.servers` | `mcp_servers` | Custom MCP servers of the acting user (stdio and streamable HTTP) |
+| `channels` | `channels.*` for Telegram, Discord, Feishu, QQ, WeCom, DingTalk | The same platforms' variables in `.env` | Channels of the expert, **disabled** |
+
+Nothing that already exists is replaced: a second run reports everything as
+skipped. `--overwrite` replaces workspace files, skills and the default model;
+providers, MCP servers and channels are never overwritten. Channels arrive
+disabled so the old assistant and Octop do not both answer on the same bot —
+stop the old one, then enable the channel.
+
+Scheduled jobs, SSE-only MCP servers, OAuth-only model logins and platforms
+Octop has no channel for are listed after the table and left behind. Start
+with `--dry-run`; root `--json` prints the same report as JSON. The command
+exits with status 1 when any item failed.
+
+```text
+$ octop --agent <id> migrate openclaw --dry-run
+$ octop --agent <id> migrate hermes --from /srv/hermes --skip channels
+```
+
+Like `agent create`, the command boots a short-lived in-process server; if
+`octop run` is already running, restart it afterwards to load the migrated
+providers and channels.
+
 ## `octop acp`
 
 Expose an Octop agent as a stdio JSON-RPC ACP server. Boots a
@@ -443,13 +529,13 @@ runner object schema.
 
 ## `octop clean`
 
-Reset CLI state or wipe the whole `~/.octop` tree. Destructive — read
-the help carefully.
+Reset CLI state, or delete Octop data under `~/.octop`. `--all` keeps the
+install runtime (`venv/`, `bin/`). Destructive — read the help carefully.
 
 ```
 Usage: octop clean [OPTIONS]
 
-  Remove CLI state or wipe all of ~/.octop.
+  Remove CLI state, or delete Octop data under ~/.octop (keeps venv/ and bin/).
 
 Options:
   --state / --all       What to remove.

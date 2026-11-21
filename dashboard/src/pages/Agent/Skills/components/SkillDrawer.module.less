@@ -111,6 +111,52 @@
   flex-shrink: 0;
 }
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
+.presentationBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md, 8px);
+  background: var(--fn-bg-primary);
+}
+
+.presentationHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.presentationCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.presentationTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+.presentationHint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-tertiary);
+}
+
+.presentationPaneHidden {
+  display: none;
+}
+
 .bodyBlock {
   flex: 1 1 auto;
   min-height: 220px;

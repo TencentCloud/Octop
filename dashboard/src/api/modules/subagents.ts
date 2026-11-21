@@ -34,28 +34,44 @@ export interface AgentSubagentSummary {
   color?: string | null;
 }
 
-export function listSubagentDivisions(): Promise<SubagentCatalogDivision[]> {
-  return request<SubagentCatalogDivision[]>("/subagent-catalog/divisions");
+function agentHeaders(agentId?: string | null): HeadersInit | undefined {
+  const id = (agentId ?? "").trim();
+  if (!id) return undefined;
+  return { "X-Octop-Agent-Id": id };
 }
 
-export function listSubagentCatalog(params?: {
-  division?: string;
-  q?: string;
-}): Promise<SubagentCatalogItem[]> {
+export function listSubagentDivisions(
+  agentId?: string | null,
+): Promise<SubagentCatalogDivision[]> {
+  return request<SubagentCatalogDivision[]>("/subagent-catalog/divisions", {
+    headers: agentHeaders(agentId),
+  });
+}
+
+export function listSubagentCatalog(
+  params?: {
+    division?: string;
+    q?: string;
+  },
+  agentId?: string | null,
+): Promise<SubagentCatalogItem[]> {
   const search = new URLSearchParams();
   if (params?.division) search.set("division", params.division);
   if (params?.q) search.set("q", params.q);
   const qs = search.toString();
   return request<SubagentCatalogItem[]>(
     `/subagent-catalog${qs ? `?${qs}` : ""}`,
+    { headers: agentHeaders(agentId) },
   );
 }
 
 export function getSubagentCatalogItem(
   slug: string,
+  agentId?: string | null,
 ): Promise<SubagentCatalogDetail> {
   return request<SubagentCatalogDetail>(
     `/subagent-catalog/${encodeURIComponent(slug)}`,
+    { headers: agentHeaders(agentId) },
   );
 }
 
@@ -63,7 +79,7 @@ export function installSubagent(
   agentId: string,
   slug: string,
 ): Promise<{ installed: boolean; slug: string; path: string }> {
-  return request(`/agents/${agentId}/subagents/install`, {
+  return request(`/agents/${encodeURIComponent(agentId)}/subagents/install`, {
     method: "POST",
     body: JSON.stringify({ slug }),
   });
@@ -72,5 +88,7 @@ export function installSubagent(
 export function listAgentSubagents(
   agentId: string,
 ): Promise<AgentSubagentSummary[]> {
-  return request<AgentSubagentSummary[]>(`/agents/${agentId}/subagents`);
+  return request<AgentSubagentSummary[]>(
+    `/agents/${encodeURIComponent(agentId)}/subagents`,
+  );
 }

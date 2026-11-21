@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-from octop.infra.agents.teams.service import HOST_TOOLS_ALLOWED, HOST_TOOLS_DISABLED
-from octop.infra.agents.tool_catalog import (
+from octop.infra.agents.settings.tool_catalog import (
     BUILTIN_TOOL_CATALOG,
     CRITICAL_TOOLS,
+    MANAGED_BUILTIN_TOOLS,
     builtin_tool_available,
     effective_tools_disabled,
+    managed_builtin_available,
     normalize_tools_disabled,
     plugin_tools_disabled_names,
     tools_disabled_set,
+)
+from octop.infra.agents.teams.service import (
+    HOST_TOOLS_ALLOWED,
+    HOST_TOOLS_DISABLED,
+    host_tools_disabled,
 )
 
 
@@ -19,13 +25,78 @@ def test_team_host_tools_are_dispatch_only() -> None:
     assert names >= HOST_TOOLS_ALLOWED
     assert names - HOST_TOOLS_ALLOWED == HOST_TOOLS_DISABLED
     assert "ask_agent" in HOST_TOOLS_ALLOWED
+    assert "send_file_to_user" in HOST_TOOLS_ALLOWED
     assert "write_file" in HOST_TOOLS_DISABLED
     assert "task" in HOST_TOOLS_DISABLED
+    disabled = host_tools_disabled(["send_file_to_user", "write_file"])
+    assert "send_file_to_user" not in disabled
+    assert "write_file" in disabled
+
+
+def test_managed_catalog_is_only_tools_octop_can_attach() -> None:
+    names = {entry.name for entry in BUILTIN_TOOL_CATALOG}
+    assert names >= MANAGED_BUILTIN_TOOLS
+    assert "send_file_to_user" in MANAGED_BUILTIN_TOOLS
+    assert "search_knowledge" in MANAGED_BUILTIN_TOOLS
+    assert "ask_agent" in MANAGED_BUILTIN_TOOLS
+    assert "write_file" not in MANAGED_BUILTIN_TOOLS
+    assert "browser_use" not in MANAGED_BUILTIN_TOOLS
+    assert "acp_runner" not in MANAGED_BUILTIN_TOOLS
+
+
+def test_managed_tools_stay_unavailable_until_they_can_attach() -> None:
+    off = {"memory": {"memory_enabled": False}}
+    assert (
+        managed_builtin_available(
+            "memory_search",
+            agent_cfg=off,
+            knowledge_base_ids=[],
+            has_peers=False,
+        )
+        is False
+    )
+    assert (
+        managed_builtin_available(
+            "search_knowledge",
+            agent_cfg=off,
+            knowledge_base_ids=[],
+            has_peers=True,
+        )
+        is False
+    )
+    assert (
+        managed_builtin_available(
+            "ask_agent",
+            agent_cfg=off,
+            knowledge_base_ids=["kb"],
+            has_peers=False,
+        )
+        is False
+    )
+    assert (
+        managed_builtin_available(
+            "send_file_to_user",
+            agent_cfg=off,
+            knowledge_base_ids=[],
+            has_peers=False,
+        )
+        is True
+    )
+    assert (
+        managed_builtin_available(
+            "search_knowledge",
+            agent_cfg={"memory": {"memory_enabled": True}},
+            knowledge_base_ids=["kb"],
+            has_peers=True,
+        )
+        is True
+    )
 
 
 def test_critical_tools_are_in_catalog() -> None:
     names = {e.name for e in BUILTIN_TOOL_CATALOG}
     assert names >= CRITICAL_TOOLS
+    assert "deepseek_search" in names
 
 
 def test_normalize_strips_critical_and_sorts() -> None:

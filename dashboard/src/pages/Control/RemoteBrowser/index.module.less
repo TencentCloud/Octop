@@ -40,19 +40,10 @@
   border: 1px solid var(--fn-border-secondary);
   border-radius: 8px;
   background: var(--fn-bg-secondary);
-  overflow: hidden;
+  overflow: auto;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
-}
-
-.setupMascot {
-  display: block;
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
 }
 
 .installProgress {
@@ -108,34 +99,6 @@
 
 .canvasHidden {
   visibility: hidden;
-}
-
-.aiPanelRight {
-  flex-shrink: 0;
-  display: flex;
-  min-height: 0;
-  position: relative;
-}
-
-.aiPanelBottom {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  position: relative;
-  border-top: 1px solid var(--fn-border-secondary);
-}
-
-.resizeHandleLeft {
-  width: 5px;
-  cursor: col-resize;
-  flex-shrink: 0;
-}
-
-.resizeHandleTop {
-  height: 5px;
-  cursor: row-resize;
-  flex-shrink: 0;
 }
 
 .canvasViewport {

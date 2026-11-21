@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from harness_gateway.models import ChannelSubject, InboundMessage, TextContent
+from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli.cli_channel import CLI_CHANNEL_ID, CLI_CONNECTION_META
@@ -51,6 +51,7 @@ def build_cli_inbound(
     thread_id: str,
     cli_connection_id: str,
     model: str | None = None,
+    conversation_mode: str | None = None,
     user_is_admin: bool = False,
 ) -> InboundMessage:
     metadata: dict[str, Any] = {
@@ -61,6 +62,8 @@ def build_cli_inbound(
     }
     if model:
         metadata["model"] = model
+    if conversation_mode in ("ask", "plan", "craft"):
+        metadata["conversation_mode"] = conversation_mode
     return InboundMessage(
         channel_id=CLI_CHANNEL_ID,
         channel_type=ThreadRegistry.CHANNEL_CLI,

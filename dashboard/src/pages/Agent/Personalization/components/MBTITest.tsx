@@ -5,6 +5,7 @@ import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
+import cx from "classnames";
 import api from "../../../../api";
 import type { MBTITestQuestion, MBTIType } from "../../../../api/types";
 import styles from "./MBTITest.module.less";
@@ -275,9 +276,11 @@ export default function MBTITest({
               return (
                 <button
                   key={q.id}
-                  className={`${styles.answerDot} ${
-                    answered ? styles.answerDotDone : ""
-                  } ${isCurrent ? styles.answerDotCurrent : ""}`}
+                  className={cx(
+                    styles.answerDot,
+                    answered && styles.answerDotDone,
+                    isCurrent && styles.answerDotCurrent,
+                  )}
                   onClick={() => setCurrentIdx(idx)}
                   title={`${idx + 1}`}
                 >
@@ -301,18 +304,20 @@ export default function MBTITest({
 
                 <div className={styles.options}>
                   <button
-                    className={`${styles.optionBtn} ${
-                      currentAnswer === "A" ? styles.selected : ""
-                    }`}
+                    className={cx(
+                      styles.optionBtn,
+                      currentAnswer === "A" && styles.selected,
+                    )}
                     onClick={() => handleAnswer("A")}
                   >
                     <span className={styles.optionLetter}>A</span>
                     <span>{optionA}</span>
                   </button>
                   <button
-                    className={`${styles.optionBtn} ${
-                      currentAnswer === "B" ? styles.selected : ""
-                    }`}
+                    className={cx(
+                      styles.optionBtn,
+                      currentAnswer === "B" && styles.selected,
+                    )}
                     onClick={() => handleAnswer("B")}
                   >
                     <span className={styles.optionLetter}>B</span>

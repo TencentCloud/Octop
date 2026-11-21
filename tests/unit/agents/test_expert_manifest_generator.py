@@ -64,7 +64,7 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
         generate_and_apply_skillhub_manifest_assets,
     )
 
-    expert_dir = tmp_path / "skillhub-skillset-demo"
+    expert_dir = tmp_path / "demo"
     (expert_dir / "skills" / "demo").mkdir(parents=True)
     (expert_dir / "skills" / "demo" / "SKILL.md").write_text(
         "---\nname: Demo Workflow\ndescription: Demo workflow description\n---\n# Demo\nDo work.",
@@ -78,7 +78,7 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
     (expert_dir / "manifest.json").write_text(
         json.dumps(
             {
-                "id": "skillhub-skillset-demo",
+                "id": "demo",
                 "label": {"zh": "测试专家", "en": "Test Expert"},
                 "description": {"zh": "测试描述", "en": "Test description"},
                 "welcome_message": {"zh": "fallback", "en": "fallback"},
@@ -126,7 +126,7 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
 
     catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
-    expert = catalog.get("skillhub-skillset-demo")
+    expert = catalog.get("demo")
     assert expert is not None
     assert expert.quick_prompts[0].title_zh == "启动任务"
 
@@ -359,3 +359,45 @@ def test_normalize_manifest_assets_keeps_at_most_six_task_examples() -> None:
         f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 7)
     ]
     assert len(assets["task_examples"]["en"]) == 6
+
+
+def test_collect_skill_context_reads_frontmatter_like_every_other_reader(tmp_path) -> None:
+    """Skill metadata must go through the shared frontmatter parser.
+
+    The private copy in this module only recognised a literal ``---\\n`` first line
+    and split every line on ``:``. Two shapes that the shared parser handles
+    therefore reached the generator prompt as a skill without a description:
+
+    * a folded block scalar (``description: >-``), which collapsed to the literal
+      ``'>-'`` — exactly the style the bundled expert skills use;
+    * a file whose frontmatter fence is preceded by an HTML comment, which hid the
+      whole block and left the raw ``---`` fence inside the excerpt.
+    """
+    from octop.infra.agents.experts.manifest_generator import collect_skill_context
+
+    expert_dir = tmp_path / "expert"
+    (expert_dir / "skills" / "folded").mkdir(parents=True)
+    (expert_dir / "skills" / "folded" / "SKILL.md").write_text(
+        "---\nname: Folded\ndescription: >-\n  Line one\n  line two.\n---\n# Body\n",
+        encoding="utf-8",
+    )
+    (expert_dir / "skills" / "commented").mkdir(parents=True)
+    (expert_dir / "skills" / "commented" / "SKILL.md").write_text(
+        "<!-- generated -->\n---\nname: Commented\ndescription: After comment\n---\n# Body\n",
+        encoding="utf-8",
+    )
+
+    context = {
+        item["slug"]: item
+        for item in collect_skill_context(
+            expert_dir,
+            skill_slugs=["commented"],
+            main_skill_slug="folded",
+        )
+    }
+
+    assert context["folded"]["name"] == "Folded"
+    assert context["folded"]["description"] == "Line one line two."
+    assert context["commented"]["name"] == "Commented"
+    assert context["commented"]["description"] == "After comment"
+    assert "---" not in context["commented"]["excerpt"]

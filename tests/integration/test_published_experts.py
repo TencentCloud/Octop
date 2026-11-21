@@ -43,6 +43,7 @@ async def test_publish_list_install_and_unpublish_preserves_installed_fork(
     expert = published.json()
     expert_id = expert["id"]
     assert expert["creator_username"] == "publish_owner"
+    assert isinstance(expert["skill_count"], int)
 
     listed = await client.get("/api/experts/published", headers=peer_auth)
     assert listed.status_code == 200, listed.text
@@ -212,7 +213,7 @@ async def test_install_keeps_source_quick_prompts_when_publish_body_omits_them(
     owner_auth = await create_user(client, admin_auth, username="quickcard_owner")
     peer_auth = await create_user(client, admin_auth, username="quickcard_peer")
     created = await client.post(
-        "/api/agents/from-expert/ai-coding-coach",
+        "/api/agents/from-expert/default",
         headers=owner_auth,
         json={"name": "quickcard-source"},
     )
@@ -266,7 +267,7 @@ async def test_install_keeps_source_task_examples_when_publish_body_omits_them(
     owner_auth = await create_user(client, admin_auth, username="taskex_owner")
     peer_auth = await create_user(client, admin_auth, username="taskex_peer")
     created = await client.post(
-        "/api/agents/from-expert/ai-coding-coach",
+        "/api/agents/from-expert/default",
         headers=owner_auth,
         json={"name": "taskex-source"},
     )
@@ -345,6 +346,27 @@ async def test_published_list_exposes_snapshot_avatar(
     assert got.status_code == 200, got.text
     assert got.content == PNG
     assert got.headers["content-type"].startswith("image/png")
+
+
+async def test_published_list_keeps_public_portrait_without_upload(
+    env: tuple[Any, Any, dict[str, str]],
+) -> None:
+    client, server, owner_auth, peer_auth, source_agent_id = await _owner_and_peer(env)
+    portrait = "/experts/avatars/scene-healthcare.svg"
+    server.services.agent_repo.update_config(source_agent_id, icon_url=portrait)
+
+    published = await client.post(
+        f"/api/agents/{source_agent_id}/publish-expert",
+        headers=owner_auth,
+        json={"name": "Portrait published"},
+    )
+    assert published.status_code == 201, published.text
+    assert published.json()["icon_url"] == portrait
+
+    listed = await client.get("/api/experts/published", headers=peer_auth)
+    assert listed.status_code == 200, listed.text
+    row = next(item for item in listed.json() if item["id"] == published.json()["id"])
+    assert row["icon_url"] == portrait
 
 
 async def test_creator_can_refresh_published_expert(

@@ -1,5 +1,4 @@
 import { Button, Result, Spin } from "antd";
-import { Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
@@ -9,17 +8,21 @@ import {
   isAgentModelConfigError,
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
+import ModelConfigEmpty from "./ModelConfigEmpty";
 
 interface AgentNotReadyScreenProps {
   agent: OctopAgent | null;
   noAgents?: boolean;
   loading?: boolean;
+  /** Whether this user may open the model settings themselves. */
+  canConfigureModels?: boolean;
 }
 
 export default function AgentNotReadyScreen({
   agent,
   noAgents = false,
   loading = false,
+  canConfigureModels = true,
 }: AgentNotReadyScreenProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -66,11 +69,38 @@ export default function AgentNotReadyScreen({
   const state = agent.state;
   const errorText = formatAgentError(agent.last_error, t);
   const isModelError = isAgentModelConfigError(agent.last_error);
+  const disconnected = Boolean(agent.bridge && agent.bridge_disconnected);
+
+  /**
+   * "No model configured" reaches us as an agent start failure, so this screen
+   * used to answer a setup step with a red cross and "专家启动失败" — the exact
+   * alarm reserved for a broken agent. Nothing failed here: the friendly
+   * prompt already exists for that case, so show it. A disconnected bridge
+   * still wins, because that is the state the user has to act on right now and
+   * last_error may only be a leftover.
+   */
+  if (state === "failed" && isModelError && !disconnected) {
+    return <ModelConfigEmpty canConfigure={canConfigureModels} />;
+  }
 
   let title = t("chat.agentNotRunning");
   let subTitle = t("chat.agentNotRunningHint");
 
-  if (state === "failed") {
+  if (disconnected) {
+    const inbound = Boolean(agent.bridge_inbound);
+    title = t("chat.remoteExpert.disconnectedTitle");
+    subTitle = inbound
+      ? agent.bridge_connection_name
+        ? t("chat.remoteExpert.waitForPeerNamed", {
+            name: agent.bridge_connection_name,
+          })
+        : t("chat.remoteExpert.waitForPeer")
+      : agent.bridge_connection_name
+      ? t("chat.remoteExpert.disconnectedHintNamed", {
+          name: agent.bridge_connection_name,
+        })
+      : t("chat.remoteExpert.disconnectedHint");
+  } else if (state === "failed") {
     title = t("chat.agentFailed");
     subTitle = errorText || t("chat.agentFailedHint");
   } else if (state === "stopped" || state === "created") {
@@ -85,7 +115,9 @@ export default function AgentNotReadyScreen({
     <div className={styles.agentNotReady}>
       <Result
         status={
-          state === "failed"
+          disconnected
+            ? "warning"
+            : state === "failed"
             ? "error"
             : state === "stopped" || state === "created"
             ? "warning"
@@ -94,13 +126,13 @@ export default function AgentNotReadyScreen({
         title={title}
         subTitle={subTitle}
         extra={
-          isModelError ? (
-            <Button
-              type="primary"
-              icon={<Settings size={14} />}
-              onClick={() => navigate("/admin/models")}
-            >
-              {t("modelConfig.configureButton")}
+          disconnected ? (
+            <Button type="primary" onClick={() => navigate("/bridge")}>
+              {t(
+                agent.bridge_inbound
+                  ? "chat.remoteExpert.openBridge"
+                  : "chat.remoteExpert.reconnect",
+              )}
             </Button>
           ) : (
             <Button type="primary" onClick={() => navigate("/experts")}>

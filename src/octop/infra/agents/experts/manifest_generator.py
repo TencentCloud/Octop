@@ -16,6 +16,7 @@ from octop.infra.agents.experts.catalog import (
     parse_task_examples,
     snap_task_examples,
 )
+from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.llm_text import ainvoke_text
 
 logger = logging.getLogger(__name__)
@@ -292,13 +293,12 @@ def collect_skill_context(
         text = _read_text(expert_dir / "skills" / slug / "SKILL.md")
         if not text.strip():
             continue
-        meta = _frontmatter(text)
-        body = _strip_frontmatter(text)
+        meta, body = parse_frontmatter(text)
         out.append(
             {
                 "slug": slug,
-                "name": meta.get("name") or slug,
-                "description": meta.get("description") or "",
+                "name": _frontmatter_text(meta.get("name")) or slug,
+                "description": _frontmatter_text(meta.get("description")),
                 "excerpt": _clip(body.strip(), _MAX_SKILL_EXCERPT_CHARS),
             },
         )
@@ -498,25 +498,13 @@ def _read_text(path: Path) -> str:
         return ""
 
 
-def _frontmatter(text: str) -> dict[str, str]:
-    if not text.startswith("---\n"):
-        return {}
-    end = text.find("\n---", 4)
-    if end == -1:
-        return {}
-    out: dict[str, str] = {}
-    for line in text[4:end].splitlines():
-        key, sep, value = line.partition(":")
-        if sep:
-            out[key.strip()] = value.strip().strip("\"'")
-    return out
-
-
-def _strip_frontmatter(text: str) -> str:
-    if not text.startswith("---\n"):
-        return text
-    end = text.find("\n---", 4)
-    return text[end + 4 :].lstrip("\n") if end != -1 else text
+def _frontmatter_text(value: Any) -> str:
+    """Coerce a parsed frontmatter value into the plain string the prompt expects."""
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _fallback_label_zh(item: Any) -> str:

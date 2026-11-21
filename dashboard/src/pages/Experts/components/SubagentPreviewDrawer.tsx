@@ -15,6 +15,7 @@ interface SubagentPreviewDrawerProps {
   title: string;
   open: boolean;
   onClose: () => void;
+  agentId?: string | null;
 }
 
 export default function SubagentPreviewDrawer({
@@ -22,6 +23,7 @@ export default function SubagentPreviewDrawer({
   title,
   open,
   onClose,
+  agentId,
 }: SubagentPreviewDrawerProps) {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
@@ -36,7 +38,7 @@ export default function SubagentPreviewDrawer({
     }
     let cancelled = false;
     setLoading(true);
-    void getSubagentCatalogItem(slug)
+    void getSubagentCatalogItem(slug, agentId)
       .then((detail) => {
         if (!cancelled) setContent(pickLocale(detail.content, lang));
       })
@@ -52,7 +54,7 @@ export default function SubagentPreviewDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, slug, lang, t]);
+  }, [open, slug, lang, t, agentId]);
 
   return (
     <Drawer

@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner
-from octop.api.deps import current_user, get_server
-from octop.infra.agents.mbti_profiles import (
+from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.agents.persona.mbti_profiles import (
     MBTIProfile,
     get_all_profiles,
     get_profile,
@@ -25,7 +25,11 @@ from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/mbti", tags=["mbti"])
+router = APIRouter(
+    prefix="/mbti",
+    tags=["mbti"],
+    dependencies=[Depends(require_permission("mbti"))],
+)
 
 
 # ---------------------------------------------------------------------------

@@ -1,9 +1,130 @@
 import { request } from "../../../api/request";
 
-export const BUILTIN_BACKENDS = ["local_shell", "filesystem", "state"] as const;
+export const BUILTIN_BACKENDS = ["local_shell", "filesystem"] as const;
+
+/**
+ * Types an admin can allow. ``composite`` is a wrapper: the expert form always
+ * offers it, and the allow-list only applies to the concrete backends inside.
+ */
+export const BACKEND_POLICY_TYPES = [
+  "local_shell",
+  "filesystem",
+  "cos",
+  "s3",
+  "oss",
+  "obs",
+  "tos",
+  "custom",
+  "postgres",
+  "docker",
+  "opensandbox",
+] as const;
+
+/** Storage kind ``shell`` is the same policy type as builtin ``local_shell``. */
+const BACKEND_POLICY_TYPE_ALIASES: Record<string, string> = {
+  shell: "local_shell",
+};
+
+export function canonicalBackendPolicyType(type: string): string {
+  const token = type.toLowerCase();
+  return BACKEND_POLICY_TYPE_ALIASES[token] ?? token;
+}
+
+const BACKEND_POLICY_LABEL_KEYS: Record<
+  (typeof BACKEND_POLICY_TYPES)[number],
+  string
+> = {
+  local_shell: "storage.kindShell",
+  filesystem: "storage.kindFilesystem",
+  cos: "storage.kindCos",
+  s3: "storage.kindS3",
+  oss: "storage.kindOss",
+  obs: "storage.kindObs",
+  tos: "storage.kindTos",
+  custom: "storage.kindCustom",
+  postgres: "storage.kindPostgres",
+  docker: "storage.kindDocker",
+  opensandbox: "storage.kindOpensandbox",
+};
+
+export function backendPolicyTypeLabel(
+  type: string,
+  t: (key: string) => string,
+): string {
+  const key =
+    BACKEND_POLICY_LABEL_KEYS[type as (typeof BACKEND_POLICY_TYPES)[number]];
+  return key ? t(key) : type;
+}
+
+/** ``null`` means the user is not restricted. An empty list is also unrestricted. */
+export function restrictedBackendTypes(
+  allowed: readonly string[] | null | undefined,
+): ReadonlySet<string> | null {
+  if (!allowed || allowed.length === 0) return null;
+  return new Set(allowed.map((type) => canonicalBackendPolicyType(type)));
+}
+
+export function isBackendPolicyTypeAllowed(
+  type: string,
+  allowed: ReadonlySet<string> | null,
+): boolean {
+  if (!allowed) return true;
+  return allowed.has(canonicalBackendPolicyType(type));
+}
+
+/** Kept so an expert already saved as ``state`` still shows in the editor. */
+export const LEGACY_STATE_BACKEND = "state";
 export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
 export type BackendChoice = BuiltinBackend | "composite" | `named:${string}`;
+
+/** Create-form default. ``composite`` stands in when ``local_shell`` is blocked. */
+export function defaultCreateBackendChoice(
+  allowed: readonly string[] | null | undefined,
+): string {
+  const restricted = restrictedBackendTypes(allowed);
+  if (!restricted || isBackendPolicyTypeAllowed(DEFAULT_BACKEND, restricted)) {
+    return DEFAULT_BACKEND;
+  }
+  return "composite";
+}
+
+/**
+ * Replacement for a create-form backend choice that is outside the allow-list.
+ * ``null`` keeps the current value. ``composite`` is always legal. Until the
+ * user picks a value, the first allowed concrete backend replaces the
+ * placeholder once the storage list has loaded.
+ */
+export function resolveCreateBackendChoice(
+  current: string,
+  concreteValues: readonly string[],
+  options: { backendsLoading: boolean; userTouched: boolean },
+): string | null {
+  const concreteAllowed = concreteValues.includes(current);
+  if (options.userTouched && (concreteAllowed || current === "composite")) {
+    return null;
+  }
+  if (options.backendsLoading || concreteValues.length === 0) {
+    return current === "composite" ? null : "composite";
+  }
+  const next = concreteValues[0];
+  return current === next ? null : next;
+}
+
+/**
+ * Composite child default under an allow-list.
+ * ``null`` keeps the field, ``undefined`` clears a disallowed value.
+ */
+export function resolveRestrictedCompositeDefault(
+  current: string,
+  concreteValues: readonly string[],
+  backendsLoading: boolean,
+): string | null | undefined {
+  if (backendsLoading) return null;
+  if (concreteValues.includes(current)) return null;
+  if (concreteValues.length > 0) return concreteValues[0];
+  return undefined;
+}
 
 export interface PathMapping {
   path: string;
@@ -19,16 +140,40 @@ export interface BackendOption {
 }
 
 export interface FilesystemDefaults {
-  home: string;
   default_root_dir: string;
-  allow_outside_home: boolean;
   tree_root: string;
+  /**
+   * Roots the picker may browse. Windows hosts list every ready drive, so the
+   * tree is not confined to whichever drive holds the server's home directory.
+   * Older servers omit this — fall back to `tree_root`.
+   */
+  browse_roots?: string[];
+  /**
+   * ``{OCTOP_HOME}/agents``. Create forms append the new expert id so the
+   * field shows the path the server would assign.
+   */
+  default_workspace_dir?: string;
+  /**
+   * Full default workspace for the ``agent_id`` query. The server uses the
+   * same rule as agent creation, including a scoped workspace root.
+   */
+  default_agent_workspace?: string;
+  /**
+   * True only when a non-root `root_dir` really gets OS-level confinement
+   * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
+   * the UI must not promise a sandbox.
+   */
+  jail_enforced?: boolean;
   /** True when the Octop server process runs inside a container. */
   in_container?: boolean;
 }
 
-export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {
-  return request<FilesystemDefaults>("/filesystem/defaults");
+export async function fetchFilesystemDefaults(
+  agentId?: string,
+): Promise<FilesystemDefaults> {
+  const id = agentId?.trim();
+  const query = id ? `?agent_id=${encodeURIComponent(id)}` : "";
+  return request<FilesystemDefaults>(`/filesystem/defaults${query}`);
 }
 
 export function isNamedBackend(ref: string): ref is `named:${string}` {
@@ -42,8 +187,8 @@ export function backendRefToSpec(
   if (isNamedBackend(ref)) {
     return { type: "named", name: ref.slice("named:".length) };
   }
-  if (ref === "state") {
-    return { type: "state" };
+  if (ref === LEGACY_STATE_BACKEND) {
+    return { type: LEGACY_STATE_BACKEND };
   }
   if (ref === "local_shell" || ref === "filesystem") {
     return { type: ref, virtual_mode: true, root_dir: rootDir ?? "/" };
@@ -79,11 +224,16 @@ export interface RootDirProbeResult {
 export function normalizeRootDir(rootDir?: string | null): string {
   const trimmed = (rootDir ?? "").trim();
   if (!trimmed || trimmed === "\\" || trimmed === "/") return "/";
-  return trimmed.replace(/\/+$/, "") || "/";
+  // Strip trailing POSIX or Windows separators (so ``C:/`` → ``C:``).
+  const stripped = trimmed.replace(/[/\\]+$/, "");
+  return stripped || "/";
 }
 
+/** True for POSIX ``/`` or a Windows drive root such as ``C:/`` / ``C:``. */
 export function isHostRootDir(rootDir?: string | null): boolean {
-  return normalizeRootDir(rootDir) === "/";
+  const normalized = normalizeRootDir(rootDir);
+  if (normalized === "/") return true;
+  return /^[A-Za-z]:$/.test(normalized);
 }
 
 /**
@@ -127,6 +277,132 @@ export function supportsHostSkillPackagesFromConfig(
     rootDir: parsed.rootDir,
     workspaceDir,
   });
+}
+
+/**
+ * Whether the ACP page should lock runner enable/edit for this backend.
+ *
+ * Scoped ``root_dir`` enables the Linux bwrap jail. Host root ``/`` and the
+ * agent workspace root are not treated as a jail (Windows defaults to the
+ * workspace). Non-local backends count as locked for that UI. The per-agent
+ * ``acp_runner`` tool toggle and inbound ``octop acp`` are unaffected.
+ */
+export function blocksAcpOutbound(options: {
+  backendChoice: string;
+  rootDir?: string | null;
+  workspaceDir?: string | null;
+}): boolean {
+  const choice = options.backendChoice;
+  if (choice !== "local_shell" && choice !== "filesystem") {
+    return true;
+  }
+  if (isHostRootDir(options.rootDir)) {
+    return false;
+  }
+  const root = normalizeRootDir(options.rootDir);
+  const workspace = normalizeRootDir(options.workspaceDir);
+  if (options.workspaceDir?.trim() && workspace !== "/" && root === workspace) {
+    return false;
+  }
+  return true;
+}
+
+/** Detect ACP runner-lock (sandbox) from an agent ``config`` blob. */
+export function blocksAcpOutboundFromConfig(
+  config: Record<string, unknown> | null | undefined,
+  workspaceDir?: string | null,
+): boolean {
+  const parsed = parseBackendSpec(config?.backend);
+  const workspaceRaw = config?.workspace_dir;
+  const fromConfig =
+    typeof workspaceRaw === "string" && workspaceRaw.trim()
+      ? workspaceRaw.trim()
+      : null;
+  return blocksAcpOutbound({
+    backendChoice: parsed.backendChoice,
+    rootDir: parsed.rootDir,
+    workspaceDir: workspaceDir ?? fromConfig,
+  });
+}
+
+const WORKSPACE_ID_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const RESERVED_WORKSPACE_IDS = new Set(["api", "admin", "agents", "experts"]);
+
+/** Same shape as the server's short agent id (Crockford base32, 6 chars). */
+export function newWorkspaceAgentId(length = 6): string {
+  const bytes = new Uint8Array(length);
+  for (;;) {
+    globalThis.crypto.getRandomValues(bytes);
+    const id = Array.from(bytes, (b) => WORKSPACE_ID_ALPHABET[b & 31]).join("");
+    if (!RESERVED_WORKSPACE_IDS.has(id.toLowerCase())) return id;
+  }
+}
+
+export function joinWorkspaceDir(parent: string, agentId: string): string {
+  return `${parent.replace(/[/\\]+$/, "")}/${agentId}`;
+}
+
+export function workspaceDirBasename(path: string): string {
+  const trimmed = path.trim().replace(/[/\\]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+/**
+ * Workspace directory the user may assign.
+ *
+ * Only host-rooted ``local_shell`` / ``filesystem`` accept one. A blank value
+ * means "let the server pick the default".
+ */
+export function userWorkspaceDir(options: {
+  backendChoice: string;
+  rootDir?: string | null;
+  workspaceDir?: string | null;
+}): string | undefined {
+  if (
+    options.backendChoice !== "local_shell" &&
+    options.backendChoice !== "filesystem"
+  ) {
+    return undefined;
+  }
+  if (!isHostRootDir(options.rootDir)) return undefined;
+  const text = options.workspaceDir?.trim() ?? "";
+  return text || undefined;
+}
+
+/**
+ * Create payload for a host-root workspace.
+ *
+ * The prefilled default is ``{OCTOP_HOME}/agents/<id>``. Sending that path
+ * together with the same id keeps the folder the server would have chosen.
+ */
+export function createWorkspaceSelection(options: {
+  backendChoice: string;
+  rootDir?: string | null;
+  workspaceDir?: string | null;
+  autoWorkspaceDir?: string | null;
+  agentId?: string | null;
+}): { workspaceDir?: string; agentId?: string } {
+  const workspaceDir = userWorkspaceDir(options);
+  const typed = options.agentId?.trim() || undefined;
+  const auto = options.autoWorkspaceDir?.trim() || "";
+  if (workspaceDir && auto && workspaceDir === auto) {
+    const fromPath = workspaceDirBasename(workspaceDir);
+    return { workspaceDir, agentId: typed || fromPath || undefined };
+  }
+  return { workspaceDir, agentId: typed };
+}
+
+export function shouldProbeWorkspaceDir(
+  choice: string,
+  workspaceDir?: string | null,
+  autoWorkspaceDir?: string | null,
+): boolean {
+  const text = workspaceDir?.trim() ?? "";
+  if (!text) return false;
+  const auto = autoWorkspaceDir?.trim() || "";
+  if (auto && text === auto) return false;
+  return shouldProbeRootDir(choice, text);
 }
 
 export function shouldProbeRootDir(choice: string, rootDir?: string): boolean {
@@ -231,13 +507,35 @@ export function buildBackendSpec(
   return backendRefToSpec(choice, rootDir);
 }
 
+/**
+ * Backend written when saving an expert.
+ *
+ * Managed experts hide the backend picker, so the form never registers
+ * `backend_choice`. Rebuilding from that missing value calls `startsWith`
+ * on undefined. Keep the stored spec; the server pins the filesystem root.
+ */
+export function backendSpecForAgentSave(
+  kind: string | undefined,
+  storedBackend: unknown,
+  choice: string | undefined,
+  compositeDefault: string,
+  pathMappings: PathMapping[],
+  rootDir?: string,
+): unknown {
+  if (kind === "managed" || !choice) return storedBackend;
+  return buildBackendSpec(choice, compositeDefault, pathMappings, rootDir);
+}
+
 function specToBackendRef(spec: Record<string, unknown>): string {
   const type = String(spec.type ?? "");
   if (type === "named") {
     const name = spec.name;
     return typeof name === "string" ? `named:${name}` : DEFAULT_BACKEND;
   }
-  if (BUILTIN_BACKENDS.includes(type as BuiltinBackend)) {
+  if (
+    type === LEGACY_STATE_BACKEND ||
+    BUILTIN_BACKENDS.includes(type as BuiltinBackend)
+  ) {
     return type;
   }
   return DEFAULT_BACKEND;
@@ -299,10 +597,10 @@ export function parseBackendSpec(spec: unknown): {
 }
 
 export function builtinLabel(
-  mode: BuiltinBackend,
+  mode: BuiltinBackend | typeof LEGACY_STATE_BACKEND,
   t: (key: string) => string,
 ): string {
-  const keys: Record<BuiltinBackend, string> = {
+  const keys: Record<BuiltinBackend | typeof LEGACY_STATE_BACKEND, string> = {
     local_shell: "experts.backendModes.localShell",
     filesystem: "experts.backendModes.filesystem",
     state: "experts.backendModes.state",

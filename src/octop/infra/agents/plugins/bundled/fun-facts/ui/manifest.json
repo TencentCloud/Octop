@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "fun_facts_card", "tools": ["random_fun_fact"] }]
-}

@@ -2,10 +2,12 @@ import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Switch } from "antd";
-import { Settings2 } from "lucide-react";
+import { Info, Settings2 } from "lucide-react";
+import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
+import { message } from "@/utils/antdMessage";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
@@ -16,6 +18,7 @@ interface KnowledgePickerPopoverProps {
   selectedKnowledgeBaseIds: string[];
   onKnowledgeBaseIdsChange: (ids: string[]) => void;
   onNavigateAway?: () => void;
+  remoteManaged?: boolean;
 }
 
 export default function KnowledgePickerPopover({
@@ -23,6 +26,7 @@ export default function KnowledgePickerPopover({
   selectedKnowledgeBaseIds,
   onKnowledgeBaseIdsChange,
   onNavigateAway,
+  remoteManaged = false,
 }: KnowledgePickerPopoverProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -42,9 +46,24 @@ export default function KnowledgePickerPopover({
       searchPlaceholder={t("chat.knowledgePickerSearch")}
       emptyMessage={t("chat.knowledgePickerEmpty")}
       width="narrow"
-      footerIcon={<Settings2 size={15} aria-hidden />}
-      footerLabel={t("chat.manageKnowledgeBases")}
+      footerIcon={
+        remoteManaged ? (
+          <Info size={15} aria-hidden />
+        ) : (
+          <Settings2 size={15} aria-hidden />
+        )
+      }
+      footerLabel={
+        remoteManaged
+          ? t("chat.remoteExpert.manageOnPeer")
+          : t("chat.manageKnowledgeBases")
+      }
+      footerMuted={remoteManaged}
       onFooterClick={() => {
+        if (remoteManaged) {
+          message.info(t("chat.remoteExpert.manageToast"));
+          return;
+        }
         onNavigateAway?.();
         navigate("/knowledge-bases");
       }}
@@ -53,9 +72,10 @@ export default function KnowledgePickerPopover({
         return (
           <div
             key={knowledgeBase.id}
-            className={`${styles.connectorPickerItem} ${
-              active ? styles.connectorPickerItemActive : ""
-            }`}
+            className={cx(
+              styles.connectorPickerItem,
+              active && styles.connectorPickerItemActive,
+            )}
           >
             <span className={styles.knowledgePickerAvatar}>
               {knowledgeIconForName(knowledgeBase.icon_name, 16)}

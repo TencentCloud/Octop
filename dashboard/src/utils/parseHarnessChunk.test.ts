@@ -29,6 +29,16 @@ describe("parseHarnessChunk team speaker", () => {
     expect(
       parseHarnessChunk('data: {"type":"done","agent_id":"doctor"}'),
     ).toEqual({ type: "done", agent_id: "doctor", team_wrapup: false });
+    expect(
+      parseHarnessChunk(
+        'data: {"type":"custom","data":{"kind":"decision"},"agent_id":"host","team_wrapup":true}',
+      ),
+    ).toMatchObject({
+      type: "custom",
+      agent_id: "host",
+      team_wrapup: true,
+      data: { kind: "decision" },
+    });
   });
 
   it("accepts the agent alias and ignores the graph node name", () => {

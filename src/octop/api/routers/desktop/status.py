@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 from octop.api.deps import require_permission
-from octop.infra.desktop.session import active_session_count, session_limit
-from octop.infra.desktop.setup import desktop_status
+from octop.infra.control.desktop.session import active_session_count, session_limit
+from octop.infra.control.desktop.setup import desktop_status
 from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
 

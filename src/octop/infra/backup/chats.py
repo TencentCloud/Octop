@@ -6,12 +6,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
 from octop.infra.backup.snapshot import _patch_channel_metadata, _rewrite_session_key
 from octop.infra.db.pool import DatabasePool
 
 # Child-first for DELETE; reverse for INSERT.
 CHAT_TABLES_CHILD_FIRST = (
+    "history_v2_retirement",
     "trajectory_events",
     "thread_messages",
     "thread_history_projection",

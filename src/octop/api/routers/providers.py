@@ -6,30 +6,18 @@ import asyncio
 import json
 import logging
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
-from octop.infra.agents.providers.model_flags import is_local_runtime_provider
-from octop.infra.agents.providers.presets import load_provider_presets
-from octop.infra.agents.providers.probe import (
-    fetch_openai_compatible_models,
-    make_probe_provider_row,
-    probe_provider_row,
-    provider_headers,
-)
-from octop.infra.agents.providers.reasoning import reasoning_capability
-from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
-from octop.infra.agents.providers.store import clear_stale_pins_for_provider
-from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.providers.codex_apply import (
+from octop.infra.agents.providers.codex_apply import (
     CODEX_PROVIDER_NAME,
     apply_codex_credentials,
     sync_refreshed_codex_api_key,
 )
-from octop.infra.providers.codex_oauth import (
+from octop.infra.agents.providers.codex_oauth import (
     DEVICE_POLL_TIMEOUT_S,
     CodexOAuthDeviceCodeError,
     exchange_device_code,
@@ -37,6 +25,29 @@ from octop.infra.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.magpie import MAGPIE_DEFAULT_BASE_URL, discover_local_magpie
+from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+from octop.infra.agents.providers.presets import load_provider_presets
+from octop.infra.agents.providers.probe import (
+    fetch_openai_compatible_models,
+    make_probe_provider_row,
+    parse_provider_extra,
+    probe_provider_row,
+    provider_headers,
+)
+from octop.infra.agents.providers.reasoning import reasoning_capability
+from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
+from octop.infra.agents.providers.store import (
+    clear_stale_pins_for_provider,
+    merge_default_model_extra,
+    merge_provider_purpose_extra,
+    merge_stream_usage_extra,
+    resolve_provider_purpose,
+    resolve_provider_stream_usage,
+    stamp_embedding_models,
+)
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess, model_resource_key
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -51,6 +62,8 @@ class ProviderCreateBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_json: str | None = None
+    stream_usage: bool | None = None
+    purpose: Literal["chat", "embedding"] | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
 
@@ -60,14 +73,27 @@ class ProviderPatchBody(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     extra_json: str | None = None
+    stream_usage: bool | None = None
+    purpose: Literal["chat", "embedding"] | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    # Model id used by "test connection". Null clears a previously saved choice.
+    model: str | None = None
 
 
 # Fields that affect harness factory / agent runtime when patched.
 _PROVIDER_REHYDRATE_FIELDS = frozenset(
-    {"kind", "base_url", "api_key", "extra_json", "models", "enabled"}
+    {
+        "kind",
+        "base_url",
+        "api_key",
+        "extra_json",
+        "stream_usage",
+        "purpose",
+        "models",
+        "enabled",
+    }
 )
 
 
@@ -76,8 +102,131 @@ def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
     return bool(body.model_fields_set & _PROVIDER_REHYDRATE_FIELDS)
 
 
+def _annotate_provider_models(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    access = GroupAccess(server.services.repos)
+    provider_name = str(payload.get("name") or "")
+    for model in payload.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        model_id = str(model.get("id") or "")
+        model.update(
+            access.visibility(
+                RESOURCE_MODEL,
+                model_resource_key(provider_name, model_id),
+                shared=None,
+            )
+        )
+    return payload
+
+
+def _sync_model_visibility(
+    server: Any,
+    provider_name: str,
+    models: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    access = GroupAccess(server.services.repos)
+    existing = server.services.provider_repo.get_by_name(provider_name)
+    previous = (
+        {str(model.get("id") or "") for model in existing.get_models()}
+        if existing is not None
+        else set()
+    )
+    cleaned: list[dict[str, Any]] = []
+    kept: set[str] = set()
+    for model in models:
+        item = dict(model)
+        model_id = str(item.get("id") or "").strip()
+        visibility = item.pop("visibility", None)
+        group_ids = item.pop("group_ids", None)
+        if model_id:
+            kept.add(model_id)
+        if visibility is not None and model_id:
+            access.set_visibility(
+                RESOURCE_MODEL,
+                model_resource_key(provider_name, model_id),
+                str(visibility),
+                group_ids if isinstance(group_ids, list) else [],
+            )
+        cleaned.append(item)
+    for model_id in previous - kept:
+        if model_id:
+            access.clear(RESOURCE_MODEL, model_resource_key(provider_name, model_id))
+    return cleaned
+
+
+def _blank_to_none(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _provider_patch_updates(
+    body: ProviderPatchBody,
+    *,
+    current_extra_json: str | None,
+) -> dict[str, Any]:
+    """Map an explicit JSON patch onto repo kwargs.
+
+    Omitted fields are left out so they stay unchanged. ``null`` (and a blank
+    API key) is forwarded as ``None``, which clears the stored value. Revoke
+    sends ``{"api_key": null}``; treating that the same as "field absent" left
+    the key in place and the provider still looked authorized.
+
+    ``stream_usage`` / ``purpose`` / ``model`` are stored inside ``extra_json``.
+    A patch that only sets those flags rewrites the current blob and must not
+    clear the API key. ``model`` is the connection-test default; ``null`` clears it.
+    """
+    fields = body.model_fields_set
+    updates: dict[str, Any] = {}
+    if "kind" in fields:
+        updates["kind"] = body.kind
+    if "base_url" in fields:
+        updates["base_url"] = _blank_to_none(body.base_url)
+    if "api_key" in fields:
+        updates["api_key"] = _blank_to_none(body.api_key)
+    if (
+        "extra_json" in fields
+        or "stream_usage" in fields
+        or "purpose" in fields
+        or "model" in fields
+    ):
+        base = body.extra_json if "extra_json" in fields else current_extra_json
+        if "stream_usage" in fields:
+            base = merge_stream_usage_extra(base, body.stream_usage)
+        if "purpose" in fields:
+            base = merge_provider_purpose_extra(base, body.purpose)
+        if "model" in fields:
+            base = merge_default_model_extra(base, body.model)
+        updates["extra_json"] = base
+    if "models" in fields:
+        models = body.models
+        if models is not None:
+            purpose = None
+            if "purpose" in fields:
+                purpose = body.purpose
+            else:
+                raw_extra = current_extra_json if isinstance(current_extra_json, str) else ""
+                try:
+                    parsed = json.loads(raw_extra) if raw_extra else {}
+                except json.JSONDecodeError:
+                    parsed = {}
+                if isinstance(parsed, dict) and parsed.get("purpose") == "embedding":
+                    purpose = "embedding"
+            if purpose == "embedding":
+                models = stamp_embedding_models(models)
+        updates["models_json"] = json.dumps(models) if models is not None else None
+    if "note" in fields:
+        updates["note"] = _blank_to_none(body.note)
+    if "enabled" in fields:
+        updates["enabled"] = body.enabled
+    return updates
+
+
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
+    api_mode: Literal["chat_completions", "responses"] | None = None
+    api_fallback: Literal["none", "chat_completions"] | None = None
     embedding: bool = False
 
 
@@ -87,6 +236,8 @@ class ProviderTestDraftBody(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model_id: str
+    api_mode: Literal["chat_completions", "responses"] = "chat_completions"
+    api_fallback: Literal["none", "chat_completions"] = "none"
     extra_json: str | None = None
     embedding: bool = False
 
@@ -96,6 +247,7 @@ class ProviderFetchModelsBody(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     extra_json: str | None = None
+    name: str | None = None
 
 
 def _is_codex_base_url(base_url: str | None) -> bool:
@@ -116,6 +268,22 @@ async def _maybe_refresh_codex_row(server: Any, row: Any) -> Any:
     return row
 
 
+def _saved_default_model(extra: dict[str, Any]) -> str | None:
+    raw = extra.get("default_model")
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip()
+    return cleaned or None
+
+
+def _public_row(r: Any) -> dict[str, Any]:
+    """Provider list for any signed-in user: never include the stored API key."""
+    data = _row_to_dict(r)
+    data["api_key_set"] = bool(data.get("api_key"))
+    data["api_key"] = None
+    return data
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     models: list[dict[str, Any]] = []
     for stored in r.get_models():
@@ -125,7 +293,8 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning"] = True
             model["reasoning_config"] = capability
         models.append(model)
-    return {
+    extra = parse_provider_extra(r)
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
@@ -134,27 +303,44 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "models": models,
         "note": r.note,
         "enabled": bool(r.enabled),
+        "model": _saved_default_model(extra),
+        "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
+        "purpose": resolve_provider_purpose(
+            provider_name=r.name,
+            provider_api_key=r.api_key,
+            extra=extra,
+            models=models,
+        ),
     }
+    integration = extra.get("integration")
+    if isinstance(integration, str) and integration.strip():
+        payload["integration"] = integration.strip()
+    return payload
 
 
 @router.get("/presets")
 async def list_provider_presets(
     _: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    """Return built-in provider presets from harness-agent."""
+    """Return built-in provider presets from octop-harness."""
     return load_provider_presets()
 
 
 @router.get("/resolved")
 async def list_resolved_models(
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all enabled models across all providers.
-
-    Used by the Agent model selector to show available candidates.
-    """
-    return _list_resolved_models(server.services.provider_repo.list_all())
+    """Return enabled chat models the caller may select."""
+    models = _list_resolved_models(server.services.provider_repo.list_all())
+    return GroupAccess(server.services.repos).filter_rows(
+        models,
+        user_id=user.id,
+        is_admin=bool(user.is_admin),
+        resource_type=RESOURCE_MODEL,
+        key_of=lambda item: model_resource_key(str(item["provider_name"]), str(item["model"])),
+        is_owner=lambda _item: False,
+    )
 
 
 class ActiveModelBody(BaseModel):
@@ -190,8 +376,8 @@ async def list_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all providers. Read-only for regular users."""
-    return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
+    """Return all providers. Read-only for regular users; API keys stay on the admin route."""
+    return [_public_row(r) for r in server.services.provider_repo.list_all()]
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────────────
@@ -199,12 +385,57 @@ async def list_providers(
 admin_router = APIRouter()
 
 
+class MagpieDiscoveryResponse(BaseModel):
+    available: bool = Field(
+        description="True when this Octop server reached a local Magpie hello response."
+    )
+    base_url: str = Field(description="OpenAI-compatible base URL of the probed local Magpie.")
+    version: str | None = Field(
+        default=None,
+        description="Magpie version from /api/hello. Empty when discovery did not succeed.",
+    )
+
+
+def _extra_dict(raw: str | None) -> dict[str, Any]:
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+@admin_router.get(
+    "/magpie/discovery",
+    summary="Discover local Magpie",
+    description=(
+        "Read-only probe of Magpie on the Octop server host at the default "
+        "loopback address. Failures return available=false and do not include "
+        "the upstream body. This route has no URL parameter."
+    ),
+    response_model=MagpieDiscoveryResponse,
+)
+async def admin_discover_magpie(
+    _: Any = Depends(require_permission("providers")),
+) -> MagpieDiscoveryResponse:
+    found = await discover_local_magpie()
+    return MagpieDiscoveryResponse(
+        available=found.available,
+        base_url=found.base_url or MAGPIE_DEFAULT_BASE_URL,
+        version=found.version,
+    )
+
+
 @admin_router.get("")
 async def admin_list_providers(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
+    return [
+        _annotate_provider_models(server, _row_to_dict(row))
+        for row in server.services.provider_repo.list_all()
+    ]
 
 
 @admin_router.post("", status_code=201)
@@ -215,19 +446,31 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
-    models_json = _json.dumps(body.models) if body.models is not None else None
+    models = (
+        _sync_model_visibility(server, body.name, body.models) if body.models is not None else None
+    )
+    if body.purpose == "embedding":
+        models = stamp_embedding_models(models)
+    models_json = _json.dumps(models) if models is not None else None
+    extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
+    extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
+    if server.services.provider_repo.get_by_name(body.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {body.name!r} already exists",
+        )
     pid = server.services.provider_repo.create(
         name=body.name,
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=body.extra_json,
+        extra_json=extra_json,
         models_json=models_json,
         note=body.note,
     )
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
-    return _row_to_dict(server.services.provider_repo.get(pid))
+    return _annotate_provider_models(server, _row_to_dict(server.services.provider_repo.get(pid)))
 
 
 @admin_router.patch("/{provider_id}")
@@ -240,18 +483,11 @@ async def admin_patch_provider(
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
-    import json as _json
-
-    models_json = _json.dumps(body.models) if body.models is not None else None
+    if body.models is not None:
+        body.models = _sync_model_visibility(server, row.name, body.models)
     server.services.provider_repo.update(
         provider_id,
-        kind=body.kind,
-        base_url=body.base_url,
-        api_key=body.api_key,
-        extra_json=body.extra_json,
-        models_json=models_json,
-        note=body.note,
-        enabled=body.enabled,
+        **_provider_patch_updates(body, current_extra_json=row.extra_json),
     )
     if body.models is not None:
         clear_stale_pins_for_provider(
@@ -262,7 +498,9 @@ async def admin_patch_provider(
         )
     if server.app_runtime and _patch_requires_provider_rehydrate(body):
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
-    return _row_to_dict(server.services.provider_repo.get(provider_id))
+    return _annotate_provider_models(
+        server, _row_to_dict(server.services.provider_repo.get(provider_id))
+    )
 
 
 @admin_router.delete("/{provider_id}", status_code=204)
@@ -292,6 +530,7 @@ async def admin_delete_provider(
         )
     name = row.name
     server.services.provider_repo.delete(provider_id)
+    server.services.repos.resource_group_grant_repo.delete_prefix(RESOURCE_MODEL, name)
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=name)
 
@@ -315,12 +554,16 @@ async def admin_test_provider_draft(
         api_key=api_key,
         base_url=(body.base_url or "").strip() or None,
         model_id=model_id,
+        api_mode=body.api_mode,
+        api_fallback=body.api_fallback,
         extra_json=body.extra_json,
         embedding=body.embedding,
     )
     return await probe_provider_row(
         row,
         model_id=model_id,
+        api_mode=body.api_mode,
+        api_fallback=body.api_fallback,
         embedding=body.embedding,
         locale=resolve_request_locale(request),
     )
@@ -347,6 +590,8 @@ async def admin_fetch_provider_models(
         api_key=api_key,
         extra_headers=provider_headers(draft) or None,
         locale=resolve_request_locale(request),
+        provider_name=(body.name or "").strip() or None,
+        extra=_extra_dict(body.extra_json),
     )
 
 
@@ -462,7 +707,7 @@ async def codex_oauth_logout(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> None:
-    from octop.infra.providers.codex_oauth import delete_codex_token
+    from octop.infra.agents.providers.codex_oauth import delete_codex_token
 
     delete_codex_token(server.services.paths)
     row = server.services.provider_repo.get_by_name(CODEX_PROVIDER_NAME)
@@ -488,10 +733,14 @@ async def admin_test_provider(
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
+    api_mode = body.api_mode if body else None
+    api_fallback = body.api_fallback if body else None
     embedding = body.embedding if body else None
     return await probe_provider_row(
         row,
         model_id=model_id,
+        api_mode=api_mode,
+        api_fallback=api_fallback,
         embedding=embedding,
         locale=resolve_request_locale(request),
     )

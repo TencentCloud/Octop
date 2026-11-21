@@ -1,91 +1,88 @@
 [
     {
-        "stepTitle": "管理员账号与密码",
+        "stepTitle": "创建管理员账号",
         "items": [
             {
                 "type": "tips",
-                "helpText": "<b>Octop（Docker 版）</b> — 腾讯开源的多用户多智能体 AI 助手平台。<br>请为管理员设置登录账号与密码。<br><b>密码要求：</b>至少 8 位，且必须同时包含字母和数字。"
+                "helpText": "<b>Octop（Docker 版）</b> — 用下面这组账号登录 Web 控制台（地址见下一步）。<br><b>密码要求：</b>至少 8 位，且必须同时包含字母和数字。点下一步时会校验两次密码是否一致。"
             },
             {
                 "type": "text",
                 "field": "wizard_admin_username",
-                "label": "管理员用户名",
+                "label": "用户名",
                 "initValue": "admin",
                 "rules": [
                     {
                         "required": true,
-                        "message": "请输入管理员用户名"
+                        "message": "请输入用户名"
                     },
                     {
                         "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,31}$",
-                        "message": "用户名只能包含字母、数字、点、下划线和连字符（2-32 位）"
+                        "message": "只能包含字母、数字、点、下划线和连字符（2-32 位）"
                     }
                 ]
             },
             {
-                "type": "radio",
-                "field": "wizard_password_mode",
-                "label": "密码设置方式",
-                "initValue": "random",
-                "options": [
-                    {
-                        "label": "自动生成随机密码（推荐）",
-                        "value": "random"
-                    },
-                    {
-                        "label": "我自己输入密码",
-                        "value": "custom"
-                    }
-                ]
+                "type": "text",
+                "field": "wizard_admin_display_name",
+                "label": "显示名称（可选）",
+                "initValue": ""
+            },
+            {
+                "type": "text",
+                "field": "wizard_admin_email",
+                "label": "邮箱（可选，也可用于登录）",
+                "initValue": ""
             },
             {
                 "type": "password",
                 "field": "wizard_admin_password",
-                "label": "管理员密码（选择「我自己输入密码」时必填：至少 8 位，含字母和数字）",
-                "initValue": ""
-            },
-            {
-                "type": "tips",
-                "helpText": "选择「自动生成随机密码」时，密码将在安装完成后自动生成：打开应用的「设置」窗口即可直接查看当前密码，数据目录下的 octop-login.txt 也会保存一份备份。"
-            }
-        ]
-    },
-    {
-        "stepTitle": "高级配置（可选）",
-        "items": [
-            {
-                "type": "tips",
-                "helpText": "以下配置均可留空，安装后随时可在应用「设置」窗口中修改。"
-            },
-            {
-                "type": "select",
-                "field": "wizard_log_level",
-                "label": "日志级别",
-                "initValue": "info",
-                "options": [
+                "label": "密码（至少 8 位，含字母和数字）",
+                "initValue": "",
+                "rules": [
                     {
-                        "label": "info（推荐）",
-                        "value": "info"
+                        "required": true,
+                        "message": "请输入密码"
                     },
                     {
-                        "label": "debug（排障用，日志量大）",
-                        "value": "debug"
+                        "pattern": "^.{8,64}$",
+                        "message": "密码长度为 8–64 位"
                     },
                     {
-                        "label": "warning",
-                        "value": "warning"
+                        "pattern": "[A-Za-z]",
+                        "message": "密码必须包含字母"
+                    },
+                    {
+                        "pattern": "[0-9]",
+                        "message": "密码必须包含数字"
                     }
                 ]
             },
             {
                 "type": "password",
-                "field": "wizard_openai_api_key",
-                "label": "OpenAI API Key（可选）"
-            },
+                "field": "wizard_admin_password_confirm",
+                "label": "确认密码（须与上面一致）",
+                "initValue": "",
+                "rules": [
+                    {
+                        "required": true,
+                        "message": "请再输入一次密码"
+                    },
+                    {
+                        "sameAs": "wizard_admin_password",
+                        "equal": "wizard_admin_password",
+                        "message": "两次输入的密码不一致"
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "stepTitle": "接下来怎么用",
+        "items": [
             {
-                "type": "password",
-                "field": "wizard_dashscope_api_key",
-                "label": "DashScope API Key（可选）"
+                "type": "tips",
+                "helpText": "<b>安装完成后请按顺序操作：</b><br>1. 首次会从 <b>ghcr.io</b> 下载与本包版本对应的镜像（设备需能访问 GitHub Container Registry），请等到应用中心显示「运行中」再点「打开」（通常 1–3 分钟；拉不到镜像时请检查网络或代理）。<br>2. 打开后用上一页的用户名或邮箱登录。<br>3. 登录后到控制台「设置 → 模型」配置 API Key，才能开始对话。<br>4. 访问地址：<b>http://设备IP:8088</b>"
             }
         ]
     }

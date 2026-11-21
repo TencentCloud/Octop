@@ -17,6 +17,7 @@ class ReplSession:
     agent_id: str
     session_key: str
     model: str | None = None
+    conversation_mode: str | None = None
     thread_id: str | None = None
     pin_thread: bool = False
     last_elapsed: float = 0.0

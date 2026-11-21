@@ -82,7 +82,7 @@ async def test_help_lists_commands(dispatcher, ctx):
     handled = await dispatcher.handle(SlashCommand("help", ""), ctx, sink)
     assert handled is True
     text = "\n".join(sink.lines).lower()
-    for name in ["/new", "/list", "/switch", "/title", "/model", "/compact", "/token"]:
+    for name in ["/new", "/list", "/switch", "/title", "/model", "/mode", "/compact", "/token"]:
         assert name in text
 
 

@@ -18,10 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.manager import AgentCreateSpec
-from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,24 @@ WORKSPACE_MANIFEST_PATH = f"{DEFAULT_SYSTEM_FILES_PATH}/{MANIFEST_FILENAME}"
 # Prefer system path; keep root ``manifest.json`` readable for pre-migration agents.
 _WORKSPACE_MANIFEST_READ_PATHS = (WORKSPACE_MANIFEST_PATH, MANIFEST_FILENAME)
 
+
+def workspace_manifest_rel(workspace: Any) -> str:
+    """Manifest path under the agent's system directory, or the ``.octop`` default."""
+    prefix = str(getattr(workspace, "system_files_path", "") or "").strip().strip("/")
+    if prefix:
+        return f"{prefix}/{MANIFEST_FILENAME}"
+    return WORKSPACE_MANIFEST_PATH
+
+
+def _manifest_read_paths(workspace: Any) -> tuple[str, ...]:
+    primary = workspace_manifest_rel(workspace)
+    paths = [primary]
+    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+        if rel not in paths:
+            paths.append(rel)
+    return tuple(paths)
+
+
 # Bundled illustrated portraits live in the dashboard public assets tree.
 _BUILTIN_AVATAR_URL_TEMPLATE = "/experts/avatars/{expert_id}.svg"
 
@@ -42,6 +61,7 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
     {
         "ai-coding-coach",
         "ai-safety-guardian",
+        "business-operations",
         "clinical-learning-subscription",
         "cvm-ai-doctor",
         "cvm-cluster-doctor",
@@ -52,13 +72,11 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "multi-agent-orchestrator",
         "news-trend",
         "office-automation",
-        "ops-engineer",
         "parenting-companion",
         "stock-assistant",
         "superpowers-methodology",
         "tencentcloud-api",
         "wechat-ops",
-        "scene-academic",
         "scene-content-creation",
         "scene-data",
         "scene-default",
@@ -69,10 +87,8 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "scene-healthcare",
         "scene-hr",
         "scene-legal",
-        "scene-lifestyle",
         "scene-marketing",
         "scene-media",
-        "scene-mysticism",
         "scene-office",
         "scene-tech",
     }
@@ -131,6 +147,7 @@ class ExpertSummary:
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
     task_examples: dict[str, list[str]] | None = None
+    scene: str = ""
 
 
 @dataclass(frozen=True)
@@ -143,6 +160,16 @@ class Expert:
     prompt_files: list[str] = field(default_factory=list)
     """Persona markdown filenames declared in the manifest (dashboard hint)."""
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+
+
+def skill_count_in_expert_dir(expert_dir: Path) -> int:
+    """Count workspace skills stored as ``skills/<slug>/SKILL.md``."""
+    skills_dir = expert_dir / "skills"
+    if not skills_dir.is_dir():
+        return 0
+    return sum(
+        1 for child in skills_dir.iterdir() if child.is_dir() and (child / "SKILL.md").is_file()
+    )
 
 
 def discover_seed_paths(expert_dir: Path) -> list[str]:
@@ -241,7 +268,7 @@ async def seed_expert_directory(
 
 async def read_workspace_manifest_text(workspace: BackendWorkspace) -> str | None:
     """Read welcome manifest text from the agent workspace (``.octop`` then legacy root)."""
-    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+    for rel in _manifest_read_paths(workspace):
         text = await workspace.aread_text(rel)
         if text is not None and str(text).strip():
             return str(text)
@@ -250,7 +277,7 @@ async def read_workspace_manifest_text(workspace: BackendWorkspace) -> str | Non
 
 async def read_workspace_manifest_bytes(workspace: BackendWorkspace) -> bytes | None:
     """Read welcome manifest bytes from the agent workspace (``.octop`` then legacy root)."""
-    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+    for rel in _manifest_read_paths(workspace):
         raw = await workspace.adownload_bytes(rel)
         if raw is not None and raw.strip():
             return raw
@@ -379,6 +406,45 @@ async def read_workspace_manifest_task_examples(
     return parse_task_examples(data)
 
 
+def _quick_prompts_have_content(prompt: ExpertQuickPrompt) -> bool:
+    return bool(prompt.title_zh or prompt.title_en or prompt.prompt_zh or prompt.prompt_en)
+
+
+async def apply_workspace_quick_prompts(
+    workspace: BackendWorkspace,
+    quick_prompts: list[dict[str, Any]],
+) -> None:
+    """Merge installer-owned quick-start cards into workspace ``.octop/manifest.json``.
+
+    Missing file starts from ``{}``. Invalid JSON is refused so a hand-edited
+    manifest is not clobbered during create.
+    """
+    text = await read_workspace_manifest_text(workspace)
+    existing: dict[str, Any] = {}
+    if text is not None and str(text).strip():
+        try:
+            parsed: object = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "workspace manifest.json is not valid JSON",
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "workspace manifest.json is not a JSON object",
+            )
+        existing = parsed
+    parsed_prompts = _parse_quick_prompts({"quick_prompts": list(quick_prompts)})
+    existing["quick_prompts"] = [
+        _quick_prompt_api_dict(prompt)
+        for prompt in parsed_prompts
+        if _quick_prompts_have_content(prompt)
+    ]
+    payload = json.dumps(existing, ensure_ascii=False, indent=2).encode("utf-8")
+    await workspace.aupload_many([(workspace_manifest_rel(workspace), payload)])
+
+
 def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str, str]]:
     """Read UTF-8 text files for API preview; skip unreadable/binary paths."""
     out: list[dict[str, str]] = []
@@ -444,6 +510,14 @@ def resolve_expert_icon_url(
     if scene_url:
         return scene_url
     return None
+
+
+def _catalog_scene(data: dict[str, Any]) -> str:
+    """Market scene used to group a bundled template. Empty when unclassified."""
+    scene = str(data.get("scene") or "").strip()
+    if scene:
+        return scene
+    return _manifest_scene(data) or ""
 
 
 def _manifest_scene(data: dict[str, Any]) -> str | None:
@@ -776,6 +850,7 @@ class ExpertCatalog:
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
                     task_examples=normalize_task_examples_for_display(parse_task_examples(data)),
+                    scene=_catalog_scene(data),
                 )
                 # Primary library wins on id collision; market cache fills gaps.
                 if ex_id in out and not from_primary:
@@ -824,6 +899,42 @@ class ExpertCatalog:
 def default_library_root() -> Path:
     """Return the in-package library directory."""
     return Path(__file__).parent / "library"
+
+
+# Templates listed in the built-in library before the expert market replaced
+# that tab (22 cards; the blank ``default`` seed was never shown). Matching is
+# by id, not by whatever still happens to live under ``library/``.
+FEATURED_EXPERT_TEMPLATE_IDS = frozenset(
+    {
+        "ai-coding-coach",
+        "ai-safety-guardian",
+        "business-operations",
+        "clinical-learning-subscription",
+        "cowork-plugin-management",
+        "cvm-ai-doctor",
+        "cvm-cluster-doctor",
+        "design",
+        "engineering",
+        "general-assistant",
+        "karpathy-knowledge-base",
+        "meituan-living-assistant",
+        "multi-agent-orchestrator",
+        "news-trend",
+        "office-automation",
+        "ops-engineer",
+        "parenting-companion",
+        "productivity",
+        "stock-assistant",
+        "superpowers-methodology",
+        "tencentcloud-api",
+        "wechat-ops",
+    }
+)
+
+
+def featured_expert_template_ids() -> frozenset[str]:
+    """Ids of the expert templates that shipped before the remote market."""
+    return FEATURED_EXPERT_TEMPLATE_IDS
 
 
 def resolve_expert_agent_name(

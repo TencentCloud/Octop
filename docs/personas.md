@@ -2,13 +2,13 @@
 
 Each agent has an optional MBTI persona (`persona_mbti` column on the
 `agents` row). The persona profile is rendered into the agent's
-`SOUL.md` (via `octop.infra.agents.persona.render_soul_template`) at
-boot. If the user also sets a `system_prompt` on the agent row, it is
-**appended** to the persona — the persona file is the backbone, the
-user prompt is the trim.
+`SOUL.md` (via `octop.infra.agents.persona.render_persona_template` /
+`PersonaLoader`) at boot. If the user also sets a `system_prompt` on the
+agent row, it is **appended** to the persona — the persona file is the
+backbone, the user prompt is the trim.
 
 If `persona_mbti` is `NULL` or the empty string, octop falls back to
-the built-in `_DEFAULT_SOUL_TEMPLATE` (warm, direct, competent tone).
+the built-in `_DEFAULT_PERSONA_TEMPLATE` (warm, direct, competent tone).
 
 ## Where the 16 codes live
 
@@ -16,9 +16,9 @@ Persona content is now data, not files:
 
 | Resource | Location |
 |----------|----------|
-| 16 `MBTIProfile` records | [`src/octop/infra/agents/mbti_profiles.py`](../src/octop/infra/agents/mbti_profiles.py) |
-| Public API (`get_profile`, `get_all_profiles`, `MBTIProfile`, `MBTIDimensions`, `MBTIBehaviorMapping`) | same module |
-| SOUL.md rendering | [`src/octop/infra/agents/persona.py`](../src/octop/infra/agents/persona.py) |
+| 16 `MBTIProfile` records | [`src/octop/infra/agents/persona/mbti_profiles.py`](../src/octop/infra/agents/persona/mbti_profiles.py) |
+| Public API (`get_profile`, `get_all_profiles`, `MBTIProfile`, …) | same module (also re-exported from `octop.infra.agents.persona`) |
+| SOUL.md / persona rendering | [`src/octop/infra/agents/persona/loader.py`](../src/octop/infra/agents/persona/loader.py) |
 | Persisted agent field | `agents.persona_mbti` (string, e.g. `"INTJ"`) |
 
 The legacy `src/octop/infra/agents/personas/*.md` directory is gone —

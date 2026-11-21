@@ -1,11 +1,14 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { message as antMessage } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
+import { apiErrorMessage } from "../utils/apiError";
 import { useAgent, selectEnabledExperts } from "../context/AgentContext";
 import { octopThreadsApi } from "../api/modules/octopThreads";
-import { apiErrorMessage } from "../utils/apiError";
+import { deleteConversation } from "../pages/Chat/utils/deleteConversation";
 import MinimalAgentSessionNav from "../pages/Chat/components/MinimalAgentSessionNav";
+import ShareConversationDialog from "../pages/Chat/components/ShareConversationDialog";
+import { publicShareAvailable } from "../pages/Chat/utils/publicShareHost";
 import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
 import { formatThreadTitle } from "../pages/Chat/utils/threadTitle";
 
@@ -28,6 +31,10 @@ export default function MinimalRecordsHost() {
   const navigate = useNavigate();
   const location = useLocation();
   const { agents, activeAgentId, setActiveAgent } = useAgent();
+  const [shareTarget, setShareTarget] = useState<{
+    agentId: string;
+    threadId: string;
+  } | null>(null);
 
   const { agentId: pathAgentId, threadId: pathThreadId } = useMemo(
     () => parseChatPath(location.pathname),
@@ -70,17 +77,20 @@ export default function MinimalRecordsHost() {
   );
 
   const handleDeleteActive = useCallback(
-    async (sessionId: string) => {
-      if (!resolvedAgentId || !sessionId) return;
-      try {
-        await octopThreadsApi.delete(resolvedAgentId, sessionId);
-        emitSessionEvent({ kind: "sessionDeleted", sessionId });
-        if (pathThreadId === sessionId) {
-          navigate(`/chat/${resolvedAgentId}`, { replace: true });
-        }
-      } catch (error) {
-        antMessage.error(apiErrorMessage(error, t("common.deleteFailed"), t));
+    async (sessionId: string, compact: boolean) => {
+      if (!resolvedAgentId || !sessionId) return false;
+      const deleted = await deleteConversation(
+        resolvedAgentId,
+        sessionId,
+        compact,
+        t,
+      );
+      if (deleted !== true) return deleted;
+      emitSessionEvent({ kind: "sessionDeleted", sessionId });
+      if (pathThreadId === sessionId) {
+        navigate(`/chat/${resolvedAgentId}`, { replace: true });
       }
+      return true;
     },
     [navigate, pathThreadId, resolvedAgentId, t],
   );
@@ -125,18 +135,37 @@ export default function MinimalRecordsHost() {
   );
 
   return (
-    <MinimalAgentSessionNav
-      agents={enabledAgents}
-      activeId={pathThreadId}
-      activeAgentId={resolvedAgentId}
-      activeSessions={[]}
-      onSelect={handleSelect}
-      onAgentSelect={handleAgentSelect}
-      onNewChat={handleNewChat}
-      onDeleteActive={(id) => void handleDeleteActive(id)}
-      onRenameActive={handleRenameActive}
-      onPinActive={handlePinActive}
-      onFork={(id, agentId) => void handleFork(id, agentId)}
-    />
+    <>
+      <MinimalAgentSessionNav
+        agents={enabledAgents}
+        activeId={pathThreadId}
+        activeAgentId={resolvedAgentId}
+        activeSessions={[]}
+        onSelect={handleSelect}
+        onAgentSelect={handleAgentSelect}
+        onNewChat={handleNewChat}
+        onDeleteActive={handleDeleteActive}
+        onRenameActive={handleRenameActive}
+        onPinActive={handlePinActive}
+        onFork={(id, agentId) => void handleFork(id, agentId)}
+        onShare={
+          publicShareAvailable()
+            ? (id, agentId) => {
+                const agent = agentId || resolvedAgentId;
+                if (!agent || !id) return;
+                setShareTarget({ agentId: agent, threadId: id });
+              }
+            : undefined
+        }
+      />
+      {shareTarget ? (
+        <ShareConversationDialog
+          open
+          agentId={shareTarget.agentId}
+          threadId={shareTarget.threadId}
+          onClose={() => setShareTarget(null)}
+        />
+      ) : null}
+    </>
   );
 }

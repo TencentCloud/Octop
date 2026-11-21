@@ -42,7 +42,25 @@ describe("injectPendingHitlMessage", () => {
     expect(injectPendingHitlMessage(answered, pending)).toEqual(answered);
   });
 
-  it("does not append when a pending card is already in the list", () => {
+  it("merges server pending onto a reconstructed ask tool card", () => {
+    const existing = [
+      msg({
+        id: "tool-1",
+        role: "assistant",
+        toolData: { name: "ask_user_question", arguments: "{}" },
+        hitlData: {
+          action_requests: pending.action_requests,
+          status: "pending",
+        },
+      }),
+    ];
+    const out = injectPendingHitlMessage(existing, pending);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("hitl-ab12");
+    expect(out[0].hitlData?.pending_id).toBe("ab12");
+  });
+
+  it("merges server pending onto a reconstructed card without pending_id", () => {
     const existing = [
       msg({
         id: "other",
@@ -53,6 +71,9 @@ describe("injectPendingHitlMessage", () => {
         },
       }),
     ];
-    expect(injectPendingHitlMessage(existing, pending)).toEqual(existing);
+    const out = injectPendingHitlMessage(existing, pending);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("hitl-ab12");
+    expect(out[0].hitlData?.pending_id).toBe("ab12");
   });
 });

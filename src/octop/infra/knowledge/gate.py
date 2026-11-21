@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -14,6 +15,8 @@ from octop.infra.agents.providers.onnx_service import (
     require_embedding_prerequisites_for_model,
 )
 from octop.infra.knowledge.params import get_advanced_settings
+
+logger = logging.getLogger(__name__)
 
 _FEATURE_ENABLED_KEY = "knowledge_bases_enabled"
 _EMBEDDING_BACKEND_KEY = "knowledge_embedding_backend"
@@ -91,6 +94,29 @@ def get_capability(settings_get: SettingsGet, provider_repo: Any = None) -> dict
         },
         **get_advanced_settings(settings_get),
     }
+
+
+def warn_if_local_embedding_deps_missing(
+    settings_get: SettingsGet,
+    provider_repo: Any = None,
+) -> None:
+    """Log when a persisted local knowledge base cannot import its runtime.
+
+    Packages installed into a container writable layer disappear on recreate
+    while settings and indexes on the data volume remain. Startup should say
+    so instead of leaving the feature silently unusable.
+    """
+    capability = get_capability(settings_get, provider_repo)
+    if not capability["feature_enabled"] or capability["backend"] != "onnx":
+        return
+    if capability["checks"]["deps_available"]:
+        return
+    logger.warning(
+        "Knowledge base is enabled with local ONNX embeddings, but fastembed is not "
+        "importable. Settings, indexes, and downloaded models on the data volume are "
+        "unchanged. Use an image built with the local-embedding extra; packages "
+        "installed into the container writable layer are discarded on recreate."
+    )
 
 
 def set_feature_enabled(

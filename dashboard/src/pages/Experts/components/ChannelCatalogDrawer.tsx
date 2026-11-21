@@ -21,6 +21,8 @@ export default function ChannelCatalogDrawer({
       title={t("pageShell.channels.title")}
       open={open}
       onClose={onClose}
+      agentId={agentId}
+      remoteHintKey="editChannels"
     >
       <div
         style={{

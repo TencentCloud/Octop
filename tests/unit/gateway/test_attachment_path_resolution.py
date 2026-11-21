@@ -15,9 +15,9 @@ from pathlib import Path
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
 from deepagents.backends.utils import validate_path
-from harness_agent.backends import DEFAULT_BACKEND_SPEC, resolve_backend
-from harness_agent.backends.workspace import BackendWorkspace
-from harness_gateway.models import ImageContent, InboundMessage
+from octop_gateway.models import ImageContent, InboundMessage
+from octop_harness.backends import DEFAULT_BACKEND_SPEC, resolve_backend
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.api.common.attachments import save_attachment
 from octop.infra.agents.middleware.binary_read_guard import read_file_block_reason
@@ -82,6 +82,25 @@ async def test_hint_uses_agent_facing_absolute_path() -> None:
         # while the resolved attachment path uses the long form.
         ws_root = str(Path(ws_dir).resolve()).replace("\\", "/")
         assert resolved.replace("\\", "/").startswith(ws_root)
+
+
+def test_hint_uses_remote_virtual_root_for_cloud_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Postgres/S3 store the file under /.octop/workspaces/<id>, not the host dir."""
+    monkeypatch.setattr(
+        "octop_harness.backends.workspace.is_cloud_storage_backend",
+        lambda _backend: True,
+    )
+    with tempfile.TemporaryDirectory() as root_dir:
+        host_ws = Path(root_dir) / "C10WX7"
+        host_ws.mkdir()
+        backend = LocalShellBackend(root_dir=str(host_ws), virtual_mode=False)
+        workspace = BackendWorkspace(backend, host_ws)
+        rel = "inbound/1793068857_page.html"
+        resolved = resolve_inbound_attachment_path(workspace, rel)
+        assert resolved == f"/.octop/workspaces/C10WX7/{rel}"
+        host_hint = resolve_inbound_attachment_path(workspace, f"{host_ws.as_posix()}/{rel}")
+        assert host_hint == resolved
+        assert not resolved.startswith(str(host_ws))
 
 
 @pytest.mark.asyncio
