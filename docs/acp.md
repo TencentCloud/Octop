@@ -35,6 +35,7 @@ Legacy per-agent `config_json.acp.runners` is migrated to the user-global store 
 | `kimi_code` | `kimi` | `acp` |
 | `cursor_cli` | `agent` | `acp` |
 | `pi` | `npx` | `-y`, `pi-acp` |
+| `qwen_code` | `qwen` | `--acp` |
 
 Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (or set an absolute `command` in the runner drawer). Open a built-in runner to probe it: Octop checks the command, then starts it long enough to complete ACP `initialize` and closes the process. The same drawer offers three installs for the host operating system (Linux, macOS, or Windows): one-click when the official installer needs no password, a copyable manual command, and a prompt you can hand to an Octop agent.
 
@@ -47,8 +48,9 @@ Install the CLI on the host where `octop run` executes, ensure it is on `PATH` (
 | `kimi_code` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` | `irm https://code.kimi.com/kimi-code/install.ps1 \| iex` |
 | `cursor_cli` | `curl https://cursor.com/install -fsS \| bash` | `irm 'https://cursor.com/install?win32=true' \| iex` |
 | `pi` | `curl -fsSL https://pi.dev/install.sh \| sh` | `irm https://pi.dev/install.ps1 \| iex` |
+| `qwen_code` | `npm install -g @qwen-code/qwen-code@latest` | `npm install -g @qwen-code/qwen-code@latest` |
 
-Claude Code, Codex, and Pi still start over ACP with `npx`, so Node.js has to be on `PATH` as well as the CLI itself.
+Claude Code, Codex, and Pi still start over ACP with `npx`, so Node.js has to be on `PATH` as well as the CLI itself. Qwen Code installs with `npm` and requires Node.js 20+.
 
 Built-in runners cannot be deleted; turning one off keeps the ID. Custom runners can be added from **Add runner**, and a disabled custom ID can be added again to update and re-enable it.
 
@@ -196,6 +198,7 @@ Runner shape:
 | Kimi Code fails to start | Install [kimi-code](https://github.com/MoonshotAI/kimi-code) and run `kimi` login on the host |
 | Cursor CLI fails to start | Install Cursor CLI; run `agent login` or set `CURSOR_API_KEY` |
 | Pi runner fails to start | Requires Node.js for `npx -y pi-acp`; ensure network access for first npm fetch |
+| Qwen Code fails to start | Requires Node.js 20+ for `npm install -g @qwen-code/qwen-code`; configure qwen auth on the host |
 
 ---
 

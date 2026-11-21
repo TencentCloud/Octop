@@ -13,7 +13,11 @@ from octop.infra.agents.settings.tool_catalog import (
     plugin_tools_disabled_names,
     tools_disabled_set,
 )
-from octop.infra.agents.teams.service import HOST_TOOLS_ALLOWED, HOST_TOOLS_DISABLED
+from octop.infra.agents.teams.service import (
+    HOST_TOOLS_ALLOWED,
+    HOST_TOOLS_DISABLED,
+    host_tools_disabled,
+)
 
 
 def test_team_host_tools_are_dispatch_only() -> None:
@@ -21,8 +25,12 @@ def test_team_host_tools_are_dispatch_only() -> None:
     assert names >= HOST_TOOLS_ALLOWED
     assert names - HOST_TOOLS_ALLOWED == HOST_TOOLS_DISABLED
     assert "ask_agent" in HOST_TOOLS_ALLOWED
+    assert "send_file_to_user" in HOST_TOOLS_ALLOWED
     assert "write_file" in HOST_TOOLS_DISABLED
     assert "task" in HOST_TOOLS_DISABLED
+    disabled = host_tools_disabled(["send_file_to_user", "write_file"])
+    assert "send_file_to_user" not in disabled
+    assert "write_file" in disabled
 
 
 def test_managed_catalog_is_only_tools_octop_can_attach() -> None:

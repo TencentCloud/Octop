@@ -412,6 +412,29 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
     assert last_state == "running"
 
 
+async def test_second_finish_is_closed_for_token_and_admin_jwt(env: Any) -> None:
+    c, _srv, home = env
+    pw = read_password(home)
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    admin = (
+        await c.post(
+            "/api/setup/initial-admin",
+            json={"username": "admin", "password": "TestPass12"},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+    ).json()
+    first = await c.post("/api/setup/finish", json={}, headers={"Authorization": f"Bearer {tok}"})
+    assert first.status_code == 200, first.text
+    again = await c.post("/api/setup/finish", json={}, headers={"Authorization": f"Bearer {tok}"})
+    assert again.status_code == 410
+    jwt_again = await c.post(
+        "/api/setup/finish",
+        json={},
+        headers={"Authorization": f"Bearer {admin['access_token']}"},
+    )
+    assert jwt_again.status_code == 410
+
+
 # ─── 410 guard ─────────────────────────────────────────────────────
 
 

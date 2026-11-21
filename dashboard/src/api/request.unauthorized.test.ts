@@ -49,10 +49,49 @@ describe("401 handling", () => {
     window.removeEventListener(mod.UNAUTHORIZED_EVENT, listener);
   });
 
+  it("stays on a read-only share link when a background request is unauthorized", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { pathname: "/share/abc", replace },
+    });
+
+    await expect(mod.request("/agents")).rejects.toThrow();
+
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("falls back to a full-page navigation when nothing handles the event", async () => {
     await expect(mod.request("/agents")).rejects.toThrow();
 
     expect(replace).toHaveBeenCalledWith("/login");
+  });
+
+  it("clears the session when the server reports missing credentials", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "MISSING_CREDENTIALS",
+                message: "需要登录。",
+                details: {},
+              },
+            }),
+            {
+              status: 401,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        ),
+      ),
+    );
+
+    await expect(mod.request("/agents")).rejects.toThrow();
+
+    expect(replace).toHaveBeenCalledWith("/login");
+    expect(mod.getAuthToken()).toBe("");
   });
 
   it("keeps the local session when a 401 is a peer credential error", async () => {

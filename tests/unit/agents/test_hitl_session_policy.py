@@ -17,6 +17,7 @@ from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
     apply_session_bypass,
     current_hitl_thread_id,
+    ephemeral_hitl_policy,
     hitl_thread_scope,
     parse_hitl_session_policy,
     thread_id_from_interrupt_request,
@@ -193,3 +194,14 @@ def test_build_harness_config_skips_interrupt_for_allowed_thread(
         assert write_cfg["when"](None) is False
     with hitl_thread_scope("other"):
         assert write_cfg["when"](None) is True
+
+
+def test_ephemeral_allow_all_does_not_persist() -> None:
+    repo = MagicMock()
+    repo.get.return_value = SimpleNamespace(hitl_policy=None)
+    store = HitlSessionPolicyStore(repo)
+    store.get("thr_1")
+    with ephemeral_hitl_policy(store, "thr_1", {"mode": "allow_all"}):
+        assert store.allows("thr_1", "bash")
+    assert store.allows("thr_1", "bash") is False
+    repo.update_composer.assert_not_called()

@@ -599,12 +599,14 @@ async def _probe_stdio_mcp(connection: dict[str, Any]) -> dict[str, Any]:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
+    from octop.infra.connectors.custom_mcp import sanitize_stdio_env  # noqa: PLC0415
+
     command = str(connection.get("command") or "").strip()
     if not command:
         return {"ok": False, "error": "command is required"}
     args = [str(a) for a in (connection.get("args") or [])]
     env = connection.get("env")
-    env_map = {str(k): str(v) for k, v in dict(env or {}).items()} or None
+    env_map = sanitize_stdio_env({str(k): str(v) for k, v in dict(env or {}).items()}) or None
     params = StdioServerParameters(command=command, args=args, env=env_map)
 
     try:

@@ -1751,7 +1751,7 @@ class GlobalProcessor:
         if "skills" in meta:
             request["skills"] = meta["skills"]
         self._apply_turn_hitl_policy(thread_id, meta)
-        return self._stamp_turn_conversation_mode(
+        request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1760,6 +1760,10 @@ class GlobalProcessor:
             mcp_servers=mcp_servers,
             locale=locale,
         )
+        from octop.infra.bridge.local_workspace import stamp_bridge_file_target
+
+        stamp_bridge_file_target(request, meta, locale=locale, thread_id=thread_id)
+        return request
 
     def _apply_turn_hitl_policy(self, thread_id: str, meta: dict[str, Any] | None) -> None:
         raw = (meta or {}).get("hitl_policy")

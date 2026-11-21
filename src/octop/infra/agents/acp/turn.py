@@ -23,6 +23,7 @@ _FILES_NAME = "octop-files"
 _CRON_NAME = "octop-cron"
 _MEMORY_NAME = "octop-memory"
 _PLUGINS_NAME = "octop-plugins"
+_TEAM_WORKSPACE_NAME = "octop-team-workspace"
 _LOOPBACK_NAMES = {
     _KNOWLEDGE_NAME,
     _AGENTS_NAME,
@@ -30,6 +31,7 @@ _LOOPBACK_NAMES = {
     _CRON_NAME,
     _MEMORY_NAME,
     _PLUGINS_NAME,
+    _TEAM_WORKSPACE_NAME,
 }
 
 _SCOPES: dict[str, KnowledgeScope] = {}
@@ -148,6 +150,65 @@ def _tool_limit_note(specs: dict[str, Any], locale: str) -> str | None:
     return "\n".join(lines) if lines else None
 
 
+def _team_workspace_note(
+    manager: Any,
+    cfg: dict[str, Any],
+    locale: str,
+    *,
+    deliver: bool,
+) -> tuple[str, str] | None:
+    """URL and prompt note for the host workspace, or ``None`` when unset."""
+    from octop.infra.agents.acp.team_workspace_mcp import (
+        TeamWorkspaceScope,
+        retain_team_workspace_scope,
+    )
+    from octop.infra.agents.teams.file_target import (
+        BRIDGE_TARGET_KEY,
+        DIR_KEY,
+        HOST_KEY,
+        capability_enabled,
+        file_target_briefing,
+    )
+    from octop.infra.connectors.builder import team_workspace_mcp_url
+
+    directory = cfg.get(DIR_KEY)
+    if not isinstance(directory, str) or not directory.strip():
+        return None
+    execute = capability_enabled(cfg, "execute")
+    bridge_id = cfg.get(BRIDGE_TARGET_KEY)
+    host_id = cfg.get(HOST_KEY)
+    local = isinstance(bridge_id, str) and bool(bridge_id.strip())
+    if local:
+        scope = TeamWorkspaceScope(
+            host_agent_id="",
+            directory=directory.strip(),
+            execute=execute,
+            bridge_target_id=str(bridge_id).strip(),
+            deliver=deliver,
+        )
+    elif isinstance(host_id, str) and host_id.strip():
+        scope = TeamWorkspaceScope(
+            host_agent_id=host_id.strip(),
+            directory=directory.strip(),
+            execute=execute,
+            deliver=deliver,
+        )
+    else:
+        return None
+    token = retain_team_workspace_scope(scope)
+    url = team_workspace_mcp_url(config=manager._config, token=token)
+    if not url:
+        return None
+    return url, file_target_briefing(
+        locale,
+        directory.strip(),
+        execute=execute,
+        managed=True,
+        local=local,
+        deliver=deliver,
+    )
+
+
 def _send_file_note(locale: str) -> str:
     if locale.lower().startswith("zh"):
         return "要把文件发给用户时，调用 send_file_to_user，传入工作区里已有的文件路径。"
@@ -181,7 +242,14 @@ def _cron_note(locale: str, timezone_name: str) -> str:
             "cronjob_update、cronjob_delete。"
             "不要调用 CronCreate、CronDelete、CronList：那些只存在于当前会话，不会出现在任务列表里。"
             f"日程按 {timezone_name} 解释。"
-            "固定提醒用 task_type=text；重复用 trigger=cron:五段表达式或 interval:秒数；"
+            "固定提醒用 task_type=text；要跑代码用 task_type=script。"
+            "script_lang 必须是 python、bash 或 powershell 这三个字符串之一，不要传 null；不传则是 python。"
+            "内联脚本用 script_source=inline，把源码放进 prompt。"
+            "工作区文件用 script_source=file，script_path 写相对路径（不能是绝对路径，也不能含 ..），prompt 填同一路径。"
+            "例如每 10 分钟打印：task_type=script，script_lang=python，script_source=inline，"
+            "prompt 为 print('helloworld')，trigger=interval:600。"
+            "智能体任务要跳过本次审批时 allow_all=true，不会改对话里已保存的放通。"
+            "重复用 trigger=cron:五段表达式或 interval:秒数；"
             "一次性用 trigger=date:带时区的 ISO 时间。"
         )
     clock = f"The current time is {now} ({timezone_name}). " if now else ""
@@ -192,7 +260,15 @@ def _cron_note(locale: str, timezone_name: str) -> str:
         "Do not call CronCreate, CronDelete, or CronList: those live only in this session "
         "and never appear in the task list. "
         f"Interpret schedules in {timezone_name}. "
-        "Use task_type=text for a fixed reminder; "
+        "Use task_type=text for a fixed reminder. "
+        "Use task_type=script to run code. "
+        "script_lang must be the string python, bash, or powershell, never null; "
+        "omit it for python. "
+        "Inline: script_source=inline and the source in prompt. "
+        "Workspace file: script_source=file, a relative script_path with no '..', "
+        "and the same path in prompt. "
+        "Set allow_all=true on an agent job to skip approval for that run only; "
+        "it does not change the conversation's saved approval setting. "
         "trigger=cron:<5 fields> or interval:<seconds> to repeat; "
         "trigger=date:<ISO with offset> to run once."
     )
@@ -376,7 +452,9 @@ async def managed_mcp_specs(
         note, agents = None, None
     if agents is not None:
         specs[_AGENTS_NAME] = agents
-    if _enabled(disabled, MANAGED_FILE_TOOLS):
+    send_enabled = bool(_enabled(disabled, MANAGED_FILE_TOOLS))
+    workspace_note = _team_workspace_note(manager, cfg, locale, deliver=send_enabled)
+    if send_enabled and workspace_note is None:
         _attach(
             specs,
             _FILES_NAME,
@@ -423,9 +501,12 @@ async def managed_mcp_specs(
                 token=retain_plugin_scope(agent_id, plugin_tool_names),
             ),
         )
-    if _enabled(disabled, MANAGED_FILE_TOOLS):
+    if send_enabled and workspace_note is None:
         file_note = _send_file_note(locale)
         note = f"{note}\n{file_note}" if note else file_note
+    if workspace_note is not None:
+        _attach(specs, _TEAM_WORKSPACE_NAME, workspace_note[0])
+        note = f"{note}\n{workspace_note[1]}" if note else workspace_note[1]
     if _CRON_NAME in specs:
         cron_note = _cron_note(locale, _server_timezone(manager))
         note = f"{note}\n{cron_note}" if note else cron_note
@@ -439,6 +520,9 @@ async def managed_mcp_specs(
 
 async def attach_managed_turn(manager: Any, agent_id: str, request: dict[str, Any]) -> None:
     """Put this turn's MCP specs and @ note on ``request`` for the harness."""
+    from octop.infra.agents.teams.file_target_guard import install_file_target_guards
+
+    install_file_target_guards()
     extras = await managed_mcp_specs(manager, agent_id, request)
     if extras is None:
         return
