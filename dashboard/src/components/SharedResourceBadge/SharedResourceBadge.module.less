@@ -41,6 +41,12 @@
   line-height: 0;
 }
 
+/* Sit above a managed-runner mark so both stay visible on the right edge. */
+.avatarHost:has([data-managed-avatar-mark]) > .avatarMark {
+  bottom: max(38%, 11px);
+  z-index: 2;
+}
+
 .avatarMark {
   position: absolute;
   right: -8%;

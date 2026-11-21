@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronRight, FilePen, Globe } from "lucide-react";
+import { ChevronRight, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
@@ -10,8 +10,6 @@ import {
   turnUsedBrowserTool,
   turnUsedFileTool,
 } from "../utils/messageContent";
-import { isWriteToolName } from "../constants";
-import { collectChatFilePaths } from "../hooks/useChatFileDetection";
 import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
 import { useAgent } from "../../../context/AgentContext";
 import { TodoProgressPanel } from "../../../components/TodoProgressPanel";
@@ -30,6 +28,8 @@ import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowledgeCitations";
 import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
 import { messageSpeakerId } from "../utils/messageGrouping";
+import { isAssistantProcessLive } from "./liveAssistantTurn";
+import TurnFileChangeCard from "./TurnFileChangeCard";
 import styles from "../index.module.less";
 
 interface AssistantTurnViewProps {
@@ -38,6 +38,8 @@ interface AssistantTurnViewProps {
   isStreaming?: boolean;
   /** True while this assistant turn is still being generated (incl. between tool calls). */
   isTurnInProgress?: boolean;
+  /** This group sits after the latest user message, even if the session flag is idle. */
+  afterLatestUser?: boolean;
   /**
    * Speakers still generating in the session store (survives tool gaps after
    * the composer unlocks). Empty string = unlabeled host.
@@ -57,6 +59,8 @@ interface AssistantTurnViewProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  /** Public transcripts hide read-aloud. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function hasProcessContent(
@@ -79,6 +83,7 @@ function TurnErrorBubbles({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: {
   messages: ChatMessage[] | undefined;
   agentId?: string | null;
@@ -92,6 +97,7 @@ function TurnErrorBubbles({
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  readAloud?: boolean;
 }) {
   if (!messages?.length) return null;
   return (
@@ -112,6 +118,7 @@ function TurnErrorBubbles({
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
             shellCommandDisabledTitle={shellCommandDisabledTitle}
+            readAloud={readAloud}
           />
         </div>
       ))}
@@ -136,6 +143,7 @@ export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
   isTurnInProgress = false,
+  afterLatestUser = false,
   liveSpeakers = [],
   onRegenerate,
   onDisableStreamUsage,
@@ -151,6 +159,7 @@ export default function AssistantTurnView({
   shellCommandDisabled,
   shellCommandDisabledTitle,
   compactProcess = false,
+  readAloud = true,
 }: AssistantTurnViewProps) {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
@@ -160,7 +169,12 @@ export default function AssistantTurnView({
 
   const speakerLive = turnHasLiveSpeaker(messages, liveSpeakers);
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
-  const turnStreaming = isTurnInProgress || hasStreamingMsg || speakerLive;
+  const turnStreaming = isAssistantProcessLive({
+    isTurnInProgress,
+    afterLatestUser,
+    hasStreamingMessage: hasStreamingMsg,
+    speakerLive,
+  });
 
   const hitlLayout = useMemo(
     () => layoutAssistantTurnHitl(messages),
@@ -204,13 +218,6 @@ export default function AssistantTurnView({
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
   const usedFileTool = turnUsedFileTool(fullSplit);
   const showEditFile = usedFileTool && !!onEditFile;
-  const turnFileCount = useMemo(() => {
-    const fromPaths = collectChatFilePaths(messages, agentId).length;
-    if (fromPaths > 0) return fromPaths;
-    return (fullSplit.tools ?? []).filter((msg) =>
-      isWriteToolName(msg.toolData?.name),
-    ).length;
-  }, [messages, agentId, fullSplit.tools]);
   const hasToolMedia =
     toolMedia.images.length > 0 ||
     toolMedia.videos.length > 0 ||
@@ -319,6 +326,7 @@ export default function AssistantTurnView({
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
             shellCommandDisabledTitle={shellCommandDisabledTitle}
+            readAloud={readAloud}
           />
         </div>
       ) : null}
@@ -339,6 +347,7 @@ export default function AssistantTurnView({
         onRunShellCommand={onRunShellCommand}
         shellCommandDisabled={shellCommandDisabled}
         shellCommandDisabledTitle={shellCommandDisabledTitle}
+        readAloud={readAloud}
       />
       {knowledgeCitations.length > 0 ? (
         <div className={styles.turnInset}>
@@ -373,36 +382,12 @@ export default function AssistantTurnView({
       )}
       {showEditFile && (
         <div className={styles.turnInset}>
-          <button
-            type="button"
-            className={cx(
-              styles.openBrowserPrompt,
-              turnStreaming && styles.openBrowserPromptActive,
-            )}
-            onClick={onEditFile}
-            aria-label={t("chat.editFileCard", {
-              count: Math.max(turnFileCount, 1),
-              defaultValue: "编辑了{{count}}个文件",
-            })}
-          >
-            <FilePen
-              size={16}
-              strokeWidth={2}
-              className={styles.openBrowserPromptIcon}
-              aria-hidden="true"
-            />
-            <span>
-              {t("chat.editFileCard", {
-                count: Math.max(turnFileCount, 1),
-                defaultValue: "编辑了{{count}}个文件",
-              })}
-            </span>
-            <ChevronRight
-              size={14}
-              className={styles.openBrowserPromptArrow}
-              aria-hidden="true"
-            />
-          </button>
+          <TurnFileChangeCard
+            messages={messages}
+            agentId={speakerAgentId}
+            streaming={turnStreaming}
+            onOpenList={onEditFile}
+          />
         </div>
       )}
     </>
@@ -453,6 +438,7 @@ export default function AssistantTurnView({
                   onRunShellCommand={onRunShellCommand}
                   shellCommandDisabled={shellCommandDisabled}
                   shellCommandDisabledTitle={shellCommandDisabledTitle}
+                  readAloud={readAloud}
                 />
               </div>
             ) : null}
@@ -469,12 +455,14 @@ export default function AssistantTurnView({
               onRunShellCommand={onRunShellCommand}
               shellCommandDisabled={shellCommandDisabled}
               shellCommandDisabledTitle={shellCommandDisabledTitle}
+              readAloud={readAloud}
             />
             <MessageBubble
               message={hitl}
               agentId={agentId}
               onHitlDecision={onHitlDecision}
               groupPosition="only"
+              readAloud={readAloud}
             />
           </div>
         );

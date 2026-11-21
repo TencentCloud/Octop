@@ -68,6 +68,10 @@ export interface ProviderPreset {
   auth_method?: string;
   /** Embedding-only presets appear on the embedding Models tab. */
   purpose?: "chat" | "embedding";
+  /** Octop-owned integration id, such as ``magpie``. */
+  integration?: string;
+  /** Filled only for the local Magpie preset. Remote addresses must not use it. */
+  default_api_key?: string;
 }
 
 export interface ProviderRow {
@@ -79,10 +83,14 @@ export interface ProviderRow {
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
+  /** Saved connection-test model. Empty means the form stays blank. */
+  model?: string | null;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
   /** UI lane: embedding providers are managed on the embedding Models tab. */
   purpose?: "chat" | "embedding";
+  /** Set when the provider was saved as a named integration such as Magpie. */
+  integration?: string;
 }
 
 /** True when this provider belongs on the embedding Models tab. */

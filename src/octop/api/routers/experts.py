@@ -22,7 +22,7 @@ from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import apply_agent_audience, require_agent_owner_row, user_owns_agent
-from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.agent_runtime import AgentRuntimeFields, persisted_agent_settings
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.experts.avatar import (
@@ -148,6 +148,14 @@ class FromExpertBody(AgentRuntimeFields):
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    workspace_dir: str | None = Field(
+        default=None,
+        description=(
+            "Workspace directory when backend is local_shell or filesystem "
+            "rooted at the filesystem root. Ignored for other backends and "
+            "for a scoped root_dir. Omit to use the server default."
+        ),
+    )
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
@@ -195,6 +203,14 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     providers: list[str] | None = None
     default_model: str | None = None
     backend: dict[str, Any] | None = None
+    workspace_dir: str | None = Field(
+        default=None,
+        description=(
+            "Workspace directory when backend is local_shell or filesystem "
+            "rooted at the filesystem root. Ignored for other backends and "
+            "for a scoped root_dir. Omit to use the server default."
+        ),
+    )
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
@@ -777,13 +793,14 @@ async def install_published_expert(
             providers=body.providers,
             default_model=body.default_model,
             backend=body.backend,
+            workspace_dir=body.workspace_dir,
             skill_package_ids=body.skill_package_ids,
             knowledge_base_ids=kb_ids,
             mcp_servers=servers,
             color=body.color,
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
-            runtime_config=runtime_field_updates(body, exclude_unset=True),
+            runtime_config=persisted_agent_settings(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
             conversation_mode=body.conversation_mode,
             workspace_patch=patch,
@@ -924,6 +941,7 @@ async def install_expert_hub_item(
                 providers=body.providers,
                 default_model=body.default_model,
                 backend=body.backend,
+                workspace_dir=body.workspace_dir,
                 color=body.color,
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
@@ -936,7 +954,7 @@ async def install_expert_hub_item(
                 composer_copies=copies,
                 composer_report=report,
                 quick_prompts=_quick_prompts_from_body(body),
-                **runtime_field_updates(body, exclude_unset=False),
+                **persisted_agent_settings(body, exclude_unset=False),
             ),
         )
     except SkillHubMarketError as exc:
@@ -1049,6 +1067,9 @@ async def create_agent_from_expert(
         config_extra["providers"] = list(body.providers)
     if body.backend:
         config_extra["backend"] = body.backend
+    from octop.infra.agents.workspace.dir import apply_explicit_workspace_dir  # noqa: PLC0415
+
+    apply_explicit_workspace_dir(config_extra, body.workspace_dir)
     apply_enable_trajectory(config_extra, body.enable_trajectory)
     if body.conversation_mode:
         config_extra["conversation_mode"] = body.conversation_mode
@@ -1066,7 +1087,7 @@ async def create_agent_from_expert(
         locale=locale,
         default_model=body.default_model,
         config_extra=config_extra or None,
-        runtime_config=runtime_field_updates(body, exclude_unset=True),
+        runtime_config=persisted_agent_settings(body, exclude_unset=True),
         agent_id=body.agent_id,
         color=body.color,
         welcome_message=body.welcome_message,

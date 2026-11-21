@@ -51,13 +51,17 @@ def _one_line(credential: Any) -> str:
 
 
 @cloud.command("import-tccli")
-@click.option("--profile", default="default", show_default=True, help="tccli profile name.")
+@click.option(
+    "--profile",
+    default=None,
+    help="tccli profile. Defaults to octop-<id> for the acting user.",
+)
 @click.option("--user", "as_user", default=None, help="Import for another user (admin only).")
 @click.option(
     "--json", "as_json", is_flag=True, default=False, help="Print machine-readable status."
 )
 @click.option("--quiet", is_flag=True, default=False, help="Only print errors.")
-def import_tccli(profile: str, as_user: str | None, as_json: bool, quiet: bool) -> None:
+def import_tccli(profile: str | None, as_user: str | None, as_json: bool, quiet: bool) -> None:
     """Import ``~/.tccli/<profile>.credential`` into the Octop cloud store.
 
     Run right after an interactive tccli/OAuth login so the Workbench console
@@ -73,8 +77,35 @@ def import_tccli(profile: str, as_user: str | None, as_json: bool, quiet: bool) 
         credential_from_tccli,
         open_cloud_credential_store,
         refresh_credential,
+        tccli_profile_for_user,
+        tccli_profile_owner,
     )
     from octop.infra.utils.paths import PathLayout
+
+    try:
+        acting = resolve_cli_acting_user_id(None, as_user)
+    except OctopError as exc:
+        acting = None
+        acting_error: OctopError | None = exc
+    else:
+        acting_error = None
+
+    owner = tccli_profile_owner(profile)
+    if as_user is not None:
+        if acting is None:
+            raise SystemExit(f"error: {acting_error}") from acting_error
+        uid = acting
+    elif owner is not None:
+        uid = owner
+    elif acting is not None:
+        uid = acting
+    else:
+        fallback = _first_admin_id()
+        if fallback is None:
+            raise SystemExit(f"error: {acting_error}") from acting_error
+        uid = fallback
+    if not profile:
+        profile = tccli_profile_for_user(uid)
 
     path = Path.home() / ".tccli" / f"{profile}.credential"
     if not path.is_file():
@@ -93,16 +124,6 @@ def import_tccli(profile: str, as_user: str | None, as_json: bool, quiet: bool) 
         except CloudError as exc:
             raise SystemExit(f"error: 本机凭证已失效: {exc}") from exc
 
-    try:
-        uid = resolve_cli_acting_user_id(None, as_user)
-    except OctopError as exc:
-        # Unattended call (skill script after an OAuth login): fall back to the
-        # first admin instead of failing the sync.
-        fallback = _first_admin_id() if as_user is None else None
-        if fallback is None:
-            raise SystemExit(f"error: {exc}") from exc
-        uid = fallback
-
     paths = PathLayout.from_env()
     with open_cli_services() as services:
         store = open_cloud_credential_store(
@@ -111,6 +132,13 @@ def import_tccli(profile: str, as_user: str | None, as_json: bool, quiet: bool) 
             services.repos.secret_repo,
         )
         store.save(uid, credential)
+        owner_row = services.user_repo.get(uid)
+        services.audit_repo.user_event(
+            owner_row.username if owner_row is not None and owner_row.username else str(uid),
+            "cloud.import_tccli",
+            target=f"user:{uid}",
+            payload=f"{profile}.credential",
+        )
 
     payload = {
         "user_id": uid,

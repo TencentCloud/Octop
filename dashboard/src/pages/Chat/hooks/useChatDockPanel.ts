@@ -303,6 +303,15 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     toggleDockTab({ id: "workspace", kind: "workspace" });
   }, [toggleDockTab]);
 
+  /** Corner control: open the workspace, or close whatever dock is showing. */
+  const toggleSidePanel = useCallback(() => {
+    if (dockOpen) {
+      handleClose();
+      return;
+    }
+    openWorkspaceTab();
+  }, [dockOpen, handleClose, openWorkspaceTab]);
+
   const toggleBrowserPanel = useCallback(() => {
     toggleDockTab({ id: "browser", kind: "browser" });
   }, [toggleDockTab]);
@@ -370,6 +379,7 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
     openKnowledgeCitation,
     openWorkspaceTab,
     toggleWorkspacePanel,
+    toggleSidePanel,
     openBrowserTab,
     toggleBrowserPanel,
     openTerminalTab,

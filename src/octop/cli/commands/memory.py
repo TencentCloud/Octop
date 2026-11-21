@@ -16,6 +16,7 @@ from octop.infra.agents.memory.slim_control import (
     list_orphan_agent_dirs,
     request_memory_slim,
 )
+from octop.infra.agents.memory.thread_cleanup import describe_sweep
 from octop.infra.utils.paths import PathLayout
 
 
@@ -109,15 +110,7 @@ def _slim_agent(
                 if status.get("phase") == "done":
                     sweep = status.get("sweep")
                     if isinstance(sweep, dict):
-                        click.echo(
-                            tr(
-                                "memory_slim.swept",
-                                locale,
-                                namespaces=sweep.get("namespaces", 0),
-                                threads=sweep.get("threads", 0),
-                                directories=sweep.get("directories", 0),
-                            )
-                        )
+                        click.echo(describe_sweep(sweep, locale))
                     report = status.get("report")
                     if isinstance(report, dict) and "before" in report:
                         click.echo(

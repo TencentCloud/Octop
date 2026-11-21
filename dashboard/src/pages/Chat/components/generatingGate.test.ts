@@ -88,6 +88,21 @@ describe("chatGeneratingPhase", () => {
     });
   });
 
+  it("names the member while the host turn is still marked streaming", () => {
+    expect(
+      chatGeneratingPhase({
+        isStreaming: true,
+        hasLiveSpeakers: true,
+        membersLive: true,
+        lastMessageRole: "assistant",
+      }),
+    ).toEqual({
+      showFooter: true,
+      showElapsed: false,
+      membersOnly: true,
+    });
+  });
+
   it("shows a members-only footer without cancel-phase elapsed", () => {
     expect(
       chatGeneratingPhase({

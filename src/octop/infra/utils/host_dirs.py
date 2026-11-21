@@ -23,6 +23,42 @@ _MAX_LIST_ENTRIES = 1000
 # Host paths that must not be browsed or used as workspace roots (POSIX).
 _DENIED_PREFIXES_POSIX = ("/proc", "/sys", "/dev", "/etc", "/root")
 
+# Top-level system directories. Hidden only when listing the filesystem root,
+# so a project folder named ``opt`` under home still appears. ``user`` is the
+# name people use for ``usr``. The process home is never hidden.
+_ROOT_LISTING_HIDDEN = frozenset(
+    {
+        "bin",
+        "boot",
+        "cores",
+        "dev",
+        "etc",
+        "lib",
+        "lib32",
+        "lib64",
+        "libx32",
+        "library",
+        "lost+found",
+        "media",
+        "mnt",
+        "opt",
+        "private",
+        "proc",
+        "root",
+        "run",
+        "sbin",
+        "srv",
+        "sys",
+        "system",
+        "tmp",
+        "usr",
+        "user",
+        "var",
+        "cdrom",
+        "snap",
+    }
+)
+
 _OUTSIDE_HOME_MSG = "path outside home"
 _OUTSIDE_ROOT_MSG = "path outside allowed workspace root"
 _NOT_ALLOWED_MSG = "path not allowed"
@@ -231,6 +267,20 @@ def assert_safe_host_path(
     return resolved
 
 
+def _hidden_root_listing(listed: Path, child: Path, resolved: Path) -> bool:
+    """True when *child* is a system directory directly under the filesystem root."""
+    if os.name != "posix":
+        return False
+    parent = listed.as_posix()
+    if parent == "/private":
+        parent = "/"
+    if parent != "/":
+        return False
+    if child.name.lower() not in _ROOT_LISTING_HIDDEN:
+        return False
+    return not is_within_host_home(resolved)
+
+
 def list_host_subdirs(
     path: str,
     *,
@@ -260,6 +310,8 @@ def list_host_subdirs(
             if not resolved.is_dir():
                 continue
             if _is_denied_host_path(resolved):
+                continue
+            if _hidden_root_listing(root, child, resolved):
                 continue
             if restrict_to_home and not is_within_host_home(resolved):
                 continue

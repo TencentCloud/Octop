@@ -11,6 +11,7 @@ import {
   type WorkspaceMentionHint,
 } from "../utils/fileMention";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import styles from "../index.module.less";
 
 export type MentionAgentOption = ChatAgentOption;
@@ -204,6 +205,8 @@ export default function MentionPickerMenu({
                   color={agent?.color}
                   size={20}
                   iconSize={11}
+                  managedRunner={agent?.managed_runner}
+                  {...incomingShareProps(agent)}
                 />
               );
             }

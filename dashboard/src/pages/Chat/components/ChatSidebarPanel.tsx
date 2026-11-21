@@ -1,16 +1,18 @@
-import { useCallback } from "react";
+import { useCallback, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import type { RefObject } from "react";
 import cx from "classnames";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
+import { EXPAND_CHAT_RAIL_EVENT } from "../chatRailEvents";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../../../utils/railShortcuts";
 import styles from "../index.module.less";
-
-/** Dispatched when the chat history rail expand control is clicked. */
-export const EXPAND_CHAT_RAIL_EVENT = "octop:expand-chat-rail";
 
 interface ChatSidebarPanelProps {
   isMobile: boolean;
@@ -19,6 +21,8 @@ interface ChatSidebarPanelProps {
   isSidebarResizing?: boolean;
   sidebarElRef?: RefObject<HTMLDivElement>;
   agents: OctopAgent[];
+  /** Owned experts that cannot chat yet — see ``SessionList.unreadyExperts``. */
+  unreadyExperts?: number;
   sessions: Session[];
   activeThreadId: string | null;
   resolvedAgentId: string | null | undefined;
@@ -37,6 +41,7 @@ interface ChatSidebarPanelProps {
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
+  onShareSession?: (id: string, agentId?: string | null) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onSidebarOpenChange: (open: boolean) => void;
@@ -57,6 +62,7 @@ export default function ChatSidebarPanel({
   isSidebarResizing = false,
   sidebarElRef,
   agents,
+  unreadyExperts,
   sessions,
   activeThreadId,
   resolvedAgentId,
@@ -71,6 +77,7 @@ export default function ChatSidebarPanel({
   onRenameSession,
   onPinSession,
   onForkSession,
+  onShareSession,
   forkDisabled,
   forkDisabledHint,
   onSidebarOpenChange,
@@ -88,7 +95,16 @@ export default function ChatSidebarPanel({
     // MainLayout may also expand the nav when both rails were collapsed.
     window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
     onSidebarOpenChange(true);
-  }, [sidebarOpen, onSidebarOpenChange]);
+  }, [onSidebarOpenChange, sidebarOpen]);
+
+  const historyLabel = t(
+    sidebarOpen ? "chat.collapseHistorySidebar" : "chat.expandHistorySidebar",
+    sidebarOpen ? "收起对话历史" : "展开对话历史",
+  );
+  const historyHint = `${historyLabel} (${railShortcutLabel(
+    "toggle-history",
+    isMacPlatform(),
+  )})`;
 
   const sessionList = navEmbedded ? (
     <MinimalAgentSessionNav
@@ -103,12 +119,14 @@ export default function ChatSidebarPanel({
       onRenameActive={onRenameSession}
       onPinActive={onPinSession}
       onFork={onForkSession}
+      onShare={onShareSession}
       activeForkDisabled={forkDisabled}
       activeForkDisabledHint={forkDisabledHint}
     />
   ) : (
     <SessionList
       agents={agents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeId={activeThreadId}
       activeAgentId={resolvedAgentId ?? null}
@@ -123,6 +141,7 @@ export default function ChatSidebarPanel({
       onRename={onRenameSession}
       onPin={onPinSession}
       onFork={onForkSession}
+      onShare={onShareSession}
       activeForkDisabled={forkDisabled}
       activeForkDisabledHint={forkDisabledHint}
     />
@@ -165,32 +184,21 @@ export default function ChatSidebarPanel({
         }
       >
         {sessionList}
-        {!isMobile && sidebarOpen && (
-          <div
-            className={cx(
-              styles.sidebarResizeHandle,
-              isSidebarResizing && styles.sidebarResizeHandleActive,
-            )}
-            onPointerDown={onSidebarResizeStart}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t("chat.resizeSidebar", "调整侧栏宽度")}
-          />
-        )}
       </div>
 
-      {!isMobile && (
+      {!isMobile && sidebarOpen && (
         <RailEdgeControl
-          expanded={sidebarOpen}
+          expanded
           onToggle={handleRailToggle}
-          side={sidebarOpen ? "end" : "start"}
-          /* Collapsed: share the nav rail divider — avoid a second gapped line. */
-          showLine={sidebarOpen}
-          placement={sidebarOpen ? "center" : "after"}
-          passThrough={sidebarOpen}
-          className={
-            sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
-          }
+          side="end"
+          showLine
+          placement="center"
+          className={styles.chatRailEdgeOpen}
+          label={historyLabel}
+          hint={historyHint}
+          shortcut={railShortcutAria("toggle-history")}
+          onResizeStart={onSidebarResizeStart}
+          resizeLabel={t("chat.resizeSidebar", "调整侧栏宽度")}
         />
       )}
     </div>
