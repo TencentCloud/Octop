@@ -16,7 +16,9 @@ export interface DownloadAsset {
 export interface ChannelRelease {
   tag: string;
   releasesUrl: string;
-  assets: Partial<Record<"mac_arm" | "mac_intel" | "win_x64" | "win_arm", DownloadAsset>>;
+  assets: Partial<
+    Record<"mac_arm" | "mac_intel" | "win_x64" | "win_arm" | "linux_x64" | "linux_arm", DownloadAsset>
+  >;
 }
 
 export interface DownloadManifest {
@@ -44,12 +46,13 @@ export function manifestFromDownloadsResponse(body: unknown): DownloadManifest {
   return { client: data.client as DownloadManifest["client"] };
 }
 
-export type PlatformKey = "mac_arm" | "mac_intel" | "win_x64" | "win_arm";
+export type PlatformKey = "mac_arm" | "mac_intel" | "win_x64" | "win_arm" | "linux_x64" | "linux_arm";
 
 export function platformAssetKey(platform: NodeJS.Platform, arch: string): PlatformKey | null {
   if (platform === "darwin") return arch === "arm64" ? "mac_arm" : "mac_intel";
   if (platform === "win32") return arch === "arm64" ? "win_arm" : "win_x64";
-  return null; // Linux is not in the current manifest keys (§6.1).
+  if (platform === "linux") return arch === "arm64" ? "linux_arm" : "linux_x64";
+  return null;
 }
 
 export interface SelectedRelease {
