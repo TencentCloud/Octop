@@ -573,6 +573,7 @@ cd dashboard && npx tsc -b
 | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | 多平台 IM 通道桥接 |
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
+| [OctopLink](https://github.com/DingXiaoWu0512/OctopLink) | 社区鸿蒙原生客户端 — ArkTS 应用，支持流式对话、工作区、记忆、语音交互 |
 
 ## 💬 社区
 

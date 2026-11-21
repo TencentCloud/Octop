@@ -577,6 +577,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
 | [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
+| [OctopLink](https://github.com/DingXiaoWu0512/OctopLink) | Community HarmonyOS client — ArkTS app with streaming chat, workspace, memory, voice |
 
 ## 💬 Community
 
