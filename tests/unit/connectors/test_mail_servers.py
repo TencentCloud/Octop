@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -88,11 +89,11 @@ def test_imap_login_sends_id_and_uses_corrected_host() -> None:
         )
 
     assert imap is fake_imap
-    ssl_ctor.assert_called_once_with(
-        "imap.126.com",
-        993,
-        timeout=mail_servers.IMAP_CONNECT_TIMEOUT,
-    )
+    ssl_ctor.assert_called_once()
+    assert ssl_ctor.call_args.args == ("imap.126.com", 993)
+    assert ssl_ctor.call_args.kwargs["timeout"] == mail_servers.IMAP_CONNECT_TIMEOUT
+    assert ssl_ctor.call_args.kwargs["ssl_context"].verify_mode == ssl.CERT_REQUIRED
+    assert ssl_ctor.call_args.kwargs["ssl_context"].check_hostname is True
     fake_imap._simple_command.assert_called_once()
     assert fake_imap._simple_command.call_args[0][0] == "ID"
     fake_imap.login.assert_called_once_with("user@126.com", "auth-code")

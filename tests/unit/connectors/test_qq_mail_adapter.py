@@ -11,6 +11,7 @@ serializable``.
 from __future__ import annotations
 
 import json
+import ssl
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -23,6 +24,40 @@ _CREDS: dict[str, Any] = {
     "password": "auth-code",
     "imap_host": "imap.example.com",
 }
+
+
+def _assert_server_verification_enabled(context: ssl.SSLContext) -> None:
+    assert context.verify_mode == ssl.CERT_REQUIRED
+    assert context.check_hostname is True
+
+
+def test_imap_login_uses_verified_tls_context() -> None:
+    fake = MagicMock(capabilities=[])
+
+    with patch(
+        "octop.infra.connectors.gateway.adapters.qq_mail.imaplib.IMAP4_SSL",
+        return_value=fake,
+    ) as imap_factory:
+        qq_mail._imap_login(_CREDS)
+
+    _assert_server_verification_enabled(imap_factory.call_args.kwargs["ssl_context"])
+
+
+def test_send_email_uses_verified_tls_context() -> None:
+    fake = MagicMock()
+    fake.__enter__.return_value = fake
+
+    with patch(
+        "octop.infra.connectors.gateway.adapters.qq_mail.smtplib.SMTP",
+        return_value=fake,
+    ):
+        qq_mail._email_send(
+            _CREDS,
+            {"to": "recipient@example.com", "subject": "Test", "body": "Body"},
+        )
+
+    context = fake.starttls.call_args.kwargs["context"]
+    _assert_server_verification_enabled(context)
 
 
 def _fake_imap_with_messages(messages: dict[bytes, bytes]) -> MagicMock:
