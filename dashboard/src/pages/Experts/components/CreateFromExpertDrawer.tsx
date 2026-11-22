@@ -231,8 +231,12 @@ export default function CreateFromExpertDrawer({
   onCreated,
 }: CreateFromExpertDrawerProps) {
   const { t } = useTranslation();
-  const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
-  const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
+  const currentUser = useCurrentUser();
+  const allowedBackendTypes = currentUser?.allowed_backend_types;
+  const createBackendChoice = defaultCreateBackendChoice(
+    allowedBackendTypes,
+    currentUser?.default_backend_type,
+  );
   const [form] = Form.useForm<
     {
       name: string;
