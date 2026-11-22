@@ -38,6 +38,7 @@ from octop.infra.agents.providers.probe import (
 from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import (
+    ClearedAgentPin,
     clear_stale_pins_for_provider,
     merge_default_model_extra,
     merge_provider_purpose_extra,
@@ -517,18 +518,32 @@ async def admin_patch_provider(
         provider_id,
         **_provider_patch_updates(body, current_extra_json=row.extra_json),
     )
-    if body.models is not None:
-        clear_stale_pins_for_provider(
+    cleared_agents: list[ClearedAgentPin] = []
+    # An empty saved list means the refresh did not return usable models, not
+    # that every model was removed. Passing it to the cleanup would reset every
+    # pin on this provider to AUTO (issue #2976), so keep the existing pins.
+    if body.models:
+        cleared_agents = clear_stale_pins_for_provider(
             agent_repo=server.services.agent_repo,
             settings_repo=server.services.settings_repo,
             provider_name=row.name,
             models=body.models,
         )
+        if cleared_agents:
+            logger.warning(
+                "Provider %s: %d expert(s) moved to AUTO because their model is no "
+                "longer enabled: %s",
+                row.name,
+                len(cleared_agents),
+                ", ".join(f"{pin['name']} ({pin['old_model']})" for pin in cleared_agents),
+            )
     if server.app_runtime and _patch_requires_provider_rehydrate(body):
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
-    return _annotate_provider_models(
+    result = _annotate_provider_models(
         server, _public_row(server.services.provider_repo.get(provider_id))
     )
+    result["cleared_agents"] = cleared_agents
+    return result
 
 
 @admin_router.delete("/{provider_id}", status_code=204)
