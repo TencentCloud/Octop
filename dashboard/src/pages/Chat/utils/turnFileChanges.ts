@@ -27,6 +27,8 @@ const LINE_DIFF_CAP = 400;
 export interface TurnFileChange {
   /** Path passed to the file tab. Host-absolute tool paths stay absolute. */
   openPath: string;
+  /** Harness-recorded checkpoint path when server stats matched this row. */
+  checkpointPath?: string;
   /** Workspace-relative path when we can tell; otherwise ``openPath``. */
   displayPath: string;
   agentId: string | null;
