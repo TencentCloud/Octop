@@ -85,3 +85,16 @@ export function toDockWorkspaceApiPath(raw: string): string {
   if (!normalized) return "";
   return toWorkspaceApiPath(normalized);
 }
+
+/**
+ * Extract ``agents/<id>/`` from a host path / download URL.
+ * Team members often write under the host workspace absolute path; open I/O
+ * must use that embedded id, not the speaker id (otherwise host-path guard
+ * returns FORBIDDEN).
+ */
+export function agentIdFromWorkspacePath(path: string): string | null {
+  const raw = normalizeIoPath(path);
+  if (!raw) return null;
+  const match = raw.replace(/\\/g, "/").match(/\/agents\/([A-Za-z0-9]+)\//i);
+  return match?.[1] ?? null;
+}

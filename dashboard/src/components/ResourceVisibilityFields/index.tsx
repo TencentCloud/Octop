@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Form, Radio, Select, Tag } from "antd";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import cx from "classnames";
 import {
   userGroupsApi,
   type ResourceVisibilityMode,
   type UserGroup,
 } from "../../api/modules/userGroups";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import { ResourceAvatar, ROLE_AVATAR_PRESETS } from "../AvatarPicker";
 import {
   isVisibilityControlVisible,
@@ -148,6 +151,7 @@ export function ResourceVisibilityFields({
   className,
 }: FieldsProps) {
   const { t } = useTranslation();
+  const user = useCurrentUser();
   const audience = useResourceAudience();
   const groups = audience.groups;
   const byId = useMemo(
@@ -156,6 +160,7 @@ export function ResourceVisibilityFields({
   );
   const disabledLabel = t("adminUsers.statusDisabled");
   const showGroups = showGroupVisibilityOption(audience, visibility);
+  const canManageGroups = userCan(user, "user_groups");
 
   if (!isVisibilityControlVisible(audience, { allowOwner, visibility })) {
     return null;
@@ -231,6 +236,11 @@ export function ResourceVisibilityFields({
           }}
           onChange={(ids) => onChange({ visibility, groupIds: ids })}
         />
+      ) : null}
+      {visibility === "groups" && canManageGroups ? (
+        <Link className={styles.manageGroups} to="/admin/users?tab=groups">
+          {t("resourceVisibility.manageGroups")}
+        </Link>
       ) : null}
     </div>
   );

@@ -6591,6 +6591,7 @@
     "groups": "指定用户分组",
     "groupPlaceholder": "至少选择一个用户分组",
     "needGroup": "至少选择一个用户分组",
+    "manageGroups": "管理用户分组",
     "groupAccess": "分组使用",
     "hideGroupAccess": "收起分组使用",
     "groupAccessHint": "默认所有人可用。需要限制时，指定用户分组；管理员不受限制。"

@@ -7,6 +7,7 @@
 import { isFileToolName } from "../constants";
 import type { ChatMessage } from "../hooks/sseHelpers";
 import {
+  agentIdFromWorkspacePath,
   canonicalizeDockFilePath,
   isHostAbsolutePath,
   normalizeDockFilePath,
@@ -246,8 +247,16 @@ function preferOpenPath(current: string, next: string): string {
   return current;
 }
 
-function ownerId(message: ChatMessage, agentId?: string | null): string | null {
-  return message.speakerAgentId?.trim() || agentId?.trim() || null;
+function ownerId(
+  _message: ChatMessage,
+  agentId?: string | null,
+  path?: string | null,
+): string | null {
+  // Team member turns write into the room host workspace by default. Prefer:
+  // 1) agents/<id>/ embedded in an absolute path (authoritative when present)
+  // 2) the room/host agentId passed by the chat (not the speaker)
+  const fromPath = path ? agentIdFromWorkspacePath(path) : null;
+  return fromPath?.trim() || agentId?.trim() || null;
 }
 
 function fileKey(path: string, agentId: string | null): string {
@@ -293,12 +302,12 @@ export function summarizeTurnFileChanges(
   };
 
   for (const message of messages) {
-    const owner = ownerId(message, agentId);
     const base = toolBase(message.toolData?.name);
     const isWrite = base === "write_file";
     const isEdit = base === "edit_file";
     if ((isWrite || isEdit || isFileToolName(base)) && message.toolData) {
       const path = pathFromTool(message.toolData.arguments);
+      const owner = ownerId(message, agentId, path);
       const pending = message.status === "streaming";
       const failed = toolFailed(message);
       if (path && !failed) {
@@ -345,7 +354,7 @@ export function summarizeTurnFileChanges(
     }
     for (const edited of message.editedFiles ?? []) {
       const path = edited.trim();
-      if (path) ensure(path, owner);
+      if (path) ensure(path, ownerId(message, agentId, path));
     }
   }
 

@@ -85,6 +85,7 @@ import {
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
+import { isRemoteShadowAgent } from "../../utils/remoteExpert";
 import { isTeamAgent, teamMemberChatOption } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
 import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
@@ -152,9 +153,9 @@ function ChatPageInner() {
     agentId: string;
     threadId: string;
   } | null>(null);
-  const shareLinks = publicShareAvailable();
   const openShare = useCallback((threadId: string, agentId?: string | null) => {
     if (!publicShareAvailable() || !agentId || !threadId) return;
+    if (isRemoteShadowAgent({ agent_id: agentId })) return;
     setShareTarget({ agentId, threadId });
   }, []);
   const [browserRecording, setBrowserRecording] = useState(false);
@@ -225,6 +226,9 @@ function ChatPageInner() {
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
   );
+  // Cloud/bridge shadows already live elsewhere — no local public share URL.
+  const shareLinks =
+    publicShareAvailable() && !isRemoteShadowAgent(activeAgent ?? {});
   const agentChatReady = isAgentChatReady(activeAgent?.state, activeAgent);
   const trajectoryEnabled =
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;

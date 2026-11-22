@@ -160,18 +160,18 @@ Here are our mid-to-long term plans:
 - [x] **Shared resource pool** — a central pool of skills and sub-agents that any user can drop into a new expert without rebuilding from scratch.
 - [x] **Expert sharing** — publish your experts to other users in the same deployment, so good configurations are reused instead of recreated.
 - [x] **PC client** — native desktop apps for Windows / macOS / Linux alongside the web dashboard and IM channels.
+- [x] **Plugin marketplace** — live on [octop.cloud](https://octop.cloud); discover, install, and update third-party plugins from within Octop.
 
 **In progress**
 - [ ] **AgentTeams** *(Beta)* — let one coordinator autonomously schedule and orchestrate multiple experts to tackle multi-step tasks.
 - [ ] **Mobile client** *(closed beta)* — native mobile apps currently in internal testing.
+- [ ] **Managed Agents** *(Beta)* — shipped as managed experts and now in Beta: platform-hosted agent lifecycle (provision, scale, and operate) without running the full self-hosted stack yourself.
+- [ ] **Cloud–edge continuum** *(closed beta)* — cloud brain, local hands: run Octop on-device as the execution end while the cloud orchestrates and controls it.
 
 **Planned**
 - [ ] **Browser & terminal polishing** — browser skill *recording* (capture a workflow and replay it as a skill) and a more capable terminal AI assistant.
 - [ ] **Self-evolution** — automatically distill everyday conversations into reusable skills, so the assistant grows with you.
-- [ ] **Managed Agents** — platform-hosted agent lifecycle (provision, scale, and operate agents without managing the full self-hosted stack yourself).
 - [ ] **Project** — project-scoped workspaces that group agents, files, and conversations around a shared goal.
-- [ ] **Cloud–edge continuum** — run Octop locally while offloading selected tasks to the cloud, so light work stays on-device and heavier jobs use remote capacity when you need it.
-- [ ] **Plugin marketplace** — a curated market to discover, install, and update third-party plugins without leaving Octop.
 - [ ] **Conversational control plane** — deepen Octop’s own skills so chat can cover the full dashboard surface: create experts, wire channels, manage knowledge bases, and scaffold plugins end-to-end.
 
 This roadmap may shift as the community grows; treat it as indicative only.
@@ -304,7 +304,7 @@ The Helm chart for a shared PostgreSQL and multiple replicas is documented in [d
 | `OCTOP_PORT` | `8088` | HTTP listen port |
 | `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (Docker bootstrap). Valid → create admin; unset or rejected → setup wizard |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
-| `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
+| `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount). Unset keeps the invoking user's `~/.octop`; no migration on upgrade |
 
 See [`.env.example`](.env.example) for the full list.
 

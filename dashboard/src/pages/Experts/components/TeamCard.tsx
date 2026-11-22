@@ -4,10 +4,12 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown, Popconfirm, Switch, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 
 import {
   AlertCircle,
   ChevronRight,
+  Copy,
   FolderOpen,
   MessageSquare,
   MoreHorizontal,
@@ -279,6 +281,12 @@ export const TeamCard = memo(function TeamCard({
     navigate(`/chat/${agent.agent_id}`);
   }, [agent.agent_id, setActiveAgent, navigate]);
 
+  const copyTeamId = useCallback(async () => {
+    const ok = await copyText(agent.agent_id);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
+  }, [agent.agent_id, t]);
+
   return (
     <>
       <div className={cx(styles.agentCard2, styles.teamCard)}>
@@ -313,6 +321,23 @@ export const TeamCard = memo(function TeamCard({
                   style={!meta.spin ? { background: meta.color } : undefined}
                   aria-label={formatAgentState(localState, t)}
                 />
+              </Tooltip>
+            </div>
+            <div className={styles.agentCardIdRow}>
+              <Tooltip title={t("experts.copyTeamId")}>
+                <button
+                  type="button"
+                  className={styles.agentCardId}
+                  onClick={() => void copyTeamId()}
+                >
+                  <span className={styles.agentCardIdLabel}>
+                    {t("experts.teamId")}
+                  </span>
+                  <span className={styles.agentCardIdValue}>
+                    {agent.agent_id}
+                  </span>
+                  <Copy size={11} className={styles.agentCardIdIcon} />
+                </button>
               </Tooltip>
             </div>
           </div>
