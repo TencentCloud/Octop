@@ -51,7 +51,11 @@ import {
   type ConversationMode,
 } from "../../Chat/utils/conversationMode";
 import type { ExpertSummary } from "./ExpertCard";
-import { groupExpertFiles, type NamedFileContent } from "./expertFileGroups";
+import {
+  filterConfigMdFiles,
+  groupExpertFiles,
+  type NamedFileContent,
+} from "./expertFileGroups";
 import { metaForFile } from "./iconForName";
 import {
   buildBackendSpec,
@@ -101,7 +105,13 @@ import {
 } from "./composerFiles";
 import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
 import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
-import ExpertDrawerCollapsible from "./expertDrawer/ExpertDrawerCollapsible";
+import {
+  runtimeSettingsFields,
+  hasRuntimeSettingsErrors,
+} from "./expertDrawer/runtimeSettingsFields";
+import ExpertSettingsDrawer from "./expertDrawer/ExpertSettingsDrawer";
+import { expertDrawerWidth } from "./expertDrawer/expertDrawerWidth";
+import ExpertResourceRow from "./expertDrawer/ExpertResourceRow";
 import ExpertFilePreviewList from "./expertDrawer/ExpertFilePreviewList";
 import ExpertFieldLabel from "./expertDrawer/ExpertFieldLabel";
 import { SECTION_IDS } from "./expertDrawer/sectionIds";
@@ -229,6 +239,7 @@ export default function CreateFromExpertDrawer({
   onClose,
   onCreated,
 }: CreateFromExpertDrawerProps) {
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const { t } = useTranslation();
   const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
   const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
@@ -270,6 +281,8 @@ export default function CreateFromExpertDrawer({
   >([]);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [subagentPickerOpen, setSubagentPickerOpen] = useState(false);
+  const [addingPromptFile, setAddingPromptFile] = useState(false);
+  const newPromptFiles = useRef(new Set<string>());
   const [localEditPath, setLocalEditPath] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
@@ -359,52 +372,52 @@ export default function CreateFromExpertDrawer({
     setPendingHubSkills([]);
     setPendingCopySkills([]);
     setLocalEditPath(null);
+    setAddingPromptFile(false);
+    newPromptFiles.current.clear();
     setSubagentPickerOpen(false);
     setDetailPrompts(null);
-    if (source.kind === "market") {
-      setFileContents(ensurePromptFiles([]));
-      // Baseline the editor placeholders too — otherwise diffComposerFiles
-      // reads the untouched empty AGENTS.md stub as a user edit and the
-      // create request overrides the template-seeded file with "".
-      setOriginalFileContents(ensurePromptFiles([]));
-      setDetailLoading(false);
-      return;
-    }
-
+    setFileContents([]);
+    setOriginalFileContents([]);
     setDetailLoading(true);
-    const detailPath =
-      source.kind === "builtin"
-        ? `/experts/${encodeURIComponent(source.expert.id)}`
-        : `/experts/published/${encodeURIComponent(source.expert.id)}`;
-    request<ExpertDetail>(detailPath)
-      .then((data) => {
-        if (cancelled) return;
-        const files = data.file_contents ?? [];
-        setFileContents(ensurePromptFiles(files));
-        setOriginalFileContents(ensurePromptFiles(files));
+    const templateDetail =
+      source.kind === "market"
+        ? Promise.resolve<ExpertDetail>({})
+        : request<ExpertDetail>(
+            source.kind === "builtin"
+              ? `/experts/${encodeURIComponent(source.expert.id)}`
+              : `/experts/published/${encodeURIComponent(source.expert.id)}`,
+          );
+
+    void Promise.allSettled([
+      request<FileContent[]>("/experts/default-prompt-files"),
+      templateDetail,
+    ]).then(([defaults, detail]) => {
+      if (cancelled) return;
+      const data = detail.status === "fulfilled" ? detail.value : {};
+      const files = new Map(
+        (defaults.status === "fulfilled" ? defaults.value : []).map((file) => [
+          file.name,
+          file,
+        ]),
+      );
+      for (const file of data.file_contents ?? []) files.set(file.name, file);
+      const initialFiles = ensurePromptFiles([...files.values()]);
+      setFileContents(initialFiles);
+      setOriginalFileContents(initialFiles);
+      if (data.quick_prompts)
         setDetailPrompts(normalizeQuickPrompts(data.quick_prompts));
-        const welcome = data.welcome_message;
-        const welcomeText = pickLocale(welcome, lang);
-        if (welcomeText) {
-          form.setFieldsValue({
-            welcome_message: welcomeText,
-          });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFileContents([]);
-          setOriginalFileContents([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
+      const welcomeText = pickLocale(data.welcome_message, lang);
+      if (welcomeText) form.setFieldsValue({ welcome_message: welcomeText });
+      if (defaults.status === "rejected" || detail.status === "rejected") {
+        message.warning(t("experts.loadDetailFailed"));
+      }
+      setDetailLoading(false);
+    });
 
     return () => {
       cancelled = true;
     };
-  }, [open, source, sourceKey, lang, form, createBackendChoice]);
+  }, [open, source, sourceKey, lang, form, createBackendChoice, t]);
 
   useEffect(() => {
     if (!open) return;
@@ -428,7 +441,10 @@ export default function CreateFromExpertDrawer({
 
   const handleCreate = async () => {
     if (!source) return;
-    const values = await form.validateFields().catch(() => undefined);
+    const values = await form.validateFields().catch(() => {
+      if (hasRuntimeSettingsErrors(form)) setRuntimeOpen(true);
+      return undefined;
+    });
     if (!values) return;
     const stored = form.getFieldsValue(true) as {
       welcome_message?: string;
@@ -500,6 +516,7 @@ export default function CreateFromExpertDrawer({
       const composerPatch = diffComposerFiles(
         originalFileContents,
         fileContents,
+        newPromptFiles.current,
       );
       const welcomeSnap = welcomeConfigRef.current?.getSnapshot();
       const pageConfigPrompts =
@@ -636,8 +653,9 @@ export default function CreateFromExpertDrawer({
   );
   const createBlocked = submitting || hasNoModels;
 
-  const { configFiles, skillGroups, subagentFiles } =
-    groupExpertFiles(fileContents);
+  const { configFiles, skillGroups, subagentFiles } = groupExpertFiles(
+    ensurePromptFiles(fileContents),
+  );
   const selectedSkillSlugs = useMemo(() => {
     const slugs = new Set(skillGroups.map((group) => group.name));
     for (const skill of pendingHubSkills) slugs.add(skill.skill_name);
@@ -691,12 +709,12 @@ export default function CreateFromExpertDrawer({
       })
     : "";
 
-  const configPreviewFiles = configFiles.map((f) => ({
-    key: f.name,
-    label: metaForFile(f.name, t).label,
-    path: f.name,
-    content: f.content,
-  }));
+  const orderedConfigNames = new Set([
+    ...filterConfigMdFiles(configFiles.map(({ name }) => ({ path: name }))).map(
+      (path) => path.slice(1),
+    ),
+    ...configFiles.map(({ name }) => name),
+  ]);
 
   const skillPreviewGroups = skillGroups.map((group) => ({
     key: group.name,
@@ -726,7 +744,7 @@ export default function CreateFromExpertDrawer({
     <Drawer
       open={open}
       title={title}
-      width={475}
+      width={expertDrawerWidth}
       onClose={onClose}
       destroyOnHidden
       className={`${styles.expertDrawer} ${expertDrawerStyles.expertDrawer}`}
@@ -770,6 +788,7 @@ export default function CreateFromExpertDrawer({
         <ExpertDrawerSection id={SECTION_IDS.identity}>
           <Form.Item
             label={t("experts.avatar")}
+            tooltip={t("experts.avatarHint")}
             className={avatarPickerStyles.formItem}
           >
             <ExpertAvatarPicker
@@ -872,7 +891,7 @@ export default function CreateFromExpertDrawer({
             label={t("experts.agentDescription")}
             kind="expert.description"
           >
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
+            <Input.TextArea autoSize={{ minRows: 2 }} />
           </ExpertTextAssistField>
           <AgentBackendFields
             backends={backends}
@@ -952,9 +971,52 @@ export default function CreateFromExpertDrawer({
               disabled={detailLoading || submitting}
             />
           </Form.Item>
-          <ExpertDrawerCollapsible title={t("nav.moreSettings")} prominent>
+          <ExpertSettingsDrawer
+            title={t("experts.expertFilesAccessTitle")}
+            summary={t("experts.expertFilesAccessSummary")}
+          >
+            <Form.Item
+              label={
+                <ExpertFieldLabel
+                  label={t("experts.mdFilesTitle")}
+                  tooltip={t("experts.promptFilesHint")}
+                  action={
+                    !detailLoading ? t("experts.addPromptFile") : undefined
+                  }
+                  onAction={() => setAddingPromptFile(true)}
+                />
+              }
+            >
+              {detailLoading ? (
+                <div style={{ textAlign: "center", padding: "16px 0" }}>
+                  <Spin size="small" />
+                </div>
+              ) : (
+                <div className={expertDrawerStyles.rowList}>
+                  {[...orderedConfigNames].map((name) => {
+                    const meta = metaForFile(name, t);
+                    return (
+                      <ExpertResourceRow
+                        key={name}
+                        icon={meta.icon}
+                        iconStyle={{
+                          color: meta.color,
+                          background: `${meta.color}1a`,
+                        }}
+                        label={meta.label}
+                        secondary={name}
+                        hint={t("experts.editFile")}
+                        onOpen={() => setLocalEditPath(name)}
+                        menuLabel={t("common.more")}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </Form.Item>
             {/* Skills list (template preview + pending installs), inline previews kept */}
             <Form.Item
+              tooltip={t("experts.skillFilesEditHint")}
               label={
                 <ExpertFieldLabel
                   label={t("experts.skillFilesTitle", {
@@ -965,9 +1027,6 @@ export default function CreateFromExpertDrawer({
                 />
               }
             >
-              <p className={expertDrawerStyles.hint}>
-                {t("experts.skillFilesEditHint")}
-              </p>
               {detailLoading ? (
                 <div style={{ textAlign: "center", padding: "16px 0" }}>
                   <Spin size="small" />
@@ -1053,6 +1112,7 @@ export default function CreateFromExpertDrawer({
 
             {/* Subagents list (template preview), inline previews kept */}
             <Form.Item
+              tooltip={t("experts.subagentFilesEditHint")}
               label={
                 <ExpertFieldLabel
                   label={t("experts.subagentFilesTitle", {
@@ -1063,9 +1123,6 @@ export default function CreateFromExpertDrawer({
                 />
               }
             >
-              <p className={expertDrawerStyles.hint}>
-                {t("experts.subagentFilesEditHint")}
-              </p>
               {subagentFiles.length === 0 ? (
                 <div className={expertDrawerStyles.rowEmpty}>
                   {t("experts.noSubagentFiles")}
@@ -1115,26 +1172,6 @@ export default function CreateFromExpertDrawer({
                 ))
               )}
             </Form.Item>
-            <Form.Item label={t("experts.mdFilesTitle")}>
-              <p className={expertDrawerStyles.hint}>
-                {t("experts.mdFilesEditHint")}
-              </p>
-              {detailLoading ? (
-                <div style={{ textAlign: "center", padding: "16px 0" }}>
-                  <Spin size="small" />
-                </div>
-              ) : configPreviewFiles.length === 0 ? (
-                <div className={expertDrawerStyles.rowEmpty}>
-                  {t("experts.noWorkspaceFiles")}
-                </div>
-              ) : (
-                <ExpertFilePreviewList
-                  files={configPreviewFiles}
-                  onEdit={(key) => setLocalEditPath(key)}
-                  editLabel={t("experts.editFile")}
-                />
-              )}
-            </Form.Item>
             {sharingAvailable ? (
               <ResourceVisibilityFormItem
                 allowOwner
@@ -1150,38 +1187,60 @@ export default function CreateFromExpertDrawer({
               />
             ) : null}
             <AgentTrajectoryField />
-          </ExpertDrawerCollapsible>
-          <ExpertDrawerCollapsible title={t("experts.advancedOptions")}>
-            <AgentAdvancedConfigFields />
-          </ExpertDrawerCollapsible>
+            <SkillSourcePickerModal
+              open={skillPickerOpen}
+              excludeSlugs={selectedSkillSlugs}
+              onClose={() => setSkillPickerOpen(false)}
+              onPickHub={handlePickHubSkill}
+              onPickAgentSkill={handlePickAgentSkill}
+            />
+            <SubagentSourcePickerModal
+              open={subagentPickerOpen}
+              excludeSlugs={selectedSubagentSlugs}
+              onClose={() => setSubagentPickerOpen(false)}
+              onPick={handlePickCatalogSubagent}
+            />
+            <FileEditModal
+              open={!!localEditPath || addingPromptFile}
+              filePath={localEditPath}
+              createLocalFile={
+                addingPromptFile
+                  ? {
+                      existingNames: [...orderedConfigNames],
+                      onCreate: (name, content) => {
+                        newPromptFiles.current.add(name);
+                        setFileContents((prev) =>
+                          upsertComposerFile(prev, { name, content }),
+                        );
+                      },
+                    }
+                  : undefined
+              }
+              localValue={localEditFile?.content ?? ""}
+              onClose={() => {
+                setLocalEditPath(null);
+                setAddingPromptFile(false);
+              }}
+              onSaved={() => undefined}
+              onLocalSave={(content) => {
+                if (!localEditPath) return;
+                setFileContents((prev) =>
+                  upsertComposerFile(prev, { name: localEditPath, content }),
+                );
+              }}
+            />
+          </ExpertSettingsDrawer>
+          <ExpertSettingsDrawer
+            title={t("experts.advancedOptions")}
+            summary={t("experts.runtimeSettingsSummary")}
+            fields={runtimeSettingsFields}
+            open={runtimeOpen}
+            onOpenChange={setRuntimeOpen}
+          >
+            <AgentAdvancedConfigFields grouped />
+          </ExpertSettingsDrawer>
         </ExpertDrawerSection>
       </Form>
-      <SkillSourcePickerModal
-        open={skillPickerOpen}
-        excludeSlugs={selectedSkillSlugs}
-        onClose={() => setSkillPickerOpen(false)}
-        onPickHub={handlePickHubSkill}
-        onPickAgentSkill={handlePickAgentSkill}
-      />
-      <SubagentSourcePickerModal
-        open={subagentPickerOpen}
-        excludeSlugs={selectedSubagentSlugs}
-        onClose={() => setSubagentPickerOpen(false)}
-        onPick={handlePickCatalogSubagent}
-      />
-      <FileEditModal
-        open={!!localEditPath}
-        filePath={localEditPath}
-        localValue={localEditFile?.content ?? ""}
-        onClose={() => setLocalEditPath(null)}
-        onSaved={() => undefined}
-        onLocalSave={(content) => {
-          if (!localEditPath) return;
-          setFileContents((prev) =>
-            upsertComposerFile(prev, { name: localEditPath, content }),
-          );
-        }}
-      />
     </Drawer>
   );
 }

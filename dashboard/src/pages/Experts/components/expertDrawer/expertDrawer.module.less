@@ -72,6 +72,10 @@
 }
 
 @media (max-width: 767px) {
+  :global(:root) {
+    --octop-expert-drawer-width: 100vw;
+  }
+
   .expertDrawer {
     --ed-fs-body: 15px;
     --ed-fs-aux: 13px;
@@ -433,7 +437,23 @@
 }
 
 .fieldLabelText {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
+}
+
+.fieldLabelHelp {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: help;
 }
 
 .fieldLabelAction {

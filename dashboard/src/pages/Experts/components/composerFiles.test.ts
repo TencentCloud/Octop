@@ -39,6 +39,22 @@ describe("diffComposerFiles", () => {
     );
   });
 
+  it("includes explicitly created empty files without overriding placeholders", () => {
+    expect(
+      diffComposerFiles(
+        [],
+        [
+          { name: "AGENTS.md", content: "" },
+          { name: "WORKFLOW.md", content: "" },
+        ],
+        new Set(["WORKFLOW.md"]),
+      ),
+    ).toEqual({
+      file_overrides: [{ name: "WORKFLOW.md", content: "" }],
+      omit_files: [],
+    });
+  });
+
   it("reports a stub filled in by the user, and clearing a baseline file", () => {
     expect(
       diffComposerFiles([], [{ name: "AGENTS.md", content: "rules" }]),

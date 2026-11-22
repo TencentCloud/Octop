@@ -50,7 +50,8 @@ import {
 } from "./welcomeManifest";
 import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
 import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
-import ExpertDrawerCollapsible from "./expertDrawer/ExpertDrawerCollapsible";
+import ExpertSettingsDrawer from "./expertDrawer/ExpertSettingsDrawer";
+import { expertDrawerWidth } from "./expertDrawer/expertDrawerWidth";
 import ExpertFilePreviewList from "./expertDrawer/ExpertFilePreviewList";
 import { SECTION_IDS } from "./expertDrawer/sectionIds";
 import expertDrawerStyles from "./expertDrawer/expertDrawer.module.less";
@@ -330,7 +331,7 @@ export default function ManagedDrawer({
       }
       open={open}
       onClose={onClose}
-      width={475}
+      width={expertDrawerWidth}
       destroyOnHidden
       className={`${styles.expertDrawer} ${expertDrawerStyles.expertDrawer}`}
       rootClassName={styles.expertDrawerRoot}
@@ -362,6 +363,7 @@ export default function ManagedDrawer({
         <ExpertDrawerSection id={SECTION_IDS.identity}>
           <Form.Item
             label={t("experts.avatar")}
+            tooltip={t("experts.avatarHint")}
             className={avatarPickerStyles.formItem}
           >
             <ExpertAvatarPicker
@@ -457,7 +459,7 @@ export default function ManagedDrawer({
             label={t("experts.agentDescription")}
             kind="expert.description"
           >
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
+            <Input.TextArea autoSize={{ minRows: 2 }} />
           </ExpertTextAssistField>
           <Form.Item
             name="workspace_dir"
@@ -549,11 +551,14 @@ export default function ManagedDrawer({
               disabled={saving}
             />
           </Form.Item>
-          <ExpertDrawerCollapsible title={t("nav.advancedSettings")} prominent>
-            <Form.Item label={t("experts.mdFilesTitle")}>
-              <p className={expertDrawerStyles.hint}>
-                {t("experts.mdFilesEditHint")}
-              </p>
+          <ExpertSettingsDrawer
+            title={t("experts.expertFilesAccessTitle")}
+            summary={t("experts.managedFilesAccessSummary")}
+          >
+            <Form.Item
+              label={t("experts.mdFilesTitle")}
+              tooltip={t("experts.promptFilesHint")}
+            >
               {templateState !== "ready" ? (
                 <div className={styles.welcomeConfigLoading}>
                   {templateState === "error"
@@ -583,26 +588,27 @@ export default function ManagedDrawer({
               />
             ) : null}
             <AgentTrajectoryField />
-          </ExpertDrawerCollapsible>
+            <FileEditModal
+              open={editPath !== null}
+              filePath={editPath ? `/${editPath}` : null}
+              localValue={
+                promptFiles.find((file) => file.name === editPath)?.content ??
+                ""
+              }
+              onClose={() => setEditPath(null)}
+              onSaved={() => setEditPath(null)}
+              onLocalSave={(content) => {
+                if (!editPath) return;
+                setPromptFiles((prev) =>
+                  prev.map((file) =>
+                    file.name === editPath ? { ...file, content } : file,
+                  ),
+                );
+              }}
+            />
+          </ExpertSettingsDrawer>
         </ExpertDrawerSection>
       </Form>
-      <FileEditModal
-        open={editPath !== null}
-        filePath={editPath ? `/${editPath}` : null}
-        localValue={
-          promptFiles.find((file) => file.name === editPath)?.content ?? ""
-        }
-        onClose={() => setEditPath(null)}
-        onSaved={() => setEditPath(null)}
-        onLocalSave={(content) => {
-          if (!editPath) return;
-          setPromptFiles((prev) =>
-            prev.map((file) =>
-              file.name === editPath ? { ...file, content } : file,
-            ),
-          );
-        }}
-      />
     </Drawer>
   );
 }

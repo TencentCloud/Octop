@@ -296,6 +296,7 @@ export default function AgentBackendFields({
       <Form.Item
         name="backend_choice"
         label={t("experts.backendLabel")}
+        tooltip={desc?.text}
         extra={
           !backendsLoading &&
           allowedSet &&
@@ -308,16 +309,8 @@ export default function AgentBackendFields({
                 )
                 .join(i18n.language.startsWith("zh") ? "、" : ", "),
             })
-          ) : desc ? (
-            <span className={styles.backendDesc}>
-              {desc.text}
-              {desc.warning ? (
-                <>
-                  <br />
-                  <span className={styles.backendWarning}>{desc.warning}</span>
-                </>
-              ) : null}
-            </span>
+          ) : desc?.warning ? (
+            <span className={styles.backendWarning}>{desc.warning}</span>
           ) : undefined
         }
         initialValue={
@@ -340,7 +333,7 @@ export default function AgentBackendFields({
           <Form.Item
             name="root_dir"
             label={t("experts.backendRootDir")}
-            extra={
+            tooltip={
               rootDirMode === "edit"
                 ? t("experts.backendRootDirImmutableHint")
                 : fsDefaults?.in_container
@@ -359,7 +352,7 @@ export default function AgentBackendFields({
             <Form.Item
               name="workspace_dir"
               label={t("experts.workspaceDir")}
-              extra={
+              tooltip={
                 pathLocked
                   ? t("experts.workspaceDirImmutableHint")
                   : t("experts.workspaceDirDesc")

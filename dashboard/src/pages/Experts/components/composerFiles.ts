@@ -13,6 +13,7 @@ export interface ComposerFilePatch {
 export function diffComposerFiles(
   original: NamedFileContent[],
   current: NamedFileContent[],
+  createdFiles: ReadonlySet<string> = new Set(),
 ): ComposerFilePatch {
   const origMap = new Map(original.map((file) => [file.name, file.content]));
   const currMap = new Map(current.map((file) => [file.name, file.content]));
@@ -23,7 +24,7 @@ export function diffComposerFiles(
     // An empty file with no baseline counterpart is an editor placeholder
     // (see ensurePromptFiles), not a user change. Shipping it as an override
     // would clobber the same file seeded from the expert template with "".
-    if (previous === undefined && content === "") {
+    if (previous === undefined && content === "" && !createdFiles.has(name)) {
       continue;
     }
     if (previous !== content) {

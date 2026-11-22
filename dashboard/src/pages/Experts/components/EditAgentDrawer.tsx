@@ -108,7 +108,12 @@ import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
 import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
-import ExpertDrawerCollapsible from "./expertDrawer/ExpertDrawerCollapsible";
+import {
+  runtimeSettingsFields,
+  hasRuntimeSettingsErrors,
+} from "./expertDrawer/runtimeSettingsFields";
+import ExpertSettingsDrawer from "./expertDrawer/ExpertSettingsDrawer";
+import { expertDrawerWidth } from "./expertDrawer/expertDrawerWidth";
 import ExpertResourceRow from "./expertDrawer/ExpertResourceRow";
 import ExpertFieldLabel from "./expertDrawer/ExpertFieldLabel";
 import { SECTION_IDS } from "./expertDrawer/sectionIds";
@@ -255,10 +260,12 @@ function EditAgentDrawerBody({
   onSaveReady,
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const { t, i18n } = useTranslation();
   const { modal, message } = App.useApp();
   const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
+  const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [form] = Form.useForm<EditFormValues>();
   const watchedRunner = Form.useWatch("runner", form);
@@ -528,7 +535,11 @@ function EditAgentDrawerBody({
   }, [agent.agent_id]);
 
   const handleSave = useCallback(async () => {
-    const values = await form.validateFields();
+    const values = await form.validateFields().catch(() => {
+      if (hasRuntimeSettingsErrors(form)) setRuntimeOpen(true);
+      return undefined;
+    });
+    if (!values) return;
     if (values.backend_choice === "composite") {
       const pathError = validatePathMappings(pathMappings, t);
       if (pathError) {
@@ -923,6 +934,7 @@ function EditAgentDrawerBody({
             <ExpertDrawerSection id={SECTION_IDS.identity}>
               <Form.Item
                 label={t("experts.avatar")}
+                tooltip={t("experts.avatarHint")}
                 className={avatarPickerStyles.formItem}
               >
                 <ExpertAvatarPicker
@@ -1030,7 +1042,7 @@ function EditAgentDrawerBody({
                 label={t("experts.agentDescription")}
                 kind="expert.description"
               >
-                <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
+                <Input.TextArea autoSize={{ minRows: 2 }} />
               </ExpertTextAssistField>
               {agent.kind === "managed" ? null : (
                 <>
@@ -1188,16 +1200,27 @@ function EditAgentDrawerBody({
                   disabled={saving}
                 />
               </Form.Item>
-              <ExpertDrawerCollapsible title={t("nav.moreSettings")} prominent>
+              <ExpertSettingsDrawer
+                title={t("experts.expertFilesAccessTitle")}
+                summary={t(
+                  agent.kind === "managed"
+                    ? "experts.managedWorkspaceAccessSummary"
+                    : "experts.workspaceAccessSummary",
+                )}
+                open={workspaceSettingsOpen}
+                onOpenChange={setWorkspaceSettingsOpen}
+              >
                 {chatReady && agent.kind !== "managed" ? (
                   <Form.Item
                     label={
                       <ExpertFieldLabel
-                        label={t("experts.configFiles", {
-                          count: workspaceFiles.length,
-                        })}
+                        label={t("experts.mdFilesTitle")}
+                        tooltip={t("experts.promptFilesHint")}
                         action={t("experts.openWorkspace")}
-                        onAction={() => setWorkspaceDrawerOpen(true)}
+                        onAction={() => {
+                          setWorkspaceSettingsOpen(false);
+                          setWorkspaceDrawerOpen(true);
+                        }}
                       />
                     }
                   >
@@ -1405,11 +1428,44 @@ function EditAgentDrawerBody({
                     onUpdatePathMapping={updatePathMapping}
                   />
                 )}
-              </ExpertDrawerCollapsible>
+                <SubagentCatalogDrawer
+                  agentId={agent.agent_id}
+                  agentState={agent.state}
+                  open={subagentCatalogOpen}
+                  installedSlugs={installedSubagentSlugs}
+                  onClose={() => setSubagentCatalogOpen(false)}
+                  onInstalled={() => {
+                    void reloadSubagents();
+                  }}
+                />
+                <SkillCatalogDrawer
+                  agentId={agent.agent_id}
+                  open={skillCatalogOpen}
+                  onClose={() => {
+                    setSkillCatalogOpen(false);
+                    void reloadSkills();
+                  }}
+                />
+                <FileEditModal
+                  open={fileModalOpen}
+                  agentId={agent.agent_id}
+                  filePath={editingFile}
+                  onClose={() => setFileModalOpen(false)}
+                  onSaved={() => {
+                    /* file saved */
+                  }}
+                />
+              </ExpertSettingsDrawer>
               {agent.kind === "managed" ? null : (
-                <ExpertDrawerCollapsible title={t("experts.advancedOptions")}>
-                  <AgentAdvancedConfigFields />
-                </ExpertDrawerCollapsible>
+                <ExpertSettingsDrawer
+                  title={t("experts.advancedOptions")}
+                  summary={t("experts.runtimeSettingsSummary")}
+                  fields={runtimeSettingsFields}
+                  open={runtimeOpen}
+                  onOpenChange={setRuntimeOpen}
+                >
+                  <AgentAdvancedConfigFields grouped />
+                </ExpertSettingsDrawer>
               )}
             </ExpertDrawerSection>
           </Form>
@@ -1419,24 +1475,6 @@ function EditAgentDrawerBody({
         agentId={agent.agent_id}
         open={workspaceDrawerOpen}
         onClose={() => setWorkspaceDrawerOpen(false)}
-      />
-      <SubagentCatalogDrawer
-        agentId={agent.agent_id}
-        agentState={agent.state}
-        open={subagentCatalogOpen}
-        installedSlugs={installedSubagentSlugs}
-        onClose={() => setSubagentCatalogOpen(false)}
-        onInstalled={() => {
-          void reloadSubagents();
-        }}
-      />
-      <SkillCatalogDrawer
-        agentId={agent.agent_id}
-        open={skillCatalogOpen}
-        onClose={() => {
-          setSkillCatalogOpen(false);
-          void reloadSkills();
-        }}
       />
       <Modal
         title={t("workspace.rename")}
@@ -1456,15 +1494,6 @@ function EditAgentDrawerBody({
           autoFocus
         />
       </Modal>
-      <FileEditModal
-        open={fileModalOpen}
-        agentId={agent.agent_id}
-        filePath={editingFile}
-        onClose={() => setFileModalOpen(false)}
-        onSaved={() => {
-          /* file saved */
-        }}
-      />
     </>
   );
 }
@@ -1487,7 +1516,7 @@ export default function EditAgentDrawer({
     <Drawer
       open={open}
       title={<EditExpertDrawerTitle agent={agent} />}
-      width={475}
+      width={expertDrawerWidth}
       onClose={onClose}
       destroyOnHidden
       className={`${styles.expertDrawer} ${expertDrawerStyles.expertDrawer}`}

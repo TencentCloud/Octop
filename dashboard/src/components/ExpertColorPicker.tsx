@@ -34,7 +34,11 @@ export default function ExpertColorPicker({
   const curated = isCurated(resolved);
 
   return (
-    <div className={styles.picker} role="group" aria-label={t("experts.color")}>
+    <div
+      className={cx(styles.picker, styles.expertPicker)}
+      role="group"
+      aria-label={t("experts.color")}
+    >
       {VALID_PALETTES.map((key) => {
         const active = resolved === key;
         const label = t(`header.palette.${key}`);

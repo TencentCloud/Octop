@@ -5,6 +5,25 @@
   gap: 4px;
 }
 
+.expertPicker {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  padding: 4px;
+
+  > .option {
+    flex: 0 1 42px;
+    min-width: 0;
+
+    .swatch {
+      max-width: calc(100% - 8px);
+      aspect-ratio: 1;
+      height: auto;
+    }
+  }
+}
+
 .option {
   width: 42px;
   height: 42px;

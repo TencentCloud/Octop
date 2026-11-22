@@ -2,12 +2,15 @@ import type { AriaAttributes, ReactNode } from "react";
 import { Button, Drawer, Space } from "antd";
 import { ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { expertDrawerWidth } from "./expertDrawerWidth";
 import styles from "./expertDrawer.module.less";
 
 interface ExpertConfigDrawerProps extends AriaAttributes {
   id?: string;
   title: string;
-  summary: string;
+  summary?: string;
+  keepMounted?: boolean;
+  onCancel?: () => void;
   open: boolean;
   disabled?: boolean;
   applyDisabled?: boolean;
@@ -22,6 +25,8 @@ export default function ExpertConfigDrawer({
   id,
   title,
   summary,
+  keepMounted = false,
+  onCancel,
   open,
   disabled,
   applyDisabled,
@@ -54,18 +59,23 @@ export default function ExpertConfigDrawer({
       <Drawer
         title={title}
         open={open}
-        onClose={onClose}
-        width="min(520px, 100vw)"
+        onClose={onCancel ?? onClose}
+        width={expertDrawerWidth}
         className={styles.expertDrawer}
-        destroyOnHidden
+        forceRender={keepMounted}
+        destroyOnHidden={!keepMounted}
         footer={
           <Space style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button onClick={onClose}>{t("common.cancel")}</Button>
+            {(!keepMounted || onCancel) && (
+              <Button onClick={onCancel ?? onClose}>
+                {t("common.cancel")}
+              </Button>
+            )}
             <Button
               type="primary"
               htmlType={formId ? "submit" : "button"}
               form={formId}
-              onClick={onApply}
+              onClick={onApply ?? (formId ? undefined : onClose)}
               disabled={applyDisabled}
             >
               {t("experts.configDone")}

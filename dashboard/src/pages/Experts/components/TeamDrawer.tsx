@@ -59,7 +59,9 @@ import {
   type TeamMemberOption,
 } from "./TeamMemberPicker";
 import TeamMembersConfig from "./TeamMembersConfig";
-import ExpertDrawerCollapsible from "./expertDrawer/ExpertDrawerCollapsible";
+import WelcomeConfig from "./WelcomeConfig";
+import ExpertSettingsDrawer from "./expertDrawer/ExpertSettingsDrawer";
+import { expertDrawerWidth } from "./expertDrawer/expertDrawerWidth";
 import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
 import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
 import ExpertFilePreviewList from "./expertDrawer/ExpertFilePreviewList";
@@ -457,7 +459,7 @@ export default function TeamDrawer({
       }
       open={open}
       onClose={onClose}
-      width={475}
+      width={expertDrawerWidth}
       destroyOnHidden
       className={`${styles.expertDrawer} ${expertDrawerStyles.expertDrawer}`}
       rootClassName={styles.expertDrawerRoot}
@@ -506,9 +508,11 @@ export default function TeamDrawer({
         <ExpertDrawerSection id={SECTION_IDS.identity}>
           <Form.Item
             label={t("experts.avatar")}
+            tooltip={t("experts.avatarHint")}
             className={avatarPickerStyles.formItem}
           >
             <ResourceAvatarPicker
+              compact
               imageUrl={imageUrl}
               presetId={presetId === "team-host" ? null : presetId}
               presets={TEAM_AVATAR_PRESETS}
@@ -640,7 +644,7 @@ export default function TeamDrawer({
             label={t("experts.agentDescription")}
             kind="team.description"
           >
-            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
+            <Input.TextArea autoSize={{ minRows: 2 }} />
           </ExpertTextAssistField>
           {mode === "create" ? backendFields : null}
           <Form.Item
@@ -691,26 +695,26 @@ export default function TeamDrawer({
         </ExpertDrawerSection>
 
         <ExpertDrawerSection id={SECTION_IDS.advanced}>
-          <ExpertDrawerCollapsible title={t("nav.advancedSettings")} prominent>
-            <ExpertTextAssistField
-              name="welcome_message"
-              label={t("experts.welcomeMessageTitle")}
-              tooltip={
-                mode === "edit"
-                  ? t("experts.editWelcomeHint")
-                  : t("experts.createWelcomeHint")
-              }
+          <Form.Item name="welcome_message" noStyle>
+            <WelcomeConfig
+              showPrompts={false}
+              editing={mode === "edit"}
               kind="team.welcome_message"
+              disabled={submitting}
+            />
+          </Form.Item>
+          <ExpertSettingsDrawer
+            title={t("experts.teamFilesTitle")}
+            summary={t(
+              mode === "edit"
+                ? "experts.teamFilesSummary"
+                : "experts.teamTemplateFilesSummary",
+            )}
+          >
+            <Form.Item
+              label={t("experts.mdFilesTitle")}
+              tooltip={t("experts.teams.mdFilesHint")}
             >
-              <Input.TextArea
-                rows={3}
-                placeholder={t("experts.welcomeMessagePlaceholder")}
-              />
-            </ExpertTextAssistField>
-            <Form.Item label={t("experts.mdFilesTitle")}>
-              <p className={expertDrawerStyles.hint}>
-                {t("experts.teams.mdFilesHint")}
-              </p>
               {templateLoading ? (
                 <div style={{ textAlign: "center", padding: "16px 0" }}>
                   <Spin size="small" />
@@ -720,7 +724,7 @@ export default function TeamDrawer({
               )}
             </Form.Item>
             {mode === "edit" ? backendFields : null}
-          </ExpertDrawerCollapsible>
+          </ExpertSettingsDrawer>
         </ExpertDrawerSection>
       </Form>
     </Drawer>

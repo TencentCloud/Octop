@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import { Button } from "antd";
+import { Button, Tooltip } from "antd";
+
+import { QuestionCircleOutlined } from "@ant-design/icons";
 
 import styles from "./expertDrawer.module.less";
 
@@ -13,17 +15,32 @@ import styles from "./expertDrawer.module.less";
 export default function ExpertFieldLabel({
   label,
   action,
+  tooltip,
   onAction,
 }: {
   /** Label text, e.g. "Subagents (1)". */
   label: ReactNode;
   /** Right-side action text, e.g. "Manage subagents". */
   action?: string;
+  tooltip?: string;
   onAction?: () => void;
 }) {
   return (
     <span className={styles.fieldLabel}>
-      <span className={styles.fieldLabelText}>{label}</span>
+      <span className={styles.fieldLabelText}>
+        {label}
+        {tooltip && (
+          <Tooltip title={tooltip} trigger={["hover", "focus"]}>
+            <button
+              type="button"
+              className={styles.fieldLabelHelp}
+              aria-label={tooltip}
+            >
+              <QuestionCircleOutlined />
+            </button>
+          </Tooltip>
+        )}
+      </span>
       {action && onAction ? (
         <Button
           type="link"
