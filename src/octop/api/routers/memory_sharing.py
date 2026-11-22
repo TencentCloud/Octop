@@ -23,6 +23,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
 
+
 def require_loaded_session(
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
@@ -125,13 +126,6 @@ class TokenCreateBody(BaseModel):
         if unknown:
             raise ValueError(f"unknown scopes: {', '.join(unknown)}（只支持 read/write）")
         return value or ["read", "write"]
-
-
-class GroupCreateBody(BaseModel):
-    name: str = Field(min_length=1, max_length=64)
-    clients: list[str] = Field(min_length=1)
-    scopes: list[str] = Field(default_factory=lambda: ["read", "write"])
-    extra_space_ids: list[str] = Field(default_factory=list)
 
 
 class BindBody(BaseModel):
@@ -296,55 +290,6 @@ def revoke(
 ) -> dict[str, Any]:
     _require_session(server, int(user.id))
     return memory_sharing.revoke_token(int(user.id), token_id)
-
-
-@router.get("/access-groups", summary="Terminal access groups of the connected space")
-def access_groups(user: User = Depends(current_user)) -> dict[str, Any]:
-    return memory_sharing.list_groups(int(user.id))
-
-
-@router.post("/access-groups", summary="One-click access group: one token per terminal")
-def create_access_group(
-    body: GroupCreateBody,
-    user: User = Depends(current_user),
-) -> dict[str, Any]:
-    return memory_sharing.create_group(
-        int(user.id), body.name, body.clients, body.scopes, body.extra_space_ids
-    )
-
-
-@router.post(
-    "/access-groups/{group_id}/clients/{client_name}/rotate",
-    summary="Rotate one terminal in an access group",
-)
-def rotate_group_client(
-    group_id: str, client_name: str, user: User = Depends(current_user)
-) -> dict[str, Any]:
-    return memory_sharing.rotate_group_client(int(user.id), group_id, client_name)
-
-
-@router.delete(
-    "/access-groups/{group_id}/clients/{client_name}",
-    summary="Disable one terminal, other terminals keep working",
-)
-def revoke_group_client(
-    group_id: str, client_name: str, user: User = Depends(current_user)
-) -> dict[str, Any]:
-    return memory_sharing.revoke_group_client(int(user.id), group_id, client_name)
-
-
-@router.post(
-    "/access-groups/{group_id}/clients",
-    summary="Add one terminal to an existing access group",
-)
-def add_group_client(
-    group_id: str,
-    body: dict[str, str],
-    user: User = Depends(current_user),
-) -> dict[str, Any]:
-    return memory_sharing.add_group_client(
-        int(user.id), group_id, body.get("client_name", "")
-    )
 
 
 @router.get("/clients", summary="Clients seen in the connected space")

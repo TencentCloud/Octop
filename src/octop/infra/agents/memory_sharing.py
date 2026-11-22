@@ -262,69 +262,6 @@ def revoke_token(user_id: int, token_id: str) -> dict[str, Any]:
     return _request("DELETE", f"/api/admin/tokens/{token_id}", session=session.token)
 
 
-def list_groups(user_id: int) -> dict[str, Any]:
-    session = _session_or_fail(user_id)
-    return _request(
-        "GET", f"/api/admin/spaces/{session.space_id}/access-groups", session=session.token
-    )
-
-
-def create_group(
-    user_id: int,
-    name: str,
-    clients: list[str],
-    scopes: list[str],
-    extra_space_ids: list[str] | None = None,
-) -> dict[str, Any]:
-    session = _session_or_fail(user_id)
-    return _request(
-        "POST",
-        f"/api/admin/spaces/{session.space_id}/access-groups",
-        session=session.token,
-        body={
-            "name": name,
-            "clients": clients,
-            "scopes": scopes,
-            "extra_space_ids": extra_space_ids or [],
-        },
-    )
-
-
-def rotate_group_client(user_id: int, group_id: str, client_name: str) -> dict[str, Any]:
-    session = _session_or_fail(user_id)
-    return _request(
-        "POST",
-        f"/api/admin/access-groups/{group_id}/clients/{client_name}/rotate",
-        session=session.token,
-    )
-
-
-def revoke_group_client(user_id: int, group_id: str, client_name: str) -> dict[str, Any]:
-    session = _session_or_fail(user_id)
-    return _request(
-        "DELETE",
-        f"/api/admin/access-groups/{group_id}/clients/{client_name}",
-        session=session.token,
-    )
-
-
-def add_group_client(user_id: int, group_id: str, client_name: str) -> dict[str, Any]:
-    session = _session_or_fail(user_id)
-    return _request(
-        "POST",
-        f"/api/admin/access-groups/{group_id}/clients",
-        session=session.token,
-        body={"client_name": client_name},
-    )
-
-
-def delete_group(user_id: int, group_id: str) -> dict[str, Any]:
-    session = _session_or_fail(user_id)
-    return _request(
-        "DELETE", f"/api/admin/access-groups/{group_id}", session=session.token
-    )
-
-
 def list_clients(user_id: int) -> dict[str, Any]:
     session = _session_or_fail(user_id)
     return _request("GET", f"/api/admin/spaces/{session.space_id}/clients", session=session.token)
@@ -336,16 +273,10 @@ __all__ = [
     "create_token",
     "exchange_code",
     "get_session",
-    "add_group_client",
-    "create_group",
-    "delete_group",
     "list_clients",
-    "list_groups",
     "list_spaces",
     "list_tokens",
-    "revoke_group_client",
     "revoke_token",
-    "rotate_group_client",
     "rotate_token",
     "service_url",
 ]

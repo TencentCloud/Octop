@@ -7,7 +7,6 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Empty, Segmented, Tabs } from "antd";
 import type { LucideIcon } from "lucide-react";
 import {
-  Share2,
   Bell,
   Heart,
   Inbox,
@@ -37,7 +36,6 @@ import StrongMemory from "./StrongMemory";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import { useAgent } from "../../../context/AgentContext";
-import MemorySharing from "./MemorySharing";
 import styles from "./index.module.less";
 
 type MemoryTab =
@@ -52,7 +50,6 @@ type MemoryTab =
   | "conversations"
   | "proactive"
   | "settings"
-  | "sharing"
   | "mcp";
 
 type LibraryView = "tree" | "atoms" | "raw";
@@ -126,12 +123,6 @@ const TABS: TabDef[] = [
     labelKey: "memory.tabs.proactive",
     fallback: "主动关心",
     icon: Bell,
-  },
-  {
-    key: "sharing",
-    labelKey: "memory.tabs.sharing",
-    fallback: "共享记忆",
-    icon: Share2,
   },
   {
     key: "settings",
@@ -327,9 +318,6 @@ export default function MemoryPanel({
               onSwitchToEpisodes={() => setActiveTab("episodes")}
             />
           );
-          break;
-        case "sharing":
-          children = <MemorySharing agentId={agentId} />;
           break;
         case "settings":
           children = <MemorySettings agentId={agentId} />;

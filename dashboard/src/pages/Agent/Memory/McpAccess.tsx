@@ -30,6 +30,7 @@ import type { TableColumnsType } from "antd";
 import { KeyRound, Plus, Terminal, Trash2, UserRoundCog } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { memorySharingApi } from "../../../api/modules/memorySharing";
 import {
   memoryMcpApi,
   type CreateMemoryMcpTokenBody,
@@ -107,6 +108,11 @@ export default function McpAccess() {
   const [togglingClient, setTogglingClient] = useState<string | null>(null);
   const [switchTarget, setSwitchTarget] = useState<MemoryMcpToken | null>(null);
   const [switching, setSwitching] = useState(false);
+  const [sessionConnected, setSessionConnected] = useState<boolean | null>(
+    null,
+  );
+  const [connectCode, setConnectCode] = useState("");
+  const [connecting, setConnecting] = useState(false);
   const [form] = Form.useForm<CreateFormValues>();
   const [switchForm] = Form.useForm<SwitchExpertFormValues>();
 
@@ -123,8 +129,29 @@ export default function McpAccess() {
   }, []);
 
   useEffect(() => {
+    void memorySharingApi
+      .status()
+      .then((status) => setSessionConnected(status.connected))
+      .catch(() => setSessionConnected(false));
+  }, []);
+
+  useEffect(() => {
     void load();
   }, [load]);
+
+  const handleConnect = async () => {
+    setConnecting(true);
+    try {
+      await memorySharingApi.connect(connectCode.trim());
+      setSessionConnected(true);
+      setConnectCode("");
+      await load();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : "连接失败");
+    } finally {
+      setConnecting(false);
+    }
+  };
 
   // Token expert_ids are agent ids, so the picker reuses the loaded agent list
   // instead of introducing another endpoint. Bridge shadows are excluded: they
@@ -667,6 +694,32 @@ export default function McpAccess() {
           {t("memory.mcp.create", "创建 Token")}
         </Button>
       </div>
+
+      {sessionConnected === false ? (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={t("memory.mcp.connectRequired", "先连接记忆服务")}
+          description={
+            <Space.Compact style={{ width: "100%", maxWidth: 620 }}>
+              <Input
+                value={connectCode}
+                onChange={(event) => setConnectCode(event.target.value)}
+                placeholder="mcode_…（octop-memory auth code --all）"
+              />
+              <Button
+                type="primary"
+                loading={connecting}
+                disabled={!connectCode.trim()}
+                onClick={() => void handleConnect()}
+              >
+                {t("memory.mcp.connect", "连接")}
+              </Button>
+            </Space.Compact>
+          }
+        />
+      ) : null}
 
       {loadError ? (
         <Alert
