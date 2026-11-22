@@ -80,3 +80,57 @@ export const memorySharingApi = {
       body: JSON.stringify({ agent_id: agentId, space_id: spaceId }),
     }),
 };
+
+export interface GroupToken extends SharingToken {
+  group_id: string;
+  token?: string;
+}
+
+export interface AccessGroup {
+  group_id: string;
+  name: string;
+  space_id: string;
+  scopes: string[];
+  created_at: string;
+  tokens: GroupToken[];
+}
+
+export interface AccessGroupCreated {
+  group_id: string;
+  name: string;
+  space_id: string;
+  tokens: (GroupToken & { token: string })[];
+}
+
+export const memorySharingGroupsApi = {
+  list: () =>
+    request<{ groups: AccessGroup[] }>("/memory-sharing/access-groups"),
+
+  create: (name: string, clients: string[], scopes: string[]) =>
+    request<AccessGroupCreated>("/memory-sharing/access-groups", {
+      method: "POST",
+      body: JSON.stringify({ name, clients, scopes }),
+    }),
+
+  rotate: (groupId: string, client: string) =>
+    request<GroupToken & { token: string }>(
+      `/memory-sharing/access-groups/${encodeURIComponent(
+        groupId,
+      )}/clients/${encodeURIComponent(client)}/rotate`,
+      { method: "POST" },
+    ),
+
+  disable: (groupId: string, client: string) =>
+    request<{ revoked: boolean; client_name: string }>(
+      `/memory-sharing/access-groups/${encodeURIComponent(
+        groupId,
+      )}/clients/${encodeURIComponent(client)}`,
+      { method: "DELETE" },
+    ),
+
+  enable: (groupId: string, client: string) =>
+    request<GroupToken & { token: string }>(
+      `/memory-sharing/access-groups/${encodeURIComponent(groupId)}/clients`,
+      { method: "POST", body: JSON.stringify({ client_name: client }) },
+    ),
+};

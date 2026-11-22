@@ -82,7 +82,39 @@ def adopt_session(user_id: int, session: SharingSession) -> None:
     _sessions.set(user_id, session)
 
 
-def _request(method: str, path: str, *, session: str | None = None, body: dict[str, Any] | None = None) -> dict[str, Any]:
+def _upstream_error(response: httpx.Response) -> OctopError:
+    """把上游 HTTP 状态映射成能指导用户动作的错误。
+
+    401/403 = 会话过期或权限不足 → 前端应提示「重新连接」，而不是「请求参数错」；
+    404 = 空间/Token 不存在；其余 = 原样带出上游信息。
+    """
+    try:
+        detail: Any = response.json().get("detail")
+    except ValueError:
+        detail = response.text[:300]
+    status = response.status_code
+    if status in (401, 403):
+        return OctopError(
+            ErrorCode.FORBIDDEN,
+            f"memory 服务要求重新认证（HTTP {status}）：{detail}",
+            details={"status": status, "needs_reconnect": True},
+        )
+    if status == 404:
+        return OctopError(
+            ErrorCode.NOT_FOUND,
+            f"memory 服务找不到对象（HTTP 404）：{detail}",
+            details={"status": status},
+        )
+    return OctopError(
+        ErrorCode.INTERNAL_ERROR,
+        f"memory service rejected the request: {detail}",
+        details={"status": status},
+    )
+
+
+def _request(
+    method: str, path: str, *, session: str | None = None, body: dict[str, Any] | None = None
+) -> dict[str, Any]:
     headers = {"accept": "application/json"}
     if session:
         headers["authorization"] = f"Bearer {session}"
@@ -95,22 +127,14 @@ def _request(method: str, path: str, *, session: str | None = None, body: dict[s
                 json=body,
             )
     except httpx.HTTPError as exc:
+        # 不把内部服务地址回显给前端（F6）；排查用日志，不用响应体。
         raise OctopError(
-            ErrorCode.BAD_REQUEST,
+            ErrorCode.INTERNAL_ERROR,
             f"memory service unreachable: {exc}",
-            details={"service": service_url()},
+            details={"unreachable": True},
         ) from exc
     if response.status_code >= 400:
-        detail: Any
-        try:
-            detail = response.json().get("detail")
-        except ValueError:
-            detail = response.text[:300]
-        raise OctopError(
-            ErrorCode.BAD_REQUEST,
-            f"memory service rejected the request: {detail}",
-            details={"status": response.status_code},
-        )
+        raise _upstream_error(response)
     if not response.content:
         return {}
     return response.json()
@@ -120,7 +144,7 @@ def exchange_code(user_id: int, code: str) -> SharingSession:
     payload = _request("POST", "/api/admin/session/exchange", body={"code": code})
     token = str(payload.get("session_token") or "")
     if not token:
-        raise OctopError(ErrorCode.BAD_REQUEST, "memory service returned no session token")
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "memory service returned no session token")
     session = SharingSession(
         token=token,
         space_id=str(payload.get("space_id") or ""),
@@ -149,9 +173,7 @@ def list_spaces(user_id: int) -> dict[str, Any]:
 
 def list_tokens(user_id: int) -> dict[str, Any]:
     session = _session_or_fail(user_id)
-    return _request(
-        "GET", f"/api/admin/spaces/{session.space_id}/tokens", session=session.token
-    )
+    return _request("GET", f"/api/admin/spaces/{session.space_id}/tokens", session=session.token)
 
 
 def create_token(user_id: int, client_name: str, scopes: list[str]) -> dict[str, Any]:
@@ -166,9 +188,7 @@ def create_token(user_id: int, client_name: str, scopes: list[str]) -> dict[str,
 
 def rotate_token(user_id: int, token_id: str) -> dict[str, Any]:
     session = _session_or_fail(user_id)
-    return _request(
-        "POST", f"/api/admin/tokens/{token_id}/rotate", session=session.token
-    )
+    return _request("POST", f"/api/admin/tokens/{token_id}/rotate", session=session.token)
 
 
 def revoke_token(user_id: int, token_id: str) -> dict[str, Any]:
@@ -176,11 +196,72 @@ def revoke_token(user_id: int, token_id: str) -> dict[str, Any]:
     return _request("DELETE", f"/api/admin/tokens/{token_id}", session=session.token)
 
 
-def list_clients(user_id: int) -> dict[str, Any]:
+def list_groups(user_id: int) -> dict[str, Any]:
     session = _session_or_fail(user_id)
     return _request(
-        "GET", f"/api/admin/spaces/{session.space_id}/clients", session=session.token
+        "GET", f"/api/admin/spaces/{session.space_id}/access-groups", session=session.token
     )
+
+
+def create_group(
+    user_id: int,
+    name: str,
+    clients: list[str],
+    scopes: list[str],
+    extra_space_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "POST",
+        f"/api/admin/spaces/{session.space_id}/access-groups",
+        session=session.token,
+        body={
+            "name": name,
+            "clients": clients,
+            "scopes": scopes,
+            "extra_space_ids": extra_space_ids or [],
+        },
+    )
+
+
+def rotate_group_client(user_id: int, group_id: str, client_name: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "POST",
+        f"/api/admin/access-groups/{group_id}/clients/{client_name}/rotate",
+        session=session.token,
+    )
+
+
+def revoke_group_client(user_id: int, group_id: str, client_name: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "DELETE",
+        f"/api/admin/access-groups/{group_id}/clients/{client_name}",
+        session=session.token,
+    )
+
+
+def add_group_client(user_id: int, group_id: str, client_name: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "POST",
+        f"/api/admin/access-groups/{group_id}/clients",
+        session=session.token,
+        body={"client_name": client_name},
+    )
+
+
+def delete_group(user_id: int, group_id: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "DELETE", f"/api/admin/access-groups/{group_id}", session=session.token
+    )
+
+
+def list_clients(user_id: int) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request("GET", f"/api/admin/spaces/{session.space_id}/clients", session=session.token)
 
 
 __all__ = [
@@ -189,10 +270,16 @@ __all__ = [
     "create_token",
     "exchange_code",
     "get_session",
+    "add_group_client",
+    "create_group",
+    "delete_group",
     "list_clients",
+    "list_groups",
     "list_spaces",
     "list_tokens",
+    "revoke_group_client",
     "revoke_token",
+    "rotate_group_client",
     "rotate_token",
     "service_url",
 ]

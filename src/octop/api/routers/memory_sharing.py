@@ -8,10 +8,12 @@ The MCP server, tokens and spaces live in ``octop-memory``. Octop keeps:
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field, field_validator
 
 from octop.api.common.agent import assert_agent_access_row
 from octop.api.deps import current_user, get_server, require_permission
@@ -21,20 +23,35 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
 
+def require_loaded_session(
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> None:
+    """Hydrate the per-user session from its encrypted row before any call."""
+    _load_session(server, int(user.id))
+
+
 router = APIRouter(
     prefix="/memory-sharing",
-    dependencies=[Depends(require_permission("memory"))],
+    dependencies=[
+        Depends(require_permission("memory")),
+        Depends(require_loaded_session),
+    ],
 )
 
 _SESSION_KEY = "memory_sharing.session.{user_id}"
 _SECRET_PURPOSE = "memory_sharing_fernet"
 
 
-def _save_session(server: OctopServer, user_id: int, session: Any) -> None:
-    """Persist the management session encrypted at rest (survives restarts)."""
+def _save_session(server: OctopServer, user_id: int, session: Any) -> bool:
+    """Persist the management session encrypted at rest (survives restarts).
+
+    返回是否真的写成功；失败时调用方应在响应里标明 ``persisted: false``，
+    否则用户会以为会话已保存、重启后却要重新要一次性码。
+    """
     repos = server.services.repos if server.services else None
     if repos is None:
-        return
+        return False
     payload = json.dumps(
         {
             "token": session.token,
@@ -46,8 +63,10 @@ def _save_session(server: OctopServer, user_id: int, session: Any) -> None:
         ensure_ascii=False,
     )
     sealed = seal_text(repos.secret_repo, _SECRET_PURPOSE, payload)
-    if sealed is not None:
-        repos.settings_repo.set(_SESSION_KEY.format(user_id=user_id), sealed)
+    if sealed is None:
+        return False
+    repos.settings_repo.set(_SESSION_KEY.format(user_id=user_id), sealed)
+    return True
 
 
 def _load_session(server: OctopServer, user_id: int) -> None:
@@ -74,6 +93,15 @@ def _load_session(server: OctopServer, user_id: int) -> None:
     memory_sharing.adopt_session(user_id, session)
 
 
+def _require_session(server: OctopServer, user_id: int) -> None:
+    """所有依赖管理会话的路由都要先调它：把加密持久化的会话恢复进内存。
+
+    只调一次 ``get_session`` 是不够的 —— 进程重启后内存里没有会话，
+    ``tokens``/``create_token`` 这些接口会直接 403，而用户明明已经连过。
+    """
+    _load_session(server, user_id)
+
+
 def _drop_session(server: OctopServer, user_id: int) -> None:
     repos = server.services.repos if server.services else None
     if repos is not None:
@@ -86,8 +114,24 @@ class ExchangeBody(BaseModel):
 
 
 class TokenCreateBody(BaseModel):
-    client_name: str = Field(min_length=1, max_length=64)
+    client_name: str = Field(min_length=1, max_length=128)
     scopes: list[str] = Field(default_factory=lambda: ["read", "write"])
+
+    @field_validator("scopes")
+    @classmethod
+    def _known_scopes(cls, value: list[str]) -> list[str]:
+        allowed = {"read", "write"}
+        unknown = [s for s in value if s not in allowed]
+        if unknown:
+            raise ValueError(f"unknown scopes: {', '.join(unknown)}（只支持 read/write）")
+        return value or ["read", "write"]
+
+
+class GroupCreateBody(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+    clients: list[str] = Field(min_length=1)
+    scopes: list[str] = Field(default_factory=lambda: ["read", "write"])
+    extra_space_ids: list[str] = Field(default_factory=list)
 
 
 class BindBody(BaseModel):
@@ -104,6 +148,8 @@ def _session_payload(user_id: int) -> dict[str, Any]:
         "space_id": session.space_id,
         "scopes": list(session.scopes),
         "expires_at": session.expires_at,
+        # 客户端接入指引要用到（S3）：MCP 地址 = f"{base_url}/mcp/"
+        "base_url": memory_sharing.service_url(),
     }
 
 
@@ -123,8 +169,11 @@ def connect(
     server: OctopServer = Depends(get_server),
 ) -> dict[str, Any]:
     session = memory_sharing.exchange_code(int(user.id), body.code)
-    _save_session(server, int(user.id), session)
-    return _session_payload(int(user.id))
+    persisted = _save_session(server, int(user.id), session)
+    payload = _session_payload(int(user.id))
+    # persisted=false 时要让前端知道「重启后还得重连」，否则用户以为已保存
+    payload["persisted"] = persisted
+    return payload
 
 
 @router.delete("/session", summary="Forget the local management session")
@@ -136,13 +185,86 @@ def disconnect(
     return {"connected": False}
 
 
+# ---------------------------------------------------------------------------
+# 终端接入：由 Octop 托管安装脚本
+#
+# 为什么不直接让用户从 raw.githubusercontent.com 拉（威胁模型 R1）：
+# ① 内网常常拉不到；② ``main`` 分支会漂移，装了什么无法复现。
+# 所以这里只托管一个**薄壳**：固定 tag、可指向内网镜像、并且**绝不签发 token**
+# （token 一律由面板通过 POST 单独签发，见 R7 —— GET 不产生副作用）。
+# ---------------------------------------------------------------------------
+
+_INSTALLER_REF = "v1.0.11"
+_INSTALLER_TEMPLATE = (
+    "https://raw.githubusercontent.com/TencentCloud/octop-memory/{ref}/plugins/harness/install.sh"
+)
+
+
+def installer_source() -> str:
+    """安装脚本来源：默认固定 tag；``OCTOP_MEMORY_INSTALLER_URL`` 可指向内网镜像。"""
+    override = os.environ.get("OCTOP_MEMORY_INSTALLER_URL")
+    if override:
+        return override
+    return _INSTALLER_TEMPLATE.format(ref=_INSTALLER_REF)
+
+
+def install_script_body(memory_url: str) -> str:
+    """生成给 ``curl | sh`` 的薄壳脚本（不含任何凭证）。"""
+    return f"""#!/usr/bin/env sh
+# octop 托管 · 终端接入安装薄壳（来源固定 tag，可用 OCTOP_MEMORY_INSTALLER_URL 指向内网镜像）
+set -eu
+SRC="${{OCTOP_MEMORY_INSTALLER_URL:-{installer_source()}}}"
+MEMORY_URL="${{OCTOP_MEMORY_URL:-{memory_url}}}"
+
+if [ "$#" -eq 0 ] && [ -z "${{OCTOP_MEMORY_TOKEN:-}}" ]; then
+  cat >&2 <<'USAGE'
+用法：
+  curl -fsSL <本地址> | sh -s -- --token <面板生成的 Token>
+或者：
+  OCTOP_MEMORY_TOKEN=<Token> curl -fsSL <本地址> | sh
+（URL 已由 Octop 填好；Token 请到面板「终端接入」生成，只显示一次）
+USAGE
+  exit 2
+fi
+
+echo "→ 目标记忆服务：$MEMORY_URL"
+if [ -t 0 ]; then
+  printf "继续安装？[y/N] " && read -r _ans
+  case "$_ans" in y|Y) ;; *) echo "已取消。"; exit 1 ;; esac
+fi
+
+curl -fsSL "$SRC" | sh -s -- --url "$MEMORY_URL" "$@"
+"""
+
+
+@router.get(
+    "/terminal/install.sh",
+    response_class=PlainTextResponse,
+    summary="Octop-hosted terminal installer wrapper (read-only, no credentials)",
+)
+def install_script() -> PlainTextResponse:
+    # 只读：不签发 token、不写库（威胁模型 R7）
+    return PlainTextResponse(
+        install_script_body(memory_sharing.service_url().rstrip("/") + "/mcp/"),
+        media_type="text/x-shellscript; charset=utf-8",
+    )
+
+
 @router.get("/spaces", summary="Spaces visible to the management session")
-def spaces(user: User = Depends(current_user)) -> dict[str, Any]:
+def spaces(
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_session(server, int(user.id))
     return memory_sharing.list_spaces(int(user.id))
 
 
 @router.get("/tokens", summary="Tokens of the connected space")
-def tokens(user: User = Depends(current_user)) -> dict[str, Any]:
+def tokens(
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_session(server, int(user.id))
     return memory_sharing.list_tokens(int(user.id))
 
 
@@ -150,22 +272,87 @@ def tokens(user: User = Depends(current_user)) -> dict[str, Any]:
 def create_token(
     body: TokenCreateBody,
     user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
 ) -> dict[str, Any]:
+    _require_session(server, int(user.id))
     return memory_sharing.create_token(int(user.id), body.client_name, body.scopes)
 
 
 @router.post("/tokens/{token_id}/rotate", summary="Rotate a client token")
-def rotate(token_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
+def rotate(
+    token_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_session(server, int(user.id))
     return memory_sharing.rotate_token(int(user.id), token_id)
 
 
 @router.delete("/tokens/{token_id}", summary="Revoke a client token")
-def revoke(token_id: str, user: User = Depends(current_user)) -> dict[str, Any]:
+def revoke(
+    token_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_session(server, int(user.id))
     return memory_sharing.revoke_token(int(user.id), token_id)
 
 
+@router.get("/access-groups", summary="Terminal access groups of the connected space")
+def access_groups(user: User = Depends(current_user)) -> dict[str, Any]:
+    return memory_sharing.list_groups(int(user.id))
+
+
+@router.post("/access-groups", summary="One-click access group: one token per terminal")
+def create_access_group(
+    body: GroupCreateBody,
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    return memory_sharing.create_group(
+        int(user.id), body.name, body.clients, body.scopes, body.extra_space_ids
+    )
+
+
+@router.post(
+    "/access-groups/{group_id}/clients/{client_name}/rotate",
+    summary="Rotate one terminal in an access group",
+)
+def rotate_group_client(
+    group_id: str, client_name: str, user: User = Depends(current_user)
+) -> dict[str, Any]:
+    return memory_sharing.rotate_group_client(int(user.id), group_id, client_name)
+
+
+@router.delete(
+    "/access-groups/{group_id}/clients/{client_name}",
+    summary="Disable one terminal, other terminals keep working",
+)
+def revoke_group_client(
+    group_id: str, client_name: str, user: User = Depends(current_user)
+) -> dict[str, Any]:
+    return memory_sharing.revoke_group_client(int(user.id), group_id, client_name)
+
+
+@router.post(
+    "/access-groups/{group_id}/clients",
+    summary="Add one terminal to an existing access group",
+)
+def add_group_client(
+    group_id: str,
+    body: dict[str, str],
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    return memory_sharing.add_group_client(
+        int(user.id), group_id, body.get("client_name", "")
+    )
+
+
 @router.get("/clients", summary="Clients seen in the connected space")
-def clients(user: User = Depends(current_user)) -> dict[str, Any]:
+def clients(
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_session(server, int(user.id))
     return memory_sharing.list_clients(int(user.id))
 
 
@@ -192,9 +379,7 @@ async def bind(
     config = _parse_config(row.config_json)
     config["memory_sharing"] = {"space_id": body.space_id}
     assert server.app_runtime is not None
-    await server.app_runtime.agent_registry.update(
-        body.agent_id, config_json=json.dumps(config)
-    )
+    await server.app_runtime.agent_registry.update(body.agent_id, config_json=json.dumps(config))
     return {"agent_id": body.agent_id, "space_id": body.space_id}
 
 

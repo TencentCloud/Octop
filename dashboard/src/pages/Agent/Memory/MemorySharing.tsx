@@ -14,6 +14,7 @@ import {
 } from "antd";
 import { useTranslation } from "react-i18next";
 
+import AccessGroups from "./AccessGroups";
 import {
   memorySharingApi,
   type SharingSession,
@@ -173,6 +174,7 @@ export default function MemorySharing({ agentId }: Props) {
           }
         />
       ) : null}
+      <AccessGroups connected={session.connected} />
       <Card
         title={t("memory.sharing.tokens", "客户端 Token")}
         extra={
