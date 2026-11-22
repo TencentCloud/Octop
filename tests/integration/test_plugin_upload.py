@@ -77,3 +77,30 @@ async def test_list_plugins_is_available_to_authenticated_users(env_admin_alice:
     client, _srv, _admin_auth, alice_auth = env_admin_alice
     response = await client.get("/api/plugins", headers=alice_auth)
     assert response.status_code == 200, response.text
+
+
+async def test_install_plugin_url_overwrite_behavior(env: Any, monkeypatch: Any) -> None:
+    client, _srv, auth = env
+    monkeypatch.setattr(
+        "octop.infra.agents.plugins.manager._download_plugin_archive",
+        lambda _url, dest: dest.write_bytes(_echo_zip()),
+    )
+    url = "https://example.com/echo-tool.zip"
+
+    # First install succeeds without force.
+    r1 = await client.post("/api/plugins/install", json={"url": url}, headers=auth)
+    assert r1.status_code == 200, r1.text
+    assert r1.json()["id"] == "echo-tool"
+
+    # Same id without force → conflict (409 PLUGIN_ALREADY_EXISTS).
+    r2 = await client.post("/api/plugins/install", json={"url": url}, headers=auth)
+    assert r2.status_code == 409, r2.text
+
+    # Same id with force=True → overwrites.
+    r3 = await client.post(
+        "/api/plugins/install",
+        json={"url": url, "force": True},
+        headers=auth,
+    )
+    assert r3.status_code == 200, r3.text
+    assert r3.json()["id"] == "echo-tool"
