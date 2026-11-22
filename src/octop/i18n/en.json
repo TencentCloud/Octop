@@ -1022,7 +1022,8 @@
     "member_file_target_send": "send_file_to_user on that server reads this directory.",
     "runner_workspace_write": "This call wrote the runner's own workspace, not the selected directory.",
     "member_file_target_execute": "execute also runs in that directory.",
-    "member_file_target_no_execute": "This workspace has no shell. Do not call execute."
+    "member_file_target_no_execute": "This workspace has no shell. Do not call execute.",
+    "member_file_mounts": "These directories are read-only and stay on your own skill and subagent directories. Read them at these exact paths:\n{paths}"
   },
   "bridge": {
     "local_directory_relative": "The local directory must be an absolute path on this Octop machine.",

@@ -166,6 +166,8 @@ def _team_workspace_note(
         BRIDGE_TARGET_KEY,
         DIR_KEY,
         HOST_KEY,
+        MEMBER_KEY,
+        MOUNTS_KEY,
         capability_enabled,
         file_target_briefing,
     )
@@ -177,6 +179,14 @@ def _team_workspace_note(
     execute = capability_enabled(cfg, "execute")
     bridge_id = cfg.get(BRIDGE_TARGET_KEY)
     host_id = cfg.get(HOST_KEY)
+    member_id = cfg.get(MEMBER_KEY)
+    raw_mounts = cfg.get(MOUNTS_KEY)
+    mounts = (
+        tuple(str(item).strip() for item in raw_mounts if isinstance(item, str) and item.strip())
+        if isinstance(raw_mounts, list)
+        else ()
+    )
+    member = member_id.strip() if isinstance(member_id, str) else ""
     local = isinstance(bridge_id, str) and bool(bridge_id.strip())
     if local:
         scope = TeamWorkspaceScope(
@@ -185,6 +195,8 @@ def _team_workspace_note(
             execute=execute,
             bridge_target_id=str(bridge_id).strip(),
             deliver=deliver,
+            member_agent_id=member,
+            mounts=mounts,
         )
     elif isinstance(host_id, str) and host_id.strip():
         scope = TeamWorkspaceScope(
@@ -192,6 +204,8 @@ def _team_workspace_note(
             directory=directory.strip(),
             execute=execute,
             deliver=deliver,
+            member_agent_id=member,
+            mounts=mounts,
         )
     else:
         return None
@@ -206,6 +220,7 @@ def _team_workspace_note(
         managed=True,
         local=local,
         deliver=deliver,
+        mounts=list(mounts),
     )
 
 

@@ -1763,7 +1763,21 @@ class GlobalProcessor:
         )
         from octop.infra.bridge.local_workspace import stamp_bridge_file_target
 
-        stamp_bridge_file_target(request, meta, locale=locale, thread_id=thread_id)
+        agent = None
+        raw_target = (meta or {}).get("bridge_file_target")
+        if isinstance(raw_target, dict):
+            try:
+                agent = self._agent_manager.get_agent(agent_id)
+            except Exception:
+                agent = None
+        stamp_bridge_file_target(
+            request,
+            meta,
+            locale=locale,
+            thread_id=thread_id,
+            agent=agent,
+            member_agent_id=agent_id,
+        )
         return request
 
     def _apply_turn_hitl_policy(self, thread_id: str, meta: dict[str, Any] | None) -> None:

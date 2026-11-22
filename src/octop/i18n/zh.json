@@ -1022,7 +1022,8 @@
     "member_file_target_send": "这个服务器上的 send_file_to_user 也从这里读文件。",
     "runner_workspace_write": "这次调用写的是运行器自己的工作区，没有写到所选目录。",
     "member_file_target_execute": "execute 也在这个目录中执行。",
-    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。"
+    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。",
+    "member_file_mounts": "以下目录只读，仍是你自己的技能和子代理目录。请按这些路径原样读取：\n{paths}"
   },
   "bridge": {
     "local_directory_relative": "本地目录必须是这台 Octop 上的绝对路径。",
