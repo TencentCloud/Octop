@@ -19,6 +19,7 @@ import {
   GraduationCap,
   Shield,
   PanelsTopLeft,
+  KeyRound,
 } from "lucide-react";
 import type { OctopUser } from "../api/modules/auth";
 import { navAllowed, userCan } from "../utils/permissions";
@@ -69,6 +70,7 @@ export const SIDEBAR_NAV_KEYS = [
   "experts",
   "tasks",
   "token-usage",
+  "tokens",
   "personalization",
   "channels",
   "connectors",
@@ -123,6 +125,7 @@ export function navSectionLabel(
  * comes from {@link buildNavSections}.
  */
 export const SIDEBAR_GROUPED_NAV_KEYS = [
+  "tokens",
   "personalization",
   "channels",
   "connectors",
@@ -232,6 +235,14 @@ export function buildNavSections(
       path: "/bridge",
       icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.bridge",
+    });
+  }
+  if (navAllowed(user, "tokens")) {
+    settingsItems.push({
+      key: "tokens",
+      path: "/tokens",
+      icon: <KeyRound size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.tokens",
     });
   }
   if (settingsItems.length > 0) {

@@ -171,6 +171,72 @@ def list_spaces(user_id: int) -> dict[str, Any]:
     return _request("GET", "/api/admin/spaces", session=session.token)
 
 
+def list_tokens_in(user_id: int, space_id: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "GET", f"/api/admin/spaces/{space_id}/tokens", session=session.token
+    )
+
+
+def create_token_in(
+    user_id: int, space_id: str, client_name: str, scopes: list[str]
+) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "POST",
+        f"/api/admin/spaces/{space_id}/tokens",
+        session=session.token,
+        body={"client_name": client_name, "scopes": scopes},
+    )
+
+
+def ensure_space(
+    user_id: int,
+    space_id: str,
+    backend: str,
+    backend_config: dict[str, Any],
+    display_name: str = "",
+) -> None:
+    session = _session_or_fail(user_id)
+    try:
+        _request(
+            "POST",
+            "/api/admin/spaces",
+            session=session.token,
+            body={
+                "space_id": space_id,
+                "display_name": display_name or space_id,
+                "backend": backend,
+                "backend_config": backend_config,
+            },
+        )
+    except OctopError as exc:
+        # 409 (already exists) is the normal idempotent path.
+        if exc.details.get("status") != 409:
+            raise
+
+
+def patch_token(
+    user_id: int,
+    token_id: str,
+    *,
+    client_name: str | None = None,
+    disabled_clients: list[str] | None = None,
+    space_id: str | None = None,
+) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    body: dict[str, Any] = {}
+    if client_name is not None:
+        body["client_name"] = client_name
+    if disabled_clients is not None:
+        body["disabled_clients"] = disabled_clients
+    if space_id is not None:
+        body["space_id"] = space_id
+    return _request(
+        "PATCH", f"/api/admin/tokens/{token_id}", session=session.token, body=body
+    )
+
+
 def list_tokens(user_id: int) -> dict[str, Any]:
     session = _session_or_fail(user_id)
     return _request("GET", f"/api/admin/spaces/{session.space_id}/tokens", session=session.token)

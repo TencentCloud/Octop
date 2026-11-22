@@ -22,6 +22,7 @@ R8（威胁模型）：如果那个 sqlite 文件里已经有表，但没有任�
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -117,6 +118,7 @@ def default_space_for(
             reason="sqlite 但没解析出 db_path，拒绝自动建空间",
         )
 
+    normalized = re.sub(r"[^a-z0-9_]", "_", space_id.lower())
     prefixes = _table_prefixes(path)
     if not prefixes:
         return DefaultSpace(
@@ -128,7 +130,7 @@ def default_space_for(
             namespace_matches=True,
             reason="记忆库为空或还不存在：首次接入时会自动创建",
         )
-    if space_id in prefixes:
+    if normalized in prefixes:
         return DefaultSpace(
             space_id=space_id,
             backend=backend,
@@ -136,7 +138,7 @@ def default_space_for(
             db_path=str(path),
             known_prefixes=prefixes,
             namespace_matches=True,
-            reason=f"命名空间对得上（{space_id}），直接复用原记忆库",
+            reason=f"命名空间对得上（{normalized}），直接复用原记忆库",
         )
     return DefaultSpace(
         space_id=space_id,
@@ -146,7 +148,7 @@ def default_space_for(
         known_prefixes=prefixes,
         namespace_matches=False,
         reason=(
-            f"命名空间对不上：推导出的 space_id={space_id}，"
+            f"命名空间对不上：推导出的 space_id={normalized}，"
             f"但文件里已有 {', '.join(prefixes)} —— 不自动建空间，需要人工确认"
         ),
     )

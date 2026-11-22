@@ -102,9 +102,9 @@ def test_empty_tables_still_count_as_empty(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("agent_id", ["6TK96K", "Z026BY"])
 def test_ids_with_mixed_case_keep_identity(tmp_path: Path, agent_id: str) -> None:
-    # 命名空间不做大小写变换：agent_id 是什么，space_id 就是什么，
-    # 否则会和 Octop 自己开库时用的 namespace 对不上。
-    _make_db(tmp_path / "memory.sqlite", [f"agent_{agent_id}"])
+    # space_id 保留原大小写；SQLite backend 会把命名空间小写化，所以表前缀
+    # 可能是小写。匹配必须大小写不敏感，否则真实专家的库会被误判为不匹配。
+    _make_db(tmp_path / "memory.sqlite", [f"agent_{agent_id}".lower()])
 
     space = mod.default_space_for(
         agent_id=agent_id,
