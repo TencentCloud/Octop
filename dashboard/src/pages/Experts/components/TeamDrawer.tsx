@@ -114,7 +114,10 @@ export default function TeamDrawer({
   const allowedBackendTypes = currentUser?.allowed_backend_types;
   const viewerIdRef = useRef(currentUser?.id);
   viewerIdRef.current = currentUser?.id;
-  const createBackendChoice = defaultCreateBackendChoice(allowedBackendTypes);
+  const createBackendChoice = defaultCreateBackendChoice(
+    allowedBackendTypes,
+    currentUser?.default_backend_type,
+  );
   const [form] = Form.useForm<TeamFormValues>();
   const { models, modelsLoading, backends, backendsLoading } =
     useAgentFormResources(open);

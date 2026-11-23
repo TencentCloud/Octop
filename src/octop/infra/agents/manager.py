@@ -885,6 +885,7 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_default_backend_type,
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
@@ -907,6 +908,8 @@ class AgentManager:
                 if not isinstance(raw_workspace, str) or not raw_workspace.strip():
                     config["workspace_dir"] = managed_default_workspace(agent_id)
                 require_managed_fields(config)
+            elif spec.user_id is not None:
+                apply_default_backend_type(self._repos.user_policy_repo, spec.user_id, config)
             if spec.user_id is not None:
                 if kind != "team":
                     assert_agent_quota_available(

@@ -62,12 +62,16 @@ export default function AgentBackendFields({
 }: AgentBackendFieldsProps) {
   const { t, i18n } = useTranslation();
   const form = Form.useFormInstance();
-  const allowedBackendTypes = useCurrentUser()?.allowed_backend_types;
+  const currentUser = useCurrentUser();
+  const allowedBackendTypes = currentUser?.allowed_backend_types;
   const allowedSet = useMemo(
     () => restrictedBackendTypes(allowedBackendTypes),
     [allowedBackendTypes],
   );
-  const createDefaultChoice = defaultCreateBackendChoice(allowedBackendTypes);
+  const createDefaultChoice = defaultCreateBackendChoice(
+    allowedBackendTypes,
+    currentUser?.default_backend_type,
+  );
   const backendTouched = useRef(false);
   const [fsDefaults, setFsDefaults] = useState<FilesystemDefaults | null>(null);
   const watchedRootDir = Form.useWatch("root_dir", form) as string | undefined;
