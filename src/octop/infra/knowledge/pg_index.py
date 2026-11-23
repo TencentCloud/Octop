@@ -1,7 +1,7 @@
 """pgvector chunk index for one knowledge base.
 
 ``CREATE EXTENSION vector`` is an operator step (see
-``docker/postgres/init-vector.sql`` and ADR 002). This module only creates
+``deploy/docker/postgres/init-vector.sql`` and ADR 002). This module only creates
 ``public.knowledge_chunks`` once the ``vector`` type exists.
 """
 
@@ -42,7 +42,7 @@ class PgVectorKnowledgeIndex:
             if present is None:
                 raise RuntimeError(
                     "pgvector is not installed on this PostgreSQL. "
-                    "Run CREATE EXTENSION vector (docker/postgres/init-vector.sql) "
+                    "Run CREATE EXTENSION vector (deploy/docker/postgres/init-vector.sql) "
                     "before using knowledge search with database.driver=postgresql."
                 )
             adopt_legacy_content_tables(self._database)

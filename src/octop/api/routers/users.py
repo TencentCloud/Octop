@@ -19,6 +19,9 @@ from octop.infra.users.permissions import (
     expand_permission_grants,
 )
 from octop.infra.users.resource_policy import (
+    assert_default_backend_allowed,
+    normalize_allowed_backend_types,
+    normalize_default_backend_type,
     normalize_max_agents,
     normalize_token_quota,
     normalize_workspace_root_dir,
@@ -53,6 +56,14 @@ class UserCreateBody(BaseModel):
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
+    allowed_backend_types: list[str] | None = Field(
+        default=None,
+        description="Backend types this user may select. null means unrestricted.",
+    )
+    default_backend_type: str | None = Field(
+        default=None,
+        description="Backend type preselected when this user creates an expert. null means local_shell.",
+    )
     create_default_expert: bool = Field(
         default=False,
         description="When true, create one expert from expert_template_id in this request.",
@@ -78,6 +89,14 @@ class UserPatchBody(BaseModel):
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
+    allowed_backend_types: list[str] | None = Field(
+        default=None,
+        description="Backend types this user may select. null means unrestricted.",
+    )
+    default_backend_type: str | None = Field(
+        default=None,
+        description="Backend type preselected when this user creates an expert. null means local_shell.",
+    )
 
 
 class ResetPasswordBody(BaseModel):
@@ -154,6 +173,7 @@ def _row_to_dict(
         "login_locked_until": locked_until if locked else 0,
         "login_retry_after_seconds": retry_after,
         "created_at": int(r.created_at),
+        "last_login_at": (int(r.last_login_at) if getattr(r, "last_login_at", None) else None),
         "permissions": expand_permission_grants(list(getattr(r, "permissions", None) or [])),
         "role_name": getattr(r, "role_name", None) or None,
         "avatar_icon": getattr(r, "avatar_icon", None) or None,
@@ -208,9 +228,13 @@ def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str,
     linger after a switch (including to admin, which has no resource limits).
     """
     from octop.infra.users.resource_policy import (
+        POLICY_ALLOWED_BACKEND_TYPES,
+        POLICY_DEFAULT_BACKEND_TYPE,
         POLICY_MAX_AGENTS,
         POLICY_TOKEN_QUOTA,
         POLICY_WORKSPACE_ROOT_DIR,
+        allowed_backend_types_of,
+        default_backend_type_of,
         max_agents_of,
         token_quota_of,
     )
@@ -220,6 +244,10 @@ def _policy_kwargs_replace_from_pairs(pairs: list[tuple[str, str]]) -> dict[str,
         "workspace_root_dir": by_name.get(POLICY_WORKSPACE_ROOT_DIR),
         "token_quota": token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
         "max_agents": max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
+        "allowed_backend_types": allowed_backend_types_of(
+            by_name.get(POLICY_ALLOWED_BACKEND_TYPES)
+        ),
+        "default_backend_type": default_backend_type_of(by_name.get(POLICY_DEFAULT_BACKEND_TYPE)),
     }
 
 
@@ -242,6 +270,10 @@ def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, 
         policy_kwargs["token_quota"] = body.token_quota
     if "max_agents" in body.model_fields_set:
         policy_kwargs["max_agents"] = body.max_agents
+    if "allowed_backend_types" in body.model_fields_set:
+        policy_kwargs["allowed_backend_types"] = body.allowed_backend_types
+    if "default_backend_type" in body.model_fields_set:
+        policy_kwargs["default_backend_type"] = body.default_backend_type
     return policy_kwargs
 
 
@@ -368,6 +400,22 @@ async def create_user(
         normalize_token_quota(policy_kwargs["token_quota"])
     if "max_agents" in policy_kwargs:
         normalize_max_agents(policy_kwargs["max_agents"])
+    if "allowed_backend_types" in policy_kwargs:
+        normalize_allowed_backend_types(policy_kwargs["allowed_backend_types"])
+    if "default_backend_type" in policy_kwargs:
+        normalize_default_backend_type(policy_kwargs["default_backend_type"])
+    if "default_backend_type" in policy_kwargs or "allowed_backend_types" in policy_kwargs:
+        default_value = (
+            normalize_default_backend_type(policy_kwargs.get("default_backend_type"))
+            if "default_backend_type" in policy_kwargs
+            else None
+        )
+        allowed_value = (
+            normalize_allowed_backend_types(policy_kwargs.get("allowed_backend_types"))
+            if "allowed_backend_types" in policy_kwargs
+            else None
+        )
+        assert_default_backend_allowed(default_value, allowed_value)
     role_name = (
         _clean_role_name(body.role_name) if "role_name" in body.model_fields_set else template_name
     )

@@ -1,11 +1,147 @@
 import { request } from "../../../api/request";
 
 export const BUILTIN_BACKENDS = ["local_shell", "filesystem"] as const;
+
+/**
+ * Types an admin can allow. ``composite`` is a wrapper: the expert form always
+ * offers it, and the allow-list only applies to the concrete backends inside.
+ */
+export const BACKEND_POLICY_TYPES = [
+  "local_shell",
+  "filesystem",
+  "cos",
+  "s3",
+  "oss",
+  "obs",
+  "tos",
+  "custom",
+  "postgres",
+  "docker",
+  "opensandbox",
+] as const;
+
+/** Storage kind ``shell`` is the same policy type as builtin ``local_shell``. */
+const BACKEND_POLICY_TYPE_ALIASES: Record<string, string> = {
+  shell: "local_shell",
+};
+
+export function canonicalBackendPolicyType(type: string): string {
+  const token = type.toLowerCase();
+  return BACKEND_POLICY_TYPE_ALIASES[token] ?? token;
+}
+
+const BACKEND_POLICY_LABEL_KEYS: Record<
+  (typeof BACKEND_POLICY_TYPES)[number],
+  string
+> = {
+  local_shell: "storage.kindShell",
+  filesystem: "storage.kindFilesystem",
+  cos: "storage.kindCos",
+  s3: "storage.kindS3",
+  oss: "storage.kindOss",
+  obs: "storage.kindObs",
+  tos: "storage.kindTos",
+  custom: "storage.kindCustom",
+  postgres: "storage.kindPostgres",
+  docker: "storage.kindDocker",
+  opensandbox: "storage.kindOpensandbox",
+};
+
+export function backendPolicyTypeLabel(
+  type: string,
+  t: (key: string) => string,
+): string {
+  const key =
+    BACKEND_POLICY_LABEL_KEYS[type as (typeof BACKEND_POLICY_TYPES)[number]];
+  return key ? t(key) : type;
+}
+
+/** ``null`` means the user is not restricted. An empty list is also unrestricted. */
+export function restrictedBackendTypes(
+  allowed: readonly string[] | null | undefined,
+): ReadonlySet<string> | null {
+  if (!allowed || allowed.length === 0) return null;
+  return new Set(allowed.map((type) => canonicalBackendPolicyType(type)));
+}
+
+export function isBackendPolicyTypeAllowed(
+  type: string,
+  allowed: ReadonlySet<string> | null,
+): boolean {
+  if (!allowed) return true;
+  return allowed.has(canonicalBackendPolicyType(type));
+}
+
 /** Kept so an expert already saved as ``state`` still shows in the editor. */
 export const LEGACY_STATE_BACKEND = "state";
 export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
 export type BackendChoice = BuiltinBackend | "composite" | `named:${string}`;
+
+const BACKEND_POLICY_TYPE_SET = new Set<string>(BACKEND_POLICY_TYPES);
+
+/**
+ * Create-form default. A user-level preferred type wins when it is allowed.
+ * ``composite`` stands in when neither that type nor ``local_shell`` is allowed.
+ */
+export function defaultCreateBackendChoice(
+  allowed: readonly string[] | null | undefined,
+  preferred?: string | null,
+): string {
+  const restricted = restrictedBackendTypes(allowed);
+  const requested = canonicalBackendPolicyType((preferred ?? "").trim());
+  const choice =
+    requested && BACKEND_POLICY_TYPE_SET.has(requested)
+      ? requested
+      : DEFAULT_BACKEND;
+  if (!restricted || isBackendPolicyTypeAllowed(choice, restricted)) {
+    return choice;
+  }
+  if (
+    choice !== DEFAULT_BACKEND &&
+    isBackendPolicyTypeAllowed(DEFAULT_BACKEND, restricted)
+  ) {
+    return DEFAULT_BACKEND;
+  }
+  return "composite";
+}
+
+/**
+ * Replacement for a create-form backend choice that is outside the allow-list.
+ * ``null`` keeps the current value. ``composite`` is always legal. Until the
+ * user picks a value, the first allowed concrete backend replaces the
+ * placeholder once the storage list has loaded.
+ */
+export function resolveCreateBackendChoice(
+  current: string,
+  concreteValues: readonly string[],
+  options: { backendsLoading: boolean; userTouched: boolean },
+): string | null {
+  const concreteAllowed = concreteValues.includes(current);
+  if (options.userTouched && (concreteAllowed || current === "composite")) {
+    return null;
+  }
+  if (options.backendsLoading || concreteValues.length === 0) {
+    return current === "composite" ? null : "composite";
+  }
+  const next = concreteValues[0];
+  return current === next ? null : next;
+}
+
+/**
+ * Composite child default under an allow-list.
+ * ``null`` keeps the field, ``undefined`` clears a disallowed value.
+ */
+export function resolveRestrictedCompositeDefault(
+  current: string,
+  concreteValues: readonly string[],
+  backendsLoading: boolean,
+): string | null | undefined {
+  if (backendsLoading) return null;
+  if (concreteValues.includes(current)) return null;
+  if (concreteValues.length > 0) return concreteValues[0];
+  return undefined;
+}
 
 export interface PathMapping {
   path: string;
@@ -35,6 +171,11 @@ export interface FilesystemDefaults {
    */
   default_workspace_dir?: string;
   /**
+   * Full default workspace for the ``agent_id`` query. The server uses the
+   * same rule as agent creation, including a scoped workspace root.
+   */
+  default_agent_workspace?: string;
+  /**
    * True only when a non-root `root_dir` really gets OS-level confinement
    * (Linux + bubblewrap). Elsewhere it only bounds the agent's tool paths, so
    * the UI must not promise a sandbox.
@@ -44,8 +185,12 @@ export interface FilesystemDefaults {
   in_container?: boolean;
 }
 
-export async function fetchFilesystemDefaults(): Promise<FilesystemDefaults> {
-  return request<FilesystemDefaults>("/filesystem/defaults");
+export async function fetchFilesystemDefaults(
+  agentId?: string,
+): Promise<FilesystemDefaults> {
+  const id = agentId?.trim();
+  const query = id ? `?agent_id=${encodeURIComponent(id)}` : "";
+  return request<FilesystemDefaults>(`/filesystem/defaults${query}`);
 }
 
 export function isNamedBackend(ref: string): ref is `named:${string}` {
@@ -377,6 +522,25 @@ export function buildBackendSpec(
     };
   }
   return backendRefToSpec(choice, rootDir);
+}
+
+/**
+ * Backend written when saving an expert.
+ *
+ * Managed experts hide the backend picker, so the form never registers
+ * `backend_choice`. Rebuilding from that missing value calls `startsWith`
+ * on undefined. Keep the stored spec; the server pins the filesystem root.
+ */
+export function backendSpecForAgentSave(
+  kind: string | undefined,
+  storedBackend: unknown,
+  choice: string | undefined,
+  compositeDefault: string,
+  pathMappings: PathMapping[],
+  rootDir?: string,
+): unknown {
+  if (kind === "managed" || !choice) return storedBackend;
+  return buildBackendSpec(choice, compositeDefault, pathMappings, rootDir);
 }
 
 function specToBackendRef(spec: Record<string, unknown>): string {

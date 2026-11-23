@@ -49,9 +49,9 @@ help:
 	@echo "  publish-test     Build + upload to TestPyPI"
 	@echo ""
 	@echo "Development targets:"
-	@echo "  dev              Start frontend + backend dev servers"
+	@echo "  dev              Start frontend + backend with auto-reload"
 	@echo "  dev-frontend     Start Vite dev server only"
-	@echo "  dev-backend      Start octop run only"
+	@echo "  dev-backend      Start backend with auto-reload"
 	@echo ""
 	@echo "Online-deps targets (local Octop source + PyPI harness components):"
 	@echo "  install-online   Create .venv-online: Octop editable + harness-* from PyPI"
@@ -156,12 +156,14 @@ publish-test:
 
 # ─── Development ─────────────────────────────────────────────────────────────
 
+DEV_BACKEND := $(RUN) watchfiles --filter python "octop run" src/octop
+
 .PHONY: dev
 dev:
 	@echo "[dev] Starting frontend and backend dev servers (Ctrl-C to stop both)..."
 	@trap 'kill 0' SIGINT; \
 	(cd $(DASHBOARD_DIR) && npm run dev) & \
-	($(RUN) octop run) & \
+	($(DEV_BACKEND)) & \
 	wait
 
 .PHONY: dev-frontend
@@ -170,7 +172,7 @@ dev-frontend:
 
 .PHONY: dev-backend
 dev-backend:
-	$(RUN) octop run
+	$(DEV_BACKEND)
 
 # ─── Online-deps dev (local Octop source + PyPI harness components) ───────────
 # Keeps a dedicated .venv-online alongside .venv. Octop itself is installed

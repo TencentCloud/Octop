@@ -18,6 +18,7 @@ import LoginPage from "./pages/Login";
 import OidcComplete from "./pages/Login/OidcComplete";
 import SetupPage from "./pages/Setup";
 import InvitePage from "./pages/Invite";
+import SharePage from "./pages/Share";
 import AuthGuard from "./components/AuthGuard";
 import PwaUpdatePrompt from "./components/PwaUpdatePrompt";
 import DesktopWindowDragBand from "./components/DesktopWindowDragBand";
@@ -111,7 +112,10 @@ function ThemedApp() {
     },
     components: isDark
       ? {
-          Modal: { headerBg: "#1a1c28", contentBg: "#1a1c28" },
+          Modal: {
+            headerBg: "var(--fn-bg-modal)",
+            contentBg: "var(--fn-bg-modal)",
+          },
           Input: { colorBgBase: "#0f1117" },
           InputNumber: { colorBgBase: "#0f1117" },
           Select: { colorBgBase: "#0f1117", selectorBg: "#0f1117" },
@@ -143,6 +147,7 @@ function ThemedApp() {
             <Route path="/login/oidc/complete" element={<OidcComplete />} />
             <Route path="/setup" element={<SetupPage />} />
             <Route path="/invite" element={<InvitePage />} />
+            <Route path="/share/:shareId" element={<SharePage />} />
             <Route
               path="/*"
               element={

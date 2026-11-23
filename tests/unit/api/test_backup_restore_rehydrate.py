@@ -35,6 +35,7 @@ async def test_restore_backup_file_rehydrates_providers_channels_and_cron(
         "_restore_stored_backup",
         lambda **_k: restored,
     )
+    monkeypatch.setattr(backup_router, "_remote_engine_or_none", lambda _server: None)
 
     server = MagicMock()
     server.services = MagicMock()
@@ -79,6 +80,7 @@ async def test_restore_backup_file_skips_rehydrate_without_runtime(
         "_restore_stored_backup",
         lambda **_k: restored,
     )
+    monkeypatch.setattr(backup_router, "_remote_engine_or_none", lambda _server: None)
 
     server = MagicMock()
     server.services = MagicMock()
@@ -135,6 +137,11 @@ async def test_create_backup_offloads_to_thread(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(backup_router, "_create_and_store_manual_backup", _fake_create)
     monkeypatch.setattr(backup_router, "_agent_rows", lambda _server: [])
+    monkeypatch.setattr(
+        backup_router,
+        "_mirror_if_enabled",
+        AsyncMock(return_value={"remote_status": None}),
+    )
 
     server = MagicMock()
     server.services = MagicMock()
@@ -166,6 +173,11 @@ async def test_create_backup_passes_selected_content(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr(backup_router, "_create_and_store_manual_backup", _fake_create)
     monkeypatch.setattr(backup_router, "_agent_rows", lambda _server: [])
+    monkeypatch.setattr(
+        backup_router,
+        "_mirror_if_enabled",
+        AsyncMock(return_value={"remote_status": None}),
+    )
     server = MagicMock()
     server.services.db = object()
     server.services.config.database = object()

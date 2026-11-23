@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { modelRefLabel } from "./modelOptions";
+import { modelNameLabel, modelRefLabel } from "./modelOptions";
 
 describe("modelRefLabel", () => {
   it("uses the picker label so two vendors of the same model stay distinct", () => {
@@ -17,5 +17,15 @@ describe("modelRefLabel", () => {
 
   it("keeps the provider when the catalog entry is missing", () => {
     expect(modelRefLabel("Huawei/deepseek-v3")).toBe("Huawei / deepseek-v3");
+  });
+});
+
+describe("modelNameLabel", () => {
+  it("drops the provider for the composer chip", () => {
+    const models = [
+      { provider_name: "Huawei", model: "deepseek-v3", name: "DeepSeek V3" },
+    ];
+    expect(modelNameLabel("Huawei/deepseek-v3", models)).toBe("DeepSeek V3");
+    expect(modelNameLabel("Huawei/deepseek-v3")).toBe("deepseek-v3");
   });
 });

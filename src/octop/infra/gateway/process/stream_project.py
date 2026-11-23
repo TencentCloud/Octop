@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from langchain_core.messages import AIMessage
 from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
 
@@ -21,6 +23,7 @@ from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agen
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results
 
 if TYPE_CHECKING:
@@ -28,6 +31,8 @@ if TYPE_CHECKING:
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
 
 install_harness_hitl_compat()
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -208,7 +213,7 @@ async def _project_chunks(
                 if projection_state is not None:
                     projection_state.hitl_paused = True
                     projection_state.hitl_pending_id = record.pending_id
-                yield MessageEvent.text(card)
+                yield MessageEvent.text(card, metadata={"octop_hitl_pending_id": record.pending_id})
             return
 
         elif ctype == "state_update":
@@ -238,6 +243,47 @@ def _with_session_auto_approve(
     )
 
 
+async def _persist_turn_file_changes(
+    agent_manager: AgentManager,
+    agent_id: str,
+    thread_id: str,
+    history_tracker: TurnHistoryTracker | None,
+) -> None:
+    """Drain harness write checkpoints into the per-turn store.
+
+    Runs at the end of every projected turn (dashboard, CLI, IM, HITL) so the
+    dashboard can offer per-turn diffs and rewind. Best-effort only.
+    """
+    if history_tracker is None or not thread_id:
+        return
+    try:
+        agent = agent_manager.get_agent(agent_id)
+        pop = getattr(agent, "pop_file_changes", None)
+        if pop is None:
+            return
+        changes = pop()
+        if not changes:
+            return
+        message_id = None
+        for m in reversed(history_tracker.inputs):
+            if isinstance(m, AIMessage):
+                message_id = m.id
+                break
+        if not message_id:
+            return
+        from octop.infra.agents.file_checkpoints import save_checkpoints
+        from octop.infra.utils.paths import PathLayout
+
+        save_checkpoints(PathLayout.from_env().root, agent_id, thread_id, message_id, changes)
+    except Exception:
+        logger.warning(
+            "failed to persist turn file checkpoints agent=%s thread=%s",
+            agent_id,
+            thread_id,
+            exc_info=True,
+        )
+
+
 async def project_stream(
     agent_manager: AgentManager,
     agent_id: str,
@@ -253,14 +299,16 @@ async def project_stream(
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
     thread_id = hitl_ctx.thread_id if hitl_ctx is not None else ""
-    async for ev in _project_chunks(
-        _with_session_auto_approve(
-            agent_manager.stream(agent_id, request),
-            agent_manager=agent_manager,
-            agent_id=agent_id,
-            thread_id=thread_id,
-            hitl_coordinator=hitl_coordinator,
-        ),
+    source = agent_manager.stream(agent_id, request)
+    chunks = _with_session_auto_approve(
+        source,
+        agent_manager=agent_manager,
+        agent_id=agent_id,
+        thread_id=thread_id,
+        hitl_coordinator=hitl_coordinator,
+    )
+    chunk_stream = _project_chunks(
+        chunks,
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,
@@ -269,8 +317,16 @@ async def project_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in chunk_stream:
+            yield ev
+    finally:
+        await close_event_stream(chunk_stream)
+        if chunks is not source:
+            await close_event_stream(chunks)
+        await close_event_stream(source)
+        await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)
 
 
 async def project_resume_stream(
@@ -286,14 +342,16 @@ async def project_resume_stream(
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    async for ev in _project_chunks(
-        _with_session_auto_approve(
-            agent_manager.resume_hitl(agent_id, thread_id, decisions),
-            agent_manager=agent_manager,
-            agent_id=agent_id,
-            thread_id=thread_id,
-            hitl_coordinator=hitl_coordinator,
-        ),
+    source = agent_manager.resume_hitl(agent_id, thread_id, decisions)
+    chunks = _with_session_auto_approve(
+        source,
+        agent_manager=agent_manager,
+        agent_id=agent_id,
+        thread_id=thread_id,
+        hitl_coordinator=hitl_coordinator,
+    )
+    chunk_stream = _project_chunks(
+        chunks,
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,
@@ -302,5 +360,13 @@ async def project_resume_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in chunk_stream:
+            yield ev
+    finally:
+        await close_event_stream(chunk_stream)
+        if chunks is not source:
+            await close_event_stream(chunks)
+        await close_event_stream(source)
+        await _persist_turn_file_changes(agent_manager, agent_id, thread_id, history_tracker)

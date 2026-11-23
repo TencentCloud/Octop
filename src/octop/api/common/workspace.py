@@ -8,24 +8,22 @@ from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.api.common.agent import require_agent_owner_row, require_agent_row
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.read_content import coerce_read_content
 
 if TYPE_CHECKING:
     from octop_harness import HarnessAgent
 
-# deepagents.backends.utils.EMPTY_CONTENT_WARNING — shown to LLM tools, not humans.
-_DEEPAGENTS_EMPTY_WARNING = "System reminder: File exists but has empty contents"
-
-
-def coerce_read_content(content: Any) -> str:
-    """Normalize backend read payloads for the dashboard file viewer."""
-    if content is None:
-        return ""
-    if isinstance(content, list):
-        content = "\n".join(str(line) for line in content)
-    text = str(content)
-    if text == _DEEPAGENTS_EMPTY_WARNING:
-        return ""
-    return text
+__all__ = [
+    "coerce_read_content",
+    "file_info_to_dict",
+    "reanchor_entry_path",
+    "require_agent_owner_row",
+    "require_agent_row",
+    "require_agent_workspace",
+    "require_running_agent",
+    "require_running_workspace",
+    "workspace_api_path",
+]
 
 
 def require_running_agent(server: Any, agent_id: str) -> HarnessAgent:

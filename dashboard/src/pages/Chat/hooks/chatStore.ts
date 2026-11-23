@@ -31,7 +31,9 @@ import {
 import { isChatStreamError } from "../../../utils/chatStreamError";
 import { parseToolExecutionFeedback } from "../../../utils/toolMediaBlocks";
 import { buildUserMessageContent } from "../utils/chatAttachments";
+import { localDirectoryForTurn } from "../localExecution";
 import { hasPendingHitl } from "../utils/pendingHitl";
+import { isPlaceholderToolName, preferToolName } from "./toolDisplayNames";
 import { sealPriorStreamingAssistants as sealPriorStreamingAssistantsMessages } from "./sealPriorStreamingAssistants";
 import {
   findSpeakerTextToContinue,
@@ -524,29 +526,6 @@ function clearAllLiveSpeakers(state: SessionStreamState): void {
   state.liveSpeakers.clear();
 }
 
-/** Drop live speakers with no streaming text and no in-flight tools. */
-function pruneIdleLiveSpeakers(state: SessionStreamState): void {
-  if (state.liveSpeakers.size === 0) return;
-  const busy = new Set<string>();
-  const host = state.roomAgentId?.trim();
-  for (const message of state.messages) {
-    if (message.role !== "assistant") continue;
-    const key = speakerLiveKey(message.speakerAgentId);
-    const inFlightTool = Boolean(
-      message.toolData &&
-        message.toolData.output === undefined &&
-        !isPausedAskTool(message),
-    );
-    if (message.status !== "streaming" && !inFlightTool) continue;
-    busy.add(key);
-    if (!key && host) busy.add(host);
-    if (key && host && key === host) busy.add("");
-  }
-  for (const key of [...state.liveSpeakers]) {
-    if (!busy.has(key)) state.liveSpeakers.delete(key);
-  }
-}
-
 function getOrCreate(sessionId: string): SessionStreamState {
   let state = sessionStates.get(sessionId);
   if (!state) {
@@ -665,11 +644,29 @@ function chunkPaintsImmediately(type: string): boolean {
   );
 }
 
+/** Team rooms whose sidebar "in progress" badge was cleared for a member. */
+const delegatedHostWork = new Set<string>();
+
+/** True after a teammate started speaking, until the next host turn. */
+export function hostWorkDelegated(sessionId: string): boolean {
+  return delegatedHostWork.has(sessionId);
+}
+
+function releaseHostWorkBadge(sessionId: string): void {
+  if (!sessionId || delegatedHostWork.has(sessionId)) return;
+  delegatedHostWork.add(sessionId);
+  // The host graph can stay open for the whole managed job. The session
+  // badge should follow the member, not keep saying the host is in progress.
+  emitStreamEvent({ kind: "streamEnd", sessionId });
+}
+
 function beginStream(state: SessionStreamState, sessionId: string): void {
+  const resumeBadge = delegatedHostWork.delete(sessionId);
   clearAllLiveSpeakers(state);
   state.thinkingStartedAt = Date.now();
   state.isStreaming = true;
   touchStreamActivity(sessionId);
+  if (resumeBadge) emitStreamEvent({ kind: "streamStart", sessionId });
 }
 
 function clearStreamingFlags(
@@ -1502,6 +1499,19 @@ function handleHarnessChunk(
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
+  const hostId = sessionHostAgentId(state, sessionId) || "";
+  if (
+    sessionId &&
+    state.isTeamRoom &&
+    speaker &&
+    speaker !== hostId &&
+    (chunk.type === "token" ||
+      chunk.type === "reasoning" ||
+      chunk.type === "tool_call_chunk" ||
+      chunk.type === "tool_result")
+  ) {
+    releaseHostWorkBadge(sessionId);
+  }
   switch (chunk.type) {
     case "token": {
       const snapshot = Boolean(chunk.team_snapshot);
@@ -1552,10 +1562,19 @@ function handleHarnessChunk(
       }
       if (chunk.team_wrapup) {
         finalizeWrapupMessages(state, speaker);
-        clearSpeakerLive(state, speaker);
-        // Wrap-up means members already finished — drop stale live bits
-        // (e.g. snapshot re-marked a speaker after their done).
-        pruneIdleLiveSpeakers(state);
+        // The answer is on screen. Seal a member bubble whose done frame
+        // never arrived, then drop the in-progress badge with it.
+        state.messages = state.messages.map((message) =>
+          message.status === "streaming"
+            ? { ...message, status: "done" as const }
+            : message,
+        );
+        clearAllLiveSpeakers(state);
+        clearStreamingFlags(state);
+        if (sessionId) {
+          clearStreamActivity(sessionId);
+          emitStreamEvent({ kind: "streamEnd", sessionId });
+        }
         break;
       }
       if (chunk.hitl_paused === true) {
@@ -2282,8 +2301,10 @@ function upsertToolCall(
       const m = state.messages[idx];
       const prevArgs = m.toolData?.arguments ?? "";
       const nextArgs = prevArgs + (chunk.args ?? "");
-      const nextName = chunk.name || m.toolData?.name;
-      const nextDisplay = chunk.display_name || m.toolData?.displayName;
+      const nextName = preferToolName(chunk.name, m.toolData?.name);
+      const nextDisplay = isPlaceholderToolName(chunk.name)
+        ? m.toolData?.displayName
+        : chunk.display_name || m.toolData?.displayName;
       const nextCallId =
         m.toolData?.callId?.startsWith("idx-") && id
           ? id
@@ -3006,13 +3027,19 @@ export async function attachThread(
             ) {
               emitStreamEvent({ kind: "streamResume", sessionId });
             }
-          } else if (state.isStreaming) {
+          } else if (state.isStreaming || hasStreamingMessages(state)) {
             // Host thread went idle — seal the host turn, but keep this
             // socket so late team / inbox replies still land in the room.
+            // A refresh can restore a streaming bubble before isStreaming is
+            // set; an already-finished turn must not leave that bubble open,
+            // or the next turn's tokens can attach to it.
             finalizeHostTurn(state, sessionId);
             notify(state);
             if (!hasStreamingMessages(state)) {
-              finish();
+              if (state.isStreaming) finish();
+              else if (state.abortController === controller) {
+                state.abortController = previousController;
+              }
             }
           } else if (state.abortController === controller) {
             state.abortController = previousController;
@@ -3177,6 +3204,7 @@ async function sendTurnWebSocket(
   conversationMode?: "ask" | "plan" | "craft" | null,
   hitlPolicy?: { mode: string; tools?: string[] } | null,
   clientMessageId?: string | null,
+  sessionMode?: string | null,
 ): Promise<boolean> {
   const state = getOrCreate(sessionId);
   const resolvedThreadId = (threadId || sessionId).trim();
@@ -3260,6 +3288,9 @@ async function sendTurnWebSocket(
       if (reasoningMode) payload.reasoning_mode = reasoningMode;
       if (reasoningEffort) payload.reasoning_effort = reasoningEffort;
       if (conversationMode) payload.conversation_mode = conversationMode;
+      if (sessionMode) payload.session_mode = sessionMode;
+      const localDirectory = localDirectoryForTurn(agentId, threadId ?? null);
+      if (localDirectory) payload.local_directory = localDirectory;
       if (hitlPolicy) payload.hitl_policy = hitlPolicy;
       ws.send(JSON.stringify(payload));
     };
@@ -3492,6 +3523,7 @@ export async function sendTurn(
   conversationMode?: "ask" | "plan" | "craft" | null,
   hitlPolicy?: { mode: string; tools?: string[] } | null,
   clientMessageId?: string | null,
+  sessionMode?: string | null,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
@@ -3598,6 +3630,7 @@ export async function sendTurn(
     conversationMode,
     hitlPolicy,
     clientMessageId,
+    sessionMode,
   );
   if (!wsOk) {
     state.messages = [
@@ -4332,6 +4365,14 @@ export function sharedTurnBlocksSender(
   return Number(owner) !== Number(userId);
 }
 
+function localDirectoryPayload(
+  agentId: string,
+  threadId: string,
+): { local_directory: string } | Record<string, never> {
+  const directory = localDirectoryForTurn(agentId, threadId);
+  return directory ? { local_directory: directory } : {};
+}
+
 export function sendSteerWhileBusy(
   sessionId: string,
   text: string,
@@ -4362,6 +4403,7 @@ export function sendSteerWhileBusy(
         ...(turnId ? { expected_turn_id: turnId } : {}),
         client_pending_id: cpid,
         messages: [{ role: "user", content: messageContent }],
+        ...localDirectoryPayload(live.agentId, live.threadId),
       }),
     );
   } catch {

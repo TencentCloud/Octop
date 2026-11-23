@@ -1,0 +1,246 @@
+/* 地域选择器：触发器沿用工具栏输入框的尺寸，弹层参考腾讯云控制台的
+   「最近访问 + 全部地区」双段式布局。 */
+
+.trigger {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  min-width: 240px;
+  max-width: 360px;
+  height: 32px;
+  padding: 0 10px;
+  font-size: 14px;
+  color: var(--fn-text-primary);
+  cursor: pointer;
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.trigger:hover:not(:disabled) {
+  border-color: var(--fn-color-brand);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--fn-color-brand);
+  outline-offset: 1px;
+}
+
+.triggerDisabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.triggerMain {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  min-width: 0;
+  font-weight: 500;
+}
+
+.triggerLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 选中地域的节点总数：与地名同色，只有后面那个红点强调"有节点" */
+.triggerCount {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+
+.triggerDot {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 4px;
+  height: 4px;
+  margin: 3px 0 0 2px;
+  background: var(--fn-color-danger);
+  border-radius: 50%;
+}
+
+.triggerRest {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
+  white-space: nowrap;
+}
+
+.triggerRest::before {
+  padding-right: 6px;
+  color: var(--fn-border-secondary);
+  content: "|";
+}
+
+.caret {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--fn-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.caretOpen {
+  transform: rotate(180deg);
+}
+
+.popover {
+  /* 弹层自己控内边距，antd 默认的 12px 会把两段式布局压扁 */
+}
+
+.popover :global(.ant-popover-inner) {
+  padding: 0;
+  border-radius: 12px;
+  box-shadow: 0 14px 38px
+    color-mix(in srgb, var(--fn-text-primary) 16%, transparent);
+}
+
+.body {
+  box-sizing: border-box;
+  width: min(1060px, calc(100vw - 32px));
+  max-height: min(76vh, 680px);
+  padding: 16px 24px 20px;
+  overflow: auto;
+}
+
+.section {
+  padding-bottom: 16px;
+}
+
+.sectionTitle {
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+}
+
+/* 最近访问与下面的大区共用同一套列宽，视觉上对齐到同一栅格 */
+.recentRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  column-gap: 24px;
+  row-gap: 8px;
+}
+
+/* 报纸式多栏流：大区块按列往下排，短列表不会独占一整行留白。
+   列宽取 128px 保证最长地名（7 个汉字）不截断。 */
+.areas {
+  column-width: 128px;
+  column-gap: 24px;
+  column-fill: balance;
+}
+
+.area {
+  margin-bottom: 18px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* 层级对比是"清晰"的关键：地域名用主色，大区标题刻意压浅，
+   跟控制台一样靠颜色深浅区分两级，而不是靠字号。 */
+.areaTitle {
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--fn-text-tertiary);
+}
+
+.areaItems {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: baseline;
+  max-width: 100%;
+  padding: 5px 10px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--fn-text-primary);
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.item:hover {
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-hover);
+}
+
+.item:focus-visible {
+  outline: 2px solid var(--fn-color-brand);
+  outline-offset: -2px;
+}
+
+.itemActive {
+  font-weight: 500;
+  color: var(--fn-text-primary);
+  background: var(--fn-bg-selected, var(--fn-bg-hover));
+}
+
+.itemName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 地域下的节点数：与地名同色（继承父级），红点只用来标记"这个地域有节点" */
+.itemCount {
+  margin-left: 3px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+}
+
+.itemDot {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 4px;
+  height: 4px;
+  margin: 6px 0 0 3px;
+  background: var(--fn-color-danger);
+  border-radius: 50%;
+}
+
+.footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 6px 2px;
+  margin-top: 6px;
+  border-top: 1px solid var(--fn-border-primary);
+}
+
+.footerText {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.clearBtn {
+  padding: 2px 6px;
+  font-size: 12px;
+  color: var(--fn-text-brand);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+}
+
+.clearBtn:hover {
+  background: var(--fn-bg-hover);
+}

@@ -232,6 +232,19 @@
   }
 }
 
+// The change card mounts for every settled turn and self-hides when no
+// source has files; :empty collapses the wrapper so hidden cards add no
+// flex-gap spacing.
+.turnInset:empty {
+  display: none;
+}
+
+// A settled turn whose only content would be the (collapsed) empty change
+// card must not leave the turn wrapper's spacing behind.
+.assistantTurn:has(> .turnInset:empty:only-child) {
+  display: none;
+}
+
 .turnInset {
   .chatMsgColumns();
   max-width: 100%;
@@ -368,7 +381,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  overflow: hidden;
+  overflow: visible;
   line-height: 0;
 }
 
@@ -1288,6 +1301,276 @@
     color 0.15s ease;
 }
 
+.fileChangeList {
+  justify-self: start;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fileChangeRow {
+  margin-top: 0;
+}
+
+.fileChangeName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileChangePending,
+.fileChangeRowStats {
+  flex-shrink: 0;
+}
+
+.fileChangePending {
+  color: var(--fn-text-tertiary);
+  font-weight: 400;
+}
+
+.fileChangeRowStats {
+  display: inline-flex;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fileChangeAdd {
+  color: var(--fn-color-success, #389e0d);
+}
+
+.fileChangeDel {
+  color: var(--fn-color-danger, #cf1322);
+}
+
+.turnChangeCard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  margin-top: 6px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 10px;
+  background: var(--fn-bg-primary);
+  overflow: hidden;
+}
+
+.turnChangeSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 0;
+  padding: 9px 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  justify-self: stretch;
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.03));
+    box-shadow: none;
+    color: var(--fn-text-primary);
+    border-color: transparent;
+
+    .openBrowserPromptArrow {
+      transform: none;
+    }
+  }
+}
+
+.turnChangeSummaryText {
+  font-weight: 600;
+}
+
+.turnChangeUndo {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+
+  &:hover {
+    color: var(--fn-color-brand);
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.04));
+  }
+}
+
+.turnRewindFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.turnRewindList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.turnRewindHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+
+.turnRewindRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.turnRewindTagSafe {
+  color: var(--fn-color-success, #389e0d);
+  flex-shrink: 0;
+}
+
+.turnRewindTagUnsafe {
+  color: var(--fn-color-danger, #cf1322);
+  flex-shrink: 0;
+}
+
+.turnRewindTagIgnored {
+  color: var(--fn-text-tertiary);
+  flex-shrink: 0;
+}
+
+.turnChangeReverted {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.06));
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.turnChangeChevronOpen {
+  transform: rotate(90deg);
+}
+
+.turnChangeDir {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fn-text-tertiary);
+  font-weight: 400;
+}
+
+.fileChangeRowMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 0;
+  cursor: pointer;
+  text-align: left;
+
+  > * {
+    flex-shrink: 0;
+  }
+
+  .fileChangeName {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .turnChangeDir {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+}
+
+.fileChangeRowMain:hover .fileChangeName {
+  color: var(--fn-color-brand);
+}
+
+.turnChangeRowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+}
+
+.turnChangeAction {
+  border: 1px solid var(--fn-border-secondary, #d9d9d9);
+  border-radius: 6px;
+  background: var(--fn-bg-primary);
+  color: var(--fn-text-primary);
+  padding: 3px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.turnChangeAction:hover {
+  color: var(--fn-color-brand);
+  border-color: var(--fn-color-brand);
+}
+
+.turnChangeCard .fileChangeList {
+  width: 100%;
+  align-items: stretch;
+  gap: 0;
+  margin: 0;
+  border-top: 1px solid var(--fn-border-secondary);
+}
+
+.turnChangeCard .fileChangeList > li {
+  width: 100%;
+}
+
+.turnChangeCard .fileChangeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+
+  &:not(:last-child) {
+    border-bottom: 1px solid var(--fn-border-secondary);
+  }
+
+  &:hover {
+    background: var(--fn-bg-hover, rgba(0, 0, 0, 0.02));
+    box-shadow: none;
+  }
+}
+
 .processSummaryToggle {
   display: inline-flex;
   align-items: center;
@@ -1623,3 +1906,11 @@
     opacity: 1;
   }
 }
+
+.turnChangeEmpty {
+  padding: 8px 10px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+// The turn diff fills the modal body; align its surface with the modal's

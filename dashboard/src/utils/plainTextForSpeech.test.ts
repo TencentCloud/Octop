@@ -51,4 +51,16 @@ describe("chunkTextForSpeech", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.join("")).toContain("第一句很长");
   });
+
+  it("keeps sentence punctuation and drops the space after it", () => {
+    const first = `${"甲".repeat(20)}。`;
+    const second = `${"乙".repeat(20)}！`;
+    const text = `${first} ${second}`;
+    const expected = text
+      .split(/(?<=[。！？.!?])\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    expect(chunkTextForSpeech(text, 30)).toEqual(expected);
+    expect(expected).toEqual([first, second]);
+  });
 });

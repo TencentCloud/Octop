@@ -17,6 +17,7 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  pinnedThreadId,
 } from "../cronDisplay";
 import {
   formatTriggerText,
@@ -50,7 +51,10 @@ export function JobDetailDrawer({
   const meta = (job.meta as Record<string, unknown> | undefined) ?? {};
   const sessionKey =
     typeof meta.octop_session_key === "string" ? meta.octop_session_key : "";
-  const channel = sessionKey
+  const pinned = pinnedThreadId(sessionKey);
+  const channel = pinned
+    ? t("cronJobs.form.sessionKeyHistory")
+    : sessionKey
     ? channelFromSessionKey(sessionKey)
     : String(job.dispatch?.channel || "—");
   const agentPrompt = extractPromptFromJob(job) || null;
@@ -222,8 +226,22 @@ export function JobDetailDrawer({
         <Descriptions.Item label={t("cronJobs.col.taskType")}>
           {job.task_type === "text"
             ? t("cronJobs.form.taskTypeText")
+            : job.task_type === "script"
+            ? t("cronJobs.form.taskTypeScript")
             : t("cronJobs.form.taskTypeAgent")}
         </Descriptions.Item>
+        {job.task_type === "agent" ? (
+          <Descriptions.Item label={t("cronJobs.form.allowAll")}>
+            {meta.octop_allow_all
+              ? t("cronJobs.col.freshThreadOn")
+              : t("cronJobs.col.freshThreadOff")}
+          </Descriptions.Item>
+        ) : null}
+        {job.task_type === "script" ? (
+          <Descriptions.Item label={t("cronJobs.form.scriptLang")}>
+            {String(meta.octop_script_lang || "python")}
+          </Descriptions.Item>
+        ) : null}
         {agentPrompt && (
           <Descriptions.Item label={t("cronJobs.col.prompt")}>
             <Text style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>
@@ -260,9 +278,13 @@ export function JobDetailDrawer({
         </Descriptions.Item>
         {sessionKey && (
           <Descriptions.Item label={t("cronJobs.col.sessionKey")}>
-            <Text copyable style={{ fontSize: 12, fontFamily: "monospace" }}>
-              {sessionKey}
-            </Text>
+            {pinned ? (
+              `${t("cronJobs.form.sessionKeyHistory")} · ${pinned.slice(-6)}`
+            ) : (
+              <Text copyable style={{ fontSize: 12, fontFamily: "monospace" }}>
+                {sessionKey}
+              </Text>
+            )}
           </Descriptions.Item>
         )}
       </Descriptions>

@@ -2,6 +2,13 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+// Sidebar's import graph reaches pdfjs, which reads DOMMatrix at load time.
+vi.hoisted(() => {
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    globalThis.DOMMatrix = class DOMMatrix {} as unknown as typeof DOMMatrix;
+  }
+});
 import { LayoutModeProvider } from "../context/LayoutModeContext";
 import { LAYOUT_MODE_KEY } from "./layoutModeStorage";
 import Sidebar from "./Sidebar";
@@ -43,23 +50,49 @@ function renderSidebar(opts: {
 }
 
 /**
- * Desktop fold control lives on the seam beside the rail (RailEdgeControl in
- * MainLayout), the same place upstream draws it. The rail itself does not
- * grow a second one.
+ * Desktop fold control sits in the brand row, to the right of the version
+ * and against the rail's right edge.
  */
-describe("nav rail leaves folding to the seam", () => {
+describe("nav rail fold control", () => {
   beforeEach(() => {
     localStorage.removeItem(LAYOUT_MODE_KEY);
   });
 
-  it("does not render a fold button inside the rail", () => {
-    renderSidebar({ collapsed: false });
+  it("places the fold button at the end of the brand row", async () => {
+    const onNavFold = vi.fn();
+    const { container } = render(
+      <LayoutModeProvider>
+        <MemoryRouter initialEntries={["/chat"]}>
+          <Sidebar
+            selectedKey="chat"
+            collapsed={false}
+            onToggle={() => undefined}
+            onNavFold={onNavFold}
+            isMobile={false}
+          />
+        </MemoryRouter>
+      </LayoutModeProvider>,
+    );
+    const button = screen.getByRole("button", { name: "收起导航栏" });
+    const row = container.querySelector(`.${styles.brandRow}`);
+    expect(row?.lastElementChild).toBe(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    expect(button.querySelector("svg")?.getAttribute("class")).toContain(
+      "panel-left-close",
+    );
+
+    await userEvent.setup().click(button);
+    expect(onNavFold).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cover the mark when the rail is collapsed", () => {
+    renderSidebar({ collapsed: true });
     expect(
       screen.queryByRole("button", { name: /收起导航栏|展开导航栏/ }),
     ).not.toBeInTheDocument();
   });
 
-  it("leaves room for the traffic lights without a second control", () => {
+  it("leaves room for the traffic lights", () => {
     const { container } = renderSidebar({ collapsed: true });
     const rail = container.querySelector<HTMLElement>(`.${styles.navRail}`)!;
     expect(rail.style.minWidth).toContain(

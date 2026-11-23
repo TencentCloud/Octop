@@ -682,6 +682,7 @@ class OctopServer:
         from octop.infra.knowledge.gate import (  # noqa: PLC0415
             warn_if_local_embedding_deps_missing,
         )
+        from octop.infra.knowledge.graph import resume_pending_graph_jobs  # noqa: PLC0415
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
         from octop.infra.knowledge.ocr import warn_if_local_ocr_deps_missing  # noqa: PLC0415
 
@@ -694,6 +695,7 @@ class OctopServer:
             self.services.provider_repo,
         )
         resume_pending_index_jobs(self.services)
+        resume_pending_graph_jobs(self.services)
 
         # Resume Bridge links that opted into auto-reconnect (best-effort).
         async def _resume_bridges() -> None:
@@ -701,6 +703,10 @@ class OctopServer:
                 await bridge_mgr.resume_auto_connections()
 
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
+
+        from octop.infra.setup.completion import seal_setup_wizard_if_installed  # noqa: PLC0415
+
+        seal_setup_wizard_if_installed(self)
 
     async def refresh_plugin_channels(self) -> None:
         """Reconcile only changed kinds and report registration failures to callers."""

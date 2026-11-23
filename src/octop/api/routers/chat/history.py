@@ -41,8 +41,61 @@ def _agent_is_busy(server: Any, agent_id: str) -> bool:
     return callable(checker) and checker(agent_id) is True
 
 
-def _hitl_policy_payload(row: Any) -> dict[str, Any]:
-    return parse_hitl_session_policy(getattr(row, "hitl_policy", None)).to_dict()
+def _agent_config(server: Any, agent_id: str) -> dict[str, Any]:
+    repo = getattr(getattr(server, "services", None), "agent_repo", None)
+    get = getattr(repo, "get", None)
+    if not callable(get):
+        return {}
+    row = get(agent_id)
+    if row is None:
+        return {}
+    from octop.infra.agents.settings.profile import parse_config_json
+
+    config = parse_config_json(getattr(row, "config_json", None))
+    kind = getattr(row, "kind", None)
+    if isinstance(kind, str):
+        config = {**config, "kind": kind}
+    return config
+
+
+def _managed_yolo_default(server: Any, agent_id: str) -> bool:
+    from octop.infra.agents.managed import read_managed_permission_mode
+
+    return read_managed_permission_mode(_agent_config(server, agent_id)) == "yolo"
+
+
+def _listed_session_mode(config: dict[str, Any], row: Any) -> str | None:
+    from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+    if config.get("kind") != "managed":
+        return None
+    mode = resolve_managed_session_mode(
+        stored=getattr(row, "conversation_mode", None),
+        config=config,
+    )
+    return mode or None
+
+
+def _session_mode_payload(server: Any, agent_id: str, row: Any) -> str | None:
+    from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+    config = _agent_config(server, agent_id)
+    if config.get("kind") != "managed":
+        return None
+    mode = resolve_managed_session_mode(
+        stored=getattr(row, "conversation_mode", None),
+        config=config,
+    )
+    return mode or None
+
+
+def _hitl_policy_payload(row: Any, *, default_yolo: bool = False) -> dict[str, Any]:
+    raw = getattr(row, "hitl_policy", None)
+    if isinstance(raw, str) and raw.strip():
+        return parse_hitl_session_policy(raw).to_dict()
+    if default_yolo:
+        return {"mode": "allow_all"}
+    return {"mode": "ask"}
 
 
 def _message_author_profile(server: Any, user_id: int) -> dict[str, Any] | None:
@@ -201,6 +254,8 @@ async def list_threads(
     message_repo = server.services.thread_message_repo
     ids_with_messages = message_repo.threads_with_messages([r.thread_id for r in rows])
     unread = thread_registry.unread_counts_for_threads([r.thread_id for r in rows])
+    default_yolo = _managed_yolo_default(server, agent_id)
+    agent_config = _agent_config(server, agent_id)
 
     def _has_messages(row: Any) -> bool:
         if not thread_row_has_messages(row):
@@ -228,8 +283,9 @@ async def list_threads(
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
             "conversation_mode": r.conversation_mode or "craft",
+            "session_mode": _listed_session_mode(agent_config, r),
             "pending_plan_path": r.pending_plan_path,
-            "hitl_policy": _hitl_policy_payload(r),
+            "hitl_policy": _hitl_policy_payload(r, default_yolo=default_yolo),
             "turn_active": hub.is_turn_active(r.thread_id),
             "awaiting_user": r.thread_id
             in (shared_awaiting_ids if r.contributed else awaiting_ids),
@@ -478,8 +534,11 @@ async def get_thread_history(
             default_agent_id=agent_id,
         ),
         "conversation_mode": row.conversation_mode or "craft",
+        "session_mode": _session_mode_payload(server, agent_id, row),
         "pending_plan_path": row.pending_plan_path,
-        "hitl_policy": _hitl_policy_payload(row),
+        "hitl_policy": _hitl_policy_payload(
+            row, default_yolo=_managed_yolo_default(server, agent_id)
+        ),
     }
 
 
@@ -604,11 +663,13 @@ async def patch_thread(
     """Update sidebar metadata or sticky composer settings for a thread."""
     row = _require_thread(server, agent_id, thread_id, user, as_user)
     effective_uid = as_user if as_user is not None else user.id
+    default_yolo = _managed_yolo_default(server, agent_id)
     composer_fields = {
         "model_ref",
         "reasoning_mode",
         "reasoning_effort",
         "conversation_mode",
+        "session_mode",
         "hitl_policy",
     }
     managing = bool(body.model_fields_set)
@@ -630,8 +691,9 @@ async def patch_thread(
             "reasoning_mode": row.reasoning_mode,
             "reasoning_effort": row.reasoning_effort,
             "conversation_mode": row.conversation_mode or "craft",
+            "session_mode": _session_mode_payload(server, agent_id, row),
             "pending_plan_path": row.pending_plan_path,
-            "hitl_policy": _hitl_policy_payload(row),
+            "hitl_policy": _hitl_policy_payload(row, default_yolo=default_yolo),
         }
     registry = server.app_runtime.gateway.thread_registry
     if "contributed" in body.model_fields_set:
@@ -674,7 +736,11 @@ async def patch_thread(
         reasoning_mode = body.reasoning_mode
     if "reasoning_effort" in body.model_fields_set:
         reasoning_effort = (body.reasoning_effort or "").strip().lower() or None
-    if "conversation_mode" in body.model_fields_set:
+    if "session_mode" in body.model_fields_set:
+        from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+        conversation_mode = resolve_managed_session_mode(explicit=body.session_mode) or None
+    elif "conversation_mode" in body.model_fields_set:
         conversation_mode = body.conversation_mode or "craft"
     if "hitl_policy" in body.model_fields_set:
         policy = parse_hitl_session_policy(
@@ -704,8 +770,9 @@ async def patch_thread(
         "reasoning_mode": updated.reasoning_mode,
         "reasoning_effort": updated.reasoning_effort,
         "conversation_mode": updated.conversation_mode or "craft",
+        "session_mode": _session_mode_payload(server, agent_id, updated),
         "pending_plan_path": updated.pending_plan_path,
-        "hitl_policy": _hitl_policy_payload(updated),
+        "hitl_policy": _hitl_policy_payload(updated, default_yolo=default_yolo),
     }
 
 

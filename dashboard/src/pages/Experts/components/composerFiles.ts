@@ -13,13 +13,21 @@ export interface ComposerFilePatch {
 export function diffComposerFiles(
   original: NamedFileContent[],
   current: NamedFileContent[],
+  createdFiles: ReadonlySet<string> = new Set(),
 ): ComposerFilePatch {
   const origMap = new Map(original.map((file) => [file.name, file.content]));
   const currMap = new Map(current.map((file) => [file.name, file.content]));
   const file_overrides: ComposerFileOverride[] = [];
   const omit_files: string[] = [];
   for (const [name, content] of currMap) {
-    if (origMap.get(name) !== content) {
+    const previous = origMap.get(name);
+    // An empty file with no baseline counterpart is an editor placeholder
+    // (see ensurePromptFiles), not a user change. Shipping it as an override
+    // would clobber the same file seeded from the expert template with "".
+    if (previous === undefined && content === "" && !createdFiles.has(name)) {
+      continue;
+    }
+    if (previous !== content) {
       file_overrides.push({ name, content });
     }
   }
@@ -38,7 +46,7 @@ export function upsertComposerFile(
   return files.map((file, i) => (i === idx ? next : file));
 }
 
-const DEFAULT_PROMPT_FILES = ["AGENTS.md"];
+const DEFAULT_PROMPT_FILES = ["SOUL.md", "AGENTS.md"];
 
 /** Ensure create-time editors always expose the core prompt files. */
 export function ensurePromptFiles(

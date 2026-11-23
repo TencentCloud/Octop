@@ -30,6 +30,7 @@ import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import BackendFlag from "./BackendFlag";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark } from "./ManagedAvatarMark";
 import {
   formatAgentError,
   formatAgentState,
@@ -46,6 +47,7 @@ import {
   SharedResourceBadge,
 } from "../../../components/SharedResourceBadge";
 import {
+  canManageExpert,
   canReadAgentRuntimeStatus,
   isSharedExpertViewer,
 } from "../../../utils/sharedExpert";
@@ -305,7 +307,7 @@ export const AgentCard = memo(function AgentCard({
   const modelConfigError = isAgentModelConfigError(localError);
   const chatReady = isAgentChatReady(localState);
   const sharedViewer = isSharedExpertViewer(agent);
-  const isOwner = agent.is_owner !== false;
+  const canManage = canManageExpert(agent, user);
   const deleteConfirm = expertDeleteConfirm(agent, t);
 
   return (
@@ -324,16 +326,25 @@ export const AgentCard = memo(function AgentCard({
             owned={!sharedViewer}
             ownerName={agent.owner_username}
           >
-            <div
-              className={styles.agentCard2Icon}
-              style={{ color: accent, background: `${accent}1a` }}
+            <ManagedAvatarMark
+              runner={
+                agent.kind === "managed" &&
+                typeof agent.config?.managed_runner === "string"
+                  ? agent.config.managed_runner
+                  : null
+              }
             >
-              <ExpertIcon
-                iconUrl={iconUrl ?? agent.icon_url}
-                iconName={iconName ?? agent.icon_name}
-                size={iconUrl ?? agent.icon_url ? 42 : 22}
-              />
-            </div>
+              <div
+                className={styles.agentCard2Icon}
+                style={{ color: accent, background: `${accent}1a` }}
+              >
+                <ExpertIcon
+                  iconUrl={iconUrl ?? agent.icon_url}
+                  iconName={iconName ?? agent.icon_name}
+                  size={iconUrl ?? agent.icon_url ? 42 : 22}
+                />
+              </div>
+            </ManagedAvatarMark>
           </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>
@@ -378,14 +389,18 @@ export const AgentCard = memo(function AgentCard({
                 <Tag color="processing">{t("experts.memorySlimming")}</Tag>
               )}
               <BackendFlag config={agent.config} />
-              <MbtiPersonaTag
-                value={agent.persona_mbti}
-                onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}
-              />
+              {agent.kind === "managed" ? null : (
+                <MbtiPersonaTag
+                  value={agent.persona_mbti}
+                  onClick={
+                    canManage ? () => setMbtiCatalogOpen(true) : undefined
+                  }
+                />
+              )}
             </div>
           </div>
 
-          {isOwner && (
+          {canManage && (
             <div className={styles.agentCard2HeaderActions}>
               <Switch
                 size="small"
@@ -428,7 +443,7 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Footer actions */}
         <div className={styles.agentCard2Footer}>
-          {isOwner && (
+          {canManage && (
             <>
               <Tooltip
                 title={
@@ -505,6 +520,7 @@ export const AgentCard = memo(function AgentCard({
 
               <AgentMoreActions
                 buttonClassName={styles.agentCard2EditBtn}
+                managed={agent.kind === "managed"}
                 onSkills={() => setSkillCatalogOpen(true)}
                 onSubagents={openSubagentCatalog}
                 onTools={() => setToolSettingsOpen(true)}
@@ -526,7 +542,7 @@ export const AgentCard = memo(function AgentCard({
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : isOwner &&
+          ) : canManage &&
             (localState === "failed" ||
               localState === "stopped" ||
               localState === "created") ? (
@@ -566,6 +582,7 @@ export const AgentCard = memo(function AgentCard({
       />
       <ToolCatalogDrawer
         agentId={agent.agent_id}
+        managed={agent.kind === "managed"}
         open={toolSettingsOpen}
         onClose={() => setToolSettingsOpen(false)}
       />

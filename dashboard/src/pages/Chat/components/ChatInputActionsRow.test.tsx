@@ -16,7 +16,21 @@ vi.hoisted(() => {
 });
 
 vi.mock("./ContextWindowRing", () => ({
-  default: () => null,
+  default: () => <div data-testid="context-window-ring" />,
+}));
+
+const preferenceMocks = vi.hoisted(() => ({
+  get: vi.fn().mockResolvedValue({
+    preferred_model: null,
+    locale: "en",
+    remote_browser_bookmarks: [],
+    model_reasoning: {},
+  }),
+  patch: vi.fn(),
+}));
+
+vi.mock("../../../api/modules/preferences", () => ({
+  preferencesApi: preferenceMocks,
 }));
 
 const models: ResolvedModel[] = [
@@ -56,6 +70,33 @@ const baseProps = {
 };
 
 describe("ChatInputActionsRow plus menu", () => {
+  it("saves an auto priority model from the model menu", async () => {
+    preferenceMocks.get.mockResolvedValue({
+      preferred_model: null,
+      locale: "en",
+      remote_browser_bookmarks: [],
+      model_reasoning: {},
+    });
+    preferenceMocks.patch.mockResolvedValue({
+      preferred_model: "Provider/compact-model",
+    });
+
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByLabelText("Model"));
+    fireEvent.click(await screen.findByLabelText("models.setAsPreferred"));
+
+    await waitFor(() => {
+      expect(preferenceMocks.patch).toHaveBeenCalledWith({
+        preferred_model: "Provider/compact-model",
+      });
+    });
+  });
+
   it("keeps approval, shortcuts, and attachments on the toolbar", () => {
     render(
       <MemoryRouter>
@@ -63,7 +104,11 @@ describe("ChatInputActionsRow plus menu", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByTestId("composer-plus")).toBeInTheDocument();
+    expect(screen.queryByTestId("composer-plus")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Model")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.conversationMode.picker"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
     expect(screen.getByLabelText("快捷指令")).toBeInTheDocument();
     expect(screen.getByLabelText("Upload")).toBeInTheDocument();
@@ -74,6 +119,213 @@ describe("ChatInputActionsRow plus menu", () => {
     expect(
       screen.queryByTestId("conversation-mode-hint"),
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId("context-window-ring")).toBeInTheDocument();
+  });
+
+  it("hides context usage for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow {...baseProps} managed />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("context-window-ring")).not.toBeInTheDocument();
+    expect(screen.getByTestId("managed-approval-picker")).toBeInTheDocument();
+    expect(screen.queryByTestId("hitl-policy-picker")).not.toBeInTheDocument();
+  });
+
+  it("keeps approval when the managed agent has no unattended mode", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          sessionMode="build"
+          onSessionModeChange={() => undefined}
+          sessionModes={[
+            {
+              id: "build",
+              name_zh: "构建",
+              name_en: "Build",
+              hint_zh: "",
+              hint_en: "",
+            },
+            {
+              id: "plan",
+              name_zh: "规划",
+              name_en: "Plan",
+              hint_zh: "",
+              hint_en: "",
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId("managed-approval-picker")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.conversationMode.picker"),
+    ).toBeInTheDocument();
+  });
+
+  it("hides approval when a session mode already skips it", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          sessionMode="default"
+          onSessionModeChange={() => undefined}
+          sessionModes={[
+            {
+              id: "default",
+              name_zh: "默认",
+              name_en: "Default",
+              hint_zh: "",
+              hint_en: "",
+            },
+            {
+              id: "bypassPermissions",
+              name_zh: "YOLO",
+              name_en: "YOLO",
+              hint_zh: "",
+              hint_en: "",
+            },
+          ]}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByTestId("managed-approval-picker"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps connector and knowledge pickers for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          availableConnectors={[
+            { mcp_server_name: "notes", label: "Notes", kind: "custom" },
+          ]}
+          selectedConnectors={[]}
+          onConnectorsChange={() => undefined}
+          availableKnowledgeBases={[
+            {
+              id: "kb1",
+              owner_user_id: 1,
+              name: "手册",
+              description: "",
+              default_open: false,
+              shared: false,
+              icon_name: "book",
+              embedding_model: "",
+              embedding_dim: 0,
+              doc_count: 0,
+              max_documents: 1,
+              created_at: 0,
+              updated_at: 0,
+            },
+          ]}
+          selectedKnowledgeBaseIds={[]}
+          onKnowledgeBaseIdsChange={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("connectors.chatPicker")).toBeInTheDocument();
+    expect(screen.getByLabelText("chat.knowledgePicker")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Model")).not.toBeInTheDocument();
+  });
+
+  it("keeps the expert picker for a managed expert", () => {
+    render(
+      <MemoryRouter>
+        <ChatInputActionsRow
+          {...baseProps}
+          managed
+          availableExperts={[
+            {
+              agent_id: "other",
+              name: "分析师",
+              description: "",
+              avatar_url: null,
+              kind: "expert",
+            },
+          ]}
+          onInsertExpertMention={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText("chat.expertPicker")).toBeInTheDocument();
+  });
+
+  it("folds shortcut, upload, and polish into the plus menu when the composer is narrow", async () => {
+    const rect = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 40,
+      right: 360,
+      width: 360,
+      height: 40,
+      toJSON: () => ({}),
+    } as DOMRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue(rect);
+    const OriginalObserver = globalThis.ResizeObserver;
+    class NarrowObserver {
+      private readonly callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+
+      observe() {
+        this.callback(
+          [{ contentRect: { width: 360, height: 40 } } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
+
+      unobserve() {}
+
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", NarrowObserver);
+    try {
+      const onFileSelect = vi.fn();
+      render(
+        <MemoryRouter>
+          <ChatInputActionsRow {...baseProps} onFileSelect={onFileSelect} />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByLabelText("快捷指令")).not.toBeInTheDocument();
+      });
+      expect(screen.queryByLabelText("Upload")).not.toBeInTheDocument();
+      expect(screen.getByTestId("hitl-policy-picker")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("conversation-mode-hint"),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("composer-plus"));
+      expect(
+        await screen.findByText("chat.polish.tooltip"),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByText("Upload"));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Files" }));
+      expect(onFileSelect).toHaveBeenCalledTimes(1);
+    } finally {
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", OriginalObserver);
+    }
   });
 
   it("starts a folder upload from the toolbar", () => {
@@ -146,7 +398,11 @@ describe("ChatInputActionsRow plus menu", () => {
   it("opens a flyout beside the plus menu instead of a window drawer", async () => {
     render(
       <MemoryRouter>
-        <ChatInputActionsRow {...baseProps} />
+        <ChatInputActionsRow
+          {...baseProps}
+          availableConnectors={[]}
+          onConnectorsChange={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
@@ -189,7 +445,12 @@ describe("ChatInputActionsRow plus menu", () => {
     ];
     render(
       <MemoryRouter>
-        <ChatInputActionsRow {...baseProps} availableModels={extraModels} />
+        <ChatInputActionsRow
+          {...baseProps}
+          availableModels={extraModels}
+          availableConnectors={[]}
+          onConnectorsChange={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
