@@ -13,6 +13,7 @@ html[data-theme="light"] {
   --fn-bg-secondary: #f7f8fa;
   --fn-bg-tertiary: #f0f1f3;
   --fn-bg-elevated: #ffffff;
+  --fn-bg-modal: #ffffff;
   --fn-bg-layout: #f5f6f8;
   --fn-bg-container: #ffffff;
   --fn-bg-hover: rgba(232, 93, 117, 0.04);
@@ -197,6 +198,7 @@ html[data-theme="dark"] {
   --fn-bg-secondary: #1a1a1a;
   --fn-bg-tertiary: #222222;
   --fn-bg-elevated: #1e1e1e;
+  --fn-bg-modal: #1a1c28;
   --fn-bg-layout: #0e0e0e;
   --fn-bg-container: #141414;
   --fn-bg-hover: rgba(232, 93, 117, 0.08);

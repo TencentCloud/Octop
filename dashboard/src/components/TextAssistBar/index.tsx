@@ -21,6 +21,8 @@ export type TextAssistBarProps = {
   onApply: (text: string) => void;
   disabled?: boolean;
   className?: string;
+  /** Render only the action button for compact placements. */
+  compact?: boolean;
 };
 
 export function TextAssistBar({
@@ -30,6 +32,7 @@ export function TextAssistBar({
   onApply,
   disabled = false,
   className,
+  compact = false,
 }: TextAssistBarProps) {
   const { t, i18n } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -64,8 +67,10 @@ export function TextAssistBar({
   }, [disabled, getName, getText, i18n.language, kind, loading, onApply, t]);
 
   return (
-    <div className={cx(styles.bar, className)}>
-      <span className={styles.hint}>{t("textAssist.hint")}</span>
+    <div className={cx(styles.bar, compact && styles.compactBar, className)}>
+      {compact ? null : (
+        <span className={styles.hint}>{t("textAssist.hint")}</span>
+      )}
       <Button
         type="link"
         size="small"

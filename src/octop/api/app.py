@@ -191,6 +191,7 @@ def build_app(server: OctopServer) -> FastAPI:
         desktop,
         envs,
         experts,
+        file_checkpoints,
         health,
         i18n,
         internal_mcp,
@@ -227,6 +228,7 @@ def build_app(server: OctopServer) -> FastAPI:
         users,
         voice,
         workspace,
+        workspace_git,
     )
     from octop.api.routers.decision import router as decision_router
     from octop.api.routers.filesystem import router as filesystem_router
@@ -300,6 +302,8 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(managed.router, "/api", ["agents"]),
             _RouterMount(text_assist.router, "/api", ["text-assist"]),
             _RouterMount(workspace.router, "/api", ["workspace"]),
+            _RouterMount(workspace_git.router, "/api", ["git"]),
+            _RouterMount(file_checkpoints.router, "/api", ["git"]),
             _RouterMount(agent_files.router, "/api", ["agent_files"]),
             _RouterMount(memory.router, "/api", ["memory"]),
             _RouterMount(memory_portable.router, "/api", ["memory"]),

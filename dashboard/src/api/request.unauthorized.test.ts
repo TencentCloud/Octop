@@ -66,6 +66,34 @@ describe("401 handling", () => {
     expect(replace).toHaveBeenCalledWith("/login");
   });
 
+  it("clears the session when the server reports missing credentials", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "MISSING_CREDENTIALS",
+                message: "需要登录。",
+                details: {},
+              },
+            }),
+            {
+              status: 401,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        ),
+      ),
+    );
+
+    await expect(mod.request("/agents")).rejects.toThrow();
+
+    expect(replace).toHaveBeenCalledWith("/login");
+    expect(mod.getAuthToken()).toBe("");
+  });
+
   it("keeps the local session when a 401 is a peer credential error", async () => {
     vi.stubGlobal(
       "fetch",

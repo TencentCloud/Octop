@@ -151,6 +151,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         ),
     },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
+    {
+        "name": "git",
+        "description": (
+            "Git view over a local agent workspace: status, diff, log and "
+            "staging operations. Only available when the workspace root has a ``.git``."
+        ),
+    },
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},
     {"name": "usage", "description": "Token usage summaries for billing and dashboards."},
     {

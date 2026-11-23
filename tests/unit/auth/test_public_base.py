@@ -6,6 +6,7 @@ import pytest
 from starlette.requests import Request
 
 from octop.api.common.public_base import resolve_public_base
+from octop.api.common.sso_cookie import request_is_https
 from octop.infra.auth.sso.public_base import build_redirect_uri
 
 
@@ -31,6 +32,69 @@ def test_resolve_public_base_uses_forwarded_proxy_headers() -> None:
     )
 
     assert resolve_public_base(request) == "https://octop.example"
+
+
+def test_resolve_public_base_uses_configured_origin_without_proxy_headers() -> None:
+    request = _request(
+        scheme="http",
+        headers=[(b"host", b"127.0.0.1:8088")],
+    )
+    request.scope["app"] = type(
+        "App",
+        (),
+        {
+            "state": type(
+                "State",
+                (),
+                {
+                    "octop_server": type(
+                        "Server",
+                        (),
+                        {
+                            "config": type(
+                                "Cfg", (), {"public_base_url": "https://octop.example:8674"}
+                            )()
+                        },
+                    )()
+                },
+            )()
+        },
+    )()
+
+    assert resolve_public_base(request) == "https://octop.example:8674"
+
+
+def test_forwarded_proto_wins_over_configured_origin() -> None:
+    request = _request(
+        headers=[
+            (b"host", b"internal.example:8080"),
+            (b"x-forwarded-proto", b"https"),
+            (b"x-forwarded-host", b"from-proxy.example"),
+        ]
+    )
+    request.scope["app"] = type(
+        "App",
+        (),
+        {
+            "state": type(
+                "State",
+                (),
+                {
+                    "octop_server": type(
+                        "Server",
+                        (),
+                        {
+                            "config": type(
+                                "Cfg", (), {"public_base_url": "https://configured.example"}
+                            )()
+                        },
+                    )()
+                },
+            )()
+        },
+    )()
+
+    assert resolve_public_base(request) == "https://from-proxy.example"
 
 
 def test_resolve_public_base_uses_request_url_without_proxy_headers() -> None:
@@ -117,6 +181,50 @@ def test_resolve_public_base_uses_forwarded_port_with_host_fallback() -> None:
     )
 
     assert resolve_public_base(request) == "https://octop.example:8011"
+
+
+def _attach_public_base(request: Request, origin: str) -> None:
+    request.scope["app"] = type(
+        "App",
+        (),
+        {
+            "state": type(
+                "State",
+                (),
+                {
+                    "octop_server": type(
+                        "Server",
+                        (),
+                        {"config": type("Cfg", (), {"public_base_url": origin})()},
+                    )()
+                },
+            )()
+        },
+    )()
+
+
+def test_request_is_https_follows_configured_origin_without_proxy_headers() -> None:
+    request = _request(scheme="http", headers=[(b"host", b"127.0.0.1:8088")])
+    _attach_public_base(request, "https://octop.example:8674")
+
+    assert request_is_https(request) is True
+
+
+def test_request_is_https_lets_forwarded_http_win_over_configured_https() -> None:
+    request = _request(
+        headers=[
+            (b"host", b"octop.example:8674"),
+            (b"x-forwarded-proto", b"http"),
+        ]
+    )
+    _attach_public_base(request, "https://octop.example:8674")
+
+    assert request_is_https(request) is False
+
+
+def test_request_is_https_uses_socket_scheme_when_unconfigured() -> None:
+    assert request_is_https(_request(scheme="http")) is False
+    assert request_is_https(_request(scheme="https")) is True
 
 
 def test_build_redirect_uri_uses_oidc_callback_path() -> None:

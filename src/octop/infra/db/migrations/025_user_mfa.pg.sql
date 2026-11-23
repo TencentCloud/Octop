@@ -82,6 +82,14 @@ CREATE INDEX IF NOT EXISTS idx_auth_challenges_expires_at
 ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS run_lease_owner TEXT;
 ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS run_lease_token TEXT;
 ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS run_lease_until BIGINT;
+ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS allow_all INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS script_lang TEXT;
+ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS script_source TEXT;
+ALTER TABLE cron_jobs ADD COLUMN IF NOT EXISTS script_path TEXT;
+
+ALTER TABLE cron_jobs DROP CONSTRAINT IF EXISTS cron_jobs_task_type_check;
+ALTER TABLE cron_jobs ADD CONSTRAINT cron_jobs_task_type_check
+  CHECK (task_type IN ('text', 'agent', 'script'));
 
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS runtime_lease_owner TEXT;
 ALTER TABLE channels ADD COLUMN IF NOT EXISTS runtime_lease_token TEXT;

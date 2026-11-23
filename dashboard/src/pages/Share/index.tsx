@@ -27,9 +27,9 @@ function turnLabel(group: MessageGroup): string {
   if (!first) return "";
   if (first.role === "user") return first.author?.displayName?.trim() || "";
   return (
-    group.messages
-      .find((item) => item.speakerAgentId)
-      ?.speakerAgentId?.trim() || ""
+    group.messages.find((item) => item.speakerFace?.name)?.speakerFace?.name?.trim() ||
+    group.messages.find((item) => item.speakerAgentId)?.speakerAgentId?.trim() ||
+    ""
   );
 }
 
@@ -72,32 +72,50 @@ export default function SharePage() {
   const groups = useMemo(() => {
     if (state.kind !== "ready") return [];
     primeServerTimezone(state.view.timezone);
-    let speaker = state.view.agent_name;
-    const messages = convertHistoryMessages(
-      state.view.messages.map((message) => {
-        if (message.role === "user") speaker = "";
-        if (message.role === "assistant") {
-          speaker = message.speaker_name || state.view.agent_name;
-        }
-        const speakerName =
-          message.role === "user" ? "" : speaker || state.view.agent_name;
-        return {
-          role: message.role,
-          content: message.content,
-          timestamp: message.timestamp,
-          decision: message.decision,
-          agent_id: speakerName || undefined,
-          author:
-            message.role === "user"
-              ? {
-                  user_id: 1,
-                  display_name: message.author_name || t("chat.sharePage.user"),
-                  username: "",
-                }
-              : undefined,
-        };
-      }),
+    const faces = state.view.messages
+      .filter((message) => message.role === "assistant")
+      .map((message) => ({
+        name: message.speaker_name || state.view.agent_name,
+        iconUrl: message.speaker_icon_url ?? null,
+        iconName: message.speaker_icon_name ?? null,
+        color: message.speaker_color ?? null,
+      }));
+    const converted = convertHistoryMessages(
+      state.view.messages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        decision: message.decision,
+        author:
+          message.role === "user"
+            ? {
+                user_id: 1,
+                display_name: message.author_name || t("chat.sharePage.user"),
+                username: "",
+                avatar_icon: message.author_avatar_icon || null,
+                avatar_url: message.author_avatar_url || null,
+              }
+            : undefined,
+      })),
     );
+    let faceIdx = 0;
+    let currentFace = faces[0] ?? {
+      name: state.view.agent_name,
+      iconUrl: null,
+      iconName: null,
+      color: null,
+    };
+    const messages = converted.map((message) => {
+      if (message.role === "assistant") {
+        currentFace = faces[faceIdx] ?? currentFace;
+        faceIdx += 1;
+        return { ...message, speakerFace: currentFace };
+      }
+      if (message.role === "tool") {
+        return { ...message, speakerFace: currentFace };
+      }
+      return message;
+    });
     return groupConsecutiveAssistantMessages(messages);
   }, [state, t]);
 

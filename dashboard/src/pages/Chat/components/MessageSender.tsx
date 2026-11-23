@@ -1,4 +1,9 @@
-import type { ReactNode } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type ReactNode,
+} from "react";
+import cx from "classnames";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
@@ -8,22 +13,31 @@ import styles from "../index.module.less";
 /** Shared message-row avatar size. */
 export const MESSAGE_AVATAR_SIZE = 36;
 
-interface MessageSenderProps {
+interface MessageSenderProps extends ComponentPropsWithoutRef<"div"> {
   name: string;
   avatar: ReactNode;
 }
 
-/** Plain message-row avatar. Name is an accessible label only. */
-export default function MessageSender({ name, avatar }: MessageSenderProps) {
-  const label = name.trim();
-  return (
-    <div className={styles.msgSender} aria-label={label || undefined}>
-      <span className={styles.msgAvatarPlain} aria-hidden>
-        {avatar}
-      </span>
-    </div>
-  );
-}
+/** Plain message-row avatar with a DOM target for Ant Design Tooltip. */
+const MessageSender = forwardRef<HTMLDivElement, MessageSenderProps>(
+  function MessageSender({ name, avatar, className, ...props }, ref) {
+    const label = name.trim();
+    return (
+      <div
+        ref={ref}
+        aria-label={label || undefined}
+        {...props}
+        className={cx(styles.msgSender, className)}
+      >
+        <span className={styles.msgAvatarPlain} aria-hidden>
+          {avatar}
+        </span>
+      </div>
+    );
+  },
+);
+
+export default MessageSender;
 
 interface ExpertMessageAvatarProps {
   name?: string | null;

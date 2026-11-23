@@ -131,7 +131,7 @@ docker run -d \
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
 | `OCTOP_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；合格则建账号；留空或不合格则走设置向导） |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
-| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
+| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载）。不设置则仍挂当前用户的 `~/.octop`，升级不用改配置、不用迁数据 |
 
 > 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
 

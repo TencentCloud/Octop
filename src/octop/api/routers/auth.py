@@ -45,6 +45,7 @@ def me_payload(user: Any, server: Any) -> dict[str, Any]:
         payload["sso_identities"] = []
         payload["has_password"] = True
         payload["allowed_backend_types"] = None
+        payload["default_backend_type"] = None
         return payload
     identities = [{"kind": item.kind} for item in server.user_manager.list_sso_identities(user.id)]
     payload["sso_identities"] = identities
@@ -61,11 +62,16 @@ def me_payload(user: Any, server: Any) -> dict[str, Any]:
     )
     from octop.infra.users.resource_policy import (  # noqa: PLC0415
         POLICY_ALLOWED_BACKEND_TYPES,
+        POLICY_DEFAULT_BACKEND_TYPE,
         allowed_backend_types_of,
+        default_backend_type_of,
     )
 
     payload["allowed_backend_types"] = allowed_backend_types_of(
         server.services.user_policy_repo.get(user.id, POLICY_ALLOWED_BACKEND_TYPES)
+    )
+    payload["default_backend_type"] = default_backend_type_of(
+        server.services.user_policy_repo.get(user.id, POLICY_DEFAULT_BACKEND_TYPE)
     )
     return payload
 

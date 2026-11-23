@@ -126,10 +126,10 @@ def test_compose_followup_truncates_long_member_result(processor_env: dict) -> N
         message="survey market",
         user_id=1,
     )
-    huge = "建议采纳此项。" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200))
+    huge = "HEAD-DROP-" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200)) + "建议采纳此项。"
     text = processor.compose_followup(msg, result_text=huge, error_text=None)
     assert "建议采纳此项。" in text
-    assert huge not in text
+    assert "HEAD-DROP-" not in text
     assert "…" in text
     assert len(text) < len(huge) + 800
 
@@ -357,6 +357,101 @@ async def test_stream_host_followup_marks_live_and_persists(
     assert done
     assert all(frame.get("team_wrapup") is True for frame in done)
     repo.append_if_ready.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_host_followup_persists_sent_file(
+    processor_env: dict,
+) -> None:
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("conn-host-file", capture)
+    gateway.ws_hub.subscribe("thr_parent", "conn-host-file")
+
+    sent = {
+        "type": "file",
+        "path": "/home/wally/.octop/agents/host/deck.pptx",
+        "filename": "deck.pptx",
+        "source": {
+            "type": "url",
+            "url": "file:///home/wally/.octop/agents/host/deck.pptx",
+            "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+    }
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {
+            "type": "tool_call_chunk",
+            "id": "call-send",
+            "name": "send_file_to_user",
+            "args": "",
+        }
+        yield {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "tool_call_id": "call-send",
+                    "name": "send_file_to_user",
+                    "content": sent,
+                }
+            ],
+        }
+        yield {"type": "token", "content": "文件已发给你"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(
+        return_value=[
+            ToolMessage(
+                content=json.dumps(
+                    {
+                        "type": "file",
+                        "path": "/home/wally/.octop/agents/host/notes.txt",
+                        "filename": "notes.txt",
+                        "source": {
+                            "type": "url",
+                            "url": "file:///home/wally/.octop/agents/host/notes.txt",
+                            "media_type": "text/plain",
+                        },
+                    }
+                ),
+                tool_call_id="call-old",
+                name="send_file_to_user",
+            ),
+            AIMessage(content="文件已发给你"),
+        ]
+    )
+    processor._agent_manager.get_agent.return_value = harness
+    repo = MagicMock()
+    repo.projection_status.return_value = "ready"
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+
+    await processor.teams.stream_host_followup_to_room(
+        ChatRequest(messages="wrap up", thread_id="thr_parent", agent_id="host"),
+        room_thread_id="thr_parent",
+        speaker_id="host",
+    )
+
+    stored = json.loads(repo.append_if_ready.call_args[0][1][0].message_json)
+    attachments = stored["data"]["additional_kwargs"]["outbound_attachments"]
+    assert [item["workspace_path"] for item in attachments] == [
+        "/home/wally/.octop/agents/host/deck.pptx",
+        "/home/wally/.octop/agents/host/notes.txt",
+    ]
+    assert stored["data"]["content"] == "文件已发给你"
+    assert frames
 
 
 @pytest.mark.asyncio

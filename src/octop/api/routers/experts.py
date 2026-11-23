@@ -993,6 +993,32 @@ async def install_expert_hub_item(
     }
 
 
+@router.get(
+    "/experts/default-prompt-files",
+    response_model=list[ComposerFileOverrideBody],
+    summary="Get the default Markdown files for a new expert workspace",
+)
+async def get_default_prompt_files(
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[dict[str, str]]:
+    from octop_harness.builtin.templates import iter_md_template_files  # noqa: PLC0415
+
+    from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH  # noqa: PLC0415
+
+    locale = resolve_user_locale(user_repo=server.services.user_repo, user_id=user.id)
+    files = await asyncio.to_thread(iter_md_template_files, locale)
+    return [
+        {
+            "name": name,
+            "content": content.decode("utf-8").replace(
+                "{{BOOTSTRAP_MARKER}}", f"{DEFAULT_SYSTEM_FILES_PATH}/.bootstrapped"
+            ),
+        }
+        for name, content in files
+    ]
+
+
 @router.get("/experts/{expert_id}")
 async def get_expert(
     expert_id: str,
