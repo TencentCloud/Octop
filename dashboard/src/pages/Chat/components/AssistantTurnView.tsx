@@ -10,6 +10,7 @@ import {
   turnUsedBrowserTool,
 } from "../utils/messageContent";
 import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
+import { shouldFreezeProcessSpinner } from "../utils/pendingHitl";
 import { useAgent } from "../../../context/AgentContext";
 import { TodoProgressPanel } from "../../../components/TodoProgressPanel";
 import {
@@ -179,7 +180,7 @@ export default function AssistantTurnView({
     () => layoutAssistantTurnHitl(messages),
     [messages],
   );
-  const hasPendingHitl = messages.some((m) => m.hitlData?.status === "pending");
+  const hasPendingHitl = shouldFreezeProcessSpinner(messages);
 
   const splitOpts = useMemo(
     () => ({ joinAnswerFragments: turnStreaming }),
