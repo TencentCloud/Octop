@@ -7,6 +7,24 @@ import pytest
 from octop.infra.agents.settings import acp_host
 
 
+def test_windows_npx_runner_keeps_arguments_out_of_the_shell(tmp_path, monkeypatch):
+    from octop.infra.agents.settings import acp
+
+    shim = tmp_path / "npx.cmd"
+    script = tmp_path / "node_modules" / "npm" / "bin" / "npx-cli.js"
+    script.parent.mkdir(parents=True)
+    script.touch()
+    node = tmp_path / "node.exe"
+    monkeypatch.setattr(acp.sys, "platform", "win32")
+    monkeypatch.setattr(
+        acp.shutil, "which", lambda name, path: str(shim if name == "npx" else node)
+    )
+    assert acp.host_runner_argv("npx", ["adapter with spaces", "x&y"], {}) == (
+        str(node),
+        [str(script), "adapter with spaces", "x&y"],
+    )
+
+
 @pytest.mark.asyncio
 async def test_ready_when_handshake_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(acp_host, "_platform_key", lambda: "linux")
