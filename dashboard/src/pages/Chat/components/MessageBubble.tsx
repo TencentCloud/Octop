@@ -1155,25 +1155,24 @@ function MessageBubble({
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
+                  {!isUser && !isStreaming && textContent && (
+                    <CopyButton text={textContent} />
+                  )}
                   {!isUser && !isStreaming && readAloud && speechText && (
-                    <>
-                      <CopyButton text={textContent} />
-                      <button
-                        className={cx(
-                          styles.msgActionBtn,
-                          speakingId === message.id &&
-                            styles.msgActionBtnActive,
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          speak(message.id, textContent);
-                        }}
-                        title={t("voice.readAloud", "朗读")}
-                        type="button"
-                      >
-                        <Volume2 size={13} />
-                      </button>
-                    </>
+                    <button
+                      className={cx(
+                        styles.msgActionBtn,
+                        speakingId === message.id && styles.msgActionBtnActive,
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speak(message.id, textContent);
+                      }}
+                      title={t("voice.readAloud", "朗读")}
+                      type="button"
+                    >
+                      <Volume2 size={13} />
+                    </button>
                   )}
                   {!isUser && !isStreaming && onRegenerate && (
                     <button
