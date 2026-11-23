@@ -132,7 +132,11 @@ class TeamFileTargetMiddleware(AgentMiddleware[Any, Any]):
     def _prepare_tools(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
         configurable = _configurable()
         tools = list(request.tools or [])
-        if not capability_enabled(configurable, "execute"):
+        bridge_id = configurable.get(BRIDGE_TARGET_KEY)
+        has_target = bool(configurable.get(HOST_KEY)) or (
+            isinstance(bridge_id, str) and bool(bridge_id.strip())
+        )
+        if has_target and not capability_enabled(configurable, "execute"):
             tools = [tool for tool in tools if _base(_tool_name(tool)) != _EXECUTE]
         directory = configurable.get(DIR_KEY)
         if isinstance(directory, str) and directory.strip():

@@ -335,6 +335,13 @@ async def test_execute_uses_the_host_shell_and_skips_the_member_tool() -> None:
     assert result == "pwd\n[exit code 0]"
 
 
+def test_unbound_turn_keeps_its_own_execute_tool() -> None:
+    mw = _middleware(_Disk("member"), None)
+    req = SimpleNamespace(tools=[{"type": "function", "function": {"name": "execute"}}])
+    with patch("octop.infra.agents.middleware.team_file_target.get_config", return_value={"configurable": {}}):
+        assert mw._prepare_tools(req) is req
+
+
 def test_execute_is_hidden_and_file_tools_name_the_host_directory() -> None:
     mw = _middleware(_Disk("member"), SimpleNamespace(backend=object(), workspace=object()))
 

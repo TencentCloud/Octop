@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import threading
@@ -590,6 +591,8 @@ class AgentManager:
         # one thread interleave LangGraph checkpoint writes.
         self._thread_execution_locks: dict[tuple[str, str], asyncio.Lock] = {}
         self._active_invocations: dict[str, int] = {}
+        # Background workspace archives of CubeSandbox turns (one task per agent).
+        self._archive_tasks: dict[str, asyncio.Task[None]] = {}
         self._invocation_waiters: dict[str, int] = {}
         self._history_backfills: dict[str, asyncio.Event] = {}
         # Agents whose SQLite file should be rebuilt once they are idle.
@@ -1351,6 +1354,7 @@ class AgentManager:
         )
         from octop.infra.agents.teams import is_team_agent
 
+        cfg = agent_config_from_row(row)
         affected_teams: list[str] = []
         thread_ids = self._repos.thread_repo.list_ids_for_agent(agent_id)
         workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
@@ -1362,9 +1366,13 @@ class AgentManager:
                     logger.exception("failed to drop deleted expert %s from team rosters", agent_id)
             await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+            cube = self._agent_cube_spec(cfg.get("backend"))
+            if cube is not None:
+                await asyncio.to_thread(
+                    self._destroy_agent_cube_sandbox, self._prepare_cube_backend(cube, row)
+                )
         self._bootstrap_known.pop(agent_id, None)
         self._plugin_tool_labels.pop(agent_id, None)
-        cfg = agent_config_from_row(row)
         await asyncio.to_thread(
             delete_agent_memory_and_checkpoints,
             agent_id=agent_id,
@@ -2142,6 +2150,46 @@ class AgentManager:
             self._active_invocations.pop(agent_id, None)
             if agent_id in self._reclaim_pending:
                 self._ensure_reclaim_task()
+            # A sandbox only keeps its workspace in the writable layer; mirror it
+            # after the turn so a rebuild on another node can restore it.
+            self._schedule_workspace_archive(agent_id)
+
+    def _schedule_workspace_archive(self, agent_id: str) -> None:
+        """Archive a CubeSandbox workspace in the background, at most one per agent.
+
+        Runs after the turn is fully accounted for, so it never delays the reply.
+        Backends without ``archive_workspace`` (local, docker, filesystem) are
+        skipped silently.
+        """
+        if agent_id in self._archive_tasks:
+            return
+        archive = self._workspace_archiver(agent_id)
+        if archive is None:
+            return
+
+        async def _run() -> None:
+            try:
+                await asyncio.to_thread(archive)
+            except Exception:  # noqa: BLE001 - never fail a turn over a mirror
+                logger.warning("workspace archive failed for %s", agent_id, exc_info=True)
+            finally:
+                self._archive_tasks.pop(agent_id, None)
+
+        self._archive_tasks[agent_id] = asyncio.get_running_loop().create_task(_run())
+
+    def _workspace_archiver(self, agent_id: str) -> Callable[[], int] | None:
+        """Return the backend's archive callable, if this agent runs in a sandbox."""
+        if self._harness_manager is None:
+            return None
+        try:
+            agent = self._harness_manager.get_agent(agent_id).agent
+        except Exception:  # noqa: BLE001 - agent may be reloading or gone
+            return None
+        backend = getattr(agent, "backend", None)
+        if not getattr(backend, "archives_workspace", False):
+            return None
+        archive = getattr(backend, "archive_workspace", None)
+        return archive if callable(archive) else None
 
     @asynccontextmanager
     async def _track_invocation(self, agent_id: str) -> AsyncIterator[None]:
@@ -4162,7 +4210,8 @@ class AgentManager:
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             return None
-        return self._prepare_docker_backend(self._backend_spec_for_row(row), row)
+        spec = self._backend_spec_for_row(row)
+        return self._prepare_cube_backend(self._prepare_docker_backend(spec, row), row)
 
     def _owner_username(self, row: AgentRow) -> str | None:
         if row.user_id is None:
@@ -4175,6 +4224,100 @@ class AgentManager:
     @staticmethod
     def _spec_is_opensandbox(spec: Any) -> bool:
         return isinstance(spec, dict) and str(spec.get("type") or "").lower() == "opensandbox"
+
+    @staticmethod
+    def _spec_is_cubesandbox(spec: Any) -> bool:
+        return spec == "cubesandbox" or (
+            isinstance(spec, dict) and spec.get("type") == "cubesandbox"
+        )
+
+    def _prepare_cube_backend(self, backend: Any, row: AgentRow) -> Any:
+        """Bind CubeSandbox ownership to the persisted agent and trusted host settings."""
+        if isinstance(backend, dict) and backend.get("type") == "composite":
+            return {
+                **backend,
+                "default": self._prepare_cube_backend(backend.get("default"), row),
+                "routes": {
+                    prefix: self._prepare_cube_backend(route, row)
+                    for prefix, route in (backend.get("routes") or {}).items()
+                },
+            }
+        if not self._spec_is_cubesandbox(backend):
+            return backend
+        if row.user_id is None:
+            raise ValueError("CubeSandbox requires an agent with an owner")
+        spec = backend if isinstance(backend, dict) else {}
+        allowed = {"template", "timeout", "command_timeout", "octop_scope"}
+        prepared = {
+            "type": "cubesandbox",
+            **{key: value for key, value in spec.items() if key in allowed},
+            "octop_user": str(row.user_id),
+            "octop_agent": row.agent_id,
+        }
+        prepared.update(self._cube_workspace_backup())
+        return prepared
+
+    @staticmethod
+    def _cube_workspace_backup() -> dict[str, Any]:
+        """Host-level object-storage mirror for CubeSandbox workspaces.
+
+        Read from the environment rather than agent config: an agent must not be
+        able to point its own workspace backup at an arbitrary bucket. Absent
+        config means no mirror, and a sandbox that is rebuilt starts empty.
+        """
+        raw = os.environ.get("OCTOP_CUBE_WORKSPACE_BACKUP", "").strip()
+        if not raw:
+            return {}
+        try:
+            spec = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError("OCTOP_CUBE_WORKSPACE_BACKUP must be a JSON backend spec") from exc
+        if not isinstance(spec, dict) or "type" not in spec:
+            raise ValueError("OCTOP_CUBE_WORKSPACE_BACKUP must be a JSON object with a 'type' key")
+        options: dict[str, Any] = {"workspace_backup": spec}
+        path = os.environ.get("OCTOP_CUBE_WORKSPACE_BACKUP_PATH", "").strip()
+        if path:
+            options["workspace_backup_path"] = path
+        prefix = os.environ.get("OCTOP_CUBE_WORKSPACE_BACKUP_PREFIX", "").strip()
+        if prefix:
+            options["workspace_backup_prefix"] = prefix
+        return options
+
+    @classmethod
+    def _agent_cube_spec(cls, backend: Any) -> dict[str, Any] | None:
+        """Find an agent-owned sandbox, including inside a composite backend."""
+        if backend == "cubesandbox":
+            return {"type": "cubesandbox"}
+        if not isinstance(backend, dict):
+            return None
+        if backend.get("type") == "cubesandbox" and backend.get("octop_scope", "agent") == "agent":
+            return backend
+        if backend.get("type") == "composite":
+            routes = backend.get("routes")
+            children = routes.values() if isinstance(routes, dict) else ()
+            for spec in (backend.get("default"), *children):
+                cube = cls._agent_cube_spec(spec)
+                if cube is not None:
+                    return cube
+        return None
+
+    @classmethod
+    def _destroy_agent_cube_sandbox(cls, backend: Any) -> None:
+        spec = cls._agent_cube_spec(backend)
+        if spec is None:
+            return
+        from octop_harness.backends.cube_sandbox import CubeSandbox, CubeSandboxMissingError
+
+        try:
+            sandbox = CubeSandbox(
+                **{key: value for key, value in spec.items() if key != "type"}, reuse_only=True
+            )
+        except CubeSandboxMissingError:
+            return
+        try:
+            sandbox.destroy()
+        finally:
+            sandbox.close()
 
     def _prepare_docker_backend(self, backend: Any, row: AgentRow) -> Any:
         """Inject Octop docker defaults (prefix / agent_id / username) without overwrite."""
@@ -4212,6 +4355,7 @@ class AgentManager:
             self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir),
             row,
         )
+        backend = self._prepare_cube_backend(backend, row)
         if self._spec_is_opensandbox(backend) and not allow_ephemeral_remote:
             # Stopped-agent / seed fallback: do not create a throwaway remote sandbox.
             backend = {
@@ -4624,7 +4768,9 @@ class AgentManager:
             if persisted:
                 cfg = persisted
 
-        backend = self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir)
+        backend = self._prepare_cube_backend(
+            self._backend_spec_for_row(row, cfg=cfg, workspace_dir=workspace_dir), row
+        )
         if getattr(row, "kind", None) == "managed":
             # The ACP runner is the agent. Reuse the workspace and runner
             # binding; do not assemble the expert tool or bootstrap stack.
@@ -4903,6 +5049,7 @@ class AgentManager:
             ws.backend
             if (
                 self._spec_is_opensandbox(backend)
+                or self._spec_is_cubesandbox(backend)
                 or is_adapted_backend(ws.backend)
                 or is_remote_backend_spec(backend)
             )

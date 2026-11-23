@@ -44,6 +44,7 @@ BACKEND_POLICY_TYPES: tuple[str, ...] = (
     "postgres",
     "docker",
     "opensandbox",
+    "cubesandbox",
 )
 _BACKEND_POLICY_TYPE_SET = frozenset(BACKEND_POLICY_TYPES)
 _POLICY_TYPE_ALIASES = {"shell": "local_shell"}

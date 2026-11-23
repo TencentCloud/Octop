@@ -1749,6 +1749,26 @@ def test_build_harness_config_respects_config_json_backend(manager: AgentManager
     assert cfg.backend == custom
 
 
+def test_cube_spec_uses_persisted_owner_and_host_connection_settings(manager: AgentManager) -> None:
+    row = _row(agent_id="cube-agent")
+    spec = {
+        "type": "cubesandbox",
+        "template": "workspace",
+        "octop_user": "another-user",
+        "octop_agent": "another-agent",
+        "api_url": "https://untrusted.example",
+        "api_key": "untrusted",
+        "lock_dsn": "untrusted",
+    }
+
+    assert manager._prepare_cube_backend(spec, row) == {
+        "type": "cubesandbox",
+        "template": "workspace",
+        "octop_user": "1",
+        "octop_agent": "cube-agent",
+    }
+
+
 def test_backend_spec_for_row_neutralizes_host_root_on_windows(
     manager: AgentManager, monkeypatch: Any
 ) -> None:
