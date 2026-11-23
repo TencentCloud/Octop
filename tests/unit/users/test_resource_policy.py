@@ -15,15 +15,20 @@ from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.resource_policy import (
     POLICY_ALLOWED_BACKEND_TYPES,
+    POLICY_DEFAULT_BACKEND_TYPE,
     POLICY_MAX_AGENTS,
     POLICY_TOKEN_QUOTA,
     POLICY_WORKSPACE_ROOT_DIR,
+    apply_default_backend_type,
     apply_workspace_root_to_config,
     assert_agent_quota_available,
     assert_backend_within_user_root,
+    assert_default_backend_allowed,
     assert_token_quota_available,
     clamp_backend_to_workspace_root,
+    effective_default_backend_type,
     normalize_allowed_backend_types,
+    normalize_default_backend_type,
     normalize_workspace_root_dir,
     persisted_workspace_within_root,
     public_policy_fields,
@@ -330,6 +335,7 @@ def test_user_policy_repo_named_rows(db: SqlitePool, tmp_path: Path) -> None:
         "token_quota": 42,
         "max_agents": None,
         "allowed_backend_types": None,
+        "default_backend_type": None,
     }
     root = policies.get(uid, POLICY_WORKSPACE_ROOT_DIR)
     assert root is not None
@@ -557,3 +563,47 @@ def test_raise_if_backend_types_disallowed_walks_named_and_composite(db: SqliteP
         {"type": "local_shell"},
         named_kind=named_kind,
     )
+
+
+def test_default_backend_type_must_stay_inside_the_allow_list() -> None:
+    assert normalize_default_backend_type(None) is None
+    assert normalize_default_backend_type("") is None
+    assert normalize_default_backend_type("shell") == "local_shell"
+    assert normalize_default_backend_type("docker") == "docker"
+    with pytest.raises(OctopError) as unknown:
+        normalize_default_backend_type("nope")
+    assert unknown.value.code is ErrorCode.FORBIDDEN
+
+    assert effective_default_backend_type(None, None) == "local_shell"
+    assert effective_default_backend_type("docker", None) == "docker"
+    assert effective_default_backend_type("docker", ["filesystem", "docker"]) == "docker"
+    assert effective_default_backend_type("docker", ["filesystem"]) == "local_shell"
+    assert effective_default_backend_type(None, ["filesystem", "docker"]) == "local_shell"
+
+    assert_default_backend_allowed("docker", "filesystem,docker")
+    assert_default_backend_allowed(None, "filesystem")
+    assert_default_backend_allowed("docker", None)
+    with pytest.raises(OctopError) as blocked:
+        assert_default_backend_allowed("docker", "filesystem")
+    assert blocked.value.code is ErrorCode.FORBIDDEN
+    assert blocked.value.details == {"type": "docker"}
+
+
+def test_apply_default_backend_type_fills_only_a_missing_backend(db: SqlitePool) -> None:
+    users = UserRepo(db)
+    policies = UserPolicyRepo(db)
+    uid = users.create(username="alice", password_hash="h", role="user")
+    policies.set(uid, POLICY_DEFAULT_BACKEND_TYPE, "filesystem")
+    config: dict[str, object] = {}
+    apply_default_backend_type(policies, uid, config)
+    assert config["backend"] == {"type": "filesystem", "root_dir": "/", "virtual_mode": True}
+
+    explicit = {"backend": {"type": "docker"}}
+    apply_default_backend_type(policies, uid, explicit)
+    assert explicit["backend"] == {"type": "docker"}
+
+    policies.set(uid, POLICY_ALLOWED_BACKEND_TYPES, "docker")
+    policies.set(uid, POLICY_DEFAULT_BACKEND_TYPE, "docker")
+    remote: dict[str, object] = {}
+    apply_default_backend_type(policies, uid, remote)
+    assert remote["backend"] == {"type": "docker"}

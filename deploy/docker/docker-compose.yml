@@ -38,7 +38,10 @@ services:
     ports:
       - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"
     volumes:
-      - ${OCTOP_DATA:-~/.octop}:/data/.octop
+      # 默认仍是宿主机 ~/.octop，已有数据不用改配置。Compose 不展开字面 ~（HOME
+      # 未设置时会挂到 compose 文件旁的 ~ 目录，升级后是空目录）。用 ${HOME} 得到
+      # 同一路径；HOME 未设置时回退 /root（sudo 的默认家目录）。
+      - ${OCTOP_DATA:-${HOME:-/root}/.octop}:/data/.octop
     environment:
       - HOME=/data
       - OCTOP_BIND_HOST=0.0.0.0
@@ -61,3 +64,4 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
+

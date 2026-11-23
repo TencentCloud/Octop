@@ -893,6 +893,10 @@ export default function ExpertsPage() {
                     welcome_message:
                       saved.welcome_message ?? item.welcome_message,
                     member_ids: saved.member_ids,
+                    members: saved.members,
+                    is_shared: saved.is_shared,
+                    visibility: saved.visibility,
+                    group_ids: saved.group_ids,
                   }
                 : item,
             ),

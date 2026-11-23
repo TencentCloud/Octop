@@ -73,6 +73,70 @@ describe("history token usage", () => {
     );
   });
 
+  it("restores a sent file on the assistant message after refresh", () => {
+    const messages = convertHistoryMessages(
+      [
+        {
+          role: "assistant",
+          id: "a1",
+          team_wrapup: true,
+          content: [
+            { type: "text", text: "PPT文件已发给你" },
+            {
+              type: "file",
+              filename: "deck.pptx",
+              media_type:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              workspace_path: "/agents/50VTYY/deck.pptx",
+            },
+          ],
+        },
+      ],
+      "50VTYY",
+    );
+    expect(messages[0]?.content).toContain("PPT文件已发给你");
+    expect(messages[0]?.attachments?.[0]).toMatchObject({
+      filename: "deck.pptx",
+      workspacePath: "/agents/50VTYY/deck.pptx",
+      kind: "file",
+    });
+    expect(messages[0]?.attachments?.[0]?.url).toContain(
+      "/api/agents/50VTYY/workspace/download?path=",
+    );
+    expect(messages[0]?.attachments?.[0]?.url).toContain("deck.pptx");
+  });
+
+  it("restores a send_file tool result as a file card", () => {
+    const messages = convertHistoryMessages(
+      [
+        {
+          role: "tool",
+          id: "t1",
+          content: [
+            {
+              type: "tool_result",
+              id: "call-send",
+              name: "send_file_to_user",
+              output: '{"type":"file"}',
+            },
+            {
+              type: "file",
+              filename: "deck.pptx",
+              workspace_path: "/agents/50VTYY/deck.pptx",
+            },
+          ],
+        },
+      ],
+      "50VTYY",
+    );
+    expect(messages[0]?.toolData?.name).toBe("send_file_to_user");
+    expect(messages[0]?.attachments?.[0]).toMatchObject({
+      filename: "deck.pptx",
+      workspacePath: "/agents/50VTYY/deck.pptx",
+      kind: "file",
+    });
+  });
+
   it("keeps a team member speaker on the history bubble", () => {
     const messages = convertHistoryMessages([
       { role: "user", content: "ask the doctor", id: "u1" },

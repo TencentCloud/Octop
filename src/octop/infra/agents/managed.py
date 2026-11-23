@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from pathlib import Path
 from typing import Any
 
 from octop.infra.errors import ErrorCode, OctopError
+
+logger = logging.getLogger(__name__)
 
 _SEED_DIR = Path(__file__).with_name("managed_seed")
 
@@ -23,19 +27,30 @@ def is_managed_agent(row: Any) -> bool:
     return getattr(row, "kind", None) == MANAGED_KIND
 
 
+def read_managed_permission_mode(config: dict[str, Any] | None) -> str:
+    """``yolo`` when this expert was created to skip approval. Otherwise ``ask``."""
+    if isinstance(config, dict) and config.get("managed_permission_mode") == "yolo":
+        return "yolo"
+    return "ask"
+
+
 def apply_managed_backend(config: dict[str, Any]) -> None:
     """Pin storage to the local filesystem root. The user picks the workspace."""
     config["backend"] = dict(MANAGED_BACKEND)
 
 
-def pin_managed_runtime(config: dict[str, Any]) -> None:
-    """Drop expert-only runtime knobs. The ACP runner owns the turn."""
+def pin_managed_runtime(config: dict[str, Any], *, previous: dict[str, Any] | None = None) -> None:
+    """Drop expert-only runtime knobs. Memory stays off unless this expert enables it."""
     config.pop("conversation_mode", None)
     memory = config.get("memory")
-    section = dict(memory) if isinstance(memory, dict) else {}
-    section["memory_enabled"] = False
-    section["memory_capture_enabled"] = False
-    section["memory_recall_inject_enabled"] = False
+    if isinstance(memory, dict):
+        section = dict(memory)
+    else:
+        prior = (previous or {}).get("memory")
+        section = dict(prior) if isinstance(prior, dict) else {}
+    section.setdefault("memory_enabled", False)
+    section.setdefault("memory_capture_enabled", False)
+    section.setdefault("memory_recall_inject_enabled", False)
     config["memory"] = section
 
 
@@ -66,6 +81,7 @@ _RUNNER_PROJECT_ROOTS: dict[str, str] = {
     "cursor_cli": ".cursor",
     "kimi_code": ".kimi",
     "pi": ".pi",
+    "qwen_code": ".qwen",
 }
 _DEFAULT_PROJECT_ROOT = ".octop"
 
@@ -81,6 +97,112 @@ def managed_skill_dir(runner: str) -> str:
 
 def managed_subagent_dir(runner: str) -> str:
     return f"{managed_project_root(runner)}/agents"
+
+
+def _owned_link(path: Path) -> bool:
+    if path.is_symlink():
+        return True
+    is_junction = getattr(path, "is_junction", None)
+    return bool(callable(is_junction) and is_junction())
+
+
+def _known_skill_dirs(workspace: Path) -> list[Path]:
+    roots = set(_RUNNER_PROJECT_ROOTS.values())
+    roots.add(_DEFAULT_PROJECT_ROOT)
+    return [workspace / f"{root}/skills" for root in sorted(roots)]
+
+
+def _load_skill_manifest(path: Path) -> tuple[str, list[str]]:
+    if not path.is_file():
+        return "", []
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return "", []
+    if isinstance(raw, list):
+        return "", [str(item) for item in raw if str(item).strip()]
+    if isinstance(raw, dict):
+        runner = str(raw.get("runner") or "").strip()
+        links = raw.get("links")
+        if isinstance(links, list):
+            return runner, [str(item) for item in links if str(item).strip()]
+    return "", []
+
+
+def _remove_owned_links(dest_root: Path, names: list[str]) -> None:
+    for name in names:
+        link = dest_root / name
+        if _owned_link(link):
+            link.unlink()
+
+
+def _place_skill_link(target: Path, source: Path) -> None:
+    resolved = source.resolve()
+    try:
+        target.symlink_to(resolved, target_is_directory=True)
+    except OSError:
+        if sys.platform == "win32":
+            import _winapi
+
+            _winapi.CreateJunction(str(resolved), str(target))
+            return
+        raise
+
+
+def link_managed_skill_packages(
+    workspace: Path,
+    runner: str,
+    package_dirs: list[Path],
+) -> list[str]:
+    """Expose selected skill packages inside the runner's own skills directory.
+
+    Returns skill names that were skipped because another package, or a real
+    directory, already owns that name. The first package wins. Links this
+    function created earlier are removed, including after the runner changes.
+    """
+    root = runner.strip()
+    if not root:
+        return []
+    dest_root = workspace / managed_skill_dir(root)
+    dest_root.mkdir(parents=True, exist_ok=True)
+    manifest_path = workspace / ".octop" / "managed-skill-links.json"
+    previous_runner, previous = _load_skill_manifest(manifest_path)
+    if previous_runner:
+        _remove_owned_links(workspace / managed_skill_dir(previous_runner), previous)
+    else:
+        for skill_dir in _known_skill_dirs(workspace):
+            _remove_owned_links(skill_dir, previous)
+    created: list[str] = []
+    skipped: list[str] = []
+    for package_dir in package_dirs:
+        if not package_dir.is_dir():
+            continue
+        for child in sorted(package_dir.iterdir()):
+            if not child.is_dir() or not (child / "SKILL.md").is_file():
+                continue
+            slug = child.name
+            target = dest_root / slug
+            if slug in created or target.exists() or _owned_link(target):
+                if slug not in skipped:
+                    skipped.append(slug)
+                continue
+            try:
+                _place_skill_link(target, child)
+            except OSError:
+                logger.warning("managed skill link failed for %s", slug, exc_info=True)
+                continue
+            created.append(slug)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps({"runner": root, "links": created}),
+        encoding="utf-8",
+    )
+    if skipped:
+        logger.warning(
+            "managed skill names already exist, kept the first: %s",
+            ", ".join(skipped),
+        )
+    return skipped
 
 
 def managed_template_payload() -> dict[str, Any]:
@@ -128,12 +250,39 @@ async def seed_managed_workspace(
         await apply_workspace_quick_prompts(workspace, quick_prompts)
 
 
+def _keep_offered_session_mode(config: dict[str, Any]) -> None:
+    """Drop a mode id this underlying agent does not publish."""
+    from octop.infra.agents.acp.session_modes import session_modes
+
+    mode = config.get("managed_session_mode")
+    text = mode.strip() if isinstance(mode, str) else ""
+    runner = config.get("managed_runner")
+    runner_name = runner.strip() if isinstance(runner, str) else ""
+    offered = {item.id for item in session_modes(runner_name)}
+    if text and (not runner_name or not offered or text not in offered):
+        config.pop("managed_session_mode", None)
+        return
+    if text:
+        config["managed_session_mode"] = text
+        return
+    config.pop("managed_session_mode", None)
+
+
 def preserve_managed_config(config: dict[str, Any], previous: dict[str, Any]) -> None:
     """Keep the ACP binding and filesystem root across later edits."""
     apply_managed_backend(config)
-    pin_managed_runtime(config)
+    pin_managed_runtime(config, previous=previous)
     runner = config.get("managed_runner")
     if not isinstance(runner, str) or not runner.strip():
         previous_runner = previous.get("managed_runner")
         if isinstance(previous_runner, str) and previous_runner.strip():
             config["managed_runner"] = previous_runner.strip()
+    if config.get("managed_permission_mode") not in {"ask", "yolo"}:
+        previous_mode = previous.get("managed_permission_mode")
+        if previous_mode in {"ask", "yolo"}:
+            config["managed_permission_mode"] = previous_mode
+    if "managed_session_mode" not in config:
+        previous_session = previous.get("managed_session_mode")
+        if isinstance(previous_session, str) and previous_session.strip():
+            config["managed_session_mode"] = previous_session.strip()
+    _keep_offered_session_mode(config)

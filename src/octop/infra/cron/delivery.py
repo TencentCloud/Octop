@@ -9,6 +9,9 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
+from octop.infra.agents.security.hitl_session import HitlSessionPolicy, ephemeral_hitl_policy
+from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.cron.script_run import ScriptRunError, run_cron_script
 from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
@@ -17,7 +20,6 @@ from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_com
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import TurnHistoryTracker, message_inputs
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.turn_failure import log_failed_tool_results
@@ -47,6 +49,10 @@ class CronDeliveryCommand:
     task_type: CronTaskType
     model: str | None
     mcp_servers: tuple[str, ...]
+    allow_all: bool = False
+    script_lang: str | None = None
+    script_source: str | None = None
+    script_path: str | None = None
 
 
 class CronDeliveryService:
@@ -84,7 +90,9 @@ class CronDeliveryService:
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
             if command.task_type == "text":
-                await self._deliver_text(command, session)
+                await self._publish_fixed(command, session, command.prompt)
+            elif command.task_type == "script":
+                await self._deliver_script(command, session)
             else:
                 await self._deliver_agent(command, session)
 
@@ -94,13 +102,14 @@ class CronDeliveryService:
             _locked,
         )
 
-    async def _deliver_text(
+    async def _publish_fixed(
         self,
         command: CronDeliveryCommand,
         session: SessionRow,
+        outbound: str,
     ) -> None:
         projected: list[ThreadMessageInput] = []
-        title_source = command.prompt
+        title_source = outbound
         if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
             delivery_id = new_ulid()
             locale = resolve_user_locale(
@@ -121,7 +130,7 @@ class CronDeliveryService:
                     id=f"cron:{delivery_id}:human",
                 ),
                 AIMessage(
-                    content=command.prompt,
+                    content=outbound,
                     id=f"cron:{delivery_id}:assistant",
                 ),
             ]
@@ -133,10 +142,77 @@ class CronDeliveryService:
         self._remember_thread_title(session, command)
         await self._gateway.push_session_text(
             session,
-            command.prompt,
+            outbound,
             title_source=title_source,
         )
-        await self._notify_best_effort(session, command.agent_id, command.prompt)
+        await self._notify_best_effort(session, command.agent_id, outbound)
+
+    async def _deliver_script(
+        self,
+        command: CronDeliveryCommand,
+        session: SessionRow,
+    ) -> None:
+        locale = resolve_user_locale(
+            user_repo=self._repos.user_repo,
+            user_id=session.user_id,
+            channel_type=session.channel_type,
+        )
+        workspace = self._agent_manager.workspace_for_agent(command.agent_id)
+        if workspace is None:
+            raise RuntimeError(tr("cron.script.unreadable", locale, path=command.script_path or ""))
+        try:
+            result = await run_cron_script(
+                lang=command.script_lang or "",
+                source=command.script_source or "inline",
+                body=command.prompt,
+                path=command.script_path,
+                workspace=workspace,
+                backend_spec=self._backend_spec(command.agent_id),
+            )
+        except ScriptRunError as exc:
+            raise RuntimeError(self._script_error_text(exc, locale, command)) from exc
+        if result.exit_code != 0:
+            detail = (result.stderr or result.stdout).strip()
+            raise RuntimeError(
+                tr(
+                    "cron.script.failed",
+                    locale,
+                    code=result.exit_code,
+                    detail=detail[:2000],
+                )
+            )
+        outbound = result.stdout.strip() or tr(
+            "cron.history.script_done",
+            locale,
+            name=command.cron_name,
+        )
+        await self._publish_fixed(command, session, outbound)
+
+    def _backend_spec(self, agent_id: str) -> Any:
+        row = self._agent_manager.get_row(agent_id)
+        method = getattr(self._agent_manager, "_backend_spec_for_row", None)
+        if row is None or not callable(method):
+            return None
+        try:
+            return method(row)
+        except Exception:
+            logger.warning(
+                "cron script could not read backend spec for %s", agent_id, exc_info=True
+            )
+            return None
+
+    def _script_error_text(
+        self,
+        exc: ScriptRunError,
+        locale: str,
+        command: CronDeliveryCommand,
+    ) -> str:
+        runtime = command.script_lang or exc.detail or ""
+        if exc.code == "interpreter_missing":
+            return tr("cron.script.interpreter_missing", locale, runtime=runtime)
+        if exc.code == "timeout":
+            return tr("cron.script.timeout", locale, seconds=exc.detail or "120")
+        return tr("cron.script.unreadable", locale, path=exc.detail or command.script_path or "")
 
     async def _deliver_agent(
         self,
@@ -144,6 +220,8 @@ class CronDeliveryService:
         session: SessionRow,
     ) -> None:
         request = await self._build_agent_request(command, session)
+        if command.allow_all:
+            _stamp_managed_allow_all(self._agent_manager, command.agent_id, request)
         tracker = TurnHistoryTracker.from_request(request)
         usage = UsageTracker()
         parts: list[str] = []
@@ -153,7 +231,13 @@ class CronDeliveryService:
         try:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
-            with write_scope(allowed=False):
+            store = getattr(self._agent_manager, "_hitl_session_store", None)
+            policy = ephemeral_hitl_policy(
+                store if command.allow_all else None,
+                session.thread_id,
+                HitlSessionPolicy(mode="allow_all"),
+            )
+            with write_scope(allowed=False), policy:
                 async for chunk in self._agent_manager.stream(command.agent_id, request):
                     tracker.observe(chunk)
                     usage.observe(chunk)
@@ -203,45 +287,18 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
     ) -> dict[str, Any]:
-        from octop.infra.agents.teams import is_team_agent
-
-        row = self._agent_manager.get_row(command.agent_id)
-        if is_team_agent(row):
-            requested: list[str] = []
-            servers: list[str] = []
-            shown_servers: list[str] = []
-        else:
-            owner_raw = getattr(row, "user_id", None) if row is not None else None
-            owner_id = owner_raw if isinstance(owner_raw, int) else None
-            picked = [name.strip() for name in command.mcp_servers if name.strip()]
-            extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
-            requested = (
-                self._agent_manager.merge_turn_mcp_servers(
-                    session.user_id,
-                    picked or None,
-                    apply_defaults=not picked,
-                    extra_defaults=extra_defaults,
-                    agent_owner_id=owner_id,
-                )
-                or []
-            )
-            servers = requested
-            shown_servers = requested
-            if owner_id is not None and owner_id != session.user_id and requested:
-                servers = self._agent_manager.align_mcp_names_to_harness(
-                    owner_id, session.user_id, requested
-                )
-                shown_servers = self._agent_manager.mcp_names_for_chips(
-                    owner_id, session.user_id, requested, servers
-                )
-        if requested:
-            failed = await self._agent_manager.prepare_chat_mcp(
-                command.agent_id,
-                requested,
-                connector_user_id=session.user_id,
-            )
-            if failed:
-                raise RuntimeError(f"mcp load failed: {', '.join(failed)}")
+        picked = [name.strip() for name in command.mcp_servers if name.strip()]
+        resolved = await resolve_turn_mcp(
+            self._agent_manager,
+            agent_id=command.agent_id,
+            user_id=session.user_id,
+            explicit=picked or None,
+            apply_defaults=not picked,
+        )
+        if resolved is not None and resolved.failed:
+            raise RuntimeError(f"mcp load failed: {', '.join(resolved.failed)}")
+        servers = resolved.harness if resolved is not None else []
+        shown_servers = resolved.shown if resolved is not None else []
 
         row = self._agent_manager.get_row(command.agent_id)
         default_model = (row.default_model if row is not None else None) or None
@@ -276,22 +333,18 @@ class CronDeliveryService:
     ) -> None:
         user_row = self._repos.user_repo.get(session.user_id)
         is_admin = str(getattr(user_row, "role", "") or "") == "admin"
-        knowledge_repo = self._repos.knowledge_repo
-        bases = (
-            knowledge_repo.list_all() if is_admin else knowledge_repo.list_visible(session.user_id)
-        )
         locale = resolve_user_locale(
             user_repo=self._repos.user_repo,
             user_id=session.user_id,
             channel_type=session.channel_type,
         )
-        stamp_turn_knowledge_config(
+        attach_turn_knowledge(
             request,
-            visible_bases=bases,
-            explicit_ids=None,
-            owner_user_id=session.user_id,
-            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
+            knowledge_repo=self._repos.knowledge_repo,
+            user_id=session.user_id,
             is_admin=is_admin,
+            explicit_ids=None,
+            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
             locale=locale,
         )
 
@@ -401,6 +454,36 @@ class CronDeliveryService:
             )
 
 
+def _stamp_managed_allow_all(manager: Any, agent_id: str, request: dict[str, Any]) -> None:
+    """Turn this run into the managed expert's unattended mode without saving it."""
+    from octop.infra.agents.acp.session_modes import yolo_session_mode_id
+    from octop.infra.agents.managed import is_managed_agent
+
+    row = manager.get_row(agent_id)
+    if row is None or not is_managed_agent(row):
+        return
+    config: dict[str, Any] = {}
+    getter = getattr(manager, "get_config", None)
+    if callable(getter):
+        try:
+            loaded = getter(agent_id)
+        except Exception:
+            logger.warning("cron allow-all could not read config for %s", agent_id, exc_info=True)
+            loaded = None
+        if isinstance(loaded, dict):
+            config = loaded
+    runner = config.get("managed_runner")
+    mode = yolo_session_mode_id(runner if isinstance(runner, str) else "")
+    configurable = request.get("configurable")
+    if not isinstance(configurable, dict):
+        configurable = {}
+        request["configurable"] = configurable
+    if mode:
+        request["session_mode"] = mode
+        configurable["acp_session_mode"] = mode
+    configurable["acp_permission_mode"] = "yolo"
+
+
 def command_from_row(row: Any) -> CronDeliveryCommand:
     """Build a delivery command from a persisted cron row."""
     return CronDeliveryCommand(
@@ -414,6 +497,10 @@ def command_from_row(row: Any) -> CronDeliveryCommand:
         task_type=normalize_cron_task_type(str(row.task_type)),
         model=str(row.model) if row.model else None,
         mcp_servers=tuple(str(name) for name in row.mcp_servers),
+        allow_all=bool(getattr(row, "allow_all", False)),
+        script_lang=getattr(row, "script_lang", None),
+        script_source=getattr(row, "script_source", None),
+        script_path=getattr(row, "script_path", None),
     )
 
 

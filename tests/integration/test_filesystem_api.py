@@ -125,6 +125,19 @@ async def test_filesystem_defaults_for_admin(
     assert body["in_container"] is False
     assert "home" not in body
     assert "allow_outside_home" not in body
+    assert "default_agent_workspace" not in body
+
+    named = await client.get(
+        "/api/filesystem/defaults",
+        params={"agent_id": "bridge:conn:EXPERT1"},
+        headers=auth,
+    )
+    assert named.status_code == 200, named.text
+    from octop.infra.agents.workspace.dir import default_workspace_for_chat_agent
+
+    assert named.json()["default_agent_workspace"] == default_workspace_for_chat_agent(
+        "bridge:conn:EXPERT1"
+    )
 
 
 @pytest.mark.asyncio

@@ -16,6 +16,7 @@ from octop.infra.agents.memory.thread_cleanup import (
     delete_agent_memory_and_checkpoints,
     delete_stored_thread,
     gc_orphan_checkpoints,
+    runtime_memory_namespace,
     sqlite_freelist_bytes,
 )
 from octop.infra.db.migrate import run_migrations
@@ -24,6 +25,13 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+
+
+def test_runtime_memory_namespace_keeps_the_oldest_store() -> None:
+    peers = [("Foo-Bar", 10, 1), ("foo_bar", 20, 2)]
+    assert runtime_memory_namespace("Foo-Bar", peers) == "agent_Foo-Bar"
+    assert runtime_memory_namespace("foo_bar", peers) == "agent_foo_bar_2"
+    assert runtime_memory_namespace("solo", [("solo", 1, 3)]) == "agent_solo"
 
 
 def _services(tmp_path: Path):
@@ -135,6 +143,65 @@ def test_thread_delete_clears_sqlite_file_outside_active_workspace(tmp_path: Pat
     )
 
     assert _checkpoint_count(other, "thr_side") == 0
+
+
+def test_thread_delete_removes_file_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.file_checkpoints import save_checkpoints
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    workspace = paths.agent_workspace("Ab1")
+    workspace.mkdir(parents=True)
+    save_checkpoints(
+        paths.root,
+        "Ab1",
+        "thr_gone",
+        "msg",
+        [{"path": "a.md", "before": None, "after": "x"}],
+    )
+
+    from octop.infra.agents.memory.thread_cleanup import delete_thread_from_agent_stores
+
+    delete_thread_from_agent_stores(
+        agent_id="Ab1",
+        thread_id="thr_gone",
+        cfg={"workspace_dir": str(workspace)},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        paths=paths,
+    )
+
+    assert not (paths.root / "file_checkpoints" / "Ab1" / "thr_gone").exists()
+
+
+def test_agent_delete_removes_file_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.file_checkpoints import save_checkpoints
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    workspace = paths.agent_workspace("Ab1")
+    workspace.mkdir(parents=True)
+    for thread_id in ("thr_a", "thr_b"):
+        save_checkpoints(
+            paths.root,
+            "Ab1",
+            thread_id,
+            "msg",
+            [{"path": "a.md", "before": None, "after": "x"}],
+        )
+
+    delete_agent_memory_and_checkpoints(
+        agent_id="Ab1",
+        thread_ids={"thr_a", "thr_b"},
+        cfg={"workspace_dir": str(workspace)},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        paths=paths,
+    )
+
+    assert not (paths.root / "file_checkpoints" / "Ab1").exists()
 
 
 def test_delete_agent_drops_its_namespace_and_checkpoints(tmp_path: Path) -> None:

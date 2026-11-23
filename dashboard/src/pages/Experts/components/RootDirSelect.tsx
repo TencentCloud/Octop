@@ -9,7 +9,8 @@ import {
 } from "react";
 import { Input, Spin, TreeSelect } from "antd";
 import type { TreeSelectProps } from "antd";
-import { FolderPlus, Pencil } from "lucide-react";
+import { ChevronDown, FolderPlus, Pencil } from "lucide-react";
+import cx from "classnames";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import { isImeComposing } from "@/utils/ime";
@@ -44,10 +45,25 @@ interface RootDirSelectProps {
   treeRoots?: string | string[];
   /** When true, shows the current path but blocks picking / mkdir / rename. */
   disabled?: boolean;
+  /** Closed control placeholder. Defaults to the expert workspace hint. */
+  placeholder?: string;
+  /**
+   * ``chip`` sits in a toolbar: borderless, folder name only, dropdown opens
+   * upward. ``field`` is the form control.
+   */
+  appearance?: "field" | "chip";
+  /** Open the tree once on mount. Used when the user just chose local. */
+  autoOpen?: boolean;
+  /** Show mkdir and rename on each row. */
+  manage?: boolean;
+  /** Keep the tree dropdown inside this node so an outer popover stays open. */
+  getPopupContainer?: (node: HTMLElement) => HTMLElement;
 }
 
 type DisplayTreeNode = Omit<DirTreeNode, "title" | "children"> & {
   title: ReactNode;
+  /** Folder name shown on a chip. The form field still shows ``value``. */
+  name: string;
   children?: DisplayTreeNode[];
 };
 
@@ -62,6 +78,7 @@ function mapDisplayTitles(
 ): DisplayTreeNode[] {
   return nodes.map((node) => ({
     ...node,
+    name: node.title,
     title: renderTitle(node),
     children: node.children
       ? mapDisplayTitles(node.children, renderTitle)
@@ -82,6 +99,11 @@ export default function RootDirSelect({
   onChange,
   treeRoots = HOST_FS_ROOT,
   disabled = false,
+  placeholder,
+  appearance = "field",
+  autoOpen = false,
+  manage = true,
+  getPopupContainer,
 }: RootDirSelectProps) {
   const { t } = useTranslation();
   const normalizedRoots = useMemo(
@@ -98,7 +120,7 @@ export default function RootDirSelect({
   const editingPathRef = useRef<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen && !disabled);
   /** Ant Design ``treeLoadedKeys`` (array); membership checks use the Set ref. */
   const [loadedKeys, setLoadedKeys] = useState<string[]>([]);
   const loadedKeysRef = useRef(new Set<string>());
@@ -324,7 +346,7 @@ export default function RootDirSelect({
         );
       }
 
-      if (disabled) {
+      if (!manage || disabled) {
         return (
           <span className={styles.rootDirTitle}>
             <span className={styles.rootDirTitleLabel}>{name}</span>
@@ -382,6 +404,7 @@ export default function RootDirSelect({
     [
       beginEditing,
       busy,
+      manage,
       commitRename,
       disabled,
       editingName,
@@ -392,18 +415,23 @@ export default function RootDirSelect({
     ],
   );
 
-  // Bake row UI into `title`. Use treeNodeLabelProp=value so the input shows
-  // the absolute path and never the action buttons (treeTitleRender would).
+  // Bake row UI into `title`. The form field shows `value` (the absolute path)
+  // so the action buttons never land in the input. A chip shows `name`.
   const displayTreeData = useMemo(
     () => mapDisplayTitles(treeData, renderTitle),
     [treeData, renderTitle],
   );
 
+  const chip = appearance === "chip";
+
   return (
     <TreeSelect
-      className={styles.rootDirSelect}
+      className={cx(styles.rootDirSelect, chip && styles.rootDirChip)}
       classNames={{ popup: { root: styles.rootDirDropdown } }}
       disabled={disabled}
+      variant={chip ? "borderless" : undefined}
+      placement={chip ? "topLeft" : undefined}
+      suffixIcon={chip ? <ChevronDown size={14} /> : undefined}
       open={disabled ? false : open}
       onOpenChange={(next) => {
         if (disabled) return;
@@ -420,17 +448,18 @@ export default function RootDirSelect({
       loadData={loadData}
       treeLoadedKeys={loadedKeys}
       virtual={false}
-      treeNodeLabelProp="value"
+      treeNodeLabelProp={chip ? "name" : "value"}
       treeExpandedKeys={expandedKeys}
       onTreeExpand={(keys) => setExpandedKeys(keys.map(String))}
-      showSearch
+      showSearch={!chip}
       treeLine
       treeDefaultExpandAll={false}
-      placeholder={t("experts.backendRootDirPlaceholder")}
+      placeholder={placeholder ?? t("experts.backendRootDirPlaceholder")}
       notFoundContent={<Spin size="small" />}
-      style={{ width: "100%" }}
-      popupMatchSelectWidth
+      style={chip ? { width: "auto", maxWidth: 200 } : { width: "100%" }}
+      popupMatchSelectWidth={chip ? 360 : true}
       styles={{ popup: { root: { maxHeight: 360 } } }}
+      getPopupContainer={getPopupContainer}
       filterTreeNode={(input, node) => {
         const q = input.trim().toLowerCase();
         const path = String(node.value ?? "").toLowerCase();

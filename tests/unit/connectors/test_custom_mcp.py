@@ -14,6 +14,7 @@ from octop.infra.connectors.custom_mcp import (
     extract_servers,
     harness_spec_for_server,
     normalize_server_spec,
+    sanitize_stdio_env,
     validate_servers_map,
 )
 from octop.infra.connectors.service import ConnectorService
@@ -91,6 +92,28 @@ def test_normalize_streamable_http_and_stdio():
     assert stdio["command"] == "npx"
     assert stdio["args"] == ["-y", "pkg"]
     assert stdio["enabled"] is False
+
+
+def test_stdio_env_drops_loader_overrides() -> None:
+    cleaned = sanitize_stdio_env(
+        {
+            "API_TOKEN": "keep",
+            "LD_PRELOAD": "/tmp/x.so",
+            "PYTHONPATH": "/tmp",
+            "NODE_OPTIONS": "--require /tmp/p.js",
+            "DYLD_INSERT_LIBRARIES": "/tmp/x.dylib",
+        }
+    )
+    assert cleaned == {"API_TOKEN": "keep"}
+    spec = normalize_server_spec(
+        "local",
+        {
+            "transport": "stdio",
+            "command": "npx",
+            "env": {"LD_PRELOAD": "/tmp/x.so", "MCP_TOKEN": "t"},
+        },
+    )
+    assert spec["env"] == {"MCP_TOKEN": "t"}
 
 
 def test_shared_custom_server_uses_collision_safe_name_for_viewer(

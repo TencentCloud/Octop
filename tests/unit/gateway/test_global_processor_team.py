@@ -126,10 +126,10 @@ def test_compose_followup_truncates_long_member_result(processor_env: dict) -> N
         message="survey market",
         user_id=1,
     )
-    huge = "建议采纳此项。" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200))
+    huge = "HEAD-DROP-" + ("x" * (_FOLLOWUP_RESULT_MAX_CHARS + 200)) + "建议采纳此项。"
     text = processor.compose_followup(msg, result_text=huge, error_text=None)
     assert "建议采纳此项。" in text
-    assert huge not in text
+    assert "HEAD-DROP-" not in text
     assert "…" in text
     assert len(text) < len(huge) + 800
 
@@ -357,6 +357,101 @@ async def test_stream_host_followup_marks_live_and_persists(
     assert done
     assert all(frame.get("team_wrapup") is True for frame in done)
     repo.append_if_ready.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_stream_host_followup_persists_sent_file(
+    processor_env: dict,
+) -> None:
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("conn-host-file", capture)
+    gateway.ws_hub.subscribe("thr_parent", "conn-host-file")
+
+    sent = {
+        "type": "file",
+        "path": "/home/wally/.octop/agents/host/deck.pptx",
+        "filename": "deck.pptx",
+        "source": {
+            "type": "url",
+            "url": "file:///home/wally/.octop/agents/host/deck.pptx",
+            "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        },
+    }
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {
+            "type": "tool_call_chunk",
+            "id": "call-send",
+            "name": "send_file_to_user",
+            "args": "",
+        }
+        yield {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "tool_call_id": "call-send",
+                    "name": "send_file_to_user",
+                    "content": sent,
+                }
+            ],
+        }
+        yield {"type": "token", "content": "文件已发给你"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(
+        return_value=[
+            ToolMessage(
+                content=json.dumps(
+                    {
+                        "type": "file",
+                        "path": "/home/wally/.octop/agents/host/notes.txt",
+                        "filename": "notes.txt",
+                        "source": {
+                            "type": "url",
+                            "url": "file:///home/wally/.octop/agents/host/notes.txt",
+                            "media_type": "text/plain",
+                        },
+                    }
+                ),
+                tool_call_id="call-old",
+                name="send_file_to_user",
+            ),
+            AIMessage(content="文件已发给你"),
+        ]
+    )
+    processor._agent_manager.get_agent.return_value = harness
+    repo = MagicMock()
+    repo.projection_status.return_value = "ready"
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+
+    await processor.teams.stream_host_followup_to_room(
+        ChatRequest(messages="wrap up", thread_id="thr_parent", agent_id="host"),
+        room_thread_id="thr_parent",
+        speaker_id="host",
+    )
+
+    stored = json.loads(repo.append_if_ready.call_args[0][1][0].message_json)
+    attachments = stored["data"]["additional_kwargs"]["outbound_attachments"]
+    assert [item["workspace_path"] for item in attachments] == [
+        "/home/wally/.octop/agents/host/deck.pptx",
+        "/home/wally/.octop/agents/host/notes.txt",
+    ]
+    assert stored["data"]["content"] == "文件已发给你"
+    assert frames
 
 
 @pytest.mark.asyncio
@@ -1026,6 +1121,214 @@ def test_stamp_team_host_runtime_forces_async(processor_env: dict) -> None:
     expert_req: dict[str, object] = {}
     processor.teams.stamp_host_runtime(expert_req, "parent")
     assert "configurable" not in expert_req
+
+
+@pytest.mark.asyncio
+async def test_member_dispatch_attaches_expert_knowledge_and_connectors(
+    processor_env: dict,
+) -> None:
+    from types import SimpleNamespace
+
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    manager = processor._agent_manager
+    kb = SimpleNamespace(
+        id="kb-expert",
+        owner_user_id=1,
+        default_open=False,
+        name="Handbook",
+        description="Ops notes",
+    )
+    manager.default_knowledge_base_ids = MagicMock(return_value=["kb-expert"])
+    manager.default_mcp_servers = MagicMock(return_value=["wiki"])
+    manager.merge_turn_mcp_servers = MagicMock(return_value=["wiki", "news"])
+    manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    manager.providers.resolve_explicit_default_model.return_value = "openai/gpt-test"
+    manager.model_ref_allowed_for_user.return_value = True
+    manager.get_config.return_value = {}
+    manager._repos.knowledge_repo.list_visible.return_value = [kb]
+    seen: dict[str, object] = {}
+
+    async def fake_stream(_agent_id: str, request: dict[str, object]) -> object:
+        seen["request"] = request
+        yield {"type": "token", "content": "ok"}
+
+    manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="ok")])
+    manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(
+            messages="task",
+            thread_id="thr_parent~child",
+            agent_id="child",
+            user="1",
+            configurable={"peer_invoke_mode": "sync", "team_peers": ["sibling"]},
+        ),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+
+    request = seen["request"]
+    assert isinstance(request, dict)
+    assert request["mcp_servers"] == ["wiki", "news"]
+    configurable = request["configurable"]
+    assert isinstance(configurable, dict)
+    assert configurable["knowledge_base_ids"] == ["kb-expert"]
+    assert configurable["peer_invoke_mode"] == "sync"
+    assert configurable["team_peers"] == ["sibling"]
+    assert configurable["conversation_mode"] == "craft"
+    assert request["conversation_mode"] == "craft"
+    assert request["model"] == "openai/gpt-test"
+    manager.prepare_chat_mcp.assert_awaited_once_with(
+        "child",
+        ["wiki", "news"],
+        connector_user_id=1,
+    )
+    manager.merge_turn_mcp_servers.assert_called_once_with(
+        1,
+        None,
+        apply_defaults=True,
+        extra_defaults=["wiki"],
+        agent_owner_id=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_member_dispatch_keeps_knowledge_when_connectors_fail(
+    processor_env: dict,
+) -> None:
+    from types import SimpleNamespace
+
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    manager = processor._agent_manager
+    kb = SimpleNamespace(
+        id="kb-expert",
+        owner_user_id=1,
+        default_open=False,
+        name="Handbook",
+        description="",
+    )
+    manager.default_knowledge_base_ids = MagicMock(return_value=["kb-expert"])
+    manager.default_mcp_servers = MagicMock(return_value=["wiki"])
+    manager.merge_turn_mcp_servers = MagicMock(return_value=["wiki"])
+    manager.prepare_chat_mcp = AsyncMock(return_value=["wiki"])
+    manager._repos.knowledge_repo.list_visible.return_value = [kb]
+    seen: dict[str, object] = {}
+
+    async def fake_stream(_agent_id: str, request: dict[str, object]) -> object:
+        seen["request"] = request
+        yield {"type": "usage", "usage": {}}
+
+    manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[])
+    manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child", user="1"),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+
+    request = seen["request"]
+    assert isinstance(request, dict)
+    assert "mcp_servers" not in request
+    configurable = request["configurable"]
+    assert isinstance(configurable, dict)
+    assert configurable["knowledge_base_ids"] == ["kb-expert"]
+
+
+@pytest.mark.asyncio
+async def test_member_dispatch_keeps_connectors_that_loaded(
+    processor_env: dict,
+) -> None:
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    manager = processor._agent_manager
+    manager.default_knowledge_base_ids = MagicMock(return_value=[])
+    manager.default_mcp_servers = MagicMock(return_value=["wiki", "news"])
+    manager.merge_turn_mcp_servers = MagicMock(return_value=["wiki", "news"])
+    manager.prepare_chat_mcp = AsyncMock(return_value=["news"])
+    manager.connector_auth_blocked = AsyncMock(
+        return_value=[{"server": "news", "display_name": "News"}]
+    )
+    manager._repos.knowledge_repo.list_visible.return_value = []
+    seen: dict[str, object] = {}
+
+    async def fake_stream(_agent_id: str, request: dict[str, object]) -> object:
+        seen["request"] = request
+        yield {"type": "usage", "usage": {}}
+
+    manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[])
+    manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(
+            messages="task",
+            thread_id="thr_parent~child",
+            agent_id="child",
+            user="1",
+            configurable={"octop_team_dispatch_briefing": "do the task"},
+        ),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+
+    request = seen["request"]
+    assert isinstance(request, dict)
+    assert request["mcp_servers"] == ["wiki"]
+    configurable = request["configurable"]
+    assert isinstance(configurable, dict)
+    assert configurable["conversation_mode"] == "craft"
+    briefing = configurable["octop_team_dispatch_briefing"]
+    assert isinstance(briefing, str)
+    assert "News" in briefing
+    assert "do the task" in briefing
+
+
+@pytest.mark.asyncio
+async def test_host_wrapup_does_not_attach_member_resources(processor_env: dict) -> None:
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    manager = processor._agent_manager
+    manager.default_knowledge_base_ids = MagicMock(return_value=["kb-expert"])
+    manager.default_mcp_servers = MagicMock(return_value=["wiki"])
+    manager.merge_turn_mcp_servers = MagicMock(return_value=["wiki"])
+    manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    seen: dict[str, object] = {}
+
+    async def fake_stream(_agent_id: str, request: dict[str, object]) -> object:
+        seen["request"] = request
+        yield {"type": "usage", "usage": {}}
+
+    manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[])
+    manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(messages="wrap up", thread_id="thr_parent", agent_id="host", user="1"),
+        room_thread_id="thr_parent",
+        speaker_id="host",
+    )
+
+    request = seen["request"]
+    assert isinstance(request, dict)
+    assert "mcp_servers" not in request
+    configurable = request.get("configurable") or {}
+    assert "knowledge_base_ids" not in configurable
+    manager.prepare_chat_mcp.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -20,11 +20,15 @@ export default function EditExpertDrawerTitle({
 }: EditExpertDrawerTitleProps) {
   const { t } = useTranslation();
   const remote = Boolean(agent?.bridge) || isBridgeAgentId(agent?.agent_id);
-  const beta = agent?.kind === "managed" ? <BetaBadge /> : null;
+  const managed = agent?.kind === "managed";
+  const title = managed
+    ? t("experts.managed.editTitle")
+    : t("experts.editExpert");
+  const beta = managed ? <BetaBadge /> : null;
   if (remote && agent) {
     return (
       <span className={styles.editExpertTitle}>
-        {beta ? t("experts.managed.createTitle") : t("experts.editExpert")}
+        {title}
         {beta}
         <RemoteExpertHint agent={agent} />
       </span>
@@ -33,7 +37,7 @@ export default function EditExpertDrawerTitle({
   if (beta) {
     return (
       <span className={styles.titleWithBeta}>
-        {t("experts.managed.createTitle")}
+        {title}
         {beta}
       </span>
     );

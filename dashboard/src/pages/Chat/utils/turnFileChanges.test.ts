@@ -214,4 +214,30 @@ describe("summarizeTurnFileChanges", () => {
     expect(summary.files[0]?.pending).toBe(true);
     expect(summary.measured).toBe(false);
   });
+
+  it("attributes team member edits to the room host workspace", () => {
+    const summary = summarizeTurnFileChanges(
+      [
+        {
+          ...tool({
+            id: "answer",
+            name: "write_file",
+            arguments: {},
+            editedFiles: [
+              "/home/wally/.octop/agents/50VTYY/cat_article.md",
+              "cat_article.md",
+            ],
+          }),
+          speakerAgentId: "ETYE0Z",
+        },
+      ],
+      "50VTYY",
+    );
+    expect(summary.files).toHaveLength(1);
+    expect(summary.files[0]).toMatchObject({
+      openPath: "/home/wally/.octop/agents/50VTYY/cat_article.md",
+      displayPath: "cat_article.md",
+      agentId: "50VTYY",
+    });
+  });
 });

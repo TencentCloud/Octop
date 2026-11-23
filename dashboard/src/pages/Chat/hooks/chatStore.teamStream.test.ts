@@ -895,6 +895,44 @@ describe("team member live stream", () => {
       "host",
     );
     expect(getSnapshot(SESSION).liveSpeakers).toEqual([]);
+    expect(
+      getSnapshot(SESSION).messages.some((item) => item.status === "streaming"),
+    ).toBe(false);
+  });
+
+  it("seals a member who never sent done when the wrap-up finishes", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "文章写到一半",
+      agent_id: "doctor",
+    });
+    expect(getSnapshot(SESSION).liveSpeakers).toContain("doctor");
+
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "token",
+        content: "文档已发送。",
+        agent_id: "host",
+        team_wrapup: true,
+      },
+      "host",
+    );
+    ingestHarnessChunk(
+      SESSION,
+      { type: "done", agent_id: "host", team_wrapup: true },
+      "host",
+    );
+
+    const snap = getSnapshot(SESSION);
+    expect(snap.liveSpeakers).toEqual([]);
+    expect(snap.isStreaming).toBe(false);
+    expect(snap.messages.some((item) => item.status === "streaming")).toBe(
+      false,
+    );
+    expect(
+      snap.messages.find((item) => item.speakerAgentId === "doctor")?.status,
+    ).toBe("done");
   });
 
   it("keeps a member live across tool gaps after the host unlocks the composer", () => {

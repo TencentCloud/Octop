@@ -15,7 +15,16 @@ async def test_list_providers(env):
 
     r = await c.get("/api/providers", headers=auth)
     assert r.status_code == 200
-    assert any(p["name"] == "openai" for p in r.json())
+    listed = r.json()
+    assert any(p["name"] == "openai" for p in listed)
+    openai = next(p for p in listed if p["name"] == "openai")
+    assert openai["api_key"] is None
+    assert openai["api_key_set"] is True
+
+    admin = await c.get("/api/admin/providers", headers=auth)
+    assert admin.status_code == 200
+    admin_row = next(p for p in admin.json() if p["name"] == "openai")
+    assert admin_row["api_key"] == "k"
 
 
 async def test_admin_creates_provider(env):

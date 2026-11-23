@@ -1,37 +1,18 @@
-.badge {
+.iconMark {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  max-width: 168px;
-  height: 20px;
-  padding: 0 7px 0 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 20px;
-  white-space: nowrap;
+  justify-content: center;
   flex-shrink: 0;
-  vertical-align: middle;
-
-  svg {
-    flex-shrink: 0;
-  }
+  line-height: 0;
+  opacity: 0.7;
 }
 
-.label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.outgoing {
+.outgoingIcon {
   color: var(--fn-color-brand);
-  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
 }
 
-.incoming {
-  color: var(--fn-text-secondary);
-  background: var(--fn-bg-secondary);
-  box-shadow: inset 0 0 0 1px var(--fn-border-secondary);
+.incomingIcon {
+  color: var(--fn-text-tertiary);
 }
 
 .avatarHost {
@@ -39,6 +20,12 @@
   display: inline-flex;
   flex-shrink: 0;
   line-height: 0;
+}
+
+/* Sit above a managed-runner mark so both stay visible on the right edge. */
+.avatarHost:has([data-managed-avatar-mark]) > .avatarMark {
+  bottom: max(38%, 11px);
+  z-index: 2;
 }
 
 .avatarMark {

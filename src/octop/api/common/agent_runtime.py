@@ -65,12 +65,18 @@ class AgentRuntimeFields(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
     tool_call_limit_enabled: bool | None = Field(
         default=None,
-        description="Limit tool calls in one run. Omit to leave the limit on.",
+        description=(
+            "Stop a turn that repeats one tool call with the same arguments. "
+            "Omit to leave the limit on."
+        ),
     )
     tool_call_run_limit: int | None = Field(
         default=None,
         ge=1,
-        description="Maximum tool calls in one run. Omit to use 40.",
+        description=(
+            "How many times the same tool may be called in a row with the same "
+            "arguments. Omit to use 40."
+        ),
     )
     model_retry_enabled: bool | None = Field(
         default=None,

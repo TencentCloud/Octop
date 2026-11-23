@@ -31,13 +31,33 @@ def _with_forwarded_port(host: str, scheme: str, forwarded_port: str | None) -> 
     return f"{host}:{port}"
 
 
+def _configured_public_base(request: Request) -> str | None:
+    """Origin from ``config.public_base_url`` when the process has one.
+
+    Used when a TLS-terminating proxy does not send ``X-Forwarded-Proto``.
+    """
+    app = request.scope.get("app")
+    state = getattr(app, "state", None)
+    server = getattr(state, "octop_server", None)
+    config = getattr(server, "config", None)
+    raw = getattr(config, "public_base_url", "")
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip().rstrip("/")
+    return text or None
+
+
 def resolve_public_base(request: Request) -> str:
     """Resolve the externally visible origin for an incoming request.
 
     Trusts ``X-Forwarded-Proto`` / ``X-Forwarded-Host`` when present (typical
     behind a reverse proxy). ``X-Forwarded-Port`` supplies a missing port;
-    an explicit host port takes precedence. Prefer deploying Octop behind a
-    trusted proxy and keeping the dashboard same-origin with the API for OIDC cookies.
+    an explicit host port takes precedence. When those headers are absent,
+    ``public_base_url`` (config.json or ``OCTOP_PUBLIC_BASE_URL``) wins over
+    the socket scheme, so a proxy that terminates TLS without forwarding the
+    proto still builds ``https`` redirect URIs. Prefer deploying Octop behind
+    a trusted proxy and keeping the dashboard same-origin with the API for
+    OIDC cookies.
     """
     forwarded_proto = _first_header_value(request.headers.get("x-forwarded-proto"))
     forwarded_host = _first_header_value(request.headers.get("x-forwarded-host"))
@@ -47,5 +67,9 @@ def resolve_public_base(request: Request) -> str:
             forwarded_port = _first_header_value(request.headers.get("x-forwarded-port"))
             host = _with_forwarded_port(host, forwarded_proto, forwarded_port)
             return f"{forwarded_proto}://{host}".rstrip("/")
+
+    configured = _configured_public_base(request)
+    if configured:
+        return configured
 
     return str(request.url.replace(path="", query="", fragment="")).rstrip("/")

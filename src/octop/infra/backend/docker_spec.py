@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SANDBOX_PREFIX = "octop_sandbox"
 
-# ``volumes`` is intentionally absent. Host bind mounts run as the Docker
-# daemon and are not covered by the local-backend root policy.
+# ``volumes`` stays in the stored spec. ``omit_docker_volumes`` drops it before
+# a sandbox container is created, including when Octop itself runs in a container.
 _DOCKER_PASSTHROUGH_KEYS = (
     "allow_network",
     "memory",
@@ -21,6 +21,7 @@ _DOCKER_PASSTHROUGH_KEYS = (
     "max_output_bytes",
     "auto_remove",
     "workspace_path",
+    "volumes",
     "environment",
     "environment_file",
     "agent_id",
@@ -41,10 +42,16 @@ def apply_docker_cfg_keys(spec: dict[str, Any], cfg: dict[str, Any]) -> None:
 
 
 def omit_docker_volumes(spec: Any) -> Any:
-    """Drop ``volumes`` from docker specs, including composite children.
+    """Drop ``volumes`` from docker specs before they reach the daemon.
+
+    A sandbox container is created through the Docker API. A caller-supplied
+    ``volumes`` entry is a host bind mount, so an agent or storage spec must
+    not be able to attach an arbitrary host directory. Operator mounts belong
+    on the Octop service itself, not on a per-agent spec. Stored specs keep
+    the key; only the runtime spec passed to harness is stripped.
 
     A returned docker or composite dict is a shallow copy when a mount was
-    removed. Other specs are returned unchanged.
+    removed. Specs without ``volumes`` are returned unchanged.
     """
     if not isinstance(spec, dict):
         return spec

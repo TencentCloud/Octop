@@ -70,6 +70,9 @@ def list_jobs(agent_id: str | None, as_user: str | None) -> None:
     ),
 )
 @click.option("--task-type", default="agent")
+@click.option("--allow-all", is_flag=True, default=False, help="Skip tool approval on agent runs.")
+@click.option("--script-lang", default=None, help="python, bash, or powershell.")
+@click.option("--script-path", default=None, help="Workspace-relative script path.")
 def create_job(
     agent_id: str | None,
     as_user: str | None,
@@ -78,6 +81,9 @@ def create_job(
     fresh_thread: bool,
     thread_id: str | None,
     task_type: str,
+    allow_all: bool,
+    script_lang: str | None,
+    script_path: str | None,
 ) -> None:
     """Create a cron job."""
     from octop.cli.support.offline_ops import create_cron_offline, resolve_cron_user_id
@@ -95,6 +101,10 @@ def create_job(
             fresh_thread=fresh_thread,
             task_type=task_type,
             thread_id=thread_id,
+            allow_all=allow_all,
+            script_lang=script_lang,
+            script_source="file" if (script_path or "").strip() else None,
+            script_path=script_path,
         )
     except OctopError as exc:
         fail_octop(exc)
