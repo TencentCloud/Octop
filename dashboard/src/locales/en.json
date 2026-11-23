@@ -2,6 +2,11 @@
   "app": {
     "pageTitle": "Octop"
   },
+  "weather": {
+    "sunny": "Sunny",
+    "rainy": "Rainy",
+    "cloudy": "Cloudy"
+  },
   "layout": {
     "collapsePanel": "Collapse panel",
     "expandPanel": "Expand panel",
