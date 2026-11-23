@@ -18,6 +18,7 @@ async def test_acp_config_round_trip(env) -> None:
     body = r.json()
     assert body["tool_enabled"] is False
     assert "opencode" in body["runners"]
+    assert "qwen_code" in body["runners"]
 
     payload = {
         "tool_enabled": True,
@@ -69,6 +70,8 @@ async def test_acp_custom_runner_crud(env) -> None:
 async def test_acp_builtin_runner_cannot_delete(env) -> None:
     c, _srv, auth, agent_id = env
     r = await c.delete(f"/api/agents/{agent_id}/acp/opencode", headers=auth)
+    assert r.status_code == 403
+    r = await c.delete(f"/api/agents/{agent_id}/acp/qwen_code", headers=auth)
     assert r.status_code == 403
 
 

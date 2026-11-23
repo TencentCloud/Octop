@@ -10,6 +10,10 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import apply_agent_audience
 from octop.api.deps import current_user, get_server
 from octop.api.routers.agents import _row_dict
+from octop.infra.agents.acp.session_modes import (
+    approval_for_session,
+    resolve_managed_session_mode,
+)
 from octop.infra.agents.experts.composer_files import (
     apply_composer_workspace_patch,
     composer_patch_from_payload,
@@ -66,6 +70,15 @@ class ManagedCreateBody(BaseModel):
     group_ids: list[str] | None = None
     quick_prompts: list[_QuickPromptBody] | None = None
     file_overrides: list[_FileOverrideBody] | None = None
+    skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
+    permission_mode: Literal["ask", "yolo"] = "ask"
+    session_mode: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Default ACP session mode id, such as plan or bypassPermissions.",
+    )
 
 
 def _prompt_dict(prompt: _QuickPromptBody) -> dict[str, Any]:
@@ -138,7 +151,34 @@ async def create_managed_agent(
     """
     runner = body.runner.strip()
     _enabled_runner(server, user.id, runner)
-    config: dict[str, Any] = {"managed_runner": runner}
+    assert server.app_runtime is not None
+    registry = server.app_runtime.agent_registry
+    package_ids = (
+        registry.validate_skill_package_ids(body.skill_package_ids)
+        if body.skill_package_ids is not None
+        else None
+    )
+    knowledge_ids = (
+        registry.validate_knowledge_base_ids(user.id, body.knowledge_base_ids)
+        if body.knowledge_base_ids is not None
+        else None
+    )
+    mcp_servers = (
+        registry.validate_mcp_servers(user.id, body.mcp_servers)
+        if body.mcp_servers is not None
+        else None
+    )
+    session_mode = resolve_managed_session_mode(explicit=body.session_mode)
+    config: dict[str, Any] = {
+        "managed_runner": runner,
+        "managed_permission_mode": approval_for_session(
+            session_mode,
+            body.permission_mode,
+            runner=runner,
+        ),
+    }
+    if session_mode:
+        config["managed_session_mode"] = session_mode
     apply_enable_trajectory(config, body.enable_trajectory)
     apply_managed_backend(config)
     pin_managed_runtime(config)
@@ -155,10 +195,11 @@ async def create_managed_agent(
         icon_url=(body.icon_url or "").strip() or None,
         kind=MANAGED_KIND,
         config=config,
-        mcp_servers=[],
+        skill_package_ids=package_ids,
+        knowledge_base_ids=knowledge_ids,
+        mcp_servers=mcp_servers if mcp_servers is not None else [],
     )
-    assert server.app_runtime is not None
-    row = await server.app_runtime.agent_registry.create(
+    row = await registry.create(
         spec,
         workspace_initializer=_workspace_initializer(body),
     )

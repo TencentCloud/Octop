@@ -450,6 +450,7 @@ def _load_projected_thread_messages(
     *,
     user: Any,
     offset: int = 0,
+    include_tool_media: bool = True,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Read one page without touching the agent checkpoint database."""
     rows, has_more = server.services.thread_message_repo.page(
@@ -477,6 +478,8 @@ def _load_projected_thread_messages(
         )
         if entry is not None:
             out.append(entry)
+    if not include_tool_media:
+        return out, has_more
     return _enrich_history_tool_media(out, agent_id=agent_id), has_more
 
 

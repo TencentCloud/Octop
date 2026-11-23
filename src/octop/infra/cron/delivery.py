@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
+from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
 from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
@@ -17,7 +18,6 @@ from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_com
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import TurnHistoryTracker, message_inputs
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.turn_failure import log_failed_tool_results
@@ -203,45 +203,18 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
     ) -> dict[str, Any]:
-        from octop.infra.agents.teams import is_team_agent
-
-        row = self._agent_manager.get_row(command.agent_id)
-        if is_team_agent(row):
-            requested: list[str] = []
-            servers: list[str] = []
-            shown_servers: list[str] = []
-        else:
-            owner_raw = getattr(row, "user_id", None) if row is not None else None
-            owner_id = owner_raw if isinstance(owner_raw, int) else None
-            picked = [name.strip() for name in command.mcp_servers if name.strip()]
-            extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
-            requested = (
-                self._agent_manager.merge_turn_mcp_servers(
-                    session.user_id,
-                    picked or None,
-                    apply_defaults=not picked,
-                    extra_defaults=extra_defaults,
-                    agent_owner_id=owner_id,
-                )
-                or []
-            )
-            servers = requested
-            shown_servers = requested
-            if owner_id is not None and owner_id != session.user_id and requested:
-                servers = self._agent_manager.align_mcp_names_to_harness(
-                    owner_id, session.user_id, requested
-                )
-                shown_servers = self._agent_manager.mcp_names_for_chips(
-                    owner_id, session.user_id, requested, servers
-                )
-        if requested:
-            failed = await self._agent_manager.prepare_chat_mcp(
-                command.agent_id,
-                requested,
-                connector_user_id=session.user_id,
-            )
-            if failed:
-                raise RuntimeError(f"mcp load failed: {', '.join(failed)}")
+        picked = [name.strip() for name in command.mcp_servers if name.strip()]
+        resolved = await resolve_turn_mcp(
+            self._agent_manager,
+            agent_id=command.agent_id,
+            user_id=session.user_id,
+            explicit=picked or None,
+            apply_defaults=not picked,
+        )
+        if resolved is not None and resolved.failed:
+            raise RuntimeError(f"mcp load failed: {', '.join(resolved.failed)}")
+        servers = resolved.harness if resolved is not None else []
+        shown_servers = resolved.shown if resolved is not None else []
 
         row = self._agent_manager.get_row(command.agent_id)
         default_model = (row.default_model if row is not None else None) or None
@@ -276,22 +249,18 @@ class CronDeliveryService:
     ) -> None:
         user_row = self._repos.user_repo.get(session.user_id)
         is_admin = str(getattr(user_row, "role", "") or "") == "admin"
-        knowledge_repo = self._repos.knowledge_repo
-        bases = (
-            knowledge_repo.list_all() if is_admin else knowledge_repo.list_visible(session.user_id)
-        )
         locale = resolve_user_locale(
             user_repo=self._repos.user_repo,
             user_id=session.user_id,
             channel_type=session.channel_type,
         )
-        stamp_turn_knowledge_config(
+        attach_turn_knowledge(
             request,
-            visible_bases=bases,
-            explicit_ids=None,
-            owner_user_id=session.user_id,
-            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
+            knowledge_repo=self._repos.knowledge_repo,
+            user_id=session.user_id,
             is_admin=is_admin,
+            explicit_ids=None,
+            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
             locale=locale,
         )
 

@@ -389,10 +389,14 @@ export const AgentCard = memo(function AgentCard({
                 <Tag color="processing">{t("experts.memorySlimming")}</Tag>
               )}
               <BackendFlag config={agent.config} />
-              <MbtiPersonaTag
-                value={agent.persona_mbti}
-                onClick={canManage ? () => setMbtiCatalogOpen(true) : undefined}
-              />
+              {agent.kind === "managed" ? null : (
+                <MbtiPersonaTag
+                  value={agent.persona_mbti}
+                  onClick={
+                    canManage ? () => setMbtiCatalogOpen(true) : undefined
+                  }
+                />
+              )}
             </div>
           </div>
 
@@ -516,6 +520,7 @@ export const AgentCard = memo(function AgentCard({
 
               <AgentMoreActions
                 buttonClassName={styles.agentCard2EditBtn}
+                managed={agent.kind === "managed"}
                 onSkills={() => setSkillCatalogOpen(true)}
                 onSubagents={openSubagentCatalog}
                 onTools={() => setToolSettingsOpen(true)}
@@ -577,6 +582,7 @@ export const AgentCard = memo(function AgentCard({
       />
       <ToolCatalogDrawer
         agentId={agent.agent_id}
+        managed={agent.kind === "managed"}
         open={toolSettingsOpen}
         onClose={() => setToolSettingsOpen(false)}
       />
