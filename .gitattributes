@@ -1,0 +1,5 @@
+# Shell scripts run in Linux images, fnOS packages and the curl installers.
+# Keep LF on every checkout so a Windows clone with core.autocrlf=true
+# does not build images whose scripts fail with "/bin/sh^M".
+*.sh text eol=lf
+fnos/*/cmd/* text eol=lf
