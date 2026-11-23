@@ -3,8 +3,9 @@
 The target travels in ``configurable``: the host workspace, or a directory on
 the chat initiator. File tools keep their names. Execution goes through
 ``BackendWorkspace`` (the same path the managed MCP server uses), and
-``send_file_to_user`` reads that workspace. This middleware does not change
-one-to-one chats, and it does not touch skills or memory reads.
+``send_file_to_user`` reads that workspace. Directories the member passes to
+deepagents are read from the member workspace and are not writable. This
+middleware does not change one-to-one chats.
 """
 
 from __future__ import annotations
@@ -27,7 +28,10 @@ from octop.infra.agents.teams.file_target import (
     BRIDGE_TARGET_KEY,
     DIR_KEY,
     HOST_KEY,
+    MOUNTS_KEY,
     capability_enabled,
+    mount_for_args,
+    mounted_mutation,
     workspace_file_args,
 )
 from octop.infra.agents.teams.file_target_guard import install_file_target_guards
@@ -92,8 +96,11 @@ class TeamFileTargetMiddleware(AgentMiddleware[Any, Any]):
         name, host = routed
         if isinstance(host, ToolMessage):
             return host
-        request = self._interpret_request(request)
-        bound = self._bind_workspace_tool(request, name, host)
+        prepared = self._prepare_file_request(request, name)
+        if isinstance(prepared, ToolMessage):
+            return prepared
+        request, member = prepared
+        bound = self._bind_workspace_tool(request, name, host, member=member)
         if isinstance(bound, ToolMessage):
             return bound
         return handler(bound)
@@ -109,8 +116,11 @@ class TeamFileTargetMiddleware(AgentMiddleware[Any, Any]):
         name, host = routed
         if isinstance(host, ToolMessage):
             return host
-        request = self._interpret_request(request)
-        bound = self._bind_workspace_tool(request, name, host)
+        prepared = self._prepare_file_request(request, name)
+        if isinstance(prepared, ToolMessage):
+            return prepared
+        request, member = prepared
+        bound = self._bind_workspace_tool(request, name, host, member=member)
         if isinstance(bound, ToolMessage):
             return bound
         return await handler(bound)
@@ -149,13 +159,40 @@ class TeamFileTargetMiddleware(AgentMiddleware[Any, Any]):
             return name, _error(request, "the team host workspace is not available")
         return name, host
 
+    def _prepare_file_request(
+        self, request: ToolCallRequest, name: str
+    ) -> tuple[ToolCallRequest, bool] | ToolMessage:
+        """Keep deepagents directories on the member. Rewrite every other path."""
+        args = _args(request)
+        mounts = _mounts()
+        if mounted_mutation(name, args, mounts):
+            return _error(request, "this directory is read-only")
+        if mount_for_args(name, args, mounts) is not None and self._member_workspace() is not None:
+            return request, True
+        target = str(_configurable().get(DIR_KEY) or "")
+        updated = workspace_file_args(args, target_dir=target)
+        call: ToolCall = {
+            "name": str(request.tool_call.get("name") or ""),
+            "args": updated,
+            "id": request.tool_call.get("id"),
+        }
+        request.tool_call = call
+        return request, False
+
     def _bind_workspace_tool(
-        self, request: ToolCallRequest, name: str, host: Any
+        self,
+        request: ToolCallRequest,
+        name: str,
+        host: Any,
+        *,
+        member: bool,
     ) -> ToolCallRequest | ToolMessage:
-        """Run this call through the target ``BackendWorkspace``."""
-        if getattr(host, "bridge_file_target", False):
-            workspace: Any = host
-            backend: Any = host
+        """Run this call through the selected ``BackendWorkspace``."""
+        if member:
+            workspace, backend = self._member_workspace() or (None, None)
+        elif getattr(host, "bridge_file_target", False):
+            workspace = host
+            backend = host
         else:
             workspace = getattr(host, "workspace", None)
             backend = getattr(host, "backend", None)
@@ -175,17 +212,17 @@ class TeamFileTargetMiddleware(AgentMiddleware[Any, Any]):
         }
         return request.override(tool=tool, tool_call=call)
 
-    def _interpret_request(self, request: ToolCallRequest) -> ToolCallRequest:
-        """Resolve file paths against the target directory before the tool runs."""
-        target = str(_configurable().get(DIR_KEY) or "")
-        updated = workspace_file_args(_args(request), target_dir=target)
-        call: ToolCall = {
-            "name": str(request.tool_call.get("name") or ""),
-            "args": updated,
-            "id": request.tool_call.get("id"),
-        }
-        request.tool_call = call
-        return request
+    def _member_workspace(self) -> tuple[Any, Any] | None:
+        try:
+            agent = self._lookup(self._agent_id)
+        except Exception:
+            logger.debug("team file mount member %s is not running", self._agent_id, exc_info=True)
+            return None
+        workspace = getattr(agent, "workspace", None)
+        backend = getattr(agent, "backend", None)
+        if workspace is None or backend is None:
+            return None
+        return workspace, backend
 
     def _scope(self) -> TeamWorkspaceScope:
         cfg = _configurable()
@@ -220,11 +257,13 @@ class _WorkspaceTool(BaseTool):
     backend: Any = None
     scope: TeamWorkspaceScope | None = None
 
-    def _run(self, *args: Any, **kwargs: Any) -> str:
-        return asyncio.run(self._go(_call_payload(args, kwargs)))
+    def _run(self, *args: Any, **kwargs: Any) -> ToolMessage:
+        return self._message(
+            asyncio.run(self._go(_call_payload(args, kwargs))), args[0] if args else None
+        )
 
-    async def _arun(self, *args: Any, **kwargs: Any) -> str:
-        return await self._go(_call_payload(args, kwargs))
+    async def _arun(self, *args: Any, **kwargs: Any) -> ToolMessage:
+        return self._message(await self._go(_call_payload(args, kwargs)), args[0] if args else None)
 
     async def _go(self, payload: dict[str, Any]) -> str:
         return await run_workspace_tool(
@@ -235,13 +274,23 @@ class _WorkspaceTool(BaseTool):
             backend=self.backend,
         )
 
-    def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> str:
+    def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> ToolMessage:
         del config, kwargs
-        return asyncio.run(self._go(_call_payload(input)))
+        return self._message(asyncio.run(self._go(_call_payload(input))), input)
 
-    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> str:
+    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> ToolMessage:
         del config, kwargs
-        return await self._go(_call_payload(input))
+        return self._message(await self._go(_call_payload(input)), input)
+
+    def _message(self, text: str, raw: Any) -> ToolMessage:
+        call_id = ""
+        if isinstance(raw, dict):
+            call_id = str(raw.get("id") or raw.get("tool_call_id") or "")
+        return ToolMessage(
+            content=text,
+            name=self.name,
+            tool_call_id=call_id or "workspace",
+        )
 
 
 def _call_payload(raw: Any, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -284,6 +333,13 @@ def _annotate_tool(tool: BaseTool | dict[str, Any], suffix: str) -> BaseTool | d
     except Exception:
         logger.debug("team file target could not annotate %s", _tool_name(tool), exc_info=True)
         return tool
+
+
+def _mounts() -> list[str]:
+    raw = _configurable().get(MOUNTS_KEY)
+    if not isinstance(raw, list):
+        return []
+    return [str(item) for item in raw if isinstance(item, str) and item.strip()]
 
 
 def _configurable() -> dict[str, Any]:

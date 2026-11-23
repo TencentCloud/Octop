@@ -19,7 +19,7 @@ from octop.infra.agents.teams.file_target import SERVER_NAME, acall_backend
 
 _PROTOCOL = "2024-11-05"
 _SCOPES: dict[str, TeamWorkspaceScope] = {}
-_TOKENS: dict[tuple[str, str, bool, bool], str] = {}
+_TOKENS: dict[tuple[str, str, str, bool, bool], str] = {}
 _READ_LINES = 2000
 _EXECUTE_CAP = 20_000
 
@@ -31,6 +31,8 @@ class TeamWorkspaceScope:
     execute: bool
     bridge_target_id: str = ""
     deliver: bool = True
+    member_agent_id: str = ""
+    mounts: tuple[str, ...] = ()
 
 
 def team_workspace_scope(token: str) -> TeamWorkspaceScope | None:
@@ -38,8 +40,14 @@ def team_workspace_scope(token: str) -> TeamWorkspaceScope | None:
 
 
 def retain_team_workspace_scope(scope: TeamWorkspaceScope) -> str:
-    """Reuse one token per host so the ACP session is not reloaded each turn."""
-    key = (scope.host_agent_id, scope.bridge_target_id, scope.execute, scope.deliver)
+    """Reuse one token per host and member so the ACP session is not reloaded."""
+    key = (
+        scope.host_agent_id,
+        scope.bridge_target_id,
+        scope.member_agent_id,
+        scope.execute,
+        scope.deliver,
+    )
     token = _TOKENS.get(key)
     if token is None:
         token = secrets.token_urlsafe(32)
@@ -209,6 +217,8 @@ async def handle_team_workspace_mcp(
     scope: TeamWorkspaceScope,
     workspace: Any,
     backend: Any,
+    member_workspace: Any = None,
+    member_backend: Any = None,
 ) -> dict[str, Any]:
     """Answer one JSON-RPC request. An empty dict means the caller should return 202."""
     method = str(body.get("method") or "")
@@ -235,7 +245,13 @@ async def handle_team_workspace_mcp(
     args = _arguments(params)
     try:
         text = await run_workspace_tool(
-            name, args, scope=scope, workspace=workspace, backend=backend
+            name,
+            args,
+            scope=scope,
+            workspace=workspace,
+            backend=backend,
+            member_workspace=member_workspace,
+            member_backend=member_backend,
         )
     except Exception as exc:
         return _text(req_id, str(exc), failed=True)
@@ -250,8 +266,18 @@ async def run_workspace_tool(
     scope: TeamWorkspaceScope,
     workspace: Any,
     backend: Any,
+    member_workspace: Any = None,
+    member_backend: Any = None,
 ) -> str:
     """Run one workspace tool. Bridge file ops forward; send stays on this side."""
+    from octop.infra.agents.teams.file_target import mount_for_args
+
+    if mount_for_args(name, args, scope.mounts) is not None:
+        if name in {"write_file", "edit_file", "delete"}:
+            return "Error: this directory is read-only"
+        if member_workspace is not None:
+            workspace = member_workspace
+            backend = member_backend or backend
     if name in {"send_file", "send_file_to_user"}:
         return await _send(workspace, backend, args)
     if getattr(backend, "bridge_file_target", False):

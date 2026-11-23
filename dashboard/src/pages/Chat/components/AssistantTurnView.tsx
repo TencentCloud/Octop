@@ -392,7 +392,9 @@ export default function AssistantTurnView({
         <div className={styles.turnInset}>
           <TurnFileChangeCard
             messages={messages}
-            agentId={speakerAgentId}
+            // Team dispatch writes into the room host workspace, so open I/O
+            // with the host id — not the speaking member.
+            agentId={agentId}
             streaming={turnStreaming}
             isLatestTurn={afterLatestUser}
             onOpenList={onEditFile}

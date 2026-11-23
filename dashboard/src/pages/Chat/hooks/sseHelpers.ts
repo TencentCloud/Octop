@@ -142,12 +142,22 @@ export interface MessageAuthor {
   avatarIcon?: string | null;
 }
 
+/** Portrait for a speaker when AgentContext is unavailable (public share). */
+export interface MessageSpeakerFace {
+  name?: string;
+  iconUrl?: string | null;
+  iconName?: string | null;
+  color?: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   /** Who asked this question. Shared conversations use it for the portrait. */
   author?: MessageAuthor;
+  /** Public-share speaker portrait when the agent list is not loaded. */
+  speakerFace?: MessageSpeakerFace;
   type?: string;
   /** Structured content blocks for multi-part messages (thinking + text). */
   contentBlocks?: ContentBlockItem[];

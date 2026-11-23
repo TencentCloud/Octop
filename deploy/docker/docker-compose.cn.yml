@@ -29,7 +29,8 @@ services:
     ports:
       - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"
     volumes:
-      - ${OCTOP_DATA:-~/.octop}:/data/.octop
+      # 默认仍是宿主机 ~/.octop（${HOME}，未设置时 /root）。不要写字面 ~。
+      - ${OCTOP_DATA:-${HOME:-/root}/.octop}:/data/.octop
     environment:
       - HOME=/data
       - OCTOP_BIND_HOST=0.0.0.0
@@ -52,3 +53,4 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}
+

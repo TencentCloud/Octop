@@ -6591,6 +6591,7 @@
     "groups": "Specific user groups",
     "groupPlaceholder": "Choose at least one user group",
     "needGroup": "Choose at least one user group",
+    "manageGroups": "Manage user groups",
     "groupAccess": "Group access",
     "hideGroupAccess": "Hide group access",
     "groupAccessHint": "Available to everyone by default. Limit to user groups when needed. Admins always pass."

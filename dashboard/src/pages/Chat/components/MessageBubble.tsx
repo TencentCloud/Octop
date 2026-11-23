@@ -639,10 +639,19 @@ function MessageBubble({
       (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
     [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );
+  const shareFace = message.speakerFace;
+  const faceName = expert?.name || shareFace?.name || undefined;
+  const faceIconUrl = expert?.icon_url || shareFace?.iconUrl || undefined;
+  const faceIconName = expert?.icon_name || shareFace?.iconName || undefined;
+  const faceColor = expert?.color || shareFace?.color || undefined;
   const avatarTooltip = isTeamHostSpeaker
-    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
-    : expert?.name;
-  const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
+    ? t("chat.teamHostHover", {
+        name: activeAgent?.name || faceName || "",
+      })
+    : faceName;
+  const avatarProfileId = isTeamHostSpeaker
+    ? activeAgent?.agent_id
+    : speakerId || shareFace?.name;
   const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -847,12 +856,12 @@ function MessageBubble({
         }
       />
     </Tooltip>
-  ) : expert || avatarProfileId ? (
+  ) : expert || shareFace || avatarProfileId ? (
     <ExpertMessageAvatar
-      name={expert?.name || avatarProfileId}
-      color={expert?.color}
-      iconName={expert?.icon_name}
-      iconUrl={expert?.icon_url}
+      name={faceName || avatarProfileId}
+      color={faceColor}
+      iconName={faceIconName}
+      iconUrl={faceIconUrl}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
       managedRunner={managedRunnerId(expert)}

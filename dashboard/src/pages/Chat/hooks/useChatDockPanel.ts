@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PanelMode } from "../../../components/BrowserWorkspace";
 import {
+  agentIdFromWorkspacePath,
   canonicalizeDockFilePath,
   dockFileTabId,
   isHostAbsolutePath,
@@ -178,7 +179,12 @@ export function useChatDockPanel(isMobile: boolean, agentId?: string | null) {
         openFileList();
         return;
       }
-      const ownerId = (fileAgentId || agentId || "").trim() || null;
+      // Prefer agents/<id>/ when the path names a workspace; otherwise the
+      // caller/room host. Team dispatch writes to the host, so chat passes
+      // the room agent — not the speaking member.
+      const pathAgent = agentIdFromWorkspacePath(path);
+      const ownerId =
+        (pathAgent || fileAgentId || agentId || "").trim() || null;
       const hostAbs = normalizeDockFilePath(path);
       // Keep host-absolute tool paths. Collapsing ``~/.octop/agents/<id>/…`` to a
       // relative key breaks virtual ``root_dir`` nests (bytes live under

@@ -63,12 +63,22 @@ export function TurnProcessBlocks({
   const expert =
     resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
     (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
+  const shareFace =
+    split.answerMessage?.speakerFace ||
+    split.tools.find((item) => item.speakerFace)?.speakerFace ||
+    undefined;
+  const faceName = expert?.name || shareFace?.name || undefined;
+  const faceIconUrl = expert?.icon_url || shareFace?.iconUrl || undefined;
+  const faceIconName = expert?.icon_name || shareFace?.iconName || undefined;
+  const faceColor = expert?.color || shareFace?.color || undefined;
   const avatarTooltip = hostSpeaker
-    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
-    : expert?.name || undefined;
+    ? t("chat.teamHostHover", {
+        name: activeAgent?.name || faceName || "",
+      })
+    : faceName || undefined;
   const avatarProfileId = hostSpeaker
     ? activeAgent?.agent_id
-    : speakerId || undefined;
+    : speakerId || shareFace?.name || undefined;
   const rendererVersion = useToolRendererVersion();
   const { pinned, folded } = useMemo(
     () => partitionPinnedTools(split),
@@ -85,13 +95,13 @@ export function TurnProcessBlocks({
     <>
       {showFold ? (
         <div className={styles.processSummaryRow}>
-          {showAvatar && (expert || avatarProfileId) ? (
+          {showAvatar && (expert || shareFace || avatarProfileId) ? (
             <div className={styles.avatarCol}>
               <ExpertMessageAvatar
-                name={expert?.name || avatarProfileId}
-                color={expert?.color}
-                iconName={expert?.icon_name}
-                iconUrl={expert?.icon_url}
+                name={faceName || avatarProfileId}
+                color={faceColor}
+                iconName={faceIconName}
+                iconUrl={faceIconUrl}
                 tooltip={avatarTooltip}
                 profileAgentId={avatarProfileId}
                 managedRunner={managedRunnerId(expert)}
