@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, overload
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field, model_validator
@@ -85,7 +85,9 @@ def _experts(server: OctopServer, user: User) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in server.app_runtime.agent_registry.list_rows():
         try:
-            assert_agent_access_row(row, user, repos=server.services.repos if server.services else None)
+            assert_agent_access_row(
+                row, user, repos=server.services.repos if server.services else None
+            )
         except OctopError:
             continue
         cfg: dict[str, Any]
@@ -123,6 +125,16 @@ def _mcp_url() -> str:
     return f"{memory_sharing.service_url()}/mcp/"
 
 
+@overload
+def _to_out(token: dict[str, Any], experts: list[dict[str, Any]]) -> TokenOut: ...
+
+
+@overload
+def _to_out(
+    token: dict[str, Any], experts: list[dict[str, Any]], *, plaintext: str
+) -> TokenCreated: ...
+
+
 def _to_out(
     token: dict[str, Any], experts: list[dict[str, Any]], *, plaintext: str | None = None
 ) -> TokenOut:
@@ -144,9 +156,7 @@ def _to_out(
     return TokenOut(**data)
 
 
-def _space_for_expert(
-    user: User, experts: list[dict[str, Any]], agent_id: str
-) -> dict[str, Any]:
+def _space_for_expert(user: User, experts: list[dict[str, Any]], agent_id: str) -> dict[str, Any]:
     expert = next((item for item in experts if item["agent_id"] == agent_id), None)
     if expert is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")

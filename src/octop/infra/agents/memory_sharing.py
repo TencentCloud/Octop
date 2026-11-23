@@ -105,6 +105,12 @@ def _upstream_error(response: httpx.Response) -> OctopError:
             f"memory 服务找不到对象（HTTP 404）：{detail}",
             details={"status": status},
         )
+    if status == 409:
+        return OctopError(
+            ErrorCode.MEMORY_SERVICE_CONFLICT,
+            str(detail),
+            details={"status": status},
+        )
     return OctopError(
         ErrorCode.INTERNAL_ERROR,
         f"memory service rejected the request: {detail}",
@@ -137,7 +143,10 @@ def _request(
         raise _upstream_error(response)
     if not response.content:
         return {}
-    return response.json()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "memory service returned an invalid response")
+    return payload
 
 
 def exchange_code(user_id: int, code: str) -> SharingSession:
@@ -173,9 +182,7 @@ def list_spaces(user_id: int) -> dict[str, Any]:
 
 def list_tokens_in(user_id: int, space_id: str) -> dict[str, Any]:
     session = _session_or_fail(user_id)
-    return _request(
-        "GET", f"/api/admin/spaces/{space_id}/tokens", session=session.token
-    )
+    return _request("GET", f"/api/admin/spaces/{space_id}/tokens", session=session.token)
 
 
 def create_token_in(
@@ -198,22 +205,17 @@ def ensure_space(
     display_name: str = "",
 ) -> None:
     session = _session_or_fail(user_id)
-    try:
-        _request(
-            "POST",
-            "/api/admin/spaces",
-            session=session.token,
-            body={
-                "space_id": space_id,
-                "display_name": display_name or space_id,
-                "backend": backend,
-                "backend_config": backend_config,
-            },
-        )
-    except OctopError as exc:
-        # 409 (already exists) is the normal idempotent path.
-        if exc.details.get("status") != 409:
-            raise
+    _request(
+        "POST",
+        "/api/admin/spaces",
+        session=session.token,
+        body={
+            "space_id": space_id,
+            "display_name": display_name or space_id,
+            "backend": backend,
+            "backend_config": backend_config,
+        },
+    )
 
 
 def patch_token(
@@ -232,9 +234,7 @@ def patch_token(
         body["disabled_clients"] = disabled_clients
     if space_id is not None:
         body["space_id"] = space_id
-    return _request(
-        "PATCH", f"/api/admin/tokens/{token_id}", session=session.token, body=body
-    )
+    return _request("PATCH", f"/api/admin/tokens/{token_id}", session=session.token, body=body)
 
 
 def list_tokens(user_id: int) -> dict[str, Any]:

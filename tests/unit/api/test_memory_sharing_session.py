@@ -13,11 +13,13 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
+from octop.api.routers import memory_mcp
 from octop.api.routers import memory_sharing as router_module
 from octop.infra.agents import memory_sharing
-from octop.infra.errors import ErrorCode
+from octop.infra.errors import ErrorCode, OctopError
 
 
 def _session() -> memory_sharing.SharingSession:
@@ -80,6 +82,38 @@ def test_upstream_404_is_not_found() -> None:
     error = memory_sharing._upstream_error(response)
 
     assert error.code == ErrorCode.NOT_FOUND
+
+
+def test_space_binding_conflict_stops_token_issuance(monkeypatch: pytest.MonkeyPatch) -> None:
+    expert = {
+        "agent_id": "alpha",
+        "space_id": "project-alpha",
+        "name": "Alpha",
+        "usable": True,
+        "backend": "sqlite",
+        "backend_config": {"db_path": "alpha.db"},
+    }
+    monkeypatch.setattr(memory_mcp, "_experts", lambda server, user: [expert])
+    monkeypatch.setattr(memory_sharing, "get_session", lambda user_id: _session())
+    paths: list[str] = []
+
+    def conflict(client: httpx.Client, method: str, url: str, **kwargs: object) -> httpx.Response:
+        request = httpx.Request(method, url)
+        paths.append(request.url.path)
+        return httpx.Response(
+            409, json={"detail": "space is bound to different storage"}, request=request
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", conflict)
+    with pytest.raises(OctopError) as caught:
+        memory_mcp.create_token(
+            memory_mcp.TokenCreateBody(name="codex", expert_ids=["alpha"]),
+            user=SimpleNamespace(id=7),
+            server=SimpleNamespace(),
+        )
+    assert caught.value.status == 409
+    assert caught.value.code == ErrorCode.MEMORY_SERVICE_CONFLICT
+    assert paths == ["/api/admin/spaces"]
 
 
 def test_unknown_scope_is_rejected() -> None:

@@ -144,6 +144,7 @@
     "PROVIDER_REFERENCED": "Provider is in use and cannot be removed.",
     "PROVIDER_LOCAL_PROTECTED": "Local runtime providers cannot be deleted.",
     "CODEX_OAUTH_START_FAILED": "Could not start ChatGPT sign-in. Check the server connection to auth.openai.com and try again.",
+    "MEMORY_SERVICE_CONFLICT": "Memory service conflict. Check the space binding or token state.",
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "RESOURCE_NOT_ALLOWED": "You do not have access to this resource.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
