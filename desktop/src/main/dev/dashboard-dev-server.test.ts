@@ -6,7 +6,6 @@ import { test } from "node:test";
 import {
   dashboardDevOrigin,
   readDashboardDev,
-  viteCommand,
   viteLaunch,
   waitForDevServer,
 } from "./dashboard-dev-server";
@@ -55,22 +54,15 @@ test("Vite 只监听本机，并把接口代理到 sidecar 端口", () => {
     baseEnv: { PATH: "/usr/bin" },
   });
   assert.equal(launch.cwd, "/repo/dashboard");
-  assert.deepEqual(launch.args, ["--host", "127.0.0.1", "--port", "5173", "--strictPort"]);
+  assert.equal(launch.command, process.execPath);
+  assert.match(launch.args[0], /vite[\\/]bin[\\/]vite\.js$/);
+  assert.deepEqual(launch.args.slice(1), ["--host", "127.0.0.1", "--port", "5173", "--strictPort"]);
+  assert.equal(launch.env.ELECTRON_RUN_AS_NODE, "1");
   assert.equal(launch.env.VITE_API_PORT, "59999");
   assert.equal(launch.env.VITE_DEV_PORT, "5173");
   assert.equal(launch.env.VITE_HMR_CLIENT_PORT, "5173");
   assert.equal(launch.env.PATH, "/usr/bin");
   assert.equal(dashboardDevOrigin(5173), "http://127.0.0.1:5173");
-  const child = viteCommand(launch);
-  if (process.platform === "win32") {
-    assert.match(child.command, /cmd\.exe$/i);
-    assert.deepEqual(child.args.slice(0, 3), ["/d", "/s", "/c"]);
-    assert.equal(child.args[3], launch.command);
-    assert.deepEqual(child.args.slice(4), launch.args);
-  } else {
-    assert.equal(child.command, launch.command);
-    assert.deepEqual(child.args, launch.args);
-  }
 });
 
 test("开发服务器一有响应就继续启动", async () => {
