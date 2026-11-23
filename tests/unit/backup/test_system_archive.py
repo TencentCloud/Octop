@@ -1282,3 +1282,104 @@ def test_refuse_cross_engine_restore(layout: PathLayout, tmp_path: Path) -> None
         )
     assert excinfo.value.code == ErrorCode.BACKUP_DRIVER_MISMATCH
     pool.close()
+
+
+def _secret_rows(db_path: Path) -> list[tuple[str, bytes]]:
+    conn = sqlite3.connect(db_path)
+    try:
+        return [(str(key), bytes(value)) for key, value in conn.execute("SELECT k, v FROM secrets")]
+    finally:
+        conn.close()
+
+
+def _archive_sqlite(archive: Path, dest: Path) -> None:
+    with tarfile.open(archive, mode="r:gz") as tf:
+        member = tf.extractfile("db/octop.db")
+        assert member is not None
+        dest.write_bytes(member.read())
+
+
+def test_backup_omits_secrets_and_restore_keeps_live_key(
+    layout: PathLayout, tmp_path: Path
+) -> None:
+    """The archive is not a copy of the session signing key, and restore does not apply one."""
+    from octop.infra.backup.pg_dump import postgres_dump_data_exclusions, toc_line_has_table_data
+    from octop.infra.backup.system_archive import prepare_backup_download
+
+    assert "secrets" in postgres_dump_data_exclusions(
+        include_chats=True,
+        chat_tables=(),
+    )
+    sample = "3220; 0 16587 TABLE DATA public secrets postgres"
+    assert toc_line_has_table_data(sample, "secrets") is True
+    assert (
+        toc_line_has_table_data("317; 1247 17715 TYPE public secrets postgres", "secrets") is False
+    )
+
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    live = b"live-signing-key-live-signing-key"
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+            ("jwt", live, 1),
+        )
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+    archive = tmp_path / "clean.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+    copied = tmp_path / "copied.db"
+    _archive_sqlite(archive, copied)
+    assert _secret_rows(copied) == []
+
+    foreign = b"foreign-signing-key-foreign-signing"
+    conn = sqlite3.connect(copied)
+    conn.execute(
+        "INSERT INTO secrets(k, v, created_at) VALUES (?, ?, ?)",
+        ("jwt", foreign, 1),
+    )
+    conn.commit()
+    conn.close()
+    tainted = tmp_path / "tainted.tar.gz"
+    with tarfile.open(archive, mode="r:gz") as src, tarfile.open(tainted, mode="w:gz") as dst:
+        for member in src.getmembers():
+            if member.name == "db/octop.db":
+                info = tarfile.TarInfo(name=member.name)
+                blob = copied.read_bytes()
+                info.size = len(blob)
+                dst.addfile(info, BytesIO(blob))
+                continue
+            handle = src.extractfile(member) if member.isreg() else None
+            dst.addfile(member, handle)
+
+    result = restore_system_backup(
+        tainted,
+        paths=layout,
+        pool=pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    assert result["jwt_preserved"] is True
+    with pool.connect() as conn:
+        row = conn.execute("SELECT v FROM secrets WHERE k = ?", ("jwt",)).fetchone()
+    assert row is not None
+    assert bytes(row["v"]) == live
+
+    served, ephemeral = prepare_backup_download(tainted, allow_embedded_signing_key=False)
+    assert ephemeral is True
+    try:
+        redacted = tmp_path / "redacted.db"
+        _archive_sqlite(served, redacted)
+        assert _secret_rows(redacted) == []
+    finally:
+        if ephemeral:
+            served.unlink(missing_ok=True)
+    pool.close()

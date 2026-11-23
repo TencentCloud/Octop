@@ -59,7 +59,7 @@ def _make_manager(*, existing_agent_ids: set[str]):
 
     mgr = object.__new__(manager_mod.AgentManager)
     mgr._repos = SimpleNamespace(
-        agent_repo=SimpleNamespace(get=repo_get),
+        agent_repo=SimpleNamespace(get=repo_get, list_all=lambda **kwargs: []),
         user_policy_repo=SimpleNamespace(get=lambda *args, **kwargs: None),
     )
     mgr._paths = SimpleNamespace(ensure_agent_workspace=ensure_workspace)
@@ -84,6 +84,15 @@ class TestCreateWithCustomAgentId:
         with pytest.raises(OctopError) as exc:
             await mgr.create(spec)
         assert exc.value.code == ErrorCode.AGENT_ID_INVALID
+
+    @pytest.mark.asyncio
+    async def test_normalized_id_collision_rejected(self) -> None:
+        mgr, _sentinel = _make_manager(existing_agent_ids=set())
+        mgr._repos.agent_repo.list_all = lambda **_kwargs: [SimpleNamespace(agent_id="foo_bar")]
+        spec = AgentCreateSpec(name="New", agent_id="Foo-Bar", user_id=1)
+        with pytest.raises(OctopError) as exc:
+            await mgr.create(spec)
+        assert exc.value.code == ErrorCode.AGENT_ID_TAKEN
 
     @pytest.mark.asyncio
     async def test_valid_custom_id_reaches_workspace_creation(self) -> None:
