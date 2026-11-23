@@ -34,7 +34,7 @@ export default function SharedExpertHint({
   );
 }
 
-/** “已共享” pill beside an expert title the current user owns and has shared. */
+/** Compact “已共享” icon beside an expert title the current user owns. */
 export function ExpertOwnerShareFlag({ agent }: { agent: OctopAgent }) {
   return (
     <SharedResourceBadge

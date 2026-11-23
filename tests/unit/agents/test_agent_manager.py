@@ -51,7 +51,11 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 
 
 @pytest.fixture
-def manager(tmp_path: Path) -> AgentManager:
+def manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentManager:
+    from octop_harness.plugins.registry import PluginRegistry
+
+    # Other test modules can leave tools in the process-wide plugin registry.
+    monkeypatch.setattr(PluginRegistry, "_instance", None)
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
     db = SqlitePool(paths.db)
@@ -255,6 +259,8 @@ def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) ->
     assert "ask_agent" not in disabled
     assert "agent_list" not in disabled
     assert out.bootstrap_enabled is False
+    if hasattr(out, "todos_enabled"):
+        assert out.todos_enabled is False
     assert "Host dispatch" in (out.system_prompt or "") or "主持人调度" in (out.system_prompt or "")
 
 
@@ -410,6 +416,77 @@ async def test_install_team_host_dispatch_stream_skips_unknown_job_id(
     assert seen["stream"][1] == "child"
     assert request.thread_id == "t~child"
     assert payload["team_live_streamed"] is True
+
+
+@pytest.mark.asyncio
+async def test_invoke_peer_followup_prefers_streamed_answer(manager: AgentManager) -> None:
+    from dataclasses import replace as dc_replace
+
+    from langchain_core.messages import AIMessage
+    from octop_harness.messages import extract_call_response
+
+    seen: dict[str, object] = {}
+
+    async def build_peer_request(
+        *,
+        from_agent_id: str,
+        to_agent_id: str,
+        message: str,
+        user_id: str | int,
+        source: str,
+        source_thread_id: str | None,
+        source_session_key: str | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(thread_id="t~child")
+
+    async def stream_peer(
+        request: object,
+        *,
+        room_thread_id: str,
+        speaker_id: str,
+    ) -> dict[str, object]:
+        del request, room_thread_id, speaker_id
+        return {
+            "messages": [AIMessage(content="checkpoint fragment")],
+            "stream_text": "live conclusion",
+            "team_live_streamed": True,
+        }
+
+    async def after_peer(call: object, thread_id: str, payload: dict[str, object]) -> None:
+        del call, thread_id
+        seen["fan_in"] = payload["messages"]
+
+    team = MagicMock()
+    team.enabled = True
+    team.call_peer = AsyncMock()
+    team.submit_peer = MagicMock()
+    team._invoke_peer = AsyncMock()
+    team._build_peer_request = build_peer_request
+    team._enrich_request = None
+    team._after_peer = after_peer
+    manager._harness_manager = SimpleNamespace(team=team)
+    manager._team_processor = SimpleNamespace(
+        take_team_peer_prompt=MagicMock(return_value=None),
+        stream_team_peer_to_room=stream_peer,
+    )
+    manager.get_row = MagicMock(  # type: ignore[method-assign]
+        return_value=dc_replace(_row(agent_id="host"), kind="team")
+    )
+    manager._install_team_host_dispatch()
+    _request, payload = await team._invoke_peer(
+        from_agent_id="host",
+        to_agent_id="child",
+        message="go",
+        user_id=1,
+        source="inbox",
+        source_thread_id="t",
+        source_session_key="sk",
+        job_id="job-1",
+    )
+    fan_in = seen["fan_in"]
+    assert isinstance(fan_in, list)
+    assert fan_in[0].content == "checkpoint fragment"
+    assert extract_call_response(payload) == "live conclusion"
 
 
 @pytest.mark.asyncio
@@ -1585,13 +1662,18 @@ async def test_delete_stops_memory_maintenance_before_close(manager: AgentManage
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_persisted_workspace_dir(
+async def test_delete_keeps_caller_workspace_and_removes_managed_dirs(
     manager: AgentManager, tmp_path: Path
 ) -> None:
+    """A workspace the caller chose stays; directories Octop allocated are removed."""
     agent_id = "AGT_DELETE_CUSTOM"
     custom = tmp_path / "custom-ws"
     custom.mkdir()
     (custom / "SOUL.md").write_text("keep", encoding="utf-8")
+    managed = manager._paths.ensure_agent_workspace(agent_id)
+    (managed / "MEMORY.md").write_text("managed", encoding="utf-8")
+    scoped = manager._paths.root / "workspaces" / agent_id
+    scoped.mkdir(parents=True)
     manager._repos.agent_repo.create(
         agent_id=agent_id,
         user_id=None,
@@ -1605,7 +1687,9 @@ async def test_delete_removes_persisted_workspace_dir(
     await manager.delete(agent_id)
 
     assert manager.get_row(agent_id) is None
-    assert not custom.exists()
+    assert (custom / "SOUL.md").read_text(encoding="utf-8") == "keep"
+    assert not managed.exists()
+    assert not scoped.exists()
 
 
 @pytest.mark.asyncio
@@ -1817,10 +1901,10 @@ def test_host_model_sdk_errors_keep_original_retry_budget(
 
 
 def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: AgentManager) -> None:
-    from langchain.agents.middleware import (
-        ModelRetryMiddleware,
-        ToolCallLimitMiddleware,
-        ToolRetryMiddleware,
+    from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
+
+    from octop.infra.agents.middleware.consecutive_tool_call import (
+        ConsecutiveToolCallMiddleware,
     )
 
     cfg = manager._build_harness_config(
@@ -1835,15 +1919,16 @@ def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: Age
             )
         )
     )
-    limit = next(item for item in cfg.middleware or [] if isinstance(item, ToolCallLimitMiddleware))
+    limit = next(
+        item for item in cfg.middleware or [] if isinstance(item, ConsecutiveToolCallMiddleware)
+    )
     tool_retry = next(
         item for item in cfg.middleware or [] if isinstance(item, ToolRetryMiddleware)
     )
     model_retry = next(
         item for item in cfg.middleware or [] if isinstance(item, ModelRetryMiddleware)
     )
-    assert limit.run_limit == 12
-    assert limit.thread_limit is None
+    assert limit.limit == 12
     assert tool_retry.max_retries == 1
     assert model_retry.max_retries == 4
     assert model_retry.initial_delay == 0.25
@@ -1861,7 +1946,7 @@ def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: Age
         )
     )
     assert not any(
-        isinstance(item, ToolCallLimitMiddleware | ToolRetryMiddleware | ModelRetryMiddleware)
+        isinstance(item, ConsecutiveToolCallMiddleware | ToolRetryMiddleware | ModelRetryMiddleware)
         for item in (disabled.middleware or [])
     )
     assert not disabled.model_retry_enabled

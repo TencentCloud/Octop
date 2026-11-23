@@ -163,6 +163,28 @@ def test_roster_lives_in_workspace_manifest(team_env: dict[str, object]) -> None
     assert teams.team_payload(host)["icon_url"] == TEAM_AVATAR_URL
 
 
+def test_shared_viewer_can_run_private_roster_members(team_env: dict[str, object]) -> None:
+    teams = team_env["teams"]
+    agents = team_env["agents"]
+    users = team_env["repos"]
+    assert isinstance(teams, TeamService)
+    assert isinstance(agents, AgentRepo)
+    assert isinstance(users, RepoBundle)
+    users.user_repo.create(username="guest", password_hash="h", role="user")
+    agents.set_shared("host", True)
+    teams.replace_members("host", ["a", "b"])
+    guest = SimpleNamespace(id=2, is_admin=False)
+    alpha = agents.get("a")
+    beta = agents.get("b")
+    gamma = agents.get("c")
+    assert alpha is not None and beta is not None and gamma is not None
+    assert teams.viewer_may_run_roster_member(guest, alpha, "host")
+    assert teams.viewer_may_run_roster_member(guest, beta, "a")
+    assert not teams.viewer_may_run_roster_member(guest, gamma, "host")
+    agents.set_shared("host", False)
+    assert not teams.viewer_may_run_roster_member(guest, alpha, "host")
+
+
 def test_team_icon_url_falls_back_to_cartoon() -> None:
     assert team_icon_url(None) == TEAM_AVATAR_URL
     assert team_icon_url("  ") == TEAM_AVATAR_URL

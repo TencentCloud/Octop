@@ -536,6 +536,9 @@ async def _bridge_chat_ws(
                 continue
             turn_payload = frame.model_dump(exclude_none=True)
             turn_payload.pop("type", None)
+            local_directory = payload.get("local_directory")
+            if isinstance(local_directory, str) and local_directory.strip():
+                turn_payload["local_directory"] = local_directory.strip()
             last_thread_id = str(turn.thread_id or last_thread_id).strip()
             if host_turn_task is not None and not host_turn_task.done():
                 if host_turn_ended:

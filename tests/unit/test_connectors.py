@@ -210,7 +210,7 @@ def test_obsidian_cli_catalog_and_credentials(tmp_path: Path):
     assert entry.category == "knowledge"
     kinds = [item.kind for item in list_catalog()]
     assert kinds.index("obsidian-cli") < kinds.index("weknora")
-    assert kinds[-2:] == ["weknora", "dify"]
+    assert kinds[-4:] == ["weknora", "dify", "github", "gitea"]
 
     binary = tmp_path / "obsidian"
     binary.write_text("", encoding="utf-8")
@@ -987,6 +987,7 @@ def test_every_catalog_entry_has_category():
         "dify": "self_hosted",
         "yuandian": "professional",
         "qq-mail": "productivity",
+        "github": "professional",
     }
     for entry in list_catalog():
         assert entry.category in allowed, entry.kind
@@ -1273,6 +1274,64 @@ def test_probe_tencent_ardot_routes_to_streamable(monkeypatch: pytest.MonkeyPatc
     assert captured["headers"]["Authorization"] == "Bearer ardot-tok"
     assert out["ok"] is True
     assert out["tools"][0]["name"] == "fetch_editor_state"
+
+
+def test_personal_token_github():
+    payload = validate_create_credentials(
+        "github",
+        {"token": "github_pat_example"},
+    )
+    assert payload["token"] == "github_pat_example"
+
+
+def test_build_github_remote_spec():
+    entry = get_catalog_entry("github")
+    assert entry is not None
+    assert entry.auth_kind == "personal_token"
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds={"token": "gh-token"},
+        config=OctopConfig(),
+    )
+    assert spec["transport"] == "http"
+    assert spec["url"] == "https://api.githubcopilot.com/mcp/"
+    assert spec["headers"]["Authorization"] == "Bearer gh-token"
+    assert spec["headers"]["Accept"] == "application/json, text/event-stream"
+
+
+def test_probe_github_routes_to_streamable(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    captured: dict[str, object] = {}
+
+    async def _fake(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["kind"] = kind
+        return {
+            "ok": True,
+            "tool_count": 1,
+            "tools": [{"name": "search_issues", "description": "Search issues"}],
+        }
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _fake)
+    entry = get_catalog_entry("github")
+    assert entry is not None
+
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"token": "gh-token"},
+            instance_id="probe",
+            config=OctopConfig(),
+        )
+    )
+    assert captured["kind"] == "github"
+    assert captured["url"] == "https://api.githubcopilot.com/mcp/"
+    assert captured["headers"]["Authorization"] == "Bearer gh-token"
+    assert out["ok"] is True
+    assert out["tools"][0]["name"] == "search_issues"
 
 
 def test_oauth_ready_tencent_ardot():

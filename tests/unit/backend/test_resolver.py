@@ -82,12 +82,25 @@ def test_is_host_root_matches_explicit_host_roots() -> None:
         assert _is_host_root(root), root
 
 
-def test_is_host_root_ignores_drive_root_and_missing() -> None:
-    # An explicit drive root is a deliberate user choice, not the dashboard sentinel.
-    assert not _is_host_root("D:\\")
-    assert not _is_host_root("C:/")
+def test_is_host_root_ignores_missing_and_nested_paths() -> None:
     # harness falls back to workspace_dir on its own; do not rewrite absent config.
     assert not _is_host_root(None)
+    assert not _is_host_root("D:\\develop")
+    assert not _is_host_root("C:/Users/octop")
+
+
+def test_is_host_root_treats_windows_drive_roots_as_host_root() -> None:
+    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
+        for root in ("C:/", "C:\\", "C:", "D:\\", "  e:/  "):
+            assert _is_host_root(root), root
+        assert not _is_host_root("C:/Users")
+        assert not _is_host_root("D:\\develop")
+
+
+def test_is_host_root_ignores_drive_letters_on_posix() -> None:
+    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="posix")):
+        assert not _is_host_root("C:/")
+        assert not _is_host_root("D:\\")
 
 
 def test_windows_neutralize_is_passthrough_on_posix(tmp_path: Path) -> None:
@@ -127,6 +140,21 @@ def test_windows_neutralize_filesystem_empty_root_scopes_to_workspace(
     # Preserve filesystem type; only rewrite the host-root sentinel.
     assert out == {
         "type": "filesystem",
+        "root_dir": str(ws.resolve()),
+        "virtual_mode": True,
+    }
+
+
+def test_windows_neutralize_drive_root_scopes_to_workspace(tmp_path: Path) -> None:
+    ws = tmp_path / "agents" / "AGT001"
+    ws.mkdir(parents=True)
+    with patch("octop.infra.backend.resolver.os", SimpleNamespace(name="nt")):
+        out = windows_neutralize_host_root(
+            {"type": "local_shell", "root_dir": "C:/", "virtual_mode": True},
+            workspace_dir=ws,
+        )
+    assert out == {
+        "type": "local_shell",
         "root_dir": str(ws.resolve()),
         "virtual_mode": True,
     }

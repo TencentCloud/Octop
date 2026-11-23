@@ -6,6 +6,7 @@ import {
   useMemo,
   forwardRef,
   useImperativeHandle,
+  type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { App } from "antd";
@@ -21,6 +22,7 @@ import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { textAssistApi } from "../../../api/modules/textAssist";
 import type { ChatAttachment } from "../hooks/useChat";
+import type { AcpSessionMode } from "../../../api/modules/acp";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -112,6 +114,9 @@ interface ChatInputProps {
   ) => void;
   conversationMode?: "ask" | "plan" | "craft";
   onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  sessionModes?: AcpSessionMode[];
+  sessionMode?: string;
+  onSessionModeChange?: (modeId: string) => void;
   hitlPolicy?: HitlSessionPolicy;
   onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   /** Shared conversation: model, reasoning, mode, and approval stay with the owner. */
@@ -144,6 +149,8 @@ interface ChatInputProps {
   decisionSaved?: number;
   /** Managed experts hide model, connectors, knowledge, and expert pickers. */
   managed?: boolean;
+  /** Quiet controls sitting on the top edge of the composer. */
+  leading?: ReactNode;
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -178,6 +185,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onReasoningChange,
       conversationMode = "craft",
       onConversationModeChange,
+      sessionModes,
+      sessionMode,
+      onSessionModeChange,
       hitlPolicy,
       onHitlPolicyChange,
       lockThreadSettings = false,
@@ -200,6 +210,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       defaultModel,
       contextUsedTokens = null,
       contextMaxTokens = 128_000,
+      leading = null,
       decisionSaved = 0,
       managed = false,
     },
@@ -504,7 +515,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       locale: i18n.language,
       availableSkills,
       availableConnectors,
-      availableExperts: managed ? [] : availableExperts,
+      availableExperts,
       availableSubagents,
       agentId,
       selectedConnectors,
@@ -515,6 +526,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       isStreaming,
       onSubmitRef: submitRef,
       enterToSend: !isMobile,
+      slashMenuEnabled: !managed,
     });
 
     const skillTokenRefs = useMemo<SkillTokenRef[]>(
@@ -871,6 +883,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
+        {leading ? (
+          <div className={styles.composerLeading}>{leading}</div>
+        ) : null}
         <div className={styles.inputWrapper}>
           {showDrop && (
             <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
@@ -1034,6 +1049,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onReasoningChange={onReasoningChange}
             conversationMode={conversationMode}
             onConversationModeChange={onConversationModeChange}
+            sessionModes={sessionModes}
+            sessionMode={sessionMode}
+            onSessionModeChange={onSessionModeChange}
             hitlPolicy={hitlPolicy}
             onHitlPolicyChange={onHitlPolicyChange}
             lockThreadSettings={lockThreadSettings}
@@ -1046,11 +1064,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
             availableSkills={availableSkills}
             onInsertSkillCommand={insertSkillCommand}
-            availableExperts={
-              managed
-                ? []
-                : availableExperts.filter((a) => a.agent_id !== agentId)
-            }
+            availableExperts={availableExperts.filter(
+              (a) => a.agent_id !== agentId,
+            )}
             onInsertExpertMention={insertExpertMention}
             availableSubagents={availableSubagents}
             onInsertSubagentMention={insertSubagentMention}

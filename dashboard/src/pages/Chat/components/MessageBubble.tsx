@@ -40,6 +40,7 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
+  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
@@ -49,12 +50,14 @@ import {
 } from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
 import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
 import {
   isTeamAgent,
   isTeamHostSpeaker as isTeamHostSpeakerId,
+  resolveSpeakerFace,
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { accountDisplayName } from "../utils/accountDisplayName";
@@ -111,6 +114,8 @@ interface MessageBubbleProps {
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  /** Public transcripts hide this. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function formatElapsedSeconds(durationMs: number | undefined): string | null {
@@ -591,6 +596,7 @@ function MessageBubble({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -629,14 +635,23 @@ function MessageBubble({
   );
   const expert = useMemo(
     () =>
-      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+      resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
       (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
     [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );
+  const shareFace = message.speakerFace;
+  const faceName = expert?.name || shareFace?.name || undefined;
+  const faceIconUrl = expert?.icon_url || shareFace?.iconUrl || undefined;
+  const faceIconName = expert?.icon_name || shareFace?.iconName || undefined;
+  const faceColor = expert?.color || shareFace?.color || undefined;
   const avatarTooltip = isTeamHostSpeaker
-    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
-    : expert?.name;
-  const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
+    ? t("chat.teamHostHover", {
+        name: activeAgent?.name || faceName || "",
+      })
+    : faceName;
+  const avatarProfileId = isTeamHostSpeaker
+    ? activeAgent?.agent_id
+    : speakerId || shareFace?.name;
   const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -746,7 +761,9 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const isError = message.status === "error";
+  const isError =
+    message.status === "error" ||
+    (!isUser && !hasToolData && isChatStreamError(textContent));
   const errorSource = isError
     ? message.errorInfo?.message?.trim() || textContent
     : textContent;
@@ -839,15 +856,16 @@ function MessageBubble({
         }
       />
     </Tooltip>
-  ) : expert || avatarProfileId ? (
+  ) : expert || shareFace || avatarProfileId ? (
     <ExpertMessageAvatar
-      name={expert?.name || avatarProfileId}
-      color={expert?.color}
-      iconName={expert?.icon_name}
-      iconUrl={expert?.icon_url}
+      name={faceName || avatarProfileId}
+      color={faceColor}
+      iconName={faceIconName}
+      iconUrl={faceIconUrl}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
       managedRunner={managedRunnerId(expert)}
+      {...incomingShareProps(expert)}
     />
   ) : null;
 
@@ -1137,7 +1155,7 @@ function MessageBubble({
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
-                  {!isUser && !isStreaming && speechText && (
+                  {!isUser && !isStreaming && readAloud && speechText && (
                     <>
                       <CopyButton text={textContent} />
                       <button

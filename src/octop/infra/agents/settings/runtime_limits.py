@@ -12,7 +12,7 @@ Configurable stream contract (``ChatRequest.configurable``)
 Start-time middleware (read in ``AgentManager._build_harness_config``)
 -----------------------------------------------------------------------
 ``tool_call_limit_enabled`` / ``tool_call_run_limit``
-    → LangChain ``ToolCallLimitMiddleware`` (per run; default 40)
+    → ``ConsecutiveToolCallMiddleware`` (identical calls in a row; default 40)
 ``model_retry_*`` → the host model-retry middleware (default on, 2 retries)
 ``tool_retry_*``  → LangChain ``ToolRetryMiddleware`` (default on, 5 retries)
 """
@@ -156,9 +156,10 @@ def resolve_tool_retry(cfg: dict[str, Any]) -> RetryBudget:
 
 
 def resolve_tool_call_run_limit(cfg: dict[str, Any]) -> int | None:
-    """Per-run tool-call cap. ``None`` means the limiter is not mounted.
+    """Cap on identical tool calls in a row. ``None`` means it is not mounted.
 
-    An absent switch stays on. An absent count uses :data:`DEFAULT_TOOL_CALL_RUN_LIMIT`.
+    Different tools and different arguments do not add up. An absent switch
+    stays on. An absent count uses :data:`DEFAULT_TOOL_CALL_RUN_LIMIT`.
     """
     if not _stored_bool(cfg.get("tool_call_limit_enabled"), default=True):
         return None
@@ -167,13 +168,17 @@ def resolve_tool_call_run_limit(cfg: dict[str, Any]) -> int | None:
 
 
 def call_guard_middleware(cfg: dict[str, Any]) -> list[Any]:
-    """Tool-call cap and tool-exception retry mounted for one expert."""
-    from langchain.agents.middleware import ToolCallLimitMiddleware, ToolRetryMiddleware
+    """Consecutive identical-call cap and tool-exception retry for one expert."""
+    from langchain.agents.middleware import ToolRetryMiddleware
+
+    from octop.infra.agents.middleware.consecutive_tool_call import (
+        ConsecutiveToolCallMiddleware,
+    )
 
     middleware: list[Any] = []
     run_limit = resolve_tool_call_run_limit(cfg)
     if run_limit is not None:
-        middleware.append(ToolCallLimitMiddleware(run_limit=run_limit, exit_behavior="end"))
+        middleware.append(ConsecutiveToolCallMiddleware(limit=run_limit))
     tool_retry = resolve_tool_retry(cfg)
     if tool_retry.enabled:
         middleware.append(

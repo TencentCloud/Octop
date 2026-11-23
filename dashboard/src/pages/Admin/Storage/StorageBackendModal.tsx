@@ -28,8 +28,30 @@ import {
   STORAGE_TYPE_DEFS,
   type StorageBackendRow,
 } from "./useStorageBackends";
+import CodeEditor from "../../Agent/Workspace/components/CodeEditor";
 import { DockerEnvFooter } from "./DockerEnvFooter";
 import { storageProbeMessage } from "./storageProbeMessage";
+import styles from "./storage.module.less";
+
+/** Ant Design Form-compatible Monaco JSON editor. */
+function JsonConfigEditor({
+  value,
+  onChange,
+}: {
+  value?: string;
+  onChange?: (next: string) => void;
+}) {
+  return (
+    <div className={styles.jsonEditorFrame}>
+      <CodeEditor
+        path="storage-backend-config.json"
+        language="json"
+        value={value ?? ""}
+        onChange={(next) => onChange?.(next)}
+      />
+    </div>
+  );
+}
 
 interface StorageBackendDrawerProps {
   open: boolean;
@@ -320,6 +342,13 @@ export function StorageBackendDrawer({
     return typeDef.fields.some((f) => f.key === key);
   };
 
+  /** Prefer type-def ``secret``; ``secret_key`` defaults to password input. */
+  const fieldIsSecret = (key: string) => {
+    const f = typeDef?.fields.find((fd) => fd.key === key);
+    if (f?.secret !== undefined) return !!f.secret;
+    return key === "secret_key";
+  };
+
   const handleProbe = async () => {
     try {
       const fieldNames: (keyof StorageForm)[] = ["kind"];
@@ -457,14 +486,25 @@ export function StorageBackendDrawer({
               isEdit && editing?.access_key ? editing.access_key : undefined
             }
           >
-            <Input.Password
-              placeholder={
-                isEdit
-                  ? t("common.unchanged")
-                  : fieldPlaceholder("access_key", "AKIDxxx")
-              }
-              visibilityToggle
-            />
+            {fieldIsSecret("access_key") ? (
+              <Input.Password
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("access_key", "AKIDxxx")
+                }
+                visibilityToggle
+              />
+            ) : (
+              <Input
+                autoComplete="username"
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("access_key", "AKIDxxx")
+                }
+              />
+            )}
           </Form.Item>
         )}
 
@@ -484,14 +524,24 @@ export function StorageBackendDrawer({
                 : []
             }
           >
-            <Input.Password
-              placeholder={
-                isEdit
-                  ? t("common.unchanged")
-                  : fieldPlaceholder("secret_key", "SKEYxxx")
-              }
-              visibilityToggle
-            />
+            {fieldIsSecret("secret_key") ? (
+              <Input.Password
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("secret_key", "SKEYxxx")
+                }
+                visibilityToggle
+              />
+            ) : (
+              <Input
+                placeholder={
+                  isEdit
+                    ? t("common.unchanged")
+                    : fieldPlaceholder("secret_key", "SKEYxxx")
+                }
+              />
+            )}
           </Form.Item>
         )}
 
@@ -630,12 +680,10 @@ export function StorageBackendDrawer({
                 <Form.Item
                   name="config_json"
                   extra={t("storage.advancedConfigExtra")}
+                  trigger="onChange"
+                  getValueFromEvent={(next: string) => next}
                 >
-                  <Input.TextArea
-                    rows={5}
-                    placeholder='{"addressing_style": "path"}'
-                    style={{ fontFamily: "monospace", fontSize: 12 }}
-                  />
+                  <JsonConfigEditor />
                 </Form.Item>
               ),
             },

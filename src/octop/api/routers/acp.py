@@ -24,7 +24,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _BUILTIN_RUNNERS = frozenset(
-    {"opencode", "codebuddy", "claude_code", "codex", "kimi_code", "cursor_cli", "pi"}
+    {
+        "opencode",
+        "codebuddy",
+        "claude_code",
+        "codex",
+        "kimi_code",
+        "cursor_cli",
+        "pi",
+        "qwen_code",
+    }
 )
 _ALLOWED_PARSE_MODES = frozenset({"call_title", "update_detail", "call_detail"})
 _DEFAULT_STDIO_BUFFER = 50 * 1024 * 1024
@@ -162,6 +171,22 @@ async def get_global_acp_runners(
     """Return ACP runner definitions shared by all agents for the current user."""
     registry = _registry(server)
     return {"runners": registry.acp_settings.load_runners(user.id)}
+
+
+@router.get("/acp/session-modes", summary="Session modes for one ACP runner")
+async def acp_session_modes(
+    runner: str,
+    _user: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Modes this underlying agent documents for ``session/set_mode``.
+
+    The list follows the runner. An empty list means Octop has no catalog for
+    it, and the chat keeps that agent's own default.
+    """
+    from octop.infra.agents.acp.session_modes import session_modes
+
+    rows = session_modes(runner)
+    return {"runner": runner.strip(), "modes": [row.to_dict() for row in rows]}
 
 
 @router.put("/acp", summary="Update global ACP runners")

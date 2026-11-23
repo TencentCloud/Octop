@@ -45,6 +45,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/internal/mcp/",
     # Short-lived download links: the unguessable token is the credential.
     "/api/downloads/link/",
+    # Read-only conversation links: the unguessable token is the credential.
+    "/api/shares/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
@@ -204,7 +206,7 @@ def authenticate_request(request: Request, server: OctopServer) -> User:
         access_token=request.query_params.get("access_token"),
     )
     if not raw:
-        raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
+        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
     return resolve_user_from_token(server, raw)
 
 
@@ -219,7 +221,7 @@ async def current_user(
         return cast("User", cached)
     raw = extract_raw_token(authorization=authorization, access_token=access_token)
     if not raw:
-        raise OctopError(ErrorCode.AUTH_FAILED, "missing credentials")
+        raise OctopError(ErrorCode.MISSING_CREDENTIALS, "missing credentials")
     return resolve_user_from_token(server, raw)
 
 

@@ -115,6 +115,16 @@ export function applyRenewedAccessToken(response: Response): void {
 
 let _redirectingToSetup = false;
 
+/** Login, setup, invites, and read-only share links stay outside the app shell. */
+function isGuestShellPath(path: string): boolean {
+  return (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite") ||
+    /(?:^|\/)share\/[^/]+/.test(path)
+  );
+}
+
 /**
  * Hard-redirect once when the backend reports the wizard isn't done.
  * The flag prevents N parallel API calls from each issuing a navigate.
@@ -124,12 +134,7 @@ function handleSetupRequired(): void {
   if (_redirectingToSetup) return;
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  ) {
+  if (isGuestShellPath(window.location.pathname)) {
     return;
   }
   _redirectingToSetup = true;
@@ -308,7 +313,11 @@ function buildAuthHeaders(path: string): Record<string, string> {
 let _redirectingToLogin = false;
 
 /** 401 codes that mean this Octop session is no longer valid. */
-const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+const SESSION_UNAUTHORIZED_CODES = new Set([
+  "AUTH_FAILED",
+  "MISSING_CREDENTIALS",
+  "TOKEN_EXPIRED",
+]);
 
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
@@ -316,13 +325,7 @@ const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
  */
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  )
-    return;
+  if (isGuestShellPath(window.location.pathname)) return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(

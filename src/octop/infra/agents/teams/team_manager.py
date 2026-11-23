@@ -38,7 +38,11 @@ from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
 from octop.infra.gateway.media.tool_media import (
+    OUTBOUND_ATTACHMENTS_KEY,
+    history_attachments_from_chunk,
+    history_attachments_from_messages,
     media_events_from_tool_result,
+    merge_history_attachments,
     note_live_tool_call,
     select_turn_tool_results,
     tool_name_base,
@@ -65,7 +69,9 @@ _EDIT_CARD_TOOL_BASES = frozenset(
 _HISTORY_TOOL_RESULT_MAX_CHARS = 4000
 _HISTORY_TOOL_RESULT_SUFFIX = "…"
 # Member answer excerpt injected into the host wrap-up wake-up prompt.
+# Keep the ending: long answers put the conclusion last.
 _FOLLOWUP_RESULT_MAX_CHARS = 6000
+_PEER_RESOURCES_KEY = "octop_peer_resources"
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -74,6 +80,19 @@ if TYPE_CHECKING:
     from octop.infra.gateway.threads import ThreadRegistry
 
 logger = logging.getLogger(__name__)
+
+
+def _mounts_for_member(agent_manager: Any, cfg: dict[str, Any], speaker_id: str) -> list[str]:
+    """Stamp the speaker's deepagents directories, or none when unavailable."""
+    from octop.infra.agents.teams.file_target import stamp_member_mounts
+
+    try:
+        agent = agent_manager.get_agent(speaker_id)
+    except Exception:
+        logger.debug("team file mounts skipped; member %s is not running", speaker_id)
+        return []
+    return stamp_member_mounts(cfg, agent, speaker_id)
+
 
 _ROOM_HISTORY_LIMIT = 40
 _HOST_IDLE_POLL_SEC = 0.05
@@ -306,12 +325,9 @@ class TeamManager:
                 task=msg.message,
                 error=error_text,
             )
-        # Member answers live on the room wall / peer checkpoint, not the host
-        # graph — inject a truncated excerpt so wrap-up can follow their advice.
-        result = _truncate_tool_result_text(
-            (result_text or "").strip(),
-            max_chars=_FOLLOWUP_RESULT_MAX_CHARS,
-        )
+        # Member answers live on the room wall, not the host graph. The
+        # excerpt prefers the live answer and keeps its ending.
+        result = _truncate_followup_result((result_text or "").strip())
         if not result:
             result = "(empty)"
         return tr(
@@ -405,6 +421,7 @@ class TeamManager:
         emitted_tool_error_ids: set[str] = set()
         live_tool_call_ids: set[str] = set()
         emitted_media_ids: set[str] = set()
+        deliveries: list[dict[str, Any]] = []
         hold_room = self._defer_member_wall(speaker_id, member_tid, room_thread_id)
         host_id = self._room_agent_id(room_thread_id) if hold_room else ""
         room_open = True
@@ -477,6 +494,7 @@ class TeamManager:
             room_turn_id = self._pin_room_turn(room_thread_id)
             if hold_room and self._host_turn_busy(host_id, room_thread_id):
                 room_open = await self._wait_host_dispatch_idle(host_id, room_thread_id)
+            await self._prepare_member_request(speaker_id, payload)
             agen = self._agent_manager.stream(speaker_id, payload)
             while True:
                 pause: dict[str, Any] | None = None
@@ -495,6 +513,10 @@ class TeamManager:
                             seen=emitted_tool_error_ids,
                             live=saw_tool_call,
                         )
+                        preview_ids: set[str] = set()
+                        selected = select_turn_tool_results(chunk, live_tool_call_ids, preview_ids)
+                        if selected is not None:
+                            deliveries.extend(history_attachments_from_chunk(selected))
                         await self._push_turn_tool_media(
                             chunk,
                             speaker_id=speaker_id,
@@ -594,6 +616,7 @@ class TeamManager:
             "team_live_streamed": relayed_visible,
             "stream_text": stream_text,
             "decision": decision_payload,
+            "deliveries": merge_history_attachments(deliveries),
         }
 
     def _defer_member_wall(self, speaker_id: str, member_tid: str, room_thread_id: str) -> bool:
@@ -695,7 +718,12 @@ class TeamManager:
                 text = _assistant_text(msg)
                 if text:
                     break
-        if text:
+        streamed = result.get("deliveries")
+        deliveries = merge_history_attachments(
+            streamed if isinstance(streamed, list) else [],
+            history_attachments_from_messages(list(result.get("messages") or [])),
+        )
+        if text or deliveries:
             decision = _decision_from_messages(result.get("messages") or [])
             if decision is None and isinstance(result.get("decision"), dict):
                 decision = dict(result["decision"])
@@ -705,6 +733,7 @@ class TeamManager:
                 text,
                 wrapup=True,
                 decision=decision,
+                deliveries=deliveries,
             )
         live = bool(result.get("team_live_streamed"))
         # Some models finish wrap-up in checkpoint/values only — no token
@@ -720,7 +749,7 @@ class TeamManager:
         # ``on_reply`` fires after this method even when nobody watches the
         # room. Mark the reply handled once it has been persisted, otherwise
         # the fallback path appends the same wrap-up a second time.
-        if room_thread_id and text:
+        if room_thread_id and (text or deliveries):
             self._live_host_replies.add(room_thread_id)
         return result
 
@@ -779,6 +808,397 @@ class TeamManager:
         if callable(strip):
             strip(agent_id)
 
+    async def _prepare_member_request(self, agent_id: str, request: Any) -> None:
+        """Stamp a peer turn. Sync ``ask_agent`` and room dispatch both call this."""
+        payload, writeback = _member_request_view(request, agent_id)
+        try:
+            await self._attach_member_resources(
+                payload,
+                agent_id,
+                room_thread_id=str(payload.get("thread_id") or ""),
+            )
+        finally:
+            writeback()
+
+    async def _attach_member_resources(
+        self,
+        payload: dict[str, Any],
+        speaker_id: str,
+        *,
+        room_thread_id: str,
+    ) -> None:
+        """Give a dispatched member that expert's knowledge, connectors, and model.
+
+        Host wrap-up uses the same stream path and stays without them. Plan mode
+        is a direct-chat permission; a dispatch is work, so the turn is craft.
+        """
+        configurable = payload.get("configurable")
+        if isinstance(configurable, dict) and configurable.get(_PEER_RESOURCES_KEY):
+            return
+        if is_team_agent(self._agent_manager.get_row(speaker_id)):
+            return
+        user_id = self._payload_user_id(payload, room_thread_id)
+        if user_id is None:
+            return
+        if not payload.get("user"):
+            payload["user"] = str(user_id)
+        self._stamp_member_knowledge(payload, speaker_id, user_id)
+        await self._stamp_member_connectors(payload, speaker_id, user_id)
+        self._stamp_member_model(payload, speaker_id, user_id)
+        self._stamp_member_craft(payload)
+        await self._bind_team_file_target(payload, speaker_id, room_thread_id)
+        cfg = payload.get("configurable")
+        if isinstance(cfg, dict):
+            cfg[_PEER_RESOURCES_KEY] = True
+        from octop.infra.agents.acp.turn import attach_managed_turn
+
+        await attach_managed_turn(self._agent_manager, speaker_id, payload)
+
+    async def _bind_team_file_target(
+        self,
+        payload: dict[str, Any],
+        speaker_id: str,
+        room_thread_id: str,
+    ) -> None:
+        """Stamp the host workspace onto a member turn unless the user opted out."""
+        from octop.infra.agents.managed import is_managed_agent
+        from octop.infra.agents.middleware.team_dispatch import CONFIG_KEY as BRIEFING_KEY
+        from octop.infra.agents.teams.file_target import (
+            BRIDGE_TARGET_KEY,
+            DIR_KEY,
+            HOST_KEY,
+            file_target_briefing,
+            file_target_opt_out,
+            host_can_execute,
+            stamp_turn_capabilities,
+            workspace_directory,
+        )
+        from octop.infra.bridge.local_workspace import peer_target_for_thread
+
+        thread_id = str(payload.get("thread_id") or room_thread_id or "")
+        room = self._team_room_id(thread_id, speaker_id)
+        if not room:
+            return
+        getter = getattr(self._thread_registry, "get_thread", None)
+        row = getter(room) if callable(getter) else None
+        host_id = str(getattr(row, "agent_id", "") or "").strip()
+        if not host_id or host_id == speaker_id:
+            return
+        cfg = payload.get("configurable")
+        if not isinstance(cfg, dict):
+            cfg = {}
+            payload["configurable"] = cfg
+        texts = [_assistant_text(message) for message in payload.get("messages") or []]
+        briefing = cfg.get(BRIEFING_KEY)
+        if isinstance(briefing, str):
+            texts.append(briefing)
+        try:
+            texts.append(await self._last_room_user_text(room, host_id))
+        except Exception:
+            logger.debug("team file target user text skipped", exc_info=True)
+        if file_target_opt_out(*texts):
+            return
+        bridged = peer_target_for_thread(room)
+        if bridged is not None:
+            directory = str(getattr(bridged, "directory", "") or "").strip()
+            if not directory:
+                return
+            execute = bool(getattr(bridged, "execute", False))
+            cfg[BRIDGE_TARGET_KEY] = str(getattr(bridged, "token", "") or "")
+            cfg[DIR_KEY] = directory
+            stamp_turn_capabilities(cfg, execute=execute)
+            mounts = _mounts_for_member(self._agent_manager, cfg, speaker_id)
+            if is_managed_agent(self._agent_manager.get_row(speaker_id)):
+                return
+            locale = self._locale_for(self._payload_user_id(payload, room))
+            note = file_target_briefing(
+                locale,
+                directory,
+                execute=execute,
+                managed=False,
+                local=True,
+                mounts=mounts,
+            )
+            existing = cfg.get(BRIEFING_KEY)
+            if isinstance(existing, str) and existing.strip():
+                cfg[BRIEFING_KEY] = f"{existing.rstrip()}\n\n{note}"
+            else:
+                cfg[BRIEFING_KEY] = note
+            return
+        try:
+            host = self._agent_manager.get_agent(host_id)
+        except Exception:
+            logger.info("team file target skipped; host %s is not running", host_id)
+            return
+        directory = workspace_directory(host)
+        if not directory:
+            return
+        execute = host_can_execute(getattr(host, "backend", None))
+        cfg[HOST_KEY] = host_id
+        cfg[DIR_KEY] = directory
+        stamp_turn_capabilities(cfg, execute=execute)
+        mounts = _mounts_for_member(self._agent_manager, cfg, speaker_id)
+        if is_managed_agent(self._agent_manager.get_row(speaker_id)):
+            return
+        locale = self._locale_for(self._payload_user_id(payload, room))
+        note = file_target_briefing(
+            locale, directory, execute=execute, managed=False, mounts=mounts
+        )
+        existing = cfg.get(BRIEFING_KEY)
+        if isinstance(existing, str) and existing.strip():
+            cfg[BRIEFING_KEY] = f"{existing.rstrip()}\n\n{note}"
+        else:
+            cfg[BRIEFING_KEY] = note
+
+    def _payload_user_id(self, payload: dict[str, Any], room_thread_id: str) -> int | None:
+        raw_user = payload.get("user")
+        user_id = (
+            _octop_user_id(raw_user)
+            if isinstance(raw_user, str | int) and not isinstance(raw_user, bool)
+            else None
+        )
+        if user_id is not None:
+            return user_id
+        getter = getattr(self._thread_registry, "get_thread", None)
+        if not callable(getter) or not room_thread_id:
+            return None
+        row = getter(room_thread_id)
+        raw = getattr(row, "user_id", None)
+        if isinstance(raw, int) and raw > 0:
+            return raw
+        return None
+
+    def _team_room_id(self, member_thread_id: str, speaker_id: str) -> str:
+        suffix = f"~{speaker_id}"
+        if not member_thread_id.endswith(suffix):
+            return ""
+        room = member_thread_id[: -len(suffix)]
+        getter = getattr(self._thread_registry, "get_thread", None)
+        if not room or not callable(getter):
+            return ""
+        row = getter(room)
+        agent_id = str(getattr(row, "agent_id", "") or "")
+        if not is_team_agent(self._agent_manager.get_row(agent_id)):
+            return ""
+        return room
+
+    async def _notify_connector_auth(self, room_thread_id: str, text: str) -> None:
+        """IM channels do not see the room socket, so tell them directly."""
+        if self._gateway is None:
+            return
+        for session in self._thread_registry.im_sessions_for_thread(room_thread_id):
+            try:
+                await self._push_session_channel(session, text)
+            except Exception:
+                logger.warning(
+                    "failed to push team connector auth notice thread=%s",
+                    room_thread_id,
+                    exc_info=True,
+                )
+
+    def _stamp_member_knowledge(
+        self,
+        payload: dict[str, Any],
+        speaker_id: str,
+        user_id: int,
+    ) -> None:
+        from octop.infra.agents.turn_resources import attach_turn_knowledge
+
+        repos = getattr(self._agent_manager, "_repos", None)
+        knowledge_repo = getattr(repos, "knowledge_repo", None) if repos is not None else None
+        list_visible = getattr(knowledge_repo, "list_visible", None) if knowledge_repo else None
+        if not callable(list_visible):
+            return
+        defaults = getattr(self._agent_manager, "default_knowledge_base_ids", None)
+        extra: list[str] | None = None
+        if callable(defaults):
+            raw = defaults(speaker_id)
+            if isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+                extra = raw
+            elif raw is not None and not isinstance(raw, list):
+                return
+        user = self._user_repo.get(user_id) if self._user_repo is not None else None
+        is_admin = str(getattr(user, "role", "") or "") == "admin"
+        try:
+            selected = attach_turn_knowledge(
+                payload,
+                knowledge_repo=knowledge_repo,
+                user_id=user_id,
+                is_admin=is_admin,
+                explicit_ids=None,
+                extra_ids=extra,
+                locale=self._locale_for(user_id),
+            )
+        except Exception:
+            logger.warning(
+                "team member knowledge lookup failed agent=%s user=%s",
+                speaker_id,
+                user_id,
+                exc_info=True,
+            )
+            return
+        if selected:
+            logger.info(
+                "team member knowledge agent=%s user=%s bases=%s",
+                speaker_id,
+                user_id,
+                selected,
+            )
+
+    async def _stamp_member_connectors(
+        self,
+        payload: dict[str, Any],
+        speaker_id: str,
+        user_id: int,
+    ) -> None:
+        from octop.infra.agents.turn_resources import harness_names_for_ready, resolve_turn_mcp
+
+        defaults = getattr(self._agent_manager, "default_mcp_servers", None)
+        if not callable(defaults):
+            return
+        extra = defaults(speaker_id)
+        if not isinstance(extra, list) or any(not isinstance(item, str) for item in extra):
+            return
+        try:
+            resolved = await resolve_turn_mcp(
+                self._agent_manager,
+                agent_id=speaker_id,
+                user_id=user_id,
+                explicit=None,
+                apply_defaults=True,
+            )
+        except Exception:
+            logger.warning(
+                "team member connectors failed to load agent=%s user=%s",
+                speaker_id,
+                user_id,
+                exc_info=True,
+            )
+            return
+        if resolved is None:
+            return
+        row = self._agent_manager.get_row(speaker_id)
+        owner_raw = getattr(row, "user_id", None) if row is not None else None
+        owner_id = owner_raw if isinstance(owner_raw, int) else None
+        ready = harness_names_for_ready(
+            self._agent_manager,
+            resolved,
+            owner_id=owner_id,
+            user_id=user_id,
+        )
+        if ready:
+            payload["mcp_servers"] = ready
+            logger.info(
+                "team member connectors agent=%s user=%s servers=%s",
+                speaker_id,
+                user_id,
+                ready,
+            )
+        if resolved.failed:
+            logger.warning(
+                "team member connectors unavailable agent=%s user=%s failed=%s",
+                speaker_id,
+                user_id,
+                resolved.failed,
+            )
+            await self._note_member_connector_auth(
+                payload,
+                speaker_id,
+                user_id,
+                resolved.failed,
+            )
+
+    def _stamp_member_model(self, payload: dict[str, Any], speaker_id: str, user_id: int) -> None:
+        if isinstance(payload.get("model"), str) and str(payload.get("model")).strip():
+            return
+        ref = self._member_model_ref(speaker_id, user_id)
+        if ref:
+            payload["model"] = ref
+
+    def _member_model_ref(self, agent_id: str, user_id: int) -> str | None:
+        """Expert pin only. An unpinned expert stays on harness auto-route."""
+        manager = self._agent_manager
+        row = manager.get_row(agent_id)
+        providers = getattr(manager, "providers", None)
+        resolve = getattr(providers, "resolve_explicit_default_model", None)
+        get_config = getattr(manager, "get_config", None)
+        if row is None or not callable(resolve) or not callable(get_config):
+            return None
+        try:
+            cfg = get_config(agent_id)
+        except Exception:
+            logger.warning("team member model config failed agent=%s", agent_id, exc_info=True)
+            return None
+        if not isinstance(cfg, dict):
+            cfg = {}
+        try:
+            ref = resolve(row, cfg)
+        except Exception:
+            logger.warning("team member model resolve failed agent=%s", agent_id, exc_info=True)
+            return None
+        if not isinstance(ref, str) or not ref.strip():
+            return None
+        allowed = getattr(manager, "model_ref_allowed_for_user", None)
+        if callable(allowed):
+            try:
+                ok = allowed(user_id, ref)
+            except Exception:
+                return None
+            if ok is False:
+                return None
+        return ref.strip()
+
+    def _stamp_member_craft(self, payload: dict[str, Any]) -> None:
+        """Dispatch ignores Ask/Plan. Those modes would hide connectors."""
+        payload["conversation_mode"] = "craft"
+        configurable = dict(payload.get("configurable") or {})
+        configurable["conversation_mode"] = "craft"
+        payload["configurable"] = configurable
+
+    async def _note_member_connector_auth(
+        self,
+        payload: dict[str, Any],
+        speaker_id: str,
+        user_id: int,
+        failed: list[str],
+    ) -> None:
+        blocked_fn = getattr(self._agent_manager, "connector_auth_blocked", None)
+        if not callable(blocked_fn):
+            return
+        try:
+            blocked = await blocked_fn(user_id, failed)
+        except Exception:
+            logger.warning(
+                "team member connector auth check failed agent=%s",
+                speaker_id,
+                exc_info=True,
+            )
+            return
+        if not isinstance(blocked, list) or not blocked:
+            return
+        names = [
+            str(item.get("display_name") or item.get("server") or "").strip()
+            for item in blocked
+            if isinstance(item, dict)
+        ]
+        names = [name for name in names if name]
+        if not names:
+            return
+        locale = self._locale_for(user_id)
+        note = tr("teams.connector_auth_skipped", locale, servers=", ".join(names))
+        from octop.infra.agents.middleware.team_dispatch import CONFIG_KEY as BRIEFING_KEY
+
+        configurable = dict(payload.get("configurable") or {})
+        existing = configurable.get(BRIEFING_KEY)
+        if isinstance(existing, str) and existing.strip():
+            configurable[BRIEFING_KEY] = f"{existing.rstrip()}\n\n{note}"
+        else:
+            configurable[BRIEFING_KEY] = note
+        payload["configurable"] = configurable
+        room = self._team_room_id(str(payload.get("thread_id") or ""), speaker_id)
+        if room:
+            await self._notify_connector_auth(room, note)
+
     def stash_peer_prompt(
         self,
         agent_id: str,
@@ -816,6 +1236,7 @@ class TeamManager:
             stream_peer=self.stream_peer_to_room,
             stream_host=self.stream_host_followup_to_room,
             take_prompt=self.take_peer_prompt,
+            prepare_member=self._prepare_member_request,
         )
 
     # -- jobs / runtime -------------------------------------------------------
@@ -1410,9 +1831,11 @@ class TeamManager:
         wrapup: bool = False,
         error: bool = False,
         decision: dict[str, Any] | None = None,
+        deliveries: list[dict[str, Any]] | None = None,
     ) -> None:
         body = (text or "").strip()
-        if not thread_id or not body or self._thread_message_repo is None:
+        files = merge_history_attachments(deliveries or [])
+        if not thread_id or self._thread_message_repo is None or (not body and not files):
             return
         self._ensure_projection(thread_id)
         extra: dict[str, Any] = {"speaker_agent_id": speaker_id}
@@ -1422,6 +1845,8 @@ class TeamManager:
             extra["octop_stream_error"] = {"code": "stream_error", "source": "team_task"}
         if decision:
             extra["octop_decision"] = dict(decision)
+        if files:
+            extra[OUTBOUND_ATTACHMENTS_KEY] = files
         msg = AIMessage(
             content=body,
             id=f"team-room:{new_ulid()}:assistant",
@@ -1806,6 +2231,31 @@ def _make_peer_session(**kwargs: Any) -> PeerSession:
     return PeerSession(**{key: value for key, value in kwargs.items() if key in allowed})
 
 
+def _member_request_view(
+    request: Any,
+    speaker_id: str,
+) -> tuple[dict[str, Any], Callable[[], None]]:
+    """Return a dict view and a write-back for ChatRequest-shaped objects."""
+    if isinstance(request, dict):
+        return request, lambda: None
+    payload = _chat_request_payload(request, speaker_id)
+
+    def writeback() -> None:
+        configurable = payload.get("configurable")
+        if isinstance(configurable, dict):
+            request.configurable = configurable
+        servers = payload.get("mcp_servers")
+        if isinstance(servers, list):
+            request.mcp_servers = servers
+        model = payload.get("model")
+        if isinstance(model, str) and model.strip():
+            request.model = model
+        if payload.get("conversation_mode") == "craft":
+            request.conversation_mode = "craft"
+
+    return payload, writeback
+
+
 def _chat_request_payload(request: Any, speaker_id: str) -> dict[str, Any]:
     if isinstance(request, dict):
         payload = dict(request)
@@ -1916,6 +2366,34 @@ def _truncate_tool_result_text(
         return text
     keep = max(max_chars - len(_HISTORY_TOOL_RESULT_SUFFIX), 0)
     return text[:keep] + _HISTORY_TOOL_RESULT_SUFFIX
+
+
+def _truncate_followup_result(
+    text: str,
+    *,
+    max_chars: int = _FOLLOWUP_RESULT_MAX_CHARS,
+) -> str:
+    """Keep the end of a member answer. The conclusion is what wrap-up needs."""
+    if len(text) <= max_chars:
+        return text
+    keep = max(max_chars - len(_HISTORY_TOOL_RESULT_SUFFIX), 0)
+    return _HISTORY_TOOL_RESULT_SUFFIX + text[-keep:]
+
+
+def _followup_result_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Inbox reads the last assistant message. Prefer the text just streamed.
+
+    Fan-in already stored the checkpoint trail. A long tool run can push the
+    final answer out of that window, so the wake-up must not depend on it.
+    """
+    text = str(payload.get("stream_text") or "").strip()
+    if not text:
+        return payload
+    from langchain_core.messages import AIMessage
+
+    followup = dict(payload)
+    followup["messages"] = [AIMessage(content=text)]
+    return followup
 
 
 def _truncate_tool_content(content: Any) -> Any:
@@ -2263,6 +2741,7 @@ def _usable_shared_entry(
     exclude_agent_id: str | None,
     viewer: Any,
     load_agent: Callable[[str], AgentRow | None],
+    roster_visible: Callable[[Any, AgentRow, str], bool] | None = None,
 ) -> Any | None:
     if not agent_id or agent_id == exclude_agent_id:
         return None
@@ -2273,9 +2752,13 @@ def _usable_shared_entry(
     if entry.agent_id == exclude_agent_id:
         return None
     row = load_agent(entry.agent_id)
-    if row is None or is_team_agent(row) or not _user_may_use_member(row, viewer):
+    if row is None or is_team_agent(row):
         return None
-    return entry
+    if _user_may_use_member(row, viewer):
+        return entry
+    if roster_visible is not None and roster_visible(viewer, row, str(exclude_agent_id or "")):
+        return entry
+    return None
 
 
 def wire_shared_member_peers(
@@ -2283,14 +2766,16 @@ def wire_shared_member_peers(
     *,
     load_agent: Callable[[str], AgentRow | None],
     load_user: Callable[[int], Any],
+    roster_visible: Callable[[Any, AgentRow, str], bool] | None = None,
 ) -> None:
-    """Let a team allowlist see shared experts owned by other accounts.
+    """Let a team allowlist see members the chatting user does not own.
 
     Harness ``list_peers`` and ``_resolve_peer_entry`` keep same-user peers
     only, so a host whose members were shared by someone else gets an empty
     ``agent_list`` and ``ask_agent`` rejects the dispatch. Ids on the host
     ``team_peers`` config, or on a member's request-scoped allowlist, are
-    added back when ``_user_may_use_member`` accepts them for the chatting user.
+    added back when the chatting user may use that expert directly, or when
+    ``roster_visible`` says this team chat may run that roster member.
     """
     if harness_team is None or getattr(harness_team, "_octop_shared_member_peers", False):
         return
@@ -2333,6 +2818,7 @@ def wire_shared_member_peers(
                 exclude_agent_id=exclude_agent_id,
                 viewer=viewer,
                 load_agent=load_agent,
+                roster_visible=roster_visible,
             )
             if entry is None or entry.agent_id in seen:
                 continue
@@ -2364,6 +2850,7 @@ def wire_shared_member_peers(
             exclude_agent_id=from_agent_id,
             viewer=_peer_viewer(user_id, load_user),
             load_agent=load_agent,
+            roster_visible=roster_visible,
         )
         if entry is None:
             raise ValueError(f"agent {to_agent_id!r} not owned by user")
@@ -2381,6 +2868,7 @@ def wire_host_dispatch(
     stream_peer: Callable[..., Any] | None = None,
     stream_host: Callable[..., Any] | None = None,
     take_prompt: Callable[[str, str | None], tuple[str, str] | None] | None = None,
+    prepare_member: Callable[[str, Any], Awaitable[None]] | None = None,
 ) -> None:
     """Patch harness TeamManager so async ``ask_agent`` uses inbox + room stream."""
     if harness_team is None:
@@ -2507,7 +2995,7 @@ def wire_host_dispatch(
                         to_agent_id,
                         exc_info=True,
                     )
-            return request, payload
+            return request, _followup_result_payload(payload)
 
         harness_team._invoke_peer = invoke_peer
 
@@ -2519,29 +3007,30 @@ def wire_host_dispatch(
         if original_enrich is not None:
             req = await original_enrich(agent_id, req)
         pair = take_prompt(agent_id, getattr(req, "thread_id", None))
-        if not pair:
-            return req
-        from langchain_core.messages import HumanMessage
+        if pair:
+            from langchain_core.messages import HumanMessage
 
-        from octop.infra.agents.middleware.team_dispatch import (
-            CONFIG_KEY as BRIEFING_KEY,
-        )
+            from octop.infra.agents.middleware.team_dispatch import (
+                CONFIG_KEY as BRIEFING_KEY,
+            )
 
-        question, dispatch = pair
-        if dispatch and dispatch != question:
-            # Briefing belongs on the leading system prompt. A SystemMessage in
-            # the turn input lands mid-thread on the next dispatch, and strict
-            # providers reject it. TeamDispatchBriefingMiddleware appends it.
-            configurable = dict(getattr(req, "configurable", None) or {})
-            configurable[BRIEFING_KEY] = dispatch
-            req.configurable = configurable
-        if question:
-            req.messages = [
-                HumanMessage(
-                    content=question,
-                    id=f"team-peer:{getattr(req, 'thread_id', None)}:{new_ulid()}:human",
-                )
-            ]
+            question, dispatch = pair
+            if dispatch and dispatch != question:
+                # Briefing belongs on the leading system prompt. A SystemMessage in
+                # the turn input lands mid-thread on the next dispatch, and strict
+                # providers reject it. TeamDispatchBriefingMiddleware appends it.
+                configurable = dict(getattr(req, "configurable", None) or {})
+                configurable[BRIEFING_KEY] = dispatch
+                req.configurable = configurable
+            if question:
+                req.messages = [
+                    HumanMessage(
+                        content=question,
+                        id=f"team-peer:{getattr(req, 'thread_id', None)}:{new_ulid()}:human",
+                    )
+                ]
+        if prepare_member is not None and not is_team(agent_id):
+            await prepare_member(agent_id, req)
         return req
 
     harness_team._enrich_request = enrich

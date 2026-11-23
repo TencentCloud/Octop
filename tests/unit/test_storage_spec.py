@@ -310,7 +310,26 @@ def test_omit_docker_volumes_drops_host_mounts() -> None:
     assert enriched["agent_id"] == "ZE6GR2"
 
 
-def test_row_to_backend_spec_docker_ignores_volumes() -> None:
+def test_omit_docker_volumes_drops_mounts_in_container() -> None:
+    from octop.infra.backend.docker_spec import (
+        enrich_docker_backend_spec,
+        omit_docker_volumes,
+    )
+
+    mounted = {
+        "type": "docker",
+        "image": "python:3.12-slim",
+        "volumes": {"/": {"bind": "/host", "mode": "rw"}},
+    }
+    stripped = omit_docker_volumes(mounted)
+    assert "volumes" not in stripped
+    assert "volumes" in mounted
+    enriched = enrich_docker_backend_spec(mounted, agent_id="ZE6GR2")
+    assert "volumes" not in enriched
+    assert enriched["agent_id"] == "ZE6GR2"
+
+
+def test_row_to_backend_spec_docker_keeps_volumes() -> None:
     row = BackendRow(
         id=1,
         name="sandbox",
@@ -329,7 +348,7 @@ def test_row_to_backend_spec_docker_ignores_volumes() -> None:
     spec = row_to_backend_spec(row)
     assert spec is not None
     assert spec["memory"] == "512m"
-    assert "volumes" not in spec
+    assert spec["volumes"] == {"/": {"bind": "/host", "mode": "rw"}}
 
 
 def test_inject_docker_global_environment_sets_file() -> None:

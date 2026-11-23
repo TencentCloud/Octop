@@ -78,6 +78,35 @@ describe("useSlashMentionInput skills", () => {
   });
 });
 
+describe("useSlashMentionInput managed composer", () => {
+  it("does not open the shortcut menu when slash shortcuts are disabled", () => {
+    const { result } = renderHook(() =>
+      useSlashMentionInput({
+        text: "",
+        setText: vi.fn(),
+        textareaRef: { current: null },
+        slashCommands: [stopCommand],
+        labelFor: (spec) => spec.label_en,
+        locale: "en",
+        availableExperts: [],
+        selectedConnectors: [],
+        onSend: vi.fn(),
+        onNewChat: vi.fn(),
+        onCancel: vi.fn(),
+        isStreaming: false,
+        onSubmitRef: { current: vi.fn() },
+        slashMenuEnabled: false,
+      }),
+    );
+
+    act(() => {
+      result.current.handleTextChange("/st");
+    });
+
+    expect(result.current.slashMenuOpen).toBe(false);
+  });
+});
+
 describe("useSlashMentionInput workspace files", () => {
   it("keeps empty @ as a hint-only file section and inserts the workspace path", () => {
     const setText = vi.fn();
