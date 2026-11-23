@@ -50,6 +50,13 @@ async function fetchServerTimezone(): Promise<string> {
   return inflight;
 }
 
+/** Remember a timezone that arrived with a public payload, before the settings fetch. */
+export function primeServerTimezone(timezone: string): void {
+  const value = timezone.trim();
+  if (!value || cachedTimezone) return;
+  cachedTimezone = value;
+}
+
 /** Server timezone from config.json `default_timezone` (via GET /api/settings/timezone). */
 export function useServerTimezone(): string {
   const [timezone, setTimezone] = useState(

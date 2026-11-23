@@ -35,8 +35,6 @@ import {
   MODEL_AUTO_VALUE,
   type ModelPickerOption,
 } from "../../../../utils/modelOptions";
-import styles from "../index.module.less";
-
 const { Text } = Typography;
 
 interface JobDrawerProps {
@@ -67,12 +65,12 @@ function SectionHeader({
       </Divider>
       {description && (
         <Text
-          type="secondary"
           style={{
             fontSize: 12,
             lineHeight: 1.5,
             display: "block",
             marginBottom: 4,
+            color: "var(--fn-text-tertiary)",
           }}
         >
           {description}
@@ -399,11 +397,7 @@ export function JobDrawer({
                 },
               },
             ]}
-            extra={
-              <span className={styles.mailTriggerHint}>
-                {t("cronJobs.form.onceHint")}
-              </span>
-            }
+            extra={t("cronJobs.form.onceHint")}
           >
             <DatePicker
               showTime={{ format: "HH:mm" }}
@@ -421,11 +415,7 @@ export function JobDrawer({
                 message: t("cronJobs.form.agentlySelectMailbox"),
               },
             ]}
-            extra={
-              <span className={styles.mailTriggerHint}>
-                {t("cronJobs.form.agentlyHint")}
-              </span>
-            }
+            extra={t("cronJobs.form.agentlyHint")}
           >
             <Select options={mailOptions} loading={connectorsLoading} />
           </Form.Item>
@@ -466,11 +456,7 @@ export function JobDrawer({
                 { required: true, message: t("cronJobs.pleaseInputCron") },
               ]}
               tooltip={t("cronJobs.form.cronTooltip")}
-              extra={
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t("cronJobs.form.cronExamples")}
-                </Text>
-              }
+              extra={t("cronJobs.form.cronExamples")}
             >
               <Input
                 placeholder="0 9 * * *"
@@ -555,11 +541,7 @@ export function JobDrawer({
           name="mcp_servers"
           label={t("cronJobs.form.connectors")}
           tooltip={t("cronJobs.form.connectorsTooltip")}
-          extra={
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              {t("cronJobs.form.connectorsHint")}
-            </Text>
-          }
+          extra={t("cronJobs.form.connectorsHint")}
         >
           <Select
             mode="multiple"
@@ -593,11 +575,7 @@ export function JobDrawer({
               label={t("cronJobs.form.sessionKey")}
               tooltip={t("cronJobs.form.sessionKeyTooltip")}
               initialValue={LATEST_SESSION_TARGET}
-              extra={
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {t("cronJobs.form.sessionKeyDefault")}
-                </Text>
-              }
+              extra={t("cronJobs.form.sessionKeyDefault")}
             >
               <Select
                 showSearch

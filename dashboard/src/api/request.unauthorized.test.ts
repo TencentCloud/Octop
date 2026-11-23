@@ -49,6 +49,17 @@ describe("401 handling", () => {
     window.removeEventListener(mod.UNAUTHORIZED_EVENT, listener);
   });
 
+  it("stays on a read-only share link when a background request is unauthorized", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { pathname: "/share/abc", replace },
+    });
+
+    await expect(mod.request("/agents")).rejects.toThrow();
+
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it("falls back to a full-page navigation when nothing handles the event", async () => {
     await expect(mod.request("/agents")).rejects.toThrow();
 

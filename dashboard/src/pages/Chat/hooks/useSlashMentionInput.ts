@@ -66,6 +66,8 @@ interface UseSlashMentionInputParams {
   onSubmitRef: React.MutableRefObject<() => void>;
   /** When false, Enter inserts a newline; send only via button (mobile). */
   enterToSend?: boolean;
+  /** Managed experts keep typed slash text, but do not open the shortcut menu. */
+  slashMenuEnabled?: boolean;
 }
 
 export function useSlashMentionInput({
@@ -88,6 +90,7 @@ export function useSlashMentionInput({
   isStreaming: _isStreaming,
   onSubmitRef,
   enterToSend = true,
+  slashMenuEnabled = true,
 }: UseSlashMentionInputParams) {
   const skillDisplayName = useSkillDisplayName();
   const skillTokenRefs = useMemo(
@@ -364,8 +367,12 @@ export function useSlashMentionInput({
     (val: string) => {
       setText(val);
       if (isSlashNamePrefix(val)) {
-        setSlashMenuOpen(true);
-        setSlashMenuIndex(0);
+        if (slashMenuEnabled) {
+          setSlashMenuOpen(true);
+          setSlashMenuIndex(0);
+        } else {
+          setSlashMenuOpen(false);
+        }
         setMentionMenuOpen(false);
       } else {
         setSlashMenuOpen(false);
@@ -392,8 +399,13 @@ export function useSlashMentionInput({
       mentionAgents.length,
       availableSubagents.length,
       agentId,
+      slashMenuEnabled,
     ],
   );
+
+  useEffect(() => {
+    if (!slashMenuEnabled) setSlashMenuOpen(false);
+  }, [slashMenuEnabled]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

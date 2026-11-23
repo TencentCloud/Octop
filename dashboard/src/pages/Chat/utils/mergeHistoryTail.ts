@@ -182,6 +182,45 @@ export function retainedHistoryPrefix(
     : [];
 }
 
+/** Keep chips the live bubble already showed when the stored row omitted them. */
+export function preserveLocalComposerContext(
+  loaded: ChatMessage[],
+  local: ChatMessage[],
+): ChatMessage[] {
+  const byId = new Map<string, ChatMessage["composerContext"]>();
+  for (const message of local) {
+    if (message.role === "user" && message.composerContext) {
+      byId.set(message.id, message.composerContext);
+    }
+  }
+  if (byId.size === 0) return loaded;
+  return loaded.map((message) => {
+    if (message.role !== "user") return message;
+    const previous = byId.get(message.id);
+    if (!previous) return message;
+    const server = message.composerContext;
+    if (!server) return { ...message, composerContext: previous };
+    return {
+      ...message,
+      composerContext: {
+        skills: server.skills?.length ? server.skills : previous.skills,
+        connectors: server.connectors?.length
+          ? server.connectors
+          : previous.connectors,
+        knowledgeBaseIds: server.knowledgeBaseIds?.length
+          ? server.knowledgeBaseIds
+          : previous.knowledgeBaseIds,
+        targetAgents: server.targetAgents?.length
+          ? server.targetAgents
+          : previous.targetAgents,
+        model: server.model || previous.model,
+        reasoningMode: server.reasoningMode || previous.reasoningMode,
+        reasoningEffort: server.reasoningEffort || previous.reasoningEffort,
+      },
+    };
+  });
+}
+
 /**
  * Apply a server history page without dropping a turn the user just sent.
  *
