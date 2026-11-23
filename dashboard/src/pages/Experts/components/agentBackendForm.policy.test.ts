@@ -19,6 +19,18 @@ describe("expert backend allow-list", () => {
     expect(defaultCreateBackendChoice(["cos", "s3"])).toBe("composite");
   });
 
+  it("prefers the user's default backend when that type is allowed", () => {
+    expect(defaultCreateBackendChoice(null, "docker")).toBe("docker");
+    expect(defaultCreateBackendChoice(["filesystem", "docker"], "docker")).toBe(
+      "docker",
+    );
+    expect(defaultCreateBackendChoice(["filesystem"], "docker")).toBe(
+      "composite",
+    );
+    expect(defaultCreateBackendChoice(["cos"], "docker")).toBe("composite");
+    expect(defaultCreateBackendChoice(null, "nope")).toBe("local_shell");
+  });
+
   it("replaces a disallowed local_shell and then prefers a loaded backend", () => {
     expect(
       resolveCreateBackendChoice("local_shell", [], {

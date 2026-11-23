@@ -156,18 +156,28 @@ def _enforce_wizard_open(server: Any) -> None:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
+def _setup_already_finished(server: Any) -> bool:
+    services = getattr(server, "services", None)
+    if services is None:
+        return False
+    from octop.infra.setup.completion import setup_wizard_completed  # noqa: PLC0415
+
+    return setup_wizard_completed(services.settings_repo)
+
+
 def _enforce_wizard_token_phase(request: Request, server: Any) -> None:
     """Allow wizard token operations while initial setup is still in progress.
 
-    Creating the desktop ``local`` account keeps the token valid after that
-    user is added next to accounts that were already there.
+    Creating the desktop ``local`` account keeps this phase open after other
+    users already exist. A finished install stays closed for every other caller.
     """
-    um = server.user_manager
-    if um is None or um.count() <= 1:
-        return
     if _desktop_local_account(request, server):
         return
-    raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
+    if _setup_already_finished(server):
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
+    um = server.user_manager
+    if um is not None and um.count() > 1:
+        raise OctopError(ErrorCode.SETUP_REQUIRED, "setup already completed", status=410)
 
 
 def _extract_bearer(authorization: str | None) -> str:
@@ -326,9 +336,15 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
 async def test_database(
     body: DatabaseSetupBody,
     server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
-    """Validate DSN/settings with a short-lived pool (does not replace the process pool)."""
+    """Validate DSN/settings with a short-lived pool (does not replace the process pool).
+
+    Binding a database decides where the control plane lives, so the probe uses
+    the same wizard session as creating the initial admin.
+    """
     _enforce_wizard_open(server)
+    _require_wizard_token(authorization, server)
     from octop.infra.db.probe import probe_database
     from octop.infra.db.rebind import database_config_from_payload
 
@@ -344,15 +360,17 @@ async def test_database(
 async def apply_database(
     body: DatabaseSetupBody,
     server: Any = Depends(get_server),
+    authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Write ``config.json`` database section, open the pool, migrate, and boot runtime.
 
     First-run path binds once (no prior pool). If already bound with zero users
     (e.g. changing engine mid-wizard), swaps via rebind. PostgreSQL may adopt a
     database that already has users when ``adopt_existing`` is set; SQLite still
-    requires an empty file.
+    requires an empty file. The caller must already hold a wizard session.
     """
     _enforce_wizard_open(server)
+    _require_wizard_token(authorization, server)
     from octop.infra.db.probe import probe_database
     from octop.infra.db.rebind import (
         assert_control_plane_database_empty,
@@ -518,7 +536,7 @@ async def finish(
     _enforce_wizard_token_phase(request, server)
     require_database(server)
     assert server.user_manager is not None
-    wizard_token = _authorize_setup_mid_wizard(authorization, server)
+    _authorize_setup_mid_wizard(authorization, server)
     if body.provider_draft is not None:
         try:
             await _apply_provider_draft(server, body.provider_draft)
@@ -551,6 +569,7 @@ async def finish(
                 await _bootstrap_default_agent(server, user_id=admin.id, locale=admin.locale)
             except Exception as exc:  # pragma: no cover
                 logger.warning("could not auto-create default agent: %s", exc)
-    if wizard_token is not None:
-        server.wizard_tokens.consume(wizard_token)
+    from octop.infra.setup.completion import mark_setup_wizard_completed  # noqa: PLC0415
+
+    mark_setup_wizard_completed(server.services.settings_repo, server.wizard_tokens)
     return {"ok": True}

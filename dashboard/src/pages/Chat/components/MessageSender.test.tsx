@@ -1,3 +1,5 @@
+import { createRef, StrictMode } from "react";
+import { Tooltip } from "antd";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
@@ -14,6 +16,24 @@ describe("MessageSender", () => {
     render(<MessageSender name="Ada" avatar={<span>A</span>} />);
     expect(screen.queryByText("Ada")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Ada")).toBeInTheDocument();
+  });
+
+  it("provides a DOM ref and hover events to the user avatar tooltip", async () => {
+    const ref = createRef<HTMLDivElement>();
+    render(
+      <StrictMode>
+        <Tooltip title="User avatar tooltip" mouseEnterDelay={0}>
+          <MessageSender ref={ref} name="User" avatar={<span>Avatar</span>} />
+        </Tooltip>
+      </StrictMode>,
+    );
+
+    const trigger = screen.getByLabelText("User");
+    expect(ref.current).toBe(trigger);
+    fireEvent.mouseEnter(trigger);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "User avatar tooltip",
+    );
   });
 
   it("shows the expert name as a tooltip target and opens the profile", () => {

@@ -4,7 +4,7 @@
  * without modifying the global active-agent selection.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   App,
   Tree,
@@ -60,6 +60,7 @@ import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { dedupeFileTreeInfos } from "../../../../utils/fileTreeNodes";
 import { workspaceEntryPath } from "../../../../utils/workspacePath";
 import FileViewer from "./FileViewer";
+import { gitTreeBadges, useWorkspaceGit } from "./gitStatus";
 import {
   getPreviewKind,
   previewNeedsFillLayout,
@@ -240,6 +241,42 @@ function toTreeNodes(infos: FileInfo[], listedPath?: string): TreeDataNode[] {
   });
 }
 
+function gitTreeBadge(
+  target: TreeKey,
+  badges: ReturnType<typeof gitTreeBadges>,
+): React.ReactNode {
+  if (!badges) return null;
+  if (target.is_dir) {
+    if (
+      !badges.changedDirs.has(target.path) &&
+      !badges.fileStatus.has(target.path)
+    ) {
+      return null;
+    }
+    return (
+      <span
+        className={`${styles.treeGitBadge} ${styles.treeGitBadgeDot}`}
+        aria-hidden
+      >
+        ●
+      </span>
+    );
+  }
+  const letter = badges.fileStatus.get(target.path);
+  if (!letter) return null;
+  const modifier = letter === "!" ? "X" : letter;
+  return (
+    <span
+      className={`${styles.treeGitBadge} ${
+        styles[`treeGitBadge${modifier}`] ?? ""
+      }`}
+      aria-hidden
+    >
+      {letter}
+    </span>
+  );
+}
+
 interface WorkspaceDrawerProps {
   agentId: string;
   open: boolean;
@@ -369,6 +406,11 @@ export default function WorkspaceDrawer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, agentId, workspaceReady]);
+
+  // Git status powers the tree badges only; the full review surface lives
+  // in the standalone Git dock panel.
+  const git = useWorkspaceGit(agentId, { enabled: open && workspaceReady });
+  const gitBadges = useMemo(() => gitTreeBadges(git.status), [git.status]);
 
   const onLoadData = async (node: TreeDataNode): Promise<void> => {
     if (!agentId || !workspaceReady) return;
@@ -717,6 +759,7 @@ export default function WorkspaceDrawer({
           </span>
         )}
         <span className={styles.treeNodeName}>{fname}</span>
+        {gitTreeBadge(target, gitBadges)}
         {menuItems.length > 0 && (
           <Dropdown
             menu={{ items: menuItems }}
@@ -1384,6 +1427,10 @@ export default function WorkspaceDrawer({
                                   </span>
                                 )}
                                 <span>{name}</span>
+                                {gitTreeBadge(
+                                  { path: fullPath, is_dir: !!entry.is_dir },
+                                  gitBadges,
+                                )}
                               </span>
                               <span className={styles.dirListingMeta}>
                                 {entry.is_dir

@@ -226,8 +226,22 @@ export function JobDetailDrawer({
         <Descriptions.Item label={t("cronJobs.col.taskType")}>
           {job.task_type === "text"
             ? t("cronJobs.form.taskTypeText")
+            : job.task_type === "script"
+            ? t("cronJobs.form.taskTypeScript")
             : t("cronJobs.form.taskTypeAgent")}
         </Descriptions.Item>
+        {job.task_type === "agent" ? (
+          <Descriptions.Item label={t("cronJobs.form.allowAll")}>
+            {meta.octop_allow_all
+              ? t("cronJobs.col.freshThreadOn")
+              : t("cronJobs.col.freshThreadOff")}
+          </Descriptions.Item>
+        ) : null}
+        {job.task_type === "script" ? (
+          <Descriptions.Item label={t("cronJobs.form.scriptLang")}>
+            {String(meta.octop_script_lang || "python")}
+          </Descriptions.Item>
+        ) : null}
         {agentPrompt && (
           <Descriptions.Item label={t("cronJobs.col.prompt")}>
             <Text style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>

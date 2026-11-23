@@ -23,6 +23,11 @@ POLICY_WORKSPACE_ROOT_DIR = "workspace_root_dir"
 POLICY_TOKEN_QUOTA = "token_quota"
 POLICY_MAX_AGENTS = "max_agents"
 POLICY_ALLOWED_BACKEND_TYPES = "allowed_backend_types"
+POLICY_DEFAULT_BACKEND_TYPE = "default_backend_type"
+
+# Create-time backend when the user has no default, and when an omitted spec
+# is checked against the allow-list.
+FALLBACK_BACKEND_TYPE = "local_shell"
 
 # Expert-picker types. Storage kind ``shell`` is the same capability as builtin
 # ``local_shell``. Builtin filesystem and storage kind ``filesystem`` share one
@@ -131,6 +136,7 @@ def public_policy_fields(rows: Sequence[Any] | Mapping[str, str] | None) -> dict
         "allowed_backend_types": allowed_backend_types_of(
             by_name.get(POLICY_ALLOWED_BACKEND_TYPES)
         ),
+        "default_backend_type": default_backend_type_of(by_name.get(POLICY_DEFAULT_BACKEND_TYPE)),
     }
 
 
@@ -240,6 +246,99 @@ def normalize_allowed_backend_types(raw: Any) -> str | None:
             status=400,
         )
     return ",".join(token for token in BACKEND_POLICY_TYPES if token in selected)
+
+
+def normalize_default_backend_type(raw: Any) -> str | None:
+    """Return one catalog type, or ``None`` when the default is unset.
+
+    Empty input clears the policy. ``shell`` is stored as ``local_shell``.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        token = _canonical_policy_type(text.lower())
+        if token not in _BACKEND_POLICY_TYPE_SET:
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                f"unknown backend type: {text}",
+                status=400,
+            )
+        return token
+    raise OctopError(ErrorCode.FORBIDDEN, "invalid default backend type", status=400)
+
+
+def default_backend_type_of(raw: Any) -> str | None:
+    """Stored default backend type, or ``None`` when this policy does not apply."""
+    if isinstance(raw, str):
+        token = raw.strip()
+        if not token:
+            return None
+        try:
+            return normalize_default_backend_type(token)
+        except OctopError:
+            return None
+    if isinstance(raw, Mapping) and "value" not in raw and POLICY_DEFAULT_BACKEND_TYPE in raw:
+        raw = raw.get(POLICY_DEFAULT_BACKEND_TYPE)
+    text = active_policy_value(raw)
+    if text is None:
+        return None
+    try:
+        return normalize_default_backend_type(text)
+    except OctopError:
+        return None
+
+
+def effective_default_backend_type(
+    stored: str | None,
+    allowed: list[str] | None,
+) -> str:
+    """Backend type used when a create call does not choose one.
+
+    A stored default wins when it is still inside the allow-list. Otherwise
+    the request means ``local_shell``. Callers reject that fallback when the
+    allow-list does not include it, instead of substituting another type.
+    """
+    if stored and (not allowed or stored in allowed):
+        return stored
+    return FALLBACK_BACKEND_TYPE
+
+
+def assert_default_backend_allowed(default: str | None, allowed_csv: str | None) -> None:
+    """Reject a default that sits outside an enabled allow-list."""
+    if not default or not allowed_csv:
+        return
+    allowed = {part for part in allowed_csv.split(",") if part}
+    if default in allowed:
+        return
+    raise OctopError(
+        ErrorCode.FORBIDDEN,
+        "default backend type is not in the allow-list",
+        status=400,
+        details={"type": default},
+    )
+
+
+def apply_default_backend_type(policy_repo: Any, user_id: int, config: dict[str, Any]) -> None:
+    """Fill a missing ``backend`` from the user's default type.
+
+    An explicit backend is left alone. Callers that pin a managed backend
+    should do that before this runs.
+    """
+    backend = config.get("backend")
+    if isinstance(backend, str) and backend.strip():
+        return
+    if isinstance(backend, dict) and str(backend.get("type") or "").strip():
+        return
+    stored = default_backend_type_of(policy_repo.get(user_id, POLICY_DEFAULT_BACKEND_TYPE))
+    allowed = allowed_backend_types_of(policy_repo.get(user_id, POLICY_ALLOWED_BACKEND_TYPES))
+    kind = effective_default_backend_type(stored, allowed)
+    if kind in _LOCAL_BACKEND_KINDS:
+        config["backend"] = {"type": kind, "root_dir": "/", "virtual_mode": True}
+        return
+    config["backend"] = {"type": kind}
 
 
 def allowed_backend_types_of(raw: Any) -> list[str] | None:

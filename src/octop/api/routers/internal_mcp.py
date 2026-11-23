@@ -533,3 +533,105 @@ async def files_mcp_delete(token: str = Query(...)) -> Response:
     if file_scope(token) is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid internal token")
     return Response(status_code=204)
+
+
+async def _team_member_workspace(registry: Any, member_agent_id: str) -> tuple[Any, Any]:
+    """Member workspace for read-only deepagents mounts, or ``(None, None)``."""
+    if not member_agent_id.strip():
+        return None, None
+    try:
+        agent = await asyncio.to_thread(registry.get_agent, member_agent_id.strip())
+    except Exception:
+        logger.debug("team workspace mount member %s is not running", member_agent_id)
+        return None, None
+    return getattr(agent, "workspace", None), getattr(agent, "backend", None)
+
+
+@router.post("/internal/mcp/team-workspace")
+async def team_workspace_mcp_post(
+    request: Request,
+    token: str = Query(...),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Host-workspace file tools for one managed team-member turn."""
+    from octop.infra.agents.acp.team_workspace_mcp import (
+        handle_team_workspace_mcp,
+        team_workspace_scope,
+    )
+
+    scope = team_workspace_scope(token)
+    if scope is None:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid internal token")
+    try:
+        body = await request.json()
+    except json.JSONDecodeError as exc:
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "invalid JSON body") from exc
+    if not isinstance(body, dict):
+        raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "expected JSON object")
+
+    method = str(body.get("method") or "")
+    if method == "notifications/initialized":
+        return Response(status_code=202)
+    session_id = request.headers.get(MCP_SESSION_HEADER)
+    if method == "initialize":
+        session_id = secrets.token_urlsafe(16)
+    registry = server.app_runtime.agent_registry
+    member_workspace, member_backend = await _team_member_workspace(registry, scope.member_agent_id)
+    if scope.bridge_target_id:
+        from octop.infra.bridge.local_workspace import lookup_peer_target
+
+        target = lookup_peer_target(scope.bridge_target_id)
+        if target is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "local workspace is not available")
+        resp = await handle_team_workspace_mcp(
+            body,
+            scope=scope,
+            workspace=target,
+            backend=target,
+            member_workspace=member_workspace,
+            member_backend=member_backend,
+        )
+    else:
+        try:
+            agent = await asyncio.to_thread(registry.get_agent, scope.host_agent_id)
+        except OctopError as exc:
+            raise OctopError(ErrorCode.NOT_FOUND, "expert workspace is not available") from exc
+        resp = await handle_team_workspace_mcp(
+            body,
+            scope=scope,
+            workspace=agent.workspace,
+            backend=agent.backend,
+            member_workspace=member_workspace,
+            member_backend=member_backend,
+        )
+    return _mcp_json(request, body, resp, session_id=session_id)
+
+
+@router.get("/internal/mcp/team-workspace")
+async def team_workspace_mcp_get(request: Request, token: str = Query(...)) -> Response:
+    from octop.infra.agents.acp.team_workspace_mcp import team_workspace_scope
+
+    if team_workspace_scope(token) is None:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid internal token")
+    if not request.headers.get(MCP_SESSION_HEADER):
+        return JSONResponse(status_code=405, content={"error": "missing mcp-session-id"})
+
+    async def _sse_keepalive() -> Any:
+        yield "event: message\ndata: \n\n"
+        while True:
+            await asyncio.sleep(3600)
+
+    return StreamingResponse(
+        _sse_keepalive(),
+        media_type="text/event-stream",
+        headers={"cache-control": "no-cache", "connection": "keep-alive"},
+    )
+
+
+@router.delete("/internal/mcp/team-workspace")
+async def team_workspace_mcp_delete(token: str = Query(...)) -> Response:
+    from octop.infra.agents.acp.team_workspace_mcp import team_workspace_scope
+
+    if team_workspace_scope(token) is None:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid internal token")
+    return Response(status_code=204)
