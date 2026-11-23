@@ -567,12 +567,23 @@ cd dashboard && npx tsc -b
 
 ## 🔗 相关项目
 
+### 官方项目
+
 | 项目 | 描述 |
 |------|------|
 | [Octop Harness](https://github.com/TencentCloud/octop-harness) | Agent 运行时 — 模型路由、工具、Skill、检查点 |
 | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | 多平台 IM 通道桥接 |
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
+| [Octop Pet](https://github.com/jubaoliang/OctopPet) | Octop 桌面宠物 |
+| [Octop Marketplace](https://github.com/jubaoliang/OctopMarketplace) | Octop 项目市场 |
+| [OctopBot](https://github.com/jubaoliang/OctopBot) | 面向 iOS 和 Android 的移动客户端，可随时与 Octop 交互 |
+
+### 社区项目
+
+| 项目 | 描述 |
+|------|------|
+| [OctopLink](https://github.com/DingXiaoWu0512/OctopLink) | 社区鸿蒙原生客户端 — ArkTS 应用，支持流式对话、工作区、记忆 |
 
 ## 💬 社区
 
