@@ -394,6 +394,7 @@
   },
   "errors": {
     "AUTH_FAILED": "Authentication failed.",
+    "MISSING_CREDENTIALS": "Sign-in is required.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
     "DATABASE_NOT_EMPTY": "The target database already has users. On PostgreSQL, confirm to keep the existing accounts. On SQLite, choose an empty database.",
@@ -564,7 +565,10 @@
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
-    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "GIT_NO_CHANGES": "There are no changes to commit.",
+    "GIT_COMMIT_MESSAGE_INVALID": "The model did not return a usable commit message; please write one.",
+    "GIT_PUSH_DETACHED": "Cannot push while HEAD is detached."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -1002,16 +1006,30 @@
   },
   "teams": {
     "peer_thread_title": "From team {name}",
-    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline; it is not in your own chat context, so a truncated excerpt is included below for wrap-up.\nTask: {task}\n\nMember answer:\n{result}\n\nUse that answer to decide next steps. Do not paste it back in full. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences and say whether you adopt their advice.",
+    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline; it is not in your own chat context, so a truncated excerpt is included below for wrap-up.\nTask: {task}\n\nMember answer:\n{result}\n\nDispatch only. Do not write files, run commands, or restate the member's answer. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If the answer contains a workspace-relative path, call only send_file_to_user with that path. If more work is needed, dispatch the next member. If the team is done, one status sentence is enough.",
     "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
     "speaker_user": "User",
     "channel_line": "{name}: {text}",
     "channel_wrapup": "[Host wrap-up] {text}",
     "channel_dispatched": "Asked {name} to handle this — please wait…",
     "connector_auth_skipped": "These connectors need re-authorization and were left off this turn: {servers}",
-    "host_briefing": "[Host dispatch — do not do the work yourself]\nUser messages arrive here first. Digest intent, scope, constraints, and the deliverable; ask one clarifying question if a key fact is missing. For real work, rewrite a self-contained assignment for that member before ask_agent: goal, scope, delivery format, and needed context. Never paste the user's wording unchanged. Tailor each member's task. Answer greetings or clarifications yourself in one or two sentences. After ask_agent returns, do not repeat that you assigned someone. If this turn is a member-finished wake-up, wrap up or reassign per that notice — do not repeat the same task.",
+    "host_briefing": "[Host dispatch — do not do the work yourself]\nYou only dispatch. You do not do the work and you do not answer for a member. User messages arrive here first. Digest intent, scope, constraints, and the deliverable; ask one clarifying question if a key fact is missing. Research, writing, code, file edits, shell commands, and analysis must be rewritten as a member assignment before ask_agent. Never paste the user's wording unchanged. Tailor each member's task. When the user wants a file, the assignment must tell that member to write it with write_file in the workspace and reply with the relative path. Do not ask them to hand the full text back for you to save. Answer greetings or clarifications yourself in one sentence. After ask_agent returns, do not repeat that you assigned someone. When a member finishes, do not restate their answer: if they reported a path, call only send_file_to_user; if they did not, dispatch again and require the file plus its path.",
+    "host_tool_boundary": "[Host tool boundary]\nIgnore earlier instructions about ls, read_file, write_file, edit_file, glob, grep, execute, delete, write_todos, and task. You do not have those tools. Do not call them, and do not write a tool call into the reply. Members do files and commands; their file tools write into your workspace. Your tools are only agent_list, ask_agent, memory_search, memory_get, current_time, and send_file_to_user. After a member reports a relative path, call only send_file_to_user.",
     "member_briefing": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host.",
-    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}"
+    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}",
+    "member_file_target": "Read and write files in the host workspace. The directory is {directory}. If an earlier instruction names a different working directory, use this one for this turn. ls, read_file, write_file, edit_file, glob, grep, delete, and send_file_to_user all apply there, and relative paths resolve from that directory. Your skills, memory, and connectors stay your own.",
+    "member_file_target_managed": "For this turn, use only the file and shell tools on the MCP server octop-team-workspace. Their directory is {directory}. If an earlier instruction names a different working directory, use this one for this turn. Relative paths resolve from that directory. The runner's own write and shell tools are rejected. If one still runs, it writes the runner workspace, not this directory. Your skills, memory, and connectors stay your own.",
+    "member_file_target_send": "send_file_to_user on that server reads this directory.",
+    "runner_workspace_write": "This call wrote the runner's own workspace, not the selected directory.",
+    "member_file_target_execute": "execute also runs in that directory.",
+    "member_file_target_no_execute": "This workspace has no shell. Do not call execute.",
+    "member_file_mounts": "These directories are read-only and stay on your own skill and subagent directories. Read them at these exact paths:\n{paths}"
+  },
+  "bridge": {
+    "local_directory_relative": "The local directory must be an absolute path on this Octop machine.",
+    "local_directory_missing": "The local directory does not exist, or is not a folder.",
+    "local_file_target": "Read and write files in the local directory the user selected: {directory}. That directory is on the Octop that started this chat, not in your private workspace. If an earlier instruction names a different working directory, use this one for this turn. ls, read_file, write_file, edit_file, glob, grep, delete, and send_file_to_user all apply there, and relative paths resolve from that directory. Your skills, memory, and connectors stay your own.",
+    "local_file_target_managed": "For this turn, use only the file and shell tools on the MCP server octop-team-workspace. Their directory is {directory}, on the Octop that started this chat. If an earlier instruction names a different working directory, use this one for this turn. Relative paths resolve from that directory. The runner's own write and shell tools are rejected. If one still runs, it writes the runner workspace, not this directory. Your skills, memory, and connectors stay your own."
   },
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
@@ -1195,6 +1213,19 @@
     "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
     "invalid_id": "A valid {field} is required.",
     "unknown_tool": "Unknown RAGFlow tool: {name}"
+  },
+  "gitea": {
+    "invalid_base_url": "Gitea instance URL must not contain credentials, a query string, or a fragment.",
+    "token_required": "A valid Gitea Personal Access Token is required.",
+    "http_error": "Gitea request failed: HTTP {status}. {reason}",
+    "network_error": "Unable to reach Gitea. Check the instance URL and network connection.",
+    "invalid_response": "Gitea returned an invalid API response.",
+    "invalid_slug": "A valid {field} is required.",
+    "invalid_index": "A valid issue number is required.",
+    "invalid_path": "A valid repository file path is required.",
+    "query_required": "A search query is required.",
+    "body_required": "Comment text must not be empty.",
+    "unknown_tool": "Unknown Gitea tool: {name}"
   },
   "migrate": {
     "not_found": "No {source} installation was found. Pass its directory with --from.",

@@ -394,6 +394,7 @@
   },
   "errors": {
     "AUTH_FAILED": "认证失败。",
+    "MISSING_CREDENTIALS": "需要登录。",
     "TOKEN_EXPIRED": "登录已过期，请重新登录。",
     "SETUP_REQUIRED": "需要完成初始设置。",
     "DATABASE_NOT_EMPTY": "目标数据库已有用户。PostgreSQL 可确认后沿用现有账户；SQLite 请改用空库。",
@@ -564,7 +565,10 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "GIT_NO_CHANGES": "没有可提交的更改。",
+    "GIT_COMMIT_MESSAGE_INVALID": "模型没有返回可用的提交信息，请手动填写。",
+    "GIT_PUSH_DETACHED": "当前处于 detached HEAD，无法推送。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -1002,16 +1006,30 @@
   },
   "teams": {
     "peer_thread_title": "来自团队 {name}",
-    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已在群聊时间线上；你自己的对话上下文里没有这段，下面附带节选供收口参考。\n任务：{task}\n\n成员正文：\n{result}\n\n请依据成员正文决定下一步：不要整段复述，不要再说「已安排 / 稍等片刻 / 交给谁来回答」，不要再次 ask_agent 同一任务。若还要继续，再派下一位；若可以收工，最多三句短总结，并明确是否采纳其建议。",
+    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已在群聊时间线上；你自己的对话上下文里没有这段，下面附带节选供收口参考。\n任务：{task}\n\n成员正文：\n{result}\n\n只做调度收口。不要写文件，不要跑命令，不要复述成员正文，不要再说「已安排 / 稍等」。不要再次 ask_agent 同一任务。正文里如果有工作区相对路径，只调用 send_file_to_user 把该文件发给用户。还要继续就派下一位。可以收工时只留一句状态。",
     "followup_failed": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 失败。\n任务：{task}\n错误：{error}\n\n简要告知用户失败，并决定改派别人或收工。不要再说「已安排 / 稍等」，不要编造替代答案。",
     "speaker_user": "用户",
     "channel_line": "{name}: {text}",
     "channel_wrapup": "【主持人总结】{text}",
     "channel_dispatched": "已请 {name} 处理，请稍候…",
     "connector_auth_skipped": "以下连接器需要重新授权，本轮未使用：{servers}",
-    "host_briefing": "[主持人调度，不是让你代答]\n用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。专业工作必须改写成给该成员的任务说明书后再 ask_agent：写清目标、范围、交付格式和必要上下文，禁止原样转发用户原话。不同成员给不同任务。寒暄或澄清自己短答。ask_agent 返回后不要重复「已安排 / 稍等」。若当前是成员完成或失败的系统唤醒，按唤醒说明收口或改派，不要重复同一任务。",
+    "host_briefing": "[主持人调度，不是让你代答]\n你只调度，不亲自完成工作，也不代成员作答。用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。调研、写作、编码、改文件、跑命令、分析都必须改写成任务后再 ask_agent，禁止原样转发用户原话。不同成员给不同任务。用户要文件时，任务里必须要求成员自己用 write_file 写进工作区，并在回复里给出相对路径；不要让成员把全文交回给你再保存。寒暄或澄清可以自己一句说完。ask_agent 返回后不要重复「已安排 / 稍等」。成员完成后不要复述正文：对方给出路径就只调用 send_file_to_user；没有路径就再派一次，要求对方写入文件并回报路径。",
+    "host_tool_boundary": "[主持人工具边界]\n忽略上文关于 ls、read_file、write_file、edit_file、glob、grep、execute、delete、write_todos、task 的用法。你没有这些工具，不要调用，也不要在回复里写出工具调用。文件和命令由成员完成，成员的文件工具写进你的工作区。你只有 agent_list、ask_agent、memory_search、memory_get、current_time、send_file_to_user。成员回报相对路径后，只调用 send_file_to_user。",
     "member_briefing": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。",
-    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}"
+    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}",
+    "member_file_target": "本次文件读写使用主持人的工作区，目录是 {directory}。前面如果写了别的工作目录，本轮以这个目录为准。ls、read_file、write_file、edit_file、glob、grep、delete 和 send_file_to_user 都作用在这个目录，相对路径从这里解析。技能、记忆和连接器仍是你自己的。",
+    "member_file_target_managed": "这一轮的文件和命令只用 MCP 服务器 octop-team-workspace，目录是 {directory}。前面如果写了别的工作目录，本轮以这个目录为准。相对路径从这里解析。运行器自带的写文件和 shell 会被拒绝；如果仍执行了，那是运行器自己的工作区，不算这个目录。技能、记忆和连接器仍是你自己的。",
+    "member_file_target_send": "这个服务器上的 send_file_to_user 也从这里读文件。",
+    "runner_workspace_write": "这次调用写的是运行器自己的工作区，没有写到所选目录。",
+    "member_file_target_execute": "execute 也在这个目录中执行。",
+    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。",
+    "member_file_mounts": "以下目录只读，仍是你自己的技能和子代理目录。请按这些路径原样读取：\n{paths}"
+  },
+  "bridge": {
+    "local_directory_relative": "本地目录必须是这台 Octop 上的绝对路径。",
+    "local_directory_missing": "本地目录不存在，或不是一个文件夹。",
+    "local_file_target": "本次文件读写使用用户指定的本地目录 {directory}。这个目录在发起对话的那台 Octop 上，不在你自己的工作区里。前面如果写了别的工作目录，本轮以这个目录为准。ls、read_file、write_file、edit_file、glob、grep、delete 和 send_file_to_user 都作用在这个目录，相对路径从这里解析。技能、记忆和连接器仍是你自己的。",
+    "local_file_target_managed": "这一轮的文件和命令只用 MCP 服务器 octop-team-workspace，目录是 {directory}，在发起对话的那台 Octop 上。前面如果写了别的工作目录，本轮以这个目录为准。相对路径从这里解析。运行器自带的写文件和 shell 会被拒绝；如果仍执行了，那是运行器自己的工作区，不算这个目录。技能、记忆和连接器仍是你自己的。"
   },
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
@@ -1195,6 +1213,19 @@
     "datasets_required": "请先通过 list_datasets 选择 dataset_ids，或配置默认知识库 ID，再进行检索。",
     "invalid_id": "请提供有效的 {field}。",
     "unknown_tool": "未知的 RAGFlow 工具：{name}"
+  },
+  "gitea": {
+    "invalid_base_url": "Gitea 实例地址不能包含用户名、密码、查询参数或片段。",
+    "token_required": "请填写有效的 Gitea 个人访问令牌。",
+    "http_error": "Gitea 请求失败：HTTP {status}。{reason}",
+    "network_error": "无法连接 Gitea，请检查实例地址和网络连通。",
+    "invalid_response": "Gitea 返回了无效的接口响应。",
+    "invalid_slug": "请提供有效的 {field}。",
+    "invalid_index": "请提供有效的 Issue 编号。",
+    "invalid_path": "请提供有效的仓库文件路径。",
+    "query_required": "请提供检索关键词。",
+    "body_required": "评论内容不能为空。",
+    "unknown_tool": "未知的 Gitea 工具：{name}"
   },
   "migrate": {
     "not_found": "未找到 {source} 的安装目录，请用 --from 指定。",

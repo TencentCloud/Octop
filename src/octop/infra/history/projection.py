@@ -24,6 +24,7 @@ _USER_ROLES = frozenset({"human", "user"})
 _ASSISTANT_ROLES = frozenset({"ai", "assistant"})
 _TURN_DURATION_KEY = "turn_duration_ms"
 _UTF16_SURROGATE = re.compile(r"[\ud800-\udfff]")
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
 def _repair_surrogates(text: str) -> str:
@@ -31,6 +32,15 @@ def _repair_surrogates(text: str) -> str:
     if _UTF16_SURROGATE.search(text) is None:
         return text
     return text.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace")
+
+
+def _compact(text: str) -> str:
+    return "".join(text.split())
+
+
+def _assistant_visible(text: str) -> str:
+    """Spoken text, without the reasoning block stored beside it."""
+    return _THINK_BLOCK.sub(" ", text)
 
 
 def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[ThreadMessageInput]:
@@ -269,12 +279,27 @@ class TurnHistoryTracker:
         return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
 
     def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
-        if not self._stream_text:
-            return False
+        """True when the streamed tokens are already in the checkpoint messages.
+
+        A host turn speaks once, calls a tool, then speaks again. No single
+        assistant row contains the whole stream, so appending it would store
+        a second copy of the same reply.
+        """
         stream_text = _repair_surrogates(self._stream_text)
-        return any(
-            item.role in _ASSISTANT_ROLES and stream_text in _wire_text(item) for item in items
-        )
+        stream = _compact(stream_text)
+        if not stream:
+            return False
+        visible: list[str] = []
+        for item in items:
+            if item.role not in _ASSISTANT_ROLES:
+                continue
+            text = _wire_text(item)
+            if stream_text in text:
+                return True
+            piece = _compact(_assistant_visible(text))
+            if piece:
+                visible.append(piece)
+        return bool(visible) and stream in "".join(visible)
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:

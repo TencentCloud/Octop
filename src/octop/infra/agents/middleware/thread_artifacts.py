@@ -55,8 +55,8 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
     """Append successful file-producing tool paths onto the current thread row.
 
     Peer threads (``room~member``) also mirror the same paths onto the room
-    thread, stamped with the producer ``agent_id`` so the team file dock can
-    open them via the member workspace.
+    thread. A team file-target turn stamps the host agent, because the bytes
+    were written on the host workspace.
     """
 
     def __init__(
@@ -134,22 +134,55 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
             tool_name=name,
             args=raw_args if isinstance(raw_args, (str, Mapping)) else None,
             result=result.content,
-            workspace_dir=self._workspace_dir,
+            workspace_dir=self._artifact_workspace(),
         )
         if not paths:
             return
-        self._append(thread_id, paths)
+        agent_id = self._producer_agent_id()
+        self._append(thread_id, paths, agent_id=agent_id)
         room = peer_room_thread_id(thread_id)
         if room:
-            self._append(room, paths)
+            self._append(room, paths, agent_id=agent_id)
         self._maybe_record_pending_plan(thread_id, paths)
 
-    def _append(self, thread_id: str, paths: Sequence[str]) -> None:
+    def _file_target(self) -> tuple[str, Path] | None:
+        from octop.infra.agents.teams.file_target import BRIDGE_TARGET_KEY, DIR_KEY, HOST_KEY
+
+        try:
+            configurable = dict(get_config().get("configurable") or {})
+        except RuntimeError:
+            return None
+
+        host_id = configurable.get(HOST_KEY)
+        directory = configurable.get(DIR_KEY)
+        bridge_id = configurable.get(BRIDGE_TARGET_KEY)
+        if not isinstance(directory, str) or not directory.strip():
+            return None
+        folder = Path(directory.strip())
+        if isinstance(host_id, str) and host_id.strip():
+            return host_id.strip(), folder
+        if isinstance(bridge_id, str) and bridge_id.strip():
+            return self._agent_id, folder
+        return None
+
+    def _artifact_workspace(self) -> Path:
+        target = self._file_target()
+        if target is None:
+            return self._workspace_dir
+        return target[1]
+
+    def _producer_agent_id(self) -> str:
+        target = self._file_target()
+        if target is None:
+            return self._agent_id
+        return target[0]
+
+    def _append(self, thread_id: str, paths: Sequence[str], *, agent_id: str) -> None:
         try:
             self._threads.append_artifacts(
                 thread_id,
                 paths,
-                agent_id=self._agent_id,
+                agent_id=agent_id,
             )
         except Exception:
             logger.warning(

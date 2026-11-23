@@ -6,9 +6,7 @@ import {
   Alert,
   App,
   Button,
-  Collapse,
   Drawer,
-  Dropdown,
   Form,
   Input,
   Modal,
@@ -17,7 +15,6 @@ import {
   Switch,
 } from "antd";
 
-import { MoreHorizontal } from "lucide-react";
 import {
   acpApi,
   acpSessionModeText,
@@ -28,7 +25,6 @@ import {
 import { useAcpSessionModes } from "../../../hooks/useAcpSessionModes";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
-import { TextAssistBar } from "../../../components/TextAssistBar";
 import {
   avatarPickerStyles,
   expertPresetSrc,
@@ -36,7 +32,6 @@ import {
 } from "../../../components/AvatarPicker";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import AgentTrajectoryField from "./AgentTrajectoryField";
-import MoreConfigCollapse from "./MoreConfigCollapse";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import { apiErrorMessage, isNotFoundApiError } from "../../../utils/apiError";
@@ -103,11 +98,26 @@ import {
 import AgentBackendFields from "./AgentBackendFields";
 import ManagedRunnerPicker from "./ManagedRunnerPicker";
 import RootDirSelect from "./RootDirSelect";
-import { ResourceVisibilityFormItem } from "../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFormItem,
+  useResourceVisibilityAvailable,
+} from "../../../components/ResourceVisibilityFields";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
+import ExpertTextAssistField from "./expertDrawer/ExpertTextAssistField";
+import ExpertDrawerSection from "./expertDrawer/ExpertDrawerSection";
+import {
+  runtimeSettingsFields,
+  hasRuntimeSettingsErrors,
+} from "./expertDrawer/runtimeSettingsFields";
+import ExpertSettingsDrawer from "./expertDrawer/ExpertSettingsDrawer";
+import { expertDrawerWidth } from "./expertDrawer/expertDrawerWidth";
+import ExpertResourceRow from "./expertDrawer/ExpertResourceRow";
+import ExpertFieldLabel from "./expertDrawer/ExpertFieldLabel";
+import { SECTION_IDS } from "./expertDrawer/sectionIds";
+import expertDrawerStyles from "./expertDrawer/expertDrawer.module.less";
 import styles from "../index.module.less";
 
 interface AgentDetail extends AgentRuntimeApiFields {
@@ -250,10 +260,12 @@ function EditAgentDrawerBody({
   onSaveReady,
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
   const { t, i18n } = useTranslation();
   const { modal, message } = App.useApp();
   const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
+  const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false);
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const [form] = Form.useForm<EditFormValues>();
   const watchedRunner = Form.useWatch("runner", form);
@@ -296,6 +308,10 @@ function EditAgentDrawerBody({
   const [expertVisibility, setExpertVisibility] =
     useState<ResourceVisibilityMode>(agent.is_shared ? "all" : "owner");
   const [expertGroupIds, setExpertGroupIds] = useState<string[]>([]);
+  const sharingAvailable = useResourceVisibilityAvailable({
+    allowOwner: true,
+    visibility: expertVisibility,
+  });
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [listRenameOpen, setListRenameOpen] = useState(false);
@@ -519,7 +535,11 @@ function EditAgentDrawerBody({
   }, [agent.agent_id]);
 
   const handleSave = useCallback(async () => {
-    const values = await form.validateFields();
+    const values = await form.validateFields().catch(() => {
+      if (hasRuntimeSettingsErrors(form)) setRuntimeOpen(true);
+      return undefined;
+    });
+    if (!values) return;
     if (values.backend_choice === "composite") {
       const pathError = validatePathMappings(pathMappings, t);
       if (pathError) {
@@ -699,6 +719,7 @@ function EditAgentDrawerBody({
     onClose,
     onSaved,
     pathMappings,
+    sessionModes,
     skillPackagesSupported,
     t,
   ]);
@@ -866,6 +887,27 @@ function EditAgentDrawerBody({
       prev.map((m, i) => (i === index ? { ...m, [field]: value } : m)),
     );
 
+  const chatReady = isAgentChatReady(agent.state);
+  const advancedFields = (
+    <>
+      {sharingAvailable ? (
+        <ResourceVisibilityFormItem
+          allowOwner
+          visibility={expertVisibility}
+          groupIds={expertGroupIds}
+          tooltip={t("experts.visibilityHint")}
+          onChange={(next) => {
+            setExpertVisibility(next.visibility);
+            setExpertGroupIds(
+              next.visibility === "groups" ? next.groupIds : [],
+            );
+          }}
+        />
+      ) : null}
+      <AgentTrajectoryField />
+    </>
+  );
+
   return (
     <>
       {loading ? (
@@ -882,13 +924,17 @@ function EditAgentDrawerBody({
               style={{ marginBottom: 16 }}
             />
           ) : null}
-          <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
-            <div className={styles.drawerSectionTitle}>
-              {t("experts.basicInfo")}
-            </div>
-            <Form form={form} layout="vertical" size="middle">
+          <Form
+            form={form}
+            layout="vertical"
+            size="middle"
+            className={expertDrawerStyles.formArea}
+          >
+            {/* ── Identity ─────────────────────────────────────── */}
+            <ExpertDrawerSection id={SECTION_IDS.identity}>
               <Form.Item
                 label={t("experts.avatar")}
+                tooltip={t("experts.avatarHint")}
                 className={avatarPickerStyles.formItem}
               >
                 <ExpertAvatarPicker
@@ -975,7 +1021,7 @@ function EditAgentDrawerBody({
               </Form.Item>
               <Form.Item
                 label={t("experts.color")}
-                extra={t("experts.colorHint")}
+                tooltip={t("experts.colorHint")}
               >
                 <ExpertColorPicker
                   value={colorPalette}
@@ -991,126 +1037,13 @@ function EditAgentDrawerBody({
               >
                 <Input />
               </Form.Item>
-              <Form.Item
+              <ExpertTextAssistField
                 name="description"
                 label={t("experts.agentDescription")}
-                className={styles.textAssistField}
-              >
-                <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
-              </Form.Item>
-              <TextAssistBar
                 kind="expert.description"
-                getName={() => String(form.getFieldValue("name") ?? "")}
-                getText={() => String(form.getFieldValue("description") ?? "")}
-                onApply={(text) => form.setFieldsValue({ description: text })}
-              />
-              <Form.Item
-                name="welcome_message"
-                label={t("experts.welcomeMessageTitle")}
-                tooltip={t("experts.editWelcomeHint")}
-                className={styles.textAssistField}
               >
-                <Input.TextArea
-                  rows={3}
-                  placeholder={t("experts.welcomeMessagePlaceholder")}
-                />
-              </Form.Item>
-              <TextAssistBar
-                kind="expert.welcome_message"
-                getName={() => String(form.getFieldValue("name") ?? "")}
-                getText={() =>
-                  String(form.getFieldValue("welcome_message") ?? "")
-                }
-                onApply={(text) =>
-                  form.setFieldsValue({ welcome_message: text })
-                }
-              />
-              {agent.kind === "managed" ? (
-                <>
-                  {runnersReady && runnerChoices.length === 0 ? (
-                    <Alert
-                      type="info"
-                      showIcon
-                      style={{ marginBottom: 16 }}
-                      message={t("experts.managed.noRunners")}
-                    />
-                  ) : null}
-                  <Form.Item
-                    name="runner"
-                    colon={false}
-                    className={styles.runnerField}
-                    label={
-                      <span className={styles.runnerFieldLabel}>
-                        <span>{t("experts.managed.runner")}</span>
-                        <Link to="/acp" className={styles.runnerManageLink}>
-                          {t("experts.managed.manageAcp")}
-                        </Link>
-                      </span>
-                    }
-                    rules={[
-                      {
-                        required: true,
-                        message: t("experts.managed.runnerRequired"),
-                      },
-                    ]}
-                  >
-                    <ManagedRunnerPicker runners={runnerChoices} />
-                  </Form.Item>
-                  {sessionModes.length > 0 ? (
-                    <Form.Item
-                      name="session_mode"
-                      label={t("chat.conversationMode.picker")}
-                      extra={t("experts.managed.sessionModeHint")}
-                    >
-                      <Select
-                        options={sessionModes.map((mode) => ({
-                          value: mode.id,
-                          label: acpSessionModeText(
-                            mode,
-                            i18n.language,
-                            "name",
-                          ),
-                          title: acpSessionModeText(
-                            mode,
-                            i18n.language,
-                            "hint",
-                          ),
-                        }))}
-                      />
-                    </Form.Item>
-                  ) : null}
-                  {catalogOffersUnattendedMode(sessionModes) ? null : (
-                    <Form.Item
-                      name="permission_mode"
-                      label={t("experts.managed.yolo")}
-                      valuePropName="checked"
-                      extra={t("experts.managed.yoloHint")}
-                    >
-                      <Switch />
-                    </Form.Item>
-                  )}
-                  <Form.Item
-                    name="workspace_dir"
-                    label={t("experts.workspaceDir")}
-                    extra={t("experts.workspaceDirImmutableHint")}
-                  >
-                    <RootDirSelect disabled />
-                  </Form.Item>
-                </>
-              ) : (
-                <AgentBackendFields
-                  backends={backends}
-                  backendsLoading={backendsLoading}
-                  backendChoice={backendChoice}
-                  pathMappings={pathMappings}
-                  rootDirMode="edit"
-                  disabled
-                  skipHostFilesystem={remote}
-                  onAddPathMapping={addPathMapping}
-                  onRemovePathMapping={removePathMapping}
-                  onUpdatePathMapping={updatePathMapping}
-                />
-              )}
+                <Input.TextArea autoSize={{ minRows: 2 }} />
+              </ExpertTextAssistField>
               {agent.kind === "managed" ? null : (
                 <>
                   <Form.Item
@@ -1146,505 +1079,402 @@ function EditAgentDrawerBody({
                   </Form.Item>
                 </>
               )}
-              <ResourceVisibilityFormItem
-                allowOwner
-                visibility={expertVisibility}
-                groupIds={expertGroupIds}
-                extra={t("experts.visibilityHint")}
-                onChange={(next) => {
-                  setExpertVisibility(next.visibility);
-                  setExpertGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
-              <Form.Item
-                name="skill_package_ids"
-                label={t("experts.skillPackagesLabel")}
-                extra={
-                  agent.kind === "managed"
-                    ? t("experts.managedSkillPackagesHint")
-                    : skillPackagesSupported
-                    ? t("experts.skillPackagesHint")
-                    : t("experts.skillPackagesUnsupportedHint")
-                }
-              >
-                <Select
-                  mode="multiple"
-                  allowClear
-                  disabled={agent.kind !== "managed" && !skillPackagesSupported}
-                  loading={skillPackagesLoading}
-                  options={skillPackages.map((pack) => ({
-                    value: pack.id,
-                    label: pack.name,
-                  }))}
-                  placeholder={t("experts.skillPackagesPlaceholder")}
-                />
-              </Form.Item>
-              <ExpertComposerDefaultsFields agentId={agent.agent_id} />
-            </Form>
-          </div>
-          <MoreConfigCollapse>
-            <Form form={form} layout="vertical" size="middle">
-              <AgentTrajectoryField />
-            </Form>
+            </ExpertDrawerSection>
 
-            {isAgentChatReady(agent.state) ? (
-              <Collapse
-                ghost
-                className={styles.drawerCollapse}
-                style={{ width: "100%" }}
-                items={[
-                  {
-                    key: "pageConfig",
-                    label: t("experts.pageConfigTitle"),
-                    children: (
-                      <div style={{ padding: 0 }}>
-                        <WelcomeConfig
-                          ref={welcomeConfigRef}
-                          agentId={agent.agent_id}
-                        />
-                      </div>
-                    ),
-                  },
-                ]}
-              />
-            ) : null}
+            {/* ── Skills & resources ───────────────────────────── */}
+            <ExpertDrawerSection id={SECTION_IDS.resources}>
+              {agent.kind === "managed" ? (
+                <>
+                  <Form.Item
+                    name="skill_package_ids"
+                    label={t("experts.skillPackagesLabel")}
+                    tooltip={t("experts.managedSkillPackagesHint")}
+                  >
+                    <Select
+                      mode="multiple"
+                      allowClear
+                      loading={skillPackagesLoading}
+                      options={skillPackages.map((pack) => ({
+                        value: pack.id,
+                        label: pack.name,
+                      }))}
+                      placeholder={t("experts.skillPackagesPlaceholder")}
+                    />
+                  </Form.Item>
+                </>
+              ) : (
+                <>
+                  <ExpertComposerDefaultsFields agentId={agent.agent_id} />
+                  <Form.Item
+                    name="skill_package_ids"
+                    label={t("experts.skillPackagesLabel")}
+                    tooltip={
+                      skillPackagesSupported
+                        ? t("experts.skillPackagesHint")
+                        : t("experts.skillPackagesUnsupportedHint")
+                    }
+                  >
+                    <Select
+                      mode="multiple"
+                      allowClear
+                      disabled={!skillPackagesSupported}
+                      loading={skillPackagesLoading}
+                      options={skillPackages.map((pack) => ({
+                        value: pack.id,
+                        label: pack.name,
+                      }))}
+                      placeholder={t("experts.skillPackagesPlaceholder")}
+                    />
+                  </Form.Item>
+                </>
+              )}
+            </ExpertDrawerSection>
 
-            {isAgentChatReady(agent.state) && (
-              <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
-                <Collapse
-                  ghost
-                  className={styles.drawerCollapse}
-                  defaultActiveKey={["configFiles"]}
-                  style={{ width: "100%" }}
-                  items={[
+            {agent.kind === "managed" ? (
+              <ExpertDrawerSection id={SECTION_IDS.workspace}>
+                {runnersReady && runnerChoices.length === 0 ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={t("experts.managed.noRunners")}
+                  />
+                ) : null}
+                <Form.Item
+                  name="runner"
+                  colon={false}
+                  className={styles.runnerField}
+                  label={
+                    <span className={styles.runnerFieldLabel}>
+                      <span>{t("experts.managed.runner")}</span>
+                      <Link to="/acp" className={styles.runnerManageLink}>
+                        {t("experts.managed.manageAcp")}
+                      </Link>
+                    </span>
+                  }
+                  rules={[
                     {
-                      key: "configFiles",
-                      label: (
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            width: "100%",
-                          }}
-                        >
-                          <span>
-                            {t("experts.configFiles", {
-                              count: workspaceFiles.length,
-                            })}
-                          </span>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setWorkspaceDrawerOpen(true);
-                            }}
-                          >
-                            {t("experts.openWorkspace")}
-                          </Button>
-                        </div>
-                      ),
-                      children: (
-                        <div className={styles.fileList}>
-                          {filesLoading ? (
-                            <div
-                              style={{
-                                display: "flex",
-                                justifyContent: "center",
-                                padding: "16px 0",
-                              }}
-                            >
-                              <Spin size="small" />
-                            </div>
-                          ) : workspaceFiles.length === 0 ? (
-                            <div
-                              style={{
-                                fontSize: 13,
-                                color: "var(--fn-text-tertiary)",
-                                padding: "8px 0",
-                              }}
-                            >
-                              {t("experts.noWorkspaceFiles")}
-                            </div>
-                          ) : (
-                            workspaceFiles.map((file) => {
-                              const basename = displayName(file);
-                              const meta = metaForFile(basename, t);
-                              return (
-                                <div key={file} className={styles.fileItem}>
-                                  <button
-                                    type="button"
-                                    className={styles.fileItemMain}
-                                    onClick={() => openFileEditor(file)}
-                                  >
-                                    <div
-                                      className={styles.fileIcon}
-                                      style={{
-                                        color: meta.color,
-                                        background: `${meta.color}1a`,
-                                      }}
-                                    >
-                                      {meta.icon}
-                                    </div>
-                                    <div className={styles.fileMeta}>
-                                      <div className={styles.fileLabel}>
-                                        {meta.label}
-                                      </div>
-                                      <div className={styles.filePath}>
-                                        {basename}
-                                      </div>
-                                    </div>
-                                    <span className={styles.fileHint}>
-                                      {t("experts.editFile")}
-                                    </span>
-                                  </button>
-                                  <Dropdown
-                                    menu={{
-                                      items: [
-                                        {
-                                          key: "rename",
-                                          label: t("workspace.rename"),
-                                          onClick: () =>
-                                            openListRename(file, "config"),
-                                        },
-                                        {
-                                          key: "delete",
-                                          label: t("common.delete"),
-                                          danger: true,
-                                          onClick: () =>
-                                            confirmDeleteConfigFile(file),
-                                        },
-                                      ],
-                                    }}
-                                    trigger={["click"]}
-                                  >
-                                    <button
-                                      type="button"
-                                      className={styles.fileItemMenu}
-                                      aria-label={t("workspace.rename")}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <MoreHorizontal size={16} />
-                                    </button>
-                                  </Dropdown>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      ),
-                    },
-                    {
-                      key: "skills",
-                      label: (
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            width: "100%",
-                          }}
-                        >
-                          <span>
-                            {t("experts.skillFilesTitle", {
-                              count: agentSkills.length,
-                            })}
-                          </span>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSkillCatalogOpen(true);
-                            }}
-                          >
-                            {t("experts.manageSkills")}
-                          </Button>
-                        </div>
-                      ),
-                      children: (
-                        <>
-                          <p
-                            style={{
-                              fontSize: 12,
-                              color: "var(--fn-text-tertiary)",
-                              margin: "0 0 8px",
-                            }}
-                          >
-                            {t("experts.skillFilesEditHint")}
-                          </p>
-                          <div className={styles.fileList}>
-                            {agentSkills.length === 0 ? (
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  color: "var(--fn-text-tertiary)",
-                                  padding: "8px 0",
-                                }}
-                              >
-                                {t("experts.noSkillFiles")}
-                              </div>
-                            ) : (
-                              agentSkills.map((skill) => {
-                                const iconUrl = skill.icon_url?.trim();
-                                const label = skillDisplayName(skill);
-                                return (
-                                  <div
-                                    key={skill.slug ?? skill.name}
-                                    className={styles.fileItem}
-                                  >
-                                    <button
-                                      type="button"
-                                      className={styles.fileItemMain}
-                                      onClick={() =>
-                                        openFileEditor(
-                                          `/skills/${
-                                            skill.slug ?? skill.name
-                                          }/SKILL.md`,
-                                        )
-                                      }
-                                    >
-                                      <div
-                                        className={styles.fileIcon}
-                                        style={{
-                                          color: "#8B5CF6",
-                                          background: iconUrl
-                                            ? "transparent"
-                                            : "#8B5CF61a",
-                                        }}
-                                      >
-                                        {iconUrl ? (
-                                          <img
-                                            src={iconUrl}
-                                            alt={label}
-                                            className={styles.fileIconImg}
-                                          />
-                                        ) : (
-                                          skill.emoji?.trim() ||
-                                          DEFAULT_SKILL_EMOJI
-                                        )}
-                                      </div>
-                                      <div className={styles.fileMeta}>
-                                        <div className={styles.fileLabel}>
-                                          {label}
-                                        </div>
-                                        <div className={styles.filePath}>
-                                          {skill.description || "SKILL.md"}
-                                        </div>
-                                      </div>
-                                      <span className={styles.fileHint}>
-                                        {t("experts.editFile")}
-                                      </span>
-                                    </button>
-                                    <Dropdown
-                                      menu={{
-                                        items: [
-                                          {
-                                            key: "delete",
-                                            label: t("common.delete"),
-                                            danger: true,
-                                            onClick: () =>
-                                              confirmDeleteSkill(skill),
-                                          },
-                                        ],
-                                      }}
-                                      trigger={["click"]}
-                                    >
-                                      <button
-                                        type="button"
-                                        className={styles.fileItemMenu}
-                                        aria-label={t("common.delete")}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <MoreHorizontal size={16} />
-                                      </button>
-                                    </Dropdown>
-                                  </div>
-                                );
-                              })
-                            )}
-                          </div>
-                        </>
-                      ),
-                    },
-                    {
-                      key: "subagents",
-                      label: (
-                        <div
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span>
-                            {t("experts.subagentFilesTitle", {
-                              count: agentSubagents.length,
-                            })}
-                          </span>
-                          <Button
-                            type="link"
-                            size="small"
-                            style={{ padding: 0, height: "auto" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSubagentCatalogOpen(true);
-                            }}
-                          >
-                            {t("experts.manageSubagents")}
-                          </Button>
-                        </div>
-                      ),
-                      children: (
-                        <>
-                          <p
-                            style={{
-                              fontSize: 12,
-                              color: "var(--fn-text-tertiary)",
-                              margin: "0 0 8px",
-                            }}
-                          >
-                            {t("experts.subagentFilesHint")}
-                          </p>
-                          <div className={styles.fileList}>
-                            {agentSubagents.length === 0 ? (
-                              <div
-                                style={{
-                                  fontSize: 13,
-                                  color: "var(--fn-text-tertiary)",
-                                  padding: "8px 0",
-                                }}
-                              >
-                                {t("experts.noSubagentFiles")}
-                              </div>
-                            ) : (
-                              agentSubagents.map((subagent) => (
-                                <div
-                                  key={subagent.slug}
-                                  className={styles.fileItem}
-                                >
-                                  <button
-                                    type="button"
-                                    className={styles.fileItemMain}
-                                    onClick={() =>
-                                      openFileEditor(
-                                        subagentFilePath(subagent.path),
-                                      )
-                                    }
-                                  >
-                                    <div
-                                      className={styles.fileIcon}
-                                      style={{
-                                        color: "#6366f1",
-                                        background: "#6366f11a",
-                                      }}
-                                    >
-                                      {subagent.emoji ?? "🤖"}
-                                    </div>
-                                    <div className={styles.fileMeta}>
-                                      <div className={styles.fileLabel}>
-                                        {subagent.name}
-                                      </div>
-                                      <div className={styles.filePath}>
-                                        {subagent.description ||
-                                          subagent.path.replace(/^\//, "")}
-                                      </div>
-                                    </div>
-                                    <span className={styles.fileHint}>
-                                      {t("experts.editFile")}
-                                    </span>
-                                  </button>
-                                  <Dropdown
-                                    menu={{
-                                      items: [
-                                        {
-                                          key: "rename",
-                                          label: t("workspace.rename"),
-                                          onClick: () =>
-                                            openListRename(
-                                              subagentFilePath(subagent.path),
-                                              "subagent",
-                                            ),
-                                        },
-                                        {
-                                          key: "delete",
-                                          label: t("common.delete"),
-                                          danger: true,
-                                          onClick: () =>
-                                            confirmDeleteSubagent(subagent),
-                                        },
-                                      ],
-                                    }}
-                                    trigger={["click"]}
-                                  >
-                                    <button
-                                      type="button"
-                                      className={styles.fileItemMenu}
-                                      aria-label={t("workspace.rename")}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <MoreHorizontal size={16} />
-                                    </button>
-                                  </Dropdown>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </>
-                      ),
+                      required: true,
+                      message: t("experts.managed.runnerRequired"),
                     },
                   ]}
+                >
+                  <ManagedRunnerPicker runners={runnerChoices} />
+                </Form.Item>
+                {sessionModes.length > 0 ? (
+                  <Form.Item
+                    name="session_mode"
+                    label={t("chat.conversationMode.picker")}
+                    tooltip={t("experts.managed.sessionModeHint")}
+                  >
+                    <Select
+                      options={sessionModes.map((mode) => ({
+                        value: mode.id,
+                        label: acpSessionModeText(mode, i18n.language, "name"),
+                        title: acpSessionModeText(mode, i18n.language, "hint"),
+                      }))}
+                    />
+                  </Form.Item>
+                ) : null}
+                {catalogOffersUnattendedMode(sessionModes) ? null : (
+                  <Form.Item
+                    name="permission_mode"
+                    label={t("experts.managed.yolo")}
+                    valuePropName="checked"
+                    tooltip={t("experts.managed.yoloHint")}
+                  >
+                    <Switch size="small" />
+                  </Form.Item>
+                )}
+              </ExpertDrawerSection>
+            ) : null}
+
+            <ExpertDrawerSection id={SECTION_IDS.advanced} compact>
+              <Form.Item name="welcome_message" noStyle>
+                <WelcomeConfig
+                  key={agent.agent_id}
+                  ref={welcomeConfigRef}
+                  agentId={chatReady ? agent.agent_id : undefined}
+                  showPrompts={chatReady}
+                  editing
+                  disabled={saving}
                 />
-              </div>
-            )}
-            {agent.kind === "managed" ? null : (
-              <Collapse
-                ghost
-                className={styles.drawerCollapse}
-                style={{ width: "100%" }}
-                items={[
-                  {
-                    key: "advanced",
-                    label: t("experts.advancedOptions"),
-                    children: (
-                      <Form form={form} layout="vertical" size="middle">
-                        <AgentAdvancedConfigFields />
-                      </Form>
-                    ),
-                  },
-                ]}
-              />
-            )}
-          </MoreConfigCollapse>
+              </Form.Item>
+              <ExpertSettingsDrawer
+                title={t("experts.expertFilesAccessTitle")}
+                summary={t(
+                  agent.kind === "managed"
+                    ? "experts.managedWorkspaceAccessSummary"
+                    : "experts.workspaceAccessSummary",
+                )}
+                open={workspaceSettingsOpen}
+                onOpenChange={setWorkspaceSettingsOpen}
+              >
+                {chatReady && agent.kind !== "managed" ? (
+                  <Form.Item
+                    label={
+                      <ExpertFieldLabel
+                        label={t("experts.mdFilesTitle")}
+                        tooltip={t("experts.promptFilesHint")}
+                        action={t("experts.openWorkspace")}
+                        onAction={() => {
+                          setWorkspaceSettingsOpen(false);
+                          setWorkspaceDrawerOpen(true);
+                        }}
+                      />
+                    }
+                  >
+                    {filesLoading ? (
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "center",
+                          padding: "16px 0",
+                        }}
+                      >
+                        <Spin size="small" />
+                      </div>
+                    ) : workspaceFiles.length === 0 ? (
+                      <div className={expertDrawerStyles.rowEmpty}>
+                        {t("experts.noWorkspaceFiles")}
+                      </div>
+                    ) : (
+                      <div className={expertDrawerStyles.rowList}>
+                        {workspaceFiles.map((file) => {
+                          const basename = displayName(file);
+                          const meta = metaForFile(basename, t);
+                          return (
+                            <ExpertResourceRow
+                              key={file}
+                              icon={meta.icon}
+                              iconStyle={{
+                                color: meta.color,
+                                background: `${meta.color}1a`,
+                              }}
+                              label={meta.label}
+                              secondary={basename}
+                              hint={t("experts.editFile")}
+                              onOpen={() => openFileEditor(file)}
+                              menuItems={[
+                                {
+                                  key: "rename",
+                                  label: t("workspace.rename"),
+                                  onClick: () => openListRename(file, "config"),
+                                },
+                                {
+                                  key: "delete",
+                                  label: t("common.delete"),
+                                  danger: true,
+                                  onClick: () => confirmDeleteConfigFile(file),
+                                },
+                              ]}
+                              menuLabel={t("common.more")}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Form.Item>
+                ) : null}
+                {chatReady && agent.kind !== "managed" ? (
+                  <>
+                    <Form.Item
+                      label={
+                        <ExpertFieldLabel
+                          label={t("experts.skillFilesTitle", {
+                            count: agentSkills.length,
+                          })}
+                          action={t("experts.manageSkills")}
+                          onAction={() => setSkillCatalogOpen(true)}
+                        />
+                      }
+                    >
+                      {agentSkills.length === 0 ? (
+                        <div className={expertDrawerStyles.rowEmpty}>
+                          {t("experts.noSkillFiles")}
+                        </div>
+                      ) : (
+                        <div className={expertDrawerStyles.rowList}>
+                          {agentSkills.map((skill) => {
+                            const iconUrl = skill.icon_url?.trim();
+                            const label = skillDisplayName(skill);
+                            return (
+                              <ExpertResourceRow
+                                key={skill.slug ?? skill.name}
+                                icon={
+                                  iconUrl ? (
+                                    <img
+                                      src={iconUrl}
+                                      alt={label}
+                                      className={expertDrawerStyles.rowIconImg}
+                                    />
+                                  ) : (
+                                    skill.emoji?.trim() || DEFAULT_SKILL_EMOJI
+                                  )
+                                }
+                                iconStyle={{
+                                  color: "#8B5CF6",
+                                  background: iconUrl
+                                    ? "transparent"
+                                    : "#8B5CF61a",
+                                }}
+                                label={label}
+                                secondary={skill.description || "SKILL.md"}
+                                secondaryIsPath={false}
+                                hint={t("experts.editFile")}
+                                onOpen={() =>
+                                  openFileEditor(
+                                    `/skills/${
+                                      skill.slug ?? skill.name
+                                    }/SKILL.md`,
+                                  )
+                                }
+                                menuItems={[
+                                  {
+                                    key: "delete",
+                                    label: t("common.delete"),
+                                    danger: true,
+                                    onClick: () => confirmDeleteSkill(skill),
+                                  },
+                                ]}
+                                menuLabel={t("common.more")}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </Form.Item>
+                    <Form.Item
+                      label={
+                        <ExpertFieldLabel
+                          label={t("experts.subagentFilesTitle", {
+                            count: agentSubagents.length,
+                          })}
+                          action={t("experts.manageSubagents")}
+                          onAction={() => setSubagentCatalogOpen(true)}
+                        />
+                      }
+                    >
+                      {agentSubagents.length === 0 ? (
+                        <div className={expertDrawerStyles.rowEmpty}>
+                          {t("experts.noSubagentFiles")}
+                        </div>
+                      ) : (
+                        <div className={expertDrawerStyles.rowList}>
+                          {agentSubagents.map((subagent) => (
+                            <ExpertResourceRow
+                              key={subagent.slug}
+                              icon={subagent.emoji ?? "🤖"}
+                              iconStyle={{
+                                color: "#6366f1",
+                                background: "#6366f11a",
+                              }}
+                              label={subagent.name}
+                              secondary={
+                                subagent.description ||
+                                subagent.path.replace(/^\//, "")
+                              }
+                              secondaryIsPath={!subagent.description}
+                              hint={t("experts.editFile")}
+                              onOpen={() =>
+                                openFileEditor(subagentFilePath(subagent.path))
+                              }
+                              menuItems={[
+                                {
+                                  key: "rename",
+                                  label: t("workspace.rename"),
+                                  onClick: () =>
+                                    openListRename(
+                                      subagentFilePath(subagent.path),
+                                      "subagent",
+                                    ),
+                                },
+                                {
+                                  key: "delete",
+                                  label: t("common.delete"),
+                                  danger: true,
+                                  onClick: () =>
+                                    confirmDeleteSubagent(subagent),
+                                },
+                              ]}
+                              menuLabel={t("common.more")}
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </Form.Item>
+                  </>
+                ) : null}
+                {advancedFields}
+                {agent.kind === "managed" ? (
+                  <Form.Item
+                    name="workspace_dir"
+                    label={t("experts.workspaceDir")}
+                    tooltip={t("experts.workspaceDirImmutableHint")}
+                  >
+                    <RootDirSelect disabled />
+                  </Form.Item>
+                ) : (
+                  <AgentBackendFields
+                    backends={backends}
+                    backendsLoading={backendsLoading}
+                    backendChoice={backendChoice}
+                    pathMappings={pathMappings}
+                    rootDirMode="edit"
+                    disabled
+                    skipHostFilesystem={remote}
+                    onAddPathMapping={addPathMapping}
+                    onRemovePathMapping={removePathMapping}
+                    onUpdatePathMapping={updatePathMapping}
+                  />
+                )}
+                <SubagentCatalogDrawer
+                  agentId={agent.agent_id}
+                  agentState={agent.state}
+                  open={subagentCatalogOpen}
+                  installedSlugs={installedSubagentSlugs}
+                  onClose={() => setSubagentCatalogOpen(false)}
+                  onInstalled={() => {
+                    void reloadSubagents();
+                  }}
+                />
+                <SkillCatalogDrawer
+                  agentId={agent.agent_id}
+                  open={skillCatalogOpen}
+                  onClose={() => {
+                    setSkillCatalogOpen(false);
+                    void reloadSkills();
+                  }}
+                />
+                <FileEditModal
+                  open={fileModalOpen}
+                  agentId={agent.agent_id}
+                  filePath={editingFile}
+                  onClose={() => setFileModalOpen(false)}
+                  onSaved={() => {
+                    /* file saved */
+                  }}
+                />
+              </ExpertSettingsDrawer>
+              {agent.kind === "managed" ? null : (
+                <ExpertSettingsDrawer
+                  title={t("experts.advancedOptions")}
+                  summary={t("experts.runtimeSettingsSummary")}
+                  fields={runtimeSettingsFields}
+                  open={runtimeOpen}
+                  onOpenChange={setRuntimeOpen}
+                >
+                  <AgentAdvancedConfigFields grouped />
+                </ExpertSettingsDrawer>
+              )}
+            </ExpertDrawerSection>
+          </Form>
         </>
       )}
       <WorkspaceDrawer
         agentId={agent.agent_id}
         open={workspaceDrawerOpen}
         onClose={() => setWorkspaceDrawerOpen(false)}
-      />
-      <SubagentCatalogDrawer
-        agentId={agent.agent_id}
-        agentState={agent.state}
-        open={subagentCatalogOpen}
-        installedSlugs={installedSubagentSlugs}
-        onClose={() => setSubagentCatalogOpen(false)}
-        onInstalled={() => {
-          void reloadSubagents();
-        }}
-      />
-      <SkillCatalogDrawer
-        agentId={agent.agent_id}
-        open={skillCatalogOpen}
-        onClose={() => {
-          setSkillCatalogOpen(false);
-          void reloadSkills();
-        }}
       />
       <Modal
         title={t("workspace.rename")}
@@ -1664,15 +1494,6 @@ function EditAgentDrawerBody({
           autoFocus
         />
       </Modal>
-      <FileEditModal
-        open={fileModalOpen}
-        agentId={agent.agent_id}
-        filePath={editingFile}
-        onClose={() => setFileModalOpen(false)}
-        onSaved={() => {
-          /* file saved */
-        }}
-      />
     </>
   );
 }
@@ -1695,23 +1516,21 @@ export default function EditAgentDrawer({
     <Drawer
       open={open}
       title={<EditExpertDrawerTitle agent={agent} />}
-      width={agent?.kind === "managed" ? 600 : 520}
+      width={expertDrawerWidth}
       onClose={onClose}
       destroyOnHidden
-      className={styles.expertDrawer}
+      className={`${styles.expertDrawer} ${expertDrawerStyles.expertDrawer}`}
       rootClassName={styles.expertDrawerRoot}
       footer={
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button className={styles.drawerCancelBtn} onClick={onClose}>
-            {t("common.cancel")}
-          </button>
-          <button
-            className={styles.drawerSaveBtn}
+          <Button onClick={onClose}>{t("common.cancel")}</Button>
+          <Button
+            type="primary"
+            loading={saving}
             onClick={() => void saveRef.current?.()}
-            disabled={saving}
           >
-            {saving ? t("experts.creating") : t("common.save")}
-          </button>
+            {saving ? t("experts.savingInProgress") : t("common.save")}
+          </Button>
         </div>
       }
     >

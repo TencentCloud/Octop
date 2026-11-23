@@ -21,6 +21,10 @@ from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig
+from octop.infra.agents.file_checkpoints import (
+    delete_agent_checkpoints,
+    delete_thread_checkpoints,
+)
 from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.agents.workspace.dir import (
     agent_host_data_dirs,
@@ -151,6 +155,15 @@ def delete_thread_from_agent_stores(
             workspace_dir=workspace_dir,
             reclaim=reclaim,
         )
+    delete_thread_checkpoints(_octop_home(paths), agent_id, thread_id)
+
+
+def _octop_home(paths: Any | None) -> Path:
+    if paths is not None:
+        return Path(paths.root)
+    from octop.infra.utils.paths import PathLayout  # noqa: PLC0415
+
+    return PathLayout.from_env().root
 
 
 def delete_agent_memory_and_checkpoints(
@@ -161,6 +174,7 @@ def delete_agent_memory_and_checkpoints(
     octop_config: OctopConfig,
     workspace_dir: Path,
     paths: Any | None = None,
+    namespace: str | None = None,
 ) -> None:
     """Remove one agent's checkpoints and memory rows.
 
@@ -183,6 +197,7 @@ def delete_agent_memory_and_checkpoints(
         cfg=cfg,
         octop_config=octop_config,
         workspace_dir=workspace_dir,
+        namespace=namespace,
     )
     for path in _sqlite_memory_files(
         cfg,
@@ -195,7 +210,9 @@ def delete_agent_memory_and_checkpoints(
             cfg=_sqlite_file_cfg(cfg, path),
             octop_config=octop_config,
             workspace_dir=workspace_dir,
+            namespace=namespace,
         )
+    delete_agent_checkpoints(_octop_home(paths), agent_id)
 
 
 def delete_stored_thread(
@@ -467,12 +484,14 @@ def _purge_sqlite_file(
     cfg: dict[str, Any],
     octop_config: OctopConfig,
     workspace_dir: Path,
+    namespace: str | None = None,
 ) -> None:
     _purge_agent_memory(
         agent_id=agent_id,
         cfg=cfg,
         octop_config=octop_config,
         workspace_dir=workspace_dir,
+        namespace=namespace,
     )
 
 
@@ -482,6 +501,7 @@ def _purge_agent_memory(
     cfg: dict[str, Any],
     octop_config: OctopConfig,
     workspace_dir: Path,
+    namespace: str | None = None,
 ) -> None:
     ns, backend, backend_config, sqlite_path = _memory_location(
         agent_id=agent_id,
@@ -489,6 +509,8 @@ def _purge_agent_memory(
         octop_config=octop_config,
         workspace_dir=workspace_dir,
     )
+    if namespace:
+        ns = namespace
     if backend == "sqlite" and (sqlite_path is None or not sqlite_path.is_file()):
         return
     memory = _open_memory(ns, backend, backend_config)
@@ -783,8 +805,46 @@ def _store_has_no_checkpoints(exc: BaseException) -> bool:
 
 
 def memory_namespace(agent_id: str) -> str:
-    """Namespace stored for an agent, matching the memory backends."""
+    """Namespace stored for an agent, matching the memory backends.
+
+    octop-memory lowercases the name and replaces every other character with
+    ``_`` before using it as a table name. ``Foo-Bar`` and ``foo_bar`` therefore
+    name the same store.
+    """
     return re.sub(r"[^a-z0-9_]", "_", f"agent_{agent_id}".lower())
+
+
+def runtime_memory_namespace(agent_id: str, peers: list[tuple[str, int, int]]) -> str:
+    """Namespace to open for *agent_id*.
+
+    *peers* is ``(agent_id, created_at, numeric_id)`` for every agent, including
+    this one. A unique normalized name stays ``agent_<id>``, which is what
+    existing stores already use. When several agents collapse to one name, the
+    oldest keeps that store and the others get their numeric id appended so
+    they cannot read, change, or delete the shared tables.
+    """
+    base = memory_namespace(agent_id)
+    group = [peer for peer in peers if memory_namespace(peer[0]) == base]
+    if len(group) <= 1:
+        return f"agent_{agent_id}"
+    canonical = min(group, key=lambda peer: (peer[1], peer[2], peer[0]))
+    if canonical[0] == agent_id:
+        return f"agent_{agent_id}"
+    own = next(peer for peer in group if peer[0] == agent_id)
+    return f"agent_{agent_id}_{own[2]}"
+
+
+def runtime_memory_namespace_for(agent_id: str, rows: list[Any]) -> str:
+    """:func:`runtime_memory_namespace` from agent rows."""
+    peers = [
+        (
+            str(row.agent_id),
+            int(getattr(row, "created_at", 0) or 0),
+            int(getattr(row, "id", 0) or 0),
+        )
+        for row in rows
+    ]
+    return runtime_memory_namespace(agent_id, peers)
 
 
 def sweep_deleted_residuals(
