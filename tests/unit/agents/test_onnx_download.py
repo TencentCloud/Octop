@@ -400,3 +400,70 @@ def test_export_model_tree_writes_manifest(monkeypatch, tmp_path: Path) -> None:
     assert manifest["model_id"] == "BAAI/bge-small-zh-v1.5"
     assert manifest["hf_repo"] == "Qdrant/bge-small-zh-v1.5"
     assert set(manifest["files"]) == {"config.json", "model.onnx"}
+
+
+def test_hf_cache_snapshot_dir_writes_bare_revision_ref(tmp_path: Path) -> None:
+    """refs/main must hold the bare revision: huggingface_hub does not strip it."""
+    from octop.infra.agents.providers.onnx_download import hf_cache_snapshot_dir
+
+    snap = hf_cache_snapshot_dir(tmp_path, "Qdrant/bge-small-zh-v1.5")
+
+    ref = tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    assert ref.read_bytes() == b"cos-mirror"
+    assert snap == tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "snapshots" / "cos-mirror"
+
+
+def test_hf_cache_snapshot_dir_is_resolvable_offline(tmp_path: Path) -> None:
+    import pytest
+
+    hub = pytest.importorskip("huggingface_hub")
+    from octop.infra.agents.providers.onnx_download import hf_cache_snapshot_dir
+
+    snap = hf_cache_snapshot_dir(tmp_path, "Qdrant/bge-small-zh-v1.5")
+    (snap / "config.json").write_text("{}", encoding="utf-8")
+
+    resolved = hub.snapshot_download(
+        repo_id="Qdrant/bge-small-zh-v1.5",
+        cache_dir=str(tmp_path),
+        local_files_only=True,
+    )
+    assert Path(resolved) == snap
+
+
+def test_repair_cos_mirror_ref_strips_old_newline(tmp_path: Path) -> None:
+    """Caches written before #1341 hold ``cos-mirror\\n``; repair makes them resolve."""
+    import pytest
+
+    hub = pytest.importorskip("huggingface_hub")
+    from octop.infra.agents.providers.onnx_download import (
+        hf_cache_snapshot_dir,
+        repair_cos_mirror_ref,
+    )
+
+    snap = hf_cache_snapshot_dir(tmp_path, "Qdrant/bge-small-zh-v1.5")
+    (snap / "config.json").write_text("{}", encoding="utf-8")
+    ref = tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    ref.write_bytes(b"cos-mirror\n")
+
+    assert repair_cos_mirror_ref(tmp_path, "Qdrant/bge-small-zh-v1.5") is True
+    assert ref.read_bytes() == b"cos-mirror"
+    resolved = hub.snapshot_download(
+        repo_id="Qdrant/bge-small-zh-v1.5",
+        cache_dir=str(tmp_path),
+        local_files_only=True,
+    )
+    assert Path(resolved) == snap
+    assert repair_cos_mirror_ref(tmp_path, "Qdrant/bge-small-zh-v1.5") is False
+
+
+def test_repair_cos_mirror_ref_leaves_other_refs_alone(tmp_path: Path) -> None:
+    from octop.infra.agents.providers.onnx_download import repair_cos_mirror_ref
+
+    assert repair_cos_mirror_ref(tmp_path, "Qdrant/bge-small-zh-v1.5") is False
+
+    ref = tmp_path / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    ref.parent.mkdir(parents=True)
+    commit = b"46fbe35fd4374a00fee7de77dfddaeb6dd6a2c59"
+    ref.write_bytes(commit)
+    assert repair_cos_mirror_ref(tmp_path, "Qdrant/bge-small-zh-v1.5") is False
+    assert ref.read_bytes() == commit
