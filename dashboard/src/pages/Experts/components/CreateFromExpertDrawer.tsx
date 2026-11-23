@@ -281,8 +281,6 @@ export default function CreateFromExpertDrawer({
   >([]);
   const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   const [subagentPickerOpen, setSubagentPickerOpen] = useState(false);
-  const [addingPromptFile, setAddingPromptFile] = useState(false);
-  const newPromptFiles = useRef(new Set<string>());
   const [localEditPath, setLocalEditPath] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
@@ -372,8 +370,6 @@ export default function CreateFromExpertDrawer({
     setPendingHubSkills([]);
     setPendingCopySkills([]);
     setLocalEditPath(null);
-    setAddingPromptFile(false);
-    newPromptFiles.current.clear();
     setSubagentPickerOpen(false);
     setDetailPrompts(null);
     setFileContents([]);
@@ -408,7 +404,7 @@ export default function CreateFromExpertDrawer({
         setDetailPrompts(normalizeQuickPrompts(data.quick_prompts));
       const welcomeText = pickLocale(data.welcome_message, lang);
       if (welcomeText) form.setFieldsValue({ welcome_message: welcomeText });
-      if (defaults.status === "rejected" || detail.status === "rejected") {
+      if (detail.status === "rejected") {
         message.warning(t("experts.loadDetailFailed"));
       }
       setDetailLoading(false);
@@ -516,7 +512,6 @@ export default function CreateFromExpertDrawer({
       const composerPatch = diffComposerFiles(
         originalFileContents,
         fileContents,
-        newPromptFiles.current,
       );
       const welcomeSnap = welcomeConfigRef.current?.getSnapshot();
       const pageConfigPrompts =
@@ -980,10 +975,6 @@ export default function CreateFromExpertDrawer({
                 <ExpertFieldLabel
                   label={t("experts.mdFilesTitle")}
                   tooltip={t("experts.promptFilesHint")}
-                  action={
-                    !detailLoading ? t("experts.addPromptFile") : undefined
-                  }
-                  onAction={() => setAddingPromptFile(true)}
                 />
               }
             >
@@ -1201,25 +1192,11 @@ export default function CreateFromExpertDrawer({
               onPick={handlePickCatalogSubagent}
             />
             <FileEditModal
-              open={!!localEditPath || addingPromptFile}
+              open={!!localEditPath}
               filePath={localEditPath}
-              createLocalFile={
-                addingPromptFile
-                  ? {
-                      existingNames: [...orderedConfigNames],
-                      onCreate: (name, content) => {
-                        newPromptFiles.current.add(name);
-                        setFileContents((prev) =>
-                          upsertComposerFile(prev, { name, content }),
-                        );
-                      },
-                    }
-                  : undefined
-              }
               localValue={localEditFile?.content ?? ""}
               onClose={() => {
                 setLocalEditPath(null);
-                setAddingPromptFile(false);
               }}
               onSaved={() => undefined}
               onLocalSave={(content) => {

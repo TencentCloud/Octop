@@ -46,7 +46,7 @@ export function upsertComposerFile(
   return files.map((file, i) => (i === idx ? next : file));
 }
 
-const DEFAULT_PROMPT_FILES = ["AGENTS.md"];
+const DEFAULT_PROMPT_FILES = ["SOUL.md", "AGENTS.md"];
 
 /** Ensure create-time editors always expose the core prompt files. */
 export function ensurePromptFiles(

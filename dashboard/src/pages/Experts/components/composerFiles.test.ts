@@ -84,6 +84,13 @@ describe("diffComposerFiles", () => {
 });
 
 describe("composer file helpers", () => {
+  it("adds the core prompt files when the template omitted them", () => {
+    expect(ensurePromptFiles([])).toEqual([
+      { name: "SOUL.md", content: "" },
+      { name: "AGENTS.md", content: "" },
+    ]);
+  });
+
   it("adds AGENTS.md when the template omitted it", () => {
     expect(ensurePromptFiles([{ name: "SOUL.md", content: "s" }])).toEqual([
       { name: "SOUL.md", content: "s" },
