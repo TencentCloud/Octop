@@ -12,10 +12,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from octop_harness.backends.utils import materialize_storage_path
 
+from octop.i18n import tr
 from octop.infra.agents.builtin_skills import (
     OCTOP_BUILTIN_SKILLS_ROOT,
     is_octop_builtin_skills_path,
 )
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
 
 if TYPE_CHECKING:
     from octop_harness.backends.workspace import BackendWorkspace
@@ -23,6 +25,9 @@ if TYPE_CHECKING:
 WorkspaceImportMode = Literal["merge", "replace"]
 
 _SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+# WAL index files. SQLite rebuilds them; a live one is memory-mapped and Windows
+# rejects truncating it with ``OSError(22)``. The database and ``-wal`` stay.
+_SQLITE_SHM_NAMES = frozenset({"memory.sqlite-shm", "checkpoints.sqlite-shm"})
 
 # ``aglob("**/*")`` skips dotfiles/dirs; these patterns recover hidden entries on
 # backends that only expose glob (no ``als``).
@@ -135,11 +140,11 @@ async def _list_via_aglob(workspace: BackendWorkspace) -> list[str]:
 async def _list_file_paths(workspace: BackendWorkspace) -> list[str]:
     """List every packable workspace file, including ``.octop`` / ``outbound`` / ``.env``."""
     if _local_mount(workspace) is not None:
-        return await asyncio.to_thread(_list_local_file_paths, Path(workspace.workspace_dir))
-    via_als = await _list_via_als(workspace)
-    if via_als is not None:
-        return via_als
-    return await _list_via_aglob(workspace)
+        paths = await asyncio.to_thread(_list_local_file_paths, Path(workspace.workspace_dir))
+    else:
+        via_als = await _list_via_als(workspace)
+        paths = via_als if via_als is not None else await _list_via_aglob(workspace)
+    return await asyncio.to_thread(_without_managed_sqlite_shm, workspace, paths)
 
 
 def _clear_local_workspace(workspace_dir: Path) -> None:
@@ -147,13 +152,18 @@ def _clear_local_workspace(workspace_dir: Path) -> None:
 
     Hidden entries (``.octop``, ``.env``, …) stay on disk: older archives may omit
     them, and wiping system state that the zip never restores would destroy
-    sessions/auth. Files present in the archive under those paths are still
-    overwritten by the subsequent upload.
+    sessions/auth. Other files from the archive are still written afterwards.
+    Octop's SQLite ``-shm`` files are not: a root-level one is left in place, and
+    the import never writes ``-shm`` back.
     """
     if not workspace_dir.is_dir():
         return
     for child in workspace_dir.iterdir():
-        if child.name in _SKIP_DIR_NAMES or child.name.startswith("."):
+        if (
+            child.name in _SKIP_DIR_NAMES
+            or _is_root_sqlite_shm(child)
+            or child.name.startswith(".")
+        ):
             continue
         if child.is_dir():
             shutil.rmtree(child)
@@ -185,6 +195,77 @@ def _local_mount(workspace: BackendWorkspace) -> Path | None:
     if getattr(backend, "sandbox_fs", False):
         return None
     return materialize_storage_path("/", backend=backend, must_exist=False)
+
+
+def _same_local_file(path: Path, other: Path) -> bool:
+    """True when both paths name the same file, including case-insensitive volumes."""
+    try:
+        return path.samefile(other)
+    except OSError:
+        return False
+
+
+def _managed_shm_parents(workspace: BackendWorkspace) -> frozenset[str]:
+    """System locations that hold Octop's own SQLite files."""
+    parents = {".", DEFAULT_SYSTEM_FILES_PATH}
+    configured = workspace.system_files_path.strip("/")
+    if configured:
+        parents.add(configured)
+    return frozenset(parents)
+
+
+def _is_root_sqlite_shm(path: Path) -> bool:
+    """A workspace-root SHM file replace-cleanup must not unlink.
+
+    Hidden system dirs are already kept. A legacy database lives at the workspace
+    root, and unlinking its mapped ``-shm`` fails on Windows the same way an
+    overwrite does. A different-cased name is kept only when the volume treats it
+    as that same file.
+    """
+    if not path.is_file():
+        return False
+    if path.name in _SQLITE_SHM_NAMES:
+        return True
+    if path.name.casefold() not in _SQLITE_SHM_NAMES:
+        return False
+    return _same_local_file(path, path.with_name(path.name.casefold()))
+
+
+def _is_managed_sqlite_shm(workspace: BackendWorkspace, rel: str) -> bool:
+    """Octop-managed ``-shm`` at the legacy root or the system-files directory.
+
+    Exact names are always skipped. A different-cased alias is skipped only when
+    a local mount reports it is the same file, so a case-sensitive remote key
+    such as ``.OCTOP/MEMORY.SQLITE-SHM`` is left alone.
+    """
+    path = PurePosixPath(rel.replace("\\", "/").lstrip("/"))
+    if path.name.casefold() not in _SQLITE_SHM_NAMES:
+        return False
+    parents = _managed_shm_parents(workspace)
+    parent = path.parent.as_posix()
+    if path.name in _SQLITE_SHM_NAMES and parent in parents:
+        return True
+    if parent.casefold() not in {item.casefold() for item in parents}:
+        return False
+    if _local_mount(workspace) is None:
+        return False
+    root = workspace.workspace_dir
+    candidate = root / path
+    return any(
+        _same_local_file(candidate, root / directory / path.name.casefold())
+        for directory in parents
+        if directory.casefold() == parent.casefold()
+    )
+
+
+def _without_managed_sqlite_shm(workspace: BackendWorkspace, paths: list[str]) -> list[str]:
+    return [path for path in paths if not _is_managed_sqlite_shm(workspace, path)]
+
+
+def _without_managed_sqlite_shm_pairs(
+    workspace: BackendWorkspace, pairs: list[tuple[str, bytes]]
+) -> list[tuple[str, bytes]]:
+    return [(rel, blob) for rel, blob in pairs if not _is_managed_sqlite_shm(workspace, rel)]
 
 
 def _read_entry_bytes(workspace: BackendWorkspace, rel: str) -> bytes | None:
@@ -238,6 +319,7 @@ async def import_workspace_zip(
     *,
     mode: WorkspaceImportMode,
     local_workspace_dir: Path | None = None,
+    locale: str = "en",
 ) -> dict[str, int | str | list[str]]:
     """Import a zip archive into the workspace."""
     entries = _iter_zip_entries(data)
@@ -259,11 +341,15 @@ async def import_workspace_zip(
         warnings.append(
             f"skipped {skipped} {OCTOP_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by Octop)"
         )
-    if pairs:
-        await workspace.aupload_many(pairs)
+    upload_pairs = await asyncio.to_thread(_without_managed_sqlite_shm_pairs, workspace, pairs)
+    skipped_shm = len(pairs) - len(upload_pairs)
+    if skipped_shm:
+        warnings.append(tr("workspace_archive.skipped_sqlite_shm", locale, count=skipped_shm))
+    if upload_pairs:
+        await workspace.aupload_many(upload_pairs)
 
     return {
         "mode": mode,
-        "imported": len(pairs),
+        "imported": len(upload_pairs),
         "warnings": warnings,
     }

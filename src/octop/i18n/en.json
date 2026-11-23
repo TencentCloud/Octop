@@ -1277,5 +1277,8 @@
     "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
     "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
     "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
+  },
+  "workspace_archive": {
+    "skipped_sqlite_shm": "Skipped {count} SQLite shared-memory file(s). SQLite rebuilds them from the database and WAL."
   }
 }
