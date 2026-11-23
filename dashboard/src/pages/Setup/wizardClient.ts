@@ -132,6 +132,7 @@ export const wizardApi = {
       {
         method: "POST",
         body: JSON.stringify(body),
+        headers: bearer(wizardSession.loadToken() ?? ""),
       },
     ),
 
@@ -141,6 +142,7 @@ export const wizardApi = {
       {
         method: "POST",
         body: JSON.stringify(body),
+        headers: bearer(wizardSession.loadToken() ?? ""),
       },
     ),
 

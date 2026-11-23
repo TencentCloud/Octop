@@ -171,6 +171,14 @@ class InviteService:
             raise OctopError(ErrorCode.INVITE_INVALID, "invite code required", status=400)
         if not cleaned_username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty", status=400)
+        from octop.infra.utils.paths import is_single_path_segment
+
+        if not is_single_path_segment(cleaned_username):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "username must be a single directory name",
+                status=400,
+            )
         validate_password_policy(password)
         loc = normalize_locale(locale)
         name = display_name.strip() if isinstance(display_name, str) else None
