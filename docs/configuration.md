@@ -49,6 +49,31 @@ Per-agent secrets belong in `{workspace}/.env` or, for new agents,
 `{workspace}/.octop/.env` (also writable via the `write_env_file` tool).
 That file is excluded from published-expert snapshots.
 
+## Multi-user deployment boundary
+
+Octop's user isolation is enforced by JWT authentication and ownership checks
+on control-plane rows. A single Octop instance does **not** provide a separate
+OS process, `HOME`, or service account for each Octop user:
+
+- `~/.octop/env` and the host process environment are instance-wide, and every
+  running agent inherits those values. Do not put one user's private host
+  credentials there when other users can run agents in the same instance.
+- Default agent workspaces use separate directories under
+  `~/.octop/agents/<agent_id>/`, but the ordinary filesystem/local-shell
+  backend is not an OS security boundary. Host files remain governed by the
+  permissions of the account running Octop.
+- A Linux local-shell backend gets a directory jail only when the documented
+  bubblewrap conditions are met. The Docker sandbox backend provides a
+  stronger execution boundary and defaults to `sandbox_scope: "agent"`.
+- Admin users intentionally have cross-user management access.
+
+Use one shared instance only for users inside the same trust boundary. For
+mutually untrusted users, use separate Octop instances under separate OS
+accounts or containers, do not mount a sensitive host home directory, and use
+separate secrets. See [Agent backend file I/O](agent-backend-file-io.md#12-局部-root_dir-与-execute-jail补充)
+and its [Docker sandbox section](agent-backend-file-io.md#13-docker-sandbox-backend)
+for the exact execution conditions.
+
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
