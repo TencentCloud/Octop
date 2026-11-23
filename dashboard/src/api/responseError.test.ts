@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { readErrorBody, responseError } from "./responseError";
-import { apiErrorMessage, parseApiError } from "../utils/apiError";
+import {
+  ApiResponseError,
+  readErrorBody,
+  responseError,
+} from "./responseError";
+import {
+  apiErrorMessage,
+  isNotFoundApiError,
+  parseApiError,
+} from "../utils/apiError";
 
 describe("bounded response errors", () => {
   it("prefers Octop envelopes and preserves code/details for translations", async () => {
@@ -56,5 +64,13 @@ describe("bounded response errors", () => {
     const response = new Response('{"detail":"Unavailable"}', { status: 503 });
     await readErrorBody(response);
     expect((await responseError(response)).message).toBe("Unavailable");
+  });
+  it("recognizes HTTP 404 ApiResponseError regardless of localized message", () => {
+    const error = new ApiResponseError(
+      404,
+      { code: "AGENT_MISSING", message: "智能体不存在" },
+      "req-404",
+    );
+    expect(isNotFoundApiError(error)).toBe(true);
   });
 });

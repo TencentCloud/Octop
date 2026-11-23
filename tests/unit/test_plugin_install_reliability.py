@@ -252,10 +252,70 @@ def test_plugin_manifest_requirements_must_be_pep508(
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        installation.subprocess,
-        "run",
-        lambda *args, **kwargs: pytest.fail("pip must not run"),
+        installation,
+        "install_packages",
+        lambda *args, **kwargs: pytest.fail("install_packages must not run"),
     )
 
     with pytest.raises(ValueError, match="invalid plugin requirement"):
         installation.install_dependencies(source)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "--index-url https://example.org/simple",
+        "--trusted-host example.org",
+        "-e ./local-pkg",
+        "-r other.txt",
+        "invalid requirement !!!",
+    ],
+)
+def test_plugin_requirements_txt_rejects_pip_options(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    line: str,
+) -> None:
+    source = tmp_path / "with-unsafe-requirements-txt"
+    shutil.copytree(FIXTURE, source)
+    (source / "requirements.txt").write_text(f"requests>=2.31\n{line}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        installation,
+        "install_packages",
+        lambda *args, **kwargs: pytest.fail("install_packages must not run"),
+    )
+
+    with pytest.raises(ValueError, match="invalid plugin requirement"):
+        installation.install_dependencies(source)
+
+
+def test_plugin_install_dependencies_uses_runtime_packages(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "with-valid-deps"
+    shutil.copytree(FIXTURE, source)
+    (source / "requirements.txt").write_text(
+        "# comment\n\nhttpx>=0.27  # inline comment\n",
+        encoding="utf-8",
+    )
+    manifest = source / "plugin.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8") + "\nrequires:\n  - pydantic>=2.0\n",
+        encoding="utf-8",
+    )
+    recorded: list[tuple[list[str], int]] = []
+
+    def fake_install(packages: list[str], *, timeout: int = 0) -> str:
+        recorded.append((list(packages), timeout))
+        return "installed"
+
+    monkeypatch.setattr(installation, "install_packages", fake_install)
+    installation.install_dependencies(source)
+
+    assert recorded == [(["httpx>=0.27", "pydantic>=2.0"], 120)]
+
+
+def test_plugin_uncompressed_limit_matches_extracted_budget() -> None:
+    assert module._MAX_PLUGIN_UNCOMPRESSED_BYTES == installation.MAX_EXTRACTED_BYTES
+    assert module._MAX_PLUGIN_UNCOMPRESSED_BYTES == 256 * 1024 * 1024

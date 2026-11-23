@@ -1,4 +1,8 @@
-import { readErrorBody, responseError } from "./responseError";
+import {
+  ApiResponseError,
+  readErrorBody,
+  responseError,
+} from "./responseError";
 import { getApiUrl } from "./config";
 import {
   isLocalDesktopUser,
@@ -660,7 +664,10 @@ export async function requestUpload<T = unknown>(
 
     xhr.onprogress = (event) => {
       if (xhr.status >= 400 && event.loaded > 16 * 1024) {
-        reject(new Error(`HTTP ${xhr.status}`));
+        const requestId =
+          xhr.getResponseHeader("x-request-id") ??
+          xhr.getResponseHeader("x-octop-request-id");
+        reject(new ApiResponseError(xhr.status, null, requestId));
         xhr.abort();
       }
     };
