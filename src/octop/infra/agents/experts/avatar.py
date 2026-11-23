@@ -121,12 +121,12 @@ async def _download_avatar_bytes(workspace: WorkspaceAvatarIO, relpath: str) -> 
 async def write_workspace_avatar(workspace: WorkspaceAvatarIO, data: bytes) -> str:
     media_type = sniff_avatar_media_type(data)
     dest = avatar_relpath_for_media(media_type)
-    await delete_workspace_avatar(workspace)
     amkdir = getattr(workspace, "amkdir", None)
     if callable(amkdir):
         with suppress(OSError, FileExistsError, BackendOperationNotSupportedError):
             await amkdir(AVATAR_DIR)
     await workspace.aupload_bytes(dest, data)
+    await delete_workspace_avatar(workspace, keep=dest)
     return dest
 
 
@@ -140,8 +140,10 @@ async def read_workspace_avatar(workspace: WorkspaceAvatarIO) -> tuple[bytes, st
     return None
 
 
-async def delete_workspace_avatar(workspace: WorkspaceAvatarIO) -> None:
+async def delete_workspace_avatar(workspace: WorkspaceAvatarIO, *, keep: str | None = None) -> None:
     for relpath in _ALL_AVATAR_RELPATHS:
+        if relpath == keep:
+            continue
         try:
             await workspace.adelete(relpath)
         except (OSError, FileNotFoundError):

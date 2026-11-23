@@ -69,6 +69,19 @@ async def test_write_read_delete_roundtrip() -> None:
 
 
 @pytest.mark.asyncio
+async def test_failed_upload_keeps_previous_avatar() -> None:
+    class _FailingUpload(_MemoryWorkspace):
+        async def aupload_bytes(self, path: str, data: bytes) -> None:
+            raise OSError("backend unavailable")
+
+    workspace = _FailingUpload()
+    workspace.files[".octop/avatar.jpg"] = JPEG
+    with pytest.raises(OSError):
+        await write_workspace_avatar(workspace, PNG)
+    assert workspace.files == {".octop/avatar.jpg": JPEG}
+
+
+@pytest.mark.asyncio
 async def test_write_skips_unsupported_mkdir() -> None:
     class _NoMkdir(_MemoryWorkspace):
         async def amkdir(self, path: str) -> None:
