@@ -579,6 +579,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
 | [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
+| [Octop Marketplace](https://github.com/jubaoliang/OctopMarketplace) | Marketplace for Octop |
+| [OctopBot](https://github.com/jubaoliang/OctopBot) | Mobile app for interacting with Octop on iOS and Android |
 
 ### Community projects
 
