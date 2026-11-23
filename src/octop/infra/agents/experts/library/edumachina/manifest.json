@@ -1,0 +1,82 @@
+{
+  "id": "edumachina",
+  "label": {
+    "zh": "EduMachina · 概念机器工坊",
+    "en": "EduMachina · Concept Machine Workshop"
+  },
+  "description": {
+    "zh": "企业大学与高校教育的 AI 合规运营专家：把抽象概念建成可操作的等轴机器教具（物体即解释，数字与零件同源），内训课纲与招生话术按中国/马来西亚双法域 AI 合规口径表审查，培训运营支持 AI 接住/转人工/流失三态复盘。中简/中繁/EN/BM 四语。",
+    "en": "AI compliance & training-ops expert for corporate universities and higher ed: builds abstract concepts into working isometric machine figures (the object is the explanation; every readout shares a source with its parts), audits course outlines and admission scripts against the China/Malaysia dual-jurisdiction AI compliance canonical table, and supports captured/handoff/churn tri-state training reviews. Simplified/Traditional Chinese, English, Bahasa Malaysia."
+  },
+  "welcome_message": {
+    "zh": "我是 EduMachina 概念机器工坊——给我一个概念，我为你造一台能转的机器；给我一段话术或课纲，我按中马双法域合规口径给你过一遍。",
+    "en": "EduMachina here — give me a concept and I'll build you a working machine; give me a script or course outline and I'll run it through the CN/MY compliance canonical table."
+  },
+  "icon_name": "factory",
+  "color": "#0E7C66",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": { "zh": "U1 · 招生话术合规审查", "en": "U1 · Admission script compliance audit" },
+      "description": { "zh": "给一段招生/咨询 AI 话术，按 PDPA 与 PIPL 双法域审查个人数据采集合规性", "en": "Audit an admission/counselling script for personal-data compliance under PDPA and PIPL" },
+      "prompt": { "zh": "请审查这段招生 AI 话术的合规性：「同学你好！把你的手机号和身份证号发给我，我们帮你锁定奖学金名额，我会把你的成绩单转发给三个合作机构帮你评估。」请逐条指出问题、标注适用法域 [CN]/[MY]，并给出改写版本。", "en": "Audit this admission script for compliance: \"Hi! Send me your phone number and ID number to lock in your scholarship slot — I'll forward your transcript to three partner agencies for assessment.\" Flag each issue with jurisdiction [CN]/[MY] and provide a rewritten version." },
+      "color": "#e8f4ff",
+      "icon_name": "shield-check"
+    },
+    {
+      "title": { "zh": "U2 · 课程口径变更演练", "en": "U2 · Canonical table change drill" },
+      "description": { "zh": "模拟课程学费/入学要求变更，走口径表变更留痕流程并生成受影响话术清单", "en": "Simulate a tuition/entry-requirement change: canonical change log flow plus affected-scripts checklist" },
+      "prompt": { "zh": "演练：学校决定下学年把计算机科学学士学费从 32000 上调至 34500 MYR/年。请走一遍口径变更流程：变更记录怎么写、哪些对外话术/教具需要同步更新、上线前要过哪些合规检查。", "en": "Drill: the school raises BCS tuition from 32,000 to 34,500 MYR/yr next academic year. Walk the canonical change flow: change-log entry, which scripts/figures need syncing, and pre-release compliance checks." },
+      "color": "#fef3c7",
+      "icon_name": "table-edit"
+    },
+    {
+      "title": { "zh": "U3 · 概念机器教具定制", "en": "U3 · Concept machine figure" },
+      "description": { "zh": "把一个专业概念建成可操作的等轴机器教具（零依赖单 HTML）", "en": "Build a concept into an interactive isometric machine figure (standalone HTML)" },
+      "prompt": { "zh": "请把「数据库事务 ACID」做成一台概念机器教具：四个部分各对应一个特性，读数与零件运动同源，禁止方框箭头飘浮标签，交付零依赖单 HTML 文件，课堂投屏用。", "en": "Build \"database transactions ACID\" as a concept machine: four parts mapping to the four properties, readouts sharing a source with part motion, no boxes/arrows/floating labels, delivered as a standalone HTML for classroom projection." },
+      "color": "#dcfce7",
+      "icon_name": "cog"
+    },
+    {
+      "title": { "zh": "C1 · 内训课纲合规审查", "en": "C1 · Course outline compliance audit" },
+      "description": { "zh": "AI 生成内训课纲的版权、学员数据与 AI 产出标识合规检查", "en": "Check an AI-drafted training outline for copyright, learner-data and AI-output labelling compliance" },
+      "prompt": { "zh": "这是我用 AI 生成的内训课纲初稿《提示词工程入门》，共 6 章，其中第 3 章引用了某公众号文章的配图，第 5 章练习要求学员上传真实客户对话记录。请按双法域合规口径审查并给出修改清单。", "en": "This is my AI-drafted internal course outline \"Prompt Engineering Basics\" (6 chapters): chapter 3 reuses images from a WeChat article, chapter 5 asks learners to upload real customer chat logs. Audit against the dual-jurisdiction table and list required fixes." },
+      "color": "#fde8e8",
+      "icon_name": "clipboard-check"
+    },
+    {
+      "title": { "zh": "C2 · 新员工 AI 安全第一课", "en": "C2 · New-hire AI safety lesson" },
+      "description": { "zh": "用概念机器教具讲数据分级与提示词泄露防护，30 分钟微课包", "en": "Teach data classification and prompt-leak defence with machine figures — a 30-min micro-course pack" },
+      "prompt": { "zh": "给新员工做 30 分钟「AI 使用安全第一课」：用一台「数据分级分拣机」教具讲哪些数据不能喂给外部大模型，再用一台「传声筒」教具讲提示词泄露原理。生成微课大纲 + 两台机器的等轴图。", "en": "Design a 30-min \"AI safety first lesson\" for new hires: a \"data-classification sorter\" machine for what must never go into external LLMs, and a \"megaphone\" machine for prompt-leak principles. Deliver the outline plus both isometric figures." },
+      "color": "#ede9fe",
+      "icon_name": "graduation-cap"
+    },
+    {
+      "title": { "zh": "C3 · 培训三态复盘", "en": "C3 · Tri-state training review" },
+      "description": { "zh": "用 AI 接住/转人工/流失三态思想复盘培训答疑与线索运营", "en": "Review training Q&A and lead ops with the captured/handoff/churn tri-state lens" },
+      "prompt": { "zh": "本期内训 3 场共 260 人，AI 助教答疑记录：148 次AI接住、61 次转人工、37 次打开未提问。请按三态复盘框架分析：每态的典型原因、下周可落地的 3 个改进动作、以及需要我在口径表里补哪些 FAQ。", "en": "Across 3 sessions (260 learners) the AI teaching assistant logged 148 captured, 61 handoff, 37 open-but-no-question. Run the tri-state review: typical root causes per state, 3 actionable improvements for next week, and which FAQs to add to the canonical table." },
+      "color": "#e0f2fe",
+      "icon_name": "chart-bar"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "把「哈希冲突」做成一台分拣机教具，课堂投屏用",
+      "这段学员数据收集话术在马来西亚校区能用吗？标注法域和条款",
+      "帮我给《做好自己AI基建的运维师》加一节 30 分钟微课，配一台概念机器",
+      "复核我的课纲里所有数字，标出口径表没有依据的",
+      "演练：把计算机科学学费从 32000 调到 34500 MYR/年，口径变更怎么留痕、哪些话术要同步",
+      "本期内训 260 人：AI 接住 148、转人工 61、打开未提问 37，按三态复盘给我改进动作"
+    ],
+    "en": [
+      "Build \"hash collision\" as a sorting-machine figure for classroom projection",
+      "Can I use this learner data-collection script on the Malaysia campus? Cite jurisdiction and clauses",
+      "Add a 30-min micro-lesson with one concept machine to my AI-ops course",
+      "Audit every number in my outline and flag anything without a canonical source",
+      "Drill: BCS tuition rises from 32,000 to 34,500 MYR/yr — walk the canonical change log and sync affected scripts",
+      "This month 260 learners: 148 captured, 61 handoff, 37 open-but-no-question — run a tri-state review with next-week actions"
+    ]
+  }
+}
