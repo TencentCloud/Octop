@@ -49,6 +49,24 @@ Per-agent secrets belong in `{workspace}/.env` or, for new agents,
 `{workspace}/.octop/.env` (also writable via the `write_env_file` tool).
 That file is excluded from published-expert snapshots.
 
+### Sandbox security boundary: filesystem virtualisation does not isolate the network
+
+`virtual_mode` (and the path jail in `agent-backend-file-io.md`) confines
+**file access** only. Agents on the `local_shell` backend reach the host
+network directly: `curl http://127.0.0.1:<port>` inside an agent reaches
+host-local services — databases, admin panels, other agents' APIs, cloud
+metadata endpoints — with whatever access those services grant. The
+Linux `bwrap` directory jail shares the host network namespace as well.
+
+Treat the agent sandbox as a convenience boundary, not a security boundary:
+
+- Prompts that carry untrusted content (web pages, IM messages, uploaded
+  files) can direct an agent to call host-local endpoints. Review what
+  listens on the host before pointing agents at untrusted input.
+- Prefer the Docker sandbox when agents process untrusted content at scale;
+  containers get an isolated network namespace.
+- Per-agent network policy (allowlist / deny-by-default) is on the roadmap.
+
 The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
