@@ -159,10 +159,9 @@ export function channelHeadNeedsPlatformAsset(
   if (client.stable) candidates.push(client.stable);
   if (!stableOnly && client.beta) candidates.push(client.beta);
   const heads = candidates.filter((release) => parseVersion(release.tag));
-  if (!heads.length) return false;
   heads.sort((a, b) => compareVersions(b.tag, a.tag));
   const head = heads[0];
-  if (!isNewer(head.tag, currentVersion)) return false;
+  if (!head || !isNewer(head.tag, currentVersion)) return false;
   const asset = platform ? head.assets[platform] : undefined;
   return !asset || !isValidAssetUrl(asset.url);
 }
