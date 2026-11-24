@@ -57,6 +57,7 @@ import { useAgent } from "../../../context/AgentContext";
 import {
   isTeamAgent,
   isTeamHostSpeaker as isTeamHostSpeakerId,
+  resolveSpeakerFace,
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { accountDisplayName } from "../utils/accountDisplayName";
@@ -634,14 +635,23 @@ function MessageBubble({
   );
   const expert = useMemo(
     () =>
-      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+      resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
       (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
     [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );
+  const shareFace = message.speakerFace;
+  const faceName = expert?.name || shareFace?.name || undefined;
+  const faceIconUrl = expert?.icon_url || shareFace?.iconUrl || undefined;
+  const faceIconName = expert?.icon_name || shareFace?.iconName || undefined;
+  const faceColor = expert?.color || shareFace?.color || undefined;
   const avatarTooltip = isTeamHostSpeaker
-    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
-    : expert?.name;
-  const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
+    ? t("chat.teamHostHover", {
+        name: activeAgent?.name || faceName || "",
+      })
+    : faceName;
+  const avatarProfileId = isTeamHostSpeaker
+    ? activeAgent?.agent_id
+    : speakerId || shareFace?.name;
   const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
@@ -846,12 +856,12 @@ function MessageBubble({
         }
       />
     </Tooltip>
-  ) : expert || avatarProfileId ? (
+  ) : expert || shareFace || avatarProfileId ? (
     <ExpertMessageAvatar
-      name={expert?.name || avatarProfileId}
-      color={expert?.color}
-      iconName={expert?.icon_name}
-      iconUrl={expert?.icon_url}
+      name={faceName || avatarProfileId}
+      color={faceColor}
+      iconName={faceIconName}
+      iconUrl={faceIconUrl}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
       managedRunner={managedRunnerId(expert)}
@@ -1145,25 +1155,24 @@ function MessageBubble({
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
+                  {!isUser && !isStreaming && textContent && (
+                    <CopyButton text={textContent} />
+                  )}
                   {!isUser && !isStreaming && readAloud && speechText && (
-                    <>
-                      <CopyButton text={textContent} />
-                      <button
-                        className={cx(
-                          styles.msgActionBtn,
-                          speakingId === message.id &&
-                            styles.msgActionBtnActive,
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          speak(message.id, textContent);
-                        }}
-                        title={t("voice.readAloud", "朗读")}
-                        type="button"
-                      >
-                        <Volume2 size={13} />
-                      </button>
-                    </>
+                    <button
+                      className={cx(
+                        styles.msgActionBtn,
+                        speakingId === message.id && styles.msgActionBtnActive,
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speak(message.id, textContent);
+                      }}
+                      title={t("voice.readAloud", "朗读")}
+                      type="button"
+                    >
+                      <Volume2 size={13} />
+                    </button>
                   )}
                   {!isUser && !isStreaming && onRegenerate && (
                     <button

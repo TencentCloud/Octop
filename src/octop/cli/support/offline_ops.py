@@ -318,6 +318,7 @@ def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
     from octop.infra.agents.memory.thread_cleanup import (
         agent_config_from_row,
         delete_agent_memory_and_checkpoints,
+        runtime_memory_namespace_for,
     )
     from octop.infra.agents.workspace.dir import workspace_dir_from_config_json
 
@@ -336,6 +337,10 @@ def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
             octop_config=svc.config,
             workspace_dir=workspace_dir,
             paths=svc.paths,
+            namespace=runtime_memory_namespace_for(
+                agent_id,
+                svc.agent_repo.list_all(include_disabled=True),
+            ),
         )
         try:
             from octop.infra.agents.workspace.dir import remove_agent_host_dirs

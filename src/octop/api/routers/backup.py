@@ -48,7 +48,11 @@ from octop.infra.backup.store import (
     resolve_backup_path,
     write_backup_file,
 )
-from octop.infra.backup.system_archive import create_system_backup, restore_system_backup
+from octop.infra.backup.system_archive import (
+    create_system_backup,
+    prepare_backup_download,
+    restore_system_backup,
+)
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.audit import ACTOR_ADMIN
 from octop.infra.errors import ErrorCode, OctopError
@@ -445,13 +449,16 @@ async def create_backup(
 )
 async def download_backup_file(
     filename: str,
-    _: Any = Depends(require_permission("backup")),
+    background_tasks: BackgroundTasks,
+    user: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> FileResponse:
     """Stream a backup file from ``backups_dir`` without loading it into memory.
 
     When the cloud destination is enabled and the local cache is missing, pull
-    the archive first.
+    the archive first. Archives created before credentials were left out of the
+    snapshot are rewritten (SQLite) or limited to an administrator (PostgreSQL)
+    so a download does not include the session signing key.
     """
     safe = normalize_backup_filename(filename)
     engine = _remote_engine_or_none(server)
@@ -459,8 +466,15 @@ async def download_backup_file(
         path = await engine.ensure_local(safe)
     else:
         path = await asyncio.to_thread(resolve_backup_path, server.paths, safe)
-    return FileResponse(
+    served, ephemeral = await asyncio.to_thread(
+        prepare_backup_download,
         path,
+        allow_embedded_signing_key=bool(user.is_admin),
+    )
+    if ephemeral:
+        background_tasks.add_task(_unlink_quiet, served)
+    return FileResponse(
+        served,
         media_type="application/gzip",
         filename=safe,
         headers={"Content-Disposition": content_disposition(safe)},

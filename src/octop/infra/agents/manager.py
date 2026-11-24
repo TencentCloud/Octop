@@ -41,7 +41,7 @@ from octop.infra.agents.security.hitl_session import (
     hitl_thread_scope,
     thread_id_from_request,
 )
-from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.acp import ACPSettingsStore, runtime_acp_config
 from octop.infra.agents.settings.compaction import (
     COMPACTION_CONFIG_KEY,
     apply_compaction_update,
@@ -97,7 +97,7 @@ from octop.infra.skills.workspace_catalog import (
     list_workspace_skill_summaries,
     repair_workspace_skill_manifests,
 )
-from octop.infra.utils.locale import Locale, resolve_user_locale
+from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, resolve_user_locale
 from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
@@ -160,17 +160,23 @@ _PROVIDER_RELOAD_CONCURRENCY = 6
 # One hung remote backend must not block ``octop run`` from serving HTTP.
 _AGENT_BOOT_START_TIMEOUT = 60.0
 
-# octop-memory builds SQLite table names as ``{namespace}_*``. The namespace
-# must be a valid bare SQL identifier: start with a letter, only [A-Za-z0-9_].
-_MEMORY_NS_PREFIX = "agent_"
-
 _AGENT_STATES_NEEDING_MODEL_RELOAD = frozenset({"failed", "created"})
 
 _HARNESS_AGENT_CONFIG_FIELDS = frozenset(item.name for item in fields(HarnessAgentConfig))
 
 
-def _memory_namespace(agent_id: str) -> str:
-    return f"{_MEMORY_NS_PREFIX}{agent_id}"
+def _reject_shared_memory_namespace(rows: list[Any], agent_id: str) -> None:
+    """Refuse an id whose normalized memory name is already in use."""
+    from octop.infra.agents.memory.thread_cleanup import memory_namespace
+
+    target = memory_namespace(agent_id)
+    for row in rows:
+        other = str(row.agent_id)
+        if other != agent_id and memory_namespace(other) == target:
+            raise OctopError(
+                ErrorCode.AGENT_ID_TAKEN,
+                f"agent id {agent_id!r} collides with an existing agent",
+            )
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -708,6 +714,7 @@ class AgentManager:
                 self._harness_manager.team,
                 load_agent=self.get_row,
                 load_user=self._repos.user_repo.get,
+                roster_visible=self._teams.viewer_may_run_roster_member,
             )
             self._harness_manager.set_security_policy(self._security.harness_policy())
 
@@ -816,6 +823,14 @@ class AgentManager:
     def paths(self) -> PathLayout:
         return self._paths
 
+    def _runtime_memory_namespace(self, agent_id: str) -> str:
+        from octop.infra.agents.memory.thread_cleanup import runtime_memory_namespace_for
+
+        return runtime_memory_namespace_for(
+            agent_id,
+            self._repos.agent_repo.list_all(include_disabled=True),
+        )
+
     @property
     def harness_manager(self) -> HarnessAgentManager | None:
         return self._harness_manager
@@ -853,6 +868,10 @@ class AgentManager:
                         break
                 else:
                     raise RuntimeError("failed to allocate unique agent_id")
+            _reject_shared_memory_namespace(
+                self._repos.agent_repo.list_all(include_disabled=True),
+                agent_id,
+            )
             runtime_config = dict(spec.runtime_config)
             compaction_set = COMPACTION_CONFIG_KEY in runtime_config
             compaction_value = runtime_config.pop(COMPACTION_CONFIG_KEY, None)
@@ -866,6 +885,7 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_default_backend_type,
                 apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
@@ -888,6 +908,8 @@ class AgentManager:
                 if not isinstance(raw_workspace, str) or not raw_workspace.strip():
                     config["workspace_dir"] = managed_default_workspace(agent_id)
                 require_managed_fields(config)
+            elif spec.user_id is not None:
+                apply_default_backend_type(self._repos.user_policy_repo, spec.user_id, config)
             if spec.user_id is not None:
                 if kind != "team":
                     assert_agent_quota_available(
@@ -934,11 +956,6 @@ class AgentManager:
                 runner = config.get("managed_runner")
                 if isinstance(runner, str) and runner.strip():
                     config["system_files_path"] = managed_project_root(runner)
-            if spec.is_shared and spec.kind == "team":
-                raise OctopError(
-                    ErrorCode.TEAM_NOT_SHAREABLE,
-                    "teams cannot be shared",
-                )
             profile = extract_profile_from_config(config)
             config = strip_profile_config(config)
             package_ids_json = (
@@ -1083,6 +1100,7 @@ class AgentManager:
                     octop_config=self._config,
                     workspace_dir=workspace_dir,
                     paths=self._paths,
+                    namespace=self._runtime_memory_namespace(agent_id),
                 )
                 from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
 
@@ -1090,7 +1108,12 @@ class AgentManager:
                     remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
                 )
             elif await asyncio.to_thread(workspace_dir.exists):
-                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+                managed = {
+                    self._paths.agent_workspace(agent_id).resolve(),
+                    (self._paths.root / "workspaces" / agent_id).resolve(),
+                }
+                if workspace_dir.resolve() in managed:
+                    await asyncio.to_thread(shutil.rmtree, workspace_dir)
         except OSError:
             logger.exception("abort team create: rmtree failed for %s", agent_id)
         except Exception:
@@ -1248,10 +1271,6 @@ class AgentManager:
         existing = self._repos.agent_repo.get(agent_id)
         if existing is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        from octop.infra.agents.teams import is_team_agent
-
-        if shared and is_team_agent(existing):
-            raise OctopError(ErrorCode.TEAM_NOT_SHAREABLE, "teams cannot be shared")
         self._repos.agent_repo.set_shared(agent_id, shared)
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
@@ -1308,6 +1327,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace_dir,
             paths=self._paths,
+            namespace=self._runtime_memory_namespace(agent_id),
         )
         try:
             from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
@@ -4388,8 +4408,6 @@ class AgentManager:
         off: the connected runner executes the turn. Memory follows this
         expert's stored config and stays off unless that config enables it.
         """
-        from octop_harness.acp.models import ACPConfig  # noqa: PLC0415
-
         from octop.infra.agents.managed import (  # noqa: PLC0415
             managed_skill_dir,
             managed_subagent_dir,
@@ -4402,7 +4420,7 @@ class AgentManager:
         if acp_user_id is None:
             acp_user_id = self._connector_user_override.get(row.agent_id)
         runners = self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
-        acp_config = ACPConfig.from_dict({"runners": runners})
+        acp_config = runtime_acp_config(runners)
         runner = cfg.get("managed_runner")
         runner_id = runner.strip() if isinstance(runner, str) else ""
         memory_settings = _memory_extract_settings(cfg)
@@ -4418,7 +4436,7 @@ class AgentManager:
                 if key in _HARNESS_AGENT_CONFIG_FIELDS
             }
         built = HarnessAgentConfig(
-            name=_memory_namespace(row.agent_id),
+            name=self._runtime_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
             language=resolve_user_locale(
@@ -4603,6 +4621,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.host_dispatch_guard import HostDispatchGuardMiddleware
         from octop.infra.agents.middleware.mcp_output_schema import (
             McpOutputSchemaMiddleware,
             harness_handles_mcp_tool_errors,
@@ -4610,6 +4629,7 @@ class AgentManager:
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.team_dispatch import TeamDispatchBriefingMiddleware
+        from octop.infra.agents.middleware.team_file_target import TeamFileTargetMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
@@ -4632,6 +4652,7 @@ class AgentManager:
             ),
             ReasoningRequestMiddleware(),
             TeamDispatchBriefingMiddleware(),
+            TeamFileTargetMiddleware(agent_id=row.agent_id, lookup=self.get_agent),
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
@@ -4644,6 +4665,14 @@ class AgentManager:
             ),
             OctopUiOffloadMiddleware(),
         ]
+        if team_host:
+            uid = getattr(row, "user_id", None)
+            locale = (
+                resolve_user_locale(user_repo=self._repos.user_repo, user_id=uid)
+                if isinstance(uid, int) and uid > 0
+                else DEFAULT_LOCALE
+            )
+            agent_middleware.append(HostDispatchGuardMiddleware(locale=locale))
 
         merged_tools: list[Any] = []
         if cron_tools:
@@ -4667,7 +4696,7 @@ class AgentManager:
             runners_dict = (
                 self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
             )
-            acp_config = ACPConfig.from_dict({"runners": runners_dict})
+            acp_config = runtime_acp_config(runners_dict)
 
         system_prompt = row.system_prompt
         memory: tuple[str, ...] | None = None
@@ -4765,7 +4794,7 @@ class AgentManager:
             harness_fields["decision"] = self._decision.harness_config()
 
         harness_cfg = HarnessAgentConfig(
-            name=_memory_namespace(row.agent_id),
+            name=self._runtime_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
             # Owner's stored locale only. Per-message language would change
@@ -4942,6 +4971,8 @@ class AgentManager:
             updates["subagents_auto_load"] = False
         if "bootstrap_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["bootstrap_enabled"] = False
+        if "todos_enabled" in _HARNESS_AGENT_CONFIG_FIELDS:
+            updates["todos_enabled"] = False
         if "system_prompt" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["system_prompt"] = host_system_prompt(row, self._repos.user_repo)
         return replace(cfg, **updates) if updates else cfg

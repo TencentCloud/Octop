@@ -33,6 +33,18 @@ _MEDIA_TO_RELPATH: dict[str, str] = {
 }
 
 
+# Upload-and-cleanup must not interleave per workspace: two concurrent uploads
+# with different extensions would otherwise each delete the other's file and
+# leave no avatar. Keyed by event loop too, since an asyncio.Lock is loop-bound.
+_AVATAR_LOCKS: dict[tuple[int, object], asyncio.Lock] = {}
+
+
+def _avatar_lock(workspace: object) -> asyncio.Lock:
+    root = getattr(workspace, "workspace_dir", None)
+    key = (id(asyncio.get_running_loop()), str(root) if root else id(workspace))
+    return _AVATAR_LOCKS.setdefault(key, asyncio.Lock())
+
+
 class WorkspaceAvatarIO(Protocol):
     async def aupload_bytes(self, path: str, data: bytes) -> None: ...
 
@@ -121,12 +133,13 @@ async def _download_avatar_bytes(workspace: WorkspaceAvatarIO, relpath: str) -> 
 async def write_workspace_avatar(workspace: WorkspaceAvatarIO, data: bytes) -> str:
     media_type = sniff_avatar_media_type(data)
     dest = avatar_relpath_for_media(media_type)
-    await delete_workspace_avatar(workspace)
-    amkdir = getattr(workspace, "amkdir", None)
-    if callable(amkdir):
-        with suppress(OSError, FileExistsError, BackendOperationNotSupportedError):
-            await amkdir(AVATAR_DIR)
-    await workspace.aupload_bytes(dest, data)
+    async with _avatar_lock(workspace):
+        amkdir = getattr(workspace, "amkdir", None)
+        if callable(amkdir):
+            with suppress(OSError, FileExistsError, BackendOperationNotSupportedError):
+                await amkdir(AVATAR_DIR)
+        await workspace.aupload_bytes(dest, data)
+        await _delete_avatar_files(workspace, keep=dest)
     return dest
 
 
@@ -140,8 +153,15 @@ async def read_workspace_avatar(workspace: WorkspaceAvatarIO) -> tuple[bytes, st
     return None
 
 
-async def delete_workspace_avatar(workspace: WorkspaceAvatarIO) -> None:
+async def delete_workspace_avatar(workspace: WorkspaceAvatarIO, *, keep: str | None = None) -> None:
+    async with _avatar_lock(workspace):
+        await _delete_avatar_files(workspace, keep=keep)
+
+
+async def _delete_avatar_files(workspace: WorkspaceAvatarIO, *, keep: str | None) -> None:
     for relpath in _ALL_AVATAR_RELPATHS:
+        if relpath == keep:
+            continue
         try:
             await workspace.adelete(relpath)
         except (OSError, FileNotFoundError):

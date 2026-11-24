@@ -51,10 +51,38 @@ export function compareVersions(a: string, b: string): number {
   if (pa.pre === null && pb.pre === null) return 0;
   if (pa.pre === null) return 1;
   if (pb.pre === null) return -1;
-  // Two pre-releases of the same triple: fall back to a simple case-insensitive
-  // ordinal compare so ``1.0.3b2 > 1.0.3b1`` and both are "ordered".
-  const la = pa.pre.toLowerCase();
-  const lb = pb.pre.toLowerCase();
+  return comparePre(pa.pre, pb.pre);
+}
+
+/** Pre-release stages in release order; PEP 440 and semver spellings mean the same stage. */
+const PRE_STAGES: Record<string, number> = {
+  dev: 0,
+  a: 1,
+  alpha: 1,
+  b: 2,
+  beta: 2,
+  c: 3,
+  rc: 3,
+  pre: 3,
+};
+
+/**
+ * Order two pre-release tags: by stage, then by number, so ``b8`` (Python
+ * ``1.0.3b8``) equals ``beta.8`` (installer ``1.0.3-beta.8``) and ``beta.10``
+ * is newer than ``beta.9``. Unknown shapes fall back to a case-insensitive
+ * ordinal compare so the order stays total.
+ */
+function comparePre(a: string, b: string): number {
+  const pa = /^([a-z]+)[-._]?(\d*)$/i.exec(a);
+  const pb = /^([a-z]+)[-._]?(\d*)$/i.exec(b);
+  const sa = pa ? PRE_STAGES[(pa[1] ?? "").toLowerCase()] : undefined;
+  const sb = pb ? PRE_STAGES[(pb[1] ?? "").toLowerCase()] : undefined;
+  if (pa && pb && sa !== undefined && sb !== undefined) {
+    if (sa !== sb) return sa - sb;
+    return Number(pa[2] || 0) - Number(pb[2] || 0);
+  }
+  const la = a.toLowerCase();
+  const lb = b.toLowerCase();
   return la < lb ? -1 : la > lb ? 1 : 0;
 }
 

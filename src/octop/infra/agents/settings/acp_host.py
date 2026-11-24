@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from octop.infra.agents.settings.acp import host_runner_argv
+
 logger = logging.getLogger(__name__)
 
 _INSTALL_TIMEOUT_SEC = 180
@@ -436,6 +438,7 @@ async def _handshake(command: str, args: list[str], env: dict[str, str]) -> tupl
         if Path(command).name.lower().startswith("npx")
         else _PROBE_TIMEOUT_SEC
     )
+    command, args = host_runner_argv(command, args, env)
     try:
         async with asyncio.timeout(timeout):
             async with spawn_agent_process(
@@ -472,6 +475,7 @@ async def _ask(command: str, args: list[str], env: dict[str, str]) -> tuple[bool
     from acp.schema import ClientCapabilities, Implementation, TextContentBlock
 
     client = _ProbeClient()
+    command, args = host_runner_argv(command, args, env)
     try:
         async with asyncio.timeout(_ASK_TIMEOUT_SEC):
             async with spawn_agent_process(

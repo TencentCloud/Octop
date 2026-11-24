@@ -7,19 +7,23 @@ vi.mock("react-i18next", () => ({
   }),
 }));
 
-import MoreConfigCollapse from "./MoreConfigCollapse";
+import ExpertDrawerCollapsible from "./ExpertDrawerCollapsible";
 
-describe("MoreConfigCollapse", () => {
-  it("keeps extra settings collapsed until opened", () => {
+describe("ExpertDrawerCollapsible", () => {
+  it("keeps children collapsed (but mounted) until opened", () => {
     render(
-      <MoreConfigCollapse>
+      <ExpertDrawerCollapsible title="experts.advancedOptions">
         <span>experts.defaultModeLabel</span>
-      </MoreConfigCollapse>,
+      </ExpertDrawerCollapsible>,
     );
 
-    const toggle = screen.getByRole("button", { name: "experts.moreConfig" });
+    const toggle = screen.getByRole("button", {
+      name: /experts\.advancedOptions/,
+    });
     const content = screen.getByText("experts.defaultModeLabel");
     expect(toggle).toHaveAttribute("aria-expanded", "false");
+    // Children stay mounted while hidden so a save without expanding still
+    // submits their form values.
     expect(content.parentElement).toHaveStyle({ display: "none" });
     expect(toggle.querySelector("svg")).not.toBeNull();
 

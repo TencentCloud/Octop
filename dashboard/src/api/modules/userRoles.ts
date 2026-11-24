@@ -19,6 +19,7 @@ export interface UserRole {
   token_quota: number | null;
   max_agents: number | null;
   allowed_backend_types: string[] | null;
+  default_backend_type: string | null;
   created_at: number;
   updated_at: number;
   avatar_url?: string | null;
@@ -130,6 +131,7 @@ export function userRoleDrift(
     token_quota?: number | null;
     max_agents?: number | null;
     allowed_backend_types?: string[] | null;
+    default_backend_type?: string | null;
   },
   roles: UserRole[],
 ): UserRoleDrift | null {
@@ -163,5 +165,8 @@ export function userRoleDrift(
   if (types(row.allowed_backend_types) !== types(role.allowed_backend_types)) {
     return "changed";
   }
+  const rowDefault = row.default_backend_type?.trim() || null;
+  const roleDefault = role.default_backend_type?.trim() || null;
+  if (rowDefault !== roleDefault) return "changed";
   return null;
 }

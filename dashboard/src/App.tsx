@@ -112,7 +112,10 @@ function ThemedApp() {
     },
     components: isDark
       ? {
-          Modal: { headerBg: "#1a1c28", contentBg: "#1a1c28" },
+          Modal: {
+            headerBg: "var(--fn-bg-modal)",
+            contentBg: "var(--fn-bg-modal)",
+          },
           Input: { colorBgBase: "#0f1117" },
           InputNumber: { colorBgBase: "#0f1117" },
           Select: { colorBgBase: "#0f1117", selectorBg: "#0f1117" },
