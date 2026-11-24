@@ -93,7 +93,9 @@ def _stored_provider_api_key(server: Any, provider_id: int) -> str:
     return str(row.api_key)
 
 
-def _decision_api_key(server: Any, *, typed: str | None, source_provider_id: int | None) -> str | None:
+def _decision_api_key(
+    server: Any, *, typed: str | None, source_provider_id: int | None
+) -> str | None:
     """Typed key wins. A blank key plus ``source_provider_id`` uses the stored provider key.
 
     An explicit blank string with no source clears the decision secret. Omitted
