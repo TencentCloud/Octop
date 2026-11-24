@@ -758,6 +758,29 @@
   min-width: 0;
 }
 
+.listToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.customDrawerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.customDrawerFooterActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
 /* ── Custom MCP tab ────────────────────────────────────────────── */
 
 .customMcpTab {
@@ -833,6 +856,34 @@
 .customMcpJsonError {
   font-size: 13px;
   color: var(--fn-color-danger, #cf1322);
+}
+
+.customJsonFold {
+  margin-top: 4px;
+}
+
+.customJsonToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fn-text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
+.customJsonHint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
 }
 
 .customMcpAddRow {
@@ -938,6 +989,45 @@
     box-shadow: 0 6px 16px
       color-mix(in srgb, var(--mcp-accent) 16%, transparent);
   }
+}
+
+.customMcpServerCardEmbedded {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+  box-shadow: none;
+
+  &:hover {
+    border-color: transparent;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* Match the builtin connector drawer: fields sit on the drawer padding, not inside a card inset. */
+  .customMcpServerTop,
+  .customMcpCardBody,
+  .customMcpCardFooter {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+.customMcpAvatarMark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.customMcpAvatarFallback {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--fn-bg-secondary);
+  color: var(--fn-text-secondary);
 }
 
 .customMcpServerCardOpen {

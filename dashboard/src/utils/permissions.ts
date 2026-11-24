@@ -96,7 +96,6 @@ export const PERSONALIZATION_TAB_PERMISSIONS = {
 export const CONNECTOR_TAB_PERMISSIONS = {
   enabled: "connector_enabled",
   builtin: "connector_builtin",
-  custom: "connector_custom",
 } as const;
 
 export const PLUGIN_TAB_PERMISSIONS = {

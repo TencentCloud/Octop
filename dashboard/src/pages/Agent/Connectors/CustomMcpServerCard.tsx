@@ -13,6 +13,15 @@ import { useTranslation } from "react-i18next";
 import cx from "classnames";
 
 import type { CustomMcpTransport } from "../../../api/modules/connectors";
+import {
+  ResourceAvatar,
+  ResourceAvatarPicker,
+  CONNECTOR_AVATAR_PRESETS,
+} from "../../../components/AvatarPicker";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
 import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import {
   accentForServerName,
@@ -36,7 +45,14 @@ interface CustomMcpServerCardProps {
   onProbe: () => void;
   onAuthorize?: () => void;
   onDefaultOpenChange?: (defaultOpen: boolean) => void;
-  onSharedChange?: (shared: boolean) => void;
+  /** Drawer form: always expanded, no collapse or delete. */
+  embedded?: boolean;
+  /** Saved servers keep their technical id. */
+  nameLocked?: boolean;
+  avatarUrl?: string | null;
+  onPickAvatar?: (file: File) => void | Promise<void>;
+  onSelectAvatarPreset?: (presetId: string | null) => void | Promise<void>;
+  onRemoveAvatar?: () => void | Promise<void>;
 }
 
 export function CustomMcpServerCard({
@@ -53,7 +69,12 @@ export function CustomMcpServerCard({
   onProbe,
   onAuthorize,
   onDefaultOpenChange,
-  onSharedChange,
+  embedded = false,
+  nameLocked = false,
+  avatarUrl,
+  onPickAvatar,
+  onSelectAvatarPreset,
+  onRemoveAvatar,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
   const { modal } = App.useApp();
@@ -109,6 +130,7 @@ export function CustomMcpServerCard({
     <div
       className={cx(
         styles.customMcpServerCard,
+        embedded && styles.customMcpServerCardEmbedded,
         !card.collapsed && styles.customMcpServerCardOpen,
         !(card.enabled && !authPending) && styles.customMcpServerCardDisabled,
       )}
@@ -121,7 +143,16 @@ export function CustomMcpServerCard({
       <div className={styles.customMcpServerTop}>
         <div className={styles.customMcpServerIdentity}>
           <span className={styles.customMcpServerIcon}>
-            <Cable size={22} aria-hidden />
+            {card.avatarIcon || avatarUrl ? (
+              <ResourceAvatar
+                url={avatarUrl}
+                icon={card.avatarIcon || null}
+                presets={CONNECTOR_AVATAR_PRESETS}
+                className={styles.customMcpAvatarMark}
+              />
+            ) : (
+              <Cable size={22} aria-hidden />
+            )}
           </span>
           <div className={styles.customMcpServerMeta}>
             <span className={styles.customMcpServerNameRow}>
@@ -161,25 +192,31 @@ export function CustomMcpServerCard({
               size="small"
             />
           </div>
-          <Button
-            type="text"
-            size="small"
-            icon={
-              card.collapsed ? (
-                <ChevronDown size={16} />
-              ) : (
-                <ChevronUp size={16} />
-              )
-            }
-            onClick={() => onUpdate(card.key, { collapsed: !card.collapsed })}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<Trash2 size={16} />}
-            onClick={handleRemove}
-          />
+          {embedded ? null : (
+            <>
+              <Button
+                type="text"
+                size="small"
+                icon={
+                  card.collapsed ? (
+                    <ChevronDown size={16} />
+                  ) : (
+                    <ChevronUp size={16} />
+                  )
+                }
+                onClick={() =>
+                  onUpdate(card.key, { collapsed: !card.collapsed })
+                }
+              />
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<Trash2 size={16} />}
+                onClick={handleRemove}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -198,8 +235,36 @@ export function CustomMcpServerCard({
         </div>
       ) : null}
 
-      {!card.collapsed ? (
+      {!card.collapsed || embedded ? (
         <div className={styles.customMcpCardBody}>
+          {embedded && onPickAvatar && onSelectAvatarPreset ? (
+            <div className={styles.customMcpField}>
+              <label>{t("connectors.customMcp.avatar", "头像")}</label>
+              <ResourceAvatarPicker
+                imageUrl={avatarUrl}
+                presetId={card.avatarIcon || null}
+                presets={CONNECTOR_AVATAR_PRESETS}
+                previewLarge
+                renderPreview={({ displayUrl, presetId, hasPhoto }) =>
+                  hasPhoto || presetId ? (
+                    <ResourceAvatar
+                      url={displayUrl}
+                      icon={presetId}
+                      presets={CONNECTOR_AVATAR_PRESETS}
+                      large
+                    />
+                  ) : (
+                    <span className={styles.customMcpAvatarFallback}>
+                      <Cable size={28} aria-hidden />
+                    </span>
+                  )
+                }
+                onPick={onPickAvatar}
+                onSelectPreset={onSelectAvatarPreset}
+                onRemove={avatarUrl ? onRemoveAvatar : undefined}
+              />
+            </div>
+          ) : null}
           <div className={styles.customMcpField}>
             <label>{t("connectors.customMcp.displayName", "显示名称")}</label>
             <Input
@@ -227,14 +292,20 @@ export function CustomMcpServerCard({
             </label>
             <Input
               value={card.name}
+              disabled={nameLocked}
               onChange={(e) => onUpdate(card.key, { name: e.target.value })}
               placeholder={isHttp ? "http-server" : "stdio-server"}
             />
             <div className={styles.customMcpFieldHint}>
-              {t(
-                "connectors.customMcp.serverIdHint",
-                "技术标识，仅支持字母、数字、下划线与连字符。",
-              )}
+              {nameLocked
+                ? t(
+                    "connectors.customMcp.serverIdLocked",
+                    "已保存的服务器 ID 不能修改。",
+                  )
+                : t(
+                    "connectors.customMcp.serverIdHint",
+                    "技术标识，仅支持字母、数字、下划线与连字符。",
+                  )}
             </div>
           </div>
           <div className={styles.customMcpField}>
@@ -442,27 +513,30 @@ export function CustomMcpServerCard({
             </>
           )}
 
-          <div className={styles.customMcpField}>
-            <label>{t("connectors.shared", "是否共享")}</label>
-            <div className={styles.customMcpDefaultOpenRow}>
-              <Switch
-                checked={card.shared}
-                onChange={(checked) => {
-                  if (onSharedChange) {
-                    onSharedChange(checked);
-                    return;
-                  }
-                  onUpdate(card.key, { shared: checked });
-                }}
+          <ResourceVisibilityGate allowOwner visibility={card.visibility}>
+            <div className={styles.formOptionRowVisibility}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("resourceVisibility.label", "谁可以使用")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {t("connectors.visibilityHint")}
+                </span>
+              </div>
+              <ResourceVisibilityFields
+                allowOwner
+                visibility={card.visibility}
+                groupIds={card.groupIds}
+                onChange={(next) =>
+                  onUpdate(card.key, {
+                    visibility: next.visibility,
+                    groupIds: next.visibility === "groups" ? next.groupIds : [],
+                    shared: next.visibility !== "owner",
+                  })
+                }
               />
-              <span className={styles.customMcpFieldHint}>
-                {t(
-                  "connectors.sharedHint",
-                  "共享后其他用户可以选择使用，但不能查看或修改配置。",
-                )}
-              </span>
             </div>
-          </div>
+          </ResourceVisibilityGate>
 
           <div className={styles.customMcpField}>
             <label>{t("connectors.defaultEnabled", "是否默认开启")}</label>
@@ -572,7 +646,7 @@ export function CustomMcpServerCard({
             />
           ) : null}
 
-          {isHttp ? (
+          {isHttp && !embedded ? (
             <div className={styles.customMcpCardActions}>
               <Button
                 icon={<Activity size={14} />}

@@ -347,6 +347,8 @@ export function useChatComposerResources(
                     }`
                   : i.display_name,
               kind: i.kind,
+              avatar_icon: i.avatar_icon,
+              avatar_url: i.avatar_url,
               default_open: remoteBridge
                 ? i.default_open === true
                 : i.default_open === true && i.owner_user_id === currentUserId,
