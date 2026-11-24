@@ -12,6 +12,7 @@ from octop.infra.auth.agent_access import agent_request_allowed
 from octop.infra.auth.tokens import (
     PURPOSE_ACCESS,
     PURPOSE_AGENT,
+    signed_token_purpose,
     token_mfa_version,
     token_password_version,
     token_purpose,
@@ -84,6 +85,26 @@ def is_jwt_exempt_path(path: str) -> bool:
         return True
     ext = extension_public_paths()
     return path in ext.exact or any(path.startswith(p) for p in ext.prefixes)
+
+
+def enforce_agent_token_boundary(request: Request, server: OctopServer) -> None:
+    """Refuse an ``agent`` token outside its boundary, on every route.
+
+    Runs before the JWT exemptions: sign-in and other public routes ignore the
+    bearer token, so they would otherwise accept a request the agent boundary
+    forbids.
+    """
+    raw = extract_raw_token(
+        authorization=request.headers.get("authorization"),
+        access_token=request.query_params.get("access_token"),
+    )
+    if not raw or server.services is None:
+        return
+    secret = server.services.secret_repo.get("jwt")
+    if secret is None or signed_token_purpose(secret, raw) != PURPOSE_AGENT:
+        return
+    if not agent_request_allowed(request.method, request.url.path):
+        raise OctopError(ErrorCode.FORBIDDEN, "not available to agents")
 
 
 def is_jwt_exempt_request(request: Request) -> bool:

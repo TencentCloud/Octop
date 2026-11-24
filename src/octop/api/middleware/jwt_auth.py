@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from octop.api.deps import (
     ACCESS_TOKEN_RESPONSE_HEADER,
     authenticate_request,
+    enforce_agent_token_boundary,
     extract_raw_token,
     is_jwt_exempt_request,
     maybe_sliding_renew_token,
@@ -41,6 +42,11 @@ def install(app: Any, server: Any) -> None:
         call_next: Callable[[Request], Awaitable[Any]],
     ) -> Any:
         path = request.url.path
+        try:
+            enforce_agent_token_boundary(request, server)
+        except OctopError as exc:
+            locale = resolve_request_locale(request)
+            return JSONResponse(status_code=exc.status, content=exc.to_envelope(locale=locale))
         if not path.startswith("/api/") or is_jwt_exempt_request(request):
             return await call_next(request)
 

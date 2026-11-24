@@ -90,6 +90,18 @@ def decode_token(secret: bytes, token: str) -> dict[str, Any]:
         raise InvalidToken(str(exc)) from exc
 
 
+def signed_token_purpose(secret: bytes, token: str) -> TokenPurpose | None:
+    """Purpose of a token whose signature is valid, even if it has expired.
+
+    Returns ``None`` for tokens that do not verify or carry no valid purpose.
+    """
+    try:
+        payload = jwt.decode(token, secret, algorithms=["HS256"], options={"verify_exp": False})
+        return token_purpose(payload)
+    except (jwt.InvalidTokenError, InvalidToken):
+        return None
+
+
 def token_purpose(payload: dict[str, Any]) -> TokenPurpose | None:
     """Return the purpose claim, or None when absent (legacy tokens)."""
     raw = payload.get("purpose")

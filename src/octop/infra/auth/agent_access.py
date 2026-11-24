@@ -10,6 +10,7 @@ the user is an admin.
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import unquote
 
 from octop.infra.auth.tokens import AGENT_TOKEN_TTL_SECONDS, PURPOSE_AGENT, sign_token
 
@@ -26,23 +27,58 @@ _DENIED_PREFIXES = (
 # (``/api/users/{id}/reset-password``, ``/api/users/{id}/mfa``, …).
 _DENIED_SEGMENTS = frozenset({"password", "reset-password", "mfa", "passkey", "passkeys"})
 
+# General settings endpoints that can also change TLS or sign-in security
+# (``config.json`` form and raw text, captcha, WebAuthn). Agents may read them.
+_DENIED_WRITE_PREFIXES = (
+    "/api/admin/app-config",
+    "/api/settings/captcha",
+    "/api/settings/webauthn",
+)
+
 READ_METHODS = frozenset({"GET", "HEAD"})
 # Reads inside a denied prefix that an agent still needs (who am I talking to).
 _ALLOWED_READS = frozenset({"/api/auth/me"})
 
 
+def routed_path(path: str) -> str | None:
+    """The path the router will match for a request target, or ``None`` if it is unsafe.
+
+    Drops the query and fragment and percent-decodes the way the ASGI server
+    does, so ``/api/%61uth/login`` is checked as ``/api/auth/login``. Dot
+    segments, empty segments, backslashes, and control characters are refused
+    instead of guessing how they would be resolved.
+    """
+    decoded = unquote(path.split("?", 1)[0].split("#", 1)[0])
+    if "\\" in decoded or "//" in decoded:
+        return None
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in decoded):
+        return None
+    if any(seg in (".", "..") for seg in decoded.split("/")):
+        return None
+    return decoded
+
+
 def agent_request_allowed(method: str, path: str) -> bool:
-    """Return whether an ``agent`` token may call ``method path``."""
+    """Return whether an ``agent`` token may call ``method path``.
+
+    ``path`` is the routed (decoded) path; pass a raw request target through
+    :func:`routed_path` first.
+    """
     if not path.startswith("/api/") or ".." in path:
         return False
-    if method.upper() in READ_METHODS and path in _ALLOWED_READS:
+    verb = method.upper()
+    if verb in READ_METHODS and path in _ALLOWED_READS:
         return True
     if any(path == p.rstrip("/") or path.startswith(p) for p in _DENIED_PREFIXES):
+        return False
+    if verb not in READ_METHODS and any(
+        path == p or path.startswith(p + "/") for p in _DENIED_WRITE_PREFIXES
+    ):
         return False
     segments = {seg.lower() for seg in path.split("/") if seg}
     if segments & _DENIED_SEGMENTS:
         return False
-    return method.upper() in READ_METHODS | {"POST", "PUT", "PATCH", "DELETE"}
+    return verb in READ_METHODS | {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def mint_agent_token(services: Any, *, user_id: int, agent_id: str) -> str:

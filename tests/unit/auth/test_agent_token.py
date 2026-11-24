@@ -17,7 +17,7 @@ from tests.support.auth import bootstrap_admin
 from octop.api.app import build_app
 from octop.api.deps import resolve_user_from_token
 from octop.infra.agents.octop_api import build_octop_api_tool, is_write_call
-from octop.infra.auth.agent_access import agent_request_allowed, mint_agent_token
+from octop.infra.auth.agent_access import agent_request_allowed, mint_agent_token, routed_path
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 
@@ -65,10 +65,31 @@ async def srv(tmp_path: Path):
         ("GET", "/api/../api/auth/login", False),
         ("GET", "/health", False),
         ("OPTIONS", "/api/agents", False),
+        ("GET", "/api/admin/app-config", True),
+        ("PUT", "/api/admin/app-config", False),
+        ("PUT", "/api/admin/app-config/raw", False),
+        ("PUT", "/api/settings/captcha", False),
+        ("PUT", "/api/settings/webauthn", False),
     ],
 )
 def test_agent_request_boundary(method: str, path: str, allowed: bool) -> None:
     assert agent_request_allowed(method, path) is allowed
+
+
+@pytest.mark.parametrize(
+    ("raw", "routed"),
+    [
+        ("/api/agents?x=1", "/api/agents"),
+        ("/api/%61uth/login", "/api/auth/login"),
+        ("/api/admin/app-config%2Fraw", "/api/admin/app-config/raw"),
+        ("/api/agents/%2e%2e/auth/login", None),
+        ("/api//auth/login", None),
+        ("/api/auth\\login", None),
+        ("/api/agents%00", None),
+    ],
+)
+def test_routed_path(raw: str, routed: str | None) -> None:
+    assert routed_path(raw) == routed
 
 
 def _admin_token(server: OctopServer) -> tuple[int, str]:
@@ -126,3 +147,63 @@ def test_only_writes_need_approval() -> None:
     assert not is_write_call(req("get"))
     assert is_write_call(req("POST"))
     assert is_write_call(req("DELETE"))
+
+
+@pytest.mark.asyncio
+async def test_encoded_login_path_is_refused_by_tool_and_server(srv) -> None:
+    from tests.support.auth import TEST_PASSWORD
+
+    user_id, token = _admin_token(srv)
+    login = {"username": "admin", "password": TEST_PASSWORD}
+    tool = build_octop_api_tool(srv.services.repos)
+    with _turn(user=user_id, agent_id="main"):
+        out = json.loads(
+            await tool.ainvoke({"method": "POST", "path": "/api/%61uth/login", "body": login})
+        )
+    assert "not available" in out["error"]
+
+    # Even past the tool, the server refuses an agent token on the JWT-exempt
+    # login route; the same request without it still signs in.
+    app = build_app(srv)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        as_agent = await client.post(
+            "/api/%61uth/login", json=login, headers={"Authorization": f"Bearer {token}"}
+        )
+        as_person = await client.post("/api/%61uth/login", json=login)
+    assert as_agent.status_code == 403
+    assert as_person.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_agent_cannot_write_app_config(srv) -> None:
+    user_id, token = _admin_token(srv)
+    tool = build_octop_api_tool(srv.services.repos)
+    with _turn(user=user_id, agent_id="main"):
+        read = json.loads(await tool.ainvoke({"method": "GET", "path": "/api/admin/app-config"}))
+        structured = json.loads(
+            await tool.ainvoke(
+                {"method": "PUT", "path": "/api/admin/app-config", "body": {"config": {}}}
+            )
+        )
+        raw = json.loads(
+            await tool.ainvoke(
+                {"method": "PUT", "path": "/api/admin/app-config/raw", "body": {"text": "{}"}}
+            )
+        )
+    assert read["status"] == 200
+    assert "not available" in structured["error"]
+    assert "not available" in raw["error"]
+
+    app = build_app(srv)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        headers = {"Authorization": f"Bearer {token}"}
+        put_form = await client.put("/api/admin/app-config", json={"config": {}}, headers=headers)
+        put_raw = await client.put(
+            "/api/admin/app-config/raw", json={"text": "{}"}, headers=headers
+        )
+    assert put_form.status_code == 403
+    assert put_raw.status_code == 403

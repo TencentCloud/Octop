@@ -18,7 +18,12 @@ from langchain_core.tools import StructuredTool
 from langgraph.config import get_config
 from pydantic import Field
 
-from octop.infra.auth.agent_access import READ_METHODS, agent_request_allowed, mint_agent_token
+from octop.infra.auth.agent_access import (
+    READ_METHODS,
+    agent_request_allowed,
+    mint_agent_token,
+    routed_path,
+)
 
 TOOL_NAME = "octop_api"
 
@@ -31,7 +36,8 @@ _DESCRIPTION = (
     "permissions. path starts with /api/ and may include a query string, e.g. "
     "GET /api/agents or GET /api/cron/jobs?agent_id=... . "
     "GET /api/openapi.json lists every route (it is large; read it once and keep what you need). "
-    "Sign-in, passwords, MFA, setup, TLS, security settings, and the terminal are not available. "
+    "Sign-in, passwords, MFA, setup, TLS, security settings, and the terminal are not available, "
+    "and config.json, captcha, and passkey settings are read-only. "
     "GET runs at once; POST, PUT, PATCH, and DELETE ask the user to approve first, so say "
     "what the call will change before making it."
 )
@@ -93,7 +99,8 @@ def build_octop_api_tool(repos: Any) -> StructuredTool:
         route = path.strip()
         if verb not in _METHODS:
             return json.dumps({"error": f"method must be one of {', '.join(_METHODS)}"})
-        if not agent_request_allowed(verb, route.split("?", 1)[0]):
+        checked = routed_path(route)
+        if checked is None or not agent_request_allowed(verb, checked):
             return json.dumps({"error": f"{route} is not available to agents"})
         if _app is None:
             return json.dumps({"error": "the Octop API is not running in this process"})
