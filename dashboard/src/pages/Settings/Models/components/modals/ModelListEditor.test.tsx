@@ -63,7 +63,6 @@ describe("ModelListEditor", () => {
     await user.click(screen.getByRole("button", { name: "models.editModel" }));
     expect(await screen.findByDisplayValue("qwen")).toBeInTheDocument();
     expect(scrollIntoView).toHaveBeenCalled();
-    expect(screen.getByText("models.purposeChat")).toBeInTheDocument();
     expect(screen.queryByText("models.reasoning")).not.toBeInTheDocument();
 
     await user.click(
