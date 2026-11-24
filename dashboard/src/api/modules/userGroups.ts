@@ -31,6 +31,8 @@ export interface UserGroup {
   access?: GroupAccessSummary;
   created_at: number;
   updated_at: number;
+  quota_tokens?: number; // 新增：Token 上限（为空或0表示不限制）
+  used_tokens?: number; // 新增：已用 Token
 }
 
 export interface UserGroupWrite {

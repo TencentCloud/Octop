@@ -5,6 +5,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Popconfirm,
   Segmented,
   Select,
@@ -12,6 +13,7 @@ import {
   Spin,
   Switch,
   Typography,
+  Progress,
 } from "antd";
 import {
   LayoutGrid,
@@ -56,6 +58,7 @@ interface GroupFormValues {
   description?: string;
   enabled?: boolean;
   user_ids?: number[];
+  quota_tokens?: number;
 }
 
 const GROUP_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$/;
@@ -384,6 +387,7 @@ export default function GroupsPanel() {
       description: row.description ?? "",
       enabled: row.enabled !== false,
       user_ids: row.member_ids ?? [],
+      quota_tokens: row.quota_tokens || 0,
     });
     setOpen(true);
     try {
@@ -418,6 +422,7 @@ export default function GroupsPanel() {
         name: values.name.trim(),
         description: description ? description.slice(0, 500) : null,
         enabled: values.enabled !== false,
+        quota_tokens: values.quota_tokens || 0,
       };
       const customId = values.user_group_id?.trim() || undefined;
       const saved = editing
@@ -684,6 +689,42 @@ export default function GroupsPanel() {
               ),
             },
             {
+              title: "Token 用量",
+              key: "quota_usage",
+              width: 180,
+              render: (_value: unknown, row: UserGroup) => {
+                if (!row.quota_tokens) {
+                  return <span className={styles.userCellMuted}>不限制</span>;
+                }
+                const used = row.used_tokens || 0;
+                const percent = Math.min(
+                  100,
+                  Math.round((used / row.quota_tokens) * 100),
+                );
+                return (
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                  >
+                    <Progress
+                      percent={percent}
+                      size="small"
+                      status={percent >= 100 ? "exception" : "active"}
+                      showInfo={false}
+                    />
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: percent >= 100 ? "#ff4d4f" : "#888",
+                      }}
+                    >
+                      {used.toLocaleString()} /{" "}
+                      {row.quota_tokens.toLocaleString()}
+                    </span>
+                  </div>
+                );
+              },
+            },
+            {
               title: t("adminUsers.groupEnabled"),
               width: 110,
               render: (_value: unknown, row: UserGroup) => (
@@ -906,6 +947,23 @@ export default function GroupsPanel() {
                   </span>
                 );
               }}
+            />
+          </Form.Item>
+          <Form.Item
+            name="quota_tokens"
+            label="Token 配额上限"
+            tooltip="0 或留空表示不限制。注意：修改上限不会重置已用量。"
+            style={{ marginTop: 16 }}
+          >
+            <InputNumber
+              style={{ width: "100%" }}
+              min={0}
+              step={100000}
+              placeholder="例如：1000000"
+              formatter={(value) =>
+                `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+              }
+              parser={(value) => value!.replace(/\$\s?|(,*)/g, "") as any}
             />
           </Form.Item>
           <Form.Item

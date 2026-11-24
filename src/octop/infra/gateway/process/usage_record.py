@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 from dataclasses import dataclass, field
 from typing import Any
@@ -217,6 +216,11 @@ class UsageTracker:
     _seen_snapshot: bool = field(default=False, init=False)
 
     def observe(self, chunk: dict[str, Any]) -> None:
+        print(
+            f"USAGE_OBSERVE_PRINT type={chunk.get('type') if isinstance(chunk, dict) else type(chunk)} "
+            f"has_usage={isinstance(chunk, dict) and bool(chunk.get('usage'))}",
+            flush=True,
+        )
         if not isinstance(chunk, dict):
             return
         is_explicit = isinstance(chunk.get("usage"), dict)
@@ -259,18 +263,17 @@ def record_turn_usage(
 ) -> None:
     """Append one cache-aware turn row without allowing bad data to break chat."""
     normalized = normalize_usage(usage)
-    with contextlib.suppress(Exception):
-        usage_repo.record(
-            agent_id=agent_id,
-            user_id=user_id,
-            thread_id=thread_id,
-            model=str(usage.get("model") or normalized.get("model") or ""),
-            input_tokens=normalized["input_tokens"],
-            uncached_input_tokens=normalized["uncached_input_tokens"],
-            cache_read_tokens=normalized["cache_read_tokens"],
-            cache_write_tokens=normalized["cache_write_tokens"],
-            output_tokens=normalized["output_tokens"],
-            reasoning_tokens=normalized["reasoning_tokens"],
-            model_calls=max(1, _token_int(usage.get("model_calls"))),
-            source=source,
-        )
+    usage_repo.record(
+        agent_id=agent_id,
+        user_id=user_id,
+        thread_id=thread_id,
+        model=str(usage.get("model") or normalized.get("model") or ""),
+        input_tokens=normalized["input_tokens"],
+        uncached_input_tokens=normalized["uncached_input_tokens"],
+        cache_read_tokens=normalized["cache_read_tokens"],
+        cache_write_tokens=normalized["cache_write_tokens"],
+        output_tokens=normalized["output_tokens"],
+        reasoning_tokens=normalized["reasoning_tokens"],
+        model_calls=max(1, _token_int(usage.get("model_calls"))),
+        source=source,
+    )

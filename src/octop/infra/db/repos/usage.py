@@ -141,6 +141,31 @@ class UsageRepo:
         self._db = db
 
     # --- write -----------------------------------------------------------
+    def _resolve_primary_group(self, conn: Any, user_id: int) -> int | None:
+        """取用户的主组；没有主组则取最早加入的组；都不存在返回 None。"""
+        try:
+            row = conn.execute(
+                """
+                SELECT g.id
+                FROM user_group_member m
+                JOIN user_group g ON g.user_group_id = m.user_group_id
+                WHERE m.user_id = ? AND g.enabled = 1
+                ORDER BY m.created_at ASC
+                LIMIT 1
+                """,
+                (user_id,),
+            ).fetchone()
+        except Exception as e:
+            # groups/user_groups 尚未创建时（例如仍在 SQLite 环境），降级为未分组
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "resolve_primary_group failed: %s", e, exc_info=True
+            )
+            return None
+        if not row:
+            return None
+        return int(row[0])
 
     def record(
         self,
@@ -160,7 +185,13 @@ class UsageRepo:
         ts: int | None = None,
     ) -> int:
         """Append one usage row. Returns the new row id."""
+        print(
+            f"USAGE_RECORD called agent={agent_id} user={user_id} in={input_tokens} out={output_tokens}",
+            flush=True,
+        )
         with self._db.connect() as conn:
+            group_id = self._resolve_primary_group(conn, user_id)
+            print(f"USAGE_RECORD group_id={group_id}", flush=True)
             return insert_returning_id(
                 conn,
                 """
@@ -168,8 +199,8 @@ class UsageRepo:
                     ts, agent_id, user_id, thread_id, model,
                     input_tokens, uncached_input_tokens,
                     cache_read_tokens, cache_write_tokens,
-                    output_tokens, reasoning_tokens, total_tokens, model_calls, source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    output_tokens, reasoning_tokens, total_tokens, model_calls, source,group_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)
                 """,
                 (
                     ts or now_ts(),
@@ -188,6 +219,7 @@ class UsageRepo:
                     int(input_tokens) + int(output_tokens),
                     int(model_calls),
                     source,
+                    group_id,
                 ),
             )
 
@@ -413,6 +445,45 @@ class UsageRepo:
                     }
                     for r in bucket_rows
                 ]
+            elif granularity == "by_group":
+                bucket_rows = conn.execute(
+                    f"""
+                    SELECT
+                        COALESCE(g.name, '未分组') AS bucket,
+                        SUM(u.input_tokens)  AS input_tokens,
+                        SUM(u.uncached_input_tokens) AS uncached_input_tokens,
+                        SUM(u.cache_read_tokens) AS cache_read_tokens,
+                        SUM(u.cache_write_tokens) AS cache_write_tokens,
+                        SUM(u.output_tokens) AS output_tokens,
+                        SUM(u.reasoning_tokens) AS reasoning_tokens,
+                        SUM(u.total_tokens)  AS total_tokens,
+                        SUM(u.model_calls) AS model_calls,
+                        COUNT(*)             AS turns
+                    FROM usage_log u
+                    LEFT JOIN user_group g ON g.id = u.group_id
+                    WHERE {where_sql}
+                    GROUP BY g.id, g.name
+                    ORDER BY total_tokens DESC
+                    LIMIT 100
+                    """,
+                    params,
+                ).fetchall()
+                buckets = [
+                    {
+                        "key": r["bucket"],
+                        "label": r["bucket"],
+                        "input_tokens": int(r["input_tokens"] or 0),
+                        "uncached_input_tokens": int(r["uncached_input_tokens"] or 0),
+                        "cache_read_tokens": int(r["cache_read_tokens"] or 0),
+                        "cache_write_tokens": int(r["cache_write_tokens"] or 0),
+                        "output_tokens": int(r["output_tokens"] or 0),
+                        "reasoning_tokens": int(r["reasoning_tokens"] or 0),
+                        "total_tokens": int(r["total_tokens"] or 0),
+                        "model_calls": int(r["model_calls"] or 0),
+                        "turns": int(r["turns"] or 0),
+                    }
+                    for r in bucket_rows
+                ]
             # ``total`` granularity → no buckets
 
         avg = totals["total_tokens"] // totals["turns"] if totals["turns"] else 0
@@ -455,7 +526,7 @@ class UsageRepo:
         cap = max(1, min(int(limit), DETAIL_EXPORT_LIMIT))
         with self._db.connect() as conn:
             rows = conn.execute(
-                f"""
+                """
                 SELECT
                     id, ts, agent_id, user_id, thread_id, model,
                     input_tokens, uncached_input_tokens,

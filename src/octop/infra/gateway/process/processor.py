@@ -33,6 +33,7 @@ from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
 from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
+from octop.infra.db.repos.group_quota import GroupQuotaRepo
 from octop.infra.errors import OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
@@ -186,6 +187,7 @@ class GlobalProcessor:
         provider_repo: Any | None = None,
         dispatcher: SlashDispatcher,
         usage_repo: Any | None = None,
+        group_quota_repo: Any | None = None,
         thread_message_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
@@ -196,6 +198,7 @@ class GlobalProcessor:
         self._audit_repo = audit_repo
         self._agent_repo = agent_repo
         self._user_repo = user_repo
+        self._group_quota_repo = group_quota_repo
         self._connector_repo = connector_repo
         self._knowledge_services = (
             SimpleNamespace(
@@ -208,6 +211,11 @@ class GlobalProcessor:
         )
         self._dispatcher = dispatcher
         self._usage_repo = usage_repo
+        # self._group_quota_repo = GroupQuotaRepo(db)
+        if usage_repo is not None and hasattr(usage_repo, "_db"):
+            self._group_quota_repo = GroupQuotaRepo(usage_repo._db)
+        else:
+            self._group_quota_repo = None
         self._thread_message_repo = thread_message_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
@@ -222,6 +230,26 @@ class GlobalProcessor:
             gateway=gateway,
             hitl_coordinator=self._hitl,
         )
+
+    def _resolve_user_group_id(self, user_id: int) -> int | None:
+        if self._group_quota_repo is None:
+            return None
+        group_id = self._group_quota_repo.resolve_primary_group(user_id)
+        return int(group_id) if group_id is not None else None
+
+    def _check_group_quota(self, user_id: int) -> tuple[bool, int | None]:
+        """检查部门配额，返回 (是否通过, 部门ID)"""
+        if self._group_quota_repo is None:
+            return True, None
+
+        group_id = self._resolve_user_group_id(user_id)
+        if group_id is None:
+            return True, None
+
+        quota = self._group_quota_repo.get(group_id)
+        if quota and quota.quota_tokens > 0 and quota.used_tokens >= quota.quota_tokens:
+            return False, group_id
+        return True, group_id
 
     async def _complete_resumed_history(
         self, thread_id: str, tracker: TurnHistoryTracker, *, completed: bool
@@ -1073,6 +1101,11 @@ class GlobalProcessor:
             mcp_servers=mcp_servers,
             locale=locale,
         )
+        quota_ok, group_id = self._check_group_quota(user_id)
+        if not quota_ok:
+            yield MessageEvent.error_event("部门 Token 配额已耗尽，请联系管理员。")
+            yield MessageEvent.completed()
+            return
 
         yield MessageEvent.typing()
         turn_started = time.perf_counter()
@@ -1134,6 +1167,7 @@ class GlobalProcessor:
                     user_id=user_id,
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
+                    group_id=group_id,
                 )
                 await self._record_turn_history(thread_id, history_tracker)
                 hint = self._plan_ready_hint(thread_id, locale)
@@ -1188,6 +1222,16 @@ class GlobalProcessor:
             msg,
             agent_owner_id=agent_row.user_id if agent_row is not None else None,
         )
+        quota_ok, group_id = self._check_group_quota(user_id)
+        if not quota_ok:
+            yield _maybe_stamp_team_host(
+                {"type": "error", "message": "部门 Token 配额已耗尽，请联系管理员。"},
+                agent_id,
+                team_host,
+            )
+            yield _maybe_stamp_team_host({"type": "done"}, agent_id, team_host)
+            return
+
         session_key = session_key_from_message(msg, agent_id=agent_id)
         channel_type = msg.channel_type or "unknown"
         im_meta = session_metadata_from_message(msg)
@@ -1524,6 +1568,7 @@ class GlobalProcessor:
                 user_id=user_id,
                 thread_id=thread_id,
                 usage=usage_tracker.usage,
+                group_id=group_id,
             )
             await self._record_turn_history(thread_id, history_tracker)
         yield _maybe_stamp_team_host(
@@ -1543,6 +1588,12 @@ class GlobalProcessor:
         user_id: int,
         decisions: list[dict[str, Any]],
     ) -> AsyncIterator[dict[str, Any]]:
+        quota_ok, group_id = self._check_group_quota(user_id)
+        if not quota_ok:
+            yield {"type": "error", "message": "部门 Token 配额已耗尽。"}
+            yield {"type": "done"}
+            return
+
         """Resume a dashboard HITL turn with the normal history bookkeeping."""
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request({})
@@ -1619,6 +1670,7 @@ class GlobalProcessor:
                     user_id=user_id,
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
+                    group_id=group_id,
                 )
                 await self._record_turn_history(thread_id, history_tracker)
 
@@ -2143,9 +2195,16 @@ class GlobalProcessor:
         user_id: int,
         thread_id: str,
         usage: dict[str, Any] | None,
+        group_id: int | None = None,
     ) -> None:
+        print(
+            f"RECORD_TURN_CHECK repo_none={self._usage_repo is None} usage={usage} "
+            f"user={user_id} agent={agent_id}",
+            flush=True,
+        )
         if self._usage_repo is None or not usage:
             return
+        # 1. 记录原始日志
         record_turn_usage(
             self._usage_repo,
             agent_id=agent_id,
@@ -2153,6 +2212,14 @@ class GlobalProcessor:
             thread_id=thread_id,
             usage=usage,
         )
+        # 2. 扣减部门额度
+        if group_id is not None and self._group_quota_repo is not None:
+            # 从 usage 字典中提取总 token (假设你的 usage 里有 input_tokens 和 output_tokens)
+            input_tokens = int(usage.get("input_tokens", 0))
+            output_tokens = int(usage.get("output_tokens", 0))
+            total = input_tokens + output_tokens
+            if total > 0:
+                self._group_quota_repo.increment_used(group_id, total)
 
     async def _persist_incomplete_turn(
         self,

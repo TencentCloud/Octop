@@ -93,7 +93,7 @@ interface UsageSummary {
   buckets: UsageBucket[];
 }
 
-type ViewMode = "summary" | "by_day" | "by_agent" | "by_model";
+type ViewMode = "summary" | "by_day" | "by_agent" | "by_model" | "by_group";
 type DimGranularity = Exclude<ViewMode, "summary">;
 
 const CHART_COLORS = [
@@ -295,6 +295,7 @@ function bucketColumnTitle(
 ): string {
   if (granularity === "by_day") return t("tokenUsage.date");
   if (granularity === "by_agent") return t("tokenUsage.expert");
+  if (granularity === "by_group") return t("tokenUsage.group");
   return t("tokenUsage.model");
 }
 
@@ -727,6 +728,8 @@ function DimensionView({
             title={
               granularity === "by_agent"
                 ? t("tokenUsage.expertBreakdown")
+                : granularity === "by_group"
+                ? t("tokenUsage.groupBreakdown")
                 : t("tokenUsage.modelBreakdown")
             }
             data={pieData}
@@ -964,6 +967,7 @@ export default function TokenUsagePage() {
       { value: "by_day", label: t("tokenUsage.byDay") },
       { value: "by_agent", label: t("tokenUsage.byExpert") },
       { value: "by_model", label: t("tokenUsage.byModel") },
+      { value: "by_group", label: t("tokenUsage.byGroup") },
     ],
     [t],
   );

@@ -51,6 +51,7 @@ class UserGroupBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     enabled: bool = True
     avatar_icon: str | None = Field(default=None, max_length=32)
+    quota_tokens: int | None = Field(default=None, description="Token 上限，None 或 0 表示不限制")
 
 
 class UserGroupPatchBody(BaseModel):
@@ -58,6 +59,7 @@ class UserGroupPatchBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     enabled: bool | None = None
     avatar_icon: str | None = Field(default=None, max_length=32)
+    quota_tokens: int | None = Field(default=None)
 
 
 class ReplaceMembersBody(BaseModel):
@@ -141,6 +143,11 @@ def _public(
     member_count: int,
     member_ids: list[int] | None = None,
 ) -> dict[str, Any]:
+    from octop.infra.db.repos.group_quota import GroupQuotaRepo
+
+    quota_repo = GroupQuotaRepo(server.services.db)  # 假设 server.services.db 存在
+    quota = quota_repo.get(row.id)  # 注意：使用数字 id 查询
+
     return {
         "user_group_id": row.user_group_id,
         "name": row.name,
@@ -152,6 +159,8 @@ def _public(
         "member_ids": member_ids or [],
         "created_at": row.created_at,
         "updated_at": row.updated_at,
+        "quota_tokens": quota.quota_tokens if quota else None,
+        "used_tokens": quota.used_tokens if quota else 0,
     }
 
 
@@ -223,6 +232,12 @@ async def create_user_group(
                 ErrorCode.FORBIDDEN, "user group name is already in use", status=409
             ) from exc
         raise
+    if body.quota_tokens is not None:
+        from octop.infra.db.repos.group_quota import GroupQuotaRepo
+
+        quota_repo = GroupQuotaRepo(server.services.db)
+        quota_repo.set_quota(row.id, body.quota_tokens)
+
     return _public(server, row, member_count=0)
 
 
@@ -254,6 +269,11 @@ async def update_user_group(
             ) from exc
         raise
     row = _require_group(server, user_group_id)
+    if "quota_tokens" in fields and body.quota_tokens is not None:
+        from octop.infra.db.repos.group_quota import GroupQuotaRepo
+
+        quota_repo = GroupQuotaRepo(server.services.db)
+        quota_repo.set_quota(row.id, body.quota_tokens)
     member_ids = server.services.repos.user_group_member_repo.user_ids_for_group(user_group_id)
     return _public(server, row, member_count=len(member_ids), member_ids=member_ids)
 
