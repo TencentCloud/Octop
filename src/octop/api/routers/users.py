@@ -16,6 +16,7 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import (
     PERMISSIONS,
+    assert_can_assign_permissions,
     expand_permission_grants,
 )
 from octop.infra.users.resource_policy import (
@@ -277,20 +278,6 @@ def _policy_kwargs_from_body(body: UserCreateBody | UserPatchBody) -> dict[str, 
     return policy_kwargs
 
 
-def _assert_can_assign(actor: User, permissions: list[str]) -> None:
-    """Non-admin actors may only grant permissions they themselves hold."""
-    if actor.is_admin:
-        return
-    held = set(expand_permission_grants(list(actor.permissions or [])))
-    missing = sorted(set(expand_permission_grants(permissions)) - held)
-    if missing:
-        raise OctopError(
-            ErrorCode.FORBIDDEN,
-            "cannot grant permissions you do not hold",
-            details={"missing": missing},
-        )
-
-
 def _can_manage_users(row: Any) -> bool:
     if str(getattr(row, "role", "")) == "admin":
         return True
@@ -390,7 +377,7 @@ async def create_user(
         permissions = list(body.permissions)
     else:
         permissions = list(template_perms)
-    _assert_can_assign(actor, permissions)
+    assert_can_assign_permissions(actor, permissions)
     # Template is a full replace; request body fields overlay on top.
     policy_kwargs = _policy_kwargs_replace_from_pairs(template_policies)
     policy_kwargs.update(_policy_kwargs_from_body(body))
@@ -596,7 +583,7 @@ async def patch_user(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     if body.permissions is not None:
-        _assert_can_assign(actor, body.permissions)
+        assert_can_assign_permissions(actor, body.permissions)
         # An administrator account keeps full access. The form stores that as
         # an empty permission list, which is not a removal of user management.
         stays_admin = (
