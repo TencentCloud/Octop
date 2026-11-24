@@ -2,9 +2,8 @@
  * memoryMcp — user-level API tokens for the memory MCP server.
  *
  * Routes live under ``/api/memory-mcp/tokens`` (``octop.api.routers.memory_mcp``).
- * Tokens are personal: a caller acts as the user the token was issued to, so
- * ``X-Octop-User-Id`` is never trusted. Only the digest is stored server-side;
- * the plaintext value is returned exactly once, at creation.
+ * Each token is bound to a memory space. The plaintext is available when the
+ * token is created or rotated, and only the digest is stored server-side.
  *
  * Wire shapes are snake_case on purpose, mirroring the backend ``TokenOut`` /
  * ``TokenCreated`` models.
@@ -30,8 +29,10 @@ export interface MemoryMcpToken {
   token_id: string;
   /** Client name supplied at creation, e.g. ``codex@macbook``. */
   name: string;
-  /** Expert (agent) allow-list; null means every expert the user can access. */
+  /** Octop experts associated with the token's space, when available. */
   expert_ids: string[] | null;
+  space_id?: string;
+  scopes?: string[];
   /** Masked value safe to display, e.g. ``omcp_…abcd``. */
   token_hint: string;
   /** ISO-8601 UTC. */
@@ -62,21 +63,19 @@ export interface MemoryMcpTokenCreated {
 
 export interface CreateMemoryMcpTokenBody {
   name: string;
-  /** Omit / null to allow every expert the issuing user can access. */
-  expert_ids: string[] | null;
+  /** The selected expert identifies its default or explicitly bound space. */
+  expert_ids?: string[] | null;
+  space_id?: string;
+  scopes?: ("read" | "write")[];
 }
 
 /**
  * Partial update body for ``PATCH /memory-mcp/tokens/{token_id}``.
- *
- * A token bound to exactly one expert needs no ``X-Octop-Agent-Id`` on MCP
- * requests (the binding decides where reports land); ``expert_ids: null``
- * clears the binding, which brings the header requirement back.
  */
 export interface UpdateMemoryMcpTokenBody {
   /** New display name; omitted leaves it untouched. */
   name?: string;
-  /** Exactly one id pins the expert; null means "no restriction". */
+  /** Exactly one id selects the expert for the legacy workflow. */
   expert_ids?: string[] | null;
   /** Clients switched off; an empty list is sent as null ("all allowed"). */
   disabled_clients?: string[] | null;
@@ -95,7 +94,12 @@ function toCreated(raw: TokenCreatedWire): MemoryMcpTokenCreated {
 }
 
 export const memoryMcpApi = {
-  list: () => request<MemoryMcpToken[]>("/memory-mcp/tokens"),
+  list: (spaceId?: string) =>
+    request<MemoryMcpToken[]>(
+      spaceId
+        ? `/memory-mcp/tokens?${new URLSearchParams({ space_id: spaceId })}`
+        : "/memory-mcp/tokens",
+    ),
 
   create: (body: CreateMemoryMcpTokenBody) =>
     request<TokenCreatedWire>("/memory-mcp/tokens", {
@@ -124,9 +128,11 @@ export const memoryMcpApi = {
    * immediately. Returns ``TokenOut`` plus the one-time plaintext, exactly like
    * ``create``. Revoked tokens are rejected by the server (409).
    */
-  rotate: (tokenId: string) =>
+  rotate: (tokenId: string, spaceId?: string) =>
     request<TokenCreatedWire>(
-      `/memory-mcp/tokens/${encodeURIComponent(tokenId)}/rotate`,
+      `/memory-mcp/tokens/${encodeURIComponent(tokenId)}/rotate${
+        spaceId ? `?${new URLSearchParams({ space_id: spaceId })}` : ""
+      }`,
       { method: "POST" },
     ).then(toCreated),
 };

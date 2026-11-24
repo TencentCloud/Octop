@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../../../api/modules/memoryMcp", () => ({
@@ -12,8 +12,19 @@ vi.mock("../../../api/modules/memoryMcp", () => ({
   },
 }));
 
+vi.mock("../../../api/modules/memorySharing", () => ({
+  memorySharingApi: {
+    status: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    spaces: vi.fn(),
+    binding: vi.fn(),
+    bind: vi.fn(),
+  },
+}));
+
 vi.mock("../../../utils/antdMessage", () => ({
-  message: { success: vi.fn(), error: vi.fn() },
+  message: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
 vi.mock("../../../hooks/useServerTimezone", () => ({
@@ -48,6 +59,7 @@ import {
   memoryMcpApi,
   type MemoryMcpToken,
 } from "../../../api/modules/memoryMcp";
+import { memorySharingApi } from "../../../api/modules/memorySharing";
 import { message } from "../../../utils/antdMessage";
 import { copyText } from "../../../utils/copyText";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
@@ -56,24 +68,18 @@ import McpAccess from "./McpAccess";
 const api = vi.mocked(memoryMcpApi, true);
 const copyMock = vi.mocked(copyText);
 
-/** The MCP client config a row copies (expert header for unbound tokens). */
+/** Memory resolves a token's space from its bearer credential. */
 function clientConfig(
   plaintext: string,
-  expertIds: string[] | null = null,
+  url = `${window.location.origin}/mcp/`,
 ): string {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${plaintext}`,
-  };
-  if (!expertIds || expertIds.length !== 1) {
-    headers["X-Octop-Agent-Id"] = "<专家 ID>";
-  }
   return JSON.stringify(
     {
       mcpServers: {
         "octop-memory": {
           type: "http",
-          url: `${window.location.origin}/mcp/memory/`,
-          headers,
+          url,
+          headers: { Authorization: `Bearer ${plaintext}` },
         },
       },
     },
@@ -99,6 +105,7 @@ const clientToken: MemoryMcpToken = {
   ...activeToken,
   token_id: "tok_clients",
   name: "claude@laptop",
+  disabled_clients: [],
   client_stats: {
     "claude-code": {
       first_seen: "2026-11-09T10:00:00Z",
@@ -123,9 +130,51 @@ function expandButtons(container: HTMLElement): HTMLElement[] {
 beforeEach(() => {
   vi.clearAllMocks();
   api.list.mockResolvedValue([activeToken]);
+  vi.mocked(memorySharingApi.status).mockResolvedValue({ connected: true });
+  vi.mocked(memorySharingApi.spaces).mockResolvedValue({ spaces: [] });
+  vi.mocked(memorySharingApi.binding).mockResolvedValue({
+    agent_id: "agent_b",
+    space_id: null,
+  });
 });
 
 describe("<McpAccess />", () => {
+  it("shows the connected MCP address before the first token is created", async () => {
+    api.list.mockResolvedValue([]);
+    vi.mocked(memorySharingApi.status).mockResolvedValue({
+      connected: true,
+      base_url: "http://127.0.0.1:8088",
+    });
+
+    render(<McpAccess />);
+
+    expect(await screen.findByText(/127\.0\.0\.1:8088\/mcp\//)).toBeVisible();
+  });
+
+  it("replaces the active management authorization without disconnecting first", async () => {
+    vi.mocked(memorySharingApi.connect).mockResolvedValue({
+      connected: true,
+      space_id: "project-alpha",
+    });
+    vi.mocked(memorySharingApi.spaces).mockResolvedValue({
+      spaces: [{ space_id: "project-alpha" }],
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+
+    await user.click(await screen.findByRole("button", { name: "更换授权" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "一次性授权码" }),
+      "mcode_test",
+    );
+    await user.click(screen.getByRole("button", { name: /^连\s*接$/ }));
+
+    expect(memorySharingApi.connect).toHaveBeenCalledWith("mcode_test");
+    expect(memorySharingApi.disconnect).not.toHaveBeenCalled();
+    expect(await screen.findByText("当前空间：project-alpha")).toBeVisible();
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith("project-alpha"));
+  });
+
   it("renders the token hint, unscoped experts and active status", async () => {
     render(<McpAccess />);
 
@@ -182,6 +231,7 @@ describe("<McpAccess />", () => {
       expect(api.create).toHaveBeenCalledWith({
         name: "claude@laptop",
         expert_ids: ["agent_a"],
+        scopes: ["read", "write"],
       }),
     );
     expect(
@@ -190,6 +240,81 @@ describe("<McpAccess />", () => {
     expect(screen.getByText(/只显示这一次/)).toBeInTheDocument();
     // The list is refreshed after a successful create.
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  it("signs a read-only client token for the selected space without binding the expert", async () => {
+    vi.mocked(memorySharingApi.spaces).mockResolvedValue({
+      spaces: [{ space_id: "project-alpha", display_name: "Alpha" }],
+    });
+    api.create.mockResolvedValue({
+      token: {
+        ...activeToken,
+        name: "codex-alpha",
+        space_id: "project-alpha",
+        scopes: ["read"],
+        mcp_url: "https://memory.example/mcp/",
+      },
+      plaintext: "omcp_scoped_token",
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+    await user.click(screen.getByRole("combobox", { name: "管理空间" }));
+    await user.click(await screen.findByTitle("Alpha · project-alpha"));
+
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith("project-alpha"));
+    expect(memorySharingApi.bind).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /创建 Token/ }));
+    await user.type(
+      await screen.findByRole("textbox", { name: "名称" }),
+      "codex-alpha",
+    );
+    await user.click(screen.getByRole("combobox", { name: "权限" }));
+    await user.click(await screen.findByTitle("只读"));
+    await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
+
+    await waitFor(() =>
+      expect(api.create).toHaveBeenCalledWith({
+        name: "codex-alpha",
+        space_id: "project-alpha",
+        scopes: ["read"],
+      }),
+    );
+    await user.click(await screen.findByRole("tab", { name: "手动配置" }));
+    const manualConfig = await screen.findByRole("tabpanel", {
+      name: "手动配置",
+    });
+    expect(within(manualConfig).getByRole("textbox")).toHaveValue(
+      clientConfig("omcp_scoped_token", "https://memory.example/mcp/"),
+    );
+  });
+
+  it("binds the current expert separately from the client list", async () => {
+    vi.mocked(memorySharingApi.spaces).mockResolvedValue({
+      spaces: [{ space_id: "project-alpha", display_name: "Alpha" }],
+    });
+    vi.mocked(memorySharingApi.bind).mockResolvedValue({
+      agent_id: "agent_b",
+      space_id: "project-alpha",
+      has_credential: true,
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+    await user.click(screen.getByRole("combobox", { name: "管理空间" }));
+    await user.click(await screen.findByTitle("Alpha · project-alpha"));
+    await user.click(screen.getByRole("button", { name: "绑定当前专家" }));
+
+    expect(memorySharingApi.bind).toHaveBeenCalledWith(
+      "agent_b",
+      "project-alpha",
+    );
+    expect(
+      await screen.findByText(/当前专家：专家乙.*已绑定 project-alpha/),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "重新授权当前专家" }));
+    expect(memorySharingApi.bind).toHaveBeenCalledTimes(2);
+    expect(api.create).not.toHaveBeenCalled();
   });
 
   it("switches the reporting expert via PATCH and refreshes the list", async () => {
@@ -288,6 +413,17 @@ describe("<McpAccess />", () => {
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
   });
 
+  it("shows usage without unsupported switches for Memory-issued client tokens", async () => {
+    api.list.mockResolvedValue([{ ...clientToken, disabled_clients: null }]);
+    const user = userEvent.setup();
+    const { container } = render(<McpAccess />);
+    await screen.findByText("claude@laptop");
+    await user.click(expandButtons(container)[0]);
+
+    expect(await screen.findByText("codex")).toBeVisible();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
   it("sends disabled_clients: null when the last switched-off client is re-enabled", async () => {
     api.list.mockResolvedValue([
       { ...clientToken, disabled_clients: ["codex"] },
@@ -341,6 +477,71 @@ describe("<McpAccess />", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    { scopes: ["read", "write"], expected: "memory_save" },
+    { scopes: ["read"], expected: "OCTOP_CODEX_READ_ONLY=1" },
+  ])(
+    "copies a Codex setup prompt for token scopes $scopes",
+    async ({ scopes, expected }) => {
+      const endpoint = "https://memory.example.com/mcp/";
+      const plaintext = "omcp_test_prompt_secret";
+      api.create.mockResolvedValue({
+        token: { ...activeToken, mcp_url: endpoint, scopes },
+        plaintext,
+      });
+      const user = userEvent.setup();
+      render(<McpAccess />);
+
+      await screen.findByText("codex@macbook");
+      await user.click(screen.getByRole("button", { name: /创建 Token/ }));
+      await user.type(
+        await screen.findByRole("textbox", { name: "名称" }),
+        "Codex",
+      );
+      await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
+      await user.click(
+        await screen.findByRole("tab", { name: "Codex 接入提示词" }),
+      );
+
+      const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Codex 接入提示词",
+      }).value;
+      expect(prompt).toContain(endpoint);
+      expect(prompt).toContain("--terminals codex");
+      expect(prompt).toContain("OCTOP_MEMORY_TOKEN");
+      expect(prompt).toContain("memory_get");
+      expect(prompt).toContain(expected);
+      if (!scopes.includes("write"))
+        expect(prompt).not.toContain("memory_save");
+      expect(prompt).not.toContain(plaintext);
+
+      await user.click(screen.getByRole("button", { name: "复制提示词" }));
+      expect(copyMock).toHaveBeenCalledWith(prompt);
+      if (scopes.includes("write")) {
+        expect(prompt).toContain("OCTOP_CODEX_EXTRACTION=codex");
+        expect(prompt).toContain("memory_propose");
+        expect(prompt).toContain("当前 Codex 对话");
+        expect(prompt).toContain("当前对话待重载");
+        expect(prompt).toContain("⌘K");
+        expect(prompt).toContain("回到同一对话再次检查");
+        await user.click(
+          screen.getByRole("combobox", { name: "记忆提取模型" }),
+        );
+        await user.click(screen.getByText("Memory 服务配置的模型"));
+        const serverPrompt = screen.getByRole<HTMLTextAreaElement>("textbox", {
+          name: "Codex 接入提示词",
+        }).value;
+        expect(serverPrompt).toContain("OCTOP_CODEX_EXTRACTION=server");
+        expect(serverPrompt).not.toContain("memory_propose");
+      } else {
+        expect(prompt).not.toContain("memory_propose");
+        expect(
+          screen.queryByRole("combobox", { name: "记忆提取模型" }),
+        ).toBeNull();
+      }
+    },
+  );
 
   it("copies a token's setup command straight away while its plaintext is cached", async () => {
     const freshToken: MemoryMcpToken = {

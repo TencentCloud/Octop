@@ -300,6 +300,13 @@ export interface LastExtractRun {
   failure_reason?: string | null;
 }
 
+export interface CodexReviewRun {
+  timestamp: string;
+  status: "captured" | "finished_without_proposal" | "proposed";
+  model?: string | null;
+  proposals: number;
+}
+
 export interface StatsCounts {
   raw_events: number;
   atoms: number;
@@ -311,6 +318,7 @@ export interface StatsCounts {
   entities_delta_7d: number;
   episodes_delta_7d: number;
   last_extract_run?: LastExtractRun | null;
+  last_codex_review?: CodexReviewRun | null;
 }
 
 export interface StatsAtomKindsResponse {

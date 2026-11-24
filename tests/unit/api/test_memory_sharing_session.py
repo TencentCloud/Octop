@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from starlette.requests import Request
 
 from octop.api.routers import memory_mcp
 from octop.api.routers import memory_sharing as router_module
@@ -32,19 +33,35 @@ def _session() -> memory_sharing.SharingSession:
     )
 
 
+def _dashboard_request() -> Request:
+    return Request(
+        {
+            "type": "http",
+            "path": "/api/memory-sharing/session",
+            "headers": [
+                (b"x-forwarded-proto", b"https"),
+                (b"x-forwarded-host", b"octop.example:8443"),
+            ],
+        }
+    )
+
+
 def test_payload_without_session_is_disconnected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(memory_sharing, "get_session", lambda user_id: None)
 
-    payload = router_module._session_payload(7)
+    payload = router_module._session_payload(7, "http://memory.internal:8790")
 
     assert payload == {"connected": False}
 
 
 def test_payload_carries_space_scopes_and_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(memory_sharing, "get_session", lambda user_id: _session())
+    monkeypatch.delenv("OCTOP_MEMORY_SAME_ORIGIN", raising=False)
     monkeypatch.setenv("OCTOP_MEMORY_SERVICE_URL", "http://memory.internal:8790/")
 
-    payload = router_module._session_payload(7)
+    payload = router_module._session_payload(
+        7, router_module.memory_client_base(_dashboard_request())
+    )
 
     assert payload["connected"] is True
     assert payload["space_id"] == "project-alpha"
@@ -52,6 +69,23 @@ def test_payload_carries_space_scopes_and_base_url(monkeypatch: pytest.MonkeyPat
     assert payload["expires_at"] == "2099-01-01T00:00:00+00:00"
     # 尾斜杠必须被去掉，面板拼 f"{base_url}/mcp/" 才不会出现 "//mcp/"
     assert payload["base_url"] == "http://memory.internal:8790"
+
+
+def test_shared_ingress_advertises_dashboard_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(memory_sharing, "get_session", lambda user_id: _session())
+    monkeypatch.setenv("OCTOP_MEMORY_SERVICE_URL", "http://memory.internal:8790")
+    monkeypatch.setenv("OCTOP_MEMORY_SAME_ORIGIN", "1")
+
+    client_base = router_module.memory_client_base(_dashboard_request())
+    payload = router_module._session_payload(7, client_base)
+    token = memory_mcp._to_out(
+        {"token_id": "token", "token_hint": "hint", "created_at": "now"}, [], client_base
+    )
+
+    assert memory_sharing.service_url() == "http://memory.internal:8790"
+    assert payload["base_url"] == "https://octop.example:8443"
+    assert token.mcp_url == "https://octop.example:8443/mcp/"
+    assert b"https://octop.example:8443/mcp/" in router_module.install_script(client_base).body
 
 
 def test_base_url_falls_back_to_loopback(monkeypatch: pytest.MonkeyPatch) -> None:

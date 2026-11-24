@@ -7,18 +7,30 @@ The MCP server, tokens and spaces live in ``octop-memory``. Octop keeps:
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
+from shlex import quote
 from typing import Any
+from weakref import WeakValueDictionary
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
-from octop.api.common.agent import assert_agent_access_row
+from octop.api.common.agent import assert_agent_access_row, assert_agent_owner, user_owns_agent
+from octop.api.common.public_base import resolve_public_base
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents import memory_sharing
+from octop.infra.agents.memory_shared_access import (
+    ExpertBinding,
+    get_expert_binding,
+    save_expert_binding,
+    supports_sharing,
+)
 from octop.infra.crypto.fernet import open_text, seal_text
+from octop.infra.db.repos.agents import AgentRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.users.identity import User
@@ -42,6 +54,8 @@ router = APIRouter(
 
 _SESSION_KEY = "memory_sharing.session.{user_id}"
 _SECRET_PURPOSE = "memory_sharing_fernet"
+_binding_locks: WeakValueDictionary[tuple[int, str], asyncio.Lock] = WeakValueDictionary()
+logger = logging.getLogger(__name__)
 
 
 def _save_session(server: OctopServer, user_id: int, session: Any) -> bool:
@@ -130,10 +144,17 @@ class TokenCreateBody(BaseModel):
 
 class BindBody(BaseModel):
     agent_id: str = Field(min_length=1)
-    space_id: str = Field(min_length=1, max_length=128)
+    space_id: str | None = Field(min_length=1, max_length=128)
 
 
-def _session_payload(user_id: int) -> dict[str, Any]:
+def memory_client_base(request: Request) -> str:
+    """Use the dashboard origin when the shared ingress forwards /mcp/."""
+    if os.environ.get("OCTOP_MEMORY_SAME_ORIGIN") == "1":
+        return resolve_public_base(request)
+    return memory_sharing.service_url()
+
+
+def _session_payload(user_id: int, client_base: str) -> dict[str, Any]:
     session = memory_sharing.get_session(user_id)
     if session is None:
         return {"connected": False}
@@ -143,7 +164,7 @@ def _session_payload(user_id: int) -> dict[str, Any]:
         "scopes": list(session.scopes),
         "expires_at": session.expires_at,
         # 客户端接入指引要用到（S3）：MCP 地址 = f"{base_url}/mcp/"
-        "base_url": memory_sharing.service_url(),
+        "base_url": client_base,
     }
 
 
@@ -151,9 +172,10 @@ def _session_payload(user_id: int) -> dict[str, Any]:
 def get_session(
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
+    client_base: str = Depends(memory_client_base),
 ) -> dict[str, Any]:
     _load_session(server, int(user.id))
-    return _session_payload(int(user.id))
+    return _session_payload(int(user.id), client_base)
 
 
 @router.post("/session", summary="Exchange a one-time code for a management session")
@@ -161,10 +183,11 @@ def connect(
     body: ExchangeBody,
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
+    client_base: str = Depends(memory_client_base),
 ) -> dict[str, Any]:
     session = memory_sharing.exchange_code(int(user.id), body.code)
     persisted = _save_session(server, int(user.id), session)
-    payload = _session_payload(int(user.id))
+    payload = _session_payload(int(user.id), client_base)
     # persisted=false 时要让前端知道「重启后还得重连」，否则用户以为已保存
     payload["persisted"] = persisted
     return payload
@@ -207,8 +230,10 @@ def install_script_body(memory_url: str) -> str:
     return f"""#!/usr/bin/env sh
 # octop 托管 · 终端接入安装薄壳（来源固定 tag，可用 OCTOP_MEMORY_INSTALLER_URL 指向内网镜像）
 set -eu
-SRC="${{OCTOP_MEMORY_INSTALLER_URL:-{installer_source()}}}"
-MEMORY_URL="${{OCTOP_MEMORY_URL:-{memory_url}}}"
+DEFAULT_SRC={quote(installer_source())}
+DEFAULT_MEMORY_URL={quote(memory_url)}
+SRC="${{OCTOP_MEMORY_INSTALLER_URL:-$DEFAULT_SRC}}"
+MEMORY_URL="${{OCTOP_MEMORY_URL:-$DEFAULT_MEMORY_URL}}"
 
 if [ "$#" -eq 0 ] && [ -z "${{OCTOP_MEMORY_TOKEN:-}}" ]; then
   cat >&2 <<'USAGE'
@@ -216,7 +241,7 @@ if [ "$#" -eq 0 ] && [ -z "${{OCTOP_MEMORY_TOKEN:-}}" ]; then
   curl -fsSL <本地址> | sh -s -- --token <面板生成的 Token>
 或者：
   OCTOP_MEMORY_TOKEN=<Token> curl -fsSL <本地址> | sh
-（URL 已由 Octop 填好；Token 请到面板「终端接入」生成，只显示一次）
+（URL 已由 Octop 填好；Token 请到面板「共享记忆」生成，只显示一次）
 USAGE
   exit 2
 fi
@@ -236,10 +261,10 @@ curl -fsSL "$SRC" | sh -s -- --url "$MEMORY_URL" "$@"
     response_class=PlainTextResponse,
     summary="Octop-hosted terminal installer wrapper (read-only, no credentials)",
 )
-def install_script() -> PlainTextResponse:
+def install_script(client_base: str = Depends(memory_client_base)) -> PlainTextResponse:
     # 只读：不签发 token、不写库（威胁模型 R7）
     return PlainTextResponse(
-        install_script_body(memory_sharing.service_url().rstrip("/") + "/mcp/"),
+        install_script_body(f"{client_base}/mcp/"),
         media_type="text/x-shellscript; charset=utf-8",
     )
 
@@ -309,8 +334,9 @@ def binding(
 ) -> dict[str, Any]:
     row = _agent_row(server, agent_id)
     assert_agent_access_row(row, user, repos=server.services.repos if server.services else None)
-    config = _parse_config(row.config_json)
-    return {"agent_id": agent_id, "space_id": (config.get("memory_sharing") or {}).get("space_id")}
+    assert server.services is not None
+    saved = get_expert_binding(server.services.repos.secret_repo, agent_id)
+    return _binding_payload(row, user, saved)
 
 
 @router.post("/binding", summary="Bind an expert to a memory space")
@@ -319,16 +345,123 @@ async def bind(
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
 ) -> dict[str, Any]:
-    row = _agent_row(server, body.agent_id)
-    assert_agent_access_row(row, user, repos=server.services.repos if server.services else None)
-    config = _parse_config(row.config_json)
-    config["memory_sharing"] = {"space_id": body.space_id}
-    assert server.app_runtime is not None
-    await server.app_runtime.agent_registry.update(body.agent_id, config_json=json.dumps(config))
-    return {"agent_id": body.agent_id, "space_id": body.space_id}
+    assert server.app_runtime is not None and server.services is not None
+    registry = server.app_runtime.agent_registry
+    repo = server.services.repos.secret_repo
+    user_id = int(user.id)
+    lock = _binding_locks.setdefault((id(registry), body.agent_id), asyncio.Lock())
+    async with lock:
+        row = _agent_row(server, body.agent_id)
+        assert_agent_owner(row, user)
+        saved = get_expert_binding(repo, row.agent_id)
+        replacement = ExpertBinding()
+        if body.space_id is not None:
+            if not supports_sharing(row):
+                raise OctopError(
+                    ErrorCode.FORBIDDEN, "Only private local experts can join a memory space"
+                )
+            replacement = await asyncio.to_thread(
+                _credential_for_space, user_id, row, body.space_id, saved
+            )
+
+        if replacement != saved:
+            try:
+                latest = _agent_row(server, row.agent_id)
+                assert_agent_owner(latest, user)
+                if replacement.space_id is not None and not replacement.active_for(latest):
+                    raise OctopError(
+                        ErrorCode.FORBIDDEN, "The expert changed while joining the space"
+                    )
+                save_expert_binding(repo, row.agent_id, replacement)
+            except Exception:
+                await asyncio.to_thread(_revoke_expert_binding, user_id, replacement)
+                raise
+            previous_revoked = await asyncio.to_thread(_revoke_expert_binding, user_id, saved)
+        else:
+            previous_revoked = True
+
+        await registry.reload(row.agent_id)
+        payload = _binding_payload(row, user, replacement)
+        if not previous_revoked:
+            payload["previous_token_revoked"] = False
+        return payload
 
 
-def _agent_row(server: OctopServer, agent_id: str) -> Any:
+def _binding_payload(row: AgentRow, user: User, saved: ExpertBinding | None) -> dict[str, Any]:
+    is_owner = user.is_admin or user_owns_agent(row, user)
+    can_manage = is_owner and supports_sharing(row)
+    space_id = None
+    if is_owner and saved is None:
+        legacy = _parse_config(row.config_json).get("memory_sharing")
+        if isinstance(legacy, dict) and isinstance(legacy.get("space_id"), str):
+            space_id = legacy["space_id"]
+    elif (
+        is_owner and saved is not None and (saved.owner_id is None or saved.owner_id == row.user_id)
+    ):
+        space_id = saved.space_id
+    return {
+        "agent_id": row.agent_id,
+        "space_id": space_id,
+        "has_credential": bool(can_manage and saved is not None and saved.active_for(row)),
+        "can_manage": can_manage,
+    }
+
+
+def _credential_for_space(
+    user_id: int, row: AgentRow, space_id: str, saved: ExpertBinding | None
+) -> ExpertBinding:
+    spaces = memory_sharing.list_spaces(user_id).get("spaces", [])
+    if not any(space.get("space_id") == space_id for space in spaces):
+        raise OctopError(ErrorCode.FORBIDDEN, "Memory session cannot access this space")
+    if (
+        saved is not None
+        and saved.token is not None
+        and saved.space_id == space_id
+        and saved.active_for(row)
+    ):
+        tokens = memory_sharing.list_tokens_in(user_id, space_id).get("tokens", [])
+        if any(
+            token.get("token_id") == saved.token_id
+            and not token.get("revoked_at")
+            and token.get("token_hint") == saved.token[-4:]
+            for token in tokens
+        ):
+            return saved
+
+    created = memory_sharing.create_token_in(
+        user_id, space_id, f"Octop expert {row.agent_id}", ["read", "write"]
+    )
+    credential = ExpertBinding(
+        space_id=space_id,
+        owner_id=row.user_id,
+        base_url=memory_sharing.service_url(),
+        token_id=created.get("token_id"),
+        token=created.get("token"),
+    )
+    if not credential.active_for(row):
+        _revoke_expert_binding(user_id, credential)
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR, "Memory service did not issue a usable expert credential"
+        )
+    return credential
+
+
+def _revoke_expert_binding(user_id: int, saved: ExpertBinding | None) -> bool:
+    if saved is None or saved.token_id is None:
+        return True
+    if saved.base_url != memory_sharing.service_url():
+        return False
+    try:
+        memory_sharing.revoke_token(user_id, saved.token_id)
+    except OctopError as exc:
+        if exc.code == ErrorCode.NOT_FOUND:
+            return True
+        logger.warning("Unable to revoke the previous shared-memory expert token: %s", exc.code)
+        return False
+    return True
+
+
+def _agent_row(server: OctopServer, agent_id: str) -> AgentRow:
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:

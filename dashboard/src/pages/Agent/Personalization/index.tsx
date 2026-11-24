@@ -1,5 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import { Alert, Empty } from "antd";
 import {
   Bot,
@@ -60,6 +61,9 @@ const TAB_ICONS = {
 
 export default function PersonalizationPage() {
   const { t } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const mcpAccessActive = Boolean(useMatch("/personalization/memory/mcp"));
   const isMobile = useIsMobile();
   const user = useCurrentUser();
   const { activeAgentId, agents } = useAgent();
@@ -79,6 +83,18 @@ export default function PersonalizationPage() {
     defaultTab,
     isAllowed,
   });
+
+  const mcpAccess = {
+    active: mcpAccessActive,
+    onChange: (active: boolean) =>
+      navigate({
+        pathname: active
+          ? "/personalization/memory/mcp"
+          : "/personalization/memory",
+        search: location.search,
+        hash: location.hash,
+      }),
+  };
 
   const pathTabs = useMemo(
     () => ({
@@ -256,10 +272,18 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "memory"}
           >
             {isMobile ? (
-              <MemoryPanel agentId={activeAgentId} fill={false} />
+              <MemoryPanel
+                agentId={activeAgentId}
+                fill={false}
+                mcpAccess={mcpAccess}
+              />
             ) : (
               <div className={pageShellStyles.fillChild}>
-                <MemoryPanel agentId={activeAgentId} fill />
+                <MemoryPanel
+                  agentId={activeAgentId}
+                  fill
+                  mcpAccess={mcpAccess}
+                />
               </div>
             )}
           </div>

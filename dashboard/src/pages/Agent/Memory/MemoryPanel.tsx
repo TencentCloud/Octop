@@ -10,6 +10,7 @@ import {
   Bell,
   Heart,
   Inbox,
+  KeyRound,
   LayoutDashboard,
   MessageSquare,
   Network,
@@ -33,6 +34,7 @@ import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
 import StrongMemory from "./StrongMemory";
+import McpAccess from "./McpAccess";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import { useAgent } from "../../../context/AgentContext";
@@ -49,8 +51,7 @@ type MemoryTab =
   | "journal"
   | "conversations"
   | "proactive"
-  | "settings"
-  | "mcp";
+  | "settings";
 
 type LibraryView = "tree" | "atoms" | "raw";
 
@@ -136,7 +137,8 @@ export interface MemoryPanelProps {
   agentId: string | null;
   /** Stretch tabs to fill parent height (desktop PageShell / drawer). */
   fill?: boolean;
-  /** Show the user-level "MCP access" tab (personal memory page only). */
+  /** Account-level terminal access, enabled on the main memory page only. */
+  mcpAccess?: { active: boolean; onChange: (active: boolean) => void };
 }
 
 /** Memory tabs. Managed experts use the same pages; memory stays off until enabled. */
@@ -150,6 +152,7 @@ export function memoryTabsForKind(
 export default function MemoryPanel({
   agentId,
   fill = true,
+  mcpAccess,
 }: MemoryPanelProps) {
   const { t } = useTranslation();
   const { agents } = useAgent();
@@ -216,14 +219,14 @@ export default function MemoryPanel({
                   "按人、项目、工具等主题，分组浏览相关记忆",
                 )
               : libraryView === "atoms"
-                ? t(
-                    "memory.library.hintAtoms",
-                    "扁平展示全部记忆，可按重要程度筛选",
-                  )
-                : t(
-                    "memory.library.hintRaw",
-                    "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
-                  )}
+              ? t(
+                  "memory.library.hintAtoms",
+                  "扁平展示全部记忆，可按重要程度筛选",
+                )
+              : t(
+                  "memory.library.hintRaw",
+                  "提炼前捕获的原始对话记忆（条数与「对话记录」不一一对应）",
+                )}
           </span>
         </div>
         {libraryView === "tree" ? (
@@ -328,23 +331,55 @@ export default function MemoryPanel({
     });
   }, [agentId, expandEntityId, expandKey, libraryView, pendingCount, t, tabs]);
 
-  if (!agentId) {
-    return (
-      <Empty
-        description={t("memory.noAgentSelected")}
-        style={{ marginTop: 64 }}
-      />
-    );
+  const noAgent = (
+    <Empty
+      description={t("memory.noAgentSelected")}
+      style={{ marginTop: 64 }}
+    />
+  );
+  if (!agentId && !mcpAccess) return noAgent;
+
+  const items = agentId
+    ? [...tabItems]
+    : [
+        {
+          key: "overview",
+          label: (
+            <TabLabel icon={LayoutDashboard}>
+              {t("memory.tabs.overview", "概览")}
+            </TabLabel>
+          ),
+          children: noAgent,
+        },
+      ];
+  if (mcpAccess) {
+    items.splice(1, 0, {
+      key: "mcp",
+      label: (
+        <TabLabel icon={KeyRound}>{t("memory.tabs.mcp", "共享记忆")}</TabLabel>
+      ),
+      children: <McpAccess />,
+    });
   }
 
+  const currentMemoryTab = conversationsOnly
+    ? "conversations"
+    : agentId
+    ? activeTab
+    : "overview";
   return (
     <Tabs
       className={styles.memoryTabs}
       style={fill ? undefined : { height: "auto" }}
-      activeKey={conversationsOnly ? "conversations" : activeTab}
-      onChange={(k) => setActiveTab(k as MemoryTab)}
+      activeKey={mcpAccess?.active ? "mcp" : currentMemoryTab}
+      onChange={(key) => {
+        if (key !== "mcp") setActiveTab(key as MemoryTab);
+        if (mcpAccess && mcpAccess.active !== (key === "mcp")) {
+          mcpAccess.onChange(key === "mcp");
+        }
+      }}
       destroyOnHidden
-      items={tabItems}
+      items={items}
     />
   );
 }
