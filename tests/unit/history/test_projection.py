@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -17,6 +18,7 @@ from octop.infra.history.projection import (
     _wire_text,
     live_message_input,
     message_input,
+    message_inputs,
 )
 
 
@@ -218,3 +220,55 @@ async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     assert queue.available_slots == 2
     assert queue.contains("thr-1") is False
     await queue.close()
+
+
+def _read_image_turn() -> list[Any]:
+    """A user asks about an image; deepagents read_file attaches it in a synthetic HumanMessage."""
+    from deepagents.middleware.filesystem import add_notification_metadata
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    media = add_notification_metadata(
+        HumanMessage(
+            content_blocks=[{"type": "image", "base64": "AAAA", "mime_type": "image/png"}],
+            id="media",
+            additional_kwargs={"read_file_media_result": True},
+        ),
+        source="read_file_media",
+        data={"path": "/cat.png", "tool_call_id": "t1"},
+    )
+    return [
+        HumanMessage("what is in cat.png?", id="ask"),
+        AIMessage(
+            "",
+            id="call",
+            tool_calls=[{"id": "t1", "name": "read_file", "args": {"file_path": "/cat.png"}}],
+        ),
+        ToolMessage("Read image /cat.png", tool_call_id="t1", id="result"),
+        media,
+        AIMessage("It is a cat.", id="answer"),
+    ]
+
+
+def test_read_file_media_is_not_a_user_message() -> None:
+    items = message_inputs(_read_image_turn())
+    assert [(i.message_id, i.role) for i in items] == [
+        ("ask", "human"),
+        ("call", "ai"),
+        ("result", "tool"),
+        ("answer", "ai"),
+    ]
+
+
+def test_read_file_media_does_not_start_a_new_turn() -> None:
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "state_snapshot", "data": {"messages": _read_image_turn()}})
+    assert [i.message_id for i in tracker.inputs] == ["ask", "call", "result", "answer"]
+
+
+def test_role_dict_media_is_recognized() -> None:
+    media = {
+        "role": "user",
+        "content": "",
+        "additional_kwargs": {"lc_source": "read_file_media"},
+    }
+    assert message_inputs([media]) == []
