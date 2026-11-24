@@ -22,11 +22,13 @@ class ThreadRegistry:
     @classmethod
     def is_virtual_channel(cls, channel_type: str) -> bool:
         """In-process channels are not IM outbound targets."""
+        from octop.infra.extensions import extension_names  # noqa: PLC0415
+
         return channel_type in {
             cls.CHANNEL_DASHBOARD,
             cls.CHANNEL_CLI,
             cls.CHANNEL_MCP,
-        }
+        } or channel_type in extension_names("virtual_channels")
 
     @classmethod
     def is_im_session(cls, session: SessionRow) -> bool:

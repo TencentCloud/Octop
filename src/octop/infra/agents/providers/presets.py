@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import copy
+import logging
+from collections.abc import Mapping
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None:
@@ -288,6 +293,23 @@ def _embedding_cloud_presets() -> list[dict[str, Any]]:
     ]
 
 
+def _extension_presets(taken: set[str]) -> list[dict[str, Any]]:
+    """Presets from ``octop.extensions``; an id Octop already ships is skipped."""
+    from octop.infra.extensions import extension_records  # noqa: PLC0415
+
+    out: list[dict[str, Any]] = []
+    for ext_name, preset in extension_records("provider_presets"):
+        preset_id = preset.get("id") if isinstance(preset, Mapping) else None
+        if not isinstance(preset_id, str) or not preset_id:
+            raise ValueError(f"extension {ext_name!r}: provider preset without an id")
+        if preset_id in taken:
+            logger.warning("extension %r: provider preset %r already exists", ext_name, preset_id)
+            continue
+        taken.add(preset_id)
+        out.append(copy.deepcopy(dict(preset)))
+    return out
+
+
 def load_provider_presets() -> list[dict[str, Any]]:
     """Serialize octop-harness provider templates for API / CLI."""
     from importlib import resources
@@ -353,6 +375,7 @@ def load_provider_presets() -> list[dict[str, Any]]:
         out.insert(0, magpie_preset())
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
+    out[:0] = _extension_presets({str(p.get("id")) for p in out})
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:

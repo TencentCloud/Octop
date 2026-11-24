@@ -114,7 +114,10 @@ def hitl_tool_catalog() -> list[HitlToolCatalogEntry]:
     """Built-in tools eligible for human-in-the-loop approval (excludes must-use internals)."""
     labels_zh = all_tool_labels("zh")
     labels_en = all_tool_labels("en")
-    names = sorted((set(labels_zh) | set(labels_en)) - HITL_TOOL_EXCLUDE)
+    from octop.infra.extensions import extension_names  # noqa: PLC0415
+
+    excluded = HITL_TOOL_EXCLUDE | extension_names("hitl_excluded_tools")
+    names = sorted((set(labels_zh) | set(labels_en)) - excluded)
     return [
         HitlToolCatalogEntry(
             name=name,
