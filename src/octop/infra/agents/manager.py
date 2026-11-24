@@ -1659,12 +1659,17 @@ class AgentManager:
             return {}
         return self._agent_config_dict(row)
 
-    def persist_harness_config(self, agent_id: str, cfg: dict[str, Any], **extra: Any) -> None:
+    def persist_harness_config(
+        self, agent_id: str, cfg: dict[str, Any], **extra: Any
+    ) -> dict[str, Any]:
         """Write harness keys to ``config_json`` and lift leftover profile fields.
 
         ``dumps_config`` strips profile keys (including ``skill_package_ids``). If those
         still only live in the dict, copy them onto empty columns so a later overlay
         does not drop mounts.
+
+        Returns the config as stored (after internal-layout pinning and extension
+        normalizers), which callers must use for any runtime update.
         """
         cfg = self._preserve_internal_layout(agent_id, cfg)
         lifted = extract_profile_from_config(cfg)
@@ -1677,6 +1682,7 @@ class AgentManager:
                     kwargs[key] = value
         kwargs.update(extra)
         self._repos.agent_repo.update_config(agent_id, **kwargs)
+        return cfg
 
     def resolve_workspace_dir(self, agent_id: str, *, persist_if_missing: bool = True) -> Path:
         """On-disk workspace for Octop host FS ops (delete, memory path, …).
@@ -3156,8 +3162,8 @@ class AgentManager:
 
         cfg = self.get_config(agent_id)
         store_skills_disabled(cfg, disabled)
-        self.persist_harness_config(agent_id, cfg)
-        self.sync_skills_disabled(agent_id, skills_disabled_set(cfg))
+        stored = self.persist_harness_config(agent_id, cfg)
+        self.sync_skills_disabled(agent_id, skills_disabled_set(stored))
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""

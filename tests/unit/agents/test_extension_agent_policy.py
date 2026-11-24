@@ -127,3 +127,40 @@ async def test_check_agent_delete_can_refuse(policy: _Policy, manager: AgentMana
         await manager.delete("a1")
     assert repo.get("a1") is not None
     manager._harness_manager.aremove_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_skill_hot_update_uses_the_normalized_config(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.agents.manager import skills_disabled_set
+
+    class _KeepsWeatherOff:
+        def normalize_agent_config(self, config: dict[str, Any], **_: Any) -> dict[str, Any]:
+            out = dict(config)
+            out["skills_disabled"] = sorted({*(out.get("skills_disabled") or []), "weather"})
+            return out
+
+    monkeypatch.setattr(
+        extensions,
+        "entry_points",
+        lambda group: [SimpleNamespace(name="p", load=lambda: _KeepsWeatherOff())],
+    )
+    load_extensions.cache_clear()
+    pushed: list[set[str]] = []
+    running = SimpleNamespace(set_skills_disabled=lambda disabled: pushed.append(set(disabled)))
+    monkeypatch.setattr(manager, "get_agent", lambda agent_id: running)
+    manager._repos.agent_repo.create(
+        agent_id="a1",
+        user_id=None,
+        name="a",
+        config_json=json.dumps({"skills_disabled": ["weather"]}),
+    )
+    try:
+        # The user enables every skill, weather included.
+        await manager.persist_skills_disabled("a1", set())
+    finally:
+        load_extensions.cache_clear()
+
+    assert "weather" in skills_disabled_set(manager.get_config("a1"))
+    assert pushed and "weather" in pushed[-1]
