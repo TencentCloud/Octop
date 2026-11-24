@@ -3,3 +3,7 @@
 # does not build images whose scripts fail with "/bin/sh^M".
 *.sh text eol=lf
 fnos/*/cmd/* text eol=lf
+# Extensionless launchers packaged into the native fnOS FPK.
+fnos/native/app/bin/* text eol=lf
+# Git hooks run through sh, including Git for Windows.
+.githooks/* text eol=lf
