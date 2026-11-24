@@ -21,7 +21,12 @@ from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.care_push import CarePushRepo
+from octop.infra.db.repos.sessions import SessionRepo, SessionRow
+from octop.infra.db.repos.thread_messages import ThreadMessageRepo
+from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.users import UserRepo
+from octop.infra.gateway.gateway import Gateway
+from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.utils.ulid import new_ulid
 
@@ -104,16 +109,51 @@ def _make_agent(
     config.default_model = "openai/gpt-4o-mini"
     config.locale = "zh-CN"
     agent.config = config
+
+    # Mock checkpoint append (returns messages as-is).
+    async def _aappend(_thread_id: str, messages):
+        return list(messages)
+
+    agent.aappend_messages = AsyncMock(side_effect=_aappend)
     return agent
 
 
-def _make_gateway(push_success: bool = True) -> MagicMock:
-    """Create a mock Gateway."""
+def _make_gateway(
+    push_success: bool = True,
+    *,
+    channel_type: str = "wxwork",
+    thread_id: str = "thr_default",
+) -> MagicMock:
+    """Create a mock Gateway wired for ProactiveCareService._deliver."""
     gateway = MagicMock()
+    gateway.thread_registry = MagicMock()
+    gateway.thread_registry.latest_active_thread.return_value = None
+
+    async def _run_in_session(_agent_id: str, _session_key: str, operation):
+        await operation()
+
+    def _require_session(aid: str, sk: str) -> SessionRow:
+        return SessionRow(
+            id=1,
+            session_key=sk,
+            agent_id=aid,
+            user_id=1,
+            channel_type=channel_type,
+            chat_type="dm",
+            thread_id=thread_id,
+            updated_at=0,
+            channel_subject_id="user123",
+            channel_chat_type="dm",
+            channel_id="ch-1" if channel_type != "dashboard" else None,
+        )
+
+    gateway.run_in_session = AsyncMock(side_effect=_run_in_session)
+    gateway.require_session = MagicMock(side_effect=_require_session)
+    gateway.notify_dashboard_push = AsyncMock(return_value=None)
     if push_success:
-        gateway.push_text_from_session = AsyncMock(return_value=None)
+        gateway.push_session_text = AsyncMock(return_value=None)
     else:
-        gateway.push_text_from_session = AsyncMock(side_effect=RuntimeError("推送失败：网络错误"))
+        gateway.push_session_text = AsyncMock(side_effect=RuntimeError("推送失败：网络错误"))
     return gateway
 
 
@@ -232,11 +272,11 @@ async def test_service_run_truncates_long_text(agent_id: str, care_push_repo: Ca
     # Capture the actual pushed text.
     pushed_texts: list[str] = []
 
-    async def _capture_gen(agent_id: str, session_key: str, text: str, **kwargs):
+    async def _capture_push(_session, text: str, **kwargs):
         pushed_texts.append(text)
 
-    gateway = MagicMock()
-    gateway.push_text_from_session = _capture_gen
+    gateway = _make_gateway(push_success=True)
+    gateway.push_session_text = AsyncMock(side_effect=_capture_push)
     agent_manager = _make_agent_manager(agent)
     service = ProactiveCareService(
         gateway=gateway,
@@ -299,3 +339,218 @@ async def test_service_run_no_memory(agent_id: str, care_push_repo: CarePushRepo
     # Verify no dedup records were written.
     pushed = care_push_repo.list_pushed_episode_ids(agent_id)
     assert len(pushed) == 0
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: persistence to checkpoint, thread_messages, and records
+# ---------------------------------------------------------------------------
+
+
+def _build_real_gateway(db: SqlitePool, agent: MagicMock) -> tuple[Gateway, MagicMock]:
+    agent_manager = _make_agent_manager(agent)
+    agent_manager.get_row.return_value = MagicMock(default_model=None)
+    agent_manager.get_row.return_value.name = "bot"
+
+    repos = MagicMock()
+    repos.session_repo = SessionRepo(db)
+    repos.thread_repo = ThreadRepo(db)
+    repos.thread_message_repo = ThreadMessageRepo(db)
+    repos.user_repo = UserRepo(db)
+
+    gateway = Gateway(agent_manager=agent_manager, repos=repos)
+    gateway._channel_manager = MagicMock()
+    gateway._channel_manager.push_text = AsyncMock(return_value=None)
+    gateway._channel_manager.get_channel = MagicMock(return_value=None)
+
+    async def _run_in_session(_channel_id: str, _session_key: str, operation):
+        await operation()
+
+    gateway._channel_manager.run_in_session = _run_in_session
+    return gateway, agent_manager
+
+
+@pytest.mark.asyncio
+async def test_dashboard_care_persists_ai_message_and_records_coordinates(
+    db: SqlitePool,
+    agent_id: str,
+    care_push_repo: CarePushRepo,
+) -> None:
+    """Issue #3064: dashboard care writes a single AIMessage to checkpoint + thread_messages."""
+    care_text = "昨天和经理聊得怎么样？记得好好休息。"
+    episodes = [_make_episode("ep_dash")]
+    checkpoint: list[tuple[str, str, str, str]] = []
+    agent = _make_agent(episodes, llm_response=care_text)
+
+    async def _aappend(tid: str, messages):
+        checkpoint.extend((tid, m.type, m.id, m.content) for m in messages)
+        return list(messages)
+
+    agent.aappend_messages = AsyncMock(side_effect=_aappend)
+    gateway, agent_manager = _build_real_gateway(db, agent)
+
+    session_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=1)
+    ThreadRepo(db).insert(
+        thread_id="thr_dash_active",
+        agent_id=agent_id,
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        last_active=1_700_000_000,
+    )
+    # Also create a blank bound thread to ensure _bind_latest_thread prefers the active thread.
+    ThreadRepo(db).insert(
+        thread_id="thr_dash_blank",
+        agent_id=agent_id,
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        last_active=0,
+    )
+    SessionRepo(db).upsert(
+        session_key=session_key,
+        agent_id=agent_id,
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        chat_type=ThreadRegistry.CHAT_TYPE_DM,
+        thread_id="thr_dash_blank",
+    )
+
+    msg_repo = ThreadMessageRepo(db)
+    service = ProactiveCareService(
+        gateway=gateway,
+        care_push_repo=care_push_repo,
+        agent_manager=agent_manager,
+        thread_message_repo=msg_repo,
+    )
+    await service.run(agent_id, session_key)
+
+    # Persisted to checkpoint as a single AIMessage on the active thread.
+    assert len(checkpoint) == 1
+    tid, role, mid, content = checkpoint[0]
+    assert tid == "thr_dash_active"
+    assert role == "ai"
+    assert mid.startswith("care:") and mid.endswith(":assistant")
+    assert content == care_text
+
+    # Persisted to thread_messages projection so dashboard history shows it.
+    rows, _ = msg_repo.page("thr_dash_active", limit=10)
+    assert len(rows) == 1
+    assert rows[0].role == "ai"
+    assert rows[0].message_id == mid
+    assert care_text in rows[0].message_json
+
+    # Unread count bumped and care_push_records stores thread/message/text/status.
+    session = SessionRepo(db).get(session_key)
+    assert session is not None
+    assert session.thread_id == "thr_dash_active"
+    assert session.unread_count == 1
+
+    records = care_push_repo.list_recent(agent_id)
+    assert len(records) == 1
+    assert records[0].thread_id == "thr_dash_active"
+    assert records[0].message_id == mid
+    assert records[0].care_text == care_text
+    assert records[0].status == "sent"
+
+
+@pytest.mark.asyncio
+async def test_im_care_persists_ai_message_for_reply_context(
+    db: SqlitePool,
+    agent_id: str,
+    care_push_repo: CarePushRepo,
+) -> None:
+    """IM care also persists a single AIMessage so the agent remembers what it asked."""
+    care_text = "这周加班辛苦了，今天早点歇着吧。"
+    checkpoint: list[tuple[str, str, str, str]] = []
+    agent = _make_agent([_make_episode("ep_im")], llm_response=care_text)
+
+    async def _aappend(tid: str, messages):
+        checkpoint.extend((tid, m.type, m.id, m.content) for m in messages)
+        return list(messages)
+
+    agent.aappend_messages = AsyncMock(side_effect=_aappend)
+    gateway, agent_manager = _build_real_gateway(db, agent)
+    gateway.notify_dashboard_push = AsyncMock(return_value=None)
+
+    session_key = ThreadRegistry.make_key(
+        agent_id=agent_id,
+        channel_type="weixin",
+        channel_subject_id="wx_u1",
+        channel_chat_type="dm",
+    )
+    ThreadRepo(db).insert(
+        thread_id="thr_im",
+        agent_id=agent_id,
+        user_id=1,
+        channel_type="weixin",
+        session_key=session_key,
+        last_active=1_700_000_000,
+    )
+    SessionRepo(db).upsert(
+        session_key=session_key,
+        agent_id=agent_id,
+        user_id=1,
+        channel_type="weixin",
+        chat_type="dm",
+        thread_id="thr_im",
+        channel_id="ch_wx_1",
+    )
+
+    msg_repo = ThreadMessageRepo(db)
+    service = ProactiveCareService(
+        gateway=gateway,
+        care_push_repo=care_push_repo,
+        agent_manager=agent_manager,
+        thread_message_repo=msg_repo,
+    )
+    await service.run(agent_id, session_key)
+
+    assert len(checkpoint) == 1
+    assert checkpoint[0][0] == "thr_im"
+    assert checkpoint[0][1] == "ai"
+    rows, _ = msg_repo.page("thr_im", limit=10)
+    assert len(rows) == 1
+    assert rows[0].role == "ai"
+    gateway.notify_dashboard_push.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_locked_can_send_false_discards_without_persisting(
+    db: SqlitePool,
+    agent_id: str,
+    care_push_repo: CarePushRepo,
+) -> None:
+    """A second can_send() check inside the session lock prevents race-condition pushes."""
+    agent = _make_agent([_make_episode("ep_race")], llm_response="你好呀")
+    gateway, agent_manager = _build_real_gateway(db, agent)
+    session_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=1)
+    ThreadRepo(db).insert(
+        thread_id="thr_race",
+        agent_id=agent_id,
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        session_key=session_key,
+        last_active=1_700_000_000,
+    )
+    SessionRepo(db).upsert(
+        session_key=session_key,
+        agent_id=agent_id,
+        user_id=1,
+        channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+        chat_type="dm",
+        thread_id="thr_race",
+    )
+
+    # First check (outside lock) returns True; second check (inside lock) returns False.
+    checks = iter([True, False])
+    service = ProactiveCareService(
+        gateway=gateway,
+        care_push_repo=care_push_repo,
+        agent_manager=agent_manager,
+        thread_message_repo=ThreadMessageRepo(db),
+    )
+    await service.run(agent_id, session_key, can_send=lambda: next(checks))
+
+    agent.aappend_messages.assert_not_awaited()
+    gateway._channel_manager.push_text.assert_not_awaited()
+    assert care_push_repo.list_recent(agent_id) == []

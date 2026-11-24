@@ -307,6 +307,7 @@ class AppRuntime:
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
             thread_repo=services.repos.thread_repo,
+            thread_message_repo=services.repos.thread_message_repo,
         )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
@@ -608,6 +609,7 @@ class OctopServer:
             gateway=gateway,
             care_push_repo=self.services.repos.care_push_repo,
             agent_manager=registry,
+            thread_message_repo=self.services.repos.thread_message_repo,
             timezone=config.default_timezone,
         )
         proactive_scheduler = ProactiveCareScheduler(
@@ -617,8 +619,10 @@ class OctopServer:
             agent_repo=self.services.repos.agent_repo,
             user_repo=self.services.repos.user_repo,
             thread_repo=self.services.repos.thread_repo,
+            thread_message_repo=self.services.repos.thread_message_repo,
             care_push_repo=self.services.repos.care_push_repo,
             is_agent_busy=registry.is_agent_active,
+            has_pending_hitl=gateway.processor.hitl_coordinator.store.has_pending_for_agent,
             default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)
