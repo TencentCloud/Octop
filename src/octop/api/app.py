@@ -124,6 +124,10 @@ def build_app(server: OctopServer) -> FastAPI:
     )
     configure_openapi(app)
     app.state.octop_server = server
+    # The octop_api agent tool calls this app in-process as the conversation's user.
+    from octop.infra.agents.octop_api import bind_loopback_app
+
+    bind_loopback_app(app)
     _install_exception_handlers(app)
 
     if cfg and cfg.cors_origins:

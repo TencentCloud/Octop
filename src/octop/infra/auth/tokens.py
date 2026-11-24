@@ -8,17 +8,21 @@ from typing import Any, Literal, cast
 
 import jwt
 
-TokenPurpose = Literal["access", "mfa", "reauth"]
+TokenPurpose = Literal["access", "mfa", "reauth", "agent"]
 
 PURPOSE_ACCESS: TokenPurpose = "access"
 PURPOSE_MFA: TokenPurpose = "mfa"
 PURPOSE_REAUTH: TokenPurpose = "reauth"
+# Minted per tool call so an agent can call the API as the conversation's user,
+# inside the boundary in ``octop.infra.auth.agent_access``.
+PURPOSE_AGENT: TokenPurpose = "agent"
 
-_VALID_PURPOSES = frozenset({"access", "mfa", "reauth"})
+_VALID_PURPOSES = frozenset({"access", "mfa", "reauth", "agent"})
 
 # Short-lived challenge tokens (MFA verify / reauth grant).
 MFA_TOKEN_TTL_SECONDS = 300
 REAUTH_TOKEN_TTL_SECONDS = 300
+AGENT_TOKEN_TTL_SECONDS = 120
 
 
 class InvalidToken(Exception): ...
@@ -39,6 +43,7 @@ def sign_token(
     password_version: int = 0,
     amr: str | None = None,
     jti: str | None = None,
+    agent_id: str | None = None,
 ) -> str:
     """Mint a JWT. ``purpose`` is required; missing purpose must fail closed."""
     if purpose not in _VALID_PURPOSES:
@@ -55,6 +60,13 @@ def sign_token(
     if purpose == PURPOSE_ACCESS:
         payload["mfa_version"] = int(mfa_version)
         payload["password_version"] = int(password_version)
+    elif purpose == PURPOSE_AGENT:
+        if not agent_id:
+            raise ValueError("agent tokens require agent_id")
+        payload["mfa_version"] = int(mfa_version)
+        payload["password_version"] = int(password_version)
+        payload["agent_id"] = agent_id
+        payload["jti"] = jti or secrets.token_urlsafe(16)
     elif purpose == PURPOSE_MFA:
         payload["mfa_version"] = int(mfa_version)
         if amr is None:
