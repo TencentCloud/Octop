@@ -254,3 +254,52 @@
   max-width: 44px;
   overflow: hidden;
 }
+
+.codexSettings,
+.codexField {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+
+.codexSettings {
+  padding-top: 8px;
+  gap: 16px;
+}
+
+.codexToken {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.codexSelect {
+  width: 100%;
+}
+
+.codexConfigure,
+.codexCopy {
+  align-self: flex-start;
+}
+
+.codexConfigure {
+  padding-inline: 0;
+}
+
+.codexInstructions {
+  color: var(--fn-text-secondary);
+
+  summary {
+    cursor: pointer;
+    width: fit-content;
+  }
+
+  textarea {
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+}

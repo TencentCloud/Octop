@@ -95,7 +95,10 @@ export default function McpAccess() {
   const [createExpertDefault, setCreateExpertDefault] = useState<string>("");
   const [createSpaceId, setCreateSpaceId] = useState<string | null>(null);
   const [created, setCreated] = useState<MemoryMcpTokenCreated | null>(null);
-  const [codexTarget, setCodexTarget] = useState<MemoryMcpToken | null>(null);
+  const [codexTarget, setCodexTarget] = useState<{
+    token: MemoryMcpToken;
+    view: "model" | "setup";
+  } | null>(null);
   /**
    * Plaintexts seen this session, keyed by token id. The server keeps only the
    * digest, so a row without an entry can only copy after a rotate.
@@ -819,7 +822,7 @@ export default function McpAccess() {
                 type="link"
                 size="small"
                 style={ACTION_TEXT_STYLE}
-                onClick={() => setCodexTarget(token)}
+                onClick={() => setCodexTarget({ token, view: "model" })}
               >
                 {t("memory.mcp.codexModelSetup", "Codex 提取模型")}
               </Button>
@@ -1284,15 +1287,24 @@ export default function McpAccess() {
 
       <Modal
         open={codexTarget !== null}
-        title={t("memory.mcp.codexModelSetup", "Codex 提取模型")}
+        title={
+          codexTarget?.view === "setup"
+            ? t("memory.mcp.configureCodex", "配置本机 Codex")
+            : t("memory.mcp.codexModelSetup", "Codex 提取模型")
+        }
+        width={420}
         footer={null}
         onCancel={() => setCodexTarget(null)}
         destroyOnHidden
       >
         {codexTarget && (
           <CodexModelSetup
-            key={codexTarget.token_id}
-            token={codexTarget}
+            key={codexTarget.token.token_id}
+            token={codexTarget.token}
+            view={codexTarget.view}
+            onConfigure={() =>
+              setCodexTarget({ token: codexTarget.token, view: "setup" })
+            }
             prompt={buildCodexPrompt}
             copy={copySetupCommand}
           />
@@ -1441,6 +1453,7 @@ export default function McpAccess() {
                   children: (
                     <CodexModelSetup
                       key={created.token.token_id}
+                      view="onboarding"
                       token={created.token}
                       prompt={buildCodexPrompt}
                       copy={copySetupCommand}
