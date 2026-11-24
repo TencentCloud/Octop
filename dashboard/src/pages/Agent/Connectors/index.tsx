@@ -1703,6 +1703,7 @@ function ConnectorConfigDrawer({
               const isSecret = field.secret || field.field_type === "password";
               const input = isSecret ? (
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder={
                     hasStoredCredentials && field.secret
                       ? t("connectors.secretPlaceholder", "留空表示不修改")
@@ -1768,6 +1769,7 @@ function ConnectorConfigDrawer({
               }
             >
               <Input.Password
+                autoComplete="new-password"
                 placeholder={hasStoredCredentials ? "••••••••" : undefined}
               />
             </Form.Item>
@@ -1793,6 +1795,7 @@ function ConnectorConfigDrawer({
                 }
               >
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder={
                     hasStoredCredentials
                       ? t("connectors.secretPlaceholder", "留空表示不修改")
@@ -1960,6 +1963,7 @@ function ConnectorConfigDrawer({
                 extra={configuredExtra(preview, "bot_secret_configured", t)}
               >
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder={
                     hasStoredCredentials
                       ? t("connectors.secretPlaceholder", "留空表示不修改")
@@ -1991,6 +1995,7 @@ function ConnectorConfigDrawer({
                   }
                 >
                   <Input.Password
+                    autoComplete="new-password"
                     placeholder={
                       hasStoredCredentials
                         ? t("connectors.secretPlaceholder", "留空表示不修改")
@@ -2101,6 +2106,7 @@ function ConnectorConfigDrawer({
                   extra={configuredExtra(preview, "api_key_configured", t)}
                 >
                   <Input.Password
+                    autoComplete="new-password"
                     placeholder={
                       preview?.api_key_configured
                         ? t("connectors.secretPlaceholder", "留空表示不修改")
@@ -2139,6 +2145,7 @@ function ConnectorConfigDrawer({
                       }
                     >
                       <Input.Password
+                        autoComplete="new-password"
                         onChange={(e) =>
                           form.setFieldValue("access_token", e.target.value)
                         }
@@ -2192,6 +2199,7 @@ function ConnectorConfigDrawer({
                 }
               >
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder={
                     hasStoredCredentials
                       ? t("connectors.secretPlaceholder", "留空表示不修改")

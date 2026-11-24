@@ -428,6 +428,7 @@ export function VoiceSettingsPanel() {
               </Form.Item>
               <Form.Item label="SecretKey" required>
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder="SecretKey"
                   value={secretKey}
                   onChange={(e) => setSecretKey(e.target.value)}
@@ -441,6 +442,7 @@ export function VoiceSettingsPanel() {
               </Form.Item>
               <Form.Item label="AppID" required={realtimeStt}>
                 <Input
+                  autoComplete="off"
                   placeholder="1300000000"
                   value={appId}
                   disabled={!realtimeStt}
@@ -460,6 +462,7 @@ export function VoiceSettingsPanel() {
               <div className={styles.drawerHint}>{t("voice.openaiHint")}</div>
               <Form.Item label="API Key" required>
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder="API Key"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
@@ -500,6 +503,7 @@ export function VoiceSettingsPanel() {
               </Form.Item>
               <Form.Item label="API Key" required>
                 <Input.Password
+                  autoComplete="new-password"
                   placeholder="API Key (sk-... / tp-...)"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}

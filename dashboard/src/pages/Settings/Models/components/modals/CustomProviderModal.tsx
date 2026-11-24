@@ -338,7 +338,11 @@ export function CustomProviderModal({
         </Form.Item>
 
         <Form.Item name="api_key" label="API Key">
-          <Input.Password placeholder="sk-..." visibilityToggle />
+          <Input.Password
+            autoComplete="new-password"
+            placeholder="sk-..."
+            visibilityToggle
+          />
         </Form.Item>
 
         {kind === "openai" && (

@@ -210,7 +210,7 @@ export default function OctopProvidersPage() {
             <Input placeholder="https://api.openai.com/v1" />
           </Form.Item>
           <Form.Item label={t("adminProviders.fieldApiKey")} name="api_key">
-            <Input.Password placeholder="sk-…" />
+            <Input.Password autoComplete="new-password" placeholder="sk-…" />
           </Form.Item>
           <Form.Item label={t("adminProviders.fieldModel")} name="model">
             <Input placeholder="gpt-4o-mini" />

@@ -263,6 +263,7 @@ function FormItemForField({
     >
       <Input1
         disabled={disabled}
+        autoComplete={field.type === "password" ? "new-password" : "off"}
         placeholder={field.placeholder}
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }

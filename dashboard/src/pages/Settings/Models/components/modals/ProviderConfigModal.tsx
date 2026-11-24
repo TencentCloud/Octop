@@ -1163,6 +1163,7 @@ export function ProviderConfigModal({
 
             <Form.Item name="api_key" label="API Key" extra={apiKeyExtra}>
               <Input.Password
+                autoComplete="new-password"
                 placeholder={apiKeyPlaceholder}
                 visibilityToggle
               />
