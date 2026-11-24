@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -14,7 +14,7 @@ from octop.infra.agents.settings.decision import DecisionSettings
 from octop.infra.agents.settings.laya_runtime import get_laya_runtime
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
-from octop.infra.utils.secret_fields import blank_secret
+from octop.infra.utils.secret_fields import Secret, blank_secret
 
 router = APIRouter()
 
@@ -45,7 +45,7 @@ class DecisionServiceBody(BaseModel):
     provider: Literal["laya", "jev", "microsoft", "custom"]
     endpoint: str = ""
     model: str = ""
-    api_key: str | None = Field(
+    api_key: Annotated[str | None, Secret()] = Field(
         default=None,
         description="Omit to keep this service's key. Send an empty string to clear it.",
     )
@@ -69,7 +69,7 @@ class DecisionSettingsBody(BaseModel):
     team: bool = True
     threshold: float = Field(default=0.6, gt=0, lt=1)
     tool_min_count: int = Field(default=8, ge=1, le=100)
-    api_key: str | None = Field(
+    api_key: Annotated[str | None, Secret()] = Field(
         default=None,
         description="Omit to keep the stored key. Send an empty string to clear it.",
     )
@@ -77,7 +77,7 @@ class DecisionSettingsBody(BaseModel):
 
 class DecisionTestBody(BaseModel):
     endpoint: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     model: str | None = None
     provider: Literal["laya", "jev", "microsoft", "custom"] | None = None
     source_provider_id: int | None = Field(

@@ -3,15 +3,57 @@
 from __future__ import annotations
 
 import json
+from typing import Annotated
+
+from pydantic import BaseModel
 
 from octop.infra.db.repos.backends import BackendRow
 from octop.infra.utils.secret_fields import (
+    Secret,
     blank_secret,
     merge_blank_secrets,
     merge_config_json,
+    model_secret_names,
+    persisted_secret,
     redact_config_json,
     redact_mapping,
 )
+
+
+class _StorageBody(BaseModel):
+    endpoint: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
+    api_key: str | None = None
+
+
+def test_model_fields_follow_the_marker_not_the_name() -> None:
+    assert model_secret_names(_StorageBody) == {"access_key", "secret_key"}
+    payload = {
+        "endpoint": "tos.example",
+        "access_key": "AKIDxxxx",
+        "secret_key": "secret-value",
+        "api_key": "sk-live",
+        "bot_token": "tok",
+    }
+    kept, present = redact_mapping(payload, model=_StorageBody)
+    assert kept == {"endpoint": "tos.example", "api_key": "sk-live"}
+    assert present == ["access_key", "secret_key", "bot_token"]
+
+    merged = merge_blank_secrets(
+        {"access_key": "", "api_key": "", "bot_token": ""},
+        {"access_key": "stored-ak", "api_key": "stored-sk", "bot_token": "stored-tok"},
+        model=_StorageBody,
+    )
+    assert merged["access_key"] == "stored-ak"
+    assert merged["api_key"] == ""
+    assert merged["bot_token"] == "stored-tok"
+
+
+def test_persisted_secret_keeps_blank_marked_fields() -> None:
+    body = _StorageBody(access_key="AKID********", secret_key="new-secret")
+    assert persisted_secret(body, "access_key") is None
+    assert persisted_secret(body, "secret_key") == "new-secret"
 
 
 def test_redact_mapping_drops_secrets_and_lists_them() -> None:

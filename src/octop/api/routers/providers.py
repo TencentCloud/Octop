@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from types import SimpleNamespace
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
@@ -49,7 +49,7 @@ from octop.infra.agents.providers.store import (
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess, model_resource_key
 from octop.infra.utils.locale import resolve_request_locale
-from octop.infra.utils.secret_fields import coalesce_secret
+from octop.infra.utils.secret_fields import Secret, coalesce_secret, model_secret_names
 from octop.infra.utils.ulid import new_ulid
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class ProviderCreateBody(BaseModel):
     name: str
     kind: str
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     extra_json: str | None = None
     stream_usage: bool | None = None
     purpose: Literal["chat", "embedding"] | None = None
@@ -72,7 +72,7 @@ class ProviderCreateBody(BaseModel):
 class ProviderPatchBody(BaseModel):
     kind: str | None = None
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     extra_json: str | None = None
     stream_usage: bool | None = None
     purpose: Literal["chat", "embedding"] | None = None
@@ -234,7 +234,7 @@ class ProviderTestBody(BaseModel):
 class ProviderTestDraftBody(BaseModel):
     name: str
     kind: str
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     base_url: str | None = None
     model_id: str
     api_mode: Literal["chat_completions", "responses"] = "chat_completions"
@@ -246,7 +246,7 @@ class ProviderTestDraftBody(BaseModel):
 
 class ProviderFetchModelsBody(BaseModel):
     kind: str
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     base_url: str | None = None
     extra_json: str | None = None
     name: str | None = None
@@ -286,11 +286,12 @@ _PUBLIC_PLACEHOLDER_KEYS = frozenset({"onnx", "ollama"})
 def _public_row(r: Any) -> dict[str, Any]:
     """Provider payload for any caller: never include a real API key."""
     data = _row_to_dict(r)
-    raw = data.get("api_key")
-    text = raw.strip() if isinstance(raw, str) else ""
-    data["api_key_set"] = bool(text)
-    if text.lower() not in _PUBLIC_PLACEHOLDER_KEYS:
-        data["api_key"] = None
+    for name in model_secret_names(ProviderCreateBody):
+        raw = data.get(name)
+        text = raw.strip() if isinstance(raw, str) else ""
+        data[f"{name}_set"] = bool(text)
+        if text.lower() not in _PUBLIC_PLACEHOLDER_KEYS:
+            data[name] = None
     return data
 
 

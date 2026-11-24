@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
@@ -18,8 +18,9 @@ from octop.infra.users.groups import (
     GroupAccess,
 )
 from octop.infra.utils.secret_fields import (
-    blank_secret,
+    Secret,
     merge_config_json,
+    persisted_secret,
     redact_config_json,
 )
 
@@ -41,8 +42,8 @@ class StorageBackendCreateBody(BaseModel):
     name: str
     kind: str
     endpoint: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
     bucket: str | None = None
     region: str | None = None
     config_json: str | None = None
@@ -55,8 +56,8 @@ class StorageBackendPatchBody(BaseModel):
     name: str | None = None
     kind: str | None = None
     endpoint: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
     bucket: str | None = None
     region: str | None = None
     config_json: str | None = None
@@ -69,8 +70,8 @@ class StorageBackendPatchBody(BaseModel):
 class StorageBackendProbeBody(BaseModel):
     kind: str
     endpoint: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
     bucket: str | None = None
     region: str | None = None
     config_json: str | None = None
@@ -238,8 +239,8 @@ async def patch_storage_backend(
         name=new_name,
         kind=body.kind,
         endpoint=body.endpoint,
-        access_key=None if blank_secret(body.access_key) else body.access_key,
-        secret_key=None if blank_secret(body.secret_key) else body.secret_key,
+        access_key=persisted_secret(body, "access_key"),
+        secret_key=persisted_secret(body, "secret_key"),
         bucket=body.bucket,
         region=body.region,
         config_json=config_json,
@@ -331,8 +332,8 @@ async def probe_storage_backend_config(
     row = row_for_probe(
         kind=body.kind,
         endpoint=body.endpoint,
-        access_key=None if blank_secret(body.access_key) else body.access_key,
-        secret_key=None if blank_secret(body.secret_key) else body.secret_key,
+        access_key=persisted_secret(body, "access_key"),
+        secret_key=persisted_secret(body, "secret_key"),
         bucket=body.bucket,
         region=body.region,
         config_json=config_json,

@@ -2,6 +2,11 @@
 
 Responses omit stored secrets. A probe or update that leaves the field blank
 reuses the stored value and does not echo it.
+
+Declared model fields are secrets only when marked with :class:`Secret`.
+Dynamic dicts (channel config, storage ``config_json``, plugin extras) have
+no field declaration, so they use :data:`_SECRET_FIELD_NAMES` and
+:data:`_SECRET_SUFFIXES`.
 """
 
 from __future__ import annotations
@@ -10,7 +15,10 @@ import json
 from collections.abc import Collection, Mapping
 from typing import Any
 
-# Exact names used by providers, channels, storage, and bridge-adjacent config.
+from pydantic import BaseModel
+from pydantic.fields import FieldInfo
+
+# Exact names used by dynamic config dicts (channels, storage JSON, extras).
 _SECRET_FIELD_NAMES = frozenset(
     {
         "api_key",
@@ -30,14 +38,57 @@ _SECRET_FIELD_NAMES = frozenset(
 _SECRET_SUFFIXES = ("_api_key", "_password", "_secret", "_token")
 
 
+class Secret:
+    """Marks a Pydantic field as a credential.
+
+    Put it in ``Annotated`` on the field. A declared field without this marker
+    is not a secret, even when its name would match the dynamic-dict rules.
+    """
+
+
 def is_secret_field(name: str, *, extra_keys: Collection[str] = ()) -> bool:
-    """True when ``name`` holds a credential rather than an identifier."""
+    """True when a dynamic dict key holds a credential rather than an identifier."""
     key = name.strip().lower()
     if not key:
         return False
     if key in _SECRET_FIELD_NAMES or key in {item.lower() for item in extra_keys}:
         return True
     return key.endswith(_SECRET_SUFFIXES)
+
+
+def _marked_secret(info: FieldInfo) -> bool:
+    return any(isinstance(item, Secret) for item in info.metadata)
+
+
+def model_secret_names(model: type[BaseModel]) -> frozenset[str]:
+    """Names of fields marked with :class:`Secret`."""
+    return frozenset(name for name, info in model.model_fields.items() if _marked_secret(info))
+
+
+def persisted_secret(body: BaseModel, name: str) -> Any:
+    """Value to write for a ``Secret`` field.
+
+    ``None`` means the client left it blank or sent the mask, so the stored
+    value stays. ``name`` must be marked; an unmarked field raises ``KeyError``.
+    """
+    info = type(body).model_fields.get(name)
+    if info is None or not _marked_secret(info):
+        raise KeyError(name)
+    value = getattr(body, name)
+    if blank_secret(value):
+        return None
+    return value
+
+
+def _key_is_secret(
+    name: str,
+    *,
+    extra_keys: Collection[str],
+    model: type[BaseModel] | None,
+) -> bool:
+    if model is not None and name in model.model_fields:
+        return _marked_secret(model.model_fields[name])
+    return is_secret_field(name, extra_keys=extra_keys)
 
 
 def blank_secret(value: object) -> bool:
@@ -67,13 +118,18 @@ def redact_mapping(
     data: Mapping[str, Any],
     *,
     extra_keys: Collection[str] = (),
+    model: type[BaseModel] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
-    """Drop secret values. The second item lists keys that had a stored secret."""
+    """Drop secret values. The second item lists keys that had a stored secret.
+
+    Keys declared on ``model`` are secret only when marked with :class:`Secret`.
+    Other keys follow the dynamic-dict name rules.
+    """
     kept: dict[str, Any] = {}
     present: list[str] = []
     for key, value in data.items():
         name = str(key)
-        if not is_secret_field(name, extra_keys=extra_keys):
+        if not _key_is_secret(name, extra_keys=extra_keys, model=model):
             kept[name] = value
             continue
         if not blank_secret(value) and value not in ("", None):
@@ -86,12 +142,17 @@ def merge_blank_secrets(
     stored: Mapping[str, Any],
     *,
     extra_keys: Collection[str] = (),
+    model: type[BaseModel] | None = None,
 ) -> dict[str, Any]:
-    """Fill blank secret fields from ``stored``. Newly typed secrets win."""
+    """Fill blank secret fields from ``stored``. Newly typed secrets win.
+
+    Keys declared on ``model`` are secret only when marked with :class:`Secret`.
+    Other keys follow the dynamic-dict name rules.
+    """
     merged = dict(submitted)
     for key, stored_value in stored.items():
         name = str(key)
-        if not is_secret_field(name, extra_keys=extra_keys):
+        if not _key_is_secret(name, extra_keys=extra_keys, model=model):
             continue
         incoming = merged.get(name)
         if name not in merged or blank_secret(incoming):
@@ -100,7 +161,8 @@ def merge_blank_secrets(
             else:
                 merged.pop(name, None)
     for key in list(merged):
-        if is_secret_field(str(key), extra_keys=extra_keys) and blank_secret(merged[key]):
+        secret = _key_is_secret(str(key), extra_keys=extra_keys, model=model)
+        if secret and blank_secret(merged[key]):
             merged.pop(key, None)
     return merged
 
