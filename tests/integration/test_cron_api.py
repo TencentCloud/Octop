@@ -208,6 +208,41 @@ async def test_run_now_recovers_deleted_dashboard_session(env: Any, fresh_thread
         assert len(threads) == (run_number if fresh_thread else 1)
 
 
+async def test_run_now_reports_deleted_pinned_thread(env: Any) -> None:
+    c, srv, alice_auth, _bob_auth, aid = env
+    base = f"/api/agents/{aid}"
+    r = await c.post(f"{base}/threads", headers=alice_auth)
+    assert r.status_code == 201, r.text
+    thread_id = r.json()["thread_id"]
+    session_key = r.json()["session_key"]
+    r = await c.post(
+        f"{base}/cron",
+        headers=alice_auth,
+        json={
+            "trigger": "interval:3600",
+            "prompt": "scheduled reminder",
+            "session_key": f"thread:{thread_id}",
+        },
+    )
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+    job = srv.services.cron_repo.get(cid)
+    assert job is not None
+    srv.services.user_repo.set_locale(job.user_id, "zh")
+    r = await c.delete(f"{base}/threads/{thread_id}", headers=alice_auth)
+    assert r.status_code == 204, r.text
+
+    message = "此定时任务的会话已不可用，请在任务设置中重新选择投递目标。"
+    with pytest.raises(ValueError, match=message):
+        await srv.app_runtime.cron_manager.run_now(cid, wait=True)
+
+    r = await c.get(f"{base}/cron/{cid}", headers=alice_auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["last_status"] == "error"
+    assert r.json()["last_error"] == message
+    assert srv.app_runtime.gateway.thread_registry.get_session(session_key) is None
+
+
 async def test_cron_settings_returns_timezone(env: Any) -> None:
     c, _srv, alice_auth, _bob_auth, _aid = env
     r = await c.get("/api/cron/settings", headers=alice_auth)

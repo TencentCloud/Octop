@@ -82,11 +82,7 @@ class CronDeliveryService:
             if session_key != ThreadRegistry.dashboard_key(
                 agent_id=command.agent_id, user_id=command.user_id
             ):
-                locale = resolve_user_locale(
-                    user_repo=self._repos.user_repo,
-                    user_id=command.user_id,
-                )
-                raise ValueError(tr("cron.missing_target_session", locale))
+                raise self._missing_target_error(command.user_id)
             # Gateway.run_in_session requires the session to resolve its channel.
             recovered_thread_id = await registry.get_or_create_by_key(
                 session_key=session_key,
@@ -385,8 +381,12 @@ class CronDeliveryService:
             or row.agent_id != command.agent_id
             or row.user_id != command.user_id
         ):
-            raise ValueError(f"thread {pinned!r} is not available for this job")
+            raise self._missing_target_error(command.user_id)
         return row.session_key, pinned
+
+    def _missing_target_error(self, user_id: int) -> ValueError:
+        locale = resolve_user_locale(user_repo=self._repos.user_repo, user_id=user_id)
+        return ValueError(tr("cron.missing_target_session", locale))
 
     async def _bind_pinned_thread(self, session_key: str, thread_id: str) -> None:
         """Point the channel at the historical conversation chosen for this job."""
