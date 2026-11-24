@@ -53,11 +53,13 @@ namespace (`[a-z][a-z0-9_]*`, unique across extensions) keeps its own
 version in `_extension_schema`. That table is created only when an extension
 declares migrations.
 
-Files run after Octop's migrations, in order, and the version moves after
-each file. PostgreSQL applies a file and its version in one transaction.
-SQLite runs the file with `executescript`, which is not atomic, so write
-idempotent DDL (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`).
-Prefix table names with the namespace.
+Files run after Octop's migrations, in order. Each file and its version
+commit in one transaction, under a lock every connection and process shares
+(SQLite `BEGIN IMMEDIATE`, a PostgreSQL advisory lock), and the version is
+re-read under that lock. Two workers starting at once run each file exactly
+once, and a file that fails leaves nothing behind, so a fixed file can be
+retried. Statements are split at a `;` that ends a line: keep one statement
+per `;` line (no trigger bodies). Prefix table names with the namespace.
 
 Rules:
 

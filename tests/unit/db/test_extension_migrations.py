@@ -134,7 +134,10 @@ class _FakePg:
 def test_postgresql_applies_each_file_with_its_watermark(mig_dir: Path) -> None:
     pg = _FakePg()
     assert apply(pg, ExtensionMigrations("demo", mig_dir)) == 2  # type: ignore[arg-type]
-    assert pg.transactions == 2
+    # One locked read of the watermark, then one transaction per file.
+    assert pg.transactions == 3
+    locks = [s for s, _ in pg.statements if s.startswith("SELECT pg_advisory_xact_lock")]
+    assert len(locks) == 3
     ddl = [s for s, _ in pg.statements if s.startswith("CREATE TABLE IF NOT EXISTS demo_")]
     assert ddl == [
         "CREATE TABLE IF NOT EXISTS demo_rooms (id TEXT PRIMARY KEY)",
@@ -143,3 +146,80 @@ def test_postgresql_applies_each_file_with_its_watermark(mig_dir: Path) -> None:
     marks = [p for s, p in pg.statements if s.startswith("INSERT INTO _extension_schema")]
     assert marks == [("demo", 1), ("demo", 2)]
     assert all("%s" in s for s, p in pg.statements if p)
+
+
+def _count(db: SqlitePool, table: str) -> int:
+    with db.connect() as conn:
+        return int(conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+
+
+def _once_dir(tmp_path: Path) -> Path:
+    # Not idempotent on purpose: running it twice fails or doubles the row.
+    d = tmp_path / "once"
+    _write(
+        d,
+        "001_once.sql",
+        "CREATE TABLE demo_once (id INTEGER);\nINSERT INTO demo_once VALUES (1);\n",
+    )
+    return d
+
+
+def test_two_connections_apply_each_file_once(tmp_path: Path) -> None:
+    import threading
+
+    spec = ExtensionMigrations("demo", _once_dir(tmp_path))
+    pools = [SqlitePool(tmp_path / "octop.db"), SqlitePool(tmp_path / "octop.db")]
+    start = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def run(db: SqlitePool) -> None:
+        start.wait()
+        try:
+            apply(db, spec)
+        except BaseException as exc:  # noqa: BLE001 - surfaced below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=run, args=(db,)) for db in pools]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert _count(pools[0], "demo_once") == 1
+    assert em.current_version(pools[1], "demo") == 1
+
+
+def test_a_stale_version_is_rechecked_under_the_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = ExtensionMigrations("demo", _once_dir(tmp_path))
+    first, second = SqlitePool(tmp_path / "octop.db"), SqlitePool(tmp_path / "octop.db")
+    apply(first, spec)
+    # The second process read the watermark before the first one committed.
+    monkeypatch.setattr(em, "current_version", lambda db, namespace: 0)
+    assert apply(second, spec) == 1
+    assert _count(second, "demo_once") == 1
+
+
+def test_a_failed_file_rolls_back_and_can_be_retried(tmp_path: Path) -> None:
+    d = tmp_path / "partial"
+    _write(d, "001_base.sql", "CREATE TABLE demo_base (id INTEGER);\n")
+    _write(
+        d,
+        "002_half.sql",
+        "CREATE TABLE demo_half (id INTEGER);\nINSERT INTO demo_missing VALUES (1);\n",
+    )
+    db = SqlitePool(tmp_path / "octop.db")
+    spec = ExtensionMigrations("demo", d)
+    with pytest.raises(Exception, match="demo_missing"):
+        apply(db, spec)
+    assert "demo_half" not in _tables(db)
+    assert em.current_version(db, "demo") == 1
+
+    _write(
+        d,
+        "002_half.sql",
+        "CREATE TABLE demo_half (id INTEGER);\nINSERT INTO demo_half VALUES (1);\n",
+    )
+    assert apply(db, spec) == 2
+    assert _count(db, "demo_half") == 1
