@@ -11,6 +11,8 @@ export interface TestProviderDraftParams {
   api_fallback?: "none" | "chat_completions";
   extra_json?: string | null;
   embedding?: boolean;
+  /** When set, a blank api_key is read from this saved provider. */
+  provider_id?: number;
 }
 
 export interface TestProviderResult {
@@ -36,6 +38,7 @@ export async function testProviderDraft(
       api_fallback: params.api_fallback ?? "none",
       extra_json: params.extra_json ?? null,
       embedding: params.embedding === true,
+      provider_id: params.provider_id ?? null,
     }),
   });
 }
@@ -46,6 +49,8 @@ export interface FetchProviderModelsParams {
   base_url?: string | null;
   extra_json?: string | null;
   name?: string | null;
+  /** When set, a blank api_key is read from this saved provider. */
+  provider_id?: number;
 }
 
 export interface FetchedProviderModel {
@@ -75,6 +80,7 @@ export async function fetchProviderModels(
       base_url: params.base_url?.trim() || null,
       extra_json: params.extra_json ?? null,
       name: params.name?.trim() || null,
+      provider_id: params.provider_id ?? null,
     }),
   });
 }

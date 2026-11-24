@@ -32,6 +32,8 @@ export interface DecisionServiceBody {
   endpoint: string;
   model: string;
   api_key?: string | null;
+  /** When api_key is blank, copy this provider's stored key. */
+  source_provider_id?: number | null;
 }
 
 export interface DecisionSettingsBody {
@@ -135,6 +137,7 @@ export const decisionApi = {
     api_key?: string;
     model?: string;
     provider?: DecisionProvider;
+    source_provider_id?: number;
   }) =>
     request<{ ok: boolean; probability?: number; error?: string }>(
       "/settings/decision/test",

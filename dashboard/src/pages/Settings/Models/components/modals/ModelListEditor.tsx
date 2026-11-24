@@ -28,7 +28,7 @@ import {
   ResourceVisibilityGate,
 } from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
-import { isEmbeddingModel } from "../../useProviders";
+import { isEmbeddingModel, providerHasCredential } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
 import { ModelMetaTags } from "../../modelMeta";
 import { TokenCountInput } from "@/components/TokenCountInput";
@@ -258,7 +258,7 @@ export function ModelListEditor({
       message.warning(t("models.modelIdLabel"));
       return;
     }
-    if (!(canTest ?? !!provider.api_key)) {
+    if (!(canTest ?? providerHasCredential(provider))) {
       message.warning(t("models.testRequiresAuth"));
       return;
     }
@@ -474,7 +474,7 @@ export function ModelListEditor({
 
   const isEditing = editingModelId !== null;
   const isFormVisible = adding || isEditing;
-  const hasApiKey = canTest ?? !!provider.api_key;
+  const hasApiKey = canTest ?? providerHasCredential(provider);
 
   useEffect(() => {
     if (!isFormVisible) return;
