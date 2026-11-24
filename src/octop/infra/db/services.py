@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any
 
 from octop.config import OctopConfig
@@ -89,6 +91,16 @@ class RepoBundle:
     auth_challenge_repo: AuthChallengeRepo
     profile_avatar_repo: ProfileAvatarRepo
     control_file_repo: ControlFileRepo
+    # Repos contributed by ``octop.extensions`` (``repos(db)`` hook), keyed by
+    # extension name. Built with the bundle, so they follow a database rebind.
+    ext: Mapping[str, Any] = field(default_factory=dict)
+
+    def extension(self, name: str) -> Any:
+        """The object extension ``name`` returned from ``repos(db)`` for this pool."""
+        try:
+            return self.ext[name]
+        except KeyError:
+            raise KeyError(f"no repos registered by extension {name!r}") from None
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
@@ -130,7 +142,14 @@ class RepoBundle:
             auth_challenge_repo=AuthChallengeRepo(db),
             profile_avatar_repo=ProfileAvatarRepo(db),
             control_file_repo=ControlFileRepo(db),
+            ext=_extension_repos(db),
         )
+
+
+def _extension_repos(db: DatabasePool) -> Mapping[str, Any]:
+    from octop.infra.extensions import extension_hooks  # noqa: PLC0415
+
+    return MappingProxyType({name: hook(db) for name, hook in extension_hooks("repos")})
 
 
 @dataclass(frozen=True)
