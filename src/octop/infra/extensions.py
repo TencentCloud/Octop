@@ -26,6 +26,7 @@ this group is for what lives in the Octop server itself.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from functools import cache
 from importlib.metadata import entry_points
@@ -109,15 +110,35 @@ def extension_public_paths() -> PublicPaths:
     )
 
 
-async def run_startup_hooks(server: Any) -> None:
-    for ext_name, hook in extension_hooks("on_startup"):
-        logger.info("octop extension %r: starting", ext_name)
-        await hook(server)
+async def run_startup_hooks(server: Any) -> tuple[str, ...]:
+    """Start extensions in load order; return the names that started.
+
+    An extension without ``on_startup`` counts as started, so its
+    ``on_shutdown`` still runs at stop. If one raises, the extensions that
+    already started are shut down in reverse order and the error propagates.
+    """
+    started: list[str] = []
+    for ext in load_extensions():
+        hook = getattr(ext.obj, "on_startup", None)
+        if callable(hook):
+            logger.info("octop extension %r: starting", ext.name)
+            try:
+                await hook(server)
+            except Exception:
+                logger.exception("octop extension %r: on_startup failed", ext.name)
+                await run_shutdown_hooks(server, started)
+                raise
+        started.append(ext.name)
+    return tuple(started)
 
 
-async def run_shutdown_hooks(server: Any) -> None:
-    """Run in reverse load order; one failing hook does not stop the others."""
-    for ext_name, hook in reversed(extension_hooks("on_shutdown")):
+async def run_shutdown_hooks(server: Any, started: Sequence[str]) -> None:
+    """Shut down ``started`` extensions in reverse order; one failure does not stop the rest."""
+    hooks = dict(extension_hooks("on_shutdown"))
+    for ext_name in reversed(started):
+        hook = hooks.get(ext_name)
+        if hook is None:
+            continue
         try:
             await hook(server)
         except Exception:

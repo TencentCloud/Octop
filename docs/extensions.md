@@ -44,9 +44,13 @@ extension = Extension()
 Rules:
 
 - Extensions load once per process, sorted by entry point name. An extension
-  that fails to import is logged and skipped. An exception in `on_startup`
-  stops the server from starting. A failing `on_shutdown` is logged, and the
-  other extensions still shut down.
+  that fails to import is logged and skipped.
+- An exception in `on_startup` stops the server from starting. The extensions
+  that already started get `on_shutdown` in reverse order, then the runtime
+  is stopped and the database closed, so a failed first-run database bind can
+  be retried. `on_shutdown` runs only for extensions whose startup finished
+  (an extension without `on_startup` counts as started).
+- A failing `on_shutdown` is logged, and the other extensions still shut down.
 - Public paths must start with `/api/`. A route listed there must
   authenticate the caller itself.
 - Agent tools, skills, middleware hooks, and IM channels belong in harness

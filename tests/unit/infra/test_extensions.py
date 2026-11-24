@@ -116,3 +116,89 @@ async def test_undeclared_route_still_needs_jwt(demo: _Demo, tmp_path: Path) -> 
 
     assert ping.status_code == 200
     assert private.status_code == 401
+
+
+class _Recorder:
+    def __init__(self, name: str, log: list[str], *, fail: bool = False) -> None:
+        self.name = name
+        self.log = log
+        self.fail = fail
+
+    async def on_startup(self, server: Any) -> None:
+        if self.fail:
+            raise RuntimeError(f"{self.name} failed")
+        self.log.append(f"{self.name}.startup")
+
+    async def on_shutdown(self, server: Any) -> None:
+        assert server.services is not None, "database must still be open"
+        self.log.append(f"{self.name}.shutdown")
+
+
+@pytest.fixture()
+def a_ok_b_fails(monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[list[str], _Recorder]]:
+    log: list[str] = []
+    b = _Recorder("b", log, fail=True)
+    entries = [
+        _entry("a", _Recorder("a", log)),
+        _entry("b", b),
+        _entry("c", _Recorder("c", log)),
+    ]
+    monkeypatch.setattr(extensions, "entry_points", lambda group: entries)
+    load_extensions.cache_clear()
+    extension_public_paths.cache_clear()
+    yield log, b
+    load_extensions.cache_clear()
+    extension_public_paths.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_failed_first_bind_shuts_down_started_extensions_and_can_retry(
+    a_ok_b_fails: tuple[list[str], _Recorder], tmp_path: Path
+) -> None:
+    log, b = a_ok_b_fails
+    server = OctopServer(home=tmp_path)
+    await server.start()
+    assert not server.database_bound
+
+    with pytest.raises(RuntimeError, match="b failed"):
+        await ensure_control_plane_bound(server)
+
+    # A started and was shut down; C never started, so it is not shut down.
+    assert log == ["a.startup", "a.shutdown"]
+    assert not server.database_bound
+    assert server.services is None and server.app_runtime is None
+
+    b.fail = False
+    await server.bind_control_plane()
+    assert server.database_bound
+    await server.stop()
+    assert log[2:] == [
+        "a.startup",
+        "b.startup",
+        "c.startup",
+        "c.shutdown",
+        "b.shutdown",
+        "a.shutdown",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_failed_startup_shuts_down_started_extensions(
+    a_ok_b_fails: tuple[list[str], _Recorder], tmp_path: Path
+) -> None:
+    log, b = a_ok_b_fails
+    # Bind once so the next start() opens the database directly.
+    b.fail = False
+    first = OctopServer(home=tmp_path)
+    await first.start()
+    await ensure_control_plane_bound(first)
+    await first.stop()
+    log.clear()
+
+    b.fail = True
+    server = OctopServer(home=tmp_path)
+    with pytest.raises(RuntimeError, match="b failed"):
+        await server.start()
+
+    assert log == ["a.startup", "a.shutdown"]
+    assert server.services is None and server.app_runtime is None
