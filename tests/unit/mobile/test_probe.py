@@ -6,7 +6,10 @@ from unittest.mock import patch
 
 import pytest
 
-from octop.infra.control.mobile.probe import probe_host_capability
+from octop.infra.control.mobile.probe import (
+    physical_device_available,
+    probe_host_capability,
+)
 
 
 @pytest.mark.parametrize(
@@ -52,3 +55,31 @@ def test_linux_physical_device_wins_over_container_backends(binder: bool, kvm: b
 
     assert result.enabled is True
     assert result.backend == "physical"
+
+
+@pytest.mark.parametrize(
+    ("states", "expected"),
+    [
+        ({"R58M123ABC": "device"}, True),
+        ({"R58M123ABC": "unauthorized"}, True),
+        ({"emulator-5554": "device"}, False),
+        ({"127.0.0.1:5555": "device"}, False),
+        ({}, False),
+    ],
+)
+def test_physical_device_available(
+    states: dict[str, str],
+    expected: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.control.mobile import adb
+
+    monkeypatch.setattr(adb, "find_adb", lambda: "/usr/bin/adb")
+    monkeypatch.setattr(adb, "list_device_states", lambda adb=None: states)
+    monkeypatch.setattr(
+        adb,
+        "is_emulator_device",
+        lambda device, adb=None: device.startswith("emulator-"),
+    )
+
+    assert physical_device_available() is expected

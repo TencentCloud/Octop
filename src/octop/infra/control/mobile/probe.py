@@ -56,23 +56,29 @@ def physical_device_available() -> bool:
     """True when adb lists a real device (USB or wireless), not an emulator.
 
     Container endpoints on localhost are skipped: they are the redroid/emulator
-    backend, not a phone the user plugged in.
+    backend, not a phone the user plugged in. A device in the ``unauthorized``
+    state still counts: the phone is attached and only needs the USB-debug
+    prompt accepted (#3084).
     """
     from octop.infra.control.mobile.adb import (  # noqa: PLC0415
         find_adb,
         is_emulator_device,
-        list_devices,
+        list_device_states,
     )
 
     adb = find_adb()
     if not adb:
         return False
     try:
-        devices = list_devices(adb=adb)
+        states = list_device_states(adb=adb)
     except Exception:
         return False
-    for device in devices:
+    for device, state in states.items():
         if device.startswith(("127.0.0.1:", "localhost:")):
+            continue
+        if state == "unauthorized":
+            return True
+        if state != "device":
             continue
         try:
             if not is_emulator_device(device, adb=adb):
