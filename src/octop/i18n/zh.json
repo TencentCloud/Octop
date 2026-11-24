@@ -540,6 +540,8 @@
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
+    "INVITE_DISABLED": "该邀请码已停用。",
+    "INVITE_EXHAUSTED": "该邀请已达到注册人数上限。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
@@ -565,7 +567,10 @@
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
     "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
-    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "GIT_NO_CHANGES": "没有可提交的更改。",
+    "GIT_COMMIT_MESSAGE_INVALID": "模型没有返回可用的提交信息，请手动填写。",
+    "GIT_PUSH_DETACHED": "当前处于 detached HEAD，无法推送。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -1022,7 +1027,8 @@
     "member_file_target_send": "这个服务器上的 send_file_to_user 也从这里读文件。",
     "runner_workspace_write": "这次调用写的是运行器自己的工作区，没有写到所选目录。",
     "member_file_target_execute": "execute 也在这个目录中执行。",
-    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。"
+    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。",
+    "member_file_mounts": "以下目录只读，仍是你自己的技能和子代理目录。请按这些路径原样读取：\n{paths}"
   },
   "bridge": {
     "local_directory_relative": "本地目录必须是这台 Octop 上的绝对路径。",

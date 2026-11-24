@@ -80,6 +80,11 @@ export interface OctopUser {
    * ``null`` or omitted means unrestricted.
    */
   allowed_backend_types?: string[] | null;
+  /**
+   * Backend type preselected when this account creates an expert.
+   * ``null`` or omitted means local shell.
+   */
+  default_backend_type?: string | null;
 }
 
 export interface LoginResponse {

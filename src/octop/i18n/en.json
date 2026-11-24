@@ -540,6 +540,8 @@
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
+    "INVITE_DISABLED": "This invite code is disabled.",
+    "INVITE_EXHAUSTED": "This invite has reached its registration limit.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
@@ -565,7 +567,10 @@
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
-    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "GIT_NO_CHANGES": "There are no changes to commit.",
+    "GIT_COMMIT_MESSAGE_INVALID": "The model did not return a usable commit message; please write one.",
+    "GIT_PUSH_DETACHED": "Cannot push while HEAD is detached."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -1022,7 +1027,8 @@
     "member_file_target_send": "send_file_to_user on that server reads this directory.",
     "runner_workspace_write": "This call wrote the runner's own workspace, not the selected directory.",
     "member_file_target_execute": "execute also runs in that directory.",
-    "member_file_target_no_execute": "This workspace has no shell. Do not call execute."
+    "member_file_target_no_execute": "This workspace has no shell. Do not call execute.",
+    "member_file_mounts": "These directories are read-only and stay on your own skill and subagent directories. Read them at these exact paths:\n{paths}"
   },
   "bridge": {
     "local_directory_relative": "The local directory must be an absolute path on this Octop machine.",

@@ -25,9 +25,9 @@ class InviteRow:
     note: str | None
     created_at: int
     expires_at: int
-    used_at: int | None
-    used_by_user_id: int | None
-    revoked_at: int | None
+    enabled: bool
+    use_count: int = 0
+    max_uses: int | None = None
     role_name: str | None = None
     role: str | None = None
 
@@ -41,24 +41,24 @@ class InviteRow:
             note=row["note"],
             created_at=int(row["created_at"]),
             expires_at=int(row["expires_at"]),
-            used_at=int(row["used_at"]) if row["used_at"] is not None else None,
-            used_by_user_id=(
-                int(row["used_by_user_id"]) if row["used_by_user_id"] is not None else None
-            ),
-            revoked_at=int(row["revoked_at"]) if row["revoked_at"] is not None else None,
+            enabled=bool(row["enabled"]),
+            use_count=int(row["use_count"]),
+            max_uses=int(row["max_uses"]) if row["max_uses"] is not None else None,
             role_name=_optional_text(row["role_name"]) if "role_name" in keys else None,
             role=_optional_text(row["role"]) if "role" in keys else None,
         )
 
+    @property
+    def exhausted(self) -> bool:
+        return self.max_uses is not None and self.use_count >= self.max_uses
+
     def status(self, *, now: int | None = None) -> str:
         ts = now if now is not None else now_ts()
-        if self.revoked_at is not None:
-            return "revoked"
-        if self.used_at is not None:
-            return "used"
+        if not self.enabled or self.exhausted:
+            return "disabled"
         if self.expires_at <= ts:
             return "expired"
-        return "pending"
+        return "active"
 
 
 class InviteRepo:
@@ -74,15 +74,16 @@ class InviteRepo:
         note: str | None = None,
         role_name: str | None = None,
         role: str | None = None,
+        max_uses: int | None = None,
     ) -> InviteRow:
         ts = now_ts()
         with self._db.transaction() as conn:
             invite_id = insert_returning_id(
                 conn,
                 "INSERT INTO user_invites("
-                "code, created_by, note, created_at, expires_at, role_name, role"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (code, created_by, note, ts, expires_at, role_name, role),
+                "code, created_by, note, created_at, expires_at, role_name, role, max_uses"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (code, created_by, note, ts, expires_at, role_name, role, max_uses),
             )
         row = self.get(invite_id)
         assert row is not None
@@ -105,21 +106,37 @@ class InviteRepo:
             ).fetchall()
         return map_rows(rows, InviteRow)
 
-    def revoke(self, invite_id: int) -> InviteRow | None:
-        ts = now_ts()
+    def set_enabled(self, invite_id: int, enabled: bool) -> InviteRow | None:
+        enabled_value = int(enabled)
         with self._db.transaction() as conn:
-            row = conn.execute("SELECT * FROM user_invites WHERE id = ?", (invite_id,)).fetchone()
-            if row is None:
-                return None
-            invite = InviteRow.from_row(row)
-            if invite.used_at is not None or invite.revoked_at is not None:
-                return invite
-            conn.execute(
-                "UPDATE user_invites SET revoked_at = ? WHERE id = ? AND used_at IS NULL "
-                "AND revoked_at IS NULL",
-                (ts, invite_id),
-            )
-        return self.get(invite_id)
+            row = conn.execute(
+                "UPDATE user_invites SET enabled = ? WHERE id = ? "
+                "AND (? = 0 OR max_uses IS NULL OR use_count < max_uses) RETURNING *",
+                (enabled_value, invite_id, enabled_value),
+            ).fetchone()
+            if row is not None:
+                return InviteRow.from_row(row)
+            if (
+                enabled
+                and conn.execute("SELECT 1 FROM user_invites WHERE id = ?", (invite_id,)).fetchone()
+            ):
+                raise ValueError("exhausted")
+            return None
+
+    def list_users(
+        self, invite_id: int, *, limit: int, offset: int
+    ) -> tuple[list[dict[str, Any]], int]:
+        with self._db.connect() as conn:
+            total = conn.execute(
+                "SELECT COUNT(*) FROM user_invite_redemptions WHERE invite_id = ?", (invite_id,)
+            ).fetchone()[0]
+            rows = conn.execute(
+                "SELECT u.id, u.username, u.display_name, u.email, u.created_at, r.redeemed_at "
+                "FROM user_invite_redemptions r JOIN users u ON u.id = r.user_id "
+                "WHERE r.invite_id = ? ORDER BY r.redeemed_at DESC, r.id DESC LIMIT ? OFFSET ?",
+                (invite_id, limit, offset),
+            ).fetchall()
+        return [dict(row) for row in rows], int(total)
 
     def redeem_creating_user(
         self,
@@ -135,23 +152,26 @@ class InviteRepo:
         policies: list[tuple[str, str]] | None = None,
         role_name: str | None = None,
     ) -> tuple[int, InviteRow]:
-        """Create a user and mark the invite used in one transaction.
+        """Create a user and record the redemption in one transaction.
 
         ``account_role`` is the role-template public id written to ``users.role``.
 
-        Returns ``(user_id, invite)``. Caller must hold any in-memory locks.
+        Returns ``(user_id, invite)`` with the updated redemption count.
         Raises ``LookupError`` when the invite is missing, ``ValueError`` with
-        status ``used`` / ``expired`` / ``revoked`` / ``username_taken`` /
+        status ``disabled`` / ``expired`` / ``username_taken`` /
         ``email_taken``.
         """
-        ts = now_ts()
         with self._db.transaction() as conn:
-            row = conn.execute("SELECT * FROM user_invites WHERE code = ?", (code,)).fetchone()
+            lock = " FOR UPDATE" if self._db.dialect == "postgresql" else ""
+            row = conn.execute(
+                "SELECT * FROM user_invites WHERE code = ?" + lock, (code,)
+            ).fetchone()
+            ts = now_ts()
             if row is None:
                 raise LookupError("invite not found")
             invite = InviteRow.from_row(row)
             status = invite.status(now=ts)
-            if status != "pending":
+            if status != "active":
                 raise ValueError(status)
 
             existing = conn.execute(
@@ -187,16 +207,19 @@ class InviteRepo:
             )
             if policies:
                 _insert_named_policies(conn, user_id=user_id, policies=policies, ts=ts)
-            updated = conn.execute(
-                "UPDATE user_invites SET used_at = ?, used_by_user_id = ? "
-                "WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > ?",
-                (ts, user_id, invite.id, ts),
+            conn.execute(
+                "INSERT INTO user_invite_redemptions(invite_id, user_id, redeemed_at) "
+                "VALUES (?, ?, ?)",
+                (invite.id, user_id, ts),
             )
-            if getattr(updated, "rowcount", 1) == 0:
-                raise ValueError("used")
-            fresh = conn.execute("SELECT * FROM user_invites WHERE id = ?", (invite.id,)).fetchone()
-            assert fresh is not None
-            return user_id, InviteRow.from_row(fresh)
+            updated = conn.execute(
+                "UPDATE user_invites SET use_count = use_count + 1, "
+                "enabled = CASE WHEN use_count + 1 >= max_uses THEN 0 ELSE enabled END "
+                "WHERE id = ? RETURNING *",
+                (invite.id,),
+            ).fetchone()
+            assert updated is not None
+            return user_id, InviteRow.from_row(updated)
 
 
 def _insert_named_policies(
@@ -231,9 +254,9 @@ def invite_status_payload(invite: InviteRow, *, now: int | None = None) -> dict[
         "created_by": invite.created_by,
         "created_at": invite.created_at,
         "expires_at": invite.expires_at,
-        "used_at": invite.used_at,
-        "used_by_user_id": invite.used_by_user_id,
-        "revoked_at": invite.revoked_at,
+        "enabled": invite.enabled,
+        "use_count": invite.use_count,
+        "max_uses": invite.max_uses,
         "status": invite.status(now=ts),
         "role_name": invite.role_name,
         "role": invite.role,

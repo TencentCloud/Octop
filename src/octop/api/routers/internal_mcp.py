@@ -535,6 +535,18 @@ async def files_mcp_delete(token: str = Query(...)) -> Response:
     return Response(status_code=204)
 
 
+async def _team_member_workspace(registry: Any, member_agent_id: str) -> tuple[Any, Any]:
+    """Member workspace for read-only deepagents mounts, or ``(None, None)``."""
+    if not member_agent_id.strip():
+        return None, None
+    try:
+        agent = await asyncio.to_thread(registry.get_agent, member_agent_id.strip())
+    except Exception:
+        logger.debug("team workspace mount member %s is not running", member_agent_id)
+        return None, None
+    return getattr(agent, "workspace", None), getattr(agent, "backend", None)
+
+
 @router.post("/internal/mcp/team-workspace")
 async def team_workspace_mcp_post(
     request: Request,
@@ -563,6 +575,8 @@ async def team_workspace_mcp_post(
     session_id = request.headers.get(MCP_SESSION_HEADER)
     if method == "initialize":
         session_id = secrets.token_urlsafe(16)
+    registry = server.app_runtime.agent_registry
+    member_workspace, member_backend = await _team_member_workspace(registry, scope.member_agent_id)
     if scope.bridge_target_id:
         from octop.infra.bridge.local_workspace import lookup_peer_target
 
@@ -574,9 +588,10 @@ async def team_workspace_mcp_post(
             scope=scope,
             workspace=target,
             backend=target,
+            member_workspace=member_workspace,
+            member_backend=member_backend,
         )
     else:
-        registry = server.app_runtime.agent_registry
         try:
             agent = await asyncio.to_thread(registry.get_agent, scope.host_agent_id)
         except OctopError as exc:
@@ -586,6 +601,8 @@ async def team_workspace_mcp_post(
             scope=scope,
             workspace=agent.workspace,
             backend=agent.backend,
+            member_workspace=member_workspace,
+            member_backend=member_backend,
         )
     return _mcp_json(request, body, resp, session_id=session_id)
 

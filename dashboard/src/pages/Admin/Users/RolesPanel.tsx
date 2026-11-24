@@ -232,6 +232,7 @@ export default function RolesPanel() {
           limit_token_quota: false,
           limit_max_agents: false,
           limit_allowed_backend_types: false,
+          default_backend_type: undefined,
         }
       : {
           name: editor.user_role_name,
@@ -253,6 +254,7 @@ export default function RolesPanel() {
           allowed_backend_types: editor.allowed_backend_types?.length
             ? [...editor.allowed_backend_types]
             : undefined,
+          default_backend_type: editor.default_backend_type ?? undefined,
         };
   const formKey =
     editor === "new" ? "new" : editor ? editor.user_role_id : "closed";
