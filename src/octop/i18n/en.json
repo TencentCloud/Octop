@@ -540,6 +540,8 @@
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
+    "INVITE_DISABLED": "This invite code is disabled.",
+    "INVITE_EXHAUSTED": "This invite has reached its registration limit.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
@@ -780,6 +782,7 @@
     "fork_default_title": "Forked chat"
   },
   "cron": {
+    "missing_target_session": "The conversation for this scheduled task is no longer available. Choose a delivery target in the task settings.",
     "history": {
       "executed": "Task {cron_id}: {name} executed.",
       "script_done": "Script {name} finished with no output."
@@ -841,6 +844,7 @@
     "image_unavailable": "[Attachment] Image could not be loaded for the model."
   },
   "knowledge": {
+    "invalid_advanced_settings": "Check the allowed ranges for chunking and retrieval settings. Chunk overlap must be smaller than chunk size.",
     "retrieval": {
       "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
       "graph_preamble": "Relations between entities, extracted automatically from the same knowledge bases. Use them to connect the passages above; they are not sources to cite.",

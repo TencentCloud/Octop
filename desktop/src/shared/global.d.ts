@@ -1,5 +1,5 @@
-import type { EarlyShellBridge } from "./preload/early";
-import type { OctopDesktopBridge } from "./preload/index";
+import type { EarlyShellBridge } from "../preload/early";
+import type { OctopDesktopBridge } from "../preload/index";
 
 declare global {
   interface Window {

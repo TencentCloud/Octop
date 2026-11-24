@@ -310,11 +310,12 @@ For a scan that has nothing to report, instruct an `agent` task to reply with
 exactly `[SILENT]`. After removing thinking text and surrounding whitespace,
 that complete reply marks the run successful without pushing a channel message
 or dashboard notification. An existing agent thread still retains its run in
-conversation history; a silent run with `fresh_thread` removes the temporary
-thread and restores the prior binding. A `text` task whose entire prompt is
-`[SILENT]` is skipped before creating a fresh thread. Empty agent replies
-remain errors; short replies such as `OK` and messages that merely contain
-`[SILENT]` are delivered normally. The marker is an explicit task contract,
+conversation history. When `fresh_thread` replaces an existing binding, a silent
+run removes the temporary thread and restores that binding. If the run reuses a
+newly recovered dashboard thread, that thread retains the run history. A `text`
+task whose entire prompt is `[SILENT]` skips delivery without creating a thread.
+Empty agent replies remain errors. Short replies such as `OK` and messages
+that merely contain `[SILENT]` are delivered normally. The marker is an explicit task contract,
 so existing prompts that emit placeholders like `（无内容）` must be updated to
 use it. If temporary-thread cleanup fails, the cron run reports an error and
 leaves that thread bound for inspection rather than hiding the failure.

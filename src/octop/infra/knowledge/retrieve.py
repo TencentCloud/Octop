@@ -19,11 +19,10 @@ from octop.infra.knowledge.graph import (
     open_knowledge_graph,
 )
 from octop.infra.knowledge.index import Hit
+from octop.infra.knowledge.params import get_advanced_settings
 from octop.infra.knowledge.plane import open_knowledge_index
 from octop.infra.knowledge.rerank import candidate_count, get_rerank_capability, rerank_scores
 
-DEFAULT_RETRIEVAL_K = 8
-DEFAULT_CONTEXT_CHAR_BUDGET = 6000
 # Share of the returned passages, and of the character budget, the graph may claim.
 _GRAPH_PASSAGE_DIVISOR = 4
 _GRAPH_FACT_BUDGET_DIVISOR = 5
@@ -38,13 +37,15 @@ async def retrieve_context(
     is_admin: bool,
     query: str | None,
     knowledge_base_ids: Sequence[str],
-    k: int = DEFAULT_RETRIEVAL_K,
-    char_budget: int = DEFAULT_CONTEXT_CHAR_BUDGET,
+    k: int | None = None,
+    char_budget: int | None = None,
     locale: str = "en",
     visible_bases: Sequence[Any] | None = None,
 ) -> str:
     """Return formatted readable context, skipping unavailable or failed retrieval."""
-    if not (query or "").strip() or not knowledge_base_ids or k <= 0 or char_budget <= 0:
+    if not (query or "").strip() or not knowledge_base_ids:
+        return ""
+    if (k is not None and k <= 0) or (char_budget is not None and char_budget <= 0):
         return ""
     loop = asyncio.get_running_loop()
     try:
@@ -74,11 +75,15 @@ def _retrieve_context_sync(
     is_admin: bool,
     query: str | None,
     knowledge_base_ids: Sequence[str],
-    k: int,
-    char_budget: int,
+    k: int | None,
+    char_budget: int | None,
     locale: str,
     visible_bases: Sequence[Any] | None,
 ) -> str:
+    if k is None or char_budget is None:
+        settings = get_advanced_settings(services.settings_repo.get)
+        k = settings["retrieval_k"] if k is None else k
+        char_budget = settings["context_char_budget"] if char_budget is None else char_budget
     assert_knowledge_usable(services.settings_repo.get, getattr(services, "provider_repo", None))
     query_vectors = embed_knowledge_texts(services, [(query or "").strip()])
     if not query_vectors:

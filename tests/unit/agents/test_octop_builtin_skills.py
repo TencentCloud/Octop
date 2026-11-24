@@ -48,7 +48,10 @@ async def test_sync_seeds_manager_and_retires_old_installer(tmp_path: Path) -> N
 
     synced = await sync_octop_builtin_skills(agent.workspace)
 
-    assert synced == ["skill-manager"]
+    assert synced == ["office-documents", "skill-manager"]
+    office = await agent.workspace.aread_text("_builtin_skills/office-documents/SKILL.md")
+    assert office is not None and "{{OCTOP_BUILTIN_SKILLS}}" not in office
+    assert await agent.workspace.aexists("_builtin_skills/office-documents/scripts/render.py")
     assert await agent.workspace.aexists("skills")
     assert await agent.workspace.aread_text("_builtin_skills/install-skill/SKILL.md") is None
     manager = await agent.workspace.aread_text("_builtin_skills/skill-manager/SKILL.md")
@@ -82,7 +85,7 @@ async def test_sync_uses_system_files_path(tmp_path: Path) -> None:
 
     synced = await sync_octop_builtin_skills(agent.workspace)
 
-    assert synced == ["skill-manager"]
+    assert synced == ["office-documents", "skill-manager"]
     manager = await agent.workspace.aread_text("_builtin_skills/skill-manager/SKILL.md")
     assert manager is not None
     assert "{{OCTOP_SKILLS}}" not in manager
@@ -256,3 +259,43 @@ print(json.dumps({"installed": slug}))
     args = json.loads(log_path.read_text(encoding="utf-8"))
     assert args[args.index("install") + 1] == "dev-expert"
     assert args[args.index("--namespace") + 1] == "user_741dc82b"
+
+
+def test_office_documents_is_opt_in() -> None:
+    from octop.infra.agents.builtin_skills import (
+        effective_skills_disabled,
+        store_skills_disabled,
+    )
+
+    cfg: dict[str, object] = {"skills_disabled": ["weather"]}
+    assert effective_skills_disabled(cfg) == {"weather", "office-documents"}
+
+    # Enabling it (the API removes it from the effective set) records the opt-in.
+    store_skills_disabled(cfg, {"weather"})
+    assert cfg == {"skills_disabled": ["weather"], "skills_enabled": ["office-documents"]}
+    assert effective_skills_disabled(cfg) == {"weather"}
+
+    # Disabling it again clears the opt-in instead of growing skills_disabled.
+    store_skills_disabled(cfg, {"weather", "office-documents"})
+    assert cfg == {"skills_disabled": ["weather"]}
+    assert "office-documents" in effective_skills_disabled(cfg)
+
+
+def test_render_check_reports_missing_renderer(monkeypatch) -> None:
+    import importlib.util
+
+    from octop.infra.agents.builtin_skills import _PACKAGE
+
+    spec = importlib.util.find_spec(_PACKAGE)
+    assert spec is not None and spec.submodule_search_locations
+    script = (
+        Path(next(iter(spec.submodule_search_locations))) / "office-documents/scripts/render.py"
+    )
+    module_spec = importlib.util.spec_from_file_location("office_render", script)
+    assert module_spec is not None and module_spec.loader is not None
+    render = importlib.util.module_from_spec(module_spec)
+    module_spec.loader.exec_module(render)
+
+    monkeypatch.setattr(render.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(render.sys, "platform", "linux")
+    assert render.check() == 1

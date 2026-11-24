@@ -2593,6 +2593,7 @@ version = "1.0.3b7"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
+    { name = "aiohttp" },
     { name = "apscheduler" },
     { name = "argon2-cffi" },
     { name = "boto3" },
@@ -2601,6 +2602,7 @@ dependencies = [
     { name = "edge-tts" },
     { name = "fastapi" },
     { name = "firecrawl-anydoc" },
+    { name = "httpx" },
     { name = "josepy" },
     { name = "langchain-core" },
     { name = "langgraph-checkpoint-postgres" },
@@ -2612,6 +2614,7 @@ dependencies = [
     { name = "octop-harness", extra = ["all"] },
     { name = "octop-memory" },
     { name = "openpyxl" },
+    { name = "packaging" },
     { name = "pillow" },
     { name = "playwright" },
     { name = "psycopg", extra = ["binary"] },
@@ -2685,6 +2688,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "acme", specifier = ">=5.6.0" },
+    { name = "aiohttp", specifier = ">=3.10" },
     { name = "apscheduler", specifier = ">=3.10,<4" },
     { name = "argon2-cffi", specifier = ">=23.1" },
     { name = "boto3", specifier = ">=1.40.61" },
@@ -2695,6 +2699,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
     { name = "firecrawl-anydoc", specifier = ">=0.2.4" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },

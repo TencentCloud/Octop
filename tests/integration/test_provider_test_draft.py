@@ -71,6 +71,34 @@ async def test_admin_test_draft_forwards_api_mode_and_fallback(env: Any) -> None
     assert probe.await_args.kwargs["api_fallback"] == "chat_completions"
 
 
+async def test_admin_test_draft_uses_stored_key(env: Any) -> None:
+    client, _srv, auth = env
+    created = await client.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "stored-draft", "kind": "openai", "api_key": "sk-stored"},
+    )
+    assert created.status_code == 201, created.text
+    with patch(
+        "octop.api.routers.providers.probe_provider_row",
+        new=AsyncMock(return_value={"ok": True, "latency_ms": 1}),
+    ) as probe:
+        response = await client.post(
+            "/api/admin/providers/test-draft",
+            headers=auth,
+            json={
+                "name": "stored-draft",
+                "kind": "openai",
+                "provider_id": created.json()["id"],
+                "base_url": "https://api.example.com/v1",
+                "model_id": "gpt-4o-mini",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert "sk-stored" not in response.text
+    assert probe.await_args.args[0].api_key == "sk-stored"
+
+
 async def test_admin_codex_oauth_start(env: Any) -> None:
     client, _srv, auth = env
     fake_info = {

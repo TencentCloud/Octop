@@ -41,7 +41,7 @@ from octop.infra.agents.security.hitl_session import (
     hitl_thread_scope,
     thread_id_from_request,
 )
-from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.acp import ACPSettingsStore, runtime_acp_config
 from octop.infra.agents.settings.compaction import (
     COMPACTION_CONFIG_KEY,
     apply_compaction_update,
@@ -180,11 +180,13 @@ def _reject_shared_memory_namespace(rows: list[Any], agent_id: str) -> None:
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
-    """Return the set of disabled skill slugs from agent config."""
-    raw = cfg.get("skills_disabled")
-    if isinstance(raw, list):
-        return {str(x) for x in raw}
-    return set()
+    """Return the set of disabled skill slugs from agent config.
+
+    Opt-in built-ins count as disabled until the agent's ``skills_enabled`` lists them.
+    """
+    from octop.infra.agents.builtin_skills import effective_skills_disabled  # noqa: PLC0415
+
+    return effective_skills_disabled(cfg)
 
 
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -3139,10 +3141,12 @@ class AgentManager:
         Unlike :meth:`update_config_json`, this does not schedule a harness reload.
         Skill enable/disable and marketplace install only need the filter set updated.
         """
+        from octop.infra.agents.builtin_skills import store_skills_disabled  # noqa: PLC0415
+
         cfg = self.get_config(agent_id)
-        cfg["skills_disabled"] = sorted(disabled)
+        store_skills_disabled(cfg, disabled)
         self.persist_harness_config(agent_id, cfg)
-        self.sync_skills_disabled(agent_id, disabled)
+        self.sync_skills_disabled(agent_id, skills_disabled_set(cfg))
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
@@ -4408,8 +4412,6 @@ class AgentManager:
         off: the connected runner executes the turn. Memory follows this
         expert's stored config and stays off unless that config enables it.
         """
-        from octop_harness.acp.models import ACPConfig  # noqa: PLC0415
-
         from octop.infra.agents.managed import (  # noqa: PLC0415
             managed_skill_dir,
             managed_subagent_dir,
@@ -4422,7 +4424,7 @@ class AgentManager:
         if acp_user_id is None:
             acp_user_id = self._connector_user_override.get(row.agent_id)
         runners = self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
-        acp_config = ACPConfig.from_dict({"runners": runners})
+        acp_config = runtime_acp_config(runners)
         runner = cfg.get("managed_runner")
         runner_id = runner.strip() if isinstance(runner, str) else ""
         memory_settings = _memory_extract_settings(cfg)
@@ -4698,7 +4700,7 @@ class AgentManager:
             runners_dict = (
                 self._acp_settings.load_runners(acp_user_id) if acp_user_id is not None else {}
             )
-            acp_config = ACPConfig.from_dict({"runners": runners_dict})
+            acp_config = runtime_acp_config(runners_dict)
 
         system_prompt = row.system_prompt
         memory: tuple[str, ...] | None = None

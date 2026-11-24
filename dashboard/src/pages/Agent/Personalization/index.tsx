@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Empty } from "antd";
+import { useNavigate } from "react-router-dom";
+import { Alert, Button, Empty } from "antd";
 import {
   Bot,
   Brain,
@@ -19,6 +20,7 @@ import {
   PERSONALIZATION_TAB_PERMISSIONS,
   userCanKey,
 } from "../../../utils/permissions";
+import { ownedExperts } from "../../../utils/sharedExpert";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import SkillsTabs from "../Skills/components/SkillsTabs";
 import ToolsTabs from "../Tools/ToolsTabs";
@@ -61,9 +63,16 @@ const TAB_ICONS = {
 export default function PersonalizationPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const user = useCurrentUser();
-  const { activeAgentId, agents } = useAgent();
-  const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
+  const { activeAgentId, agents, loading } = useAgent();
+  // Personalization edits the selected expert, so it must be one the user
+  // owns. The agent list puts other users' shared experts first, and the
+  // agent bar only corrects the selection when the user owns an expert, so a
+  // new account would otherwise browse and edit someone else's (#1097).
+  const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
+  const activeAgent = ownedAgents.find((a) => a.agent_id === activeAgentId);
+  const agentId = activeAgent?.agent_id ?? null;
   const isAllowed = useCallback(
     (tab: PersonalizationTab) =>
       userCanKey(user, PERSONALIZATION_TAB_PERMISSIONS[tab]),
@@ -128,6 +137,31 @@ export default function PersonalizationPage() {
       node
     );
 
+  if (!loading && ownedAgents.length === 0) {
+    return (
+      <PageShell
+        title={pageTitle}
+        subtitle={t("personalization.description")}
+        agentScoped
+        pathTabs={pathTabs}
+      >
+        <Empty
+          style={{ marginTop: isMobile ? 48 : 24 }}
+          description={
+            <>
+              <div>{t("chat.noAgentsTitle")}</div>
+              <div>{t("chat.noAgentsHint")}</div>
+            </>
+          }
+        >
+          <Button type="primary" onClick={() => navigate("/experts")}>
+            {t("chat.createExpert")}
+          </Button>
+        </Empty>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell
       title={pageTitle}
@@ -166,7 +200,7 @@ export default function PersonalizationPage() {
           >
             {expertOnly(
               <div className={pageShellStyles.fillChild}>
-                <SkillsTabs agentId={activeAgentId} />
+                <SkillsTabs agentId={agentId} />
               </div>,
             )}
           </div>
@@ -180,7 +214,7 @@ export default function PersonalizationPage() {
           >
             {expertOnly(
               <div className={pageShellStyles.fillChild}>
-                <ToolsTabs agentId={activeAgentId} managed={managedAgent} />
+                <ToolsTabs agentId={agentId} managed={managedAgent} />
               </div>,
             )}
           </div>
@@ -194,7 +228,7 @@ export default function PersonalizationPage() {
           >
             {expertOnly(
               <div className={pageShellStyles.fillChild}>
-                <AgentPluginsPanel agentId={activeAgentId} />
+                <AgentPluginsPanel agentId={agentId} />
               </div>,
             )}
           </div>
@@ -206,7 +240,7 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "subagents" ? "flex" : "none" }}
             aria-hidden={activeTab !== "subagents"}
           >
-            {!activeAgentId || expertOnlyBlocked ? (
+            {!agentId || expertOnlyBlocked ? (
               <Empty
                 style={{ marginTop: isMobile ? 48 : 24 }}
                 description={
@@ -215,8 +249,8 @@ export default function PersonalizationPage() {
               />
             ) : (
               <SubagentManager
-                key={activeAgentId}
-                agentId={activeAgentId}
+                key={agentId}
+                agentId={agentId}
                 agentState={activeAgent?.state ?? "stopped"}
                 fillHeight={isMobile}
               />
@@ -230,7 +264,7 @@ export default function PersonalizationPage() {
             style={{ display: activeTab === "mbti" ? "flex" : "none" }}
             aria-hidden={activeTab !== "mbti"}
           >
-            {!activeAgentId ? (
+            {!agentId ? (
               <Empty
                 style={{ marginTop: 24 }}
                 description={t("mbtiPage.pickAgent")}
@@ -239,7 +273,8 @@ export default function PersonalizationPage() {
               withoutManaged(
                 <div className={pageShellStyles.fillChild}>
                   <MBTISelector
-                    key={activeAgentId}
+                    key={agentId}
+                    agentId={agentId}
                     showHeader={false}
                     showTestAction
                   />
@@ -256,10 +291,10 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "memory"}
           >
             {isMobile ? (
-              <MemoryPanel agentId={activeAgentId} fill={false} />
+              <MemoryPanel agentId={agentId} fill={false} />
             ) : (
               <div className={pageShellStyles.fillChild}>
-                <MemoryPanel agentId={activeAgentId} fill />
+                <MemoryPanel agentId={agentId} fill />
               </div>
             )}
           </div>
@@ -272,7 +307,7 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "channels"}
           >
             <div className={pageShellStyles.fillChild}>
-              <ChannelsPanel agentId={activeAgentId} />
+              <ChannelsPanel agentId={agentId} />
             </div>
           </div>
         )}

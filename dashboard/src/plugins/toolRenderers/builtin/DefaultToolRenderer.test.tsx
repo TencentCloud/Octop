@@ -7,6 +7,7 @@ import { DefaultToolRenderer } from "./DefaultToolRenderer";
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => fallback ?? key,
+    i18n: { exists: () => false },
   }),
 }));
 

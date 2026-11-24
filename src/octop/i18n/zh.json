@@ -540,6 +540,8 @@
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
+    "INVITE_DISABLED": "该邀请码已停用。",
+    "INVITE_EXHAUSTED": "该邀请已达到注册人数上限。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
@@ -780,6 +782,7 @@
     "fork_default_title": "分叉对话"
   },
   "cron": {
+    "missing_target_session": "此定时任务的会话已不可用，请在任务设置中重新选择投递目标。",
     "history": {
       "executed": "任务{cron_id} :{name} 执行.",
       "script_done": "脚本 {name} 已执行，没有输出。"
@@ -841,6 +844,7 @@
     "image_unavailable": "[附件] 图片无法加载到模型。"
   },
   "knowledge": {
+    "invalid_advanced_settings": "请检查分块与检索参数的取值范围。分块重叠必须小于分块大小。",
     "retrieval": {
       "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
       "graph_preamble": "以下是从同一批知识库中自动抽取的实体关系，可用于串联上面的内容，但不要把它们当作可引用的来源。",
