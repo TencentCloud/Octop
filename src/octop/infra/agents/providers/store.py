@@ -16,6 +16,7 @@ from octop.infra.agents.providers.headers import (
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
     is_local_runtime_provider,
+    is_rerank_model,
     is_vision_model,
 )
 from octop.infra.agents.providers.reasoning import reasoning_capability
@@ -156,14 +157,18 @@ def resolve_provider_purpose(
 
 
 def stamp_embedding_models(models: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
-    """Force ``embedding`` / ``task`` flags on every model entry."""
+    """Mark models in an embedding service while preserving its rerankers."""
     if models is None:
         return None
     stamped: list[dict[str, Any]] = []
     for model in models:
         entry = dict(model)
-        entry["embedding"] = True
-        entry["task"] = "embedding"
+        if is_rerank_model(entry):
+            entry.pop("embedding", None)
+            entry["task"] = "rerank"
+        else:
+            entry["embedding"] = True
+            entry["task"] = "embedding"
         stamped.append(entry)
     return stamped
 

@@ -31,11 +31,29 @@ export interface ProviderModel {
   group_ids?: string[];
 }
 
+type ModelFlags = Pick<ProviderModel, "id" | "embedding" | "task">;
+
+/** Keep provider catalog inference in sync with providers/model_flags.py. */
+export function isRerankModel(model: ModelFlags): boolean {
+  return (
+    model.task?.trim().toLowerCase() === "rerank" ||
+    model.id.toLowerCase().includes("rerank")
+  );
+}
+
 export function isEmbeddingModel(
-  model: Pick<ProviderModel, "embedding" | "task"> | undefined,
+  model: ModelFlags | undefined,
+  embeddingService = false,
 ): boolean {
-  if (!model) return false;
-  return model.embedding === true || model.task === "embedding";
+  if (!model || isRerankModel(model)) return false;
+  return (
+    embeddingService ||
+    model.embedding === true ||
+    model.task?.trim().toLowerCase() === "embedding" ||
+    ["embed", "bge-", "e5-", "gte-"].some((hint) =>
+      model.id.toLowerCase().includes(hint),
+    )
+  );
 }
 
 export interface ProviderPresetModel {
