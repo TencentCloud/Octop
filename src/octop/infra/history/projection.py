@@ -80,7 +80,26 @@ def _stamp_duration(items: list[ThreadMessageInput], duration_ms: int) -> list[T
     return items
 
 
+# deepagents ``read_file`` on an image or video answers with a ToolMessage plus a
+# synthetic HumanMessage carrying the media for the model. That message is not
+# the user speaking: it must not start a turn or show up as a user bubble.
+_TOOL_MEDIA_SOURCES = frozenset({"read_file_media"})
+_TOOL_MEDIA_ROLE = "tool_media"
+
+
+def _is_tool_media(message: Any) -> bool:
+    if isinstance(message, dict):
+        inner = message.get("data")
+        data: dict[str, Any] = inner if isinstance(inner, dict) else message
+        extra = data.get("additional_kwargs")
+    else:
+        extra = getattr(message, "additional_kwargs", None)
+    return isinstance(extra, dict) and extra.get("lc_source") in _TOOL_MEDIA_SOURCES
+
+
 def _role(message: Any) -> str:
+    if _is_tool_media(message):
+        return _TOOL_MEDIA_ROLE
     if isinstance(message, dict):
         return str(message.get("role") or message.get("type") or "").lower()
     return str(getattr(message, "type", None) or getattr(message, "role", "")).lower()
@@ -124,7 +143,7 @@ def message_input(message: Any) -> ThreadMessageInput | None:
         converted = _convert_message(message)
         wire = message_to_dict(converted)
         role = _role(converted)
-        if role in ("", "system"):
+        if role in ("", "system", _TOOL_MEDIA_ROLE):
             return None
         ts_ms = checkpoint_ts_ms(converted)
         # Repair after assembly so paired halves from different deltas survive
