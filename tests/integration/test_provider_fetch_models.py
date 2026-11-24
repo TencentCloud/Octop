@@ -66,3 +66,37 @@ async def test_admin_fetch_models_success(env: Any) -> None:
     assert kwargs["api_key"] == "sk-test"
     assert kwargs["base_url"] == "https://api.example.com/v1"
     assert kwargs["provider_name"] is None
+
+
+async def test_admin_fetch_models_uses_stored_key(env: Any) -> None:
+    client, _srv, auth = env
+    created = await client.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "stored-openai",
+            "kind": "openai",
+            "api_key": "sk-stored",
+            "base_url": "https://api.example.com/v1",
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["api_key"] is None
+    provider_id = created.json()["id"]
+    fake = {"ok": True, "models": [{"id": "gpt-4o", "name": "gpt-4o"}]}
+    with patch(
+        "octop.api.routers.providers.fetch_openai_compatible_models",
+        new=AsyncMock(return_value=fake),
+    ) as mocked:
+        response = await client.post(
+            "/api/admin/providers/fetch-models",
+            headers=auth,
+            json={
+                "kind": "openai",
+                "provider_id": provider_id,
+                "base_url": "https://api.example.com/v1",
+            },
+        )
+    assert response.status_code == 200, response.text
+    assert "sk-stored" not in response.text
+    assert mocked.await_args.kwargs["api_key"] == "sk-stored"

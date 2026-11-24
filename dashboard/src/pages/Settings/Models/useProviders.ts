@@ -80,6 +80,8 @@ export interface ProviderRow {
   kind: string;
   base_url: string | null;
   api_key: string | null;
+  /** True when a credential is stored. The value itself is not returned. */
+  api_key_set?: boolean;
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
@@ -91,6 +93,14 @@ export interface ProviderRow {
   purpose?: "chat" | "embedding";
   /** Set when the provider was saved as a named integration such as Magpie. */
   integration?: string;
+}
+
+/** True when the provider has a stored credential or a local placeholder key. */
+export function providerHasCredential(provider: {
+  api_key?: string | null;
+  api_key_set?: boolean;
+}): boolean {
+  return Boolean(provider.api_key_set || provider.api_key);
 }
 
 /** True when this provider belongs on the embedding Models tab. */

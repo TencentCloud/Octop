@@ -24,6 +24,22 @@ def test_public_provider_row_hides_api_key() -> None:
     assert data["api_key_set"] is True
 
 
+def test_public_provider_row_keeps_local_placeholder() -> None:
+    row = SimpleNamespace(
+        id=3,
+        name="custom-local",
+        kind="openai",
+        base_url=None,
+        api_key="onnx",
+        note=None,
+        enabled=True,
+        get_models=lambda: [],
+    )
+    data = _public_row(row)
+    assert data["api_key"] == "onnx"
+    assert data["api_key_set"] is True
+
+
 def test_public_voice_row_hides_credentials() -> None:
     row = SimpleNamespace(
         id=2,

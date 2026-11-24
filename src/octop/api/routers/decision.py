@@ -12,7 +12,9 @@ from pydantic import BaseModel, Field
 from octop.api.deps import get_server, require_permission
 from octop.infra.agents.settings.decision import DecisionSettings
 from octop.infra.agents.settings.laya_runtime import get_laya_runtime
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
+from octop.infra.utils.secret_fields import blank_secret
 
 router = APIRouter()
 
@@ -47,6 +49,10 @@ class DecisionServiceBody(BaseModel):
         default=None,
         description="Omit to keep this service's key. Send an empty string to clear it.",
     )
+    source_provider_id: int | None = Field(
+        default=None,
+        description="When api_key is blank, copy this provider's stored key. The key is not returned.",
+    )
 
 
 class DecisionSettingsBody(BaseModel):
@@ -74,6 +80,32 @@ class DecisionTestBody(BaseModel):
     api_key: str | None = None
     model: str | None = None
     provider: Literal["laya", "jev", "microsoft", "custom"] | None = None
+    source_provider_id: int | None = Field(
+        default=None,
+        description="When api_key is blank, probe with this provider's stored key. The key is not returned.",
+    )
+
+
+def _stored_provider_api_key(server: Any, provider_id: int) -> str:
+    row = server.services.provider_repo.get(provider_id)
+    if row is None or not (row.api_key or "").strip():
+        raise OctopError(ErrorCode.NOT_FOUND, "provider api key is not configured")
+    return str(row.api_key)
+
+
+def _decision_api_key(server: Any, *, typed: str | None, source_provider_id: int | None) -> str | None:
+    """Typed key wins. A blank key plus ``source_provider_id`` uses the stored provider key.
+
+    An explicit blank string with no source clears the decision secret. Omitted
+    (``None``) keeps it.
+    """
+    if isinstance(typed, str) and typed.strip() and not blank_secret(typed):
+        return typed.strip()
+    if source_provider_id is not None:
+        return _stored_provider_api_key(server, source_provider_id)
+    if isinstance(typed, str):
+        return ""
+    return None
 
 
 def _view(settings: DecisionSettings) -> DecisionSettingsResponse:
@@ -117,6 +149,16 @@ async def put_decision_settings(
     server: Any = Depends(get_server),
 ) -> DecisionSettingsResponse:
     """Save the switch and rebuild running agents so the middleware mounts or unmounts."""
+    services = None
+    if body.services is not None:
+        services = []
+        for item in body.services:
+            data = item.model_dump()
+            source_id = data.pop("source_provider_id")
+            data["api_key"] = _decision_api_key(
+                server, typed=item.api_key, source_provider_id=source_id
+            )
+            services.append(data)
     saved = await server.app_runtime.agent_registry.save_decision(
         enabled=body.enabled,
         provider=body.provider,
@@ -127,10 +169,8 @@ async def put_decision_settings(
         team=body.team,
         threshold=body.threshold,
         tool_min_count=body.tool_min_count,
-        api_key=body.api_key,
-        services=(
-            [item.model_dump() for item in body.services] if body.services is not None else None
-        ),
+        api_key=_decision_api_key(server, typed=body.api_key, source_provider_id=None),
+        services=services,
     )
     return _view(saved)
 
@@ -146,7 +186,9 @@ async def test_decision_settings(
         dict[str, Any],
         await server.app_runtime.agent_registry.probe_decision(
             endpoint=body.endpoint,
-            api_key=body.api_key,
+            api_key=_decision_api_key(
+                server, typed=body.api_key, source_provider_id=body.source_provider_id
+            ),
             model=body.model,
             provider=body.provider,
         ),
