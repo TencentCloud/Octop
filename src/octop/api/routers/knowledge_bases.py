@@ -7,7 +7,17 @@ from contextlib import suppress
 from dataclasses import asdict
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -15,6 +25,7 @@ from octop.api.common.content_disposition import content_disposition
 from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import DEFAULT_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB, upload_mb_to_bytes
+from octop.i18n import tr
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
     is_embedding_model,
@@ -55,6 +66,7 @@ from octop.infra.knowledge.ocr import (
     set_ocr_settings,
     validate_ocr_settings,
 )
+from octop.infra.knowledge.params import set_advanced_settings
 from octop.infra.knowledge.rerank import (
     get_rerank_capability,
     rerank_models,
@@ -81,6 +93,19 @@ def _kb_avatars(server: OctopServer) -> Any:
 
 
 _TEXT_DOC_MAX_LENGTH = upload_mb_to_bytes(MAX_MAX_UPLOAD_MB)
+
+
+class KnowledgeAdvancedSettings(BaseModel):
+    chunk_size: int = Field(
+        strict=True, description="Maximum characters per indexed chunk (100–8000)."
+    )
+    chunk_overlap: int = Field(
+        strict=True, description="Characters shared by neighboring chunks, below the chunk size."
+    )
+    retrieval_k: int = Field(strict=True, description="Default maximum retrieved passages (1–20).")
+    context_char_budget: int = Field(
+        strict=True, description="Character budget for retrieved passage content (500–50000)."
+    )
 
 
 class FeatureBody(BaseModel):
@@ -502,6 +527,41 @@ async def capability(
     _user: User = Depends(current_user),
 ) -> dict[str, Any]:
     return _capability_payload(server)
+
+
+@router.put(
+    "/advanced-settings",
+    summary="Update knowledge indexing and retrieval settings",
+    description=(
+        "Applies instance-wide. Chunk size and overlap apply on the next indexing run. "
+        "Retrieval defaults apply on the next search."
+    ),
+)
+def put_advanced_settings(
+    body: KnowledgeAdvancedSettings,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    _user: User = Depends(require_permission("knowledge_settings")),
+) -> KnowledgeAdvancedSettings:
+    assert server.services is not None
+    repo = server.services.settings_repo
+    updates: dict[str, str] = {}
+    try:
+        set_advanced_settings(
+            repo.get,
+            updates.__setitem__,
+            chunk_size=body.chunk_size,
+            chunk_overlap=body.chunk_overlap,
+            retrieval_k=body.retrieval_k,
+            context_char_budget=body.context_char_budget,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=tr("knowledge.invalid_advanced_settings", resolve_request_locale(request)),
+        ) from exc
+    repo.set_many(updates)
+    return body
 
 
 @router.get("/embedding-options", summary="List knowledge embedding backend options")

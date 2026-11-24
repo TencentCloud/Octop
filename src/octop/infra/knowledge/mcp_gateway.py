@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from octop.infra.knowledge.retrieve import DEFAULT_RETRIEVAL_K, retrieve_context
+from octop.infra.knowledge.retrieve import retrieve_context
 from octop.infra.knowledge.tools import format_search_knowledge_description
 
 _PROTOCOL = "2024-11-05"
@@ -26,7 +26,7 @@ def knowledge_tool_schema(catalog: list[dict[str, str]]) -> dict[str, Any]:
                 },
                 "k": {
                     "type": "integer",
-                    "description": "Max passages to return (default 8).",
+                    "description": "Max passages to return. Defaults to the knowledge retrieval setting.",
                     "minimum": 1,
                     "maximum": 20,
                 },
@@ -58,11 +58,11 @@ def _arguments(params: Any) -> dict[str, Any]:
     return raw
 
 
-def _passage_limit(raw: Any) -> int:
+def _passage_limit(raw: Any) -> int | None:
     try:
         k = int(raw)
     except (TypeError, ValueError):
-        return DEFAULT_RETRIEVAL_K
+        return None
     return min(20, max(1, k))
 
 

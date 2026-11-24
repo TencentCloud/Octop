@@ -161,6 +161,23 @@ def _retrieve(services, owner, base, **kwargs):  # type: ignore[no-untyped-def]
     )
 
 
+def test_retrieve_context_uses_saved_defaults(tmp_path, monkeypatch) -> None:
+    services, owner, base = _graph_services(tmp_path, monkeypatch)
+    repository = services.knowledge_repo
+    document = repository.list_documents(base.id)[0]
+    text = "Apollo " * 100
+    KnowledgeIndex(base.id).replace_doc_chunks(
+        document.id, [text, "Apollo timeline"], [[1.0, 0.0], [0.9, 0.1]]
+    )
+    services.settings_repo.set_many(
+        {"knowledge_retrieval_k": "1", "knowledge_context_char_budget": "500"}
+    )
+
+    assert text.strip() not in _retrieve(services, owner, base)
+    assert "Apollo timeline" not in _retrieve(services, owner, base, char_budget=1000)
+    assert "Apollo timeline" in _retrieve(services, owner, base, k=2, char_budget=1000)
+
+
 def test_retrieve_context_adds_graph_passage_and_relations(tmp_path, monkeypatch) -> None:
     services, owner, base = _graph_services(tmp_path, monkeypatch)
     services.settings_repo.set("knowledge_graph_enabled", "true")

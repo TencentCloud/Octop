@@ -844,6 +844,7 @@
     "image_unavailable": "[附件] 图片无法加载到模型。"
   },
   "knowledge": {
+    "invalid_advanced_settings": "请检查分块与检索参数的取值范围。分块重叠必须小于分块大小。",
     "retrieval": {
       "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
       "graph_preamble": "以下是从同一批知识库中自动抽取的实体关系，可用于串联上面的内容，但不要把它们当作可引用的来源。",
