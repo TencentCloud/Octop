@@ -1897,12 +1897,15 @@ def _ensure_thread_shares_schema(db: DatabasePool) -> None:
 
 
 def _ensure_invite_redemptions_schema(db: DatabasePool) -> None:
-    """Repair v26 and backfill the cumulative count once."""
+    """Repair v26, backfill the cumulative count, and remove legacy fields."""
     columns = _table_columns(db, "user_invites")
     if not columns:
         return
-    if {"enabled", "max_uses", "use_count"} <= columns and _table_exists(
-        db, "user_invite_redemptions"
+    legacy_columns = ("used_at", "used_by_user_id", "revoked_at")
+    if (
+        {"enabled", "max_uses", "use_count"} <= columns
+        and columns.isdisjoint(legacy_columns)
+        and _table_exists(db, "user_invite_redemptions")
     ):
         return
     identity = (
@@ -1918,13 +1921,15 @@ def _ensure_invite_redemptions_schema(db: DatabasePool) -> None:
         columns = {
             column[0] for column in conn.execute("SELECT * FROM user_invites LIMIT 0").description
         }
-        legacy_single_use = "enabled" not in columns
-        if legacy_single_use:
+        legacy_states = [
+            f"{column} IS NOT NULL" for column in ("used_at", "revoked_at") if column in columns
+        ]
+        missing_enabled = "enabled" not in columns
+        legacy_single_use = missing_enabled and bool(legacy_states)
+        if missing_enabled:
             conn.execute("ALTER TABLE user_invites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
-            conn.execute(
-                "UPDATE user_invites SET enabled = 0 "
-                "WHERE used_at IS NOT NULL OR revoked_at IS NOT NULL"
-            )
+        if legacy_single_use:
+            conn.execute("UPDATE user_invites SET enabled = 0 WHERE " + " OR ".join(legacy_states))
         if "max_uses" not in columns:
             conn.execute(
                 "ALTER TABLE user_invites ADD COLUMN max_uses INTEGER CHECK (max_uses > 0)"
@@ -1947,22 +1952,32 @@ def _ensure_invite_redemptions_schema(db: DatabasePool) -> None:
             "CREATE INDEX IF NOT EXISTS idx_invite_redemptions_invite "
             "ON user_invite_redemptions(invite_id, redeemed_at, id)"
         )
-        conn.execute(
-            "INSERT INTO user_invite_redemptions(invite_id, user_id, redeemed_at) "
-            "SELECT id, used_by_user_id, used_at FROM user_invites "
-            "WHERE used_by_user_id IS NOT NULL AND used_at IS NOT NULL "
-            "ON CONFLICT(user_id) DO NOTHING"
-        )
+        if {"used_at", "used_by_user_id"} <= columns:
+            conn.execute(
+                "INSERT INTO user_invite_redemptions(invite_id, user_id, redeemed_at) "
+                "SELECT id, used_by_user_id, used_at FROM user_invites "
+                "WHERE used_by_user_id IS NOT NULL AND used_at IS NOT NULL "
+                "ON CONFLICT(user_id) DO NOTHING"
+            )
         if missing_count:
-            if legacy_single_use:
+            if legacy_single_use and "used_at" in columns:
                 conn.execute("UPDATE user_invites SET use_count = 1 WHERE used_at IS NOT NULL")
             else:
-                conn.execute(
+                count_sql = (
                     "UPDATE user_invites SET use_count = ("
                     "SELECT COUNT(*) FROM user_invite_redemptions r WHERE r.invite_id = user_invites.id"
-                    ") + CASE WHEN used_at IS NOT NULL AND used_by_user_id IS NULL THEN 1 ELSE 0 END"
+                    ")"
                 )
+                if "used_at" in columns:
+                    deleted_user = "used_at IS NOT NULL"
+                    if "used_by_user_id" in columns:
+                        deleted_user += " AND used_by_user_id IS NULL"
+                    count_sql += f" + CASE WHEN {deleted_user} THEN 1 ELSE 0 END"
+                conn.execute(count_sql)
             conn.execute("UPDATE user_invites SET enabled = 0 WHERE use_count >= max_uses")
+        for column in legacy_columns:
+            if column in columns:
+                conn.execute(f"ALTER TABLE user_invites DROP COLUMN {column}")
 
 
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:

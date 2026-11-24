@@ -79,9 +79,6 @@ class InviteResponse(BaseModel):
     created_by: int
     created_at: int
     expires_at: int
-    used_at: int | None
-    used_by_user_id: int | None
-    revoked_at: int | None
     enabled: bool
     use_count: int = Field(description="Total successful registrations with this invite.")
     max_uses: int | None = Field(description="Registration limit. Null for legacy unlimited links.")

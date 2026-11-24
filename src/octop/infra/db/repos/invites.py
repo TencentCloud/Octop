@@ -25,9 +25,6 @@ class InviteRow:
     note: str | None
     created_at: int
     expires_at: int
-    used_at: int | None
-    used_by_user_id: int | None
-    revoked_at: int | None
     enabled: bool
     use_count: int = 0
     max_uses: int | None = None
@@ -44,11 +41,6 @@ class InviteRow:
             note=row["note"],
             created_at=int(row["created_at"]),
             expires_at=int(row["expires_at"]),
-            used_at=int(row["used_at"]) if row["used_at"] is not None else None,
-            used_by_user_id=(
-                int(row["used_by_user_id"]) if row["used_by_user_id"] is not None else None
-            ),
-            revoked_at=int(row["revoked_at"]) if row["revoked_at"] is not None else None,
             enabled=bool(row["enabled"]),
             use_count=int(row["use_count"]),
             max_uses=int(row["max_uses"]) if row["max_uses"] is not None else None,
@@ -262,9 +254,6 @@ def invite_status_payload(invite: InviteRow, *, now: int | None = None) -> dict[
         "created_by": invite.created_by,
         "created_at": invite.created_at,
         "expires_at": invite.expires_at,
-        "used_at": invite.used_at,
-        "used_by_user_id": invite.used_by_user_id,
-        "revoked_at": invite.revoked_at,
         "enabled": invite.enabled,
         "use_count": invite.use_count,
         "max_uses": invite.max_uses,

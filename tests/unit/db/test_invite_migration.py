@@ -36,8 +36,11 @@ def _assert_missing_invite_table_is_repaired(db: DatabasePool) -> None:
         locale="en",
     )
     assert InviteRepo(db).get(invite.id).use_count == 1
+    with db.transaction() as conn:
+        conn.execute("DROP TABLE user_invite_redemptions")
     run_migrations(db)
     assert InviteRepo(db).get(invite.id).use_count == 1
+    assert InviteRepo(db).list_users(invite.id, limit=20, offset=0) == ([], 0)
 
 
 def test_sqlite_repairs_missing_invite_table(tmp_path: Path) -> None:
@@ -48,11 +51,14 @@ def test_sqlite_repairs_missing_invite_table(tmp_path: Path) -> None:
         db.close()
 
 
-def _assert_v26_repairs_new_v25_columns(db: DatabasePool) -> None:
+def _assert_v26_repairs_new_v25_columns(db: DatabasePool, *, capped: bool) -> None:
     run_migrations(db)
     user_id = UserRepo(db).create(username="legacy-admin", password_hash="hash", role="admin")
     repo = InviteRepo(db)
-    invite = repo.create(code="legacy-invite", created_by=user_id, expires_at=4_102_444_800)
+    limit = 3 if capped else None
+    invite = repo.create(
+        code="legacy-invite", created_by=user_id, expires_at=4_102_444_800, max_uses=limit
+    )
     repo.redeem_creating_user(
         code=invite.code,
         username="legacy-invite-user",
@@ -60,14 +66,32 @@ def _assert_v26_repairs_new_v25_columns(db: DatabasePool) -> None:
         display_name=None,
         locale="en",
     )
+    if capped:
+        deleted_id, _ = repo.redeem_creating_user(
+            code=invite.code,
+            username="deleted-legacy-invite-user",
+            password_hash="hash",
+            display_name=None,
+            locale="en",
+        )
+        UserRepo(db).delete(deleted_id)
     with db.transaction() as conn:
         conn.execute(
             "INSERT INTO audit_log (ts, actor, action) VALUES (1234, 'legacy-admin', 'auth.login')"
         )
         conn.execute("ALTER TABLE users DROP COLUMN last_login_at")
         conn.execute("ALTER TABLE threads DROP COLUMN contributed")
-        conn.execute("ALTER TABLE user_invites DROP COLUMN max_uses")
-        conn.execute("ALTER TABLE user_invites DROP COLUMN use_count")
+        conn.execute("ALTER TABLE user_invites ADD COLUMN used_at BIGINT")
+        conn.execute(
+            "ALTER TABLE user_invites ADD COLUMN used_by_user_id BIGINT "
+            "REFERENCES users(id) ON DELETE SET NULL"
+        )
+        conn.execute("ALTER TABLE user_invites ADD COLUMN revoked_at BIGINT")
+        # Earlier v26 builds could re-enable a legacy revoked invite.
+        conn.execute("UPDATE user_invites SET revoked_at = 1234 WHERE id = ?", (invite.id,))
+        if not capped:
+            conn.execute("ALTER TABLE user_invites DROP COLUMN max_uses")
+            conn.execute("ALTER TABLE user_invites DROP COLUMN use_count")
         conn.execute("UPDATE _schema_version SET version = 26")
 
     run_migrations(db)
@@ -78,8 +102,20 @@ def _assert_v26_repairs_new_v25_columns(db: DatabasePool) -> None:
         )
         conn.execute("SELECT contributed FROM threads LIMIT 1")
         assert conn.execute("SELECT version FROM _schema_version").fetchone()[0] == 26
+        columns = {
+            column[0] for column in conn.execute("SELECT * FROM user_invites LIMIT 0").description
+        }
+        assert {"used_at", "used_by_user_id", "revoked_at"}.isdisjoint(columns)
+    previous_count = 2 if capped else 1
     row = repo.get(invite.id)
-    assert row is not None and row.max_uses is None and row.use_count == 1 and row.enabled
+    assert (
+        row is not None
+        and row.max_uses == limit
+        and row.use_count == previous_count
+        and row.enabled
+    )
+    participants, count = repo.list_users(invite.id, limit=20, offset=0)
+    assert count == 1 and participants[0]["username"] == "legacy-invite-user"
     repo.redeem_creating_user(
         code=invite.code,
         username="second-legacy-invite-user",
@@ -89,13 +125,14 @@ def _assert_v26_repairs_new_v25_columns(db: DatabasePool) -> None:
     )
     run_migrations(db)
     row = repo.get(invite.id)
-    assert row is not None and row.use_count == 2 and row.enabled
+    assert row is not None and row.use_count == previous_count + 1 and row.enabled == (not capped)
 
 
-def test_sqlite_repairs_new_upstream_columns_at_v26(tmp_path: Path) -> None:
+@pytest.mark.parametrize("capped", [False, True])
+def test_sqlite_repairs_new_upstream_columns_at_v26(tmp_path: Path, capped: bool) -> None:
     db = SqlitePool(tmp_path / "legacy-v26.db")
     try:
-        _assert_v26_repairs_new_v25_columns(db)
+        _assert_v26_repairs_new_v25_columns(db, capped=capped)
     finally:
         db.close()
 
@@ -123,7 +160,8 @@ def test_postgresql_repairs_missing_invite_table() -> None:
 
 @requires_postgresql
 @pytest.mark.postgresql
-def test_postgresql_repairs_new_upstream_columns_at_v26() -> None:
+@pytest.mark.parametrize("capped", [False, True])
+def test_postgresql_repairs_new_upstream_columns_at_v26(capped: bool) -> None:
     import psycopg
     from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
@@ -135,7 +173,7 @@ def test_postgresql_repairs_new_upstream_columns_at_v26() -> None:
     info["options"] = f"-c search_path={schema}"
     db = PostgresPool(make_conninfo(**info))
     try:
-        _assert_v26_repairs_new_v25_columns(db)
+        _assert_v26_repairs_new_v25_columns(db, capped=capped)
     finally:
         db.close()
         with psycopg.connect(url, autocommit=True) as conn:

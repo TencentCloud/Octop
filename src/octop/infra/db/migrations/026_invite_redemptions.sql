@@ -16,4 +16,7 @@ INSERT INTO user_invite_redemptions(invite_id, user_id, redeemed_at)
 SELECT id, used_by_user_id, used_at FROM user_invites
 WHERE used_by_user_id IS NOT NULL AND used_at IS NOT NULL
 ON CONFLICT(user_id) DO NOTHING;
+ALTER TABLE user_invites DROP COLUMN used_at;
+ALTER TABLE user_invites DROP COLUMN used_by_user_id;
+ALTER TABLE user_invites DROP COLUMN revoked_at;
 UPDATE _schema_version SET version = 26;

@@ -9,9 +9,6 @@ export interface InviteRow {
   created_by: number;
   created_at: number;
   expires_at: number;
-  used_at: number | null;
-  used_by_user_id: number | null;
-  revoked_at: number | null;
   status: InviteStatus;
   enabled: boolean;
   use_count: number;

@@ -137,6 +137,12 @@ def test_legacy_invites_migrate_without_reopening(db: SqlitePool) -> None:
         conn.execute("ALTER TABLE user_invites DROP COLUMN enabled")
         conn.execute("ALTER TABLE user_invites DROP COLUMN max_uses")
         conn.execute("ALTER TABLE user_invites DROP COLUMN use_count")
+        conn.execute("ALTER TABLE user_invites ADD COLUMN used_at INTEGER")
+        conn.execute(
+            "ALTER TABLE user_invites ADD COLUMN used_by_user_id INTEGER "
+            "REFERENCES users(id) ON DELETE SET NULL"
+        )
+        conn.execute("ALTER TABLE user_invites ADD COLUMN revoked_at INTEGER")
         conn.execute(
             "INSERT INTO user_invites(code, created_by, created_at, expires_at, used_at, used_by_user_id) "
             "VALUES (?, ?, ?, ?, ?, ?)",
@@ -167,11 +173,19 @@ def test_legacy_invites_migrate_without_reopening(db: SqlitePool) -> None:
     assert revoked is not None and revoked.status() == "disabled"
     assert deleted is not None and deleted.status() == "disabled" and deleted.use_count == 1
     assert unused is not None and unused.status() == "active" and unused.max_uses == 1
-    assert repo.list_users(used.id, limit=20, offset=0)[0][0]["id"] == invited_id
+    rows, count = repo.list_users(used.id, limit=20, offset=0)
+    assert count == 1
+    assert rows[0]["id"] == invited_id and rows[0]["redeemed_at"] == 2
+    assert repo.list_users(deleted.id, limit=20, offset=0) == ([], 0)
     with pytest.raises(ValueError, match="exhausted"):
         repo.set_enabled(used.id, True)
     run_migrations(db)
     assert not repo.get(used.id).enabled
+    with db.connect() as conn:
+        columns = {
+            column[0] for column in conn.execute("SELECT * FROM user_invites LIMIT 0").description
+        }
+        assert {"used_at", "used_by_user_id", "revoked_at"}.isdisjoint(columns)
 
 
 def test_concurrent_redemptions_from_separate_connections(db: SqlitePool) -> None:

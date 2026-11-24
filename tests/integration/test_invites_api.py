@@ -18,6 +18,7 @@ async def test_invite_create_list_redeem_multiple(env) -> None:
     )
     assert r.status_code == 201, r.text
     invite = r.json()
+    assert {"used_at", "used_by_user_id", "revoked_at"}.isdisjoint(invite)
     assert invite["status"] == "active"
     assert invite["max_uses"] == 2
     assert invite["use_count"] == 0
