@@ -46,13 +46,15 @@ import { useServerTimezone } from "../../../hooks/useServerTimezone";
 import { message } from "@/utils/antdMessage";
 import { copyText } from "../../../utils/copyText";
 import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
+import CodexModelSetup from "./CodexModelSetup";
 import styles from "./MemorySettings.module.less";
 
 /** Public setup guide for the clients this tab issues tokens to. */
 const MCP_SETUP_DOCS_URL =
   "https://github.com/TencentCloud/octop-memory/blob/main/plugins/harness/AI-SETUP.md";
-const MCP_INSTALL_BASE_URL =
-  "https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness";
+// The installer entry point and the Python package it fetches must use the same revision.
+const CODEX_HARNESS_REF = "7260dbaa0e3442fa8a03bf123668f414401d2be6";
+const MCP_INSTALL_BASE_URL = `https://raw.githubusercontent.com/TencentCloud/octop-memory/${CODEX_HARNESS_REF}/plugins/harness`;
 
 interface CreateFormValues {
   name: string;
@@ -93,9 +95,7 @@ export default function McpAccess() {
   const [createExpertDefault, setCreateExpertDefault] = useState<string>("");
   const [createSpaceId, setCreateSpaceId] = useState<string | null>(null);
   const [created, setCreated] = useState<MemoryMcpTokenCreated | null>(null);
-  const [codexExtraction, setCodexExtraction] = useState<"codex" | "server">(
-    "codex",
-  );
+  const [codexTarget, setCodexTarget] = useState<MemoryMcpToken | null>(null);
   /**
    * Plaintexts seen this session, keyed by token id. The server keeps only the
    * digest, so a row without an entry can only copy after a rotate.
@@ -229,6 +229,8 @@ export default function McpAccess() {
     setSpacesError(false);
     setSpaceChoice(undefined);
     setTokenList(null);
+    setCodexTarget(null);
+    setCreated(null);
     setPlaintextByToken({});
     setSharingSession(session);
   };
@@ -371,7 +373,7 @@ export default function McpAccess() {
       "安装后按文档里的验证步骤检查召回与上报，并把结果告诉我。",
     ].join("\n");
 
-  const buildCodexPrompt = (token: MemoryMcpToken) =>
+  const buildCodexPrompt = (token: MemoryMcpToken, codexExtraction: string) =>
     [
       t(
         "memory.mcp.codexPromptIntro",
@@ -387,6 +389,11 @@ export default function McpAccess() {
         },
       ),
       t(
+        "memory.mcp.codexInstallerRef",
+        "运行安装器时设置 OCTOP_MEMORY_REF={{ref}}。",
+        { ref: CODEX_HARNESS_REF },
+      ),
+      t(
         "memory.mcp.codexPromptToken",
         "请让我在本机终端以隐藏输入的方式提供本次 Token，通过 OCTOP_MEMORY_TOKEN 传给安装器。仅在我确认接入同一个记忆空间时，才复用同一地址已有的本机凭据。请将 Token 明文留在本机，避免写入对话、命令文本或日志。",
       ),
@@ -396,6 +403,15 @@ export default function McpAccess() {
               ? t(
                   "memory.mcp.codexExtractPrompt",
                   "安装前设置 OCTOP_CODEX_EXTRACTION=codex。安装完成后，在发起安装的当前 Codex 对话中，查找本次安装所注册的 MCP 服务下的 memory_propose（包括按需加载的工具）。找到后报告“当前对话已加载 memory_propose”，验证时无需写入候选。仅检查配置文件、服务端工具目录或新开的 Codex 进程，无法确认本对话已加载。若本对话找不到它，报告“已配置，当前对话待重载”，提示打开命令菜单（Mac 按 ⌘K，Windows/Linux 按 Ctrl+K），搜索 MCP，进入 MCP 设置，点击“服务器”标题旁的重启图标。使用 CLI 时退出并恢复原会话。回到同一对话再次检查；若仍不可用，报告实际错误。",
+                )
+              : codexExtraction.includes("/")
+              ? t(
+                  "memory.mcp.octopExtractPrompt",
+                  "安装前设置 OCTOP_CODEX_EXTRACTION=octop 和 OCTOP_CODEX_REVIEW_URL={{url}}。已为这个 Token 选择 {{model}}，Stop 会在后台由 Octop 复核用户原文。请检查本机 hook 配置的模式和地址。",
+                  {
+                    model: codexExtraction,
+                    url: origin + "/api/memory-mcp/codex-review",
+                  },
                 )
               : t(
                   "memory.mcp.serverExtractPrompt",
@@ -796,6 +812,18 @@ export default function McpAccess() {
           >
             {t("memory.mcp.command", "接入配置")}
           </Button>
+          {token.scopes?.includes("write") &&
+            token.space_id &&
+            !token.revoked_at && (
+              <Button
+                type="link"
+                size="small"
+                style={ACTION_TEXT_STYLE}
+                onClick={() => setCodexTarget(token)}
+              >
+                {t("memory.mcp.codexModelSetup", "Codex 提取模型")}
+              </Button>
+            )}
           {!spaceId && (
             <Button
               type="link"
@@ -1255,6 +1283,22 @@ export default function McpAccess() {
       </Modal>
 
       <Modal
+        open={codexTarget !== null}
+        title={t("memory.mcp.codexModelSetup", "Codex 提取模型")}
+        footer={null}
+        onCancel={() => setCodexTarget(null)}
+        destroyOnHidden
+      >
+        {codexTarget && (
+          <CodexModelSetup
+            key={codexTarget.token_id}
+            token={codexTarget}
+            prompt={buildCodexPrompt}
+            copy={copySetupCommand}
+          />
+        )}
+      </Modal>
+      <Modal
         open={created !== null}
         title={t("memory.mcp.plaintextTitle", "Token 已创建")}
         width={780}
@@ -1395,61 +1439,12 @@ export default function McpAccess() {
                   key: "codex",
                   label: t("memory.mcp.codexPromptLabel", "Codex 接入提示词"),
                   children: (
-                    <>
-                      {created.token.scopes?.includes("write") && (
-                        <Form.Item
-                          label={t(
-                            "memory.mcp.extractionSource",
-                            "记忆提取模型",
-                          )}
-                        >
-                          <Select
-                            aria-label={t(
-                              "memory.mcp.extractionSource",
-                              "记忆提取模型",
-                            )}
-                            value={codexExtraction}
-                            onChange={setCodexExtraction}
-                            options={[
-                              {
-                                value: "codex",
-                                label: t(
-                                  "memory.mcp.codexExtractOption",
-                                  "当前 Codex 对话模型（额外一轮）",
-                                ),
-                              },
-                              {
-                                value: "server",
-                                label: t(
-                                  "memory.mcp.serverExtractOption",
-                                  "Memory 服务配置的模型",
-                                ),
-                              },
-                            ]}
-                          />
-                        </Form.Item>
-                      )}
-                      <Space.Compact style={{ width: "100%" }}>
-                        <Input.TextArea
-                          aria-label={t(
-                            "memory.mcp.codexPromptLabel",
-                            "Codex 接入提示词",
-                          )}
-                          readOnly
-                          autoSize={{ minRows: 4, maxRows: 8 }}
-                          value={buildCodexPrompt(created.token)}
-                        />
-                        <Button
-                          onClick={() =>
-                            void copySetupCommand(
-                              buildCodexPrompt(created.token),
-                            )
-                          }
-                        >
-                          {t("memory.mcp.copyPrompt", "复制提示词")}
-                        </Button>
-                      </Space.Compact>
-                    </>
+                    <CodexModelSetup
+                      key={created.token.token_id}
+                      token={created.token}
+                      prompt={buildCodexPrompt}
+                      copy={copySetupCommand}
+                    />
                   ),
                 },
                 {

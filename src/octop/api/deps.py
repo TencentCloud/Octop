@@ -48,6 +48,7 @@ _JWT_EXEMPT_PREFIXES = (
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
+    "/api/memory-mcp/codex-review",  # Checks live Memory credential and per-token model grant.
     "/api/auth/login",
     # Desktop shells renew an expired session here; the device token is the
     # credential and the router enforces shell-flag + loopback + digest match.

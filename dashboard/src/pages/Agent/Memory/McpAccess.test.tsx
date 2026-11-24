@@ -9,6 +9,18 @@ vi.mock("../../../api/modules/memoryMcp", () => ({
     update: vi.fn(),
     revoke: vi.fn(),
     rotate: vi.fn(),
+    getCodexModel: vi.fn(),
+    setCodexModel: vi.fn(),
+  },
+}));
+
+vi.mock("../../../api/modules/provider", () => ({
+  providerApi: {
+    listResolvedModels: vi
+      .fn()
+      .mockResolvedValue([
+        { provider_name: "lab", model: "review", name: "Review" },
+      ]),
   },
 }));
 
@@ -139,6 +151,41 @@ beforeEach(() => {
 });
 
 describe("<McpAccess />", () => {
+  it("loads and saves an existing Codex token's Octop extraction model", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, scopes: ["read", "write"], space_id: "work" },
+    ]);
+    api.getCodexModel.mockResolvedValue({ model: null });
+    api.setCodexModel.mockResolvedValue({ model: "lab/review" });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await user.click(
+      await screen.findByRole("button", { name: "Codex 提取模型" }),
+    );
+    await user.click(
+      await screen.findByRole("combobox", { name: "记忆提取模型" }),
+    );
+    await user.click(await screen.findByTitle("lab / Review"));
+    expect(api.setCodexModel).toHaveBeenCalledWith(
+      "tok_1",
+      "work",
+      "lab/review",
+    );
+    const prompt = await screen.findByRole<HTMLTextAreaElement>("textbox", {
+      name: "Codex 接入提示词",
+    });
+    await waitFor(() =>
+      expect(prompt.value).toContain("OCTOP_CODEX_EXTRACTION=octop"),
+    );
+    expect(prompt.value).toContain("lab/review");
+    expect(prompt.value).toContain("/api/memory-mcp/codex-review");
+    await user.click(screen.getByRole("combobox", { name: "记忆提取模型" }));
+    await user.click(
+      await screen.findByTitle("当前 Codex 对话模型（额外一轮）"),
+    );
+    expect(api.setCodexModel).toHaveBeenCalledWith("tok_1", "work", null);
+  });
+
   it("shows the connected MCP address before the first token is created", async () => {
     api.list.mockResolvedValue([]);
     vi.mocked(memorySharingApi.status).mockResolvedValue({

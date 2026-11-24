@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from octop.api.common.agent import assert_agent_access_row
 from octop.api.deps import current_user, get_server, require_permission
 from octop.api.routers.memory_sharing import memory_client_base, require_loaded_session
-from octop.infra.agents import memory_sharing
+from octop.infra.agents import codex_memory_review, memory_sharing
 from octop.infra.agents.memory_default_space import default_space_for
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
@@ -324,3 +324,55 @@ def revoke_token(
     _require_session(user)
     result = memory_sharing.revoke_token(int(user.id), token_id)
     return TokenRevoked(revoked=bool(result.get("revoked")))
+
+
+class CodexModelChoice(BaseModel):
+    model: str | None = Field(default=None, min_length=1, max_length=512)
+
+
+def _require_writable_token(user: User, token_id: str, space_id: str) -> None:
+    records = memory_sharing.list_tokens_in(user.id, space_id)
+    if not any(
+        t["token_id"] == token_id
+        and not t.get("revoked_at")
+        and "write" in t.get("scopes", [])
+        and "read" in t.get("scopes", [])
+        for t in records.get("tokens", [])
+    ):
+        raise OctopError(
+            ErrorCode.FORBIDDEN, "An active read/write token in this space is required"
+        )
+
+
+@router.get("/{token_id}/codex-model")
+def get_codex_model(
+    token_id: str,
+    space_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> CodexModelChoice:
+    _require_writable_token(user, token_id, space_id)
+    assert server.services is not None
+    saved = server.services.settings_repo.get(codex_memory_review.binding_key(token_id, space_id))
+    return CodexModelChoice(model=json.loads(saved)["model"] if saved else None)
+
+
+@router.put("/{token_id}/codex-model")
+def set_codex_model(
+    token_id: str,
+    space_id: str,
+    body: CodexModelChoice,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> CodexModelChoice:
+    _require_writable_token(user, token_id, space_id)
+    assert server.services is not None
+    key = codex_memory_review.binding_key(token_id, space_id)
+    if body.model is None:
+        server.services.settings_repo.delete(key)
+    else:
+        codex_memory_review.check_model(server, user, body.model)
+        server.services.settings_repo.set(
+            key, json.dumps({"model": body.model, "user_id": user.id})
+        )
+    return body

@@ -94,6 +94,19 @@ function toCreated(raw: TokenCreatedWire): MemoryMcpTokenCreated {
 }
 
 export const memoryMcpApi = {
+  getCodexModel: (tokenId: string, space: string) =>
+    request<{ model: string | null }>(
+      `/memory-mcp/tokens/${encodeURIComponent(
+        tokenId,
+      )}/codex-model?${new URLSearchParams({ space_id: space })}`,
+    ),
+  setCodexModel: (tokenId: string, space: string, model: string | null) =>
+    request<{ model: string | null }>(
+      `/memory-mcp/tokens/${encodeURIComponent(
+        tokenId,
+      )}/codex-model?${new URLSearchParams({ space_id: space })}`,
+      { method: "PUT", body: JSON.stringify({ model }) },
+    ),
   list: (spaceId?: string) =>
     request<MemoryMcpToken[]>(
       spaceId
