@@ -331,6 +331,12 @@ def build_app(server: OctopServer) -> FastAPI:
             ],
         )
 
+    # Before the dashboard catch-all so extension routes and static mounts win.
+    from octop.infra.extensions import extension_hooks
+
+    for _name, configure in extension_hooks("configure_app"):
+        configure(app, server)
+
     if enable_api_docs:
 
         @app.get("/api/docs", include_in_schema=False)
