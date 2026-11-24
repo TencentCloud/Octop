@@ -540,6 +540,8 @@
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
+    "INVITE_DISABLED": "This invite code is disabled.",
+    "INVITE_EXHAUSTED": "This invite has reached its registration limit.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
