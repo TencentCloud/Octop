@@ -25,5 +25,4 @@
 
 ## Checklist
 
-- [ ] Updated `CHANGELOG.md` (if user-facing)
 - [ ] README / docs updated (if needed)
