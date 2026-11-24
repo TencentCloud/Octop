@@ -158,6 +158,38 @@ helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 滚动更新时先起新 Pod 再停旧 Pod。旧 Pod 退出时释放通道和任务租约，新 Pod 在对账周期内接手。已经粘在旧 Pod 上的页面会断开，刷新后进入存活副本。
 
+## 使用 CubeSandbox 工作区
+
+先部署 CubeSandbox，准备状态为就绪的模板，并确认每个 Octop Pod 都能访问 CubeAPI 和沙箱数据面。选用已包含 CubeSandbox 支持的 Octop 发布版本，该版本的标准镜像已内置原生 SDK。
+
+在 Helm 覆盖文件中填写 CubeAPI 地址。如果 Pod 无法通过沙箱域名访问数据面，将 `proxyNodeIP` 填为 Pod 可达的 CubeProxy IP。若 HTTP 数据面使用非默认端口，例如通过 SSH 隧道访问，填写 `proxyPortHTTP`。
+
+```yaml
+cubeSandbox:
+  enabled: true
+  apiUrl: http://cubeapi.cube-system.svc.cluster.local:3000
+  proxyNodeIP: ""
+  proxyPortHTTP: ""
+  existingSecret: octop-cubesandbox
+```
+
+在 release 命名空间创建 `octop-cubesandbox` Secret，包含以下键：
+
+| 键 | 用途 |
+| --- | --- |
+| `lock-dsn` | 必填。所有副本共用的 PostgreSQL 连接串，可指向 Octop 的数据库。 |
+| `api-key` | CubeAPI 开启鉴权时填写。 |
+| `workspace-backup` | 可选。用于沙箱重建后恢复文件的对象存储后端 JSON 配置，必须带 `type`。 |
+
+将覆盖文件保存为 `my-values.yaml` 后，使用已包含 CubeSandbox 支持的 chart 版本安装或升级。
+
+```sh
+helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
+  --version "REPLACE_WITH_CHART_VERSION" -n octop -f my-values.yaml
+```
+
+升级后，在管理后台添加 CubeSandbox 后端，填写 Template ID 并运行连通性测试，随后为专家选择该后端。使用同一专家跨 Pod 访问工作区，可验证副本之间能复用沙箱。修改 Secret 后需重启 Octop Pod 才能读到新值。
+
 ## 托管 PostgreSQL
 
 扩展由数据库管理员预先执行（`CREATE EXTENSION vector`）。chart 不再部署自己的数据库：

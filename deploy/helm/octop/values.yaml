@@ -30,6 +30,14 @@ secrets:
   database: octop-pg
   admin: octop-admin
 
+# Connect Octop replicas to an existing CubeSandbox service.
+cubeSandbox:
+  enabled: false
+  apiUrl: ""
+  proxyNodeIP: ""
+  proxyPortHTTP: ""
+  existingSecret: ""
+
 service:
   port: 8088
 

@@ -33,6 +33,14 @@ secrets:
   database: octop-pg
   admin: octop-admin
 
+# 使用已部署的 CubeSandbox。选择包含 CubeSandbox 支持的 Octop 发布版本。
+cubeSandbox:
+  enabled: false
+  apiUrl: ""
+  proxyNodeIP: ""
+  proxyPortHTTP: ""
+  existingSecret: octop-cubesandbox
+
 service:
   port: 8088
 
