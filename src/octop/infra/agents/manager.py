@@ -180,11 +180,13 @@ def _reject_shared_memory_namespace(rows: list[Any], agent_id: str) -> None:
 
 
 def skills_disabled_set(cfg: dict[str, Any]) -> set[str]:
-    """Return the set of disabled skill slugs from agent config."""
-    raw = cfg.get("skills_disabled")
-    if isinstance(raw, list):
-        return {str(x) for x in raw}
-    return set()
+    """Return the set of disabled skill slugs from agent config.
+
+    Opt-in built-ins count as disabled until the agent's ``skills_enabled`` lists them.
+    """
+    from octop.infra.agents.builtin_skills import effective_skills_disabled  # noqa: PLC0415
+
+    return effective_skills_disabled(cfg)
 
 
 def tools_disabled_set(cfg: dict[str, Any]) -> set[str]:
@@ -3139,10 +3141,12 @@ class AgentManager:
         Unlike :meth:`update_config_json`, this does not schedule a harness reload.
         Skill enable/disable and marketplace install only need the filter set updated.
         """
+        from octop.infra.agents.builtin_skills import store_skills_disabled  # noqa: PLC0415
+
         cfg = self.get_config(agent_id)
-        cfg["skills_disabled"] = sorted(disabled)
+        store_skills_disabled(cfg, disabled)
         self.persist_harness_config(agent_id, cfg)
-        self.sync_skills_disabled(agent_id, disabled)
+        self.sync_skills_disabled(agent_id, skills_disabled_set(cfg))
 
     async def persist_tools_disabled(self, agent_id: str, disabled: set[str]) -> None:
         """Persist builtin ``tools_disabled`` and hot-sync the effective denylist."""
