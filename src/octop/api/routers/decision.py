@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from typing import Annotated, Any, Literal, cast
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -13,6 +14,7 @@ from octop.api.deps import get_server, require_permission
 from octop.infra.agents.settings.decision import DecisionSettings
 from octop.infra.agents.settings.laya_runtime import get_laya_runtime
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.secret_fields import Secret, blank_secret
 
@@ -51,7 +53,11 @@ class DecisionServiceBody(BaseModel):
     )
     source_provider_id: int | None = Field(
         default=None,
-        description="When api_key is blank, copy this provider's stored key. The key is not returned.",
+        description=(
+            "When api_key is blank, copy this provider's stored key. Requires the "
+            "providers permission, and the endpoint must be on that provider's host. "
+            "The key is not returned."
+        ),
     )
 
 
@@ -82,29 +88,64 @@ class DecisionTestBody(BaseModel):
     provider: Literal["laya", "jev", "microsoft", "custom"] | None = None
     source_provider_id: int | None = Field(
         default=None,
-        description="When api_key is blank, probe with this provider's stored key. The key is not returned.",
+        description=(
+            "When api_key is blank, probe with this provider's stored key. Requires "
+            "the providers permission, and the endpoint must be on that provider's "
+            "host. The key is not returned."
+        ),
     )
 
 
-def _stored_provider_api_key(server: Any, provider_id: int) -> str:
+def _borrowed_provider_api_key(
+    server: Any, user: Any, provider_id: int, endpoint: str | None
+) -> str:
+    """Stored provider key for a decision request, gated on use and destination.
+
+    Borrowing another provider's credential needs the ``providers`` permission
+    (``model_decision`` alone only covers keys typed for the decision model),
+    and the key may only travel to the source provider's own host — otherwise
+    naming a provider plus an attacker endpoint would exfiltrate the key to
+    that endpoint even though the key never appears in a response.
+    """
+    if not user_has_permission(user, "providers"):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "permission required",
+            details={"permission": "providers"},
+        )
     row = server.services.provider_repo.get(provider_id)
     if row is None or not (row.api_key or "").strip():
         raise OctopError(ErrorCode.NOT_FOUND, "provider api key is not configured")
+    target_host = urlparse((endpoint or "").strip()).hostname
+    source_host = urlparse((row.base_url or "").strip()).hostname
+    if source_host is None and (row.name or row.kind or "").strip().lower() == "openrouter":
+        source_host = "openrouter.ai"
+    if target_host is None or source_host is None or target_host != source_host:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "source provider key may only be sent to the source provider host",
+        )
     return str(row.api_key)
 
 
 def _decision_api_key(
-    server: Any, *, typed: str | None, source_provider_id: int | None
+    server: Any,
+    user: Any,
+    *,
+    typed: str | None,
+    source_provider_id: int | None,
+    endpoint: str | None = None,
 ) -> str | None:
-    """Typed key wins. A blank key plus ``source_provider_id`` uses the stored provider key.
+    """Typed key wins. A blank key plus ``source_provider_id`` borrows that key.
 
-    An explicit blank string with no source clears the decision secret. Omitted
-    (``None``) keeps it.
+    Borrowing is restricted by :func:`_borrowed_provider_api_key`. An explicit
+    blank string with no source clears the decision secret. Omitted (``None``)
+    keeps it.
     """
     if isinstance(typed, str) and typed.strip() and not blank_secret(typed):
         return typed.strip()
     if source_provider_id is not None:
-        return _stored_provider_api_key(server, source_provider_id)
+        return _borrowed_provider_api_key(server, user, source_provider_id, endpoint)
     if isinstance(typed, str):
         return ""
     return None
@@ -147,7 +188,7 @@ async def get_decision_settings(
 @router.put("/settings/decision", summary="Update the decision-model switch")
 async def put_decision_settings(
     body: DecisionSettingsBody,
-    _: Any = Depends(require_permission("model_decision")),
+    user: Any = Depends(require_permission("model_decision")),
     server: Any = Depends(get_server),
 ) -> DecisionSettingsResponse:
     """Save the switch and rebuild running agents so the middleware mounts or unmounts."""
@@ -158,7 +199,11 @@ async def put_decision_settings(
             data = item.model_dump()
             source_id = data.pop("source_provider_id")
             data["api_key"] = _decision_api_key(
-                server, typed=item.api_key, source_provider_id=source_id
+                server,
+                user,
+                typed=item.api_key,
+                source_provider_id=source_id,
+                endpoint=item.endpoint,
             )
             services.append(data)
     saved = await server.app_runtime.agent_registry.save_decision(
@@ -171,7 +216,9 @@ async def put_decision_settings(
         team=body.team,
         threshold=body.threshold,
         tool_min_count=body.tool_min_count,
-        api_key=_decision_api_key(server, typed=body.api_key, source_provider_id=None),
+        api_key=_decision_api_key(
+            server, user, typed=body.api_key, source_provider_id=None, endpoint=body.endpoint
+        ),
         services=services,
     )
     return _view(saved)
@@ -180,7 +227,7 @@ async def put_decision_settings(
 @router.post("/settings/decision/test", summary="Probe the decision-model endpoint")
 async def test_decision_settings(
     body: DecisionTestBody,
-    _: Any = Depends(require_permission("model_decision")),
+    user: Any = Depends(require_permission("model_decision")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Send one yes/no question. A probability in the reply means the endpoint is reachable."""
@@ -189,7 +236,11 @@ async def test_decision_settings(
         await server.app_runtime.agent_registry.probe_decision(
             endpoint=body.endpoint,
             api_key=_decision_api_key(
-                server, typed=body.api_key, source_provider_id=body.source_provider_id
+                server,
+                user,
+                typed=body.api_key,
+                source_provider_id=body.source_provider_id,
+                endpoint=body.endpoint,
             ),
             model=body.model,
             provider=body.provider,

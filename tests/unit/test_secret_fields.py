@@ -41,13 +41,13 @@ def test_model_fields_follow_the_marker_not_the_name() -> None:
     assert present == ["access_key", "secret_key", "bot_token"]
 
     merged = merge_blank_secrets(
-        {"access_key": "", "api_key": "", "bot_token": ""},
+        {"access_key": "AKID********", "api_key": "", "bot_token": ""},
         {"access_key": "stored-ak", "api_key": "stored-sk", "bot_token": "stored-tok"},
         model=_StorageBody,
     )
     assert merged["access_key"] == "stored-ak"
     assert merged["api_key"] == ""
-    assert merged["bot_token"] == "stored-tok"
+    assert "bot_token" not in merged
 
 
 def test_persisted_secret_keeps_blank_marked_fields() -> None:
@@ -64,17 +64,33 @@ def test_redact_mapping_drops_secrets_and_lists_them() -> None:
 
 def test_merge_blank_secrets_keeps_stored_and_prefers_typed() -> None:
     merged = merge_blank_secrets(
-        {"app_id": "cli", "app_secret": ""},
+        {"app_id": "cli"},
         {"app_id": "old", "app_secret": "stored"},
     )
     assert merged["app_id"] == "cli"
     assert merged["app_secret"] == "stored"
+
+    masked = merge_blank_secrets(
+        {"app_secret": "AKID********"},
+        {"app_secret": "stored"},
+    )
+    assert masked["app_secret"] == "stored"
 
     replaced = merge_blank_secrets(
         {"app_secret": "new"},
         {"app_secret": "stored"},
     )
     assert replaced["app_secret"] == "new"
+
+
+def test_merge_blank_secrets_clears_explicitly_emptied_secret() -> None:
+    for cleared in ("", "  ", None):
+        merged = merge_blank_secrets(
+            {"app_id": "cli", "app_secret": cleared},
+            {"app_id": "old", "app_secret": "stored"},
+        )
+        assert merged["app_id"] == "cli"
+        assert "app_secret" not in merged
 
 
 def test_blank_secret_treats_mask_as_unchanged() -> None:
@@ -95,6 +111,10 @@ def test_config_json_round_trip_keeps_security_token() -> None:
     merged = merge_config_json(redacted, stored)
     assert merged is not None
     assert json.loads(merged)["security_token"] == "sts-secret"
+
+    cleared = merge_config_json(json.dumps({"security_token": ""}), stored)
+    assert cleared is not None
+    assert "security_token" not in json.loads(cleared)
 
 
 def test_storage_row_omits_secret_key_and_config_token() -> None:

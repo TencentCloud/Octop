@@ -229,11 +229,10 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
           const value = cfg[name];
           if (typeof value === "string" && value.trim()) kept.add(name);
         }
-        if (
-          row.kind === "qq" &&
-          typeof cfg.client_secret === "string" &&
-          cfg.client_secret.trim()
-        ) {
+        // Stored QQ rows may name the credential client_secret (CLI-created
+        // rows) while the form field is secret. The redacted config no longer
+        // carries the value, so alias from secrets_set instead.
+        if (row.kind === "qq" && kept.has("client_secret")) {
           kept.add("secret");
         }
         setSecretsSet([...kept]);

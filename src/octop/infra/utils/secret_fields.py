@@ -137,6 +137,11 @@ def redact_mapping(
     return kept, present
 
 
+def _explicit_clear(value: object) -> bool:
+    """True when the client sent the key with an empty value to delete it."""
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
 def merge_blank_secrets(
     submitted: Mapping[str, Any],
     stored: Mapping[str, Any],
@@ -144,7 +149,11 @@ def merge_blank_secrets(
     extra_keys: Collection[str] = (),
     model: type[BaseModel] | None = None,
 ) -> dict[str, Any]:
-    """Fill blank secret fields from ``stored``. Newly typed secrets win.
+    """Fill unmodified secret fields from ``stored``. Newly typed secrets win.
+
+    A secret key the client omitted, or echoed back masked, keeps the stored
+    value. Sending the key with ``""`` or ``None`` clears it, so an optional
+    credential (e.g. a TOS ``security_token``) can be removed.
 
     Keys declared on ``model`` are secret only when marked with :class:`Secret`.
     Other keys follow the dynamic-dict name rules.
@@ -154,8 +163,14 @@ def merge_blank_secrets(
         name = str(key)
         if not _key_is_secret(name, extra_keys=extra_keys, model=model):
             continue
-        incoming = merged.get(name)
-        if name not in merged or blank_secret(incoming):
+        if name not in merged:
+            if not blank_secret(stored_value) and stored_value not in ("", None):
+                merged[name] = stored_value
+            continue
+        incoming = merged[name]
+        if _explicit_clear(incoming):
+            merged.pop(name, None)
+        elif blank_secret(incoming):
             if not blank_secret(stored_value) and stored_value not in ("", None):
                 merged[name] = stored_value
             else:
@@ -182,7 +197,7 @@ def redact_config_json(raw: str | None) -> tuple[str | None, list[str]]:
 
 
 def merge_config_json(submitted: str | None, stored: str | None) -> str | None:
-    """Keep stored secrets when the submitted JSON leaves those keys blank."""
+    """Keep stored secrets the submitted JSON omits; ``""``/``null`` clears one."""
     if submitted is None:
         return None
     try:
