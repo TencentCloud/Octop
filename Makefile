@@ -257,7 +257,9 @@ precommit: format-all lint typecheck test-affected
 .PHONY: test-affected
 test-affected:
 	@echo "[test] pytest (testmon: only tests affected by changes)..."
-	$(RUN) pytest --testmon
+	# No .testmondata yet (fresh clone or worktree) means the whole suite runs:
+	# spread it over all cores. testmon >= 2.2 records its data under xdist too.
+	$(RUN) pytest --testmon $(if $(wildcard .testmondata),,-n auto)
 
 # ─── Quality (frontend) ──────────────────────────────────────────────────────
 
