@@ -72,11 +72,34 @@ def render(source: Path, destination: Path) -> None:
         pages.rename(destination)
 
 
+def check() -> int:
+    """Report whether page previews can be rendered here; exit 1 when they cannot."""
+    missing: list[str] = []
+    try:
+        print(f"libreoffice: {libreoffice_command()}")
+    except OSError:
+        missing.append("LibreOffice (soffice)")
+    if poppler := shutil.which("pdftoppm"):
+        print(f"pdftoppm: {poppler}")
+    else:
+        missing.append("Poppler (pdftoppm)")
+    if missing:
+        print("preview unavailable, missing: " + ", ".join(missing))
+        return 1
+    print("preview available")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", type=Path)
-    parser.add_argument("destination", type=Path)
+    parser.add_argument("--check", action="store_true", help="only report renderer availability")
+    parser.add_argument("source", type=Path, nargs="?")
+    parser.add_argument("destination", type=Path, nargs="?")
     args = parser.parse_args()
+    if args.check:
+        return check()
+    if args.source is None or args.destination is None:
+        parser.error("source and destination are required")
     try:
         render(args.source, args.destination)
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
