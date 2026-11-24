@@ -353,6 +353,16 @@ def load_provider_presets() -> list[dict[str, Any]]:
         out.insert(0, magpie_preset())
     if not any(p.get("purpose") == "embedding" and p.get("id") != "onnx" for p in out):
         out.extend(_embedding_cloud_presets())
+    from octop.infra.agents.plugins.plugin_config import plugin_provider_presets  # noqa: PLC0415
+
+    taken = {str(p.get("id")) for p in out}
+    from_plugins: list[dict[str, Any]] = []
+    for preset in plugin_provider_presets():
+        preset_id = str(preset.get("id"))
+        if preset_id not in taken:
+            taken.add(preset_id)
+            from_plugins.append(preset)
+    out[:0] = from_plugins
     for preset in out:
         provider_id = str(preset.get("id") or "")
         for model in preset.get("models") or []:

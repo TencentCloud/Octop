@@ -269,7 +269,12 @@ export function InstalledPluginsPanel() {
       dataIndex: "kind",
       key: "kind",
       width: 100,
-      render: (kind: string | undefined) => <Tag>{kind || "—"}</Tag>,
+      render: (kind: string | undefined, row: InstalledPlugin) => {
+        const capabilities = row.capabilities?.length
+          ? row.capabilities
+          : [kind || "—"];
+        return capabilities.map((name) => <Tag key={name}>{name}</Tag>);
+      },
     },
     {
       title: t("plugins.colGroup"),
@@ -658,6 +663,51 @@ export function InstalledPluginsPanel() {
                   });
               }}
             />
+
+            {detail.config ? (
+              <section className={styles.drawerSection}>
+                <h4 className={styles.drawerSectionTitle}>
+                  {t("plugins.configTitle")}
+                </h4>
+                <p className={styles.drawerEnableHint}>
+                  {t("plugins.configHint")}
+                </p>
+                <div className={styles.detailList}>
+                  {detail.config.provider_presets.length ? (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>
+                        {t("plugins.configPresets")}
+                      </span>
+                      <span>{detail.config.provider_presets.join(", ")}</span>
+                    </div>
+                  ) : null}
+                  {detail.config.providers.length ? (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>
+                        {t("plugins.configProviders")}
+                      </span>
+                      <span>{detail.config.providers.join(", ")}</span>
+                    </div>
+                  ) : null}
+                  {detail.config.default_model ? (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>
+                        {t("plugins.configDefaultModel")}
+                      </span>
+                      <span>{detail.config.default_model}</span>
+                    </div>
+                  ) : null}
+                  {Object.entries(detail.config.settings).map(
+                    ([key, value]) => (
+                      <div className={styles.detailRow} key={key}>
+                        <span className={styles.detailLabel}>{key}</span>
+                        <span>{String(value)}</span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </section>
+            ) : null}
 
             <section className={styles.drawerSection}>
               <h4 className={styles.drawerSectionTitle}>

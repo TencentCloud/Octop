@@ -27,6 +27,15 @@ export interface InstalledPlugin {
   visibility?: "all" | "groups";
   group_ids?: string[];
   error?: string;
+  /** Capabilities from plugin.yaml; just ``[kind]`` when the manifest has no list. */
+  capabilities?: string[];
+  /** What the plugin's ``config`` section sets, when it declares the ``config`` capability. */
+  config?: {
+    provider_presets: string[];
+    providers: string[];
+    default_model: string | null;
+    settings: Record<string, string | number>;
+  } | null;
   ui?: { entry: string; manifest: string } | null;
   tools?: {
     name: string;
