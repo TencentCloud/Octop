@@ -15,6 +15,7 @@ export interface DesktopUpdateCheckResult {
   status: "update-available" | "up-to-date" | "error";
   currentVersion: string;
   latestVersion: string | null;
+  noAssetForPlatform?: boolean;
   error: string | null;
 }
 

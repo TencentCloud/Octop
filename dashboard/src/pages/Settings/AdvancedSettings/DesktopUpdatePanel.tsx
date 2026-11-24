@@ -33,6 +33,7 @@ export default function DesktopUpdatePanel() {
           : "up-to-date",
         currentVersion: status.current_version,
         latestVersion: status.latest_version,
+        noAssetForPlatform: status.platform_asset_missing ?? false,
         error: status.error,
       }
     : null;
@@ -159,6 +160,12 @@ export default function DesktopUpdatePanel() {
         {result?.status === "error" && (
           <div className={`${styles.alert} ${styles.alertError}`}>
             <span>{result.error}</span>
+          </div>
+        )}
+
+        {result?.noAssetForPlatform && (
+          <div className={`${styles.alert} ${styles.alertInfo}`}>
+            <span>{t("advancedSettings.update.noPlatformAsset")}</span>
           </div>
         )}
 

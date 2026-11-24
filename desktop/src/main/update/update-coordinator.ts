@@ -141,3 +141,28 @@ export function selectRelease(
   const asset = best.assets[platform]!;
   return { tag: best.tag, asset, releasesUrl: best.releasesUrl };
 }
+
+/**
+ * True when the channel head is newer than ``currentVersion`` but has no usable
+ * asset for this platform. The shell must not report "already up to date" in
+ * that case: on Linux the stable channel can lag behind the beta builds (#3087).
+ */
+export function channelHeadNeedsPlatformAsset(
+  manifest: DownloadManifest,
+  currentVersion: string,
+  platform: PlatformKey | null,
+  stableOnly: boolean,
+): boolean {
+  const client = manifest.client;
+  if (!client) return false;
+  const candidates: ChannelRelease[] = [];
+  if (client.stable) candidates.push(client.stable);
+  if (!stableOnly && client.beta) candidates.push(client.beta);
+  const heads = candidates.filter((release) => parseVersion(release.tag));
+  if (!heads.length) return false;
+  heads.sort((a, b) => compareVersions(b.tag, a.tag));
+  const head = heads[0];
+  if (!isNewer(head.tag, currentVersion)) return false;
+  const asset = platform ? head.assets[platform] : undefined;
+  return !asset || !isValidAssetUrl(asset.url);
+}

@@ -19,6 +19,8 @@ export interface UpdateStatus {
   last_check_time: string | null;
   /** Markdown changelog for latest_version, null if not available. */
   release_notes: string | null;
+  /** Channel head is newer but has no installable asset for this platform. */
+  platform_asset_missing?: boolean;
   /** When true (default), automatic checks ignore pre-releases. */
   stable_only?: boolean;
   /** True when latest_version is a PEP 440 pre-release. */

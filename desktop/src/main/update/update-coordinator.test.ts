@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  channelHeadNeedsPlatformAsset,
   channelHeadTag,
   manifestFromDownloadsResponse,
   selectRelease,
@@ -51,6 +52,26 @@ test("selectRelease picks a Linux asset", () => {
 
   assert.equal(selection?.tag, "v1.0.3");
   assert.equal(selection?.asset.ext, "deb");
+});
+
+test("channel head without a platform asset is reported separately", () => {
+  const manifest = { client: { stable } }; // stable carries mac_arm only
+  assert.equal(
+    channelHeadNeedsPlatformAsset(manifest, "1.0.1", "linux_x64", true),
+    true,
+  );
+  assert.equal(
+    channelHeadNeedsPlatformAsset(manifest, "1.0.1", "mac_arm", true),
+    false,
+  );
+  assert.equal(
+    channelHeadNeedsPlatformAsset(manifest, "1.0.2", "linux_x64", true),
+    false,
+  );
+  assert.equal(
+    channelHeadNeedsPlatformAsset({ client: { stable, beta } }, "1.0.1", "mac_arm", false),
+    false,
+  );
 });
 
 test("channel head stays on stable when stableOnly and beta is higher", () => {

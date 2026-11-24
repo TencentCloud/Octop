@@ -51,6 +51,7 @@ import { contentTypeFor, isExternalLink, resolveDashboardFile, resolveStaticPath
 import { isApiPath, sanitizeForwardHeaders, toBackendUrl } from "./protocol/stream-proxy";
 import { WsRelay } from "./protocol/ws-relay";
 import {
+  channelHeadNeedsPlatformAsset,
   channelHeadTag,
   manifestFromDownloadsResponse,
   platformAssetKey,
@@ -459,12 +460,24 @@ function registerIpcHandlers(): void {
       const listed = channelHeadTag(manifest, stableOnly);
       const selected = selectRelease(manifest, appVersion, platform, stableOnly);
       if (!selected) {
-        return { status: "up-to-date", currentVersion: appVersion, latestVersion: listed, error: null };
+        return {
+          status: "up-to-date",
+          currentVersion: appVersion,
+          latestVersion: listed,
+          noAssetForPlatform: channelHeadNeedsPlatformAsset(
+            manifest,
+            appVersion,
+            platform,
+            stableOnly,
+          ),
+          error: null,
+        };
       }
       return {
         status: "update-available",
         currentVersion: appVersion,
         latestVersion: selected.tag,
+        noAssetForPlatform: false,
         error: null,
       };
     } catch (err) {
