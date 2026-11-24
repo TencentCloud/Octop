@@ -240,6 +240,31 @@ describe("Slack and WhatsApp configuration", () => {
     expect(hasRequiredCredentials("whatsapp", { provider: "waha" })).toBe(
       false,
     );
+
+    const slackFields = CHANNEL_FIELDS.slack!;
+    expect(slackFields.find((f) => f.name === "reply_broadcast")).toMatchObject(
+      {
+        type: "select",
+        options: ["off", "first", "all"],
+        optionLabelPrefix: "channels.slackReplyBroadcastOption_",
+        defaultValue: "first",
+        legacyDefaultValue: "first",
+      },
+    );
+    expect(
+      slackFields.find((f) => f.name === "thread_follow_up"),
+    ).toMatchObject({
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    });
+    expect(
+      slackFields.find((f) => f.name === "fetch_thread_context"),
+    ).toMatchObject({
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    });
   });
 });
 

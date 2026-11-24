@@ -176,6 +176,7 @@ function FormItemForField({
     : field.label;
   const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
   if (field.type === "select") {
+    const optionPrefix = field.optionLabelPrefix ?? "channels.telegram_option_";
     return (
       <Form.Item
         name={field.name}
@@ -184,9 +185,10 @@ function FormItemForField({
         extra={field.helpKey ? t(field.helpKey) : undefined}
       >
         <Select
+          disabled={disabled}
           options={field.options?.map((value) => ({
             value,
-            label: t(`channels.telegram_option_${value}`),
+            label: t(`${optionPrefix}${value}`),
           }))}
         />
       </Form.Item>
@@ -201,7 +203,7 @@ function FormItemForField({
         valuePropName="checked"
         extra={field.helpKey ? t(field.helpKey) : undefined}
       >
-        <Switch />
+        <Switch disabled={disabled} />
       </Form.Item>
     );
   }
@@ -560,6 +562,7 @@ export function ChannelDrawer({
   const { t } = useTranslation();
   const allowAllDiscordChannels =
     Form.useWatch("allow_all_channels", form) !== false;
+  const slackReplyInThread = Form.useWatch("reply_in_thread", form) !== false;
   const isEdit = editing !== null;
   const [selectedKind, setSelectedKind] = useState<ChannelKey>(
     initialValues?.kind ?? "feishu",
@@ -1978,9 +1981,12 @@ export function ChannelDrawer({
                     field={f}
                     editing={isEdit}
                     disabled={
-                      selectedKind === "discord" &&
-                      f.name === "allowed_channel_ids" &&
-                      allowAllDiscordChannels
+                      (selectedKind === "discord" &&
+                        f.name === "allowed_channel_ids" &&
+                        allowAllDiscordChannels) ||
+                      (selectedKind === "slack" &&
+                        f.name === "reply_broadcast" &&
+                        !slackReplyInThread)
                     }
                   />
                 ))

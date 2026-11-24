@@ -192,6 +192,8 @@ export interface ChannelField {
   /** Antd input type. */
   type?: "text" | "password" | "textarea" | "json" | "switch" | "select";
   options?: string[];
+  /** Optional i18n key prefix for select option labels (defaults to Telegram option prefix). */
+  optionLabelPrefix?: string;
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
@@ -432,6 +434,32 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
       type: "switch",
       defaultValue: true,
       legacyDefaultValue: true,
+    },
+    {
+      name: "reply_broadcast",
+      label: "channels.slackReplyBroadcast",
+      type: "select",
+      options: ["off", "first", "all"],
+      optionLabelPrefix: "channels.slackReplyBroadcastOption_",
+      defaultValue: "first",
+      legacyDefaultValue: "first",
+      helpKey: "channels.slackReplyBroadcastHelp",
+    },
+    {
+      name: "thread_follow_up",
+      label: "channels.slackThreadFollowUp",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+      helpKey: "channels.slackThreadFollowUpHelp",
+    },
+    {
+      name: "fetch_thread_context",
+      label: "channels.slackFetchThreadContext",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+      helpKey: "channels.slackFetchThreadContextHelp",
     },
     {
       name: "thread_isolation",
