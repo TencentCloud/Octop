@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -78,6 +79,7 @@ import {
   DEFAULT_KNOWLEDGE_LIMITS,
   knowledgeBasesApi,
   type KnowledgeBase,
+  type KnowledgeAdvancedSettings,
   type KnowledgeCapability,
   type KnowledgeRerankOptions,
   type KnowledgeDocument,
@@ -155,7 +157,9 @@ import {
 import TextDocumentEditorModal, {
   type TextDocumentFormat,
 } from "./TextDocumentEditorModal";
+import { KnowledgeAdvancedSettingsForm } from "./KnowledgeAdvancedSettingsForm";
 import KnowledgeGraphModal from "./KnowledgeGraphModal";
+import { KnowledgeSettingsDrawer } from "./KnowledgeSettingsDrawer";
 import styles from "./index.module.less";
 
 type BaseFormValues = {
@@ -352,6 +356,9 @@ export default function KnowledgeBasesPage() {
   const [baseDrawerOpen, setBaseDrawerOpen] = useState(false);
   const [editingBaseId, setEditingBaseId] = useState<string | null>(null);
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("general");
+  const [advancedSettingsSaving, setAdvancedSettingsSaving] = useState(false);
+  const advancedSettingsFormId = useId();
   const [onnxProbe, setOnnxProbe] = useState<{
     ok: boolean;
     latency_ms?: number | null;
@@ -1377,7 +1384,6 @@ export default function KnowledgeBasesPage() {
       setFeatureSaving(true);
       try {
         setCapability(await knowledgeBasesApi.setFeature({ enabled: false }));
-        setFeatureModalOpen(false);
         message.success(t("knowledgeBases.featureDisabled"));
       } catch (error) {
         message.error(
@@ -1453,7 +1459,6 @@ export default function KnowledgeBasesPage() {
         graph_model: graphModel ?? "",
       });
       setCapability(next);
-      setFeatureModalOpen(false);
       message.success(t("knowledgeBases.featureEnabled"));
     } catch (error) {
       message.error(
@@ -1464,7 +1469,29 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const saveAdvancedSettings = async (settings: KnowledgeAdvancedSettings) => {
+    setAdvancedSettingsSaving(true);
+    try {
+      const saved = await knowledgeBasesApi.setAdvancedSettings(settings);
+      setCapability((current) =>
+        current ? { ...current, ...saved } : current,
+      );
+      message.success(t("knowledgeBases.advancedSettingsSaved"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(
+          error,
+          t("knowledgeBases.advancedSettingsSaveFailed"),
+          t,
+        ),
+      );
+    } finally {
+      setAdvancedSettingsSaving(false);
+    }
+  };
+
   const openSettings = () => {
+    setSettingsTab("general");
     const selectedModel = capability?.selected_model || undefined;
     const selectedBackend = capability?.backend ?? "onnx";
     onnxExpandedRef.current = false;
@@ -3954,7 +3981,7 @@ export default function KnowledgeBasesPage() {
         </Form>
       </Drawer>
 
-      <Drawer
+      <KnowledgeSettingsDrawer
         title={t("knowledgeBases.settingsTitle")}
         placement="right"
         width={isMobile ? "100%" : 520}
@@ -3969,30 +3996,60 @@ export default function KnowledgeBasesPage() {
             <Button onClick={() => setFeatureModalOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button
-              type="primary"
-              loading={featureSaving}
-              disabled={
-                featureEnabledDraft
-                  ? !featureModel ||
-                    (featureBackend === "remote" && !featureProviderId) ||
-                    (ocrEnabledDraft &&
-                      ocrBackend === "remote" &&
-                      (!ocrProviderId || !ocrModel)) ||
-                    (rerankEnabledDraft &&
-                      (!rerankProviderId || !rerankModel)) ||
-                    (featureBackend === "onnx" &&
-                      !catalog.find((model) => model.id === featureModel)
-                        ?.downloaded) ||
-                    featureOptionsLoading ||
-                    onnxDownloading
-                  : false
-              }
-              onClick={() => void saveFeature()}
-            >
-              {t("common.save")}
-            </Button>
+            {settingsTab === "advanced" ? (
+              <Button
+                type="primary"
+                htmlType="submit"
+                form={advancedSettingsFormId}
+                loading={advancedSettingsSaving}
+                disabled={!capability}
+              >
+                {t("common.save")}
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                loading={featureSaving}
+                disabled={
+                  featureEnabledDraft
+                    ? !featureModel ||
+                      (featureBackend === "remote" && !featureProviderId) ||
+                      (ocrEnabledDraft &&
+                        ocrBackend === "remote" &&
+                        (!ocrProviderId || !ocrModel)) ||
+                      (rerankEnabledDraft &&
+                        (!rerankProviderId || !rerankModel)) ||
+                      (graphEnabledDraft &&
+                        (!graphProviderId || !graphModel)) ||
+                      (featureBackend === "onnx" &&
+                        !catalog.find((model) => model.id === featureModel)
+                          ?.downloaded) ||
+                      featureOptionsLoading ||
+                      onnxDownloading
+                    : false
+                }
+                onClick={() => void saveFeature()}
+              >
+                {t("common.save")}
+              </Button>
+            )}
           </div>
+        }
+        tab={settingsTab}
+        onTabChange={(key) => {
+          if (!featureSaving && !advancedSettingsSaving) setSettingsTab(key);
+        }}
+        advanced={
+          capability ? (
+            <KnowledgeAdvancedSettingsForm
+              id={advancedSettingsFormId}
+              initialValues={capability}
+              saving={advancedSettingsSaving}
+              onSave={saveAdvancedSettings}
+            />
+          ) : (
+            <Spin />
+          )
         }
       >
         <div className={styles.formOptions}>
@@ -4438,7 +4495,7 @@ export default function KnowledgeBasesPage() {
             </div>
           </Spin>
         ) : null}
-      </Drawer>
+      </KnowledgeSettingsDrawer>
       <KnowledgeGraphModal
         open={graphOpen}
         kbId={selected?.id ?? null}

@@ -841,6 +841,7 @@
     "image_unavailable": "[Attachment] Image could not be loaded for the model."
   },
   "knowledge": {
+    "invalid_advanced_settings": "Check the allowed ranges for chunking and retrieval settings. Chunk overlap must be smaller than chunk size.",
     "retrieval": {
       "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
       "graph_preamble": "Relations between entities, extracted automatically from the same knowledge bases. Use them to connect the passages above; they are not sources to cite.",
