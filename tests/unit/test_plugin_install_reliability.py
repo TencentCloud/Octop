@@ -15,6 +15,10 @@ from octop_harness.plugins import PluginRegistry
 from octop.infra.agents.plugins import installation
 from octop.infra.agents.plugins import manager as module
 from octop.infra.agents.plugins.manager import PluginManager
+from octop.infra.db.migrate import run_migrations
+from octop.infra.db.pool import SqlitePool
+from octop.infra.db.repos.control_files import ControlFileRepo
+from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures/plugins/echo-tool"
@@ -319,3 +323,45 @@ def test_plugin_install_dependencies_uses_runtime_packages(
 def test_plugin_uncompressed_limit_matches_extracted_budget() -> None:
     assert module._MAX_PLUGIN_UNCOMPRESSED_BYTES == installation.MAX_EXTRACTED_BYTES
     assert module._MAX_PLUGIN_UNCOMPRESSED_BYTES == 256 * 1024 * 1024
+
+
+def test_force_update_rename_failure_preserves_control_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    PluginRegistry.reset()
+    db = SqlitePool(tmp_path / "octop.db")
+    try:
+        run_migrations(db)
+        control_files = ControlFileRepo(db)
+        settings = SettingsRepo(db)
+        config = tmp_path / "config.json"
+        config.write_text("{}", encoding="utf-8")
+        mgr = PluginManager(
+            plugins_dir=tmp_path / "plugins",
+            config_path=config,
+        )
+        mgr.attach_control_plane(control_files, settings)
+
+        old = mgr.install_path(FIXTURE)
+        before_files = control_files.list_files(ControlFileRepo.PLUGIN, "echo-tool")
+        assert before_files
+        dest = mgr.plugins_dir / "echo-tool"
+
+        original_rename = Path.rename
+
+        def fail_dest_rename(self: Path, target: Path) -> Path:
+            if self == dest:
+                raise PermissionError("directory in use")
+            return original_rename(self, target)
+
+        monkeypatch.setattr(Path, "rename", fail_dest_rename)
+        with pytest.raises(OctopError, match="directory in use"):
+            mgr.install_path(FIXTURE, force=True)
+
+        assert control_files.has_owner(ControlFileRepo.PLUGIN, "echo-tool") is True
+        assert control_files.list_files(ControlFileRepo.PLUGIN, "echo-tool") == before_files
+        assert dest.is_dir()
+        assert PluginRegistry().get("echo-tool") is old
+    finally:
+        db.close()

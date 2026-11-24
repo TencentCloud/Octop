@@ -1010,10 +1010,11 @@ class PluginManager:
                         for key, value in sys.modules.copy().items()
                         if key == prefix or key.startswith(prefix + ".")
                     }
+                    had_existing = dest.exists()
                     moved_old = False
                     moved_new = False
                     try:
-                        if dest.exists():
+                        if had_existing:
                             dest.rename(backup)
                             moved_old = True
                         staged.rename(dest)
@@ -1033,9 +1034,9 @@ class PluginManager:
                             dest.rename(staged)
                         if moved_old:
                             backup.rename(dest)
-                        if self._control_files is not None:
+                        if self._control_files is not None and (moved_old or moved_new):
                             try:
-                                if moved_old:
+                                if had_existing:
                                     self._persist_plugin_tree(manifest.id)
                                 else:
                                     self._control_files.delete_owner(
