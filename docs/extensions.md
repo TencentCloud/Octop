@@ -19,6 +19,21 @@ only if the object defines it.
 | `configure_app(app, server)` | In `build_app`, before the dashboard catch-all route | `app.include_router(...)`, exception handlers, static mounts |
 | `public_paths() -> PublicPaths` | First request | Name `/api/...` paths that skip the Octop JWT (`exact`, `prefixes`) and that stay reachable before setup creates the first user (`setup_exact`, `setup_prefixes`) |
 
+### Agent policy
+
+Synchronous hooks for products that keep some agents private or managed.
+Raise an `OctopError` to refuse; the API maps it to the usual error response.
+
+| Hook | When | Use it to |
+|------|------|-----------|
+| `normalize_agent_config(config, *, agent_id, user_id, current) -> dict` | Create (after Octop's own policy checks, `current=None`) and every later config write (`current` is the stored config) | Pin a backend, keep a product-owned key out of client edits, refuse a config |
+| `check_agent_share(row, shared)` | Before the shared flag changes | Keep an agent private |
+| `check_agent_delete(row)` | Before anything is removed | Protect an agent the product depends on |
+| `hide_agent_from_peers(row) -> bool` | Team rosters, `agent_list`, `ask_agent` | Keep an agent out of other agents' reach |
+
+What `normalize_agent_config` returns is stored as is; Octop does not re-check
+it against the user's backend policy.
+
 ```python
 # my_product/extension.py
 from fastapi import APIRouter

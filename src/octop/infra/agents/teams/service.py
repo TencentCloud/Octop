@@ -7,6 +7,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from octop.infra import extensions
 from octop.infra.agents.settings.tool_catalog import BUILTIN_TOOL_CATALOG
 from octop.infra.agents.teams.jobs import TeamJobTracker
 from octop.infra.db.repos.agents import AgentRow
@@ -90,6 +91,8 @@ def team_icon_url(stored: str | None) -> str:
 
 
 def _user_may_use_member(row: AgentRow, user: Any) -> bool:
+    if extensions.hide_agent_from_peers(row):
+        return False
     if getattr(user, "is_admin", False):
         return True
     if str(getattr(user, "role", "") or "") == "admin":

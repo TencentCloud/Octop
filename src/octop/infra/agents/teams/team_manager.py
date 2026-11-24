@@ -34,6 +34,7 @@ from octop_harness.teams.util import (
 
 from octop.i18n import tr
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra import extensions
 from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
@@ -2799,6 +2800,11 @@ def wire_shared_member_peers(
                 **kwargs,
             )
         )
+        peers = [
+            entry
+            for entry in peers
+            if not extensions.hide_agent_from_peers(load_agent(str(entry.agent_id)))
+        ]
         allow = _shared_member_allowlist(
             harness_team,
             exclude_agent_id=exclude_agent_id,
@@ -2832,6 +2838,8 @@ def wire_shared_member_peers(
         return peers
 
     def resolve_peer_entry(from_agent_id: str, to_agent_id: str, user_id: str | int) -> Any:
+        if extensions.hide_agent_from_peers(load_agent(to_agent_id)):
+            raise ValueError(f"agent {to_agent_id!r} is not available as a peer")
         try:
             return original_resolve(from_agent_id, to_agent_id, user_id)
         except ValueError as exc:
