@@ -435,6 +435,7 @@ export function PresetProviderModal({
               ]}
             >
               <Input.Password
+                autoComplete="new-password"
                 placeholder={apiKeyPlaceholder}
                 visibilityToggle
               />

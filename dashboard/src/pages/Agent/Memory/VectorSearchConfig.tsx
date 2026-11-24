@@ -569,6 +569,7 @@ export default function VectorSearchConfig() {
           <div className={styles.formGroup}>
             <label className={styles.label}>{t("memory.vs.apiKey")}</label>
             <Input.Password
+              autoComplete="new-password"
               value={config.apiKey}
               onChange={(e) => updateConfig("apiKey", e.target.value)}
               placeholder="sk-..."

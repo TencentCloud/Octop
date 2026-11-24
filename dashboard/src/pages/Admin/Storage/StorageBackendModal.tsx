@@ -488,6 +488,7 @@ export function StorageBackendDrawer({
           >
             {fieldIsSecret("access_key") ? (
               <Input.Password
+                autoComplete="new-password"
                 placeholder={
                   isEdit
                     ? t("common.unchanged")
@@ -526,6 +527,7 @@ export function StorageBackendDrawer({
           >
             {fieldIsSecret("secret_key") ? (
               <Input.Password
+                autoComplete="new-password"
                 placeholder={
                   isEdit
                     ? t("common.unchanged")

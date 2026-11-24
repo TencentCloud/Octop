@@ -324,7 +324,10 @@ export default function DatabaseStep({ onContinue, onAdopted, onBack }: Props) {
               <Input onChange={resetProbeState} />
             </Form.Item>
             <Form.Item label={t("wizard.database.password")} name="password">
-              <Input.Password onChange={resetProbeState} />
+              <Input.Password
+                autoComplete="new-password"
+                onChange={resetProbeState}
+              />
             </Form.Item>
 
             <Space wrap>

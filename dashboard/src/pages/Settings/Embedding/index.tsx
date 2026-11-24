@@ -445,6 +445,7 @@ export default function EmbeddingPage() {
           <div className={styles.formGroup}>
             <label className={styles.label}>{t("embedding.apiKey")}</label>
             <Input.Password
+              autoComplete="new-password"
               value={config.apiKey}
               onChange={(e) => updateConfig("apiKey", e.target.value)}
               placeholder="sk-xxx..."

@@ -162,7 +162,10 @@ export function ObservabilitySettingsPanel() {
                       ]
                 }
               >
-                <Input.Password placeholder="sk-lf-..." />
+                <Input.Password
+                  autoComplete="new-password"
+                  placeholder="sk-lf-..."
+                />
               </Form.Item>
             </>
           )}
