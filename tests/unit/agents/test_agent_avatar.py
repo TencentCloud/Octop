@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from octop_harness.backends.utils import BackendOperationNotSupportedError
 
@@ -79,6 +81,33 @@ async def test_failed_upload_keeps_previous_avatar() -> None:
     with pytest.raises(OSError):
         await write_workspace_avatar(workspace, PNG)
     assert workspace.files == {".octop/avatar.jpg": JPEG}
+
+
+class _YieldingWorkspace(_MemoryWorkspace):
+    """Gives control back to the loop on every I/O call, like a real backend."""
+
+    async def aupload_bytes(self, path: str, data: bytes) -> None:
+        await asyncio.sleep(0)
+        await super().aupload_bytes(path, data)
+
+    async def adelete(self, path: str) -> None:
+        await asyncio.sleep(0)
+        await super().adelete(path)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_png_and_jpeg_uploads_leave_one_avatar() -> None:
+    # Without per-workspace serialization: A writes avatar.png, B writes
+    # avatar.jpg, A's cleanup deletes the JPEG, B's cleanup deletes the PNG.
+    workspace = _YieldingWorkspace()
+    first, second = await asyncio.gather(
+        write_workspace_avatar(workspace, PNG),
+        write_workspace_avatar(workspace, JPEG),
+    )
+    assert (first, second) == (".octop/avatar.png", ".octop/avatar.jpg")
+    assert list(workspace.files) == [".octop/avatar.jpg"]
+    found = await read_workspace_avatar(workspace)
+    assert found is not None and found[0] == JPEG
 
 
 @pytest.mark.asyncio
