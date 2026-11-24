@@ -17,6 +17,7 @@ only if the object defines it.
 | `async on_startup(server)` | End of runtime boot (database, agents, gateway, cron are up) | Start background tasks, warm caches |
 | `async on_shutdown(server)` | First step of `OctopServer.stop`, database still open | Stop background tasks |
 | `configure_app(app, server)` | In `build_app`, before the dashboard catch-all route | `app.include_router(...)`, exception handlers, static mounts |
+| `migrations() -> ExtensionMigrations` | End of `run_migrations` (server, CLI, rebind, restore) | Own tables, see below |
 | `public_paths() -> PublicPaths` | First request | Name `/api/...` paths that skip the Octop JWT (`exact`, `prefixes`) and that stay reachable before setup creates the first user (`setup_exact`, `setup_prefixes`) |
 
 ```python
@@ -40,6 +41,23 @@ class Extension:
 
 extension = Extension()
 ```
+
+## Tables
+
+`migrations()` returns `ExtensionMigrations(namespace, directory)` from
+`octop.infra.db.extension_migrations`. The directory holds
+`NNN_description.sql` (SQLite) and `NNN_description.pg.sql` (PostgreSQL)
+files, numbered from `001`. These numbers are independent of Octop's own
+migrations, so a product's schema never takes Octop's next number. Each
+namespace (`[a-z][a-z0-9_]*`, unique across extensions) keeps its own
+version in `_extension_schema`. That table is created only when an extension
+declares migrations.
+
+Files run after Octop's migrations, in order, and the version moves after
+each file. PostgreSQL applies a file and its version in one transaction.
+SQLite runs the file with `executescript`, which is not atomic, so write
+idempotent DDL (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`).
+Prefix table names with the namespace.
 
 Rules:
 
