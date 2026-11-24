@@ -12,6 +12,8 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from octop.infra.extensions import extension_public_paths
+
 _OPEN_PREFIXES = (
     "/api/setup/",
     "/api/health/",
@@ -32,6 +34,9 @@ def install(app: Any, server: Any) -> None:
         if cfg and cfg.enable_api_docs:
             open_exact.extend(("/api/docs", "/api/openapi.json"))
         if path in open_exact or any(path.startswith(p) for p in _OPEN_PREFIXES):
+            return await call_next(request)
+        ext = extension_public_paths()
+        if path in ext.setup_exact or any(path.startswith(p) for p in ext.setup_prefixes):
             return await call_next(request)
         if server.user_manager is None or server.user_manager.count() == 0:
             return JSONResponse(

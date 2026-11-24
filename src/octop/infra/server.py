@@ -329,6 +329,7 @@ class OctopServer:
         self._started_at: int | None = None
         self.instance_id = uuid.uuid4().hex
         self._serve_background = True
+        self._extensions_started = False
         self._sso_service: SsoService | None = None
         self._ldap_service: LdapAuthService | None = None
         self._ldap_bind_throttle: LdapBindThrottle | None = None
@@ -708,6 +709,11 @@ class OctopServer:
 
         seal_setup_wizard_if_installed(self)
 
+        from octop.infra.extensions import run_startup_hooks  # noqa: PLC0415
+
+        await run_startup_hooks(self)
+        self._extensions_started = True
+
     async def refresh_plugin_channels(self) -> None:
         """Reconcile only changed kinds and report registration failures to callers."""
         from octop.infra.errors import ErrorCode, OctopError
@@ -795,6 +801,11 @@ class OctopServer:
         if not self._started:
             return
         try:
+            if self._extensions_started:
+                from octop.infra.extensions import run_shutdown_hooks  # noqa: PLC0415
+
+                self._extensions_started = False
+                await run_shutdown_hooks(self)
             from octop.infra.connectors.gateway import agently_auth
 
             await agently_auth.close()
