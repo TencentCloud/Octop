@@ -118,7 +118,10 @@ describe("401 handling", () => {
 
     await expect(
       mod.request("/bridge/probe", { method: "POST" }),
-    ).rejects.toThrow(/BRIDGE_AUTH_FAILED/);
+    ).rejects.toMatchObject({
+      message: "peer rejected credentials",
+      apiError: { code: "BRIDGE_AUTH_FAILED" },
+    });
 
     expect(replace).not.toHaveBeenCalled();
     expect(mod.getAuthToken()).toBe("expired-token");

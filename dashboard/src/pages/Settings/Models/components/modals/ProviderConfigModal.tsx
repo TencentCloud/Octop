@@ -23,6 +23,7 @@ import {
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import { ApiResponseError } from "../../../../../api/responseError";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
@@ -206,7 +207,11 @@ export function ProviderConfigModal({
       setOllamaUnavailable(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("503") || msg.includes("connect")) {
+      if (
+        (err instanceof ApiResponseError && err.status === 503) ||
+        msg.includes("503") ||
+        msg.includes("connect")
+      ) {
         setOllamaUnavailable(true);
       }
       setOllamaModels([]);
@@ -421,6 +426,7 @@ export function ProviderConfigModal({
       if (isOllama) {
         const msg = err instanceof Error ? err.message : String(err);
         if (
+          (err instanceof ApiResponseError && err.status === 503) ||
           msg.includes("503") ||
           msg.includes("connect") ||
           msg.includes("disabled")

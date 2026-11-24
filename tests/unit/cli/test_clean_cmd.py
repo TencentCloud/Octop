@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,10 @@ from octop.cli.main import cli
 
 @pytest.fixture
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / ".octop"))
+    for key in list(os.environ):
+        if key.startswith("OCTOP_DATABASE_"):
+            monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     return tmp_path
 

@@ -82,8 +82,8 @@ async def test_list_plugins_is_available_to_authenticated_users(env_admin_alice:
 async def test_install_plugin_url_overwrite_behavior(env: Any, monkeypatch: Any) -> None:
     client, _srv, auth = env
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager._download_plugin_archive",
-        lambda _url, dest: dest.write_bytes(_echo_zip()),
+        "octop.infra.agents.plugins.manager.download",
+        lambda _url, dest, **_kwargs: dest.write_bytes(_echo_zip()),
     )
     url = "https://example.com/echo-tool.zip"
 
