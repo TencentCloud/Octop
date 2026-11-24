@@ -426,6 +426,7 @@ export default function InviteDrawer({ open, onClose }: InviteDrawerProps) {
                   <Button
                     type="link"
                     size="small"
+                    style={{ paddingInline: 0, borderInlineWidth: 0 }}
                     onClick={() => showUsers(row)}
                   >
                     {row.max_uses === null
