@@ -23,7 +23,15 @@ from octop.infra.gateway.process.message_keys import (
 _USER_ROLES = frozenset({"human", "user"})
 _ASSISTANT_ROLES = frozenset({"ai", "assistant"})
 _TURN_DURATION_KEY = "turn_duration_ms"
+_UTF16_SURROGATE = re.compile(r"[\ud800-\udfff]")
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+
+
+def _repair_surrogates(text: str) -> str:
+    """Rejoin split surrogate pairs and replace unpaired halves with U+FFFD."""
+    if _UTF16_SURROGATE.search(text) is None:
+        return text
+    return text.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace")
 
 
 def _compact(text: str) -> str:
@@ -119,10 +127,13 @@ def message_input(message: Any) -> ThreadMessageInput | None:
         if role in ("", "system"):
             return None
         ts_ms = checkpoint_ts_ms(converted)
+        # Repair after assembly so paired halves from different deltas survive
+        # as one character and the projected JSON can be stored as UTF-8.
+        message_json = _repair_surrogates(json.dumps(wire, ensure_ascii=False, default=str))
         return ThreadMessageInput(
             message_id=str(getattr(converted, "id", "") or "") or None,
             role=role,
-            message_json=json.dumps(wire, ensure_ascii=False, default=str),
+            message_json=message_json,
             created_at=(ts_ms // 1000) if ts_ms is not None else now_ts(),
         )
     except Exception:
@@ -274,7 +285,8 @@ class TurnHistoryTracker:
         assistant row contains the whole stream, so appending it would store
         a second copy of the same reply.
         """
-        stream = _compact(self._stream_text)
+        stream_text = _repair_surrogates(self._stream_text)
+        stream = _compact(stream_text)
         if not stream:
             return False
         visible: list[str] = []
@@ -282,7 +294,7 @@ class TurnHistoryTracker:
             if item.role not in _ASSISTANT_ROLES:
                 continue
             text = _wire_text(item)
-            if self._stream_text in text:
+            if stream_text in text:
                 return True
             piece = _compact(_assistant_visible(text))
             if piece:
