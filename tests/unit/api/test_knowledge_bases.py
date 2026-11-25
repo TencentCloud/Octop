@@ -366,6 +366,8 @@ async def test_embedding_options_excludes_onnx_local_provider() -> None:
         SimpleNamespace(
             id=1,
             name="ONNX (Local)",
+            enabled=True,
+            base_url="http://localhost",
             api_key="onnx",
             get_models=lambda: [
                 {
@@ -378,6 +380,8 @@ async def test_embedding_options_excludes_onnx_local_provider() -> None:
         SimpleNamespace(
             id=2,
             name="OpenAI",
+            enabled=True,
+            base_url="https://example.test/v1",
             api_key="sk-test",
             get_models=lambda: [
                 {"id": "text-embedding-3-small", "name": "embed", "embedding": True},
@@ -445,6 +449,9 @@ def _rerank_provider(**overrides: object) -> SimpleNamespace:
         "get_models": lambda: [
             {"id": "BAAI/bge-reranker-v2-m3", "name": "BGE Reranker"},
             {"id": "BAAI/bge-m3", "name": "BGE M3"},
+            {"id": "BAAI/bge-large-zh-v1.5", "embedding": True},
+            {"id": "Pro/BAAI/bge-m3", "enabled": False},
+            {"id": "Pro/BAAI/bge-reranker-v2-m3", "enabled": False},
         ],
     }
     values.update(overrides)
@@ -452,18 +459,31 @@ def _rerank_provider(**overrides: object) -> SimpleNamespace:
 
 
 @pytest.mark.asyncio
-async def test_rerank_options_list_enabled_providers_with_a_rerank_model() -> None:
+async def test_knowledge_options_reuse_enabled_models_from_mixed_providers() -> None:
     from octop.api.routers import knowledge_bases
 
     providers = [
         _rerank_provider(),
         _rerank_provider(id=5, name="disabled", enabled=False),
         _rerank_provider(id=6, name="chat-only", get_models=lambda: [{"id": "chat-1"}]),
+        _rerank_provider(id=7, name="missing-url", base_url=""),
+        _rerank_provider(id=8, name="missing-key", api_key=None),
     ]
     server = SimpleNamespace(
         services=SimpleNamespace(provider_repo=SimpleNamespace(list_all=lambda: providers))
     )
 
+    embeddings = await knowledge_bases.embedding_options(server=server, _admin=object())
+    assert embeddings["remote"] == [
+        {
+            "provider_id": "4",
+            "provider_name": "siliconflow",
+            "models": [
+                {"id": "BAAI/bge-m3", "name": "BGE M3"},
+                {"id": "BAAI/bge-large-zh-v1.5", "name": "BAAI/bge-large-zh-v1.5"},
+            ],
+        }
+    ]
     options = await knowledge_bases.rerank_options(server=server, _admin=object())
 
     assert options == {

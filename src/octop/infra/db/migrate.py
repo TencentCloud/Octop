@@ -1821,6 +1821,39 @@ def _ensure_thread_contributed_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_care_push_reply_schema(db: DatabasePool) -> None:
+    """Proactive care thread/message/reply tracking on ``care_push_records``. Idempotent."""
+    if not _table_exists(db, "care_push_records"):
+        return
+    ts_type = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    _ensure_column(db, "care_push_records", "thread_id", "TEXT")
+    _ensure_column(db, "care_push_records", "message_id", "TEXT")
+    _ensure_column(db, "care_push_records", "care_text", "TEXT")
+    _ensure_column(db, "care_push_records", "status", "TEXT NOT NULL DEFAULT 'sent'")
+    _ensure_column(db, "care_push_records", "replied_at", ts_type)
+    _ensure_column(db, "care_push_records", "reply_message_id", "TEXT")
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_care_push_thread_status "
+                "ON care_push_records(thread_id, status, pushed_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_care_push_agent_status "
+                "ON care_push_records(agent_id, status, pushed_at)"
+            )
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_care_push_thread_status "
+            "ON care_push_records(thread_id, status, pushed_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_care_push_agent_status "
+            "ON care_push_records(agent_id, status, pushed_at)"
+        )
+
+
 _LOGIN_AUDIT_ACTIONS_SQL = (
     "'auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login'"
 )
@@ -2805,6 +2838,7 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_instance_lease_schema(db)
     _ensure_control_blobs_schema(db)
     _ensure_thread_contributed_schema(db)
+    _ensure_care_push_reply_schema(db)
     _ensure_invite_redemptions_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)

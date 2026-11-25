@@ -19,6 +19,7 @@ from octop.infra.auth.tokens import TokenExpired as TokenExpired
 from octop.infra.auth.tokens import decode_token as decode_token
 from octop.infra.auth.tokens import sign_token as sign_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.extensions import extension_public_paths
 from octop.infra.users.permissions import PERMISSIONS, user_has_permission
 
 if TYPE_CHECKING:
@@ -79,7 +80,10 @@ _JWT_EXEMPT_EXACT = (
 
 
 def is_jwt_exempt_path(path: str) -> bool:
-    return path in _JWT_EXEMPT_EXACT or any(path.startswith(p) for p in _JWT_EXEMPT_PREFIXES)
+    if path in _JWT_EXEMPT_EXACT or any(path.startswith(p) for p in _JWT_EXEMPT_PREFIXES):
+        return True
+    ext = extension_public_paths()
+    return path in ext.exact or any(path.startswith(p) for p in ext.prefixes)
 
 
 def is_jwt_exempt_request(request: Request) -> bool:

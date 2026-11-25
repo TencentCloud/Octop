@@ -11,7 +11,14 @@ export interface KnowledgeLimits {
   max_document_bytes: number;
 }
 
-export interface KnowledgeCapability {
+export interface KnowledgeAdvancedSettings {
+  chunk_size: number;
+  chunk_overlap: number;
+  retrieval_k: number;
+  context_char_budget: number;
+}
+
+export interface KnowledgeCapability extends KnowledgeAdvancedSettings {
   feature_enabled: boolean;
   backend: "onnx" | "remote";
   selected_model: string;
@@ -213,6 +220,12 @@ export const knowledgeBasesApi = {
   getCapability: (agentId?: string | null) =>
     request<KnowledgeCapability>("/knowledge-bases/capability", {
       headers: bridgeAgentHeaders(agentId),
+    }),
+
+  setAdvancedSettings: (body: KnowledgeAdvancedSettings) =>
+    request<KnowledgeAdvancedSettings>("/knowledge-bases/advanced-settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
     }),
 
   setFeature: (body: {

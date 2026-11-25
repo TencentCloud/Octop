@@ -1,3 +1,26 @@
+.indexSettings {
+  display: grid;
+  gap: 12px;
+
+  .settingsHint {
+    margin: 0;
+  }
+}
+
+.indexSettingsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+
+  @media (max-width: 480px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.indexSettingsInput {
+  width: 100%;
+}
+
 .settingsBody {
   display: flex;
   flex-direction: column;
