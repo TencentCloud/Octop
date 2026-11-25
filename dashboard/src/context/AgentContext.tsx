@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import type { AgentRuntimeApiFields } from "../utils/agentRuntimeConfig";
 import { userCan } from "../utils/permissions";
 import {
   retainDisconnectedBridgeAgents,
@@ -26,7 +27,7 @@ import {
  * ``X-Octop-Agent-Id`` header.
  */
 
-export interface OctopAgent {
+export interface OctopAgent extends AgentRuntimeApiFields {
   /** Surrogate integer primary key from the database. */
   id: number;
   /** Public agent id used in API paths and ``X-Octop-Agent-Id``. */
@@ -54,11 +55,12 @@ export interface OctopAgent {
   icon_name: string | null;
   icon_url: string | null;
   color: string | null;
-  max_iters?: number | null;
-  max_input_length?: number | null;
-  temperature?: number | null;
-  top_p?: number | null;
-  max_tokens?: number | null;
+  compaction?: {
+    enabled?: boolean;
+    trigger_fraction?: number;
+    keep_fraction?: number;
+    trim_tokens?: number;
+  } | null;
   config: Record<string, unknown>;
   /** Knowledge bases opened by default in new chats with this expert. */
   knowledge_base_ids?: string[];
@@ -77,6 +79,18 @@ export interface OctopAgent {
   kind?: "expert" | "team" | string;
   /** Member agent ids when ``kind === "team"``. */
   member_ids?: string[];
+  /** Roster display rows. Includes members the viewer cannot open alone. */
+  members?: Array<{
+    agent_id: string;
+    name: string;
+    color?: string | null;
+    icon_name?: string | null;
+    icon_url?: string | null;
+    kind?: string | null;
+    is_shared?: boolean;
+    user_id?: number | null;
+    managed_runner?: string | null;
+  }>;
   welcome_message?: string | null;
   /** True when this row is a remote shadow expert via cloud collab. */
   bridge?: boolean;
@@ -156,6 +170,21 @@ function sameMemberIds(left?: string[], right?: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+function sameTeamMembers(
+  left?: OctopAgent["members"],
+  right?: OctopAgent["members"],
+): boolean {
+  const a = left ?? [];
+  const b = right ?? [];
+  return (
+    a.length === b.length &&
+    a.every(
+      (item, index) =>
+        item.agent_id === b[index]?.agent_id && item.name === b[index]?.name,
+    )
+  );
+}
+
 /** True when a silent agent refresh would not change chat composer defaults. */
 export function agentsSnapshotEqual(
   prev: OctopAgent[],
@@ -179,12 +208,15 @@ export function agentsSnapshotEqual(
         a.kind === b.kind &&
         a.bridge === b.bridge &&
         a.is_owner === b.is_owner &&
+        a.is_shared === b.is_shared &&
+        a.visibility === b.visibility &&
         a.bridge_connection_id === b.bridge_connection_id &&
         a.bridge_connection_name === b.bridge_connection_name &&
         a.bridge_disconnected === b.bridge_disconnected &&
         a.bridge_inbound === b.bridge_inbound &&
         a.default_model === b.default_model &&
         sameMemberIds(a.member_ids, b.member_ids) &&
+        sameTeamMembers(a.members, b.members) &&
         sameMemberIds(a.knowledge_base_ids, b.knowledge_base_ids) &&
         sameMemberIds(a.mcp_servers, b.mcp_servers)
       );
@@ -213,6 +245,7 @@ export function projectChatAgentOption(agent: OctopAgent): {
   bridge_connection_icon: string | null;
   bridge_disconnected: boolean;
   bridge_inbound: boolean;
+  managed_runner: string | null;
 } {
   return {
     agent_id: agent.agent_id,
@@ -229,6 +262,11 @@ export function projectChatAgentOption(agent: OctopAgent): {
     bridge_connection_icon: agent.bridge_connection_icon ?? null,
     bridge_disconnected: Boolean(agent.bridge_disconnected),
     bridge_inbound: Boolean(agent.bridge_inbound),
+    managed_runner:
+      agent.kind === "managed" &&
+      typeof agent.config?.managed_runner === "string"
+        ? agent.config.managed_runner
+        : null,
   };
 }
 

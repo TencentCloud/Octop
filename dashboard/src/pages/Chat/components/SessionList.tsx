@@ -5,6 +5,7 @@ import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
   GitFork,
+  Link2,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -24,6 +25,10 @@ import {
 } from "../utils/deleteConversation";
 import { isImeComposing } from "../../../utils/ime";
 import { ExpertIcon } from "../../Experts/components/iconForName";
+import {
+  ManagedAvatarMark,
+  managedRunnerId,
+} from "../../Experts/components/ManagedAvatarMark";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import SessionChannelIcon from "./SessionChannelIcon";
@@ -80,6 +85,7 @@ interface SessionItemProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
+  onShare?: (id: string) => void;
   onContribute: (id: string, contributed: boolean) => void;
   shareable: boolean;
   forkDisabled?: boolean;
@@ -95,6 +101,7 @@ const SessionItem = memo(function SessionItem({
   onRename,
   onPin,
   onFork,
+  onShare,
   onContribute,
   shareable,
   forkDisabled,
@@ -134,6 +141,23 @@ const SessionItem = memo(function SessionItem({
 
   const menuItems: MenuProps["items"] = owned
     ? [
+        ...(onShare
+          ? [
+              {
+                key: "share",
+                label: t("chat.publicShare.action", "分享链接"),
+                icon: <Link2 size={14} />,
+                onClick: ({
+                  domEvent,
+                }: {
+                  domEvent: { stopPropagation(): void };
+                }) => {
+                  domEvent.stopPropagation();
+                  onShare(session.id);
+                },
+              },
+            ]
+          : []),
         ...(shareable
           ? [
               {
@@ -296,6 +320,7 @@ interface AgentCardProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  onShare?: (id: string, agentId?: string | null) => void;
   onContribute: (id: string, contributed: boolean) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
@@ -322,6 +347,7 @@ function ActiveAgentCard({
   onRename,
   onPin,
   onFork,
+  onShare,
   onContribute,
   activeForkDisabled,
   activeForkDisabledHint,
@@ -366,20 +392,22 @@ function ActiveAgentCard({
     >
       <div className={styles.agentCardProfile}>
         <SharedExpertHint agent={agent}>
-          <div
-            className={styles.agentCardAvatar}
-            style={{
-              color: accent,
-              background: `${accent}14`,
-              boxShadow: `0 0 0 1px ${accent}22`,
-            }}
-          >
-            <ExpertIcon
-              iconUrl={agent.icon_url}
-              iconName={agent.icon_name}
-              size={agent.icon_url?.trim() ? 28 : 16}
-            />
-          </div>
+          <ManagedAvatarMark runner={managedRunnerId(agent)}>
+            <div
+              className={styles.agentCardAvatar}
+              style={{
+                color: accent,
+                background: `${accent}14`,
+                boxShadow: `0 0 0 1px ${accent}22`,
+              }}
+            >
+              <ExpertIcon
+                iconUrl={agent.icon_url}
+                iconName={agent.icon_name}
+                size={agent.icon_url?.trim() ? 28 : 16}
+              />
+            </div>
+          </ManagedAvatarMark>
         </SharedExpertHint>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
@@ -449,6 +477,9 @@ function ActiveAgentCard({
                 onPin={onPin}
                 onContribute={onContribute}
                 shareable={Boolean(agent.is_shared)}
+                onShare={
+                  onShare ? (id) => onShare(id, agent.agent_id) : undefined
+                }
                 onFork={(id) => onFork(id, agent.agent_id)}
                 forkDisabled={
                   activeId === s.id ? activeForkDisabled : undefined
@@ -516,16 +547,18 @@ function InactiveAgentRow({
       }}
     >
       <SharedExpertHint agent={agent}>
-        <div
-          className={styles.agentRowAvatar}
-          style={{ color: accent, background: `${accent}12` }}
-        >
-          <ExpertIcon
-            iconUrl={agent.icon_url}
-            iconName={agent.icon_name}
-            size={agent.icon_url?.trim() ? 26 : 14}
-          />
-        </div>
+        <ManagedAvatarMark runner={managedRunnerId(agent)}>
+          <div
+            className={styles.agentRowAvatar}
+            style={{ color: accent, background: `${accent}12` }}
+          >
+            <ExpertIcon
+              iconUrl={agent.icon_url}
+              iconName={agent.icon_name}
+              size={agent.icon_url?.trim() ? 26 : 14}
+            />
+          </div>
+        </ManagedAvatarMark>
       </SharedExpertHint>
       <div className={styles.agentRowInfo}>
         <div className={styles.agentRowNameRow}>
@@ -587,6 +620,7 @@ interface SessionListProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  onShare?: (id: string, agentId?: string | null) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
 }
@@ -608,6 +642,7 @@ export default function SessionList({
   onRename,
   onPin,
   onFork,
+  onShare,
   activeForkDisabled,
   activeForkDisabledHint,
 }: SessionListProps) {
@@ -802,6 +837,7 @@ export default function SessionList({
           onContribute={(id, contributed) =>
             contributeSession(agent.agent_id, id, contributed)
           }
+          onShare={onShare}
           onFork={onFork}
           activeForkDisabled={activeForkDisabled}
           activeForkDisabledHint={activeForkDisabledHint}

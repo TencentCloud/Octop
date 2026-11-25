@@ -194,7 +194,7 @@ async def test_redeem_fails_when_named_role_is_gone(env):
 
 
 async def test_non_admin_cannot_grant_administrator(env):
-    c, _srv, auth = env
+    c, srv, auth = env
     created = await c.post(
         "/api/users",
         headers=auth,
@@ -221,6 +221,33 @@ async def test_non_admin_cannot_grant_administrator(env):
         json={"role": "admin"},
     )
     assert denied_invite.status_code == 403, denied_invite.text
+
+    role = await c.post(
+        "/api/users/roles",
+        headers=auth,
+        json={"user_role_name": "Browser access", "permissions": ["browser"]},
+    )
+    assert role.status_code == 201, role.text
+    browser_role_id = role.json()["user_role_id"]
+    for role_id in ("admin", browser_role_id, None):
+        invited = await c.post("/api/users/invites", headers=auth, json={"role": role_id})
+        assert invited.status_code == 201, invited.text
+        path = f"/api/users/invites/{invited.json()['id']}"
+        if role_id == browser_role_id:
+            # Legacy invitations stored the role name only.
+            with srv.services.db.transaction() as conn:
+                conn.execute(
+                    "UPDATE user_invites SET role = NULL WHERE id = ?", (invited.json()["id"],)
+                )
+        disabled = await c.patch(path, headers=clerk, json={"enabled": False})
+        assert disabled.status_code == 200, disabled.text
+        assert disabled.json()["status"] == "disabled"
+
+        reenabled = await c.patch(path, headers=clerk, json={"enabled": True})
+        assert reenabled.status_code == (200 if role_id is None else 403), reenabled.text
+        admin_enabled = await c.patch(path, headers=auth, json={"enabled": True})
+        assert admin_enabled.status_code == 200, admin_enabled.text
+        assert admin_enabled.json()["status"] == "active"
 
     target = created.json()["id"]
     denied_patch = await c.patch(

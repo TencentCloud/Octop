@@ -35,10 +35,11 @@ def windows_neutralize_host_root(spec: Any, *, workspace_dir: Path) -> Any:
     """Windows: rewrite local backends rooted at ``/`` to the agent workspace.
 
     ``root_dir: "/"`` is the dashboard's default for local backends. On Windows
-    it resolves to the *current drive root* (often a different drive than the
-    agent workspace), so deepagents virtual-path checks reject every workspace
-    path with ``Path ... outside root directory``. Only ``root_dir`` is rewritten
-    so ``type`` / ``virtual_mode`` and other fields stay intact.
+    the picker stores that same choice as a drive root (``C:/``, ``C:\\``,
+    ``C:``). Either form resolves to a whole drive, often a different one than
+    the agent workspace, so deepagents virtual-path checks reject every
+    workspace path with ``Path ... outside root directory``. Only ``root_dir``
+    is rewritten so ``type`` / ``virtual_mode`` and other fields stay intact.
 
     Applies to top-level ``local_shell`` / ``filesystem`` specs and to the
     ``default`` of composite specs (the default is what anchors the agent
@@ -68,12 +69,24 @@ def windows_neutralize_host_root(spec: Any, *, workspace_dir: Path) -> Any:
 def _is_host_root(root: Any) -> bool:
     """True when *root* is an explicitly host-rooted local backend path.
 
-    Only an *explicit* ``/``, ``\\`` or empty string counts (the dashboard's
-    default). A missing ``root_dir`` is left alone — harness already falls back
-    to ``workspace_dir`` for local backends, which is workspace-scoped by
-    design.
+    POSIX ``/``, ``\\``, and an empty string are the dashboard sentinel. On
+    Windows the same sentinel is a drive root such as ``C:/``. A missing
+    ``root_dir`` is left alone — harness already falls back to
+    ``workspace_dir`` for local backends. A directory under a drive
+    (``D:/octop-data``) is a real root and is not rewritten.
     """
-    return root is not None and str(root).strip() in ("/", "\\", "")
+    if root is None:
+        return False
+    text = str(root).strip()
+    if text in ("/", "\\", ""):
+        return True
+    return _is_windows_drive_root(text)
+
+
+def _is_windows_drive_root(text: str) -> bool:
+    if os.name != "nt" or len(text) < 2 or not text[0].isalpha() or text[1] != ":":
+        return False
+    return text[2:] in {"", "/", "\\"}
 
 
 def resolve_agent_backend_spec(

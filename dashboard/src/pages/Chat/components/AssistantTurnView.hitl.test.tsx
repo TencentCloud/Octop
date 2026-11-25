@@ -10,6 +10,7 @@ vi.mock("react-i18next", () => ({
       if (typeof opts === "string") return opts;
       return opts?.defaultValue ?? key;
     },
+    i18n: { exists: () => false },
   }),
 }));
 

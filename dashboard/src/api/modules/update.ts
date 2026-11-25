@@ -9,6 +9,8 @@ export interface UpdateStatus {
   service_mode: "systemd" | "launchd" | null;
   /** True when Octop is spawned by the desktop shell (or ``OCTOP_DESKTOP=1``). */
   desktop?: boolean;
+  /** True only when the Electron shell owns this process and pins loopback. */
+  updates_managed_by_shell?: boolean;
   error: string | null;
   /** Stable error code (e.g. "pypi_unreachable") for localized UI messages; null on success. */
   error_code: string | null;

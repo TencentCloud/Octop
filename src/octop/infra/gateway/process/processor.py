@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, NamedTuple
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from octop_gateway.models import (
@@ -32,6 +33,7 @@ from octop.infra.agents.teams.team_manager import (
 from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
+from octop.infra.agents.turn_resources import attach_turn_knowledge, resolve_turn_mcp
 from octop.infra.errors import OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
@@ -83,7 +85,6 @@ from octop.infra.history.projection import (
     message_inputs,
 )
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
-from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
@@ -162,6 +163,13 @@ class _ResolvedModelRoute:
     automatic: bool
 
 
+class _ResolvedTurnMcp(NamedTuple):
+    """Harness names go to the model; shown names go on history chips."""
+
+    harness: list[str]
+    shown: list[str]
+
+
 class GlobalProcessor:
     """Routes InboundMessages by ``tenant_id`` to the correct HarnessAgent."""
 
@@ -180,6 +188,7 @@ class GlobalProcessor:
         dispatcher: SlashDispatcher,
         usage_repo: Any | None = None,
         thread_message_repo: Any | None = None,
+        care_push_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
@@ -202,6 +211,7 @@ class GlobalProcessor:
         self._dispatcher = dispatcher
         self._usage_repo = usage_repo
         self._thread_message_repo = thread_message_repo
+        self._care_push_repo = care_push_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
@@ -230,6 +240,47 @@ class GlobalProcessor:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
         self.teams.replace_thread_message_repo(repo)
+
+    def replace_care_push_repo(self, repo: Any) -> None:
+        """Rebind proactive care reply tracking after a control-plane restore."""
+        self._care_push_repo = repo
+
+    def _mark_care_replied(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        history_tracker: TurnHistoryTracker,
+    ) -> None:
+        if self._care_push_repo is None:
+            return
+        reply_msg_id: str | None = None
+        for seed in history_tracker.seed_messages:
+            mid = seed.get("id") if isinstance(seed, dict) else getattr(seed, "id", None)
+            if isinstance(mid, str) and mid.strip():
+                reply_msg_id = mid.strip()
+                break
+        try:
+            updated = self._care_push_repo.mark_replied_for_thread(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                reply_message_id=reply_msg_id,
+            )
+            if updated:
+                logger.info(
+                    "ProactiveCare: marked %d record(s) replied agent=%s thread=%s reply_msg=%s",
+                    updated,
+                    agent_id,
+                    thread_id,
+                    reply_msg_id,
+                )
+        except Exception:
+            logger.warning(
+                "ProactiveCare: failed to mark reply agent=%s thread=%s",
+                agent_id,
+                thread_id,
+                exc_info=True,
+            )
 
     def _agent_trajectory_enabled(self, agent_id: str, row: Any | None = None) -> bool:
         if self._trajectory_service is None:
@@ -930,7 +981,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker, agent_id)
                 yield MessageEvent.completed()
                 return
 
@@ -1003,13 +1054,15 @@ class GlobalProcessor:
             model_ref=model_ref,
             meta=None,
         )
-        mcp_servers = await self._resolve_turn_mcp_servers(
+        resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=None,
             apply_defaults=True,
             raise_on_failure=False,
         )
+        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
+        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         message_kwargs: dict[str, Any] = {}
         attachments = inbound_attachments_from_parts(msg.content)
         if attachments:
@@ -1023,7 +1076,7 @@ class GlobalProcessor:
             row = self._agent_repo.get(agent_id)
             default_model = (row.default_model if row is not None else None) or None
             composer = build_composer_context(
-                mcp_servers=mcp_servers,
+                mcp_servers=shown_mcp,
                 skills=None,
                 target_agent_ids=None,
                 model_ref=model_ref,
@@ -1044,7 +1097,7 @@ class GlobalProcessor:
             reasoning_overrides=reasoning_overrides,
         )
         self.teams.stamp_host_runtime(request, agent_id)
-        self._attach_turn_knowledge_config(
+        knowledge_ids = self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
             is_admin=False,
@@ -1052,6 +1105,9 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        from octop.infra.gateway.process.message_keys import stamp_composer_fields  # noqa: PLC0415
+
+        stamp_composer_fields(request, knowledge_base_ids=knowledge_ids)
         request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
@@ -1069,6 +1125,11 @@ class GlobalProcessor:
         failure_saved = False
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request(request)
+        self._mark_care_replied(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            history_tracker=history_tracker,
+        )
         projection_state = StreamProjectionState()
         try:
             turn_stream = project_stream(
@@ -1123,7 +1184,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                await self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker, agent_id)
                 hint = self._plan_ready_hint(thread_id, locale)
                 if hint:
                     yield MessageEvent(
@@ -1270,7 +1331,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker, agent_id)
                 yield _maybe_stamp_team_host(
                     self._done_chunk(ask_record.thread_id),
                     agent_id,
@@ -1376,6 +1437,11 @@ class GlobalProcessor:
             meta=meta,
         )
         history_tracker = TurnHistoryTracker.from_request(request)
+        self._mark_care_replied(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            history_tracker=history_tracker,
+        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1513,7 +1579,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 usage=usage_tracker.usage,
             )
-            await self._record_turn_history(thread_id, history_tracker)
+            await self._record_turn_history(thread_id, history_tracker, agent_id)
         yield _maybe_stamp_team_host(
             self._done_chunk(
                 thread_id,
@@ -1609,7 +1675,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                await self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker, agent_id)
 
     async def _build_dashboard_request(
         self,
@@ -1669,16 +1735,21 @@ class GlobalProcessor:
         else:
             explicit_mcp = None
             apply_defaults = True
-        mcp_servers = await self._resolve_turn_mcp_servers(
+        resolved_mcp = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
             explicit=explicit_mcp,
             apply_defaults=apply_defaults,
         )
+        mcp_servers = resolved_mcp.harness if resolved_mcp is not None else None
+        shown_mcp = resolved_mcp.shown if resolved_mcp is not None else None
         if mcp_servers:
+            # History chips use the viewer's catalog names. The harness request
+            # below keeps the names registered on the shared expert.
+            shown = shown_mcp if shown_mcp is not None else mcp_servers
             if isinstance(composer, dict) and composer:
                 stamped = dict(composer)
-                stamped["connectors"] = list(mcp_servers)
+                stamped["connectors"] = list(shown)
                 message_kwargs[COMPOSER_CTX_KEY] = stamped
             else:
                 from octop.infra.gateway.process.message_keys import (  # noqa: PLC0415
@@ -1688,7 +1759,7 @@ class GlobalProcessor:
                 row = self._agent_repo.get(agent_id)
                 default_model = (row.default_model if row is not None else None) or None
                 built = build_composer_context(
-                    mcp_servers=mcp_servers,
+                    mcp_servers=shown,
                     skills=meta.get("skills") if isinstance(meta.get("skills"), list) else None,
                     target_agent_ids=None,
                     model_ref=model_ref,
@@ -1712,7 +1783,7 @@ class GlobalProcessor:
             message_id=client_message_id if isinstance(client_message_id, str) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
-        self._attach_turn_knowledge_config(
+        knowledge_ids = self._attach_turn_knowledge_config(
             request,
             user_id=user_id,
             is_admin=bool(meta.get("user_is_admin")),
@@ -1722,13 +1793,20 @@ class GlobalProcessor:
             locale=locale,
             agent_id=agent_id,
         )
+        from octop.infra.gateway.process.message_keys import stamp_composer_fields  # noqa: PLC0415
+
+        stamp_composer_fields(
+            request,
+            connectors=shown_mcp,
+            knowledge_base_ids=knowledge_ids,
+        )
 
         if mcp_servers:
             request["mcp_servers"] = mcp_servers
         if "skills" in meta:
             request["skills"] = meta["skills"]
         self._apply_turn_hitl_policy(thread_id, meta)
-        return self._stamp_turn_conversation_mode(
+        request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1737,6 +1815,24 @@ class GlobalProcessor:
             mcp_servers=mcp_servers,
             locale=locale,
         )
+        from octop.infra.bridge.local_workspace import stamp_bridge_file_target
+
+        agent = None
+        raw_target = (meta or {}).get("bridge_file_target")
+        if isinstance(raw_target, dict):
+            try:
+                agent = self._agent_manager.get_agent(agent_id)
+            except Exception:
+                agent = None
+        stamp_bridge_file_target(
+            request,
+            meta,
+            locale=locale,
+            thread_id=thread_id,
+            agent=agent,
+            member_agent_id=agent_id,
+        )
+        return request
 
     def _apply_turn_hitl_policy(self, thread_id: str, meta: dict[str, Any] | None) -> None:
         raw = (meta or {}).get("hitl_policy")
@@ -1795,6 +1891,10 @@ class GlobalProcessor:
     ) -> dict[str, Any]:
         from octop.infra.agents.conversation_mode import execute_user_message
 
+        if self._is_managed_agent(agent_id):
+            return self._stamp_managed_session_mode(
+                request, agent_id=agent_id, thread_id=thread_id, meta=meta
+            )
         mode, execute_path = self._sync_and_resolve_conversation_mode(
             agent_id, thread_id, meta=meta, user_text=user_text
         )
@@ -1806,6 +1906,54 @@ class GlobalProcessor:
             request["skills"] = []
         elif mcp_servers:
             request["mcp_servers"] = mcp_servers
+        return request
+
+    def _is_managed_agent(self, agent_id: str) -> bool:
+        getter = getattr(self._agent_manager, "get_row", None)
+        if not callable(getter):
+            return False
+        try:
+            row = getter(agent_id)
+        except Exception:
+            return False
+        from octop.infra.agents.managed import is_managed_agent
+
+        return is_managed_agent(row)
+
+    def _stamp_managed_session_mode(
+        self,
+        request: dict[str, Any],
+        *,
+        agent_id: str,
+        thread_id: str,
+        meta: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Keep the underlying agent's mode id. Do not apply Ask / Plan / Craft."""
+        from octop.infra.agents.acp.session_modes import resolve_managed_session_mode
+
+        explicit = (meta or {}).get("session_mode")
+        thread = self._thread_registry.get_thread(thread_id)
+        stored = thread.conversation_mode if thread is not None else None
+        config: dict[str, Any] = {}
+        getter = getattr(self._agent_manager, "get_config", None)
+        if callable(getter):
+            try:
+                loaded = getter(agent_id)
+            except Exception:
+                loaded = None
+            if isinstance(loaded, dict):
+                config = loaded
+        pinned = resolve_managed_session_mode(explicit=explicit, stored=None, config={})
+        if pinned:
+            self._thread_registry.update_composer(thread_id, conversation_mode=pinned)
+            stored = pinned
+        mode = resolve_managed_session_mode(explicit=explicit, stored=stored, config=config)
+        if mode:
+            configurable = request.get("configurable")
+            if not isinstance(configurable, dict):
+                configurable = {}
+                request["configurable"] = configurable
+            configurable["acp_session_mode"] = mode
         return request
 
     def _attach_conversation_mode(self, request: dict[str, Any], mode: Any) -> None:
@@ -1849,23 +1997,18 @@ class GlobalProcessor:
         explicit_ids: list[str] | None,
         locale: str,
         agent_id: str | None = None,
-    ) -> None:
+    ) -> list[str]:
         """Expose selected knowledge-base ids for the search_knowledge tool."""
         if self._knowledge_services is None:
-            return
-        bases = (
-            self._knowledge_services.knowledge_repo.list_all()
-            if is_admin
-            else self._knowledge_services.knowledge_repo.list_visible(user_id)
-        )
+            return []
         extra_ids = self._agent_manager.default_knowledge_base_ids(agent_id) if agent_id else None
-        stamp_turn_knowledge_config(
+        return attach_turn_knowledge(
             request,
-            visible_bases=bases,
-            explicit_ids=explicit_ids,
-            owner_user_id=user_id,
-            extra_ids=extra_ids,
+            knowledge_repo=self._knowledge_services.knowledge_repo,
+            user_id=user_id,
             is_admin=is_admin,
+            explicit_ids=explicit_ids,
+            extra_ids=extra_ids,
             locale=locale,
         )
 
@@ -1877,42 +2020,26 @@ class GlobalProcessor:
         explicit: list[str] | None,
         apply_defaults: bool | None = None,
         raise_on_failure: bool = True,
-    ) -> list[str] | None:
+    ) -> _ResolvedTurnMcp | None:
         """Merge turn picks with default_open and ensure tools are loaded.
 
         Dashboard / HTTP paths should keep ``raise_on_failure=True`` so the
         client sees a clear MCP load error. IM ingress uses ``False`` so a
         flaky connector does not abort the whole message turn.
         """
-        from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
         from octop.infra.errors import ErrorCode, OctopError  # noqa: PLC0415
 
         # Team hosts only dispatch — never attach MCP tools.
-        row = self._agent_manager.get_row(agent_id)
-        if is_team_agent(row):
-            return None
-        owner_raw = getattr(row, "user_id", None) if row is not None else None
-        owner_id = owner_raw if isinstance(owner_raw, int) else None
-
-        extra_defaults = self._agent_manager.default_mcp_servers(agent_id)
-        merged = self._agent_manager.merge_turn_mcp_servers(
-            user_id,
-            explicit,
+        resolved = await resolve_turn_mcp(
+            self._agent_manager,
+            agent_id=agent_id,
+            user_id=user_id,
+            explicit=explicit,
             apply_defaults=apply_defaults,
-            extra_defaults=extra_defaults,
-            agent_owner_id=owner_id,
         )
-        if not merged:
+        if resolved is None:
             return None
-        selected = merged
-        if owner_id is not None and owner_id != user_id:
-            harness = self._agent_manager.align_mcp_names_to_harness(owner_id, user_id, merged)
-            selected = self._agent_manager.mcp_names_for_chips(owner_id, user_id, merged, harness)
-        failed = await self._agent_manager.prepare_chat_mcp(
-            agent_id,
-            selected,
-            connector_user_id=user_id,
-        )
+        failed = resolved.failed
         if failed:
             detail = f"mcp load failed: {', '.join(failed)}"
             if raise_on_failure:
@@ -1932,7 +2059,7 @@ class GlobalProcessor:
                 detail,
             )
             return None
-        return selected
+        return _ResolvedTurnMcp(harness=resolved.harness, shown=resolved.shown)
 
     async def _record_stream_error(
         self,
@@ -1945,6 +2072,29 @@ class GlobalProcessor:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
         _M.inc("stream_errors_total")
+        # A failed turn has no assistant message to key checkpoints by; drop
+        # its undrained captures so they never merge into the next turn's
+        # window (the files stay changed on disk, visible in the git panel).
+        if agent_id and thread_id:
+            try:
+                agent = self._agent_manager.get_agent(agent_id)
+                discard = getattr(agent, "discard_file_changes", None)
+                if callable(discard):
+                    self._call_capture_api(discard, thread_id)
+                else:
+                    logger.warning(
+                        "harness has no discard_file_changes; a failed turn's "
+                        "captures may merge into the next turn (agent=%s thread=%s)",
+                        agent_id,
+                        thread_id,
+                    )
+            except Exception:  # noqa: BLE001 - best-effort, never mask the error
+                logger.warning(
+                    "failed to discard file checkpoints for agent=%s thread=%s",
+                    agent_id,
+                    thread_id,
+                    exc_info=True,
+                )
         log_turn_failure(
             "stream",
             detail=str(exc),
@@ -2111,7 +2261,17 @@ class GlobalProcessor:
         self._touch_thread_after_turn(thread_id, title_source)
         await self._record_turn_history(thread_id, tracker)
 
-    async def _record_turn_history(self, thread_id: str, tracker: TurnHistoryTracker) -> None:
+    async def _record_turn_history(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+        agent_id: str | None = None,
+    ) -> None:
+        if agent_id is None:
+            row = self._thread_registry.get_thread(thread_id)
+            agent_id = getattr(row, "agent_id", None)
+        if agent_id:
+            await self._record_file_checkpoints(agent_id, thread_id, tracker)
         if self._thread_message_repo is None:
             return
         try:
@@ -2121,6 +2281,79 @@ class GlobalProcessor:
             # successful model response into a failed chat turn.
             logger.warning(
                 "failed to append thread history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    def _call_capture_api(self, fn: Any, thread_id: str) -> Any:
+        """Call a harness capture hook, honoring its arity.
+
+        The hook lives in the external harness package; inspect its signature
+        instead of catching TypeError around the call, which would also trap
+        unrelated TypeErrors and double-drain the buffer.
+        """
+        params: Mapping[str, inspect.Parameter] | None
+        try:
+            params = inspect.signature(fn).parameters
+        except (TypeError, ValueError):
+            params = None
+        call_mode = "scopeless"
+        if params is not None:
+            for param in params.values():
+                if param.kind is inspect.Parameter.VAR_POSITIONAL:
+                    call_mode = "positional"
+                    break
+                if param.name == "thread_id" and param.kind is not inspect.Parameter.VAR_KEYWORD:
+                    call_mode = (
+                        "keyword" if param.kind is inspect.Parameter.KEYWORD_ONLY else "positional"
+                    )
+                    break
+        if call_mode == "positional":
+            return fn(thread_id)
+        if call_mode == "keyword":
+            return fn(thread_id=thread_id)
+        logger.debug(
+            "harness capture hook has no thread_id parameter; calling scopeless for thread=%s",
+            thread_id,
+        )
+        return fn()
+
+    async def _record_file_checkpoints(
+        self, agent_id: str, thread_id: str, tracker: TurnHistoryTracker
+    ) -> None:
+        """Drain harness write checkpoints and persist them for this turn.
+
+        Best-effort: checkpoint capture must never fail a successful turn.
+        """
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+            pop = getattr(agent, "pop_file_changes", None)
+            if pop is None:
+                return
+            changes = self._call_capture_api(pop, thread_id)
+            if not changes:
+                return
+            # tracker.inputs yields ThreadMessageInput rows, not LangChain
+            # messages; the key is the last assistant-role projection row id.
+            message_id = None
+            for m in reversed(tracker.inputs):
+                role = getattr(m, "role", None)
+                if role in ("human", "user"):
+                    # Reversed scan: past the user row is the previous turn.
+                    break
+                if role in ("ai", "assistant") and getattr(m, "message_id", None):
+                    message_id = m.message_id
+                    break
+            if not message_id:
+                return
+            from octop.infra.agents.file_checkpoints import save_checkpoints
+            from octop.infra.utils.paths import PathLayout
+
+            save_checkpoints(PathLayout.from_env().root, agent_id, thread_id, message_id, changes)
+        except Exception:
+            logger.warning(
+                "failed to persist file checkpoints for agent=%s thread=%s",
+                agent_id,
                 thread_id,
                 exc_info=True,
             )

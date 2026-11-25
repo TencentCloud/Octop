@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ChevronRight, FilePen, Globe } from "lucide-react";
+import { ChevronRight, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
@@ -8,10 +8,7 @@ import {
   splitAssistantTurn,
   toAnswerOnlyMessage,
   turnUsedBrowserTool,
-  turnUsedFileTool,
 } from "../utils/messageContent";
-import { isWriteToolName } from "../constants";
-import { collectChatFilePaths } from "../hooks/useChatFileDetection";
 import { layoutAssistantTurnHitl } from "../utils/layoutAssistantTurnHitl";
 import { useAgent } from "../../../context/AgentContext";
 import { TodoProgressPanel } from "../../../components/TodoProgressPanel";
@@ -31,6 +28,7 @@ import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowled
 import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
 import { messageSpeakerId } from "../utils/messageGrouping";
 import { isAssistantProcessLive } from "./liveAssistantTurn";
+import TurnFileChangeCard from "./TurnFileChangeCard";
 import styles from "../index.module.less";
 
 interface AssistantTurnViewProps {
@@ -60,6 +58,8 @@ interface AssistantTurnViewProps {
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
   compactProcess?: boolean;
+  /** Public transcripts hide read-aloud. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function hasProcessContent(
@@ -82,6 +82,7 @@ function TurnErrorBubbles({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: {
   messages: ChatMessage[] | undefined;
   agentId?: string | null;
@@ -95,6 +96,7 @@ function TurnErrorBubbles({
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  readAloud?: boolean;
 }) {
   if (!messages?.length) return null;
   return (
@@ -115,6 +117,7 @@ function TurnErrorBubbles({
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
             shellCommandDisabledTitle={shellCommandDisabledTitle}
+            readAloud={readAloud}
           />
         </div>
       ))}
@@ -155,6 +158,7 @@ export default function AssistantTurnView({
   shellCommandDisabled,
   shellCommandDisabledTitle,
   compactProcess = false,
+  readAloud = true,
 }: AssistantTurnViewProps) {
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
@@ -211,15 +215,17 @@ export default function AssistantTurnView({
 
   const usedBrowser = turnUsedBrowserTool(fullSplit);
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
-  const usedFileTool = turnUsedFileTool(fullSplit);
-  const showEditFile = usedFileTool && !!onEditFile;
-  const turnFileCount = useMemo(() => {
-    const fromPaths = collectChatFilePaths(messages, agentId).length;
-    if (fromPaths > 0) return fromPaths;
-    return (fullSplit.tools ?? []).filter((msg) =>
-      isWriteToolName(msg.toolData?.name),
-    ).length;
-  }, [messages, agentId, fullSplit.tools]);
+  // The change card mounts whenever the dock handler exists — turns whose
+  // files were written by a subagent are invisible to the client-side tool
+  // scan, and only the server summary knows about them. The card itself
+  // renders nothing when neither source has files. Turn *visibility* keeps
+  // the cheap client gate so empty placeholder turns stay unrendered.
+  const showEditFile = !!onEditFile;
+  // The card alone makes a turn visible: server-only file changes
+  // (subagent writes) must keep an otherwise quiet turn rendered, and a
+  // streaming write-tool turn stays visible in compact-process mode.
+  // Empty placeholders collapse via the .turnInset:empty rule.
+  const editFileVisible = showEditFile;
   const hasToolMedia =
     toolMedia.images.length > 0 ||
     toolMedia.videos.length > 0 ||
@@ -280,7 +286,7 @@ export default function AssistantTurnView({
     hasToolMedia ||
     knowledgeCitations.length > 0 ||
     showOpenBrowser ||
-    showEditFile;
+    editFileVisible;
   // A decision-only placeholder has no row yet. Rendering an empty turn
   // would shift the layout before the avatar and the first status settle.
   if (!hasVisibleTurn) return null;
@@ -328,6 +334,7 @@ export default function AssistantTurnView({
             onRunShellCommand={onRunShellCommand}
             shellCommandDisabled={shellCommandDisabled}
             shellCommandDisabledTitle={shellCommandDisabledTitle}
+            readAloud={readAloud}
           />
         </div>
       ) : null}
@@ -348,6 +355,7 @@ export default function AssistantTurnView({
         onRunShellCommand={onRunShellCommand}
         shellCommandDisabled={shellCommandDisabled}
         shellCommandDisabledTitle={shellCommandDisabledTitle}
+        readAloud={readAloud}
       />
       {knowledgeCitations.length > 0 ? (
         <div className={styles.turnInset}>
@@ -382,36 +390,15 @@ export default function AssistantTurnView({
       )}
       {showEditFile && (
         <div className={styles.turnInset}>
-          <button
-            type="button"
-            className={cx(
-              styles.openBrowserPrompt,
-              turnStreaming && styles.openBrowserPromptActive,
-            )}
-            onClick={onEditFile}
-            aria-label={t("chat.editFileCard", {
-              count: Math.max(turnFileCount, 1),
-              defaultValue: "编辑了{{count}}个文件",
-            })}
-          >
-            <FilePen
-              size={16}
-              strokeWidth={2}
-              className={styles.openBrowserPromptIcon}
-              aria-hidden="true"
-            />
-            <span>
-              {t("chat.editFileCard", {
-                count: Math.max(turnFileCount, 1),
-                defaultValue: "编辑了{{count}}个文件",
-              })}
-            </span>
-            <ChevronRight
-              size={14}
-              className={styles.openBrowserPromptArrow}
-              aria-hidden="true"
-            />
-          </button>
+          <TurnFileChangeCard
+            messages={messages}
+            // Team dispatch writes into the room host workspace, so open I/O
+            // with the host id — not the speaking member.
+            agentId={agentId}
+            streaming={turnStreaming}
+            isLatestTurn={afterLatestUser}
+            onOpenList={onEditFile}
+          />
         </div>
       )}
     </>
@@ -462,6 +449,7 @@ export default function AssistantTurnView({
                   onRunShellCommand={onRunShellCommand}
                   shellCommandDisabled={shellCommandDisabled}
                   shellCommandDisabledTitle={shellCommandDisabledTitle}
+                  readAloud={readAloud}
                 />
               </div>
             ) : null}
@@ -478,12 +466,14 @@ export default function AssistantTurnView({
               onRunShellCommand={onRunShellCommand}
               shellCommandDisabled={shellCommandDisabled}
               shellCommandDisabledTitle={shellCommandDisabledTitle}
+              readAloud={readAloud}
             />
             <MessageBubble
               message={hitl}
               agentId={agentId}
               onHitlDecision={onHitlDecision}
               groupPosition="only"
+              readAloud={readAloud}
             />
           </div>
         );

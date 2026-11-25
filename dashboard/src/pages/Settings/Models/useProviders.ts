@@ -31,11 +31,29 @@ export interface ProviderModel {
   group_ids?: string[];
 }
 
+type ModelFlags = Pick<ProviderModel, "id" | "embedding" | "task">;
+
+/** Keep provider catalog inference in sync with providers/model_flags.py. */
+export function isRerankModel(model: ModelFlags): boolean {
+  return (
+    model.task?.trim().toLowerCase() === "rerank" ||
+    model.id.toLowerCase().includes("rerank")
+  );
+}
+
 export function isEmbeddingModel(
-  model: Pick<ProviderModel, "embedding" | "task"> | undefined,
+  model: ModelFlags | undefined,
+  embeddingService = false,
 ): boolean {
-  if (!model) return false;
-  return model.embedding === true || model.task === "embedding";
+  if (!model || isRerankModel(model)) return false;
+  return (
+    embeddingService ||
+    model.embedding === true ||
+    model.task?.trim().toLowerCase() === "embedding" ||
+    ["embed", "bge-", "e5-", "gte-"].some((hint) =>
+      model.id.toLowerCase().includes(hint),
+    )
+  );
 }
 
 export interface ProviderPresetModel {
@@ -68,6 +86,10 @@ export interface ProviderPreset {
   auth_method?: string;
   /** Embedding-only presets appear on the embedding Models tab. */
   purpose?: "chat" | "embedding";
+  /** Octop-owned integration id, such as ``magpie``. */
+  integration?: string;
+  /** Filled only for the local Magpie preset. Remote addresses must not use it. */
+  default_api_key?: string;
 }
 
 export interface ProviderRow {
@@ -76,6 +98,8 @@ export interface ProviderRow {
   kind: string;
   base_url: string | null;
   api_key: string | null;
+  /** True when a credential is stored. The value itself is not returned. */
+  api_key_set?: boolean;
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
@@ -85,6 +109,16 @@ export interface ProviderRow {
   stream_usage?: boolean;
   /** UI lane: embedding providers are managed on the embedding Models tab. */
   purpose?: "chat" | "embedding";
+  /** Set when the provider was saved as a named integration such as Magpie. */
+  integration?: string;
+}
+
+/** True when the provider has a stored credential or a local placeholder key. */
+export function providerHasCredential(provider: {
+  api_key?: string | null;
+  api_key_set?: boolean;
+}): boolean {
+  return Boolean(provider.api_key_set || provider.api_key);
 }
 
 /** True when this provider belongs on the embedding Models tab. */

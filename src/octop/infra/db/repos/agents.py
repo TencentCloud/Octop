@@ -88,7 +88,7 @@ class AgentRow:
         except (KeyError, IndexError):
             kind_raw = None
         kind = str(kind_raw).strip() if kind_raw else "expert"
-        if kind not in {"expert", "team"}:
+        if kind not in {"expert", "team", "managed"}:
             kind = "expert"
         return cls(
             id=r["id"],
@@ -148,7 +148,7 @@ class AgentRepo:
         kind: str = "expert",
     ) -> str:
         ts = now_ts()
-        agent_kind = kind if kind in {"expert", "team"} else "expert"
+        agent_kind = kind if kind in {"expert", "team", "managed"} else "expert"
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agents(agent_id, user_id, name, description, "

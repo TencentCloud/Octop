@@ -26,19 +26,6 @@ export function dashboardDevOrigin(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
-/**
- * Node on Windows rejects ``spawn`` of a ``.cmd`` shim with ``EINVAL``.
- * ``cmd.exe /d /s /c`` is the launcher that actually runs ``vite.cmd``.
- */
-export function viteCommand(launch: { command: string; args: string[] }): {
-  command: string;
-  args: string[];
-} {
-  if (process.platform !== "win32") return { command: launch.command, args: launch.args };
-  const comspec = process.env.ComSpec?.trim() || "cmd.exe";
-  return { command: comspec, args: ["/d", "/s", "/c", launch.command, ...launch.args] };
-}
-
 /** ``null`` when this launch should keep serving the static Dashboard. */
 export function readDashboardDev(env: NodeJS.ProcessEnv): DashboardDev | null {
   if (env.OCTOP_DASHBOARD_DEV !== "1") return null;
@@ -59,14 +46,15 @@ export function viteLaunch(options: {
   port: number;
   apiPort: number;
   baseEnv: NodeJS.ProcessEnv;
-}): { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv } {
-  const bin = process.platform === "win32" ? "vite.cmd" : "vite";
+}): { command: string; args: [string, ...string[]]; cwd: string; env: NodeJS.ProcessEnv } {
+  const entry = join(options.sourceDir, "node_modules", "vite", "bin", "vite.js");
   return {
-    command: join(options.sourceDir, "node_modules", ".bin", bin),
-    args: ["--host", "127.0.0.1", "--port", String(options.port), "--strictPort"],
+    command: process.execPath,
+    args: [entry, "--host", "127.0.0.1", "--port", String(options.port), "--strictPort"],
     cwd: options.sourceDir,
     env: {
       ...options.baseEnv,
+      ELECTRON_RUN_AS_NODE: "1",
       VITE_API_PORT: String(options.apiPort),
       VITE_DEV_PORT: String(options.port),
       VITE_HMR_CLIENT_PORT: String(options.port),
@@ -109,13 +97,13 @@ export async function startDashboardDevServer(options: {
   if (child) return;
   const launch = viteLaunch({ ...options, baseEnv: process.env });
   try {
-    await access(launch.command);
+    await access(launch.args[0]);
   } catch {
-    throw new Error(`${launch.command} is missing — run npm install in dashboard/`);
+    throw new Error(`${launch.args[0]} is missing — run npm install in dashboard/`);
   }
 
-  const command = viteCommand(launch);
-  const proc = spawn(command.command, command.args, {
+  // Own the actual Vite process so closing the shell releases the dev port.
+  const proc = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     env: launch.env,
     stdio: "inherit",

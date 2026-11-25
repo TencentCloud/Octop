@@ -10,6 +10,7 @@ import {
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
+import { localDirectoryMissing, pinLocalExecution } from "../localExecution";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -29,6 +30,7 @@ interface UseChatSendParams {
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
   conversationMode?: "ask" | "plan" | "craft";
+  sessionMode?: string;
   hitlPolicy?: HitlSessionPolicy;
   defaultModel?: string | null;
   sendMessage: (
@@ -46,6 +48,7 @@ interface UseChatSendParams {
     reasoningEffort?: string | null,
     conversationMode?: "ask" | "plan" | "craft" | null,
     hitlPolicy?: HitlSessionPolicy | null,
+    sessionMode?: string | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   /** Called when auto-recording starts successfully from a pending message. */
@@ -79,6 +82,7 @@ export function useChatSend({
   reasoningMode,
   reasoningEffort,
   conversationMode = "craft",
+  sessionMode,
   hitlPolicy,
   defaultModel,
   sendMessage,
@@ -155,11 +159,16 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          sessionMode,
         );
       };
 
       const targetThreadId =
         overrides?.threadId !== undefined ? overrides.threadId : activeThreadId;
+      if (!targetThreadId && localDirectoryMissing(agent, null)) {
+        message.warning(t("chat.remoteExpert.localDirectoryRequired"));
+        return false;
+      }
 
       if (targetThreadId) {
         if (isPendingThread(targetThreadId)) {
@@ -190,6 +199,7 @@ export function useChatSend({
           return;
         }
         chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
+        pinLocalExecution(agent, tid);
         // Title is filled by the server from an AI summary of this first
         // message. Do not lock the raw question in as the thread name.
         if (policy) syncSessionHitlPolicy(tid, policy);
@@ -210,6 +220,7 @@ export function useChatSend({
           mode,
           policy,
           userMsg.id,
+          sessionMode,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -228,6 +239,7 @@ export function useChatSend({
       reasoningMode,
       reasoningEffort,
       conversationMode,
+      sessionMode,
       hitlPolicy,
       defaultModel,
       t,
