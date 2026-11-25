@@ -7,7 +7,10 @@ from pathlib import Path
 
 from octop.infra.db.migrate import (
     _NAV_PAGE_PERMISSIONS_FLAG,
+    _PERSONALIZATION_TAB_PERMISSIONS,
+    _PERSONALIZATION_TAB_PERMISSIONS_FLAG,
     _grant_default_nav_permissions,
+    _grant_personalization_tab_permissions,
     run_migrations,
 )
 from octop.infra.db.pool import SqlitePool
@@ -79,6 +82,54 @@ def test_nav_page_permissions_are_granted_once(tmp_path: Path) -> None:
             (json.dumps(["channels"]), "ada"),
         )
     _grant_default_nav_permissions(pool)
+    ada_again = _perms(
+        pool,
+        "SELECT permissions FROM users WHERE username = ?",
+        ("ada",),
+    )
+    assert ada_again == ["channels"]
+
+
+def test_personalization_tab_permissions_are_granted_once(tmp_path: Path) -> None:
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    with pool.transaction() as conn:
+        conn.execute(
+            "DELETE FROM settings WHERE key = ?",
+            (_PERSONALIZATION_TAB_PERMISSIONS_FLAG,),
+        )
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at, permissions) "
+            "VALUES (?, ?, 'user', 0, ?)",
+            ("ada", "x", json.dumps(["channels"])),
+        )
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at, permissions) "
+            "VALUES (?, ?, 'admin', 0, ?)",
+            ("root", "x", "[]"),
+        )
+
+    _grant_personalization_tab_permissions(pool)
+
+    ada = _perms(
+        pool,
+        "SELECT permissions FROM users WHERE username = ?",
+        ("ada",),
+    )
+    assert ada == ["channels", *_PERSONALIZATION_TAB_PERMISSIONS]
+    root = _perms(
+        pool,
+        "SELECT permissions FROM users WHERE username = ?",
+        ("root",),
+    )
+    assert root == []
+
+    with pool.transaction() as conn:
+        conn.execute(
+            "UPDATE users SET permissions = ? WHERE username = ?",
+            (json.dumps(["channels"]), "ada"),
+        )
+    _grant_personalization_tab_permissions(pool)
     ada_again = _perms(
         pool,
         "SELECT permissions FROM users WHERE username = ?",

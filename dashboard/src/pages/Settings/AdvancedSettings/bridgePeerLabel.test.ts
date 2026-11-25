@@ -4,6 +4,8 @@ import type { BridgeConnection } from "../../../api/modules/bridge";
 import {
   inboundPeerAddress,
   inboundSourceIp,
+  maskPeerAccount,
+  maskPeerAddress,
   peerHostLabel,
 } from "./bridgePeerLabel";
 
@@ -56,5 +58,51 @@ describe("peerHostLabel", () => {
   it("leaves a bare address unchanged", () => {
     expect(peerHostLabel("203.0.113.8")).toBe("203.0.113.8");
     expect(peerHostLabel("")).toBe("");
+  });
+});
+
+describe("maskPeerAddress", () => {
+  it("keeps the scheme and port, masking the host ends", () => {
+    expect(maskPeerAddress("https://cloud.corp.example.com")).toBe(
+      "https://cl••••••om",
+    );
+    expect(maskPeerAddress("http://sandbox-a156c721:8088")).toBe(
+      "http://sa••••••21:8088",
+    );
+  });
+
+  it("masks the middle two octets of an IPv4 address", () => {
+    expect(maskPeerAddress("203.0.113.8")).toBe("203.•••.•••.8");
+    expect(maskPeerAddress("10.0.0.1")).toBe("10.•••.•••.1");
+  });
+
+  it("drops the default port and keeps a bare host masked", () => {
+    expect(maskPeerAddress("demo.octop.chat")).toBe("de••••••at");
+  });
+
+  it("degrades short values to their first character", () => {
+    expect(maskPeerAddress("ab")).toBe("a••");
+    expect(maskPeerAddress("a")).toBe("•");
+    expect(maskPeerAddress("")).toBe("");
+  });
+});
+
+describe("maskPeerAccount", () => {
+  it("keeps the first and last two characters", () => {
+    expect(maskPeerAccount("administrator")).toBe("ad••••••or");
+  });
+
+  it("keeps only the first character for short accounts", () => {
+    expect(maskPeerAccount("alice")).toBe("a••");
+    expect(maskPeerAccount("bob")).toBe("b••");
+    expect(maskPeerAccount("a")).toBe("•");
+  });
+
+  it("counts characters, not code units", () => {
+    expect(maskPeerAccount("李雷")).toBe("李••");
+  });
+
+  it("leaves an empty account empty", () => {
+    expect(maskPeerAccount("")).toBe("");
   });
 });

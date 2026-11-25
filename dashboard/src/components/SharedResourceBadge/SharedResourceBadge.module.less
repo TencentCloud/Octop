@@ -1,0 +1,55 @@
+.iconMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  opacity: 0.7;
+}
+
+.outgoingIcon {
+  color: var(--fn-color-brand);
+}
+
+.incomingIcon {
+  color: var(--fn-text-tertiary);
+}
+
+.avatarHost {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+/* Sit above a managed-runner mark so both stay visible on the right edge. */
+.avatarHost:has([data-managed-avatar-mark]) > .avatarMark {
+  bottom: max(38%, 11px);
+  z-index: 2;
+}
+
+.avatarMark {
+  position: absolute;
+  right: -8%;
+  bottom: -8%;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38%;
+  height: 38%;
+  min-width: 10px;
+  min-height: 10px;
+  max-width: 16px;
+  max-height: 16px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--fn-color-brand);
+  box-shadow: 0 0 0 1.5px var(--fn-bg-primary);
+  line-height: 0;
+
+  svg {
+    width: 58%;
+    height: 58%;
+  }
+}

@@ -29,6 +29,22 @@ export const COLLAPSED_WIDTH = 56;
 const iconSize = 16;
 const iconStroke = 1.8;
 
+const PERSONALIZATION_NAV_TABS = [
+  { key: "skills", path: "/personalization/skills" },
+  { key: "subagents", path: "/personalization/subagents" },
+  { key: "tools", path: "/personalization/tools" },
+  { key: "agent_plugins", path: "/personalization/plugins" },
+  { key: "mbti", path: "/personalization/mbti" },
+  { key: "memory", path: "/personalization/memory" },
+] as const;
+
+function personalizationNavPath(user: OctopUser | null): string {
+  for (const tab of PERSONALIZATION_NAV_TABS) {
+    if (userCan(user, tab.key)) return tab.path;
+  }
+  return PERSONALIZATION_NAV_TABS[0].path;
+}
+
 export interface NavItem {
   key: string;
   path: string;
@@ -169,14 +185,15 @@ export function buildNavSections(
   }
   const sections: NavSection[] = [{ items: topItems }];
 
-  const settingsItems: NavItem[] = [
-    {
+  const settingsItems: NavItem[] = [];
+  if (navAllowed(user, "personalization")) {
+    settingsItems.push({
       key: "personalization",
-      path: "/personalization/skills",
+      path: personalizationNavPath(user),
       icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.personalization",
-    },
-  ];
+    });
+  }
   if (navAllowed(user, "channels")) {
     settingsItems.push({
       key: "channels",
@@ -209,14 +226,14 @@ export function buildNavSections(
       labelKey: "nav.knowledgeBases",
     });
   }
-  // User-scoped remote Octop links — always available (like personalization).
-  settingsItems.push({
-    key: "bridge",
-    path: "/bridge",
-    icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
-    labelKey: "nav.bridge",
-    badge: "Beta",
-  });
+  if (navAllowed(user, "bridge")) {
+    settingsItems.push({
+      key: "bridge",
+      path: "/bridge",
+      icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "nav.bridge",
+    });
+  }
   if (settingsItems.length > 0) {
     sections.push({
       id: "settings",

@@ -122,7 +122,7 @@ def _response(view: MediaGenerationSettings) -> MediaGenerationSettingsResponse:
     response_model=list[MediaProviderPresetResponse],
 )
 async def list_media_provider_presets(
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_generation")),
 ) -> list[MediaProviderPresetResponse]:
     return [
         MediaProviderPresetResponse(
@@ -146,7 +146,7 @@ async def list_media_provider_presets(
     response_model=MediaGenerationSettingsResponse,
 )
 async def get_media_generation_settings(
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_generation")),
     server: Any = Depends(get_server),
 ) -> MediaGenerationSettingsResponse:
     return _response(server.app_runtime.agent_registry.media_generation.load())
@@ -163,7 +163,7 @@ async def get_media_generation_settings(
 )
 async def put_media_generation_settings(
     body: MediaGenerationSettingsBody,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_generation")),
     server: Any = Depends(get_server),
 ) -> MediaGenerationSettingsResponse:
     view = await server.app_runtime.agent_registry.save_media_generation(
@@ -186,7 +186,7 @@ async def put_media_generation_settings(
 )
 async def test_media_generation_provider(
     body: MediaGenerationTestBody,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_generation")),
     server: Any = Depends(get_server),
 ) -> MediaGenerationTestResponse:
     store = server.app_runtime.agent_registry.media_generation

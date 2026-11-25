@@ -1,8 +1,12 @@
 import { webcrypto } from "node:crypto";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import svgr from "vite-plugin-svgr";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
+
+import { monacoSameOrigin } from "./vite/monaco.ts";
+import { suppressViteDisconnectReload } from "./vite/suppress-disconnect-reload.ts";
 
 // serialize-javascript@7 (pulled in by vite-plugin-pwa → @rollup/plugin-terser)
 // expects Web Crypto globals during `vite build`. Node <19 does not define them.
@@ -13,54 +17,30 @@ if (typeof globalThis.crypto === "undefined") {
   });
 }
 
-/**
- * Vite's `@vite/client` always opens a WebSocket. When that socket drops it
- * does `waitForSuccessfulPing` → `location.reload()`. On Safari + listen
- * port 80 (empty `location.port`) / LAN / `hmr: false`, the socket fails
- * repeatedly and the whole SPA looks like it is "periodically refreshing".
- *
- * `server.hmr: false` does NOT disable this client (Vite still uses the WS
- * for overlays / full-reload). Patch the disconnect path instead.
- */
-function suppressViteDisconnectReload(): Plugin {
-  return {
-    name: "octop-suppress-vite-disconnect-reload",
-    apply: "serve",
-    enforce: "pre",
-    transform(code, id) {
-      const isViteClient =
-        id.includes("vite/dist/client/client.mjs") ||
-        id.includes("vite/dist/client/client.js") ||
-        /(?:^|\/)@vite\/client(?:\?|$)/.test(id);
-      if (!isViteClient) return;
-      if (!code.includes("server connection lost")) return;
-
-      let next = code.replace(
-        /await waitForSuccessfulPing\(([^)]*)\);\s*location\.reload\(\);/g,
-        "await waitForSuccessfulPing($1); console.warn('[vite] WS restored; reload suppressed');",
-      );
-      // Fallback if formatting differs across Vite versions.
-      if (next === code && code.includes("location.reload()")) {
-        next = code.replace(
-          /console\.log\(`\[vite\] server connection lost\. Polling for restart\.\.\.`\);[\s\S]*?location\.reload\(\);/,
-          'console.warn("[vite] server connection lost (reload suppressed)"); return;',
-        );
-      }
-      if (next === code) return;
-      return { code: next, map: null };
-    },
-  };
+function normalizeViteBase(raw: string | undefined): string {
+  const value = (raw || "/").trim() || "/";
+  if (value === "/") return "/";
+  const withLeading = value.startsWith("/") ? value : `/${value}`;
+  return withLeading.endsWith("/") ? withLeading : `${withLeading}/`;
 }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   // Empty = same-origin; frontend and backend served together, no hardcoded host.
   const apiBaseUrl = env.BASE_URL ?? "";
+  // Subpath deploy (e.g. reverse-proxy ``/octop/``). Distinct from ``BASE_URL``
+  // (optional absolute API origin for local/dev splits).
+  const viteBase = normalizeViteBase(
+    process.env.VITE_BASE_PATH ?? env.VITE_BASE_PATH,
+  );
   // Allow overriding the backend port via VITE_API_PORT env variable (default: 8088)
   const apiPort = process.env.VITE_API_PORT ?? env.VITE_API_PORT ?? "8088";
 
   const isProd = mode === "production";
   const analyze = env.ANALYZE === "true";
+  // BUILD_FAST=1：本地看效果专用。跳过压缩与 PWA 预缓存，并放开 Rollup 并发，
+  // 产物功能一致、体积更大，只用于 dev/8088 预览，发布前请跑标准 build。
+  const fast = process.env.BUILD_FAST === "1";
   // Dev server defaults to Vite's :5173. Override with VITE_DEV_PORT (e.g. 80
   // for LAN / same-origin setups). Must stay in sync with server.hmr.clientPort.
   const devServerPort = Number(process.env.VITE_DEV_PORT || 5173);
@@ -88,6 +68,7 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    base: viteBase,
     build: {
       outDir: path.resolve(__dirname, "../src/octop/dashboard"),
       emptyOutDir: true,
@@ -169,9 +150,13 @@ export default defineConfig(({ mode }) => {
       MOBILE: false,
     },
     plugins: [
+      monacoSameOrigin(__dirname),
       suppressViteDisconnectReload(),
       react(),
+      svgr(),
       VitePWA({
+        // fast 模式不生成 Service Worker，省掉 workbox 扫描与打包。
+        disable: fast,
         // prompt: new SW stays in waiting until the user accepts via
         // PwaUpdatePrompt → applyUpdate() → SKIP_WAITING. Avoid autoUpdate
         // skipWaiting + page reload loops (especially Safari/WebKit).
@@ -192,6 +177,9 @@ export default defineConfig(({ mode }) => {
           "apple-touch-icon.png",
         ],
         workbox: {
+          // Notification clicks are handled here. The production worker must
+          // not skipWaiting; notify-sw.js only does that when it is the worker.
+          importScripts: ["notify-sw.js"],
           // Precache hashed entry + vendor chunks. Do NOT precache index.html:
           // Cache-First on the shell pins a stale HTML that points at deleted
           // hashes after deploy (white screen until a hard refresh).

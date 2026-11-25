@@ -15,6 +15,10 @@ described in [Chat (WebSocket)](#chat-websocket).
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |
 
 Tokens expire after `OCTOP_ACCESS_TOKEN_TTL` seconds (default 24 h).
+An authenticated request renews the token once less than two-thirds of that
+lifetime remains, so active use extends the session from the last renewal.
+Changing the password invalidates outstanding tokens; the change-password
+response returns a replacement in `X-Octop-Access-Token`.
 Rotating the JWT secret (`octop admin rotate-jwt-secret`) invalidates
 every outstanding token immediately. Login attempts are rate-limited
 (`OCTOP_LOGIN_MAX_ATTEMPTS` / `OCTOP_LOGIN_LOCKOUT_SECONDS`); the
@@ -33,7 +37,7 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
-`/api/auth/ldap/status`,
+`/api/auth/ldap/status`, `/api/auth/passkey/status`,
 `/api/connectors/oauth/callback`, and `/api/internal/mcp/*`. All other routes are JWT-gated by
 `api/middleware/jwt_auth.py`; the setup lockdown middleware
 (`api/middleware/setup_lockdown.py`) additionally blocks non-setup
@@ -96,13 +100,14 @@ does not set these headers itself.
 | `PUT`    | `/auth/oauth/providers/{kind}` | admin | Upsert provider config; `client_secret` is write-only; WeCom uses `extra.agent_id` |
 | `POST`   | `/auth/oauth/providers/{kind}/test` | admin | Test provider credentials |
 | `GET`    | `/auth/ldap/status` | public | `{enabled, display_name}` for the login page hint |
+| `GET`    | `/auth/passkey/status` | public | `{passwordless_login}` — whether the login page offers “Sign in with a passkey”. Default `false` until an admin enables it |
 | `GET`    | `/auth/ldap/config` | admin | Directory settings; `bind_password` is never returned (`has_bind_password` instead) |
 | `PUT`    | `/auth/ldap/config` | admin | Upsert directory settings; `bind_password` is write-only (omit to keep the stored one) |
 | `POST`   | `/auth/ldap/config/test` | admin | Service bind + probe of `user_base_dn` → `{ok, detail}` |
 | `POST`   | `/auth/logout` | user | `204` |
 | `GET`    | `/auth/me` | user | `{id, username, role, display_name, locale, ...}` |
 | `PATCH`  | `/auth/me` | user | body `{display_name?, locale?, ...}` |
-| `POST`   | `/auth/change-password` | user | body `{old_password, new_password}` → `204`. Accounts without a local password (directory/SSO-provisioned) get `PASSWORD_NOT_SET` |
+| `POST`   | `/auth/change-password` | user | body `{old_password, new_password}` → `204`, with a replacement access token in `X-Octop-Access-Token`. Outstanding tokens stop working. Accounts without a local password (directory/SSO-provisioned) get `PASSWORD_NOT_SET` |
 | `GET`    | `/health` | public | `{status: "ok", version}` |
 
 ## Users (admin)
@@ -121,7 +126,7 @@ does not set these headers itself.
 
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
-| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, ...}]` |
+| `GET`    | `/agents` | user | `[{id, agent_id, name, persona_mbti, state, unread_count, last_active, ...}]` — `last_active` is this user's latest thread touch (unix seconds), or `null` |
 | `POST`   | `/agents` | user | body `{name, persona_mbti?, default_model?, system_prompt?, description?, icon?, template_name?, config?}` → `201` |
 | `GET`    | `/agents/{id}` | owner | full agent row |
 | `PATCH`  | `/agents/{id}` | owner | body subset of create body |
@@ -136,13 +141,32 @@ does not set these headers itself.
 | `PUT`    | `/agents/{id}/tool-settings` | owner | body `{disabled_builtin: string[], plugins?}` — persists denylist + plugin flags (hot-sync, no reload) |
 | `PATCH`  | `/agents/{id}/tool-settings/{tool_name}` | owner | body `{enabled, source, plugin_id?}` — toggle one tool (hot-sync) |
 
+Create and patch accept the same per-expert runtime fields the dashboard shows
+under advanced options (`max_iters`, sampling, `compaction`, tool-call limit,
+model retry, tool retry). They are stored on the agent and returned as
+top-level fields, not inside `config`. Omit a field to keep its default;
+send `null` to clear a stored override.
+
+Tool calls in one user turn default to 40 (`tool_call_run_limit`). Reaching
+the cap ends that turn. `tool_call_limit_enabled: false` removes the cap.
+Model retry defaults to on, 2 extra attempts, 1s–60s, and fails the turn when
+exhausted. Tool retry defaults to on, 5 extra attempts, 1s–60s, and only
+retries a tool that raises; the error is then handed back to the model.
+These middleware settings apply the next time the expert starts.
+
 ## Skills and skill packages
 
 Skill copy operations create snapshots; they do not keep the source and
 destination synchronized after the request completes.
 
+Packages default to private (`shared=false`): only the creator (and admins) can
+list or open them. When `shared=true`, other users with the `skill_packages`
+permission can view and mount them; only the creator/admin can edit. `copy_policy`
+and `allow_download` still apply to users who can already view the package.
+
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
+| `GET` | `/skill-packages` | user (`skill_packages`) | Own packages + shared packages; admins see all |
 | `GET` | `/skill-packages?writable_only=true` | user (`skill_packages`) | List only packages the current user may modify; admins may modify all packages |
 | `POST` | `/agents/{id}/skill-packages/{package_id}/copy` | owner (`skill_packages`) | body `{skill_slugs: string[], overwrite?: boolean}`; copy selected package skills into the workspace |
 | `POST` | `/agents/{id}/skills/{slug}/push-to-package` | owner (`skill_packages`) | body `{package_id, overwrite?: boolean}`; copy a workspace skill into a package created by the user (or any package for admins) |
@@ -153,7 +177,8 @@ destination synchronized after the request completes.
 |------|------|-------|
 | `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` plus a `steer.queue_snapshot` baseline (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn and discards its queued steers (explicit stop; disconnect alone does **not** cancel). See [Mid-turn steering](#mid-turn-steering) for steer frames. |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
-| `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
+| `POST /text/assist` | JWT | Unified polish/generate: body `{kind, text?, context?, locale?, default_model?, agent_id?}` → `{text}`. Form kinds require `context.name`; `chat.prompt` requires `text`. Model defaults to automatic routing. |
+| `POST /agents/{id}/chat/polish` | owner | **Deprecated** compat alias for `POST /text/assist` with `kind=chat.prompt` |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
 
 Model calls retain LangChain's default retry eligibility and the configured
@@ -255,6 +280,8 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 | `GET`    | `/settings/hitl` | user | `{enabled, tool_guard_require_approval, show_approval_ui}` — `show_approval_ui` is true when tool HITL is on or command guard is `require_approval` |
 | `GET`    | `/settings/captcha` | `captcha` | `{active, available, providers, source, v3_min_score}`; secrets omitted |
 | `PUT`    | `/settings/captcha` | `captcha` | merge `{active?, providers?}`; empty secret keeps ciphertext; `null` removes a pair |
+| `GET`    | `/settings/webauthn` | `captcha` | `{rp_id, origins, passwordless_login}`; `passwordless_login` defaults to `false` |
+| `PUT`    | `/settings/webauthn` | `captcha` | merge `{rp_id?, origins?, passwordless_login?}`; omitted fields keep the stored value |
 | `GET`    | `/cron/settings` | user | compat alias of `/settings/timezone` |
 | `GET`    | `/agents/{aid}/cron/examples` | agent access | `{task_examples}` from workspace `.octop/manifest.json` (`{zh,en}` string arrays, display-normalized to 3 or 6); `null` if the field is absent (dashboard keeps default cards). Prefer `GET /agents/{aid}/chat/welcome` which includes the same field. |
 | `GET`    | `/agents/{aid}/cron` | owner only | list cron rows; non-owners (including admin) get `[]` |
@@ -268,9 +295,16 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 `"agent"` (run the prompt through the LLM and push the reply).
 Default: `"agent"`. `trigger` accepts cron expressions
 (`"0 9 * * *"`) plus the `interval:N` / `date:ISO8601` aliases
-documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
-≤ 2000 characters. `name` is an optional display label; when omitted,
-the server derives one from `prompt`.
+documented in `infra/cron/trigger.py`. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails; the row stays
+in the list. If the process is down for more than 24 hours past that
+time and the job never ran, `last_status` is `missed` and the job is
+disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
+an optional display label; when omitted, the server derives one from
+`prompt`. `session_key` omitted or `latest` uses the owner's Dashboard
+channel and, on each run, that channel's most recent conversation.
+`thread:{thread_id}` pins the job to that conversation. `fresh_thread`
+starts a new conversation on the channel and ignores the history pin.
 
 ## Providers
 
@@ -281,6 +315,8 @@ the server derives one from `prompt`.
 | `PATCH`  | `/providers/{id}` | owner | body subset → updated row |
 | `DELETE` | `/providers/{id}` | owner | `204` (refuses if any agent references it) |
 | `POST`   | `/providers/{id}/test` | user | `{ok, latency_ms?, error?}` (one-token ping with 10 s timeout) |
+| `GET`    | `/admin/providers/magpie/discovery` | providers | Local Magpie hello on the Octop host. `{available, base_url, version}`. Misses stay `available: false` and omit the upstream body. No URL parameter. |
+| `POST`   | `/admin/providers/fetch-models` | providers | OpenAI-compatible `GET /models` for a draft. Magpie responses keep model ids and optional capability fields. |
 | `POST`   | `/admin/providers` | admin | same body as user POST; row has `user_id = NULL` |
 | `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
 | `DELETE` | `/admin/providers/{id}` | admin | `204` |
@@ -355,6 +391,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
 | `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
+| `GET`    | `/agents/{aid}/workspace/mention-index` | owner | bounded `@` file names via the workspace backend (`truncated` when capped; short cache) |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
 | `GET`    | `/agents/{aid}/workspace/...` | owner | see `api/routers/workspace.py` |
@@ -374,6 +411,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
+| `GET`/`PUT` | `/agents/{aid}/memory/extract-config` | owner/admin | Read/update memory runtime and extraction options; omitted fields retain their stored values |
 | `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
 | `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
 | `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |
@@ -381,6 +419,13 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+The extraction-config API accepts independent `memory_capture_enabled` and
+`memory_recall_inject_enabled` booleans. Both default to `true`: set the first to
+`false` to stop automatic conversation-event capture, or the second to `false` to
+stop automatically injecting recalled memory into model context. These switches
+do not disable explicit memory tools. Check `supported_call_options` before using
+them with an older harness; unsupported options are not forwarded to its config.
 
 ### Manual document reconciliation
 
@@ -459,6 +504,9 @@ this gate at production: it creates test namespaces and a temporary failure trig
 |--------|------|------|-------|
 | `GET`    | `/acp` | user | current user's global runner list |
 | `PUT`    | `/acp` | user | replace global runners |
+| `POST`   | `/acp/probe` | admin | probe command + ACP initialize; returns host install script and Octop prompt |
+| `POST`   | `/acp/ask` | admin | send `who are you?` over ACP and return the reply text |
+| `POST`   | `/acp/install` | admin | best-effort install of a built-in runner, then probe again |
 | `GET`    | `/acp/{runner_name}` | user | one runner |
 | `PUT`    | `/acp/{runner_name}` | user | upsert one runner |
 | `DELETE` | `/acp/{runner_name}` | user | delete a custom runner (built-ins are protected) |
@@ -516,10 +564,34 @@ for non-`/` paths.
 | `GET`    | `/connectors/oauth/pending/{state_id}` | user | poll the OAuth result |
 
 Custom MCP OAuth (streamable HTTP, public HTTPS URL only): Octop discovers the authorization
-server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires dynamic client
-registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
+server from the MCP URL (401 / RFC 9728 protected-resource metadata), registers a client
+dynamically (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
 Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
 discovery.
+
+When the authorization server has no DCR, the probe answers `oauth.client_required: true` and the
+server needs a pre-registered client in its spec:
+
+```json
+{
+  "transport": "streamable_http",
+  "url": "https://mcp.example.com/mcp",
+  "oauth_client": {
+    "client_id": "…",
+    "client_secret": "…",
+    "scope": "read write",
+    "authorization_endpoint": "https://auth.example.com/authorize",
+    "token_endpoint": "https://auth.example.com/token"
+  }
+}
+```
+
+Only `client_id` is required. `client_secret` is write-only: responses carry
+`has_client_secret` instead, and omitting the field on save keeps the stored secret. `scope`
+overrides the scopes the server advertises. The two endpoints go together and replace discovery,
+for servers that publish no metadata; both must be public HTTPS URLs. Register
+`<public base>/api/connectors/oauth/callback` as the redirect URI of the OAuth app. Changing
+the client drops the stored tokens, so the server asks for authorization again.
 
 ## Internal MCP (octop-harness agents)
 

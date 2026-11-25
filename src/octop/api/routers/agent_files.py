@@ -46,7 +46,7 @@ from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.memory_client import call_memory_rpc
 from octop.api.common.workspace import require_agent_workspace, require_running_workspace
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class UserProfileFile(UserProfileBody):
 async def get_strong_memory(
     agent_id: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> StrongMemoryFile:
     ws = await require_agent_workspace(
@@ -105,7 +105,7 @@ async def put_strong_memory(
     agent_id: str,
     body: StrongMemoryBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> StrongMemoryFile:
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
@@ -124,7 +124,7 @@ async def put_strong_memory(
 async def get_user_profile(
     agent_id: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> UserProfileFile:
     ws = await require_agent_workspace(
@@ -146,7 +146,7 @@ async def put_user_profile(
     agent_id: str,
     body: UserProfileBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> UserProfileFile:
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
@@ -176,7 +176,7 @@ class ManualMemoryReview(BaseModel):
 async def review_manual_memory(
     agent_id: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> ManualMemoryReview:
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
@@ -193,7 +193,7 @@ async def review_manual_memory(
 async def get_manual_memory_review(
     agent_id: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> ManualMemoryReview:
     ws = await require_agent_workspace(
@@ -309,7 +309,7 @@ def _validate_filename(filename: str) -> str:
 async def list_daily_memory(
     agent_id: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     rt = _resolve_runtime(agent_id, user=user, as_user=as_user, server=server)
@@ -350,7 +350,7 @@ async def read_daily_memory(
     agent_id: str,
     filename: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     date = _validate_filename(filename)
@@ -368,7 +368,7 @@ async def delete_daily_memory(
     agent_id: str,
     filename: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("memory")),
     server: Any = Depends(get_server),
 ) -> Response:
     _validate_filename(filename)

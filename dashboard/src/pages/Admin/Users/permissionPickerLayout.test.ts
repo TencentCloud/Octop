@@ -5,22 +5,48 @@ const CATALOG = [
   "experts",
   "tasks",
   "token_usage",
+  "skills",
+  "skill_builtin",
+  "skill_market",
+  "subagents",
+  "tools",
+  "agent_plugins",
+  "mbti",
+  "memory",
   "channels",
-  "connectors",
+  "connector_enabled",
+  "connector_builtin",
+  "connector_custom",
   "skill_packages",
   "knowledge_bases",
+  "bridge",
   "terminal",
   "browser",
+  "cloud",
   "desktop",
   "mobile",
   "users",
-  "sso",
+  "user_roles",
+  "user_groups",
+  "sso_feishu",
+  "sso_wecom",
+  "sso_dingtalk",
+  "sso_oidc",
+  "sso_ldap",
+  "app_config",
   "providers",
   "ollama_models",
   "onnx_models",
+  "model_generation",
+  "model_decision",
   "storage_backends",
   "plugins",
-  "security",
+  "plugin_market",
+  "security_hitl",
+  "security_filesystem",
+  "security_pii",
+  "security_tool_guard",
+  "security_skill_scan",
   "admin_console",
   "envs",
   "search",
@@ -84,13 +110,41 @@ describe("buildPermissionPickerGroups", () => {
         blocks: [
           {
             kind: "chips",
-            keys: ["channels", "connectors", "skill_packages"],
+            keys: [
+              "skills",
+              "skill_builtin",
+              "skill_market",
+              "subagents",
+              "tools",
+              "agent_plugins",
+              "mbti",
+              "memory",
+              "channels",
+            ],
+          },
+          {
+            kind: "page",
+            id: "connectors",
+            title: "nav.connectors",
+            keys: [
+              "connector_enabled",
+              "connector_builtin",
+              "connector_custom",
+            ],
+          },
+          {
+            kind: "chips",
+            keys: ["skill_packages"],
           },
           {
             kind: "page",
             id: "knowledge-bases",
             title: "nav.knowledgeBases",
             keys: ["knowledge_bases", "knowledge_settings"],
+          },
+          {
+            kind: "chips",
+            keys: ["bridge"],
           },
         ],
       },
@@ -102,7 +156,7 @@ describe("buildPermissionPickerGroups", () => {
             kind: "page",
             id: "workbench",
             title: "nav.workbench",
-            keys: ["terminal", "browser"],
+            keys: ["terminal", "browser", "cloud"],
           },
           {
             kind: "page",
@@ -120,7 +174,16 @@ describe("buildPermissionPickerGroups", () => {
             kind: "page",
             id: "admin-users",
             title: "nav.adminUsers",
-            keys: ["users", "sso"],
+            keys: [
+              "users",
+              "user_roles",
+              "user_groups",
+              "sso_feishu",
+              "sso_wecom",
+              "sso_dingtalk",
+              "sso_oidc",
+              "sso_ldap",
+            ],
           },
           {
             kind: "page",
@@ -130,16 +193,31 @@ describe("buildPermissionPickerGroups", () => {
               "providers",
               "ollama_models",
               "onnx_models",
-              "search",
+              "model_generation",
               "voice",
+              "model_decision",
+              "search",
             ],
           },
-          { kind: "chips", keys: ["storage_backends", "plugins"] },
+          { kind: "chips", keys: ["storage_backends"] },
+          {
+            kind: "page",
+            id: "admin-plugins",
+            title: "nav.adminPlugins",
+            keys: ["plugins", "plugin_market"],
+          },
           {
             kind: "page",
             id: "admin-security",
             title: "nav.security",
-            keys: ["security", "admin_console"],
+            keys: [
+              "security_hitl",
+              "security_filesystem",
+              "security_pii",
+              "security_tool_guard",
+              "security_skill_scan",
+              "admin_console",
+            ],
           },
           {
             kind: "page",
@@ -152,6 +230,7 @@ describe("buildPermissionPickerGroups", () => {
               "tls",
               "captcha",
               "update",
+              "app_config",
             ],
           },
         ],
@@ -194,15 +273,65 @@ describe("buildPermissionPickerGroups", () => {
       "providers",
       "users",
       "storage_backends",
-      "security",
+      "plugins",
+      "security_hitl",
       "envs",
     ]);
     expect(groups[3]?.blocks[0]).toMatchObject({
-      keys: ["connectors", "skill_packages"],
+      kind: "chips",
+      keys: [
+        "skills",
+        "skill_builtin",
+        "skill_market",
+        "subagents",
+        "tools",
+        "agent_plugins",
+        "mbti",
+        "memory",
+      ],
     });
     expect(
       groups[4]?.blocks.map((block) => ("id" in block ? block.id : "")),
     ).toEqual(["workbench", "remote-desktop"]);
+  });
+
+  it("keeps personalization tabs with channels in the user's nav group", () => {
+    const groups = summarize({
+      groups: [
+        { id: "c_abcdef01", name: "常用" },
+        { id: "settings", name: "配置" },
+      ],
+      items: [
+        { key: "personalization", group: "c_abcdef01" },
+        { key: "channels", group: "c_abcdef01" },
+        { key: "connectors", group: "settings" },
+      ],
+    });
+    expect(groups.find((group) => group.id === "other")).toBeUndefined();
+    expect(groups.find((group) => group.id === "c_abcdef01")?.blocks).toEqual([
+      {
+        kind: "chips",
+        keys: [
+          "skills",
+          "skill_builtin",
+          "skill_market",
+          "subagents",
+          "tools",
+          "agent_plugins",
+          "mbti",
+          "memory",
+          "channels",
+        ],
+      },
+    ]);
+    expect(
+      groups
+        .find((group) => group.id === "settings")
+        ?.blocks.some(
+          (block) =>
+            block.kind === "page" && block.keys.includes("connector_enabled"),
+        ),
+    ).toBe(true);
   });
 
   it("puts an unmapped permission in Other", () => {

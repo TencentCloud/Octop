@@ -29,6 +29,40 @@ function renderEditor(models: ProviderModel[]) {
 }
 
 describe("ModelListEditor", () => {
+  it("labels embedding and rerank models imported from a mixed catalog", () => {
+    renderEditor([
+      {
+        id: "BAAI/bge-large-zh-v1.5",
+        name: "Large",
+        enabled: true,
+        embedding: true,
+      },
+      { id: "BAAI/bge-m3", name: "M3", enabled: true },
+      { id: "BAAI/bge-reranker-v2-m3", name: "Reranker", enabled: true },
+    ]);
+    expect(screen.getAllByText("models.embeddingOnlyTag")).toHaveLength(2);
+    expect(screen.getByText("models.rerankOnlyTag")).toBeInTheDocument();
+  });
+
+  it("shows protocol fallback after selecting Responses", async () => {
+    const user = userEvent.setup();
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    renderEditor([
+      { id: "deepseek-chat", name: "DeepSeek Chat", enabled: true },
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "models.editModel" }));
+    await user.click(screen.getByText("models.apiModeChatCompletions"));
+    await user.click(await screen.findByText("models.apiModeResponses"));
+
+    expect(screen.getByText("models.apiFallback")).toBeInTheDocument();
+    expect(screen.getByText("models.apiFallbackNone")).toBeInTheDocument();
+  });
+
   it("scrolls to the edit form after clicking edit", async () => {
     const user = userEvent.setup();
     const scrollIntoView = vi.fn();

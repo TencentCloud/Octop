@@ -16,6 +16,7 @@ USER_TURN_WS_KEYS = frozenset(
         "reasoning_mode",
         "reasoning_effort",
         "conversation_mode",
+        "session_mode",
         "hitl_policy",
         "mcp_servers",
         "knowledge_base_ids",
@@ -46,7 +47,7 @@ def peer_turn_relay_finished(frame_type: str) -> bool:
 
 class PreparedPeerTurnLike(Protocol):
     thread_id: str
-    inbound: Any
+    inbound: Any  # ``None`` when the turn was admitted as a mid-turn steer.
 
 
 class PeerTurnRunner(Protocol):

@@ -1,13 +1,16 @@
-"""Bundled plugin tree must be complete enough for marketplace install and UI."""
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
+import pytest
+
+import octop.infra.market.http as market_http
 from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.plugins.seed import seed_bundled_plugins
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.market import PortalMarketError, clear_market_cache
 
 
 def _catalog_ids() -> set[str]:
@@ -21,15 +24,8 @@ def _catalog_ids() -> set[str]:
     return found
 
 
-def test_bundled_plugin_dirs_have_manifest_and_ui() -> None:
-    root = default_bundled_plugins_root()
-    found = _catalog_ids()
-    assert found, "expected at least one catalog plugin"
-    for name in found:
-        child = root / name
-        assert (child / "main.py").is_file(), child
-        assert (child / "ui" / "index.js").is_file(), child
-        assert (child / "ui" / "manifest.json").is_file(), child
+def test_in_tree_plugin_catalog_is_empty() -> None:
+    assert _catalog_ids() == set()
 
 
 def test_seed_does_not_auto_install_real_catalog(tmp_path: Path) -> None:
@@ -44,34 +40,61 @@ def test_seed_does_not_auto_install_real_catalog(tmp_path: Path) -> None:
     assert list(plugins_dir.iterdir()) == [] if plugins_dir.exists() else True
 
 
-def test_market_install_copies_from_catalog(tmp_path: Path) -> None:
+def test_install_path_copies_fixture_plugin(tmp_path: Path) -> None:
     plugins_dir = tmp_path / "plugins"
     config_path = tmp_path / "config.json"
     mgr = PluginManager(plugins_dir=plugins_dir, config_path=config_path)
-    catalog = mgr.list_market()
-    assert catalog
-    sample = next(item for item in catalog if not item.get("error"))
-    plugin_id = str(sample["id"])
-    loaded = mgr.install_from_market(plugin_id)
-    assert loaded.manifest.id == plugin_id
-    assert (plugins_dir / plugin_id / "plugin.yaml").is_file()
-    raw = json.loads(config_path.read_text(encoding="utf-8"))
-    assert raw["plugins"][plugin_id]["enabled"] is True
-    market = mgr.list_market()
-    row = next(item for item in market if item.get("id") == plugin_id)
-    assert row["installed"] is True
-    assert row["update_available"] is False
+    sample = Path(__file__).resolve().parents[1] / "fixtures" / "plugins" / "echo-tool"
+    loaded = mgr.install_path(sample)
+    assert loaded.manifest.id == sample.name
+    assert (plugins_dir / sample.name / "plugin.yaml").is_file()
 
 
-def test_offline_bundled_plugins_load() -> None:
-    from octop_harness.plugins import PluginRegistry, load_plugin_dir
+def test_list_market_does_not_fall_back_to_bundled_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
+    clear_market_cache()
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=tmp_path / "config.json")
+    with pytest.raises(OctopError) as raised:
+        mgr.list_market()
+    assert raised.value.code is ErrorCode.PLUGIN_MARKET_FAILED
 
-    PluginRegistry.reset()
-    root = default_bundled_plugins_root()
-    try:
-        for name in ("fortune", "pomodoro", "mini-games", "qrcode", "tetris"):
-            loaded = load_plugin_dir(root / name, install_deps=False)
-            assert loaded.manifest.id == name
-            assert loaded.tools
-    finally:
-        PluginRegistry.reset()
+
+def test_list_market_network_failure_is_not_a_market_outage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
+    clear_market_cache()
+
+    def fake_fetch(url: str, *, limit: int) -> bytes:
+        del url, limit
+        raise PortalMarketError("unreachable: down", network=True)
+
+    monkeypatch.setattr(market_http, "fetch_bytes", fake_fetch)
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=tmp_path / "config.json")
+    with pytest.raises(OctopError) as raised:
+        mgr.list_market()
+    assert raised.value.code is ErrorCode.NETWORK_ERROR
+
+
+def test_install_from_market_does_not_copy_bundled_plugin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
+    clear_market_cache()
+
+    def fake_fetch(url: str, *, limit: int) -> bytes:
+        del url, limit
+        return json.dumps({"success": True, "data": {"items": []}}).encode()
+
+    monkeypatch.setattr(market_http, "fetch_bytes", fake_fetch)
+    plugins_dir = tmp_path / "plugins"
+    mgr = PluginManager(plugins_dir=plugins_dir, config_path=tmp_path / "config.json")
+    with pytest.raises(OctopError) as raised:
+        mgr.install_from_market("fortune")
+    assert raised.value.code is ErrorCode.NOT_FOUND
+    assert not (plugins_dir / "fortune").exists()

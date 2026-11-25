@@ -16,6 +16,7 @@ from octop.infra.agents.memory.thread_cleanup import (
     delete_agent_memory_and_checkpoints,
     delete_stored_thread,
     gc_orphan_checkpoints,
+    runtime_memory_namespace,
     sqlite_freelist_bytes,
 )
 from octop.infra.db.migrate import run_migrations
@@ -24,6 +25,13 @@ from octop.infra.db.services import build_shared_services
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+
+
+def test_runtime_memory_namespace_keeps_the_oldest_store() -> None:
+    peers = [("Foo-Bar", 10, 1), ("foo_bar", 20, 2)]
+    assert runtime_memory_namespace("Foo-Bar", peers) == "agent_Foo-Bar"
+    assert runtime_memory_namespace("foo_bar", peers) == "agent_foo_bar_2"
+    assert runtime_memory_namespace("solo", [("solo", 1, 3)]) == "agent_solo"
 
 
 def _services(tmp_path: Path):
@@ -137,6 +145,65 @@ def test_thread_delete_clears_sqlite_file_outside_active_workspace(tmp_path: Pat
     assert _checkpoint_count(other, "thr_side") == 0
 
 
+def test_thread_delete_removes_file_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.file_checkpoints import save_checkpoints
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    workspace = paths.agent_workspace("Ab1")
+    workspace.mkdir(parents=True)
+    save_checkpoints(
+        paths.root,
+        "Ab1",
+        "thr_gone",
+        "msg",
+        [{"path": "a.md", "before": None, "after": "x"}],
+    )
+
+    from octop.infra.agents.memory.thread_cleanup import delete_thread_from_agent_stores
+
+    delete_thread_from_agent_stores(
+        agent_id="Ab1",
+        thread_id="thr_gone",
+        cfg={"workspace_dir": str(workspace)},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        paths=paths,
+    )
+
+    assert not (paths.root / "file_checkpoints" / "Ab1" / "thr_gone").exists()
+
+
+def test_agent_delete_removes_file_checkpoints(tmp_path: Path) -> None:
+    from octop.infra.agents.file_checkpoints import save_checkpoints
+    from octop.infra.utils.paths import PathLayout
+
+    paths = PathLayout(tmp_path / ".octop")
+    paths.ensure_root()
+    workspace = paths.agent_workspace("Ab1")
+    workspace.mkdir(parents=True)
+    for thread_id in ("thr_a", "thr_b"):
+        save_checkpoints(
+            paths.root,
+            "Ab1",
+            thread_id,
+            "msg",
+            [{"path": "a.md", "before": None, "after": "x"}],
+        )
+
+    delete_agent_memory_and_checkpoints(
+        agent_id="Ab1",
+        thread_ids={"thr_a", "thr_b"},
+        cfg={"workspace_dir": str(workspace)},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        paths=paths,
+    )
+
+    assert not (paths.root / "file_checkpoints" / "Ab1").exists()
+
+
 def test_delete_agent_drops_its_namespace_and_checkpoints(tmp_path: Path) -> None:
     workspace = tmp_path / "ws"
     db_path = workspace / "memory.sqlite"
@@ -221,6 +288,30 @@ def test_delete_stored_thread_failure_raises(
     assert _checkpoint_count(workspace / "memory.sqlite", "thr_keep") == 1
 
 
+def test_delete_only_skips_incremental_vacuum(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "ws"
+    db_path = workspace / "memory.sqlite"
+    _seed_checkpoint(db_path, "thr_only")
+
+    def _boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("delete-only must not vacuum")
+
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.nudge_vacuum", _boom)
+    monkeypatch.setattr("octop_memory.pipeline.lifecycle.vacuum.compact_vacuum", _boom)
+
+    delete_stored_thread(
+        agent_id="ag1",
+        thread_id="thr_only",
+        cfg={},
+        octop_config=OctopConfig(),
+        workspace_dir=workspace,
+        reclaim=False,
+    )
+    assert _checkpoint_count(db_path, "thr_only") == 0
+
+
 def test_reclaim_failure_still_deletes_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -275,7 +366,7 @@ def test_gc_orphans_reports_then_deletes(tmp_path: Path) -> None:
         _seed_checkpoint(db_path, "thr_live", b"live")
         _seed_checkpoint(db_path, "thr_orphan", b"orphan-bytes")
 
-        reported = gc_orphan_checkpoints(services, agent_id="ag1", apply=False)
+        reported = gc_orphan_checkpoints(services, agent_id="ag1", apply=False).orphans
         assert [item.thread_id for item in reported] == ["thr_orphan"]
         assert reported[0].nbytes == len(b"orphan-bytes")
         assert _checkpoint_count(db_path, "thr_orphan") == 1
@@ -376,3 +467,19 @@ def test_compact_rebuilds_sqlite_after_delete(tmp_path: Path) -> None:
         is True
     )
     assert sqlite_freelist_bytes(db_path) == 0
+
+
+def test_describe_sweep_mentions_postgres_leftovers_and_skipped_databases() -> None:
+    from octop.infra.agents.memory.thread_cleanup import describe_sweep
+
+    base = {"namespaces": 0, "threads": 2, "directories": 0}
+    assert describe_sweep(base, "en").count("\n") == 0
+
+    text = describe_sweep(
+        {**base, "postgres_kept": {"threads": 3, "namespaces": 1}, "skipped_databases": 2},
+        "en",
+    )
+    lines = text.splitlines()
+    assert len(lines) == 3
+    assert "3 checkpoint threads" in lines[1]
+    assert "2 external PostgreSQL" in lines[2]

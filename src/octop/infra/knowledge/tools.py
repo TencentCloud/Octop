@@ -9,7 +9,7 @@ from langchain_core.tools import StructuredTool
 from langgraph.config import get_config
 from pydantic import Field
 
-from octop.infra.knowledge.retrieve import DEFAULT_RETRIEVAL_K, retrieve_context
+from octop.infra.knowledge.retrieve import retrieve_context
 
 SEARCH_KNOWLEDGE_TOOL = "search_knowledge"
 
@@ -68,6 +68,33 @@ def _tool_ctx() -> tuple[int, bool, list[str], str]:
     return user_id, is_admin, ids, locale
 
 
+class KnowledgeToolServices:
+    """Live repos and control-plane config for ``search_knowledge``.
+
+    Indexing selects pgvector from ``services.config``. The chat tool has to
+    read the same config, including after setup replaces it.
+    """
+
+    def __init__(self, manager: Any) -> None:
+        self._manager = manager
+
+    @property
+    def config(self) -> Any:
+        return self._manager._config
+
+    @property
+    def knowledge_repo(self) -> Any:
+        return self._manager._repos.knowledge_repo
+
+    @property
+    def settings_repo(self) -> Any:
+        return self._manager._repos.settings_repo
+
+    @property
+    def provider_repo(self) -> Any:
+        return self._manager._repos.provider_repo
+
+
 def build_knowledge_tools(services: Any) -> list[StructuredTool]:
     """Return built-in knowledge retrieval tools (wired via HarnessAgentConfig.tools)."""
 
@@ -83,13 +110,13 @@ def build_knowledge_tools(services: Any) -> list[StructuredTool]:
             ),
         ],
         k: Annotated[
-            int,
+            int | None,
             Field(
-                description="Max passages to return (default 8).",
+                description="Max passages to return. Defaults to the knowledge retrieval setting.",
                 ge=1,
                 le=20,
             ),
-        ] = DEFAULT_RETRIEVAL_K,
+        ] = None,
     ) -> str:
         try:
             user_id, is_admin, kb_ids, locale = _tool_ctx()

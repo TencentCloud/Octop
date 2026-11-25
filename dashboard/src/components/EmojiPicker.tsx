@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Input, Popover } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { SUBAGENT_EMOJI_OPTIONS } from "../utils/subagentEmojis";
 import styles from "./EmojiPicker.module.less";
 
@@ -55,7 +56,7 @@ export default function EmojiPicker({
               role="option"
               aria-selected={active}
               aria-label={emoji}
-              className={`${styles.option} ${active ? styles.active : ""}`}
+              className={cx(styles.option, active && styles.active)}
               onClick={() => {
                 onChange?.(emoji);
                 setOpen(false);

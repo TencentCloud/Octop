@@ -1,4 +1,6 @@
-import { getApiUrl } from "../config";
+import i18n from "../../i18n";
+import { requestStream } from "../request";
+import { apiErrorMessage } from "../../utils/apiError";
 import { request, getAuthToken } from "../request";
 
 export interface DesktopStatusResponse {
@@ -24,10 +26,9 @@ function streamDesktopSse(
   onDone: (success: boolean) => void,
 ): AbortController {
   const controller = new AbortController();
-  const url = getApiUrl(path);
   const token = getAuthToken();
 
-  fetch(url, {
+  requestStream(path, {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -35,10 +36,6 @@ function streamDesktopSse(
     signal: controller.signal,
   })
     .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onDone(false);
-        return;
-      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -78,8 +75,11 @@ function streamDesktopSse(
       }
       onDone(false);
     })
-    .catch(() => {
-      if (!controller.signal.aborted) onDone(false);
+    .catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        onLog(apiErrorMessage(error, "Request failed", i18n.t));
+        onDone(false);
+      }
     });
 
   return controller;

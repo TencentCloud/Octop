@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from octop.api.deps import require_permission
-from octop.infra.desktop.setup import apply_geometry, desktop_status, parse_geometry, read_geometry
+from octop.infra.control.desktop.setup import (
+    apply_geometry,
+    desktop_status,
+    parse_geometry,
+    read_geometry,
+)
 from octop.infra.users.identity import User
 
 router = APIRouter()

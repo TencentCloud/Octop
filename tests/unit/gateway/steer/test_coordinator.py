@@ -291,3 +291,44 @@ def test_admit_attachment_only_and_drain_blocks() -> None:
     assert isinstance(drained, DrainBundle)
     assert drained.text == ""
     assert drained.content_blocks == (block,)
+
+
+def test_blocks_other_sender_on_active_turn() -> None:
+    c = SteerCoordinator()
+    c.begin_turn("t1", user_id=1)
+    assert c.blocks_other_sender("t1", 2) is True
+    assert c.blocks_other_sender("t1", 1) is False
+    c.end_turn("t1")
+    assert c.blocks_other_sender("t1", 2) is False
+
+
+def test_team_followup_pins_after_host_turn_ends() -> None:
+    c = SteerCoordinator()
+    first, _, _ = c.begin_turn("room", user_id=1)
+    c.end_turn("room")
+    second, _, _ = c.begin_turn("room", user_id=2)
+    c.end_turn("room")
+    assert c.pin_room_followup("room") == second
+    assert first != second
+    assert c.blocks_other_sender("room", 1) is True
+    assert c.blocks_other_sender("room", 2) is False
+    c.release_room_followup("room", expect_wrapup=True)
+    assert c.blocks_other_sender("room", 1) is True
+    c.finish_room_followup("room")
+    assert c.blocks_other_sender("room", 1) is False
+
+
+def test_team_followup_keeps_other_senders_waiting() -> None:
+    c = SteerCoordinator()
+    turn_id, _, _ = c.begin_turn("room", user_id=1)
+    assert c.pin_room_followup("room") == turn_id
+    c.end_turn("room")
+    assert c.blocks_other_sender("room", 2) is True
+    assert c.blocks_other_sender("room", 1) is False
+    c.release_room_followup("room", expect_wrapup=True)
+    assert c.blocks_other_sender("room", 2) is True
+    assert c.room_followup_turn_id("room") == turn_id
+    wrap = c.pin_room_followup("room")
+    assert wrap == turn_id
+    c.release_room_followup("room")
+    assert c.blocks_other_sender("room", 2) is False

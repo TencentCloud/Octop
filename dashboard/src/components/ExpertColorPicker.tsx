@@ -1,8 +1,8 @@
 import { ColorPicker, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import type { AggregationColor } from "antd/es/color-picker/color";
+import cx from "classnames";
 import {
-  DEFAULT_CUSTOM_COLOR,
   DEFAULT_PALETTE,
   PALETTE_SWATCH,
   VALID_PALETTES,
@@ -34,7 +34,11 @@ export default function ExpertColorPicker({
   const curated = isCurated(resolved);
 
   return (
-    <div className={styles.picker} role="group" aria-label={t("experts.color")}>
+    <div
+      className={cx(styles.picker, styles.expertPicker)}
+      role="group"
+      aria-label={t("experts.color")}
+    >
       {VALID_PALETTES.map((key) => {
         const active = resolved === key;
         const label = t(`header.palette.${key}`);
@@ -42,7 +46,7 @@ export default function ExpertColorPicker({
           <Tooltip key={key} title={label} mouseEnterDelay={0.35}>
             <button
               type="button"
-              className={`${styles.option} ${active ? styles.active : ""}`}
+              className={cx(styles.option, active && styles.active)}
               aria-label={label}
               aria-pressed={active}
               onClick={() => onChange?.(key)}
@@ -58,7 +62,7 @@ export default function ExpertColorPicker({
       })}
       <Tooltip title={t("experts.customColor")} mouseEnterDelay={0.35}>
         <span
-          className={`${styles.option} ${!curated ? styles.active : ""}`}
+          className={cx(styles.option, !curated && styles.active)}
           aria-label={t("experts.customColor")}
           aria-pressed={!curated}
           role="button"
@@ -71,16 +75,13 @@ export default function ExpertColorPicker({
             disabledAlpha
           >
             <span
-              className={`${styles.swatch} ${styles.customSwatch}`}
+              className={cx(styles.swatch, styles.customSwatch)}
               style={!curated ? { backgroundColor: resolved } : undefined}
               aria-hidden
             />
           </ColorPicker>
         </span>
       </Tooltip>
-      {!curated && resolved !== DEFAULT_CUSTOM_COLOR && (
-        <span className={styles.customHex}>{resolved.toUpperCase()}</span>
-      )}
     </div>
   );
 }

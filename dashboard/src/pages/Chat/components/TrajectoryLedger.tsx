@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef } from "react";
+import cx from "classnames";
 import type { TrajectoryEvent } from "../../../api/modules/trajectory";
 import { laneForKind, toLedgerRow } from "../utils/trajectoryModel";
 import styles from "./TrajectoryLedger.module.less";
@@ -271,11 +272,12 @@ export default function TrajectoryLedger({
                     if (node) rowRefs.current.set(row.id, node);
                     else rowRefs.current.delete(row.id);
                   }}
-                  className={`${styles.row}${
-                    selected ? ` ${styles.rowSelected}` : ""
-                  }${row.isError ? ` ${styles.rowError}` : ""}${
-                    row.collapsedSummary ? ` ${styles.rowCollapsedSummary}` : ""
-                  }`}
+                  className={cx(
+                    styles.row,
+                    selected && styles.rowSelected,
+                    row.isError && styles.rowError,
+                    row.collapsedSummary && styles.rowCollapsedSummary,
+                  )}
                   data-kind={
                     row.collapsedSummary ? "collapsed-summary" : row.kind
                   }
@@ -322,9 +324,7 @@ export default function TrajectoryLedger({
                           </span>
                         ) : null}
                         <span
-                          className={`${styles.kindTag} ${kindTagClass(
-                            row.kind,
-                          )}`}
+                          className={cx(styles.kindTag, kindTagClass(row.kind))}
                           title={row.kindLabel}
                         >
                           <KindIcon kind={row.kind} />

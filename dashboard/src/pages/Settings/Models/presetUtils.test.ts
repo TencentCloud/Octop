@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  groupPresets,
+  isEmbeddingLaneProvider,
   isLocalProviderRow,
   isOllamaProviderRow,
   isOllamaRuntimeUrl,
@@ -14,6 +16,31 @@ describe("isOnnxProviderRow", () => {
     expect(isOnnxProviderRow({ name: "  ONNX (Local)  " })).toBe(true);
     expect(
       isOnnxProviderRow({ name: "My ONNX Cloud Proxy", api_key: "sk-x" }),
+    ).toBe(false);
+  });
+});
+
+describe("isEmbeddingLaneProvider", () => {
+  it("includes ONNX, purpose=embedding, and all-embedding model lists", () => {
+    expect(isEmbeddingLaneProvider({ name: "ONNX (Local)" })).toBe(true);
+    expect(
+      isEmbeddingLaneProvider({
+        name: "Embed API",
+        purpose: "embedding",
+        models: [],
+      }),
+    ).toBe(true);
+    expect(
+      isEmbeddingLaneProvider({
+        name: "legacy-embed",
+        models: [{ embedding: true }, { task: "embedding" }],
+      }),
+    ).toBe(true);
+    expect(
+      isEmbeddingLaneProvider({
+        name: "mixed",
+        models: [{ embedding: true }, { id: "gpt-4o" }],
+      }),
     ).toBe(false);
   });
 });
@@ -86,5 +113,26 @@ describe("looksLikeOllamaProvider", () => {
         base_url: "http://127.0.0.1:8000/v1",
       }),
     ).toBe(false);
+  });
+});
+
+describe("groupPresets", () => {
+  it("groups iflytek as a brand group even with a single variant", () => {
+    const result = groupPresets([
+      {
+        id: "iflytek-astron-token-plan",
+        name: "iFlytek Astron Token Plan",
+        provider_group: "iflytek",
+        provider_group_name: "iFlytek Astron",
+        provider_variant: "token_plan",
+        protocol: "openai",
+        base_url: "https://maas-token-api.cn-huabei-1.xf-yun.com/v2",
+        models: [],
+      },
+    ]);
+    expect(result.grouped).toHaveLength(1);
+    expect(result.grouped[0].groupKey).toBe("iflytek");
+    expect(result.grouped[0].groupName).toBe("iFlytek Astron");
+    expect(result.ungrouped).toHaveLength(0);
   });
 });

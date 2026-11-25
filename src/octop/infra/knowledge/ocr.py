@@ -28,7 +28,12 @@ _ENABLED_KEY = "knowledge_ocr_enabled"
 _BACKEND_KEY = "knowledge_ocr_backend"
 _MODEL_KEY = "knowledge_ocr_model"
 _PROVIDER_ID_KEY = "knowledge_ocr_provider_id"
-_LOCAL_PACKAGES = ("rapidocr>=3.4,<4", "onnxruntime>=1.17", "pymupdf>=1.24")
+_LOCAL_PACKAGES = (
+    "rapidocr>=3.4,<4",
+    "onnxruntime>=1.17",
+    "pymupdf>=1.24",
+    "shapely>=2.2.0",
+)
 _LOCAL_SPEC = PackageInstallSpec(packages=_LOCAL_PACKAGES, extra_fallback="knowledge-ocr")
 _PDF_SPEC = PackageInstallSpec(packages=("pymupdf>=1.24",), extra_fallback="knowledge-ocr")
 _OCR_PROMPT = (

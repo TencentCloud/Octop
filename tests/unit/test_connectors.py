@@ -210,7 +210,7 @@ def test_obsidian_cli_catalog_and_credentials(tmp_path: Path):
     assert entry.category == "knowledge"
     kinds = [item.kind for item in list_catalog()]
     assert kinds.index("obsidian-cli") < kinds.index("weknora")
-    assert kinds[-2:] == ["weknora", "dify"]
+    assert kinds[-4:] == ["weknora", "dify", "github", "gitea"]
 
     binary = tmp_path / "obsidian"
     binary.write_text("", encoding="utf-8")
@@ -987,6 +987,7 @@ def test_every_catalog_entry_has_category():
         "dify": "self_hosted",
         "yuandian": "professional",
         "qq-mail": "productivity",
+        "github": "professional",
     }
     for entry in list_catalog():
         assert entry.category in allowed, entry.kind
@@ -1275,6 +1276,64 @@ def test_probe_tencent_ardot_routes_to_streamable(monkeypatch: pytest.MonkeyPatc
     assert out["tools"][0]["name"] == "fetch_editor_state"
 
 
+def test_personal_token_github():
+    payload = validate_create_credentials(
+        "github",
+        {"token": "github_pat_example"},
+    )
+    assert payload["token"] == "github_pat_example"
+
+
+def test_build_github_remote_spec():
+    entry = get_catalog_entry("github")
+    assert entry is not None
+    assert entry.auth_kind == "personal_token"
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds={"token": "gh-token"},
+        config=OctopConfig(),
+    )
+    assert spec["transport"] == "http"
+    assert spec["url"] == "https://api.githubcopilot.com/mcp/"
+    assert spec["headers"]["Authorization"] == "Bearer gh-token"
+    assert spec["headers"]["Accept"] == "application/json, text/event-stream"
+
+
+def test_probe_github_routes_to_streamable(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    captured: dict[str, object] = {}
+
+    async def _fake(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["kind"] = kind
+        return {
+            "ok": True,
+            "tool_count": 1,
+            "tools": [{"name": "search_issues", "description": "Search issues"}],
+        }
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _fake)
+    entry = get_catalog_entry("github")
+    assert entry is not None
+
+    out = asyncio.run(
+        probe_connector(
+            entry,
+            {"token": "gh-token"},
+            instance_id="probe",
+            config=OctopConfig(),
+        )
+    )
+    assert captured["kind"] == "github"
+    assert captured["url"] == "https://api.githubcopilot.com/mcp/"
+    assert captured["headers"]["Authorization"] == "Bearer gh-token"
+    assert out["ok"] is True
+    assert out["tools"][0]["name"] == "search_issues"
+
+
 def test_oauth_ready_tencent_ardot():
     from octop.infra.connectors.oauth import oauth_ready_for_kind
 
@@ -1493,3 +1552,100 @@ def test_validate_mcp_servers_for_user(db: SqlitePool):
     assert repo.validate_mcp_servers_for_user(uid, [mcp_name]) == [mcp_name]
     with pytest.raises(ValueError):
         repo.validate_mcp_servers_for_user(uid, ["other"])
+
+
+def _insert_user(db: SqlitePool, username: str) -> int:
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, 0)",
+            (username, "h", "user"),
+        )
+        row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    return int(row["id"])
+
+
+def test_list_visible_reads_text_credential_beside_blob(db: SqlitePool) -> None:
+    repo = ConnectorRepo(db)
+    uid = _insert_user(db, "cred-reader")
+    token = "gAAAAAABq4JDGu-demo-text-token"
+    blob_id = new_ulid()
+    text_id = new_ulid()
+    repo.create(
+        instance_id=blob_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="blob",
+        mcp_server_name=mcp_server_name("tencent-docs", blob_id),
+    )
+    repo.create(
+        instance_id=text_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="text",
+        mcp_server_name=mcp_server_name("tencent-docs", text_id),
+    )
+    repo.upsert_credentials(instance_id=blob_id, blob=b"healthy-blob")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors SET credential_blob = ? WHERE instance_id = ?",
+            (token, text_id),
+        )
+        kind = conn.execute(
+            "SELECT typeof(credential_blob) FROM connectors WHERE instance_id = ?",
+            (text_id,),
+        ).fetchone()[0]
+    assert kind == "text"
+
+    rows = {row.instance_id: row for row in repo.list_visible(uid)}
+    assert rows[blob_id].credential_blob == b"healthy-blob"
+    assert rows[text_id].credential_blob == token.encode("utf-8")
+
+
+def test_migration_rewrites_text_credential_blob(db: SqlitePool) -> None:
+    repo = ConnectorRepo(db)
+    uid = _insert_user(db, "cred-repair")
+    token = "gAAAAAABq4JDGu-demo-text-token"
+    blob_id = new_ulid()
+    text_id = new_ulid()
+    repo.create(
+        instance_id=blob_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="blob",
+        mcp_server_name=mcp_server_name("tencent-docs", blob_id),
+    )
+    repo.create(
+        instance_id=text_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="text",
+        mcp_server_name=mcp_server_name("tencent-docs", text_id),
+    )
+    repo.upsert_credentials(instance_id=blob_id, blob=b"healthy-blob")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors SET credential_blob = ? WHERE instance_id = ?",
+            (token, text_id),
+        )
+
+    run_migrations(db)
+    run_migrations(db)
+
+    with db.connect() as conn:
+        text_row = conn.execute(
+            "SELECT typeof(credential_blob) AS kind, credential_blob "
+            "FROM connectors WHERE instance_id = ?",
+            (text_id,),
+        ).fetchone()
+        blob_row = conn.execute(
+            "SELECT typeof(credential_blob) AS kind, credential_blob "
+            "FROM connectors WHERE instance_id = ?",
+            (blob_id,),
+        ).fetchone()
+    assert text_row["kind"] == "blob"
+    assert text_row["credential_blob"] == token.encode("utf-8")
+    assert blob_row["kind"] == "blob"
+    assert blob_row["credential_blob"] == b"healthy-blob"
+    repaired = repo.get(text_id)
+    assert repaired is not None
+    assert repaired.credential_blob == token.encode("utf-8")

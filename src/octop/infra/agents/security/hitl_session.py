@@ -86,10 +86,9 @@ class HitlSessionPolicy:
         return {"mode": "ask"}
 
     def to_json(self) -> str | None:
-        data = self.to_dict()
-        if data.get("mode") == "ask":
-            return None
-        return json.dumps(data, ensure_ascii=False)
+        # Ask is stored too. An empty column means the thread never chose, so a
+        # managed expert can apply its own default on the next turn.
+        return json.dumps(self.to_dict(), ensure_ascii=False)
 
 
 def parse_hitl_session_policy(raw: object) -> HitlSessionPolicy:
@@ -183,16 +182,46 @@ def current_hitl_thread_id() -> str | None:
     return _CURRENT_HITL_THREAD.get()
 
 
+@contextmanager
+def ephemeral_hitl_policy(
+    store: HitlSessionPolicyStore | None,
+    thread_id: str | None,
+    policy: HitlSessionPolicy | object,
+) -> Iterator[None]:
+    """Apply *policy* for one run without writing ``threads.hitl_policy``.
+
+    A real :meth:`HitlSessionPolicyStore.set` that lands during the run is kept.
+    """
+    tid = (thread_id or "").strip()
+    if store is None or not tid:
+        yield
+        return
+    had = tid in store._cache
+    previous = store._cache.get(tid)
+    revision = store._rev.get(tid, 0)
+    store._cache[tid] = parse_hitl_session_policy(policy)
+    try:
+        yield
+    finally:
+        if store._rev.get(tid, 0) == revision:
+            if had and previous is not None:
+                store._cache[tid] = previous
+            else:
+                store._cache.pop(tid, None)
+
+
 class HitlSessionPolicyStore:
     """In-memory cache of thread bypass policy, persisted on ``threads.hitl_policy``."""
 
     def __init__(self, threads_repo: ThreadRepo | None = None) -> None:
         self._repo = threads_repo
         self._cache: dict[str, HitlSessionPolicy] = {}
+        self._rev: dict[str, int] = {}
 
     def replace_repo(self, threads_repo: ThreadRepo | None) -> None:
         self._repo = threads_repo
         self._cache.clear()
+        self._rev.clear()
 
     def get(self, thread_id: str) -> HitlSessionPolicy:
         tid = (thread_id or "").strip()
@@ -211,10 +240,37 @@ class HitlSessionPolicyStore:
         if not tid:
             return resolved
         self._cache[tid] = resolved
+        self._rev[tid] = self._rev.get(tid, 0) + 1
         repo = self._repo
         if repo is not None:
             repo.update_composer(tid, hitl_policy=resolved.to_json())
         return resolved
+
+    def revision(self, thread_id: str) -> int:
+        return self._rev.get((thread_id or "").strip(), 0)
+
+    def compare_set(
+        self,
+        thread_id: str,
+        policy: HitlSessionPolicy | object,
+        expected_revision: int,
+    ) -> bool:
+        """Write *policy* only when no later ``set`` has moved *thread_id*."""
+        tid = (thread_id or "").strip()
+        if not tid or self.revision(tid) != expected_revision:
+            return False
+        self.set(tid, policy)
+        return True
+
+    def reset_bypass(self, thread_id: str) -> None:
+        """Restore ask-every-time for one conversation and its loaded member threads."""
+        tid = (thread_id or "").strip()
+        if not tid:
+            return
+        self.set(tid, {"mode": "ask"})
+        prefix = f"{tid}~"
+        for key in [key for key in self._cache if key.startswith(prefix)]:
+            self.set(key, {"mode": "ask"})
 
     def allows(self, thread_id: str, tool_name: str) -> bool:
         return self.get(thread_id).allows(tool_name)
@@ -279,6 +335,7 @@ __all__ = [
     "HitlSessionPolicyStore",
     "apply_session_bypass",
     "current_hitl_thread_id",
+    "ephemeral_hitl_policy",
     "hitl_thread_scope",
     "parse_hitl_session_policy",
     "thread_id_from_interrupt_request",

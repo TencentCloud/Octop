@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupExpertFiles } from "./expertFileGroups";
+import { filterConfigMdFiles, groupExpertFiles } from "./expertFileGroups";
 
 describe("groupExpertFiles", () => {
   it("separates config markdown, skills, and subagents", () => {
@@ -38,5 +38,31 @@ describe("groupExpertFiles", () => {
       { name: "manifest.json", content: "{}" },
     ]);
     expect(configFiles.map((f) => f.name)).toEqual(["SOUL.md"]);
+  });
+});
+
+describe("filterConfigMdFiles", () => {
+  it("keeps only the known root config markdown files", () => {
+    expect(
+      filterConfigMdFiles([
+        { path: "README.md" },
+        { path: "SOUL.md" },
+        { path: "notes/TODO.md" },
+        { path: "/AGENTS.md" },
+        { path: "skills/demo/SKILL.md" },
+        { path: "daily/2026-01-01.md" },
+        { path: "BOOTSTRAP.md" },
+        { path: "random.md" },
+        { path: "IDENTITY.md", is_dir: true },
+        { path: "USER.md" },
+        { path: "./TOOLS.md" },
+      ]),
+    ).toEqual([
+      "/SOUL.md",
+      "/USER.md",
+      "/AGENTS.md",
+      "/TOOLS.md",
+      "/BOOTSTRAP.md",
+    ]);
   });
 });

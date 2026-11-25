@@ -22,16 +22,38 @@ export interface ProviderModel {
   reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
   max_tokens?: number;
+  api_mode?: "chat_completions" | "responses";
+  api_fallback?: "none" | "chat_completions";
   /** Embedding-only: excluded from chat picker and auto-route. */
   embedding?: boolean;
   task?: string;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
+}
+
+type ModelFlags = Pick<ProviderModel, "id" | "embedding" | "task">;
+
+/** Keep provider catalog inference in sync with providers/model_flags.py. */
+export function isRerankModel(model: ModelFlags): boolean {
+  return (
+    model.task?.trim().toLowerCase() === "rerank" ||
+    model.id.toLowerCase().includes("rerank")
+  );
 }
 
 export function isEmbeddingModel(
-  model: Pick<ProviderModel, "embedding" | "task"> | undefined,
+  model: ModelFlags | undefined,
+  embeddingService = false,
 ): boolean {
-  if (!model) return false;
-  return model.embedding === true || model.task === "embedding";
+  if (!model || isRerankModel(model)) return false;
+  return (
+    embeddingService ||
+    model.embedding === true ||
+    model.task?.trim().toLowerCase() === "embedding" ||
+    ["embed", "bge-", "e5-", "gte-"].some((hint) =>
+      model.id.toLowerCase().includes(hint),
+    )
+  );
 }
 
 export interface ProviderPresetModel {
@@ -43,6 +65,8 @@ export interface ProviderPresetModel {
   input?: string[];
   reasoning?: boolean | null;
   description?: string | null;
+  embedding?: boolean;
+  task?: string;
 }
 
 export interface ProviderPreset {
@@ -60,6 +84,12 @@ export interface ProviderPreset {
   provider_variant?: string;
   logo_id?: string;
   auth_method?: string;
+  /** Embedding-only presets appear on the embedding Models tab. */
+  purpose?: "chat" | "embedding";
+  /** Octop-owned integration id, such as ``magpie``. */
+  integration?: string;
+  /** Filled only for the local Magpie preset. Remote addresses must not use it. */
+  default_api_key?: string;
 }
 
 export interface ProviderRow {
@@ -68,11 +98,35 @@ export interface ProviderRow {
   kind: string;
   base_url: string | null;
   api_key: string | null;
+  /** True when a credential is stored. The value itself is not returned. */
+  api_key_set?: boolean;
   models: ProviderModel[];
   note: string | null;
   enabled: boolean;
+  /** Saved connection-test model. Empty means the form stays blank. */
+  model?: string | null;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
+  /** UI lane: embedding providers are managed on the embedding Models tab. */
+  purpose?: "chat" | "embedding";
+  /** Set when the provider was saved as a named integration such as Magpie. */
+  integration?: string;
+}
+
+/** True when the provider has a stored credential or a local placeholder key. */
+export function providerHasCredential(provider: {
+  api_key?: string | null;
+  api_key_set?: boolean;
+}): boolean {
+  return Boolean(provider.api_key_set || provider.api_key);
+}
+
+/** True when this provider belongs on the embedding Models tab. */
+export function isEmbeddingProvider(provider: ProviderRow): boolean {
+  if (provider.purpose === "embedding") return true;
+  const models = provider.models ?? [];
+  if (models.length === 0) return false;
+  return models.every((model) => isEmbeddingModel(model));
 }
 
 export interface UseProvidersResult {
@@ -115,9 +169,6 @@ export function useProviders(): UseProvidersResult {
         request<ProviderRow[]>("/admin/providers"),
         request<ProviderPreset[]>("/providers/presets"),
         providerApi.listResolvedModels(),
-        request<{ provider_name: string; model: string }>(
-          "/providers/active-model",
-        ),
         preferencesApi.get(),
       ]);
       const rows =
@@ -132,10 +183,8 @@ export function useProviders(): UseProvidersResult {
         settled[2].status === "fulfilled" && Array.isArray(settled[2].value)
           ? settled[2].value
           : [];
-      const active =
-        settled[3].status === "fulfilled" ? settled[3].value : null;
       const preferences =
-        settled[4].status === "fulfilled" ? settled[4].value : null;
+        settled[3].status === "fulfilled" ? settled[3].value : null;
 
       if (
         settled[0].status === "rejected" &&
@@ -153,17 +202,14 @@ export function useProviders(): UseProvidersResult {
       setProviders(normalized);
       setPresets(presetList);
       setResolvedModels(resolved);
+      // Only an explicit per-user preference is starred. The global active
+      // model is a separate fallback and must not look selected here.
       const preferredParts = (preferences?.preferred_model || "").split("/");
       setActiveModel(
         preferredParts.length > 1
           ? {
               provider_name: preferredParts[0],
               model: preferredParts.slice(1).join("/"),
-            }
-          : active && typeof active === "object"
-          ? {
-              provider_name: active.provider_name ?? "",
-              model: active.model ?? "",
             }
           : { provider_name: "", model: "" },
       );

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
@@ -12,6 +12,17 @@ from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.backend.adapter import row_to_backend_spec, storage_spec_previewable
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import (
+    RESOURCE_STORAGE_BACKEND,
+    STORAGE_FEATURE_KEY,
+    GroupAccess,
+)
+from octop.infra.utils.secret_fields import (
+    Secret,
+    merge_config_json,
+    persisted_secret,
+    redact_config_json,
+)
 
 admin_router = APIRouter()
 
@@ -31,32 +42,36 @@ class StorageBackendCreateBody(BaseModel):
     name: str
     kind: str
     endpoint: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
     bucket: str | None = None
     region: str | None = None
     config_json: str | None = None
     note: str | None = None
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class StorageBackendPatchBody(BaseModel):
     name: str | None = None
     kind: str | None = None
     endpoint: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
     bucket: str | None = None
     region: str | None = None
     config_json: str | None = None
     note: str | None = None
     enabled: bool | None = None
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class StorageBackendProbeBody(BaseModel):
     kind: str
     endpoint: str | None = None
-    access_key: str | None = None
-    secret_key: str | None = None
+    access_key: Annotated[str | None, Secret()] = None
+    secret_key: Annotated[str | None, Secret()] = None
     bucket: str | None = None
     region: str | None = None
     config_json: str | None = None
@@ -64,7 +79,7 @@ class StorageBackendProbeBody(BaseModel):
     backend_id: int | None = None
 
 
-def _row_to_dict(r: Any) -> dict[str, Any]:
+def _row_to_dict(r: Any, *, access: GroupAccess | None = None) -> dict[str, Any]:
     """Serialize a BackendRow to API response dict.
 
     secret_key is intentionally omitted from responses.
@@ -73,21 +88,42 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     ak = r.access_key or ""
     masked_ak = f"{ak[:4]}{'*' * 8}" if len(ak) > 4 else "*" * len(ak)
     spec = row_to_backend_spec(r)
-    return {
+    config_json, config_secrets_set = redact_config_json(r.config_json)
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
         "endpoint": r.endpoint,
         "access_key": masked_ak if ak else None,
+        "secret_key_set": bool(r.secret_key),
         "bucket": r.bucket,
         "region": r.region,
-        "config_json": r.config_json,
+        "config_json": config_json,
+        "config_secrets_set": config_secrets_set,
         "note": r.note,
         "enabled": bool(r.enabled),
         "previewable": storage_spec_previewable(spec) if spec is not None else False,
         "created_at": r.created_at,
         "updated_at": r.updated_at,
     }
+    if access is not None:
+        payload.update(access.visibility(RESOURCE_STORAGE_BACKEND, r.name, shared=None))
+    return payload
+
+
+def _apply_storage_visibility(
+    server: Any,
+    backend_name: str,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+) -> None:
+    if visibility is None:
+        return
+    access = GroupAccess(server.services.repos)
+    # Drop the legacy feature-wide grant if present.
+    access.clear(RESOURCE_STORAGE_BACKEND, STORAGE_FEATURE_KEY)
+    access.set_visibility(RESOURCE_STORAGE_BACKEND, backend_name, visibility, group_ids)
 
 
 @admin_router.get("")
@@ -95,7 +131,10 @@ async def list_storage_backends(
     _: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.storage_backend_repo.list_all()]
+    access = GroupAccess(server.services.repos)
+    return [
+        _row_to_dict(row, access=access) for row in server.services.storage_backend_repo.list_all()
+    ]
 
 
 @admin_router.post("", status_code=201)
@@ -118,7 +157,14 @@ async def create_storage_backend(
         config_json=body.config_json,
         note=body.note,
     )
-    return _row_to_dict(server.services.storage_backend_repo.get(bid))
+    _apply_storage_visibility(
+        server,
+        body.name,
+        visibility=body.visibility or "all",
+        group_ids=body.group_ids,
+    )
+    access = GroupAccess(server.services.repos)
+    return _row_to_dict(server.services.storage_backend_repo.get(bid), access=access)
 
 
 @admin_router.patch("/{backend_id}")
@@ -131,9 +177,9 @@ async def patch_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    next_kind = (body.kind or row.kind or "").lower()
-    if body.enabled is True:
-        _ensure_opensandbox_sdk(next_kind)
+
+    # Refuse backup-remote mutations before side effects (SDK install, renames).
+    from octop.infra.backup.remote.guards import raise_if_backup_remote_backend
 
     new_name: str | None = None
     if body.name is not None:
@@ -146,7 +192,29 @@ async def patch_storage_backend(
                     f"name {candidate!r} already exists",
                 )
             new_name = candidate
+            raise_if_backup_remote_backend(
+                config_path=server.paths.config,
+                backend_id=backend_id,
+                action="rename",
+            )
+    if body.enabled is False:
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="disable",
+        )
+    if body.kind is not None and (body.kind or "").strip().lower() != (row.kind or "").lower():
+        raise_if_backup_remote_backend(
+            config_path=server.paths.config,
+            backend_id=backend_id,
+            action="change_kind",
+        )
 
+    next_kind = (body.kind or row.kind or "").lower()
+    if body.enabled is True:
+        _ensure_opensandbox_sdk(next_kind)
+
+    old_name = row.name
     if new_name is not None:
         from octop.infra.backend.resolver import (  # noqa: PLC0415
             rewrite_named_storage_backend_refs,
@@ -163,23 +231,45 @@ async def patch_storage_backend(
             )
             registry.persist_harness_config(ref["agent_id"], cfg)
 
+    config_json = body.config_json
+    if config_json is not None:
+        config_json = merge_config_json(config_json, row.config_json)
     server.services.storage_backend_repo.update(
         backend_id,
         name=new_name,
         kind=body.kind,
         endpoint=body.endpoint,
-        access_key=body.access_key,
-        secret_key=body.secret_key,
+        access_key=persisted_secret(body, "access_key"),
+        secret_key=persisted_secret(body, "secret_key"),
         bucket=body.bucket,
         region=body.region,
-        config_json=body.config_json,
+        config_json=config_json,
         note=body.note,
         enabled=body.enabled,
     )
+    access = GroupAccess(server.services.repos)
+    final_name = new_name or old_name
+    if new_name is not None and new_name != old_name:
+        vis = access.visibility(RESOURCE_STORAGE_BACKEND, old_name, shared=None)
+        access.clear(RESOURCE_STORAGE_BACKEND, old_name)
+        if vis["visibility"] == "groups":
+            access.set_visibility(
+                RESOURCE_STORAGE_BACKEND,
+                new_name,
+                "groups",
+                vis["group_ids"],
+            )
+    if body.visibility is not None:
+        _apply_storage_visibility(
+            server,
+            final_name,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+        )
     from octop.infra.backend.browse import release_browse_session
 
     await release_browse_session(backend_id)
-    return _row_to_dict(server.services.storage_backend_repo.get(backend_id))
+    return _row_to_dict(server.services.storage_backend_repo.get(backend_id), access=access)
 
 
 @admin_router.delete("/{backend_id}", status_code=204)
@@ -191,6 +281,19 @@ async def delete_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    from octop.infra.backup.remote.guards import (
+        raise_if_backup_remote_backend,
+        unlink_backup_remote_backend,
+    )
+
+    # Occupied as the active backup destination → refuse. Otherwise clear a
+    # dangling link (remote disabled) then delete.
+    raise_if_backup_remote_backend(
+        config_path=server.paths.config,
+        backend_id=backend_id,
+        action="delete",
+    )
+    unlink_backup_remote_backend(server=server, backend_id=backend_id)
     assert server.app_runtime is not None
     refs = server.app_runtime.agent_registry.find_agents_using_storage_backend(row.name)
     if refs:
@@ -202,6 +305,7 @@ async def delete_storage_backend(
     from octop.infra.backend.browse import release_browse_session
 
     await release_browse_session(backend_id)
+    GroupAccess(server.services.repos).clear(RESOURCE_STORAGE_BACKEND, row.name)
     server.services.storage_backend_repo.delete(backend_id)
 
 
@@ -211,7 +315,10 @@ async def probe_storage_backend_config(
     _: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Probe connectivity from unsaved form values (optional merge with stored row)."""
+    """Probe connectivity from unsaved form values (optional merge with stored row).
+
+    Blank or masked secrets are taken from ``backend_id`` and are not returned.
+    """
     from octop.infra.backend.probe import probe_storage_backend, row_for_probe
 
     base = None
@@ -219,16 +326,23 @@ async def probe_storage_backend_config(
         base = server.services.storage_backend_repo.get(body.backend_id)
         if base is None:
             raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    config_json = body.config_json
+    if base is not None and config_json is not None:
+        config_json = merge_config_json(config_json, base.config_json)
     row = row_for_probe(
         kind=body.kind,
         endpoint=body.endpoint,
-        access_key=body.access_key,
-        secret_key=body.secret_key,
+        access_key=persisted_secret(body, "access_key"),
+        secret_key=persisted_secret(body, "secret_key"),
         bucket=body.bucket,
         region=body.region,
-        config_json=body.config_json,
+        config_json=config_json,
         base=base,
     )
+    if (row.kind or "").lower() == "webdav":
+        from octop.infra.backend.probe import probe_webdav_backend
+
+        return await probe_webdav_backend(row)
     return probe_storage_backend(row)
 
 
@@ -355,8 +469,10 @@ async def test_storage_backend(
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
-    from octop.infra.backend.probe import probe_storage_backend
+    from octop.infra.backend.probe import probe_storage_backend, probe_webdav_backend
 
+    if (row.kind or "").lower() == "webdav":
+        return await probe_webdav_backend(row)
     return probe_storage_backend(row)
 
 
@@ -365,8 +481,21 @@ user_router = APIRouter()
 
 @user_router.get("")
 async def list_storage_backends_for_user(
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """Read-only storage backend list for regular users (secrets masked)."""
-    return [_row_to_dict(r) for r in server.services.storage_backend_repo.list_all()]
+    access = GroupAccess(server.services.repos)
+    is_admin = bool(user.is_admin)
+    out: list[dict[str, Any]] = []
+    for row in server.services.storage_backend_repo.list_all():
+        if not access.allows(
+            user_id=user.id,
+            is_admin=is_admin,
+            resource_type=RESOURCE_STORAGE_BACKEND,
+            resource_key=row.name,
+            is_owner=False,
+        ):
+            continue
+        out.append(_row_to_dict(row, access=access))
+    return out

@@ -1,4 +1,5 @@
 import { request } from "../../../api/request";
+import type { ProviderModel } from "./useProviders";
 
 export interface TestProviderDraftParams {
   name: string;
@@ -6,14 +7,20 @@ export interface TestProviderDraftParams {
   api_key?: string;
   base_url?: string | null;
   model_id: string;
+  api_mode?: "chat_completions" | "responses";
+  api_fallback?: "none" | "chat_completions";
   extra_json?: string | null;
   embedding?: boolean;
+  /** When set, a blank api_key is read from this saved provider. */
+  provider_id?: number;
 }
 
 export interface TestProviderResult {
   ok: boolean;
   latency_ms?: number;
   error?: string;
+  fallback_used?: boolean;
+  api_mode_used?: "chat_completions" | "responses";
 }
 
 export async function testProviderDraft(
@@ -27,8 +34,11 @@ export async function testProviderDraft(
       api_key: params.api_key?.trim() || null,
       base_url: params.base_url?.trim() || null,
       model_id: params.model_id,
+      api_mode: params.api_mode ?? "chat_completions",
+      api_fallback: params.api_fallback ?? "none",
       extra_json: params.extra_json ?? null,
       embedding: params.embedding === true,
+      provider_id: params.provider_id ?? null,
     }),
   });
 }
@@ -39,11 +49,18 @@ export interface FetchProviderModelsParams {
   base_url?: string | null;
   extra_json?: string | null;
   name?: string | null;
+  /** When set, a blank api_key is read from this saved provider. */
+  provider_id?: number;
 }
 
 export interface FetchedProviderModel {
   id: string;
   name: string;
+  input?: string[];
+  context_window?: number;
+  max_tokens?: number;
+  reasoning?: boolean;
+  reasoning_config?: ProviderModel["reasoning_config"];
 }
 
 export interface FetchProviderModelsResult {
@@ -63,6 +80,7 @@ export async function fetchProviderModels(
       base_url: params.base_url?.trim() || null,
       extra_json: params.extra_json ?? null,
       name: params.name?.trim() || null,
+      provider_id: params.provider_id ?? null,
     }),
   });
 }

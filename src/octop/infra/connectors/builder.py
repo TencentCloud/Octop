@@ -9,6 +9,7 @@ from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
 from octop.config import OctopConfig
+from octop.i18n import tr
 from octop.infra.connectors.catalog import (
     ConnectorCatalogEntry,
     get_catalog_entry,
@@ -56,6 +57,57 @@ def normalize_weknora_base_url(raw: str) -> str:
     return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
 
 
+def normalize_ragflow_base_url(raw: str) -> str:
+    """Accept a RAGFlow service URL or its public `/api/v1` root."""
+    url = validate_mcp_http_url(raw)
+    parsed = urlsplit(url)
+    if (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(tr("ragflow.invalid_base_url"))
+    path = parsed.path.rstrip("/")
+    if not path.endswith("/api/v1"):
+        path = f"{path}/api/v1"
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def normalize_gitea_base_url(raw: str) -> str:
+    """Accept a Gitea origin or its `/api/v1` root; store the origin."""
+    url = validate_mcp_http_url(raw)
+    parsed = urlsplit(url)
+    if (
+        parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError(tr("gitea.invalid_base_url"))
+    path = parsed.path.rstrip("/")
+    suffix = "/api/v1"
+    if path.endswith(suffix):
+        path = path[: -len(suffix)]
+    return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+
+def normalize_ragflow_dataset_ids(raw: Any) -> list[str]:
+    """Normalize the dashboard's comma-separated IDs or an API string list."""
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        values = raw.split(",")
+    elif isinstance(raw, list) and all(isinstance(item, str) for item in raw):
+        values = raw
+    else:
+        raise ValueError(tr("ragflow.invalid_dataset_ids"))
+    ids = [item.strip() for item in values if item.strip()]
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]+", item) for item in ids):
+        raise ValueError(tr("ragflow.invalid_dataset_ids"))
+    return list(dict.fromkeys(ids))
+
+
 def mcp_server_name(kind: str, instance_id: str) -> str:
     return f"{kind}__{instance_id}"
 
@@ -87,6 +139,48 @@ def internal_mcp_url(
     token_q = quote(internal_token, safe="")
     scheme = "https" if _internal_mcp_uses_https(config) else "http"
     return f"{scheme}://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
+
+
+def _loopback_mcp_url(config: OctopConfig, suffix: str, token: str) -> str:
+    host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
+    token_q = quote(token, safe="")
+    scheme = "https" if _internal_mcp_uses_https(config) else "http"
+    return f"{scheme}://{host}:{config.port}/api/internal/mcp/{suffix}?token={token_q}"
+
+
+def knowledge_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for the knowledge-base MCP a managed ACP agent can call."""
+    return _loopback_mcp_url(config, "knowledge", token)
+
+
+def agents_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for ``ask_agent`` on a managed ACP session."""
+    return _loopback_mcp_url(config, "agents", token)
+
+
+def files_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for ``send_file_to_user`` on a managed ACP session."""
+    return _loopback_mcp_url(config, "files", token)
+
+
+def team_workspace_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for host-workspace file tools on a managed team turn."""
+    return _loopback_mcp_url(config, "team-workspace", token)
+
+
+def cron_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for cron tools on a managed ACP session."""
+    return _loopback_mcp_url(config, "cron", token)
+
+
+def memory_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for memory tools on a managed ACP session."""
+    return _loopback_mcp_url(config, "memory", token)
+
+
+def plugins_mcp_url(*, config: OctopConfig, token: str) -> str:
+    """Loopback URL for this expert's enabled plugin tools."""
+    return _loopback_mcp_url(config, "plugins", token)
 
 
 def new_internal_token() -> str:
@@ -212,6 +306,16 @@ def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> d
             "url": "https://open.mail.163.com/api/ynote/mcp/sse",
             "headers": {
                 "x-api-key": api_key,
+            },
+        }
+    if entry.kind == "github":
+        token = str(creds.get("token") or creds.get("access_token") or "").strip()
+        return {
+            "transport": "http",
+            "url": "https://api.githubcopilot.com/mcp/",
+            "headers": {
+                **_mcp_http_headers(),
+                "Authorization": f"Bearer {token}",
             },
         }
     if is_mcp_oauth_remote(entry):
@@ -478,6 +582,16 @@ def validate_create_credentials(
             return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
         if entry.kind == "obsidian-cli":
             return _obsidian_cli_credentials(credentials)
+        if entry.kind == "ragflow":
+            api_key = str(credentials.get("api_key") or "").strip()
+            if not api_key or any(char in api_key for char in "\r\n\x00"):
+                raise ValueError(tr("ragflow.api_key_required"))
+            return {
+                "base_url": normalize_ragflow_base_url(str(credentials.get("base_url") or "")),
+                "api_key": api_key,
+                "dataset_ids": normalize_ragflow_dataset_ids(credentials.get("dataset_ids")),
+                "internal_token": new_internal_token(),
+            }
         if entry.kind == "dingtalk-cli":
             client_id = str(credentials.get("client_id") or "").strip()
             client_secret = str(credentials.get("client_secret") or "").strip()
@@ -519,6 +633,16 @@ def validate_create_credentials(
             if "/mcp/server/" not in mcp_url or not mcp_url.rstrip("/").endswith("/mcp"):
                 raise ValueError("mcp_url must be a Dify MCP Server URL ending in /mcp")
             return {"mcp_url": mcp_url}
+        if entry.kind == "gitea":
+            base_url = normalize_gitea_base_url(str(credentials.get("base_url") or ""))
+            token = str(credentials.get("token") or credentials.get("api_key") or "").strip()
+            if not token or any(char in token for char in "\r\n\x00"):
+                raise ValueError(tr("gitea.token_required"))
+            return {
+                "base_url": base_url,
+                "token": token,
+                "internal_token": new_internal_token(),
+            }
         raise ValueError(f"unsupported custom_fields connector kind: {kind}")
 
     raise ValueError(f"unsupported auth_kind: {entry.auth_kind}")
@@ -557,6 +681,8 @@ def _iter_active_connectors(
     connector_repo: Any,
     user_id: int,
 ) -> Any:
+    if not connector_repo.connector_feature_allows(user_id):
+        return
     for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue
@@ -653,6 +779,8 @@ def gateway_mcp_server_names(*, connector_repo: Any, user_id: int) -> set[str]:
     loads those via ``/api/internal/mcp``.
     """
     names: set[str] = set()
+    if not connector_repo.connector_feature_allows(user_id):
+        return names
     for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue

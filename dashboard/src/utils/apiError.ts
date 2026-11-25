@@ -1,3 +1,4 @@
+import { ApiResponseError } from "../api/responseError";
 import type { TFunction } from "i18next";
 
 export interface ParsedApiError {
@@ -8,6 +9,7 @@ export interface ParsedApiError {
 
 /** Parse Octop API error envelope from a thrown request() Error. */
 export function parseApiError(error: unknown): ParsedApiError | null {
+  if (error instanceof ApiResponseError) return error.apiError;
   if (!(error instanceof Error)) return null;
   const raw = error.message;
   const jsonStart = raw.indexOf("{");
@@ -55,6 +57,7 @@ const NOT_FOUND_ERROR_CODES = new Set([
 
 /** True when a failed ``request`` / ``requestBlob`` looks like HTTP 404 / NOT_FOUND. */
 export function isNotFoundApiError(error: unknown): boolean {
+  if (error instanceof ApiResponseError && error.status === 404) return true;
   const parsed = parseApiError(error);
   if (parsed?.code && NOT_FOUND_ERROR_CODES.has(parsed.code)) return true;
   const msg = error instanceof Error ? error.message : String(error ?? "");
@@ -105,6 +108,25 @@ export function apiErrorMessage(
   if (typeof error === "string" && error.trim()) {
     return error;
   }
+  return fallback;
+}
+
+/** Probe responses carry `error_code` beside a raw `error` string. Prefer the locale copy. */
+export function probeErrorMessage(
+  result: {
+    error?: string;
+    error_code?: string;
+    details?: Record<string, unknown>;
+  },
+  fallback: string,
+  t?: TFunction,
+): string {
+  if (result.error_code && t) {
+    const key = `apiErrors.${result.error_code}`;
+    const translated = t(key, result.details ?? {});
+    if (translated !== key) return translated;
+  }
+  if (result.error?.trim()) return result.error.trim();
   return fallback;
 }
 

@@ -12,8 +12,15 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  pinnedThreadId,
   truncatePromptPreview,
 } from "../cronDisplay";
+import {
+  formatTriggerText,
+  lastRunStatusTag,
+  oneShotPhase,
+  oneShotPhaseLabelKey,
+} from "../onceSchedule";
 import styles from "../index.module.less";
 
 type CronJob = CronJobSpecOutput;
@@ -54,13 +61,18 @@ export const createColumns = (
           typeof meta.octop_session_key === "string"
             ? meta.octop_session_key
             : "";
-        const channel = sessionKey
+        const pinned = pinnedThreadId(sessionKey);
+        const channel = pinned
+          ? ""
+          : sessionKey
           ? channelFromSessionKey(sessionKey)
           : Array.isArray(record.dispatch?.channel)
           ? record.dispatch.channel[0]
           : record.dispatch?.channel || "dashboard";
         const icon = CHANNEL_ICONS[channel as keyof typeof CHANNEL_ICONS];
-        const label = channelLabel(channel, handlers.t);
+        const label = pinned
+          ? handlers.t("cronJobs.form.sessionKeyHistory")
+          : channelLabel(channel, handlers.t);
         return (
           <Tooltip title={id}>
             <div
@@ -137,32 +149,49 @@ export const createColumns = (
       title: handlers.t("common.enabled"),
       dataIndex: "enabled",
       key: "enabled",
-      width: 100,
-      render: (enabled: boolean) => (
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 12,
-            paddingLeft: 8,
-          }}
-        >
+      width: 120,
+      render: (enabled: boolean, record: CronJob) => {
+        const meta = (record.meta as Record<string, unknown> | undefined) ?? {};
+        const lastStatus =
+          typeof meta.octop_last_status === "string"
+            ? meta.octop_last_status
+            : null;
+        const phase = oneShotPhase(record.schedule?.cron, enabled, lastStatus);
+        const label = phase
+          ? handlers.t(oneShotPhaseLabelKey(phase))
+          : enabled
+          ? handlers.t("common.enabled")
+          : handlers.t("common.disabled");
+        const dot =
+          phase === "failed"
+            ? "var(--fn-color-error, #ef4444)"
+            : phase === "missed"
+            ? "#d97706"
+            : phase === "pending" || (!phase && enabled)
+            ? "var(--fn-color-success)"
+            : "var(--fn-border-input)";
+        return (
           <span
             style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              backgroundColor: enabled
-                ? "var(--fn-color-success)"
-                : "var(--fn-border-input)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              paddingLeft: 8,
             }}
-          />
-          {enabled
-            ? handlers.t("common.enabled")
-            : handlers.t("common.disabled")}
-        </span>
-      ),
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: dot,
+              }}
+            />
+            {label}
+          </span>
+        );
+      },
     },
     {
       title: handlers.t("cronJobs.col.trigger"),
@@ -171,9 +200,10 @@ export const createColumns = (
       width: 160,
       render: (trigger: string) => (
         <code style={{ fontSize: 12 }}>
-          {trigger?.startsWith("agently:")
-            ? handlers.t("cronJobs.form.agentlyNewMail")
-            : trigger || "—"}
+          {formatTriggerText(trigger, {
+            mail: handlers.t("cronJobs.form.agentlyNewMail"),
+            once: handlers.t("cronJobs.form.scheduleModeOnce"),
+          })}
         </code>
       ),
     },
@@ -182,13 +212,18 @@ export const createColumns = (
       key: "task_type",
       width: 180,
       render: (_: unknown, record: CronJob) => {
-        const taskType = record.task_type === "text" ? "text" : "agent";
+        const taskType =
+          record.task_type === "text" || record.task_type === "script"
+            ? record.task_type
+            : "agent";
+        const label =
+          taskType === "text"
+            ? handlers.t("cronJobs.form.taskTypeText")
+            : taskType === "script"
+            ? handlers.t("cronJobs.form.taskTypeScriptShort")
+            : handlers.t("cronJobs.form.taskTypeAgent");
         return (
-          <Tag style={{ fontSize: 11, whiteSpace: "nowrap" }}>
-            {taskType === "text"
-              ? handlers.t("cronJobs.form.taskTypeText")
-              : handlers.t("cronJobs.form.taskTypeAgent")}
-          </Tag>
+          <Tag style={{ fontSize: 11, whiteSpace: "nowrap" }}>{label}</Tag>
         );
       },
     },
@@ -242,15 +277,10 @@ export const createColumns = (
         if (typeof status !== "string" || !status) {
           return <span style={{ color: "var(--fn-text-tertiary)" }}>—</span>;
         }
-        const color =
-          status === "ok"
-            ? "success"
-            : status === "error"
-            ? "error"
-            : "default";
+        const known = lastRunStatusTag(status);
         const tag = (
-          <Tag color={color} style={{ fontSize: 11 }}>
-            {status}
+          <Tag color={known?.color ?? "default"} style={{ fontSize: 11 }}>
+            {known ? handlers.t(known.labelKey) : status}
           </Tag>
         );
         if (status === "error" && lastError) {

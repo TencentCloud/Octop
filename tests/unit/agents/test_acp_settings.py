@@ -42,7 +42,8 @@ def test_load_defaults_include_codebuddy(
     assert runners["cursor_cli"]["args"] == ["acp"]
     assert runners["pi"]["command"] == "npx"
     assert runners["pi"]["args"] == ["-y", "pi-acp"]
-    assert "qwen_code" not in runners
+    assert runners["qwen_code"]["command"] == "qwen"
+    assert runners["qwen_code"]["args"] == ["--acp"]
 
 
 def test_save_and_load_round_trip(acp_store: tuple[ACPSettingsStore, AgentRepo, int]) -> None:

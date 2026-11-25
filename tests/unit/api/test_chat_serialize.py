@@ -44,6 +44,24 @@ def test_json_chunk_default_keeps_tool_message_artifact() -> None:
     assert "episodes" not in wire_msg["content"]
 
 
+def test_serialize_history_message_keeps_client_message_id() -> None:
+    entry = _serialize_history_message(
+        HumanMessage(content="画一张图", id="1710000000000-ab12cd"),
+    )
+    assert entry is not None
+    assert entry["id"] == "1710000000000-ab12cd"
+
+
+def test_serialize_history_message_keeps_empty_tool_result() -> None:
+    entry = _serialize_history_message(
+        ToolMessage(content="", tool_call_id="call-1", name="Read", status="success"),
+    )
+    assert entry is not None
+    assert entry["content"] == [
+        {"type": "tool_result", "id": "call-1", "name": "Read", "output": ""}
+    ]
+
+
 def test_serialize_history_message_includes_tool_artifact() -> None:
     msg = ToolMessage(
         content='{"octop_ui": {"renderer": "bilibili_player"}, "data_ref": "artifact"}',
@@ -100,6 +118,70 @@ def test_serialize_history_message_includes_decision() -> None:
     assert entry is not None
     assert entry["decision"]["model"] == "typesafe/jev-1.13"
     assert entry["decision"]["parts"][0]["kept"][0]["name"] == "pdf"
+
+
+def test_serialize_history_message_restores_sent_file_on_the_reply() -> None:
+    path = "/home/wally/.octop/agents/50VTYY/deck.pptx"
+    msg = AIMessage(
+        content="PPT文件已发给你",
+        additional_kwargs={
+            "outbound_attachments": [
+                {
+                    "type": "file",
+                    "filename": "deck.pptx",
+                    "workspace_path": path,
+                    "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                }
+            ]
+        },
+    )
+    entry = _serialize_history_message(msg)
+    assert entry is not None
+    file_blocks = [block for block in entry["content"] if block.get("type") == "file"]
+    assert file_blocks == [
+        {
+            "type": "file",
+            "workspace_path": path,
+            "filename": "deck.pptx",
+            "media_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        }
+    ]
+
+
+def test_serialize_history_message_restores_send_file_tool_result() -> None:
+    payload = json.dumps(
+        {
+            "type": "file",
+            "path": "/tmp/notes.txt",
+            "filename": "notes.txt",
+            "source": {"type": "url", "url": "file:///tmp/notes.txt", "media_type": "text/plain"},
+        }
+    )
+    msg = ToolMessage(content=payload, tool_call_id="call-send", name="send_file_to_user")
+    entry = _serialize_history_message(msg)
+    assert entry is not None
+    assert entry["content"][0]["type"] == "tool_result"
+    assert entry["content"][1] == {
+        "type": "file",
+        "workspace_path": "/tmp/notes.txt",
+        "filename": "notes.txt",
+        "media_type": "text/plain",
+    }
+
+
+def test_serialize_history_message_ignores_write_file_media_shape() -> None:
+    payload = json.dumps(
+        {
+            "type": "file",
+            "path": "/tmp/notes.txt",
+            "filename": "notes.txt",
+            "source": {"type": "url", "url": "file:///tmp/notes.txt", "media_type": "text/plain"},
+        }
+    )
+    msg = ToolMessage(content=payload, tool_call_id="call-write", name="write_file")
+    entry = _serialize_history_message(msg)
+    assert entry is not None
+    assert [block["type"] for block in entry["content"]] == ["tool_result"]
 
 
 def test_serialize_history_message_omits_artifact_key_when_absent() -> None:

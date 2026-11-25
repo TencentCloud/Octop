@@ -33,6 +33,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
+import cx from "classnames";
 
 import { useIsMobile } from "../hooks/useIsMobile";
 import styles from "./PdfDocumentPreview.module.less";
@@ -891,11 +892,10 @@ export default function PdfDocumentPreview({
       <div className={styles.pdfBody}>
         {bootOverlayMounted ? (
           <div
-            className={
-              bootOverlayFading
-                ? `${styles.pdfBootOverlay} ${styles.pdfBootOverlayFading}`
-                : styles.pdfBootOverlay
-            }
+            className={cx(
+              styles.pdfBootOverlay,
+              bootOverlayFading && styles.pdfBootOverlayFading,
+            )}
             aria-hidden={bootOverlayFading || !bootLoading}
           >
             <DocumentPreviewLoading

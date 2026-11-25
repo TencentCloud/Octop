@@ -11,7 +11,14 @@ export interface KnowledgeLimits {
   max_document_bytes: number;
 }
 
-export interface KnowledgeCapability {
+export interface KnowledgeAdvancedSettings {
+  chunk_size: number;
+  chunk_overlap: number;
+  retrieval_k: number;
+  context_char_budget: number;
+}
+
+export interface KnowledgeCapability extends KnowledgeAdvancedSettings {
   feature_enabled: boolean;
   backend: "onnx" | "remote";
   selected_model: string;
@@ -36,6 +43,22 @@ export interface KnowledgeCapability {
       provider_ready: boolean;
     };
   };
+  /** Second-stage ranking of retrieved chunks; absent on servers without it. */
+  rerank?: {
+    enabled: boolean;
+    provider_id: string;
+    model: string;
+    ready: boolean;
+    usable: boolean;
+  };
+  /** Absent on servers older than the knowledge-graph feature. */
+  graph?: {
+    enabled: boolean;
+    provider_id: string;
+    model: string;
+    ready: boolean;
+    usable: boolean;
+  };
   limits?: KnowledgeLimits;
 }
 
@@ -50,7 +73,10 @@ export interface KnowledgeBase {
   description: string;
   default_open: boolean;
   shared: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
   icon_name: string;
+  icon_url?: string;
   embedding_model: string;
   embedding_dim: number;
   doc_count: number;
@@ -104,6 +130,78 @@ export interface KnowledgeOcrOptions {
   }[];
 }
 
+export interface KnowledgeRerankOptions {
+  providers: {
+    provider_id: string;
+    provider_name: string;
+    models: { id: string; name: string }[];
+  }[];
+}
+
+export interface KnowledgeGraphOptions {
+  remote: {
+    provider_id: string;
+    provider_name: string;
+    models: { id: string; name: string }[];
+  }[];
+}
+
+export interface KnowledgeGraphStats {
+  built: boolean;
+  entities: number;
+  relations: number;
+  documents_total: number;
+  documents_ready: number;
+  documents_partial: number;
+  documents_pending: number;
+  documents_failed: number;
+}
+
+export interface KnowledgeGraphNode {
+  id: string;
+  name: string;
+  type: string;
+  mentions: number;
+  degree: number;
+}
+
+export interface KnowledgeGraphEdge {
+  source: string;
+  target: string;
+  labels: string[];
+  weight: number;
+}
+
+export interface KnowledgeGraph {
+  stats: KnowledgeGraphStats;
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
+export interface KnowledgeGraphEntityDetail {
+  entity: {
+    id: string;
+    name: string;
+    type: string;
+    description: string;
+    mentions: number;
+  };
+  relations: {
+    source: { id: string; name: string };
+    target: { id: string; name: string };
+    label: string;
+    description: string;
+    weight: number;
+  }[];
+  passages: {
+    doc_id: string;
+    filename: string;
+    path: string;
+    ordinal: number;
+    text: string;
+  }[];
+}
+
 export interface KnowledgeOnnxDownloadState {
   status: "idle" | "downloading" | "loading" | "done" | "failed";
   progress: number;
@@ -124,6 +222,12 @@ export const knowledgeBasesApi = {
       headers: bridgeAgentHeaders(agentId),
     }),
 
+  setAdvancedSettings: (body: KnowledgeAdvancedSettings) =>
+    request<KnowledgeAdvancedSettings>("/knowledge-bases/advanced-settings", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   setFeature: (body: {
     enabled: boolean;
     backend?: "onnx" | "remote";
@@ -133,6 +237,12 @@ export const knowledgeBasesApi = {
     ocr_backend?: "onnx" | "remote";
     ocr_model?: string;
     ocr_provider_id?: string;
+    rerank_enabled?: boolean;
+    rerank_provider_id?: string;
+    rerank_model?: string;
+    graph_enabled?: boolean;
+    graph_provider_id?: string;
+    graph_model?: string;
   }) =>
     request<KnowledgeCapability>("/knowledge-bases/feature", {
       method: "PUT",
@@ -152,6 +262,42 @@ export const knowledgeBasesApi = {
 
   getOcrOptions: () =>
     request<KnowledgeOcrOptions>("/knowledge-bases/ocr-options"),
+
+  getRerankOptions: () =>
+    request<KnowledgeRerankOptions>("/knowledge-bases/rerank-options"),
+
+  getGraphOptions: () =>
+    request<KnowledgeGraphOptions>("/knowledge-bases/graph-options"),
+
+  getGraph: (id: string, opts?: { q?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.q) params.set("q", opts.q);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const query = params.toString();
+    return request<KnowledgeGraph>(
+      `/knowledge-bases/${encodeURIComponent(id)}/graph${
+        query ? `?${query}` : ""
+      }`,
+    );
+  },
+
+  getGraphEntity: (id: string, name: string) =>
+    request<KnowledgeGraphEntityDetail>(
+      `/knowledge-bases/${encodeURIComponent(
+        id,
+      )}/graph/entity?name=${encodeURIComponent(name)}`,
+    ),
+
+  buildGraph: (id: string) =>
+    request<{ enqueued: number }>(
+      `/knowledge-bases/${encodeURIComponent(id)}/graph/build`,
+      { method: "POST" },
+    ),
+
+  deleteGraph: (id: string) =>
+    request<void>(`/knowledge-bases/${encodeURIComponent(id)}/graph`, {
+      method: "DELETE",
+    }),
 
   downloadOnnx: (model: string) =>
     request<KnowledgeOnnxDownloadState>("/knowledge-bases/onnx-download", {
@@ -191,7 +337,10 @@ export const knowledgeBasesApi = {
     description?: string;
     default_open?: boolean;
     shared?: boolean;
+    visibility?: "all" | "groups" | "owner";
+    group_ids?: string[];
     icon_name?: string;
+    icon_url?: string;
     max_documents?: number;
   }) =>
     request<KnowledgeBase>("/knowledge-bases", {
@@ -206,7 +355,10 @@ export const knowledgeBasesApi = {
       description?: string;
       default_open?: boolean;
       shared?: boolean;
+      visibility?: "all" | "groups" | "owner";
+      group_ids?: string[];
       icon_name?: string;
+      icon_url?: string;
       max_documents?: number;
     },
   ) =>
@@ -217,6 +369,20 @@ export const knowledgeBasesApi = {
 
   delete: (id: string) =>
     request<void>(`/knowledge-bases/${id}`, { method: "DELETE" }),
+
+  uploadAvatar: (id: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/knowledge-bases/${encodeURIComponent(id)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (id: string) =>
+    request<void>(`/knowledge-bases/${encodeURIComponent(id)}/avatar`, {
+      method: "DELETE",
+    }),
 
   listDocuments: (id: string, prefix?: string) =>
     request<KnowledgeDocument[]>(
@@ -297,6 +463,13 @@ export const knowledgeBasesApi = {
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
     ),
 
+  listDocumentChunks: (id: string, documentId: string) =>
+    request<{
+      id: string;
+      filename: string;
+      chunks: { ordinal: number; text: string }[];
+    }>(`/knowledge-bases/${id}/documents/${documentId}/chunks`),
+
   /** Authenticated original-file bytes (download or preview). */
   fetchDocumentFile: (
     id: string,
@@ -322,6 +495,25 @@ export const knowledgeBasesApi = {
       {
         method: "POST",
         body: JSON.stringify({ new_name: newName }),
+      },
+    ),
+
+  /** Move a file or folder into another folder of the same base ("" is the root). */
+  moveDocument: (
+    id: string,
+    documentId: string,
+    targetFolder: string,
+    targetKbId?: string,
+  ) =>
+    request<KnowledgeDocument>(
+      `/knowledge-bases/${id}/documents/${documentId}/move`,
+      {
+        method: "POST",
+        body: JSON.stringify(
+          targetKbId && targetKbId !== id
+            ? { target_folder: targetFolder, target_kb_id: targetKbId }
+            : { target_folder: targetFolder },
+        ),
       },
     ),
 };

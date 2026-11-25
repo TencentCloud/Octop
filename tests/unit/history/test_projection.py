@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -17,7 +18,18 @@ from octop.infra.history.projection import (
     _wire_text,
     live_message_input,
     message_input,
+    message_inputs,
 )
+
+
+def test_note_turn_duration_stamps_the_assistant_reply() -> None:
+    tracker = TurnHistoryTracker.from_request({"messages": []})
+    tracker.observe({"type": "token", "content": "你好"})
+    tracker.note_turn_duration(3200)
+    items = tracker.inputs
+    assert items
+    wire = json.loads(items[-1].message_json)
+    assert wire["data"]["additional_kwargs"]["turn_duration_ms"] == 3200
 
 
 def test_message_input_preserves_existing_checkpoint_ts() -> None:
@@ -120,6 +132,40 @@ def test_turn_tracker_keeps_streamed_tokens_and_error() -> None:
     assert STREAM_ERROR_FLAG in error.message_json
 
 
+def test_turn_tracker_does_not_duplicate_split_assistant_stream() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "写一篇", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "先看看团队。"})
+    tracker.observe({"type": "token", "content": "已安排，稍等。"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "写一篇", "id": "u1"},
+                    {
+                        "role": "assistant",
+                        "content": "<think>派工</think>先看看团队。",
+                        "id": "a1",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "<think>等待</think>已安排，稍等。",
+                        "id": "a2",
+                    },
+                ]
+            },
+        }
+    )
+
+    texts = [_wire_text(item) for item in tracker.inputs if item.role in ("ai", "assistant")]
+    assert texts == [
+        "<think>派工</think>先看看团队。",
+        "<think>等待</think>已安排，稍等。",
+    ]
+
+
 def test_turn_tracker_does_not_duplicate_state_assistant() -> None:
     tracker = TurnHistoryTracker.from_request(
         {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
@@ -140,6 +186,27 @@ def test_turn_tracker_does_not_duplicate_state_assistant() -> None:
     texts = [_wire_text(item) for item in tracker.inputs]
     assert texts.count("hello") == 0
     assert any(text == "hello world" for text in texts)
+
+
+def test_turn_tracker_does_not_duplicate_split_emoji_in_state_reply() -> None:
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "hello \ud83e"})
+    tracker.observe({"type": "token", "content": "\udd16"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "hello \ud83e\udd16", "id": "a1"},
+                ],
+            },
+        }
+    )
+
+    assert [_wire_text(item) for item in tracker.inputs] == ["hi", "hello 🤖"]
 
 
 @pytest.mark.asyncio
@@ -174,3 +241,55 @@ async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     assert queue.available_slots == 2
     assert queue.contains("thr-1") is False
     await queue.close()
+
+
+def _read_image_turn() -> list[Any]:
+    """A user asks about an image; deepagents read_file attaches it in a synthetic HumanMessage."""
+    from deepagents.middleware.filesystem import add_notification_metadata
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    media = add_notification_metadata(
+        HumanMessage(
+            content_blocks=[{"type": "image", "base64": "AAAA", "mime_type": "image/png"}],
+            id="media",
+            additional_kwargs={"read_file_media_result": True},
+        ),
+        source="read_file_media",
+        data={"path": "/cat.png", "tool_call_id": "t1"},
+    )
+    return [
+        HumanMessage("what is in cat.png?", id="ask"),
+        AIMessage(
+            "",
+            id="call",
+            tool_calls=[{"id": "t1", "name": "read_file", "args": {"file_path": "/cat.png"}}],
+        ),
+        ToolMessage("Read image /cat.png", tool_call_id="t1", id="result"),
+        media,
+        AIMessage("It is a cat.", id="answer"),
+    ]
+
+
+def test_read_file_media_is_not_a_user_message() -> None:
+    items = message_inputs(_read_image_turn())
+    assert [(i.message_id, i.role) for i in items] == [
+        ("ask", "human"),
+        ("call", "ai"),
+        ("result", "tool"),
+        ("answer", "ai"),
+    ]
+
+
+def test_read_file_media_does_not_start_a_new_turn() -> None:
+    tracker = TurnHistoryTracker()
+    tracker.observe({"type": "state_snapshot", "data": {"messages": _read_image_turn()}})
+    assert [i.message_id for i in tracker.inputs] == ["ask", "call", "result", "answer"]
+
+
+def test_role_dict_media_is_recognized() -> None:
+    media = {
+        "role": "user",
+        "content": "",
+        "additional_kwargs": {"lc_source": "read_file_media"},
+    }
+    assert message_inputs([media]) == []

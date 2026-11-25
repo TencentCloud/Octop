@@ -24,6 +24,10 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.workspace.dir import (
+    default_workspace_for_chat_agent,
+    default_workspace_parent_dir,
+)
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.resource_policy import (
@@ -78,6 +82,7 @@ class RenameBody(BaseModel):
 async def filesystem_defaults(
     user: User = Depends(current_user),
     server: Any = Depends(get_server),
+    agent_id: str = Query("", description="Chat agent id, including a bridge id"),
 ) -> dict[str, Any]:
     """Return browse-tree / default root_dir for the current user.
 
@@ -89,25 +94,43 @@ async def filesystem_defaults(
     directory. ``jail_enforced`` reports whether a non-root ``root_dir`` really
     gets OS-level confinement (Linux + bubblewrap) or only bounds the agent's
     tool paths, so the UI does not promise a sandbox it cannot deliver.
+
+    ``default_workspace_dir`` is ``{OCTOP_HOME}/agents``. Create forms append
+    the new expert id, which is the path the server assigns when the caller
+    does not choose one.
+
+    ``agent_id`` adds ``default_agent_workspace``, the same path
+    ``default_agent_workspace_dir`` would assign for that expert, including a
+    scoped workspace root. A ``bridge:{connection}:{remote}`` id uses the
+    remote expert id as the folder name.
     """
     in_container = running_in_container()
+    workspace_parent = default_workspace_parent_dir()
     allowed = _user_workspace_root(server, user)
+    body: dict[str, Any]
     if allowed:
-        return {
+        body = {
             "default_root_dir": allowed,
             "tree_root": allowed,
             "browse_roots": [allowed],
+            "default_workspace_dir": workspace_parent,
             "jail_enforced": host_jail_enforced(),
             "in_container": in_container,
         }
-    root = host_fs_tree_root()
-    return {
-        "default_root_dir": root,
-        "tree_root": root,
-        "browse_roots": host_browse_roots(),
-        "jail_enforced": host_jail_enforced(),
-        "in_container": in_container,
-    }
+    else:
+        root = host_fs_tree_root()
+        body = {
+            "default_root_dir": root,
+            "tree_root": root,
+            "browse_roots": host_browse_roots(),
+            "default_workspace_dir": workspace_parent,
+            "jail_enforced": host_jail_enforced(),
+            "in_container": in_container,
+        }
+    folder = agent_id.strip()
+    if folder:
+        body["default_agent_workspace"] = default_workspace_for_chat_agent(folder, root_dir=allowed)
+    return body
 
 
 @router.get(

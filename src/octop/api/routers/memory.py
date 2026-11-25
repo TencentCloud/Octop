@@ -43,13 +43,13 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner, require_agent_owner_row
 from octop.api.common.memory_client import call_memory_rpc
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.manager import memory_extract_supported_options
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_permission("memory"))])
 
 # Defaults mirror ``HarnessAgentConfig`` (octop_harness.config). Kept in sync
 # manually — the dashboard writes these into the agent's ``config_json`` under
@@ -57,6 +57,8 @@ router = APIRouter()
 # back when constructing the agent.
 _EXTRACT_DEFAULTS: dict[str, Any] = {
     "memory_enabled": True,
+    "memory_capture_enabled": True,
+    "memory_recall_inject_enabled": True,
     "extract_on_session_end": True,
     "extract_trigger_mode": "idle",
     "extract_idle_seconds": 300.0,
@@ -193,6 +195,12 @@ class _ExtractConfigBody(BaseModel):
     """
 
     memory_enabled: bool | None = None
+    memory_capture_enabled: bool | None = Field(
+        default=None, description="Automatically record conversation events in memory"
+    )
+    memory_recall_inject_enabled: bool | None = Field(
+        default=None, description="Automatically inject recalled memory into the agent context"
+    )
     extract_on_session_end: bool | None = None
     extract_trigger_mode: str | None = Field(default=None, description="idle / interval")
     extract_idle_seconds: float | None = Field(
@@ -922,8 +930,9 @@ async def put_extract_config(
     merged = _read_extract_config(row)
     patch = body.model_dump(exclude_none=True)
 
-    if "memory_enabled" in patch:
-        merged["memory_enabled"] = bool(patch["memory_enabled"])
+    for key in ("memory_enabled", "memory_capture_enabled", "memory_recall_inject_enabled"):
+        if key in patch:
+            merged[key] = bool(patch[key])
     if "extract_on_session_end" in patch:
         merged["extract_on_session_end"] = bool(patch["extract_on_session_end"])
     if "extract_trigger_mode" in patch:

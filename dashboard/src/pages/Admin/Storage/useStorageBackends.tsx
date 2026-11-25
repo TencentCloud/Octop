@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Cloud, type LucideIcon } from "lucide-react";
 import { getStorageLogo } from "../../../assets/storage";
 import { request } from "../../../api/request";
 
@@ -21,6 +22,28 @@ function storageBrandIcon(kind: string): ReactNode {
   );
 }
 
+/** Lucide glyph on a brand tile (ISC; no hand-drawn asset). */
+function storageLucideIcon(Icon: LucideIcon, background: string): ReactNode {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 36,
+        height: 36,
+        borderRadius: 8,
+        background,
+        color: "#fff",
+        flexShrink: 0,
+      }}
+    >
+      <Icon size={20} strokeWidth={2} />
+    </span>
+  );
+}
+
 export interface StorageBackendRow {
   id: number;
   name: string;
@@ -35,6 +58,8 @@ export interface StorageBackendRow {
   enabled: boolean;
   /** Admin storage browse only (``/admin/backend``); expert workspace is always available. */
   previewable?: boolean;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
   created_at: number;
   updated_at: number;
 }
@@ -58,6 +83,7 @@ export const AGENT_RESOLVABLE_STORAGE_KINDS = new Set([
   "s3",
   "oss",
   "obs",
+  "tos",
   "custom",
   "filesystem",
   "shell",
@@ -244,6 +270,46 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
     ],
   },
   {
+    kind: "tos",
+    nameKey: "storage.kindTos",
+    descKey: "storage.descTos",
+    color: "#1664ff",
+    icon: storageBrandIcon("tos"),
+    fields: [
+      {
+        key: "access_key",
+        labelKey: "storage.accessKeyLabel",
+        required: true,
+        placeholder: "AKxxx",
+      },
+      {
+        key: "secret_key",
+        labelKey: "storage.secretKeyLabel",
+        required: true,
+        secret: true,
+        placeholder: "xxxxxxxx",
+      },
+      {
+        key: "bucket",
+        labelKey: "storage.bucketLabel",
+        required: true,
+        placeholder: "my-bucket",
+      },
+      {
+        key: "region",
+        labelKey: "storage.regionLabel",
+        required: true,
+        placeholder: "cn-beijing",
+      },
+      {
+        key: "endpoint",
+        labelKey: "storage.endpointLabel",
+        required: true,
+        placeholder: "tos-cn-beijing.volces.com",
+      },
+    ],
+  },
+  {
     kind: "filesystem",
     nameKey: "storage.kindFilesystem",
     descKey: "storage.descFilesystem",
@@ -402,6 +468,33 @@ export const STORAGE_TYPE_DEFS: StorageTypeDef[] = [
       },
     ],
   },
+  {
+    kind: "webdav",
+    nameKey: "storage.kindWebdav",
+    descKey: "storage.descWebdav",
+    color: "#1677ff",
+    icon: storageLucideIcon(Cloud, "#1677ff"),
+    fields: [
+      {
+        key: "endpoint",
+        labelKey: "storage.endpointLabel",
+        required: true,
+        placeholder: "https://dav.example/remote.php/dav/files/user/",
+      },
+      {
+        key: "access_key",
+        labelKey: "storage.usernameLabel",
+        placeholder: "username",
+        secret: false,
+      },
+      {
+        key: "secret_key",
+        labelKey: "storage.passwordLabel",
+        secret: true,
+        placeholder: "password",
+      },
+    ],
+  },
 ];
 
 export const STORAGE_KINDS = STORAGE_TYPE_DEFS.map((t) => ({
@@ -424,7 +517,7 @@ export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
   {
     id: "object",
     titleKey: "storage.groupObject",
-    kinds: ["cos", "s3", "oss", "obs", "custom"],
+    kinds: ["cos", "s3", "oss", "obs", "tos", "custom"],
   },
   {
     id: "sandbox",
@@ -435,6 +528,11 @@ export const STORAGE_TYPE_GROUPS: StorageTypeGroup[] = [
     id: "database",
     titleKey: "storage.groupDatabase",
     kinds: ["postgres"],
+  },
+  {
+    id: "backup",
+    titleKey: "storage.groupBackup",
+    kinds: ["webdav"],
   },
 ];
 

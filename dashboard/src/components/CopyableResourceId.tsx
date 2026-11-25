@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Tooltip } from "antd";
 import { Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import { message } from "@/utils/antdMessage";
 import { copyText } from "@/utils/copyText";
@@ -14,6 +15,8 @@ type CopyableResourceIdProps = {
   className?: string;
   /** Match surrounding meta text (e.g. creator line). */
   inline?: boolean;
+  /** Inline: show only the value, without the `label:` prefix. */
+  valueOnly?: boolean;
 };
 
 export function CopyableResourceId({
@@ -22,6 +25,7 @@ export function CopyableResourceId({
   copyTitle,
   className,
   inline = false,
+  valueOnly = false,
 }: CopyableResourceIdProps) {
   const { t } = useTranslation();
 
@@ -35,13 +39,11 @@ export function CopyableResourceId({
     <Tooltip title={copyTitle ?? t("common.copy")}>
       <button
         type="button"
-        className={`${inline ? styles.inlineRoot : styles.root}${
-          className ? ` ${className}` : ""
-        }`}
+        className={cx(inline ? styles.inlineRoot : styles.root, className)}
         onClick={() => void copy()}
       >
         <span className={inline ? styles.inlineText : styles.label}>
-          {inline ? `${label}: ${value}` : label}
+          {inline ? (valueOnly ? value : `${label}: ${value}`) : label}
         </span>
         {!inline ? <span className={styles.value}>{value}</span> : null}
         <Copy

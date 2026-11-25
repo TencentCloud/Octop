@@ -295,6 +295,33 @@ async def test_disable_then_enable_toggles_listing(env: Any) -> None:
     assert fr["enabled"] is True
 
 
+async def test_office_documents_enable_records_the_opt_in(env: Any) -> None:
+    # Default-off is checked against the real harness build in test_agent_manager;
+    # the fake agent here starts with an empty disabled set.
+    c, srv, auth, aid = env
+    registry = srv.app_runtime.agent_registry
+
+    async def office_enabled() -> bool:
+        rows = (await c.get(f"/api/agents/{aid}/skills", headers=auth)).json()
+        return bool(next(row for row in rows if row["slug"] == "office-documents")["enabled"])
+
+    r = await c.post(f"/api/agents/{aid}/skills/office-documents/disable", headers=auth)
+    assert r.status_code == 204
+    assert await office_enabled() is False
+    assert "skills_enabled" not in registry.get_config(aid)
+    assert "office-documents" not in registry.get_config(aid)["skills_disabled"]
+
+    r = await c.post(f"/api/agents/{aid}/skills/office-documents/enable", headers=auth)
+    assert r.status_code == 204
+    assert await office_enabled() is True
+    assert registry.get_config(aid)["skills_enabled"] == ["office-documents"]
+
+    r = await c.post(f"/api/agents/{aid}/skills/office-documents/disable", headers=auth)
+    assert r.status_code == 204
+    assert await office_enabled() is False
+    assert "skills_enabled" not in registry.get_config(aid)
+
+
 # --- soft delete -----------------------------------------------------------
 
 
@@ -972,7 +999,10 @@ async def test_copy_package_skills_to_workspace_is_an_independent_snapshot(env: 
     )
     assert replaced.status_code == 200, replaced.text
     assert await agent.workspace.aread_text("skills/package-demo/SKILL.md") == changed
-    assert await agent.workspace.aread_text("skills/package-demo/references/guide.txt") is None
+    # Content-only package edits keep siblings; overwrite copy mirrors the package.
+    assert (
+        await agent.workspace.aread_text("skills/package-demo/references/guide.txt") == "guide-v1"
+    )
     config = srv.app_runtime.agent_registry.get_config(aid)
     assert "package-demo" not in set(config.get("skills_disabled") or [])
     assert "Package Demo" not in set(config.get("skills_disabled") or [])

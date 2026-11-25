@@ -1,12 +1,14 @@
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
 import {
+  Activity,
   Archive,
+  FileJson,
+  KeyRound,
   Lock,
   RefreshCw,
   ShieldCheck,
   Variable,
-  Activity,
 } from "lucide-react";
 import EnvironmentsPage from "../Environments";
 import { ObservabilitySettingsPanel } from "../Observability";
@@ -14,6 +16,8 @@ import BackupRestorePanel from "../BackupRestore";
 import { HttpsSettingsPanel } from "../HttpsSettings";
 import UpdateConfig from "./UpdateConfig";
 import CaptchaSettingsPanel from "./CaptchaSettings";
+import WebauthnSettingsPanel from "./WebauthnSettings";
+import AppConfigPanel from "./AppConfigPanel";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import tabStyles from "./tabContent.module.less";
@@ -27,7 +31,9 @@ type TabKey =
   | "backup"
   | "https"
   | "updates"
-  | "captcha";
+  | "captcha"
+  | "webauthn"
+  | "config";
 
 const TABS: TabBarItem<TabKey>[] = [
   { key: "env-vars", labelKey: "nav.environments", icon: Variable },
@@ -35,6 +41,8 @@ const TABS: TabBarItem<TabKey>[] = [
   { key: "backup", labelKey: "nav.backupRestore", icon: Archive },
   { key: "https", labelKey: "nav.https", icon: Lock },
   { key: "captcha", labelKey: "nav.loginCaptcha", icon: ShieldCheck },
+  { key: "webauthn", labelKey: "nav.passkeys", icon: KeyRound },
+  { key: "config", labelKey: "adminAppConfig.title", icon: FileJson },
   { key: "updates", labelKey: "nav.checkUpdates", icon: RefreshCw },
 ];
 
@@ -44,7 +52,9 @@ function parseTab(raw: string | null): TabKey {
     raw === "backup" ||
     raw === "https" ||
     raw === "updates" ||
-    raw === "captcha"
+    raw === "captcha" ||
+    raw === "webauthn" ||
+    raw === "config"
   ) {
     return raw;
   }
@@ -85,6 +95,10 @@ export default function AdvancedSettingsPage() {
         return <UpdateConfig />;
       case "captcha":
         return <CaptchaSettingsPanel />;
+      case "webauthn":
+        return <WebauthnSettingsPanel />;
+      case "config":
+        return <AppConfigPanel />;
     }
   };
 

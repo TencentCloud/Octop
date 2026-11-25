@@ -26,12 +26,20 @@ export interface ChannelRow {
     connected: boolean;
     error?: string | null;
     updated_at?: number;
+    last_inbound_at?: number | null;
+    last_outbound_at?: number | null;
+    reconnect_count?: number;
+    last_reconnect_at?: number | null;
+    dropped_duplicate?: number;
+    dropped_stale?: number;
   };
 }
 
 /** Full channel row including its ``config`` blob — populated by GET /channels/{id}. */
 export interface ChannelDetail extends ChannelRow {
   config?: Record<string, unknown>;
+  /** Secret field names that are stored but omitted from ``config``. */
+  secrets_set?: string[];
 }
 
 export interface ChannelCreateBody {
@@ -182,6 +190,7 @@ export function useChannels(agentId: string | null) {
     async (
       kind: string,
       config: Record<string, unknown>,
+      channelId?: string,
     ): Promise<{ ok: boolean; error?: string }> => {
       if (!agentId) return { ok: false, error: "no agent" };
       try {
@@ -189,7 +198,11 @@ export function useChannels(agentId: string | null) {
           `/agents/${agentId}/channels/probe`,
           {
             method: "POST",
-            body: JSON.stringify({ kind, config }),
+            body: JSON.stringify({
+              kind,
+              config,
+              ...(channelId ? { channel_id: channelId } : {}),
+            }),
           },
         );
       } catch (error) {

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import httpx
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from starlette.websockets import WebSocketDisconnect
 
 from tests.support.app import octop_client
@@ -195,6 +196,56 @@ async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> 
     assert b_frames[0] == {"type": "turn_status", "thread_id": tid, "active": True}
     assert [f.get("content") for f in b_frames if f.get("type") == "token"] == ["second"]
     assert b_frames[-1].get("type") == "done"
+
+
+async def test_ws_steer_first_frame_on_new_connection_keeps_stream(env: Any) -> None:
+    """A steer sent as a fresh connection's first user_turn must reach that socket.
+
+    hub.subscribe used to run after _maybe_admit_steer — and was skipped
+    entirely for steered frames — so steer.queued plus the running turn's
+    tail were dropped when the original connection was already gone.
+    """
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+
+    gate = asyncio.Event()
+
+    async def slow_stream(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "node": "agent", "content": "first"}
+        await gate.wait()
+        yield {"type": "token", "node": "agent", "content": "second"}
+
+    agent.stream = slow_stream
+
+    async with _chat_ws(c, aid, alice_auth) as ws_a:
+        await ws_a.send_json({"type": "user_turn", "text": "slow please", "thread_id": tid})
+        first = await ws_a.receive_json()
+        while first.get("type") != "token":
+            first = await ws_a.receive_json()
+    # A is closed; the turn stays active, blocked on the gate.
+
+    async with _chat_ws(c, aid, alice_auth) as ws_b:
+        await ws_b.send_json(
+            {
+                "type": "user_turn",
+                "text": "steer this",
+                "thread_id": tid,
+                "delivery": "auto",
+                "client_pending_id": "cpid-steer-1",
+            }
+        )
+        ack = await ws_b.receive_json()
+        assert ack["type"] == "steer.ack"
+        assert ack["status"] == "queued"
+        gate.set()
+        frames = await ws_b.drain_turn()
+
+    types = [f.get("type") for f in frames]
+    assert "steer.queued" in types
+    assert [f.get("content") for f in frames if f.get("type") == "token"] == ["second"]
+    assert frames[-1].get("type") == "done"
 
 
 async def test_ws_two_threads_do_not_cross_stream(env: Any) -> None:
@@ -404,6 +455,26 @@ async def test_polish_rejects_empty_text(env: Any) -> None:
     assert r.status_code == 400
 
 
+async def test_text_assist_chat_prompt_rejects_empty_text(env: Any) -> None:
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+    r = await c.post(
+        "/api/text/assist",
+        headers=alice_auth,
+        json={"kind": "chat.prompt", "text": "   ", "agent_id": aid},
+    )
+    assert r.status_code == 400
+
+
+async def test_text_assist_form_requires_name(env: Any) -> None:
+    c, _srv, _fake, alice_auth, _bob_auth, _aid = env
+    r = await c.post(
+        "/api/text/assist",
+        headers=alice_auth,
+        json={"kind": "expert.description", "text": "", "context": {}},
+    )
+    assert r.status_code == 400
+
+
 async def test_threads_list_after_stream(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, aid = env
     await _consume_ws_turn(c, aid, alice_auth, text="What's up?")
@@ -426,6 +497,60 @@ async def test_thread_history_after_stream(env: Any) -> None:
     hist = await c.get(f"/api/agents/{aid}/threads/{tid}/history", headers=alice_auth)
     assert hist.status_code == 200
     assert "messages" in hist.json()
+
+
+@pytest.mark.parametrize(
+    ("fragments", "expected_reasoning"),
+    [
+        (("\ud83e", "\udd16"), "🤖"),
+        (("\ud83e",), "\ufffd"),
+    ],
+    ids=["split-emoji", "unpaired-surrogate"],
+)
+async def test_thread_history_after_surrogate_reasoning(
+    env: Any, fragments: tuple[str, ...], expected_reasoning: str
+) -> None:
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    question = "History test"
+    answer = "答复"
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.chunks = [
+        *({"type": "reasoning", "node": "agent", "content": fragment} for fragment in fragments),
+        {"type": "token", "node": "agent", "content": answer},
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    HumanMessage(content=question, id="user"),
+                    AIMessage(
+                        content=answer,
+                        id="reply",
+                        additional_kwargs={"reasoning_content": "".join(fragments)},
+                    ),
+                ],
+            },
+        },
+    ]
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    create.raise_for_status()
+    thread_id = create.json()["thread_id"]
+
+    chunks = await _consume_ws_turn(c, aid, alice_auth, text=question, thread_id=thread_id)
+    assert chunks[-1]["type"] == "done"
+
+    history = await c.get(f"/api/agents/{aid}/threads/{thread_id}/history", headers=alice_auth)
+    history.raise_for_status()
+    payload = history.json()
+    assert payload["history_status"] == "ready"
+    assert len(payload["messages"]) == 2
+    user, assistant = payload["messages"]
+    assert user["role"] == "user"
+    assert user["content"] == [{"type": "text", "text": question}]
+    assert assistant["role"] == "assistant"
+    assert assistant["content"] == [
+        {"type": "thinking", "thinking": expected_reasoning},
+        {"type": "text", "text": answer},
+    ]
 
 
 async def test_thread_history_reports_active_turn(env: Any) -> None:

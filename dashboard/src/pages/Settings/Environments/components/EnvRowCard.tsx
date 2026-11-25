@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Checkbox, Input } from "antd";
 import { Plus, Trash2, Eye, EyeOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { isSensitiveKey } from "../utils";
 import type { Row } from "./EnvRow";
 import styles from "../index.module.less";
@@ -34,9 +35,7 @@ export function EnvRowCard({
 
   return (
     <div
-      className={`${styles.envRowCard} ${
-        checked ? styles.envRowCardSelected : ""
-      }`}
+      className={cx(styles.envRowCard, checked && styles.envRowCardSelected)}
     >
       <div className={styles.envRowCardHeader}>
         <Checkbox checked={checked} onChange={() => onToggle(idx)} />
@@ -52,7 +51,7 @@ export function EnvRowCard({
           </button>
           <button
             type="button"
-            className={`${styles.rowIconBtn} ${styles.rowIconBtnDanger}`}
+            className={cx(styles.rowIconBtn, styles.rowIconBtnDanger)}
             onClick={() => onRemove(idx)}
             title={t("environments.deleteRow")}
             aria-label={t("environments.deleteRow")}

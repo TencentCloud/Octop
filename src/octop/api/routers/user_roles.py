@@ -13,8 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 
-from octop.api.deps import get_server, require_permission
-from octop.api.routers.users import _assert_can_assign
+from octop.api.deps import get_server, require_any_permission, require_permission
 from octop.infra.db.repos.user_roles import (
     BUILTIN_USER_ROLE_IDS,
     UserRoleRepo,
@@ -22,12 +21,24 @@ from octop.infra.db.repos.user_roles import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
-from octop.infra.users.permissions import ALL_PERMISSION_KEYS, validate_permission_keys
+from octop.infra.users.permissions import (
+    ASSIGNABLE_PERMISSION_KEYS,
+    assert_can_assign_permissions,
+    expand_permission_grants,
+    validate_permission_keys,
+)
 from octop.infra.users.resource_policy import (
+    POLICY_ALLOWED_BACKEND_TYPES,
+    POLICY_DEFAULT_BACKEND_TYPE,
     POLICY_MAX_AGENTS,
     POLICY_TOKEN_QUOTA,
     POLICY_WORKSPACE_ROOT_DIR,
+    allowed_backend_types_of,
+    assert_default_backend_allowed,
+    default_backend_type_of,
     max_agents_of,
+    normalize_allowed_backend_types,
+    normalize_default_backend_type,
     normalize_max_agents,
     normalize_token_quota,
     normalize_workspace_root_dir,
@@ -41,6 +52,8 @@ _KNOWN_POLICIES = {
     POLICY_WORKSPACE_ROOT_DIR,
     POLICY_TOKEN_QUOTA,
     POLICY_MAX_AGENTS,
+    POLICY_ALLOWED_BACKEND_TYPES,
+    POLICY_DEFAULT_BACKEND_TYPE,
 }
 
 
@@ -82,7 +95,7 @@ def _public(server: Any, row: UserRoleRow) -> dict[str, Any]:
     return public_role(
         row,
         avatar_url=profile_avatar_url(
-            server.services.paths.role_avatars_dir,
+            server.services.avatars("role"),
             row.user_role_id,
             f"/api/users/roles/{row.user_role_id}/avatar",
         ),
@@ -131,6 +144,8 @@ def _policies_from_fields(
     workspace_root_dir: str | None,
     token_quota: int | None,
     max_agents: int | None,
+    allowed_backend_types: Any,
+    default_backend_type: Any = None,
 ) -> list[tuple[str, str]]:
     items: list[tuple[str, str]] = []
     root = normalize_workspace_root_dir(workspace_root_dir)
@@ -142,6 +157,13 @@ def _policies_from_fields(
     agents = normalize_max_agents(max_agents)
     if agents is not None:
         items.append((POLICY_MAX_AGENTS, str(agents)))
+    backends = normalize_allowed_backend_types(allowed_backend_types)
+    if backends:
+        items.append((POLICY_ALLOWED_BACKEND_TYPES, backends))
+    default_backend = normalize_default_backend_type(default_backend_type)
+    assert_default_backend_allowed(default_backend, backends)
+    if default_backend:
+        items.append((POLICY_DEFAULT_BACKEND_TYPE, default_backend))
     return items
 
 
@@ -158,6 +180,8 @@ def _policies_from_items(items: list[PolicyItem]) -> list[tuple[str, str]]:
         workspace_root_dir=by_name.get(POLICY_WORKSPACE_ROOT_DIR),
         token_quota=token_quota_of(by_name.get(POLICY_TOKEN_QUOTA)),
         max_agents=max_agents_of(by_name.get(POLICY_MAX_AGENTS)),
+        allowed_backend_types=by_name.get(POLICY_ALLOWED_BACKEND_TYPES),
+        default_backend_type=by_name.get(POLICY_DEFAULT_BACKEND_TYPE),
     )
 
 
@@ -175,19 +199,27 @@ def _policies_for_write(body: UserRoleBody | UserRolePatchBody) -> list[tuple[st
 
 def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str, Any]:
     if row.is_admin:
-        permissions = sorted(ALL_PERMISSION_KEYS)
+        permissions = sorted(ASSIGNABLE_PERMISSION_KEYS)
         system_role = "admin"
         policies: list[dict[str, str]] = []
         workspace_root_dir = None
         token_quota = None
         max_agents = None
+        allowed_backend_types = None
+        default_backend_type = None
     else:
-        permissions = list(row.permissions)
+        permissions = expand_permission_grants(list(row.permissions))
         system_role = "user"
         policies = [{"name": name, "value": value} for name, value in row.policies]
         workspace_root_dir = workspace_root_dir_of(row.policy_value(POLICY_WORKSPACE_ROOT_DIR))
         token_quota = token_quota_of(row.policy_value(POLICY_TOKEN_QUOTA))
         max_agents = max_agents_of(row.policy_value(POLICY_MAX_AGENTS))
+        allowed_backend_types = allowed_backend_types_of(
+            row.policy_value(POLICY_ALLOWED_BACKEND_TYPES)
+        )
+        default_backend_type = default_backend_type_of(
+            row.policy_value(POLICY_DEFAULT_BACKEND_TYPE)
+        )
     return {
         "user_role_id": row.user_role_id,
         "user_role_name": row.user_role_name,
@@ -200,6 +232,8 @@ def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str,
         "workspace_root_dir": workspace_root_dir,
         "token_quota": token_quota,
         "max_agents": max_agents,
+        "allowed_backend_types": allowed_backend_types,
+        "default_backend_type": default_backend_type,
         "created_at": row.created_at,
         "updated_at": row.updated_at,
         "avatar_icon": row.avatar_icon,
@@ -219,7 +253,7 @@ def _name_taken(exc: ValueError) -> None:
 
 @router.get("", summary="List role templates")
 async def list_user_roles(
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_any_permission("users", "user_roles")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     return [_public(server, row) for row in _repo(server).list_all()]
@@ -228,14 +262,14 @@ async def list_user_roles(
 @router.post("", status_code=201, summary="Create a role template")
 async def create_user_role(
     body: UserRoleBody,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     try:
         permissions = validate_permission_keys(body.permissions)
     except ValueError as exc:
         raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
-    _assert_can_assign(actor, permissions)
+    assert_can_assign_permissions(actor, permissions)
     policies = _policies_for_write(body) or []
     try:
         row = _repo(server).create(
@@ -260,7 +294,7 @@ async def create_user_role(
 async def patch_user_role(
     user_role_id: str,
     body: UserRolePatchBody,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     current = _repo(server).get(user_role_id)
@@ -275,7 +309,7 @@ async def patch_user_role(
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 
         avatar_icon = clean_avatar_icon(body.avatar_icon)
-        delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+        delete_profile_avatar(server.services.avatars("role"), user_role_id)
     if current.is_admin:
         if name is None and description is ... and avatar_icon is ...:
             return _public(server, current)
@@ -303,7 +337,7 @@ async def patch_user_role(
             permissions = validate_permission_keys(body.permissions)
         except ValueError as exc:
             raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
-        _assert_can_assign(actor, permissions)
+        assert_can_assign_permissions(actor, permissions)
     try:
         updated = _repo(server).update(
             user_role_id,
@@ -328,7 +362,7 @@ async def patch_user_role(
 @router.delete("/{user_role_id}", status_code=204, summary="Delete a role template")
 async def delete_user_role(
     user_role_id: str,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> None:
     current = _repo(server).get(user_role_id)
@@ -345,7 +379,7 @@ async def delete_user_role(
     _repo(server).delete(user_role_id)
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+    delete_profile_avatar(server.services.avatars("role"), user_role_id)
     server.services.audit_repo.write(
         actor=actor.username,
         action="user_role.delete",
@@ -357,7 +391,7 @@ async def delete_user_role(
 async def upload_role_avatar(
     user_role_id: str,
     file: UploadFile = File(...),  # noqa: B008
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, str | None]:
     row = _repo(server).get(user_role_id)
@@ -366,7 +400,7 @@ async def upload_role_avatar(
     from octop.infra.users.profile_avatar import write_profile_avatar
 
     write_profile_avatar(
-        server.services.paths.role_avatars_dir,
+        server.services.avatars("role"),
         user_role_id,
         await file.read(),
     )
@@ -376,24 +410,24 @@ async def upload_role_avatar(
 @router.get("/{user_role_id}/avatar")
 async def get_role_avatar(
     user_role_id: str,
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_any_permission("users", "user_roles")),
     server: Any = Depends(get_server),
 ) -> Any:
     from octop.infra.users.profile_avatar import avatar_response
 
     if _repo(server).get(user_role_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
-    return avatar_response(server.services.paths.role_avatars_dir, user_role_id)
+    return avatar_response(server.services.avatars("role"), user_role_id)
 
 
 @router.delete("/{user_role_id}/avatar", status_code=204)
 async def delete_role_avatar(
     user_role_id: str,
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> None:
     if _repo(server).get(user_role_id) is None:
         raise OctopError(ErrorCode.NOT_FOUND, "role not found")
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.role_avatars_dir, user_role_id)
+    delete_profile_avatar(server.services.avatars("role"), user_role_id)

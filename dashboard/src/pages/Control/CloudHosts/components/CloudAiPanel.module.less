@@ -1,0 +1,493 @@
+.panelFill {
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 12px 16px 16px;
+}
+
+.expertError {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  background: color-mix(in srgb, #df5665 9%, transparent);
+  border: 1px solid color-mix(in srgb, #df5665 26%, transparent);
+  border-radius: 8px;
+}
+
+.expertErrorTitle {
+  font-weight: 600;
+  color: #df5665;
+}
+
+.expertErrorBody {
+  opacity: 0.72;
+}
+
+.context {
+  flex: 0 0 auto;
+  padding: 9px 10px 10px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary);
+}
+
+.contextTitle {
+  margin-bottom: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  opacity: 0.45;
+}
+
+.contextBody {
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-all;
+  opacity: 0.75;
+}
+
+/* 已关联实例：一行名称+状态+规格，一行 mono 标识，比原来的两行纯文本紧凑 */
+.contextCard {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--fn-bg-primary, #fff);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 8px;
+}
+
+.dotOn,
+.dotOff {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+
+.dotOn {
+  background: #34c759;
+  box-shadow: 0 0 0 3px rgba(52, 199, 89, 0.13);
+}
+
+.dotOff {
+  background: #b9c2cc;
+}
+
+.contextMain {
+  flex: 1;
+  min-width: 0;
+}
+
+.contextRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.contextName {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stateTag {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+  border-radius: 999px;
+}
+
+.stateTag[data-on="1"] {
+  color: #1b7f3b;
+  background: rgba(52, 199, 89, 0.14);
+}
+
+.stateTag[data-on="0"] {
+  color: #7a828c;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.contextSpec {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-family: var(--sc-mono);
+  font-size: 10px;
+  opacity: 0.45;
+}
+
+.contextMeta {
+  display: flex;
+  gap: 0;
+  align-items: center;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.55;
+}
+
+.mono {
+  font-family: var(--sc-mono);
+}
+
+.sep {
+  margin: 0 4px;
+}
+
+.list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.booting {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.userMsg,
+.aiMsg {
+  max-width: 92%;
+  padding: 9px 11px;
+  font-size: 12px;
+  line-height: 1.65;
+  word-break: break-word;
+}
+
+.userMsg {
+  align-self: flex-end;
+  white-space: pre-wrap;
+  background: var(--fn-bg-selected);
+  border-radius: 10px;
+}
+
+/* 用户消息里的「当前云服务器」上下文：抽成引用卡，正文只剩真正的问题 */
+/* 工具调用组：默认收成一行，展开才铺开每一步 */
+.toolGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 1px 0;
+}
+
+.toolGroupHead {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  width: 100%;
+  min-height: 24px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+  text-align: left;
+  cursor: pointer;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 7px;
+  transition: background 0.12s ease;
+}
+
+.toolGroupHead:hover {
+  background: var(--fn-bg-selected);
+}
+
+.toolGroupText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolGroupChevron {
+  flex: 0 0 auto;
+  opacity: 0.55;
+  transition: transform 0.15s ease;
+}
+
+.toolGroupChevronOpen {
+  transform: rotate(90deg);
+}
+
+.toolGroupBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-left: 7px;
+  padding: 2px 0 2px 8px;
+  border-left: 1px solid var(--fn-border-primary);
+}
+
+.toolGroupBody .toolStep {
+  padding: 2px 4px;
+  background: transparent;
+  border-radius: 4px;
+}
+
+.toolGroupBody .toolStep:hover {
+  background: var(--fn-bg-secondary);
+}
+
+/* 工具调用组：默认收成一行，展开才铺开每一步 */
+.toolGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 1px 0;
+}
+
+.toolGroupHead {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+  text-align: left;
+  cursor: pointer;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 7px;
+  transition: background 0.12s ease;
+}
+
+.toolGroupHead:hover {
+  background: var(--fn-bg-selected);
+}
+
+.toolGroupText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolGroupChevron {
+  flex: 0 0 auto;
+  opacity: 0.55;
+  transition: transform 0.15s ease;
+}
+
+.toolGroupChevronOpen {
+  transform: rotate(90deg);
+}
+
+.toolGroupBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 1px 0 1px 2px;
+}
+
+.ctxQuote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.035);
+  border-left: 3px solid var(--fn-border-primary);
+  border-radius: 6px;
+}
+
+.ctxQuoteHead {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.ctxQuoteName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctxQuoteMeta {
+  font-family: var(--sc-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  word-break: break-all;
+  opacity: 0.5;
+}
+
+.userText {
+  display: block;
+}
+
+/* Assistant turns render real Markdown, so the bubble chrome would double up. */
+.aiMsg {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 0 2px;
+  background: transparent;
+}
+
+.aiMsg :global(p) {
+  margin: 0 0 8px;
+}
+
+.aiMsg :global(p:last-child) {
+  margin-bottom: 0;
+}
+
+.aiMsg :global(ul),
+.aiMsg :global(ol) {
+  padding-left: 18px;
+  margin: 0 0 8px;
+}
+
+.aiMsg :global(pre) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.aiMsg :global(table) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.composer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--fn-border-secondary);
+}
+
+.quickAsks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quickAsk {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  line-height: 24px;
+  color: var(--fn-text-secondary);
+  white-space: nowrap;
+  cursor: pointer;
+  background: var(--fn-bg-primary, #fff);
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.quickAsk:hover:not(:disabled) {
+  color: #0052d9;
+  border-color: #0052d9;
+}
+
+.quickAsk:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* 工具执行步骤：紧凑一行，避免长工具链期间界面毫无反馈 */
+.toolStep {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+  background: var(--fn-bg-secondary);
+  border-radius: 6px;
+}
+
+.toolStep > svg {
+  flex: 0 0 auto;
+  align-self: center;
+  opacity: 0.55;
+}
+
+.toolStepName {
+  flex: 0 1 auto;
+  max-width: 52%;
+  overflow: hidden;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fn-text-secondary);
+}
+
+.toolStepSep {
+  flex: 0 0 auto;
+  opacity: 0.35;
+}
+
+.toolStepPreview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--fn-font-family-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.7;
+}
+
+.toolStepFailed {
+  color: #df5665;
+  background: color-mix(in srgb, #df5665 8%, transparent);
+}
+
+.toolStepFailed .toolStepName {
+  color: #df5665;
+}
+
+/* 流式执行中的计时条 */
+.liveStatus {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 2px;
+  font-size: 11px;
+  color: var(--fn-text-tertiary);
+}
+
+.composerActions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hint {
+  font-size: 11px;
+  opacity: 0.5;
+}

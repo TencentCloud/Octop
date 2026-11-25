@@ -103,12 +103,13 @@ def is_rerank_model(model: dict[str, Any]) -> bool:
 def is_embedding_model(
     model: dict[str, Any],
     *,
+    embedding_service: bool = False,
     provider_name: str | None = None,
     provider_api_key: str | None = None,
 ) -> bool:
     """True when *model* is embedding-only (not for chat / auto-route).
 
-    Explicit flags win:
+    Embedding flags for non-rerank models:
     - ``embedding: true``
     - ``task: "embedding"``
 
@@ -125,13 +126,13 @@ def is_embedding_model(
     Legacy fallback: models under the ONNX local provider are treated as
     embedding-only even if the flag was missing.
     """
-    if model.get("embedding") is True:
+    if is_rerank_model(model):
+        return False
+    if embedding_service or model.get("embedding") is True:
         return True
     task = str(model.get("task") or "").strip().lower()
     if task == "embedding":
         return True
-    if is_rerank_model(model):
-        return False
     model_id = str(model.get("id") or "").strip().lower()
     if model_id and any(hint in model_id for hint in _EMBEDDING_NAME_HINTS):
         return True
@@ -174,3 +175,43 @@ def is_chat_eligible_model(
     if is_rerank_model(model):
         return False
     return bool(str(model.get("id") or "").strip())
+
+
+def provider_purpose_from_extra(extra: dict[str, Any] | None) -> str | None:
+    """Return ``chat`` / ``embedding`` from ``extra_json.purpose`` when set."""
+    if not isinstance(extra, dict):
+        return None
+    purpose = str(extra.get("purpose") or "").strip().lower()
+    if purpose in {"chat", "embedding"}:
+        return purpose
+    return None
+
+
+def is_embedding_provider(
+    *,
+    provider_name: str | None = None,
+    provider_api_key: str | None = None,
+    extra: dict[str, Any] | None = None,
+    models: list[dict[str, Any]] | None = None,
+) -> bool:
+    """True when this provider belongs on the embedding Models tab.
+
+    Order:
+    1. Local ONNX runtime
+    2. Explicit ``extra_json.purpose == "embedding"``
+    3. Legacy heuristic: every stored model is embedding-only (and non-empty)
+    """
+    if is_onnx_local_provider(provider_name, provider_api_key=provider_api_key):
+        return True
+    if provider_purpose_from_extra(extra) == "embedding":
+        return True
+    if not models:
+        return False
+    return all(
+        is_embedding_model(
+            model,
+            provider_name=provider_name,
+            provider_api_key=provider_api_key,
+        )
+        for model in models
+    )

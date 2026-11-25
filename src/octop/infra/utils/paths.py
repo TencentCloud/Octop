@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def is_single_path_segment(name: str) -> bool:
+    """True when *name* cannot escape a parent directory on any platform."""
+    if not name or name in {".", ".."}:
+        return False
+    return "/" not in name and "\\" not in name and "\x00" not in name
+
+
 @dataclass(frozen=True)
 class PathLayout:
     root: Path
@@ -18,6 +25,11 @@ class PathLayout:
         if raw:
             return cls(Path(raw).expanduser())
         return cls(Path.home() / ".octop")
+
+    @property
+    def wizard_password_file(self) -> Path:
+        """Initial wizard password file: ``~/.octop/octop-login.txt`` (or ``$OCTOP_HOME/octop-login.txt``)."""
+        return self.root / "octop-login.txt"
 
     @property
     def db(self) -> Path:
@@ -52,6 +64,9 @@ class PathLayout:
         return self.root / "users"
 
     def user_dir(self, username: str) -> Path:
+        """Per-user directory. *username* must be a single path segment."""
+        if not is_single_path_segment(username):
+            raise ValueError("username must be a single directory name")
         return self.users_dir / username
 
     @property
@@ -129,6 +144,26 @@ class PathLayout:
     def role_avatars_dir(self) -> Path:
         """Uploaded role portraits: ``~/.octop/avatars/roles/``."""
         return self.root / "avatars" / "roles"
+
+    @property
+    def group_avatars_dir(self) -> Path:
+        """Uploaded user-group portraits: ``~/.octop/avatars/groups/``."""
+        return self.root / "avatars" / "groups"
+
+    @property
+    def skill_package_avatars_dir(self) -> Path:
+        """Uploaded skill-package portraits: ``~/.octop/avatars/skill_packages/``."""
+        return self.root / "avatars" / "skill_packages"
+
+    @property
+    def knowledge_base_avatars_dir(self) -> Path:
+        """Uploaded knowledge-base portraits: ``~/.octop/avatars/knowledge_bases/``."""
+        return self.root / "avatars" / "knowledge_bases"
+
+    @property
+    def bridge_avatars_dir(self) -> Path:
+        """Uploaded Bridge connection portraits: ``~/.octop/avatars/bridge/``."""
+        return self.root / "avatars" / "bridge"
 
     @property
     def ssl_dir(self) -> Path:
