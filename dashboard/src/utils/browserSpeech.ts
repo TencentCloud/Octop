@@ -103,6 +103,28 @@ function pickVoiceForLocale(
   );
 }
 
+const SENTENCE_ENDERS = "。！？.!?";
+
+/**
+ * Split after sentence enders, dropping the following whitespace.
+ * A lookbehind would do this, but Safari before 16.4 cannot compile it.
+ */
+function splitKeepingSentenceEnd(text: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text.charAt(i);
+    if (!SENTENCE_ENDERS.includes(ch)) continue;
+    parts.push(text.slice(start, i + 1));
+    let next = i + 1;
+    while (next < text.length && /\s/.test(text.charAt(next))) next += 1;
+    start = next;
+    i = next - 1;
+  }
+  if (start < text.length) parts.push(text.slice(start));
+  return parts;
+}
+
 export function chunkTextForSpeech(
   text: string,
   maxLen = CHUNK_MAX_LEN,
@@ -111,8 +133,7 @@ export function chunkTextForSpeech(
   if (!trimmed) return [];
   if (trimmed.length <= maxLen) return [trimmed];
 
-  const sentences = trimmed
-    .split(/(?<=[。！？.!?])\s*/)
+  const sentences = splitKeepingSentenceEnd(trimmed)
     .map((s) => s.trim())
     .filter(Boolean);
   const parts = sentences.length > 0 ? sentences : [trimmed];

@@ -13,6 +13,7 @@ import {
 } from "../../../utils/workspaceIoPath";
 
 export {
+  agentIdFromWorkspacePath,
   isHostAbsolutePath,
   normalizeIoPath,
 } from "../../../utils/workspaceIoPath";

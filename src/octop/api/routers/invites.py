@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.client_ip import resolve_client_ip
@@ -14,13 +14,16 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.users.invites import (
     DEFAULT_EXPIRES_DAYS,
+    DEFAULT_MAX_USES,
     MAX_EXPIRES_DAYS,
+    MAX_INVITE_USES,
     MIN_EXPIRES_DAYS,
     InviteService,
     build_invite_url,
     check_invite_rate_limit,
     invite_path,
 )
+from octop.infra.users.permissions import assert_can_assign_permissions
 from octop.infra.utils.locale import resolve_request_locale
 
 admin_router = APIRouter()
@@ -56,10 +59,54 @@ class InviteCreateBody(BaseModel):
         ge=MIN_EXPIRES_DAYS,
         le=MAX_EXPIRES_DAYS,
     )
+    max_uses: int = Field(
+        default=DEFAULT_MAX_USES,
+        ge=1,
+        le=MAX_INVITE_USES,
+        strict=True,
+        description="Number of successful registrations allowed before the invite turns off.",
+    )
     role: str | None = Field(
         default=None,
         description="Role-template public id stored on the invite. Applied at redeem time.",
     )
+
+
+class InviteResponse(BaseModel):
+    id: int
+    code: str
+    note: str | None
+    created_by: int
+    created_at: int
+    expires_at: int
+    enabled: bool
+    use_count: int = Field(description="Total successful registrations with this invite.")
+    max_uses: int | None = Field(description="Registration limit. Null for legacy unlimited links.")
+    status: Literal["active", "disabled", "expired"]
+    role_name: str | None
+    role: str | None
+    invite_path: str
+    invite_url: str
+
+
+class InviteUpdateBody(BaseModel):
+    enabled: bool = Field(description="Whether this invite can be used for registration.")
+
+
+class InviteUser(BaseModel):
+    id: int
+    username: str
+    display_name: str | None
+    email: str | None
+    created_at: int
+    redeemed_at: int
+
+
+class InviteUsersPage(BaseModel):
+    users: list[InviteUser]
+    total: int
+    page: int
+    page_size: int
 
 
 class InviteValidateBody(BaseModel):
@@ -74,7 +121,7 @@ class InviteRedeemBody(BaseModel):
     email: str | None = Field(default=None, max_length=254)
 
 
-@admin_router.get("", summary="List user invites")
+@admin_router.get("", response_model=list[InviteResponse], summary="List user invites")
 async def list_invites(
     request: Request,
     _: Any = Depends(require_permission("users")),
@@ -84,7 +131,9 @@ async def list_invites(
     return [_with_url(row, base_url=base) for row in _service(server).list_all()]
 
 
-@admin_router.post("", status_code=201, summary="Create a user invite")
+@admin_router.post(
+    "", status_code=201, response_model=InviteResponse, summary="Create a user invite"
+)
 async def create_invite(
     body: InviteCreateBody,
     request: Request,
@@ -94,7 +143,6 @@ async def create_invite(
     role_name: str | None = None
     role_id: str | None = None
     if body.role is not None:
-        from octop.api.routers.users import _assert_can_assign
         from octop.infra.db.repos.user_roles import UserRoleRepo
 
         role = UserRoleRepo(server.services.db).get(body.role)
@@ -106,7 +154,7 @@ async def create_invite(
                 "only an administrator can invite the administrator role",
             )
         if not role.is_admin:
-            _assert_can_assign(actor, list(role.permissions))
+            assert_can_assign_permissions(actor, list(role.permissions))
         role_name = role.user_role_name
         role_id = role.user_role_id
     row = _service(server).create(
@@ -114,6 +162,7 @@ async def create_invite(
         actor_username=actor.username,
         note=body.note,
         expires_in_days=body.expires_in_days,
+        max_uses=body.max_uses,
         role_name=role_name,
         role=role_id,
     )
@@ -122,15 +171,49 @@ async def create_invite(
     return _with_url(invite_status_payload(row), base_url=_public_base(request))
 
 
-@admin_router.post("/{invite_id}/revoke", summary="Revoke an unused invite")
+@admin_router.post(
+    "/{invite_id}/revoke", response_model=InviteResponse, summary="Disable an invite"
+)
 async def revoke_invite(
     invite_id: int,
     request: Request,
     actor: User = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    payload = _service(server).revoke(invite_id, actor_username=actor.username)
+    payload = _service(server).set_enabled(invite_id, enabled=False, actor=actor)
     return _with_url(payload, base_url=_public_base(request))
+
+
+@admin_router.patch(
+    "/{invite_id}",
+    response_model=InviteResponse,
+    summary="Enable or disable a user invite",
+    description="An invite that reached its registration limit cannot be enabled again.",
+)
+async def update_invite(
+    invite_id: int,
+    body: InviteUpdateBody,
+    request: Request,
+    actor: User = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    payload = _service(server).set_enabled(invite_id, enabled=body.enabled, actor=actor)
+    return _with_url(payload, base_url=_public_base(request))
+
+
+@admin_router.get(
+    "/{invite_id}/users",
+    response_model=InviteUsersPage,
+    summary="List users registered with an invite",
+)
+async def list_invite_users(
+    invite_id: int,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    _: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> dict[str, object]:
+    return _service(server).list_users(invite_id, page=page, page_size=page_size)
 
 
 @public_router.post("/validate", summary="Validate an invite code")
@@ -149,7 +232,7 @@ async def redeem_invite(
     request: Request,
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Create a regular user from a one-time invite and return a login token.
+    """Create a user from an enabled invite and return a login token.
 
     Also bootstraps the same default ``general-assistant`` expert as the setup
     wizard (auto-allocated agent id; setup pins ``main`` for the first admin).
@@ -167,6 +250,7 @@ async def redeem_invite(
     from octop.infra.agents.experts.default_agent import try_bootstrap_default_agent
 
     await try_bootstrap_default_agent(server, user_id=user.id, locale=user.locale)
+    server.services.user_repo.touch_last_login(user.id)
     from octop.infra.auth.tokens import PURPOSE_ACCESS
 
     secret = server.services.secret_repo.get("jwt")

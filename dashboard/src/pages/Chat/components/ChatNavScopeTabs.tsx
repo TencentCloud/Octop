@@ -1,76 +1,120 @@
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
 import cx from "classnames";
+import { Plus } from "lucide-react";
 import { CHAT_NAV_SCOPES, type ChatNavScope } from "../utils/chatNavScope";
 import styles from "../index.module.less";
 
 const NAV_SCOPE_LABELS: Record<
   ChatNavScope,
-  { key: string; fallback: string; emptyKey: string; emptyFallback: string }
+  {
+    key: string;
+    fallback: string;
+    emptyKey: string;
+    emptyFallback: string;
+    hintKey: string;
+    hintFallback: string;
+  }
 > = {
   experts: {
     key: "chat.navScopeExperts",
     fallback: "专家",
     emptyKey: "chat.navScopeEmptyExperts",
     emptyFallback: "还没有专家",
+    hintKey: "chat.noAgentsHint",
+    hintFallback: "从专家列表选择模板，快速创建你的第一个 AI 专家。",
   },
   teams: {
     key: "chat.navScopeTeams",
     fallback: "团队",
     emptyKey: "chat.navScopeEmptyTeams",
     emptyFallback: "还没有团队",
+    hintKey: "chat.navScopeEmptyTeamsHint",
+    hintFallback: "把几个专家组成团队，一起处理同一件事。",
   },
   cloud: {
     key: "chat.navScopeCloud",
     fallback: "云端",
     emptyKey: "chat.navScopeEmptyCloud",
     emptyFallback: "还没有云端协同",
+    hintKey: "chat.navScopeEmptyCloudHint",
+    hintFallback: "连上一台云端 Octop，这里会列出那边的专家和团队。",
   },
 };
 
-export function chatNavScopeEmptyCopy(scope: ChatNavScope): {
-  key: string;
-  fallback: string;
-} {
-  const meta = NAV_SCOPE_LABELS[scope];
-  return { key: meta.emptyKey, fallback: meta.emptyFallback };
-}
-
-const NAV_SCOPE_CREATE: Partial<
-  Record<ChatNavScope, { key: string; fallback: string; to: string }>
+const NAV_SCOPE_CREATE: Record<
+  ChatNavScope,
+  { key: string; fallback: string }
 > = {
+  experts: { key: "chat.createExpert", fallback: "去创建专家" },
   teams: {
     key: "chat.navScopeCreateTeam",
     fallback: "创建第一个团队",
-    to: "/experts?tab=teams",
   },
   cloud: {
     key: "chat.navScopeCreateCloud",
     fallback: "添加云端协同",
-    to: "/bridge",
   },
 };
 
-/** Empty team / cloud list, with a link to create the first one. */
-export function ChatNavScopeEmpty({ scope }: { scope: ChatNavScope }) {
+const NAV_CREATE_BUTTON: Record<
+  ChatNavScope,
+  { key: string; fallback: string }
+> = {
+  experts: { key: "chat.navCreateExpert", fallback: "创建专家" },
+  teams: { key: "chat.navCreateTeam", fallback: "创建团队" },
+  cloud: { key: "chat.navCreateCloud", fallback: "添加云端" },
+};
+
+/** Create action under the scope tabs. Opens a right-hand drawer. */
+export function ChatNavCreateButton({
+  scope,
+  onCreate,
+}: {
+  scope: ChatNavScope;
+  onCreate: () => void;
+}) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const copy = chatNavScopeEmptyCopy(scope);
+  const action = NAV_CREATE_BUTTON[scope];
+  return (
+    <button
+      type="button"
+      className={styles.sessionScopeCreate}
+      onClick={onCreate}
+    >
+      <Plus size={14} strokeWidth={2} aria-hidden />
+      {t(action.key, action.fallback)}
+    </button>
+  );
+}
+
+/** Empty expert / team / cloud list. The action opens a drawer. */
+export function ChatNavScopeEmpty({
+  scope,
+  onCreate,
+}: {
+  scope: ChatNavScope;
+  onCreate: () => void;
+}) {
+  const { t } = useTranslation();
+  const meta = NAV_SCOPE_LABELS[scope];
   const action = NAV_SCOPE_CREATE[scope];
   return (
     <div className={styles.sessionEmptyAgents}>
-      <p className={styles.sessionEmptyAgentsText}>
-        {t(copy.key, copy.fallback)}
+      <p className={styles.sessionEmptyAgentsTitle}>
+        {t(meta.emptyKey, meta.emptyFallback)}
       </p>
-      {action ? (
-        <button
-          type="button"
-          className={styles.sessionEmptyAgentsLink}
-          onClick={() => navigate(action.to)}
-        >
-          {t(action.key, action.fallback)}
-        </button>
-      ) : null}
+      <p className={styles.sessionEmptyAgentsText}>
+        {scope === "experts"
+          ? t(meta.hintKey)
+          : t(meta.hintKey, meta.hintFallback)}
+      </p>
+      <button
+        type="button"
+        className={styles.sessionEmptyAgentsLink}
+        onClick={onCreate}
+      >
+        {scope === "experts" ? t(action.key) : t(action.key, action.fallback)}
+      </button>
     </div>
   );
 }

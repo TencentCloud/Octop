@@ -156,6 +156,7 @@ function renderMessageGroup(
     ctx.onOpenBrowser && groupIndex === ctx.lastBrowserGroupIndex
       ? ctx.onOpenBrowser
       : undefined;
+  const afterLatestUser = groupIndex > ctx.lastUserGroupIndex;
   const isTurnInProgress = isLiveAssistantTurn({
     isStreaming: Boolean(ctx.isStreaming),
     groupIndex,
@@ -178,6 +179,7 @@ function renderMessageGroup(
             messages={[msg]}
             agentId={ctx.agentId}
             isTurnInProgress={isTurnInProgress}
+            afterLatestUser={afterLatestUser}
             liveSpeakers={ctx.liveSpeakers}
             onRegenerate={ctx.onRegenerate}
             onDisableStreamUsage={ctx.onDisableStreamUsage}
@@ -234,6 +236,7 @@ function renderMessageGroup(
         messages={group.messages}
         agentId={ctx.agentId}
         isTurnInProgress={isTurnInProgress}
+        afterLatestUser={afterLatestUser}
         liveSpeakers={ctx.liveSpeakers}
         onRegenerate={ctx.onRegenerate}
         onDisableStreamUsage={ctx.onDisableStreamUsage}
@@ -321,6 +324,11 @@ export default function MessageList(props: MessageListProps) {
 
   const lastMsg = messages[messages.length - 1];
   const hasLiveSpeakers = liveSpeakers.length > 0;
+  const hostId = (agentId || "").trim();
+  const membersLive = liveSpeakers.some((id) => {
+    const key = id.trim();
+    return Boolean(key) && key !== hostId;
+  });
   const awaitingVisibleReply = useMemo(
     () => awaitingVisibleAssistantReply(messages),
     [messages],
@@ -334,16 +342,45 @@ export default function MessageList(props: MessageListProps) {
     loading: Boolean(loading),
     lastMessageRole: lastMsg?.role,
     hasLiveSpeakers,
+    membersLive,
     awaitingVisibleReply,
   });
   const liveSpeakerNames = useMemo(
     () =>
-      resolveLiveSpeakerNames(liveSpeakers, agents, {
-        hostId: activeAgent?.agent_id,
-        hostName: activeAgent?.name,
-        limit: 2,
-      }),
-    [liveSpeakers, agents, activeAgent?.agent_id, activeAgent?.name],
+      resolveLiveSpeakerNames(
+        membersLive
+          ? liveSpeakers.filter((id) => {
+              const key = id.trim();
+              return Boolean(key) && key !== hostId;
+            })
+          : liveSpeakers,
+        [
+          ...agents,
+          ...(activeAgent?.members ?? [])
+            .filter(
+              (member) =>
+                !agents.some((item) => item.agent_id === member.agent_id),
+            )
+            .map((member) => ({
+              agent_id: member.agent_id,
+              name: member.name,
+            })),
+        ],
+        {
+          hostId: activeAgent?.agent_id,
+          hostName: activeAgent?.name,
+          limit: 2,
+        },
+      ),
+    [
+      liveSpeakers,
+      membersLive,
+      hostId,
+      agents,
+      activeAgent?.agent_id,
+      activeAgent?.name,
+      activeAgent?.members,
+    ],
   );
 
   const stableSessionKey = sessionKey || "__default__";

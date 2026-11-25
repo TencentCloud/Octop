@@ -5,6 +5,7 @@ from __future__ import annotations
 import click
 
 from octop.cli.support.db import resolve_cli_locale
+from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.setup.self_update import (
     fetch_pypi_info,
     get_editable_path,
@@ -29,6 +30,9 @@ from octop.infra.setup.self_update import (
 )
 def update(check: bool, yes: bool, verbose: bool, allow_prerelease: bool) -> None:
     """Check for and install a newer Octop release."""
+    if desktop_shell_enabled():
+        click.echo("updates are managed by the desktop shell", err=True)
+        raise SystemExit(1)
     current = get_local_version()
     info = fetch_pypi_info()
     click.echo(f"installed: {current}")

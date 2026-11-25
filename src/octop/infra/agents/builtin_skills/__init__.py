@@ -13,6 +13,33 @@ _SKILLS_TOKEN = b"{{OCTOP_SKILLS}}"
 _BUILTIN_TOKEN = b"{{OCTOP_BUILTIN_SKILLS}}"
 _PACKAGE = "octop.infra.agents.builtin_skills"
 
+# Built-ins that depend on software an execution environment may lack (for
+# office-documents: python-docx/openpyxl/python-pptx, LibreOffice, Poppler).
+# They are seeded into every workspace like the others but stay off until the
+# owner enables them for an expert, which records the slug in
+# ``skills_enabled``.
+OPT_IN_BUILTIN_SKILLS: frozenset[str] = frozenset({"office-documents"})
+
+
+def _str_set(raw: object) -> set[str]:
+    return {str(x) for x in raw} if isinstance(raw, list) else set()
+
+
+def effective_skills_disabled(cfg: dict[str, Any]) -> set[str]:
+    """``skills_disabled`` plus every opt-in built-in not listed in ``skills_enabled``."""
+    disabled = _str_set(cfg.get("skills_disabled"))
+    return disabled | (OPT_IN_BUILTIN_SKILLS - _str_set(cfg.get("skills_enabled")))
+
+
+def store_skills_disabled(cfg: dict[str, Any], disabled: set[str]) -> None:
+    """Write an effective disabled set back as ``skills_disabled`` / ``skills_enabled``."""
+    cfg["skills_disabled"] = sorted(disabled - OPT_IN_BUILTIN_SKILLS)
+    enabled = sorted(OPT_IN_BUILTIN_SKILLS - disabled)
+    if enabled:
+        cfg["skills_enabled"] = enabled
+    else:
+        cfg.pop("skills_enabled", None)
+
 
 def is_octop_builtin_skills_path(rel: str) -> bool:
     """True for workspace-relative paths inside the Octop-owned built-in Skills root.

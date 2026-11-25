@@ -48,6 +48,26 @@ def test_denied_host_download_etc(tmp_path: Path) -> None:
     assert is_allowed_host_download_abs_path("/etc/passwd", workspace=tmp_path) is False
 
 
+def test_denied_control_plane_home_outside_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "octop-home"
+    monkeypatch.setenv("OCTOP_HOME", str(home))
+    workspace = home / "agents" / "MINE"
+    workspace.mkdir(parents=True)
+    own = workspace / "SOUL.md"
+    own.write_text("me", encoding="utf-8")
+    database = home / "octop.db"
+    database.write_bytes(b"db")
+    other = home / "agents" / "OTHER" / "SOUL.md"
+    other.parent.mkdir(parents=True)
+    other.write_text("other", encoding="utf-8")
+
+    assert is_allowed_host_download_abs_path(str(own), workspace=workspace) is True
+    assert is_allowed_host_download_abs_path(str(database), workspace=workspace) is False
+    assert is_allowed_host_download_abs_path(str(other), workspace=workspace) is False
+
+
 def test_denied_harness_browser(tmp_path: Path) -> None:
     path = tmp_path / ".harness-browser" / "screenshots" / "x.png"
     path.parent.mkdir(parents=True)

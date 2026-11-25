@@ -109,7 +109,7 @@ def test_python_search_does_not_walk_proc() -> None:
 
 def test_dockerfiles_install_ripgrep() -> None:
     root = Path(__file__).resolve().parents[3]
-    for rel in ("docker/Dockerfile", "fnos/docker/Dockerfile"):
+    for rel in ("deploy/docker/Dockerfile", "fnos/docker/Dockerfile"):
         text = (root / rel).read_text(encoding="utf-8")
         assert "ripgrep" in text, f"{rel} must install ripgrep"
 

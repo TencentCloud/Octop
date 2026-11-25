@@ -105,6 +105,29 @@ def test_channel(agent_id: str, channel_id: str, *, locale: str = "zh") -> dict[
 # ── Bridge (lightweight manager; no full OctopServer) ────────────────────────
 
 
+async def apply_migration_async(plan: Any, *, agent_id: str, **options: Any) -> Any:
+    """Apply a migration plan to one expert; needs its workspace, hence the runtime."""
+    from octop.infra.migration.apply import apply_plan
+
+    async with embedded_runtime() as server:
+        assert server.app_runtime is not None and server.services is not None
+        registry = server.app_runtime.agent_registry
+        workspace = await asyncio.to_thread(registry.workspace_for_agent, agent_id)
+        if workspace is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        return await apply_plan(
+            plan,
+            services=server.services,
+            workspace=workspace,
+            agent_id=agent_id,
+            **options,
+        )
+
+
+def apply_migration(plan: Any, *, agent_id: str, **options: Any) -> Any:
+    return asyncio.run(apply_migration_async(plan, agent_id=agent_id, **options))
+
+
 def _make_bridge_manager(svc: Any) -> Any:
     from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 

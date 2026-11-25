@@ -360,6 +360,16 @@ async def test_get_expert_includes_file_contents(env: Any) -> None:
     assert isinstance(first["content"], str) and first["content"]
 
 
+async def test_get_default_prompt_files_returns_workspace_seed_content(env: Any) -> None:
+    c, _srv, auth = env
+    response = await c.get("/api/experts/default-prompt-files", headers=auth)
+    assert response.status_code == 200
+    files = {file["name"]: file["content"] for file in response.json()}
+    assert all(files.get(name) for name in ("AGENTS.md", "USER.md", "BOOTSTRAP.md", "MEMORY.md"))
+    assert "{{BOOTSTRAP_MARKER}}" not in files["BOOTSTRAP.md"]
+    assert ".octop/.bootstrapped" in files["BOOTSTRAP.md"]
+
+
 async def test_get_expert_file_contents_limited_to_preview_paths(env: Any) -> None:
     c, _srv, auth = env
     r = await c.get("/api/experts/general-assistant", headers=auth)
@@ -562,3 +572,56 @@ async def test_patch_agent_composer_defaults(env: Any) -> None:
     assert cleared.status_code == 200, cleared.text
     assert cleared.json()["knowledge_base_ids"] == []
     assert cleared.json()["mcp_servers"] == []
+
+
+async def test_from_expert_workspace_dir_follows_storage_root(env: Any) -> None:
+    """Host-root local backends keep a chosen workspace; scoped roots ignore it."""
+    c, srv, auth = env
+    assert srv.app_runtime is not None
+    home = srv.app_runtime.agent_registry.paths.root
+    picked = home / "picked-ws"
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "host-ws-bot",
+            "backend": {"type": "local_shell", "virtual_mode": True, "root_dir": "/"},
+            "workspace_dir": str(picked),
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    detail = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert detail["config"]["workspace_dir"] == str(picked)
+    assert picked.is_dir()
+
+    jail = home / "jail"
+    jail.mkdir()
+    outside = home / "outside-ws"
+    scoped = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "scoped-ws-bot",
+            "backend": {
+                "type": "filesystem",
+                "virtual_mode": True,
+                "root_dir": str(jail),
+            },
+            "workspace_dir": str(outside),
+        },
+    )
+    assert scoped.status_code == 201, scoped.text
+    scoped_id = scoped.json()["agent_id"]
+    scoped_detail = (await c.get(f"/api/agents/{scoped_id}", headers=auth)).json()
+    assert scoped_detail["config"]["workspace_dir"] == f"/.octop/workspaces/{scoped_id}"
+    assert not outside.exists()
+
+    patched = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"config": {**detail["config"], "workspace_dir": str(home / "moved-ws")}},
+    )
+    assert patched.status_code == 200, patched.text
+    again = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert again["config"]["workspace_dir"] == str(picked)

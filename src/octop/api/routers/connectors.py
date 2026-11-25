@@ -10,7 +10,7 @@ from html import escape
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -29,8 +29,11 @@ from octop.infra.connectors.catalog import (
     list_catalog,
 )
 from octop.infra.connectors.custom_mcp import (
+    CUSTOM_MCP_AVATAR_KIND,
     CUSTOM_MCP_KIND,
+    custom_avatar_key,
     is_custom_mcp_kind,
+    oauth_client_from_spec,
     oauth_configured,
     parse_synthetic_instance_id,
     redact_servers_for_api,
@@ -178,11 +181,18 @@ class CustomMcpServerPatchBody(BaseModel):
     enabled: bool | None = None
     default_open: bool | None = None
     shared: bool | None = None
+    visibility: Literal["owner", "all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
     @model_validator(mode="after")
     def _require_one_field(self) -> CustomMcpServerPatchBody:
-        if self.enabled is None and self.default_open is None and self.shared is None:
-            raise ValueError("provide enabled, default_open and/or shared")
+        if (
+            self.enabled is None
+            and self.default_open is None
+            and self.shared is None
+            and self.visibility is None
+        ):
+            raise ValueError("provide enabled, default_open, shared and/or visibility")
         return self
 
 
@@ -205,7 +215,58 @@ def _oauth_callback_html(
     return HTMLResponse(f"<html><body>{escape(message)}</body></html>", status_code=status_code)
 
 
-def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: str) -> str:
+def _oauth_outcome_html(
+    request: Request,
+    server: Any,
+    row: Any,
+    *,
+    status: Literal["cancelled", "error"],
+    message_key: str,
+    **fmt: Any,
+) -> HTMLResponse:
+    """Report a failed or cancelled authorization back to the page that started it.
+
+    The outcome is parked like a token so a page polling ``/oauth/pending``
+    sees it; a popup also posts it to its opener, a full-page flow returns
+    to ``redirect_after`` with ``oauth_state`` and ``oauth_error``.
+    """
+    locale = resolve_request_locale(request)
+    message = tr(f"connector.oauth.{message_key}", locale, **fmt)
+    server.services.settings_repo.set(
+        f"connector.oauth.pending.{row.state_id}",
+        json.dumps(
+            {"user_id": row.user_id, "kind": row.kind, "status": status, "message": message}
+        ),
+    )
+    redirect = urlsplit(sanitize_redirect_after(row.redirect_after, default="/connectors"))
+    query = [
+        (key, value)
+        for key, value in parse_qsl(redirect.query, keep_blank_values=True)
+        if key not in ("oauth_state", "oauth_error")
+    ]
+    query += [("oauth_state", row.state_id), ("oauth_error", status)]
+    target = json.dumps(redirect._replace(query=urlencode(query)).geturl()).replace("<", "\\u003c")
+    payload = json.dumps(
+        {"type": "octop:connector-oauth", "state_id": row.state_id, "status": status}
+    ).replace("<", "\\u003c")
+    html = f"""<!DOCTYPE html><html><body>
+<script>
+  if (window.opener) {{
+    window.opener.postMessage({payload}, window.location.origin);
+    window.close();
+  }} else {{
+    window.location.href = {target};
+  }}
+</script>
+<p>{escape(message)}</p>
+</body></html>"""
+    return HTMLResponse(html, status_code=400)
+
+
+def _resolve_custom_mcp_oauth_target(
+    svc: ConnectorService, user_id: int, server_name: str
+) -> tuple[str, dict[str, Any]]:
+    """MCP URL and saved OAuth client (``{}`` when none) of a custom server."""
     saved = svc.get_custom_servers(user_id)
     raw = saved.get(server_name)
     if not isinstance(raw, dict):
@@ -221,7 +282,7 @@ def _resolve_custom_mcp_url(svc: ConnectorService, user_id: int, server_name: st
     mcp_url = str(raw.get("url") or "").strip()
     if not mcp_url:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "server url is required")
-    return mcp_url
+    return mcp_url, oauth_client_from_spec(raw)
 
 
 async def _begin_oauth_flow(
@@ -255,6 +316,7 @@ async def _begin_oauth_flow(
         )
 
     mcp_url: str | None = None
+    oauth_client: dict[str, Any] | None = None
     if target_type == "custom_mcp":
         server_name = str(target.get("server_name") or "").strip()
         if not server_name:
@@ -262,7 +324,9 @@ async def _begin_oauth_flow(
                 ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
                 "custom_mcp target requires server_name",
             )
-        mcp_url = _resolve_custom_mcp_url(_connector_service(server), user.id, server_name)
+        mcp_url, oauth_client = _resolve_custom_mcp_oauth_target(
+            _connector_service(server), user.id, server_name
+        )
 
     try:
         authorize_url, verifier, ctx = await start_oauth_for_target(
@@ -271,6 +335,7 @@ async def _begin_oauth_flow(
             state=state,
             settings_repo=server.services.settings_repo,
             mcp_url=mcp_url,
+            oauth_client=oauth_client,
         )
     except ValueError as exc:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
@@ -362,6 +427,49 @@ def _validate_connector_visibility(
     if visibility is None:
         return
     GroupAccess(server.services.repos).validate_visibility(visibility, group_ids)
+
+
+def _validate_custom_server_map(server: Any, servers: dict[str, Any]) -> None:
+    for raw in servers.values():
+        if not isinstance(raw, dict) or raw.get("visibility") is None:
+            continue
+        group_ids = raw.get("group_ids")
+        _validate_connector_visibility(
+            server,
+            visibility=str(raw.get("visibility")),
+            group_ids=group_ids if isinstance(group_ids, list) else None,
+        )
+
+
+def _custom_parent_id(server: Any, user_id: int) -> str | None:
+    parent = server.services.repos.connector_repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
+    if parent is None:
+        return None
+    return str(parent.instance_id)
+
+
+def _forget_custom_avatars(server: Any, parent_id: str, names: set[str]) -> None:
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    store = server.services.avatars(CUSTOM_MCP_AVATAR_KIND)
+    for name in names:
+        delete_profile_avatar(store, custom_avatar_key(parent_id, name))
+
+
+def _attach_custom_avatars(server: Any, rows: list[dict[str, Any]]) -> None:
+    from octop.infra.users.profile_avatar import profile_avatar_url
+
+    store = server.services.avatars(CUSTOM_MCP_AVATAR_KIND)
+    for item in rows:
+        parent_id = item.pop("_avatar_parent_id", None)
+        server_name = item.pop("_avatar_server_name", None)
+        if not parent_id or not server_name:
+            continue
+        key = custom_avatar_key(str(parent_id), str(server_name))
+        api = f"/api/connectors/custom-mcp/avatars/{key}"
+        url = profile_avatar_url(store, key, api)
+        if url:
+            item["avatar_url"] = url
 
 
 async def _prepare_credentials(
@@ -643,12 +751,13 @@ async def list_instances(
                     shared=bool(item.get("shared")),
                 )
             )
+    _attach_custom_avatars(server, rows)
     return rows
 
 
 @router.get("/connectors/custom-mcp", summary="Get custom MCP servers")
 async def get_custom_mcp(
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return the user's custom MCP server map (langchain-mcp-adapters shape)."""
@@ -659,11 +768,14 @@ async def get_custom_mcp(
 @router.put("/connectors/custom-mcp", summary="Save custom MCP servers")
 async def put_custom_mcp(
     body: CustomMcpPutBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Replace the user's custom MCP servers document and reload agents."""
     svc = _connector_service(server)
+    parent_id = _custom_parent_id(server, user.id)
+    before = set(svc.get_custom_servers(user.id))
+    _validate_custom_server_map(server, body.servers)
     try:
         servers = svc.put_custom_servers(user.id, body.servers)
     except ConnectorNameTakenError as exc:
@@ -676,6 +788,8 @@ async def put_custom_mcp(
         target=CUSTOM_MCP_KIND,
         payload=str(len(servers)),
     )
+    if parent_id is not None:
+        _forget_custom_avatars(server, parent_id, before - set(servers))
     _schedule_connector_reload(
         server,
         user.id,
@@ -693,11 +807,13 @@ async def put_custom_mcp(
 async def patch_custom_mcp_server(
     server_name: str,
     body: CustomMcpServerPatchBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Update ``enabled`` and/or ``default_open`` for one custom MCP server."""
+    """Update ``enabled``, ``default_open``, or who may use one custom MCP server."""
     svc = _connector_service(server)
+    if body.visibility is not None:
+        _validate_connector_visibility(server, visibility=body.visibility, group_ids=body.group_ids)
     try:
         servers = svc.patch_custom_server(
             user.id,
@@ -705,6 +821,8 @@ async def patch_custom_mcp_server(
             enabled=body.enabled,
             default_open=body.default_open,
             shared=body.shared,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
         )
     except KeyError as exc:
         raise OctopError(
@@ -719,7 +837,7 @@ async def patch_custom_mcp_server(
 @router.post("/connectors/custom-mcp/test", summary="Probe a custom MCP server")
 async def test_custom_mcp(
     body: CustomMcpTestBody,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Probe connectivity for one custom MCP server (saved name or inline spec)."""
@@ -750,6 +868,87 @@ async def test_custom_mcp(
         except KeyError:
             pass
     return result
+
+
+def _custom_avatar_visible(server: Any, user_id: int, avatar_key: str) -> bool:
+    for item in _connector_service(server).list_instances_for_api(user_id):
+        parent_id = item.get("_avatar_parent_id")
+        server_name = item.get("_avatar_server_name")
+        if not parent_id or not server_name:
+            continue
+        if custom_avatar_key(str(parent_id), str(server_name)) == avatar_key:
+            return True
+    return False
+
+
+@router.post(
+    "/connectors/custom-mcp/servers/{server_name}/avatar",
+    status_code=201,
+    summary="Upload a custom connector portrait",
+)
+async def upload_custom_mcp_avatar(
+    server_name: str,
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(require_permission("connector_custom")),
+    server: Any = Depends(get_server),
+) -> dict[str, str]:
+    """Store an uploaded image for one of the current user's custom connectors."""
+    from octop.infra.users.profile_avatar import profile_avatar_url, write_profile_avatar
+
+    svc = _connector_service(server)
+    if server_name not in svc.get_custom_servers(user.id):
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        )
+    parent_id = _custom_parent_id(server, user.id)
+    if parent_id is None:
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        )
+    key = custom_avatar_key(parent_id, server_name)
+    store = server.services.avatars(CUSTOM_MCP_AVATAR_KIND)
+    write_profile_avatar(store, key, await file.read())
+    api = f"/api/connectors/custom-mcp/avatars/{key}"
+    return {"avatar_url": profile_avatar_url(store, key, api) or api}
+
+
+@router.delete(
+    "/connectors/custom-mcp/servers/{server_name}/avatar",
+    status_code=204,
+    summary="Delete a custom connector portrait",
+)
+async def delete_custom_mcp_avatar(
+    server_name: str,
+    user: Any = Depends(require_permission("connector_custom")),
+    server: Any = Depends(get_server),
+) -> None:
+    """Remove the uploaded image. A preset icon, if set, stays on the server spec."""
+    svc = _connector_service(server)
+    if server_name not in svc.get_custom_servers(user.id):
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        )
+    parent_id = _custom_parent_id(server, user.id)
+    if parent_id is None:
+        return
+    _forget_custom_avatars(server, parent_id, {server_name})
+
+
+@router.get(
+    "/connectors/custom-mcp/avatars/{avatar_key}",
+    summary="Read a custom connector portrait",
+)
+async def get_custom_mcp_avatar(
+    avatar_key: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    """Return the portrait when this user can see that custom connector."""
+    from octop.infra.users.profile_avatar import avatar_response
+
+    if not _custom_avatar_visible(server, user.id, avatar_key):
+        raise OctopError(ErrorCode.NOT_FOUND, "avatar not uploaded")
+    return avatar_response(server.services.avatars(CUSTOM_MCP_AVATAR_KIND), avatar_key)
 
 
 @router.get("/connector-instances/{instance_id}", summary="Get connector instance")
@@ -1030,11 +1229,14 @@ async def delete_instance(
         servers = dict(svc.get_custom_servers(custom_user_id))
         if synthetic_name not in servers:
             raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
+        parent_id = _custom_parent_id(server, custom_user_id)
         del servers[synthetic_name]
         try:
             svc.put_custom_servers(custom_user_id, servers)
         except ValueError as exc:
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+        if parent_id is not None:
+            _forget_custom_avatars(server, parent_id, {synthetic_name})
         server.services.audit_repo.write(
             actor=user.username,
             action="connector.custom_mcp.delete_server",
@@ -1127,7 +1329,7 @@ async def test_instance(
     creds = await svc.ensure_fresh_credentials(instance_id, inst.kind)
     if not creds:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "missing credentials")
-    if inst.kind in {"agently-cli", "ragflow"}:
+    if inst.kind in {"agently-cli", "gitea", "ragflow"}:
         creds["_locale"] = resolve_request_locale(request)
 
     try:
@@ -1168,7 +1370,7 @@ async def test_credentials(
             str(exc),
             details={"reason": str(exc)},
         ) from exc
-    if body.kind in {"agently-cli", "ragflow"}:
+    if body.kind in {"agently-cli", "gitea", "ragflow"}:
         cred_payload["_locale"] = resolve_request_locale(request)
     try:
         return await probe_connector(
@@ -1547,7 +1749,21 @@ async def oauth_callback(
     server: Any = Depends(get_server),
 ) -> HTMLResponse:
     """OAuth redirect target. Exchanges the code and stores credentials. No JWT required."""
+    repo = server.services.repos.connector_repo
     if error:
+        # The user cancelled or the provider refused. Tell the custom MCP page
+        # that started the flow instead of leaving it waiting for a token.
+        failed_row = repo.consume_oauth_state(state) if state else None
+        if failed_row is not None and is_custom_mcp_kind(failed_row.kind):
+            delete_oauth_ctx(server.services.settings_repo, failed_row.state_id)
+            return _oauth_outcome_html(
+                request,
+                server,
+                failed_row,
+                status="cancelled" if error == "access_denied" else "error",
+                message_key="callback_auth_failed",
+                error=error,
+            )
         return _oauth_callback_html(
             request,
             "callback_auth_failed",
@@ -1561,7 +1777,6 @@ async def oauth_callback(
             status_code=400,
         )
 
-    repo = server.services.repos.connector_repo
     row = repo.consume_oauth_state(state)
     if row is None:
         return _oauth_callback_html(
@@ -1587,13 +1802,25 @@ async def oauth_callback(
             tokens["oauth_client_id"] = ctx["client_id"]
         if ctx.get("client_secret"):
             tokens["oauth_client_secret"] = ctx["client_secret"]
+        if ctx.get("token_endpoint"):
+            tokens["oauth_token_endpoint"] = ctx["token_endpoint"]
         delete_oauth_ctx(server.services.settings_repo, row.state_id)
     except Exception as exc:
         logger.exception("oauth callback failed for %s", row.kind)
-        return _oauth_callback_html(
+        if not is_custom_mcp_kind(row.kind):
+            return _oauth_callback_html(
+                request,
+                "callback_token_exchange_failed",
+                status_code=400,
+                detail=str(exc),
+            )
+        delete_oauth_ctx(server.services.settings_repo, row.state_id)
+        return _oauth_outcome_html(
             request,
-            "callback_token_exchange_failed",
-            status_code=400,
+            server,
+            row,
+            status="error",
+            message_key="callback_token_exchange_failed",
             detail=str(exc),
         )
 
@@ -1620,10 +1847,12 @@ async def oauth_callback(
             pending_payload["applied"] = True
         except Exception as exc:
             logger.exception("custom MCP oauth apply failed")
-            return _oauth_callback_html(
+            return _oauth_outcome_html(
                 request,
-                "callback_save_failed",
-                status_code=400,
+                server,
+                row,
+                status="error",
+                message_key="callback_save_failed",
                 detail=str(exc),
             )
 
@@ -1679,6 +1908,8 @@ async def oauth_pending(
         raise OctopError(ErrorCode.FORBIDDEN, "not your oauth session")
     server.services.settings_repo.delete(key)
     return {
+        "status": data.get("status") or "ok",
+        "message": data.get("message"),
         "kind": data.get("kind"),
         "tokens": data.get("tokens") or {},
         "server_name": data.get("server_name"),

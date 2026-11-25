@@ -1,3 +1,26 @@
+.indexSettings {
+  display: grid;
+  gap: 12px;
+
+  .settingsHint {
+    margin: 0;
+  }
+}
+
+.indexSettingsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 16px;
+
+  @media (max-width: 480px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.indexSettingsInput {
+  width: 100%;
+}
+
 .settingsBody {
   display: flex;
   flex-direction: column;
@@ -15,6 +38,7 @@
   margin-top: 4px;
   font-size: 12px;
   line-height: 1.5;
+  color: var(--fn-text-tertiary);
 }
 
 .ocrSettings {
@@ -949,6 +973,11 @@
   margin: 0 0 8px;
 }
 
+.docsCount {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .uploadHint {
   display: block;
   flex: 1 1 auto;
@@ -968,6 +997,12 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.graphOpenLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .emptyDetail {
@@ -993,7 +1028,7 @@
 
 .docCardGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
   row-gap: 14px;
   column-gap: 12px;
 }
@@ -1086,9 +1121,12 @@
 
 .docCardMeta {
   margin-top: 3px;
+  overflow: hidden;
   color: var(--fn-text-tertiary);
   font-size: 12px;
   line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .docCardActions {
@@ -1101,9 +1139,14 @@
 .docCardFooter {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-width: 0;
+  margin-top: auto;
+}
+
+.docCardFooterActions {
+  flex-shrink: 0;
+  margin-inline-start: auto;
 }
 
 .docStatusTag {
@@ -1111,17 +1154,6 @@
   padding-inline: 6px;
   font-size: 12px;
   line-height: 18px;
-}
-
-.docUpdatedAt {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--fn-text-tertiary);
-  font-size: 12px;
-  text-align: right;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tableFilename {
@@ -1854,4 +1886,18 @@
   .textEditorWorkspace {
     margin: 0 12px 12px;
   }
+}
+
+.moveHint {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+}
+
+.moveTree {
+  max-height: 360px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 8px;
 }

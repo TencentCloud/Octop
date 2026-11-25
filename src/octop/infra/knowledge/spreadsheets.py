@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import os
 import shutil
 import signal
@@ -10,9 +11,13 @@ import subprocess
 from contextlib import closing
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING
 
 from octop.i18n import tr
 from octop.infra.errors import ErrorCode, OctopError
+
+if TYPE_CHECKING:
+    from octop.infra.knowledge.blobs import KnowledgeBlobs
 
 SPREADSHEET_SUFFIXES = frozenset({".xlsx", ".xlsm", ".xls"})
 RECALC_TIMEOUT_SECONDS = 120
@@ -51,6 +56,12 @@ def _xls_formulas(path: Path) -> tuple[list[str], int]:
     from xlrd.compdoc import CompDoc
 
     data = path.read_bytes()
+    prefix = data[:1024]
+    if prefix.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)) or (
+        prefix.removeprefix(codecs.BOM_UTF8).replace(b"\0", b"").lstrip().startswith(b"<")
+    ):
+        # XML exports use the document parser; BIFF formula records do not apply.
+        return [], 0
     if data.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
         compound = CompDoc(data)
         data = compound.get_named_stream("Workbook") or compound.get_named_stream("Book")
@@ -68,11 +79,12 @@ def _xls_formulas(path: Path) -> tuple[list[str], int]:
     return names, count
 
 
-def spreadsheet_preview_path(original: Path, derived: Path, status: str) -> Path:
-    if original.suffix.lower() not in SPREADSHEET_SUFFIXES:
-        return original
+def spreadsheet_preview_path(
+    original: Path, blobs: KnowledgeBlobs, kb_id: str, doc_id: str, status: str
+) -> Path:
     if status != "ready":
         raise OctopError.localized(ErrorCode.KNOWLEDGE_SPREADSHEET_NOT_READY)
+    derived = blobs.ensure_recalculated_local(kb_id, doc_id)
     if derived.is_file():
         return derived
     _, formulas = (

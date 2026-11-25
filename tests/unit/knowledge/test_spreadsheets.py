@@ -21,6 +21,7 @@ from octop.infra.db.repos.users import UserRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.knowledge import jobs, spreadsheets
 from octop.infra.knowledge import service as service_module
+from octop.infra.knowledge.blobs import KnowledgeBlobs
 from octop.infra.knowledge.files import document_path, recalculated_document_path
 from octop.infra.knowledge.index import KnowledgeIndex
 from octop.infra.knowledge.service import KnowledgeService
@@ -320,3 +321,63 @@ def test_preview_copy_preserves_read_access(knowledge, monkeypatch: pytest.Monke
     service.update_base(kb_id, actor_user_id=owner, shared=False)
     with pytest.raises(PermissionError):
         service.resolve_document_file(kb_id, doc_id, actor_user_id=reader, for_preview=True)
+
+
+def test_spreadsheetml_bypasses_biff_formula_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import xlrd
+
+    original = tmp_path / "report.xls"
+    original.write_bytes(
+        '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"/>'.encode("utf-16")
+    )
+    open_workbook = MagicMock(side_effect=AssertionError("XML must not reach xlrd"))
+    monkeypatch.setattr(xlrd, "open_workbook", open_workbook)
+    assert spreadsheets.prepare_spreadsheet(original, tmp_path / "copy.xlsx") == original
+    open_workbook.assert_not_called()
+
+
+@pytest.mark.parametrize("remote", [False, True], ids=["local", "postgres-blob"])
+def test_moving_ready_spreadsheet_keeps_recalculated_preview(
+    knowledge, monkeypatch: pytest.MonkeyPatch, remote: bool
+) -> None:
+    services, service, owner, kb_id, doc_id = knowledge
+    blobs = KnowledgeBlobs(None)
+    files: dict[str, bytes] = {}
+    if remote:
+
+        def upload(items: list[tuple[str, bytes]]) -> list[object]:
+            files.update(items)
+            return []
+
+        blobs._backend = SimpleNamespace(
+            upload_files=upload,
+            download_files=lambda keys: [SimpleNamespace(content=files.get(key)) for key in keys],
+            delete_object=lambda key: files.pop(key, None),
+        )
+        monkeypatch.setattr(KnowledgeBlobs, "from_services", classmethod(lambda *_: blobs))
+        blobs.write(kb_id, doc_id, "report.xlsx", workbook_bytes())
+
+    mock_converter(monkeypatch, workbook_bytes(cache="<v>125.5</v>"))
+    jobs.process_document(services, kb_id, doc_id)
+    if remote:
+        recalculated_document_path(kb_id, doc_id).unlink()
+    assert "125.5" in service.preview_document(kb_id, doc_id, actor_user_id=owner)["text"]
+
+    target = services.knowledge_repo.create_base(
+        owner_user_id=owner, name="Archive", embedding_model="test"
+    )
+    moved = service.move_document(
+        kb_id, doc_id, actor_user_id=owner, target_folder="", target_kb_id=target.id
+    )
+    assert moved.status == "ready"
+    assert not recalculated_document_path(kb_id, doc_id).exists()
+    if remote:
+        recalculated_document_path(target.id, doc_id).unlink()
+        assert all(not key.startswith(f"/{kb_id}/") for key in files)
+    assert "125.5" in service.preview_document(target.id, doc_id, actor_user_id=owner)["text"]
+    assert (
+        blobs.read_bytes(target.id, doc_id, "report.xlsx")
+        == document_path(target.id, doc_id, "report.xlsx").read_bytes()
+    )
