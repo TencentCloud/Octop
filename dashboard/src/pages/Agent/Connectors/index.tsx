@@ -1292,7 +1292,7 @@ function ConnectorConfigDrawer({
       }
       open={open}
       onClose={onClose}
-      width={isMobile ? "100%" : 480}
+      width={isMobile ? "100%" : 520}
       destroyOnHidden
       footer={
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

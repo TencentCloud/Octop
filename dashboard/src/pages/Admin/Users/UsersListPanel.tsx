@@ -2840,7 +2840,7 @@ export default function UsersListPanel() {
         }
         open={agentDrawerUser !== null}
         onClose={() => setAgentDrawerUser(null)}
-        width={400}
+        width={520}
         destroyOnHidden
       >
         <Spin spinning={agentsLoading}>

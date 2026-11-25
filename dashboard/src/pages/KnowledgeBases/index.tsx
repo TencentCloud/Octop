@@ -3753,7 +3753,7 @@ export default function KnowledgeBasesPage() {
         placement="right"
         open={baseDrawerOpen}
         onClose={() => setBaseDrawerOpen(false)}
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         destroyOnHidden
         className={styles.baseDrawer}
         footer={

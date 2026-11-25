@@ -1793,7 +1793,7 @@ export function ChannelDrawer({
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <Drawer
-      width={460}
+      width={520}
       placement="right"
       title={
         <div className={styles.drawerTitle}>

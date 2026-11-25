@@ -60,7 +60,7 @@ export default function SubagentPreviewDrawer({
     <Drawer
       open={open}
       title={title}
-      width={isMobile ? "100%" : 480}
+      width={isMobile ? "100%" : 520}
       onClose={onClose}
       destroyOnHidden
       styles={{

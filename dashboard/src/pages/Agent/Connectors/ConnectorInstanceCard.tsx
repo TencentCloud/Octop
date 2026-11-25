@@ -110,17 +110,19 @@ export function ConnectorInstanceCard({
             </div>
           </SharedAvatarMark>
           <div className={styles.typeCardTitleCol}>
-            <Typography.Text
-              className={styles.typeCardTitle}
-              ellipsis={{ tooltip: instance.display_name }}
-            >
-              {instance.display_name}
-            </Typography.Text>
-            <SharedResourceBadge
-              shared={instance.shared && isOwner}
-              owned
-              ownerName={ownerLabel}
-            />
+            <div className={styles.typeCardTitleRow}>
+              <Typography.Text
+                className={styles.typeCardTitle}
+                ellipsis={{ tooltip: instance.display_name }}
+              >
+                {instance.display_name}
+              </Typography.Text>
+              <SharedResourceBadge
+                shared={instance.shared && isOwner}
+                owned
+                ownerName={ownerLabel}
+              />
+            </div>
           </div>
           <div
             className={styles.instanceCardHeaderActions}

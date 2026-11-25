@@ -245,20 +245,14 @@ export function CustomMcpServerCard({
                 presetId={card.avatarIcon || null}
                 presets={CONNECTOR_AVATAR_PRESETS}
                 previewLarge
-                renderPreview={({ displayUrl, presetId, hasPhoto }) =>
-                  hasPhoto || presetId ? (
-                    <ResourceAvatar
-                      url={displayUrl}
-                      icon={presetId}
-                      presets={CONNECTOR_AVATAR_PRESETS}
-                      large
-                    />
-                  ) : (
-                    <span className={styles.customMcpAvatarFallback}>
-                      <Cable size={28} aria-hidden />
-                    </span>
-                  )
-                }
+                renderPreview={({ displayUrl, presetId }) => (
+                  <ResourceAvatar
+                    url={displayUrl}
+                    icon={presetId}
+                    presets={CONNECTOR_AVATAR_PRESETS}
+                    large
+                  />
+                )}
                 onPick={onPickAvatar}
                 onSelectPreset={onSelectAvatarPreset}
                 onRemove={avatarUrl ? onRemoveAvatar : undefined}
@@ -513,35 +507,26 @@ export function CustomMcpServerCard({
             </>
           )}
 
-          <ResourceVisibilityGate allowOwner visibility={card.visibility}>
-            <div className={styles.formOptionRowVisibility}>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRow}>
               <div className={styles.formOptionCopy}>
                 <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label", "谁可以使用")}
+                  {t("connectors.defaultEnabled", "是否默认开启")}
                 </span>
                 <span className={styles.formOptionHint}>
-                  {t("connectors.visibilityHint")}
+                  {effectiveEnabled
+                    ? t(
+                        "connectors.defaultOpenHint",
+                        "关闭时需在对话中手动勾选才会注入工具。",
+                      )
+                    : t(
+                        "connectors.customMcp.defaultOpenRequiresEnable",
+                        "需先启用连接器。",
+                      )}
                 </span>
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={card.visibility}
-                groupIds={card.groupIds}
-                onChange={(next) =>
-                  onUpdate(card.key, {
-                    visibility: next.visibility,
-                    groupIds: next.visibility === "groups" ? next.groupIds : [],
-                    shared: next.visibility !== "owner",
-                  })
-                }
-              />
-            </div>
-          </ResourceVisibilityGate>
-
-          <div className={styles.customMcpField}>
-            <label>{t("connectors.defaultEnabled", "是否默认开启")}</label>
-            <div className={styles.customMcpDefaultOpenRow}>
               <Switch
+                size="small"
                 checked={card.defaultOpen}
                 disabled={!effectiveEnabled}
                 onChange={(checked) => {
@@ -552,33 +537,43 @@ export function CustomMcpServerCard({
                   onUpdate(card.key, { defaultOpen: checked });
                 }}
               />
-              {!effectiveEnabled ? (
-                <span className={styles.customMcpFieldHint}>
-                  {t(
-                    "connectors.customMcp.defaultOpenRequiresEnable",
-                    "需先启用连接器。",
-                  )}
-                </span>
-              ) : !card.defaultOpen ? (
-                <span className={styles.customMcpFieldHint}>
-                  {t(
-                    "connectors.customMcp.defaultOpenHint",
-                    "开启后，你的 Dashboard、IM 与 Cron（未手动选连接器时）会默认带上此 MCP。",
-                  )}
-                </span>
-              ) : null}
             </div>
-            {effectiveEnabled && card.defaultOpen ? (
-              <Alert
-                type="warning"
-                showIcon
-                message={t(
-                  "connectors.defaultOpenWarning",
-                  "开启后默认会在你的 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
-                )}
-              />
-            ) : null}
+            <ResourceVisibilityGate allowOwner visibility={card.visibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label", "谁可以使用")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("connectors.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={card.visibility}
+                  groupIds={card.groupIds}
+                  onChange={(next) =>
+                    onUpdate(card.key, {
+                      visibility: next.visibility,
+                      groupIds:
+                        next.visibility === "groups" ? next.groupIds : [],
+                      shared: next.visibility !== "owner",
+                    })
+                  }
+                />
+              </div>
+            </ResourceVisibilityGate>
           </div>
+          {effectiveEnabled && card.defaultOpen ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                "connectors.defaultOpenWarning",
+                "开启后默认会在你的 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
+              )}
+            />
+          ) : null}
 
           {isHttp && card.oauthConfigured ? (
             <Alert

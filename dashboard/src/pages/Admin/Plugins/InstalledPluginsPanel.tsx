@@ -562,7 +562,7 @@ export function InstalledPluginsPanel() {
         }
         open={!!detail}
         onClose={() => setDetail(null)}
-        width={500}
+        width={520}
         destroyOnHidden
         styles={{ body: { paddingTop: 12, paddingBottom: 24 } }}
       >

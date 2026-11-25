@@ -535,7 +535,7 @@ export function CustomMcpDrawer({
       placement="right"
       open={open}
       onClose={onClose}
-      width={isMobile ? "100%" : 640}
+      width={isMobile ? "100%" : 520}
       destroyOnHidden
       footer={
         <div className={styles.customDrawerFooter}>
