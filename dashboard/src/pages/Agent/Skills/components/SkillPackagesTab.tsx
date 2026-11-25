@@ -408,7 +408,7 @@ export default function SkillPackagesTab({
           setDetailOpen(false);
           setDetailPackage(null);
         }}
-        width={480}
+        width={520}
         destroyOnHidden
       >
         {detailLoading ? (

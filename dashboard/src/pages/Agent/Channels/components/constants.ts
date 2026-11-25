@@ -226,7 +226,6 @@ export interface QqGroupContextConfig {
   clear_after_reply: boolean;
   owner_commands_only: boolean;
   owner_tools_only: boolean;
-  social_trigger_enabled: boolean;
   owner_ids: string[];
   groups?: Record<
     string,
@@ -244,7 +243,6 @@ export const DEFAULT_QQ_GROUP_CONTEXT_CONFIG: QqGroupContextConfig = {
   clear_after_reply: true,
   owner_commands_only: true,
   owner_tools_only: false,
-  social_trigger_enabled: true,
   owner_ids: [],
 };
 
@@ -316,10 +314,6 @@ export function normalizeQqGroupContextConfig(
       typeof parsed.owner_tools_only === "boolean"
         ? parsed.owner_tools_only
         : false,
-    social_trigger_enabled:
-      typeof parsed.social_trigger_enabled === "boolean"
-        ? parsed.social_trigger_enabled
-        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.social_trigger_enabled,
     owner_ids: [
       ...new Set(
         rawOwnerIds

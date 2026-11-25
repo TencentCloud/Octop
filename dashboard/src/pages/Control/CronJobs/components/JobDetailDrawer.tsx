@@ -97,7 +97,7 @@ export function JobDetailDrawer({
       }
       open={open}
       onClose={onClose}
-      width={480}
+      width={520}
       destroyOnHidden
       footer={
         agentPrompt ? (

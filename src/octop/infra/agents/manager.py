@@ -2120,10 +2120,15 @@ class AgentManager:
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
             await attach_managed_turn(self, agent_id, req)
+            from octop.infra.agents.teams.file_target import (  # noqa: PLC0415
+                bind_turn_file_target,
+            )
+
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
                 self._turn_model_access_from_request(req),
+                bind_turn_file_target(req),
             ):
                 chunk_stream = self._harness_manager.stream(agent_id, cast(Any, req))
                 try:
@@ -2176,10 +2181,15 @@ class AgentManager:
             req = self._prepare_stream_request(agent_id, request)
             thread_id = str(req.get("thread_id") or thread_id_from_request(req) or "")
             await attach_managed_turn(self, agent_id, req)
+            from octop.infra.agents.teams.file_target import (  # noqa: PLC0415
+                bind_turn_file_target,
+            )
+
             with (
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
                 self._turn_model_access_from_request(req),
+                bind_turn_file_target(req),
             ):
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)

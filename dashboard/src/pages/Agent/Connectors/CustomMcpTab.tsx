@@ -824,9 +824,6 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
                           { defaultOpen },
                         );
                       }}
-                      onSharedChange={(shared) => {
-                        void persistServerPatch(card, { shared }, { shared });
-                      }}
                       onRemove={() => handleRemove(card.key)}
                       onProbe={() => void handleProbe(card)}
                       onAuthorize={() => void handleOAuth(card)}

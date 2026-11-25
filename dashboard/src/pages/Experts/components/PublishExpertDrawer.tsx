@@ -137,7 +137,7 @@ export default function PublishExpertDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      width={440}
+      width={520}
       destroyOnHidden
       maskClosable={!submitting}
       closable={!submitting}

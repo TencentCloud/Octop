@@ -863,7 +863,7 @@ export function DecisionSettingsPanel({
         title={editing ? choiceCopy[editing].name : ""}
         open={editing !== null}
         onClose={() => setEditing(null)}
-        width={440}
+        width={520}
         placement="right"
         destroyOnHidden
         footer={
