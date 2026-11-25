@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 
 from langchain_core.exceptions import ModelAuthenticationError, ModelPermissionDeniedError
 
@@ -36,10 +37,12 @@ PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
 PATH_OUTSIDE_ROOT = f"{_PREFIX}stream_errors.path_outside_root"
 INVALID_REQUEST = f"{_PREFIX}stream_errors.invalid_request"
+DATABASE_CORRUPT = f"{_PREFIX}stream_errors.database_corrupt"
 
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
+    "DATABASE_CORRUPT",
     "INSUFFICIENT_BALANCE",
     "INVALID_REQUEST",
     "MODEL_CALL_FAILED",
@@ -119,6 +122,15 @@ def tool_call_repeat_vars(message: str) -> dict[str, str] | None:
     }
 
 
+def _looks_like_sqlite_corruption(text: str) -> bool:
+    lower = text.lower()
+    return (
+        "database disk image is malformed" in lower
+        or "file is not a database" in lower
+        or "sqlite_corrupt" in lower
+    )
+
+
 def classify_stream_error_message(message: str) -> str | None:
     """Return a stable ``octop:stream_errors.*`` key for known model failures."""
     if tool_call_repeat_vars(message) is not None:
@@ -128,6 +140,10 @@ def classify_stream_error_message(message: str) -> str | None:
         return None
     lower = msg.lower()
     compact = lower.replace("_", "").replace(" ", "")
+
+    # Local SQLite corruption — must not look like a model-provider outage.
+    if _looks_like_sqlite_corruption(lower):
+        return DATABASE_CORRUPT
 
     # Tool / backend path jail — must not look like a model-provider outage.
     if "outside root directory" in lower or "path traversal not allowed" in lower:
@@ -297,6 +313,10 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
                 locale,
                 model=scope.group(1),
             )
+        if isinstance(current, sqlite3.DatabaseError) and _looks_like_sqlite_corruption(
+            str(current)
+        ):
+            return tr(DATABASE_CORRUPT.removeprefix(_PREFIX), locale)
         if isinstance(current, (ModelAuthenticationError, ModelPermissionDeniedError)) or getattr(
             current, "status_code", None
         ) in (401, 403):

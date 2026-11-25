@@ -13,6 +13,7 @@
 ## [Unreleased]
 
 ### 新增
+- 新增 `octop db doctor` 与 `octop db recover` 离线诊断修复命令，可扫描 `OCTOP_HOME` 下所有 SQLite 库执行完整性检查，并在备份后通过 `sqlite3 .recover` / Python 回退或重置修复损坏库（#2998）。
 - 知识库设置新增「分块与检索」标签页，可配置分块大小、分块重叠、默认检索条数和上下文字符预算。
 - 用户管理支持创建限次邀请链接。链接在注册满员后自动停用，管理员也可以提前停用并查看已注册的用户。邀请管理 API 移除了 `used_at`、`used_by_user_id` 和 `revoked_at`，可通过注册记录和邀请状态查看使用情况。
 - 自托管可用环境变量放行内网出站目标：`OCTOP_SSRF_ALLOWLIST`（主机名、`.后缀` 或 CIDR）让语音服务、OAuth MCP 发现与令牌请求等指向内网服务，`OCTOP_SSRF_ALLOW_HTTP` 允许这些目标走 http；仍做 DNS 解析并固定连接 IP 防重绑定，不配置时行为不变（#2016）
@@ -26,6 +27,7 @@
 - 新增内置 Gitea 连接器：填写自建实例地址与个人访问令牌（按用户加密保存）后，智能体可浏览仓库、查询 Issue 与评论、查看 PR、读取文件并发表评论。
 
 ### 修复
+- 修复 SQLite 损坏时的报错与恢复闭环：`format_stream_error` 不再将 `database disk image is malformed` 误显示为「模型调用失败」；`memory/storage/restore` 支持恢复已损坏的 `memory.sqlite` 并识别自动裁剪备份 `memory.sqlite.pre-prune.bak`；为控制面与知识库 SQLite 补齐 `busy_timeout` / WAL 及关机 checkpoint，并延长飞牛原生 FPK 停服等待时间且在 btrfs 首次建目录时尝试 `chattr +C`（#2998）。
 - 删除 Dashboard 默认会话后，绑定该会话的定时任务会在下次运行时自动重建会话。
 - 修复模型把一个 emoji 拆到多个流式分片时，重新打开对话可能看不到历史的问题。
 - Dashboard 对话报错：以 HTTP 429 / 403 返回的余额不足与欠费（OpenAI `insufficient_quota`、智谱 1113、Moonshot、Anthropic、硅基流动、火山方舟）不再提示「被限流，请稍后重试」，改为提示充值；DashScope 借用额度文案的 TPM/RPM 限流仍按限流提示
