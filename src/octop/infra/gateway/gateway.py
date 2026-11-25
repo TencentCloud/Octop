@@ -142,6 +142,7 @@ class Gateway:
         self._claim_channels = True
         self._reconcile_task: asyncio.Task[None] | None = None
         self._history_backfill = HistoryBackfillQueue()
+        self._shutting_down = False
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Point channel/thread persistence at a rebound control-plane pool."""
@@ -382,7 +383,30 @@ class Gateway:
         enabled = self._repos.channel_repo.list_all(include_disabled=False)
         logger.info("Gateway channels reloaded from DB (%d enabled)", len(enabled))
 
-    async def shutdown(self) -> None:
+    @property
+    def is_shutting_down(self) -> bool:
+        """True once the process started draining for exit."""
+        return self._shutting_down
+
+    def begin_shutdown(self) -> None:
+        """Refuse new turns and preempt in-flight streams before the drain."""
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        processor = self._processor
+        if processor is not None:
+            processor.begin_shutdown()
+
+    async def shutdown(self, drain_timeout: float = 5.0) -> None:
+        """Stop channels, then persist turns the shutdown interrupted.
+
+        The database is closed by the caller after this returns, so every
+        in-flight turn is drained and flushed here first.
+        """
+        self.begin_shutdown()
+        processor = self._processor
+        if processor is not None:
+            await processor.wait_inflight_turns(timeout=drain_timeout)
         await self._history_backfill.close()
         task = self._reconcile_task
         self._reconcile_task = None
@@ -393,6 +417,8 @@ class Gateway:
         held = list(self._held_channels.items())
         if self._channel_manager:
             await self._channel_manager.stop()
+        if processor is not None:
+            await processor.flush_unpersisted_turns()
         for channel_id, lease in held:
             self._repos.channel_repo.release_runtime_lease(channel_id, token=lease.token)
         self._held_channels.clear()

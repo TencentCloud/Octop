@@ -170,6 +170,21 @@ class _ResolvedTurnMcp(NamedTuple):
     shown: list[str]
 
 
+@dataclass
+class _InflightTurn:
+    """A turn whose chunks are still being produced.
+
+    Shutdown drains these so the partial reply reaches the history projection
+    before the database closes.
+    """
+
+    run_id: str
+    agent_id: str
+    thread_id: str
+    tracker: TurnHistoryTracker
+    title_source: str | None
+
+
 class GlobalProcessor:
     """Routes InboundMessages by ``tenant_id`` to the correct HarnessAgent."""
 
@@ -217,6 +232,10 @@ class GlobalProcessor:
         self._trajectory_service = trajectory_service
         self._title_inflight: set[str] = set()
         self._pending_system_prompt: set[str] = set()
+        self._shutting_down = False
+        self._inflight_turns: dict[str, _InflightTurn] = {}
+        self._inflight_idle: asyncio.Event = asyncio.Event()
+        self._inflight_idle.set()
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -914,6 +933,12 @@ class GlobalProcessor:
             yield MessageEvent.completed()
             return
 
+        if self._shutting_down:
+            # A turn accepted now could outlive the database on the way out.
+            yield MessageEvent.error_event("server is shutting down")
+            yield MessageEvent.completed()
+            return
+
         agent_row = self._agent_repo.get(agent_id)
         user_id = resolve_user_id_for_message(
             msg,
@@ -1131,6 +1156,16 @@ class GlobalProcessor:
             history_tracker=history_tracker,
         )
         projection_state = StreamProjectionState()
+        run_id = new_ulid()
+        self._track_turn(
+            _InflightTurn(
+                run_id=run_id,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                tracker=history_tracker,
+                title_source=msg.text,
+            )
+        )
         try:
             turn_stream = project_stream(
                 self._agent_manager,
@@ -1155,7 +1190,9 @@ class GlobalProcessor:
                     yield ev
             finally:
                 await close_event_stream(turn_stream)
-            stream_ok = True
+            # A shutdown drains the turn instead of completing it: the stream
+            # ends cleanly there, but the reply is only partially generated.
+            stream_ok = not self._shutting_down
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
             await self._record_stream_error(
@@ -1192,10 +1229,13 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
-            if not failure_saved and (not stream_ok and not hitl_paused):
-                await self._persist_incomplete_turn(
-                    thread_id, history_tracker, title_source=msg.text
-                )
+            try:
+                if not failure_saved and (not stream_ok and not hitl_paused):
+                    await self._persist_incomplete_turn(
+                        thread_id, history_tracker, title_source=msg.text
+                    )
+            finally:
+                self._untrack_turn(run_id)
         yield MessageEvent.completed()
 
     def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
@@ -1206,6 +1246,74 @@ class GlobalProcessor:
         """
         if self._agent_manager is not None:
             self._agent_manager.cancel_stream(agent_id, thread_id)
+
+    # -- Graceful shutdown ---------------------------------------------------
+
+    @property
+    def is_shutting_down(self) -> bool:
+        """True once the process started draining for exit."""
+        return self._shutting_down
+
+    def begin_shutdown(self) -> None:
+        """Refuse new turns and preempt every in-flight stream.
+
+        Preempting lets each turn reach its own ``finally`` and write the
+        partial reply while the database is still open.
+        """
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        turns = list(self._inflight_turns.values())
+        for turn in turns:
+            self.cancel_agent_stream(turn.agent_id, turn.thread_id)
+            self.teams.cancel_member_hitl(turn.thread_id)
+        logger.info("processor draining %d in-flight turn(s)", len(turns))
+
+    def _track_turn(self, turn: _InflightTurn) -> None:
+        self._inflight_turns[turn.run_id] = turn
+        self._inflight_idle.clear()
+
+    def _untrack_turn(self, run_id: str) -> None:
+        if self._inflight_turns.pop(run_id, None) is None:
+            return
+        if not self._inflight_turns:
+            self._inflight_idle.set()
+
+    async def wait_inflight_turns(self, timeout: float = 5.0) -> None:
+        """Wait until every in-flight turn finished its own history write."""
+        deadline = time.monotonic() + timeout
+        while self._inflight_turns:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                async with asyncio.timeout(remaining):
+                    await self._inflight_idle.wait()
+            except TimeoutError:
+                break
+        if self._inflight_turns:
+            logger.warning(
+                "shutdown drain timed out with %d turn(s) still in flight",
+                len(self._inflight_turns),
+            )
+
+    async def flush_unpersisted_turns(self) -> None:
+        """Persist turns whose stream was cut before it could write itself."""
+        for turn in list(self._inflight_turns.values()):
+            if turn.tracker.persisted:
+                continue
+            try:
+                await self._persist_incomplete_turn(
+                    turn.thread_id,
+                    turn.tracker,
+                    title_source=turn.title_source,
+                )
+            except Exception:
+                logger.warning(
+                    "failed to flush turn %s during shutdown",
+                    turn.run_id,
+                    exc_info=True,
+                )
 
     # -- Raw harness-chunk stream (Dashboard WS, etc.) -------------------------
     # IM channels (DingTalk, Feishu, …) stream via __call__ → MessageEvent instead.
@@ -1227,6 +1335,16 @@ class GlobalProcessor:
         agent_id = msg.tenant_id or ""
         if not agent_id:
             yield {"type": "error", "message": "No agent (tenant_id) specified"}
+            yield {"type": "done"}
+            return
+
+        if self._shutting_down:
+            # A turn accepted now could outlive the database on the way out.
+            yield {
+                "type": "error",
+                "message": "server is shutting down",
+                "error_code": "SHUTTING_DOWN",
+            }
             yield {"type": "done"}
             return
 
@@ -1442,6 +1560,16 @@ class GlobalProcessor:
             thread_id=thread_id,
             history_tracker=history_tracker,
         )
+        run_id = new_ulid()
+        self._track_turn(
+            _InflightTurn(
+                run_id=run_id,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                tracker=history_tracker,
+                title_source=msg.text,
+            )
+        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1547,7 +1675,9 @@ class GlobalProcessor:
                     user_id=user_id,
                 )
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
-            stream_ok = True
+            # A shutdown drains the turn instead of completing it: the stream
+            # ends cleanly there, but the reply is only partially generated.
+            stream_ok = not self._shutting_down
         except Exception as exc:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
@@ -1567,10 +1697,13 @@ class GlobalProcessor:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if stream_ok:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))
-            if not failure_saved and not stream_ok:
-                await self._persist_incomplete_turn(
-                    thread_id, history_tracker, title_source=msg.text
-                )
+            try:
+                if not failure_saved and not stream_ok:
+                    await self._persist_incomplete_turn(
+                        thread_id, history_tracker, title_source=msg.text
+                    )
+            finally:
+                self._untrack_turn(run_id)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
             self._record_turn_usage(
@@ -1600,6 +1733,16 @@ class GlobalProcessor:
         """Resume a dashboard HITL turn with the normal history bookkeeping."""
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request({})
+        run_id = new_ulid()
+        self._track_turn(
+            _InflightTurn(
+                run_id=run_id,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                tracker=history_tracker,
+                title_source=None,
+            )
+        )
         turn_started = time.perf_counter()
         completed = False
         failure_saved = False
@@ -1639,7 +1782,9 @@ class GlobalProcessor:
                         live=saw_tool_call,
                     )
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
-            completed = True
+            # A shutdown drains the turn instead of completing it: the stream
+            # ends cleanly there, but the reply is only partially generated.
+            completed = not self._shutting_down
         except Exception as exc:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
@@ -1661,20 +1806,27 @@ class GlobalProcessor:
             failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
-            self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if completed:
-                history_tracker.note_turn_duration(_elapsed_ms(turn_started))
-            if not failure_saved and not completed:
-                await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
-            if completed:
-                self._touch_thread_after_turn(thread_id, None)
-                self._record_turn_usage(
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    thread_id=thread_id,
-                    usage=usage_tracker.usage,
+            try:
+                self._finish_trajectory(
+                    thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on
                 )
-                await self._record_turn_history(thread_id, history_tracker, agent_id)
+                if completed:
+                    history_tracker.note_turn_duration(_elapsed_ms(turn_started))
+                if not failure_saved and not completed:
+                    await self._persist_incomplete_turn(
+                        thread_id, history_tracker, title_source=None
+                    )
+                if completed:
+                    self._touch_thread_after_turn(thread_id, None)
+                    self._record_turn_usage(
+                        agent_id=agent_id,
+                        user_id=user_id,
+                        thread_id=thread_id,
+                        usage=usage_tracker.usage,
+                    )
+                    await self._record_turn_history(thread_id, history_tracker, agent_id)
+            finally:
+                self._untrack_turn(run_id)
 
     async def _build_dashboard_request(
         self,
@@ -2265,6 +2417,20 @@ class GlobalProcessor:
         thread_id: str,
         tracker: TurnHistoryTracker,
         agent_id: str | None = None,
+    ) -> None:
+        if not tracker.mark_persisted():
+            # The streaming ``finally`` and the shutdown flush can race for the
+            # same turn; only the first caller may write it.
+            return
+        # Shield the write so a cancellation halfway through shutdown still
+        # lets the projection commit while the database is open.
+        await asyncio.shield(self._write_turn_history(thread_id, tracker, agent_id))
+
+    async def _write_turn_history(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+        agent_id: str | None,
     ) -> None:
         if agent_id is None:
             row = self._thread_registry.get_thread(thread_id)

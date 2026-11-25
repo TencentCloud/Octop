@@ -803,6 +803,16 @@ class OctopServer:
                 file_path,
             )
 
+    def begin_shutdown(self) -> None:
+        """Start draining in-flight turns as soon as a shutdown signal arrives.
+
+        Called from the signal handler, before uvicorn stops accepting
+        connections, so blocked streams are preempted while the database is
+        still open.
+        """
+        if self.app_runtime is not None:
+            self.app_runtime.gateway.begin_shutdown()
+
     async def stop(self) -> None:
         if not self._started:
             return

@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 import sys
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from typing import Any
+
+import uvicorn
 
 from octop.infra.desktop import desktop_shell_enabled
 from octop.infra.server import OctopServer
@@ -22,6 +26,78 @@ logger = logging.getLogger(__name__)
 # application heartbeat still detects a half-open link.
 _WS_PING_INTERVAL = 20.0
 _WS_PING_TIMEOUT: float | None = None
+
+# Bound the drain so a wedged stream cannot block process exit forever.
+_GRACEFUL_SHUTDOWN_TIMEOUT = 5
+
+
+class _OctopUvicornServer(uvicorn.Server):
+    """uvicorn server whose signal handling is owned by ``launch``.
+
+    ``uvicorn.Server.capture_signals`` restores ``SIG_DFL`` and re-raises the
+    signal on exit, which kills the process before ``run_foreground`` can run
+    its ``finally``: ``Gateway.shutdown`` and ``db.close()`` never execute and
+    the whole in-flight turn is lost. The handlers installed by
+    :func:`_capture_shutdown_signals` only flip ``should_exit`` instead.
+    """
+
+    @contextmanager
+    def capture_signals(self) -> Iterator[None]:
+        yield
+
+
+def _signal_name(signum: int) -> str:
+    try:
+        return signal.Signals(signum).name
+    except ValueError:  # pragma: no cover - platform specific numbers
+        return str(signum)
+
+
+@contextmanager
+def _capture_shutdown_signals(servers: list[uvicorn.Server], srv: OctopServer) -> Iterator[None]:
+    """Drain in-flight turns on the first shutdown signal.
+
+    The first signal starts the drain (preempt blocked streams, stop the
+    listeners) and never re-raises, so the caller's ``finally`` still closes
+    the database. A second signal forces the exit for unresponsive streams.
+    """
+    watched = [signal.SIGINT, signal.SIGTERM]
+    sigbreak = getattr(signal, "SIGBREAK", None)
+    if sigbreak is not None:
+        watched.append(sigbreak)
+    previous: dict[int, Any] = {}
+    draining = False
+
+    def _handle(signum: int, _frame: Any) -> None:
+        nonlocal draining
+        name = _signal_name(signum)
+        if draining:
+            logger.warning("received %s during shutdown; forcing exit", name)
+            for server in servers:
+                server.force_exit = True
+            return
+        draining = True
+        logger.info("received %s; draining in-flight turns", name)
+        try:
+            srv.begin_shutdown()
+        except Exception:
+            logger.warning("failed to begin graceful shutdown", exc_info=True)
+        for server in servers:
+            server.should_exit = True
+
+    for sig in watched:
+        try:
+            previous[sig] = signal.signal(sig, _handle)
+        except (ValueError, OSError):  # pragma: no cover - non-main thread
+            logger.debug("cannot install handler for signal %s", _signal_name(sig))
+    try:
+        yield
+    finally:
+        for restored_sig, handler in previous.items():
+            try:
+                signal.signal(restored_sig, handler)
+            except (ValueError, OSError):  # pragma: no cover - non-main thread
+                logger.debug("cannot restore handler for signal %s", _signal_name(restored_sig))
 
 
 def _ensure_linux_bubblewrap() -> None:
@@ -75,8 +151,6 @@ async def run_foreground(
     ssl_keyfile: str | None,
 ) -> None:
     """Boot the domain server, serve the HTTP API, then shut down cleanly."""
-    import uvicorn
-
     from octop.api.app import build_app
     from octop.infra.bridge.transport import BRIDGE_WS_MAX_BYTES
     from octop.infra.setup.tls.http_companion import build_http_companion_app
@@ -132,6 +206,7 @@ async def run_foreground(
             ws_max_size=BRIDGE_WS_MAX_BYTES,
             ws_ping_interval=_WS_PING_INTERVAL,
             ws_ping_timeout=_WS_PING_TIMEOUT,
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
         companion = build_http_companion_app(https_port=plan.https_port)
         http_config = uvicorn.Config(
@@ -141,9 +216,10 @@ async def run_foreground(
             log_level=level,
             workers=1,
             reload=False,
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
-        servers.append(uvicorn.Server(https_config))
-        servers.append(uvicorn.Server(http_config))
+        servers.append(_OctopUvicornServer(https_config))
+        servers.append(_OctopUvicornServer(http_config))
         logger.info(
             "Listening on https://%s:%s and http://%s:%s (ACME + redirect)",
             plan.bind_host,
@@ -164,13 +240,17 @@ async def run_foreground(
             ws_max_size=BRIDGE_WS_MAX_BYTES,
             ws_ping_interval=_WS_PING_INTERVAL,
             ws_ping_timeout=_WS_PING_TIMEOUT,
+            timeout_graceful_shutdown=_GRACEFUL_SHUTDOWN_TIMEOUT,
         )
-        servers.append(uvicorn.Server(single_config))
+        servers.append(_OctopUvicornServer(single_config))
 
     from octop.infra.agents.memory.slim_control import MemorySlimControl
 
     memory_control = MemorySlimControl(srv)
-    with coalesce_accept_errors(asyncio.get_running_loop()):
+    with (
+        _capture_shutdown_signals(servers, srv),
+        coalesce_accept_errors(asyncio.get_running_loop()),
+    ):
         try:
             await memory_control.start()
             await asyncio.gather(*(_serve(s) for s in servers))

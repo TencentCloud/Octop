@@ -208,6 +208,18 @@ async def dashboard_chat_ws(
                 await send_frame({"type": "error", "message": f"unknown message type: {msg_type}"})
                 continue
 
+            if gateway.is_shutting_down:
+                # The process is draining: a new turn would outlive the DB.
+                await send_frame(
+                    {
+                        "type": "error",
+                        "message": "server is shutting down",
+                        "error_code": "SHUTTING_DOWN",
+                    }
+                )
+                await send_frame({"type": "done"})
+                continue
+
             try:
                 frame = UserTurnWsFrame.model_validate({**payload, "type": "user_turn"})
             except ValidationError as exc:
