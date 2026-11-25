@@ -11,7 +11,10 @@ from __future__ import annotations
 import inspect
 import logging
 import threading
-from contextvars import ContextVar
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 from typing import Any
 
 from octop.i18n import tr
@@ -117,6 +120,55 @@ def stamp_turn_capabilities(
     cfg[CAPABILITIES_KEY] = caps
     cfg[EXECUTE_KEY] = "1" if caps["execute"] else "0"
     return caps
+
+
+@dataclass(frozen=True)
+class TurnFileTarget:
+    """The workspace bound to the current task, even if tool config drops it."""
+
+    directory: str
+    execute: bool
+    bridge_token: str = ""
+    host_id: str = ""
+
+
+_TURN: ContextVar[TurnFileTarget | None] = ContextVar("octop_turn_file_target", default=None)
+
+
+def current_turn_file_target() -> TurnFileTarget | None:
+    return _TURN.get()
+
+
+def _turn_from_config(cfg: dict[str, Any] | None) -> TurnFileTarget | None:
+    if not isinstance(cfg, dict):
+        return None
+    directory = str(cfg.get(DIR_KEY) or "").strip()
+    bridge = str(cfg.get(BRIDGE_TARGET_KEY) or "").strip()
+    host = str(cfg.get(HOST_KEY) or "").strip()
+    if not directory or not (bridge or host):
+        return None
+    return TurnFileTarget(
+        directory=directory,
+        execute=capability_enabled(cfg, "execute"),
+        bridge_token=bridge,
+        host_id=host,
+    )
+
+
+@contextmanager
+def bind_turn_file_target(request: dict[str, Any]) -> Iterator[TurnFileTarget | None]:
+    """Remember this request's workspace for the whole turn.
+
+    Tool callbacks and a managed runner's permission loop do not always see the
+    LangGraph config that carried the directory. The turn task does.
+    """
+    raw = request.get("configurable")
+    stamp = _turn_from_config(raw if isinstance(raw, dict) else None)
+    token: Token[TurnFileTarget | None] = _TURN.set(stamp)
+    try:
+        yield stamp
+    finally:
+        _TURN.reset(token)
 
 
 def capability_enabled(cfg: dict[str, Any] | None, name: str) -> bool:

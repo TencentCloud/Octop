@@ -26,12 +26,16 @@ from pydantic import ConfigDict
 from octop.infra.agents.acp.team_workspace_mcp import TeamWorkspaceScope, run_workspace_tool
 from octop.infra.agents.teams.file_target import (
     BRIDGE_TARGET_KEY,
+    CAPABILITIES_KEY,
     DIR_KEY,
+    EXECUTE_KEY,
     HOST_KEY,
     MOUNTS_KEY,
     capability_enabled,
+    current_turn_file_target,
     mount_for_args,
     mounted_mutation,
+    stamp_turn_capabilities,
     workspace_file_args,
 )
 from octop.infra.agents.teams.file_target_guard import install_file_target_guards
@@ -346,8 +350,20 @@ def _configurable() -> dict[str, Any]:
     try:
         raw = get_config().get("configurable") or {}
     except RuntimeError:
-        return {}
-    return dict(raw) if isinstance(raw, dict) else {}
+        raw = {}
+    cfg = dict(raw) if isinstance(raw, dict) else {}
+    turn = current_turn_file_target()
+    if turn is None:
+        return cfg
+    if turn.directory and not str(cfg.get(DIR_KEY) or "").strip():
+        cfg[DIR_KEY] = turn.directory
+    if turn.bridge_token and not str(cfg.get(BRIDGE_TARGET_KEY) or "").strip():
+        cfg[BRIDGE_TARGET_KEY] = turn.bridge_token
+    if turn.host_id and not str(cfg.get(HOST_KEY) or "").strip():
+        cfg[HOST_KEY] = turn.host_id
+    if CAPABILITIES_KEY not in cfg and EXECUTE_KEY not in cfg:
+        stamp_turn_capabilities(cfg, execute=turn.execute)
+    return cfg
 
 
 def _args(request: ToolCallRequest) -> dict[str, Any]:
