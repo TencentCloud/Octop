@@ -41,12 +41,11 @@ class TokenCreateBody(BaseModel):
 class TokenPatchBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=64)
     expert_ids: list[str] | None = None
-    disabled_clients: list[str] | None = None
 
     @model_validator(mode="after")
     def _require_a_field(self) -> TokenPatchBody:
-        if not self.model_fields_set.intersection({"name", "expert_ids", "disabled_clients"}):
-            raise ValueError("provide name and/or expert_ids and/or disabled_clients")
+        if not self.model_fields_set.intersection({"name", "expert_ids"}):
+            raise ValueError("provide name and/or expert_ids")
         return self
 
 
@@ -54,7 +53,6 @@ class TokenOut(BaseModel):
     token_id: str
     name: str
     expert_ids: list[str] | None = None
-    disabled_clients: list[str] | None = None
     client_stats: dict[str, dict[str, Any]] | None = None
     token_hint: str
     created_at: str
@@ -143,7 +141,6 @@ def _to_out(
         "token_id": token["token_id"],
         "name": token.get("client_name") or "",
         "expert_ids": [expert["agent_id"]] if expert else None,
-        "disabled_clients": token.get("disabled_clients") or None,
         "client_stats": token.get("client_stats") or None,
         "token_hint": token.get("token_hint") or "",
         "created_at": token.get("created_at") or "",
@@ -237,7 +234,6 @@ def patch_token(
         int(user.id),
         token_id,
         client_name=body.name,
-        disabled_clients=body.disabled_clients,
         space_id=space_id,
     )
     return _to_out(updated, experts)

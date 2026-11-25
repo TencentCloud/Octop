@@ -46,7 +46,6 @@ export interface MemoryMcpToken {
    * Clients switched off for this token; null means every client may call.
    * A disabled client is rejected server-side regardless of ``client_stats``.
    */
-  disabled_clients: string[] | null;
   /**
    * Per-client usage, or null until some client sends ``X-Octop-Client``.
    * Requests without that header are counted only in ``last_used_at``.
@@ -79,7 +78,6 @@ export interface UpdateMemoryMcpTokenBody {
   /** Exactly one id pins the expert; null means "no restriction". */
   expert_ids?: string[] | null;
   /** Clients switched off; an empty list is sent as null ("all allowed"). */
-  disabled_clients?: string[] | null;
 }
 
 export interface RevokeMemoryMcpTokenResponse {

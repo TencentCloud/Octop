@@ -223,15 +223,12 @@ def patch_token(
     token_id: str,
     *,
     client_name: str | None = None,
-    disabled_clients: list[str] | None = None,
     space_id: str | None = None,
 ) -> dict[str, Any]:
     session = _session_or_fail(user_id)
     body: dict[str, Any] = {}
     if client_name is not None:
         body["client_name"] = client_name
-    if disabled_clients is not None:
-        body["disabled_clients"] = disabled_clients
     if space_id is not None:
         body["space_id"] = space_id
     return _request("PATCH", f"/api/admin/tokens/{token_id}", session=session.token, body=body)
