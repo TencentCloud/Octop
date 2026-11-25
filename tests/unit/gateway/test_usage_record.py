@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from tests.support.otel import active_telemetry, metric_points
+
 from octop.infra.gateway.process.usage_record import (
     UsageTracker,
     extract_usage_from_chunk,
+    record_turn_usage,
     turn_usage_from_messages,
 )
 
@@ -178,3 +181,112 @@ def test_tracker_history_shaped_update_does_not_double_count() -> None:
     assert tracker.usage is not None
     assert tracker.usage["input_tokens"] == 300
     assert tracker.usage["output_tokens"] == 30
+
+
+class _UsageRepo:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.rows: list[dict[str, object]] = []
+
+    def record(self, **kwargs: object) -> int:
+        if self.fail:
+            raise RuntimeError("db down")
+        self.rows.append(kwargs)
+        return len(self.rows)
+
+
+def test_record_turn_usage_emits_telemetry() -> None:
+    repo = _UsageRepo()
+    with active_telemetry() as reader:
+        record_turn_usage(
+            repo,
+            agent_id="a1",
+            user_id=1,
+            thread_id="t1",
+            usage={
+                "input_tokens": 120,
+                "cache_read_tokens": 20,
+                "output_tokens": 30,
+                "model": "m1",
+            },
+            source="cron",
+        )
+        (inp,) = metric_points(reader, "gen_ai.client.inference.usage.input_tokens")
+        (out,) = metric_points(reader, "gen_ai.client.inference.usage.output_tokens")
+        (cache,) = metric_points(reader, "gen_ai.client.inference.usage.cache_read.input_tokens")
+    assert len(repo.rows) == 1
+    assert (inp.value, out.value, cache.value) == (120, 30, 20)
+    assert inp.attributes["octop.usage.source"] == "cron"
+    assert inp.attributes["gen_ai.response.model"] == "m1"
+
+
+def test_record_turn_usage_emits_even_if_db_write_fails() -> None:
+    repo = _UsageRepo(fail=True)
+    with active_telemetry() as reader:
+        record_turn_usage(
+            repo,
+            agent_id="a1",
+            user_id=1,
+            thread_id="t1",
+            usage={"input_tokens": 9, "output_tokens": 1, "model": "m1"},
+        )
+        (inp,) = metric_points(reader, "gen_ai.client.inference.usage.input_tokens")
+    assert inp.value == 9
+
+
+def test_tracker_usage_records_one_observation_per_model_call() -> None:
+    tracker = UsageTracker(request_model="janus/deepseek-v4.1-flash")
+    messages = [
+        {"role": "user", "content": "q"},
+        {**_ai(100, 10, model="deepseek-v4-1-flash-261017"), "id": "c1"},
+        {**_ai(300, 30, model="deepseek-v4-1-flash-261017"), "id": "c2"},
+    ]
+    tracker.observe({"type": "state_snapshot", "data": {"messages": messages}})
+    repo = _UsageRepo()
+    with active_telemetry() as reader:
+        record_turn_usage(repo, agent_id="a1", user_id=1, thread_id="t1", usage=tracker.usage or {})
+        (inp,) = metric_points(reader, "gen_ai.client.inference.usage.input_tokens")
+        (op_in,) = metric_points(reader, "gen_ai.client.inference.operation.input_tokens")
+    # Counters sum the turn; the histogram sees each call separately.
+    assert inp.value == 400
+    assert (op_in.count, op_in.sum) == (2, 400)
+    assert inp.attributes["gen_ai.request.model"] == "deepseek-v4.1-flash"
+    assert inp.attributes["gen_ai.response.model"] == "deepseek-v4-1-flash-261017"
+    # The persisted row stays one-per-turn.
+    assert len(repo.rows) == 1
+    assert repo.rows[0]["model_calls"] == 2
+
+
+def test_tracker_context_stays_out_of_the_dict_payload() -> None:
+    tracker = UsageTracker(request_model="janus/m1")
+    tracker.observe({"usage": {"input_tokens": 3, "output_tokens": 1, "model": "m1-001"}})
+    usage = tracker.usage
+    assert usage is not None
+    assert usage.request_model == "janus/m1"
+    assert len(usage.calls) == 1
+    # Merged into persisted payloads via ``{**payload, **usage}``: must stay clean.
+    assert "request_model" not in {**usage}
+    assert "calls" not in {**usage}
+    assert UsageTracker().usage is None
+
+
+def test_request_model_ref_splits_provider_from_model_id() -> None:
+    repo = _UsageRepo()
+    tracker = UsageTracker(request_model="hf/Qwen/Qwen3-8B")
+    tracker.observe({"usage": {"input_tokens": 9, "output_tokens": 1}})
+    with active_telemetry() as reader:
+        record_turn_usage(repo, agent_id="a1", user_id=1, thread_id="t1", usage=tracker.usage or {})
+        (inp,) = metric_points(reader, "gen_ai.client.inference.usage.input_tokens")
+    assert inp.attributes["gen_ai.request.model"] == "Qwen/Qwen3-8B"
+    assert inp.attributes["gen_ai.provider.name"] == "hf"
+
+
+def test_auto_routed_turn_has_no_request_model_or_provider() -> None:
+    repo = _UsageRepo()
+    tracker = UsageTracker()
+    tracker.observe({"usage": {"input_tokens": 9, "output_tokens": 1, "model": "m1"}})
+    with active_telemetry() as reader:
+        record_turn_usage(repo, agent_id="a1", user_id=1, thread_id="t1", usage=tracker.usage or {})
+        (inp,) = metric_points(reader, "gen_ai.client.inference.usage.input_tokens")
+    assert "gen_ai.request.model" not in inp.attributes
+    assert "gen_ai.provider.name" not in inp.attributes

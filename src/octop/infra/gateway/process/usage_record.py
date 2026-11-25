@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -161,9 +162,21 @@ def _turn_samples_from_messages(messages: list[Any]) -> dict[str, dict[str, Any]
     return samples
 
 
+class TurnUsage(dict[str, Any]):
+    """Turn totals as a plain ``dict`` plus telemetry-only context.
+
+    ``calls`` (one normalized dict per model call) and ``request_model`` ride on
+    attributes, not keys, so they never leak into persisted payloads that merge
+    this dict (trajectory, usage rows).
+    """
+
+    calls: tuple[dict[str, Any], ...] = ()
+    request_model: str = ""
+
+
 def _aggregate_samples(
     samples: dict[str, dict[str, Any]], *, last_key: str | None = None
-) -> dict[str, Any] | None:
+) -> TurnUsage | None:
     if not samples:
         return None
     totals = dict.fromkeys(_USAGE_FIELDS, 0)
@@ -172,12 +185,16 @@ def _aggregate_samples(
             totals[field_name] += _token_int(sample.get(field_name))
     resolved_last_key = last_key if last_key in samples else next(reversed(samples))
     last = samples[resolved_last_key]
-    return {
-        **totals,
-        "model": str(last.get("model") or ""),
-        "model_calls": len(samples),
-        "last_input_tokens": _token_int(last.get("input_tokens")),
-    }
+    result = TurnUsage(
+        {
+            **totals,
+            "model": str(last.get("model") or ""),
+            "model_calls": len(samples),
+            "last_input_tokens": _token_int(last.get("input_tokens")),
+        }
+    )
+    result.calls = tuple(samples.values())
+    return result
 
 
 def turn_usage_from_messages(messages: list[Any]) -> dict[str, Any] | None:
@@ -215,6 +232,8 @@ class UsageTracker:
     _last_key: str | None = field(default=None, init=False)
     _has_explicit_usage: bool = field(default=False, init=False)
     _seen_snapshot: bool = field(default=False, init=False)
+    request_model: str = ""
+    """Model ref the turn asked for (stable, unlike the provider's response model)."""
 
     def observe(self, chunk: dict[str, Any]) -> None:
         if not isinstance(chunk, dict):
@@ -245,7 +264,10 @@ class UsageTracker:
 
     @property
     def usage(self) -> dict[str, Any] | None:
-        return _aggregate_samples(self._samples, last_key=self._last_key)
+        aggregated = _aggregate_samples(self._samples, last_key=self._last_key)
+        if aggregated is not None:
+            aggregated.request_model = self.request_model
+        return aggregated
 
 
 def record_turn_usage(
@@ -259,12 +281,13 @@ def record_turn_usage(
 ) -> None:
     """Append one cache-aware turn row without allowing bad data to break chat."""
     normalized = normalize_usage(usage)
+    model = str(usage.get("model") or normalized.get("model") or "")
     with contextlib.suppress(Exception):
         usage_repo.record(
             agent_id=agent_id,
             user_id=user_id,
             thread_id=thread_id,
-            model=str(usage.get("model") or normalized.get("model") or ""),
+            model=model,
             input_tokens=normalized["input_tokens"],
             uncached_input_tokens=normalized["uncached_input_tokens"],
             cache_read_tokens=normalized["cache_read_tokens"],
@@ -273,4 +296,56 @@ def record_turn_usage(
             reasoning_tokens=normalized["reasoning_tokens"],
             model_calls=max(1, _token_int(usage.get("model_calls"))),
             source=source,
+        )
+    with contextlib.suppress(Exception):
+        _emit_inference_usage(usage, normalized, agent_id=agent_id, source=source)
+
+
+def _emit_inference_usage(
+    usage: dict[str, Any],
+    normalized: dict[str, Any],
+    *,
+    agent_id: str,
+    source: str,
+) -> None:
+    """One ``gen_ai.client.inference.*`` observation per model call of the turn."""
+    from octop.infra.telemetry import record_inference_usage  # noqa: PLC0415
+
+    ref = str(getattr(usage, "request_model", "") or "").strip()
+    provider, sep, model_id = ref.partition("/")
+    if not sep or not model_id:
+        provider, model_id = "", ref
+    calls = getattr(usage, "calls", ()) or (normalized,)
+    for call in calls:
+        counts = normalize_usage(call)
+        record_inference_usage(
+            agent_id=agent_id,
+            source=source,
+            provider=provider,
+            request_model=model_id,
+            response_model=str(call.get("model") or usage.get("model") or ""),
+            input_tokens=counts["input_tokens"],
+            output_tokens=counts["output_tokens"],
+            cache_read_tokens=counts["cache_read_tokens"],
+            cache_write_tokens=counts["cache_write_tokens"],
+            reasoning_tokens=counts["reasoning_tokens"],
+        )
+
+
+def emit_turn_duration(
+    agent_id: str,
+    started: float,
+    exc: Exception | None = None,
+    *,
+    source: str = "chat",
+) -> None:
+    """Export a turn's wall-clock duration (``started`` is ``time.perf_counter()``)."""
+    with contextlib.suppress(Exception):
+        from octop.infra.telemetry import exception_type, record_agent_invocation  # noqa: PLC0415
+
+        record_agent_invocation(
+            agent_id=agent_id,
+            source=source,
+            duration_s=time.perf_counter() - started,
+            error_type=exception_type(exc),
         )

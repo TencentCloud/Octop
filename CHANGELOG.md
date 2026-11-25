@@ -13,6 +13,7 @@
 ## [Unreleased]
 
 ### 新增
+- 新增 OpenTelemetry 指标导出（OTLP/HTTP，默认关闭）：设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 后，按 OpenTelemetry GenAI 语义约定上报每次模型调用的 token 用量（`gen_ai.client.inference.usage.*` / `gen_ai.client.inference.operation.*`）和每轮专家调用耗时（`gen_ai.invoke_agent.duration`），带 `gen_ai.agent.id` / `gen_ai.agent.name`，并上报按渠道的消息数、按错误类型的流式/定时任务错误及活跃专家数，可直接接入 Grafana。详见 `docs/configuration.md`。
 - 知识库设置新增「分块与检索」标签页，可配置分块大小、分块重叠、默认检索条数和上下文字符预算。
 - 用户管理支持创建限次邀请链接。链接在注册满员后自动停用，管理员也可以提前停用并查看已注册的用户。邀请管理 API 移除了 `used_at`、`used_by_user_id` 和 `revoked_at`，可通过注册记录和邀请状态查看使用情况。
 - 自托管可用环境变量放行内网出站目标：`OCTOP_SSRF_ALLOWLIST`（主机名、`.后缀` 或 CIDR）让语音服务、OAuth MCP 发现与令牌请求等指向内网服务，`OCTOP_SSRF_ALLOW_HTTP` 允许这些目标走 http；仍做 DNS 解析并固定连接 IP 防重绑定，不配置时行为不变（#2016）

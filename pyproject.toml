@@ -57,6 +57,8 @@ dependencies = [
     "tencentcloud-sdk-python>=3.1.166",
     "pyotp>=2.10.0",
     "webauthn>=3.0.1",
+    "opentelemetry-sdk>=1.30",
+    "opentelemetry-exporter-otlp-proto-http>=1.30",
 ]
 
 [project.optional-dependencies]

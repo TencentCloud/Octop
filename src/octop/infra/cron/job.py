@@ -97,6 +97,7 @@ class CronJob:
     ) -> bool:
         """Run the delivery. Return False when ``lease_token`` was lost before recording."""
         from octop.infra.metrics import METRICS  # noqa: PLC0415
+        from octop.infra.telemetry import exception_type  # noqa: PLC0415
 
         METRICS.inc("cron_runs_total")
         ts = int(time.time())
@@ -121,7 +122,7 @@ class CronJob:
                 )
             )
         except Exception as exc:
-            METRICS.inc("cron_errors_total")
+            METRICS.inc("cron_errors_total", error_type=exception_type(exc))
             logger.exception("cron job %s failed", self._cron_id)
             err = str(exc)
             recorded = self._record(

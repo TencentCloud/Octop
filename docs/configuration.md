@@ -275,6 +275,79 @@ disable backup creation. Unrecognized values fall back to `first` with a warning
 `OCTOP_CHECKPOINT_BACKUP_KEEP_DAYS` defaults to 7. Set it to 0 to disable
 automatic expiration. Expiration leaves the marker in place.
 
+## OpenTelemetry metrics
+
+Octop can export metrics over OTLP/HTTP (for Grafana Alloy / Cloud, the
+OpenTelemetry Collector, or any OTLP backend). It is **off by default**: with
+no endpoint configured nothing is sent. Configuration uses only the standard
+OpenTelemetry environment variables (set them in the process environment or in
+`~/.octop/env`). Telemetry is initialised once at startup, so restart Octop after
+changing them. An invalid or unsupported value (for example a non-numeric
+`OTEL_METRIC_EXPORT_INTERVAL`, or `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`) disables
+export and logs a warning instead of stopping Octop:
+
+| Variable | Purpose |
+|----------|---------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`) | Collector base URL, e.g. `http://localhost:4318`. Setting it turns export on. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Auth headers, e.g. `Authorization=Basic …`. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` (or `…_METRICS_PROTOCOL`) | Only `http/protobuf` is supported; `grpc` / `http/json` disable export. |
+| `OTEL_METRICS_EXPORTER` | `otlp` (default) or `none` to switch metrics off. Other exporters are not bundled. |
+| `OTEL_SERVICE_NAME` | Defaults to `octop`. |
+| `OTEL_RESOURCE_ATTRIBUTES` | Extra resource attributes, e.g. `deployment.environment=prod`. `service.version` defaults to the Octop version. |
+| `OTEL_METRIC_EXPORT_INTERVAL` | Export interval in milliseconds (SDK default 60000). |
+| `OTEL_SDK_DISABLED=true` | Force export off even when an endpoint is set. Also disables Langfuse tracing (its SDK honours the same variable); to stop only metrics, unset the endpoint instead. |
+
+Metric names follow the OpenTelemetry GenAI semantic conventions
+([semantic-conventions-genai](https://github.com/open-telemetry/semantic-conventions-genai) v0.1.0):
+
+| Metric | Type | Notes |
+|--------|------|-------|
+| `gen_ai.client.inference.usage.input_tokens` | counter (`{token}`) | Input tokens, **including** cached ones. One addition per model call. |
+| `gen_ai.client.inference.usage.output_tokens` | counter (`{token}`) | Output tokens, including reasoning tokens. |
+| `gen_ai.client.inference.usage.cache_read.input_tokens` / `…cache_write.input_tokens` | counters (`{token}`) | Subsets of the input counter served from / written to the provider cache. |
+| `gen_ai.client.inference.usage.reasoning.output_tokens` | counter (`{token}`) | Subset of the output counter spent on reasoning. |
+| `gen_ai.client.inference.operation.input_tokens` / `…output_tokens` | histograms (`{token}`) | Token distribution per model call, for percentiles. Not for totals or cost. |
+| `gen_ai.invoke_agent.duration` | histogram (`s`) | Wall-clock duration of one agent turn (chat and cron), for completed and failed turns; turns paused for approval are not recorded. |
+| `octop.messages` | counter (`{message}`) | Inbound messages. Attribute `octop.channel.type` (`dashboard`, `feishu`, …). |
+| `octop.stream.errors`, `octop.cron.errors` | counters (`{error}`) | Attribute `error.type`. |
+| `octop.cron.runs` | counter (`{run}`) | Cron executions. |
+| `octop.agent.active` | gauge (`{agent}`) | Enabled agents. |
+
+Attributes on the token metrics: `gen_ai.operation.name` (`chat`),
+`gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, and on
+the counters `gen_ai.token.modality` (always `unknown`: Octop only sees totals).
+`gen_ai.invoke_agent.duration` carries `gen_ai.operation.name` (`invoke_agent`)
+and `error.type` on failure. Octop adds `gen_ai.agent.id`, `gen_ai.agent.name`
+and `octop.usage.source` (`chat` / `cron`) to every GenAI metric so each expert
+can be observed on its own.
+
+Notes:
+
+- The GenAI semantic conventions are still in *Development* status, so names
+  and attributes may change in a future release.
+- `gen_ai.request.model` is the model id the turn asked for (stable).
+  `gen_ai.response.model` is whatever the provider reported, which can differ
+  (for example a dated snapshot) — group by `gen_ai.request.model` to aggregate.
+  Both are omitted when unknown.
+- `gen_ai.provider.name` is derived from the provider's kind
+  (`openai`, `anthropic`, `ollama`, `azure.ai.openai`, `gcp.gemini`); an
+  unrecognised kind falls back to the provider's configured name. It is omitted
+  for turns the harness routes automatically (no model pinned) and for turns that
+  resume a paused approval, because Octop does not know the provider there.
+  `gen_ai.request.model` is omitted on `gen_ai.invoke_agent.duration` on
+  purpose: the spec reserves it for single-model agents.
+- Only inference calls that completed in a successful turn are recorded; failed
+  model calls are not reported on the token metrics (the turn failure shows up on
+  `gen_ai.invoke_agent.duration` with `error.type`).
+- `error.type` is the exception's canonical name (`TimeoutError`,
+  `openai.AuthenticationError`, …).
+- `gen_ai.agent.name` is the agent's current name (cached for ~30 s). Renaming
+  an agent starts a new series; group dashboards by `gen_ai.agent.id` and show
+  the latest name.
+- Metrics carry no user id, thread id, or message content.
+- Export runs only in the long-running server (`octop run`); embedded CLI
+  sessions (`chats repl`, `acp`) never export.
+
 ## First-boot wizard
 
 The first request to a fresh install lands on the setup page. Greenfield

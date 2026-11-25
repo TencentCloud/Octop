@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -17,7 +18,11 @@ from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
-from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
+from octop.infra.gateway.process.usage_record import (
+    UsageTracker,
+    emit_turn_duration,
+    record_turn_usage,
+)
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.history.projection import TurnHistoryTracker, message_inputs
 from octop.infra.utils.llm_text import strip_thinking
@@ -245,7 +250,8 @@ class CronDeliveryService:
         if command.allow_all:
             _stamp_managed_allow_all(self._agent_manager, command.agent_id, request)
         tracker = TurnHistoryTracker.from_request(request)
-        usage = UsageTracker()
+        usage = UsageTracker(request_model=str(request.get("model") or ""))
+        started = time.perf_counter()
         parts: list[str] = []
         interaction_required = False
         saw_tool_call = False
@@ -283,11 +289,15 @@ class CronDeliveryService:
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
+        except Exception as exc:
+            emit_turn_duration(command.agent_id, started, exc, source="cron")
+            raise
         finally:
             # ``fresh_thread`` already put an empty thread on the session, so a run
             # that raised before this left a conversation with no rows at all.
             self._project_best_effort(session.thread_id, tracker.inputs)
             self._remember_thread_title(session, command)
+        emit_turn_duration(command.agent_id, started, source="cron")
         if usage.usage is not None:
             record_turn_usage(
                 self._repos.usage_repo,

@@ -35,6 +35,13 @@ from octop.infra.proactive.scheduler import ProactiveCareScheduler
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.setup import password_file as _wizard_pw
 from octop.infra.setup.wizard_tokens import WizardTokenStore
+from octop.infra.telemetry import (
+    bind_active_agents,
+    bind_agent_repo,
+    bind_provider_repo,
+    init_telemetry,
+    shutdown_telemetry,
+)
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.process_resources import ensure_nofile_limit
@@ -300,6 +307,8 @@ class AppRuntime:
         """
         self.user_manager.replace_services(services)
         self.agent_registry.replace_persistence(services.repos, config)
+        bind_agent_repo(services.agent_repo)
+        bind_provider_repo(services.provider_repo)
         self.gateway.replace_repos(services.repos)
         self.cron_manager.replace_repos(services.repos)
         self.proactive_scheduler.replace_persistence(
@@ -448,14 +457,21 @@ class OctopServer:
                     "Cannot migrate history v2 without its original control-plane database"
                 )
             self._started = True
+            self._init_telemetry()
             self._emit_wizard_password(user_count=0)
             logger.info("control-plane database deferred until setup wizard chooses a backend")
             return
 
         await self._open_control_plane(config)
         self._started = True
+        self._init_telemetry()
         assert self.user_manager is not None
         self._emit_wizard_password(user_count=self.user_manager.count())
+
+    def _init_telemetry(self) -> None:
+        """Start OTel export for the long-running server only (not embedded CLI sessions)."""
+        if self._serve_background:
+            init_telemetry()
 
     async def bind_control_plane(self) -> None:
         """Open the configured control-plane DB and boot runtime (first-run wizard).
@@ -541,6 +557,9 @@ class OctopServer:
             expert_catalog=self.expert_catalog,
             plugin_manager=self.plugin_manager,
         )
+        bind_agent_repo(self.services.agent_repo)
+        bind_provider_repo(self.services.provider_repo)
+        bind_active_agents(lambda: len(registry.list_rows()))
 
         from octop.infra.history.retire_v2 import migrate_history_v2  # noqa: PLC0415
 
@@ -810,6 +829,7 @@ class OctopServer:
             await self._teardown_runtime()
         finally:
             self._started = False
+            await asyncio.to_thread(shutdown_telemetry)
             logger.info("octop server stopped")
 
     async def _teardown_runtime(self) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from dataclasses import dataclass, field
 
@@ -15,9 +16,14 @@ class Metrics:
     agent_active: int = 0
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
-    def inc(self, name: str, n: int = 1) -> None:
+    def inc(self, name: str, n: int = 1, **labels: str) -> None:
+        """Bump a counter; ``labels`` (e.g. ``channel_type``) only reach OpenTelemetry."""
         with self._lock:
             setattr(self, name, getattr(self, name) + n)
+        with contextlib.suppress(Exception):
+            from octop.infra.telemetry import record_counter  # noqa: PLC0415
+
+            record_counter(name, n, **labels)
 
     def set(self, name: str, value: int) -> None:
         with self._lock:
