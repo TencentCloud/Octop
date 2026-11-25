@@ -36,7 +36,12 @@ def gateway(tmp_path: Path) -> Gateway:
     gw._channel_manager = MagicMock()
     gw._channel_manager.channel_ids = ["ch-1"]
     gw._channel_manager.push_text = AsyncMock()
-    gw._channel_manager.get_channel = MagicMock(return_value=None)
+    gw._channel_manager.get_channel = MagicMock(
+        return_value=SimpleNamespace(
+            get_debounce_key=lambda message: message.channel_subject.subject_id,
+            constraints=SimpleNamespace(show_thinking=False),
+        )
+    )
 
     async def run_in_session(_channel_id, _session_key, operation):
         await operation()
