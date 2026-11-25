@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import AIMessage, HumanMessage
+from octop_gateway.models import ChannelSubject, ContentPart
 
 from octop.i18n import tr
 from octop.infra.agents.security.hitl_session import HitlSessionPolicy, ephemeral_hitl_policy
@@ -15,10 +16,13 @@ from octop.infra.cron.script_run import ScriptRunError, run_cron_script
 from octop.infra.cron.session_target import pinned_thread_id
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.db.repos.threads import ThreadRow
+from octop.infra.gateway.cli import CLI_CHANNEL_ID
+from octop.infra.gateway.media.tool_media import note_live_tool_call
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.gateway.ws import WS_CHANNEL_ID
 from octop.infra.history.projection import TurnHistoryTracker, message_inputs
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
@@ -249,6 +253,9 @@ class CronDeliveryService:
         parts: list[str] = []
         interaction_required = False
         saw_tool_call = False
+        live_tool_call_ids: set[str] = set()
+        emitted_media_ids: set[str] = set()
+        media_parts: list[ContentPart] = []
         emitted_tool_error_ids: set[str] = set()
         try:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
@@ -266,6 +273,7 @@ class CronDeliveryService:
                     kind = chunk.get("type")
                     if kind == "tool_call_chunk":
                         saw_tool_call = True
+                        note_live_tool_call(chunk, live_tool_call_ids)
                     elif kind == "tool_result":
                         log_failed_tool_results(
                             chunk,
@@ -273,6 +281,14 @@ class CronDeliveryService:
                             thread_id=session.thread_id,
                             seen=emitted_tool_error_ids,
                             live=saw_tool_call,
+                        )
+                        media_parts.extend(
+                            await self._collect_tool_media(
+                                chunk,
+                                command=command,
+                                live_tool_call_ids=live_tool_call_ids,
+                                emitted_media_ids=emitted_media_ids,
+                            )
                         )
                     if kind in ("token", "delta"):
                         parts.append(str(chunk.get("content") or chunk.get("text") or ""))
@@ -302,6 +318,8 @@ class CronDeliveryService:
             outbound,
             title_source=command.prompt,
         )
+        if media_parts:
+            await self._push_media(session, media_parts, command)
         await self._notify_best_effort(session, command.agent_id, outbound)
 
     async def _build_agent_request(
@@ -461,6 +479,86 @@ class CronDeliveryService:
                 thread_id,
                 exc_info=True,
             )
+
+    async def _collect_tool_media(
+        self,
+        chunk: dict[str, Any],
+        *,
+        command: CronDeliveryCommand,
+        live_tool_call_ids: set[str],
+        emitted_media_ids: set[str],
+    ) -> list[ContentPart]:
+        """Content parts from allowlisted delivery-tool results in this chunk.
+
+        Mirrors the interactive pipeline (``stream_project``): only tool calls
+        opened this turn, deduped intra-turn. Returns ``[]`` when the agent's
+        workspace is unavailable — cron media delivery is best-effort.
+        """
+        from octop.infra.gateway.media.tool_media import (
+            media_events_from_tool_result,
+            select_turn_tool_results,
+        )
+        from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
+
+        workspace = harness_workspace_for_agent(self._agent_manager, command.agent_id)
+        if workspace is None:
+            return []
+        chunk_for_media = select_turn_tool_results(chunk, live_tool_call_ids, emitted_media_ids)
+        if chunk_for_media is None:
+            return []
+        parts: list[ContentPart] = []
+        try:
+            async for event in media_events_from_tool_result(chunk_for_media, workspace=workspace):
+                parts.extend(event.content)
+        except Exception:
+            logger.warning("cron media collection failed cron=%s", command.cron_id, exc_info=True)
+        return parts
+
+    async def _push_media(
+        self,
+        session: SessionRow,
+        media_parts: list[ContentPart],
+        command: CronDeliveryCommand,
+    ) -> None:
+        """Deliver collected files/images after the text summary."""
+        try:
+            await self._gateway.push_content(
+                session.channel_type,
+                self._channel_id_for_media(session),
+                self._resolve_media_subject(session),
+                media_parts,
+            )
+        except Exception:
+            logger.warning(
+                "cron media push failed cron=%s thread=%s",
+                command.cron_id,
+                session.thread_id,
+                exc_info=True,
+            )
+
+    def _channel_id_for_media(self, session: SessionRow) -> str:
+        """Channel routing id for media push (same resolution as push_text)."""
+        if session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD:
+            return WS_CHANNEL_ID
+        if session.channel_type == ThreadRegistry.CHANNEL_CLI:
+            return CLI_CHANNEL_ID
+        return str(session.channel_id or "")
+
+    def _resolve_media_subject(self, session: SessionRow) -> ChannelSubject:
+        """Mirror ``Gateway._resolve_push_subject`` for the media path."""
+        subject = session.to_channel_subject()
+        if not ThreadRegistry.is_virtual_channel(session.channel_type):
+            return subject
+        metadata = dict(subject.metadata or {})
+        metadata["thread_id"] = session.thread_id
+        return ChannelSubject(
+            subject_id=subject.subject_id,
+            first_seen=subject.first_seen,
+            last_seen=subject.last_seen,
+            display_name=subject.display_name,
+            chat_type=subject.chat_type,
+            metadata=metadata,
+        )
 
     async def _notify_best_effort(
         self,
