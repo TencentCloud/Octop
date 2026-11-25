@@ -11,6 +11,7 @@ import {
 } from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
+import { applicationPathname, publicUrl } from "../utils/publicUrl";
 
 const AUTH_TOKEN_KEY = "auth_token";
 /** sessionStorage handoff for SSO redirects / popups (default = remember). */
@@ -139,12 +140,12 @@ function handleSetupRequired(): void {
   if (_redirectingToSetup) return;
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
-  if (isGuestShellPath(window.location.pathname)) {
+  if (isGuestShellPath(applicationPathname(window.location.pathname))) {
     return;
   }
   _redirectingToSetup = true;
   // Full reload drops any in-flight React state.
-  window.location.replace("/setup");
+  window.location.replace(publicUrl("/setup"));
 }
 
 /** Wizard endpoints stay reachable while lockdown is active. */
@@ -330,7 +331,7 @@ const SESSION_UNAUTHORIZED_CODES = new Set([
  */
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
-  if (isGuestShellPath(window.location.pathname)) return;
+  if (isGuestShellPath(applicationPathname(window.location.pathname))) return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(
@@ -339,7 +340,7 @@ function handleUnauthorized(): void {
   if (takenOver) return;
 
   markNavigatingAway();
-  window.location.replace("/login");
+  window.location.replace(publicUrl("/login"));
 }
 
 /**

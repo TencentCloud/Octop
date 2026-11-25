@@ -16,3 +16,13 @@ export function routerBasename(): string | undefined {
   if (base === "/") return undefined;
   return base.replace(/\/$/, "") || undefined;
 }
+
+/** Match application routes independently of the reverse proxy's public prefix. */
+export function applicationPathname(pathname: string): string {
+  const base = routerBasename();
+  if (!base) return pathname;
+  if (pathname === base) return "/";
+  return pathname.startsWith(`${base}/`)
+    ? pathname.slice(base.length)
+    : pathname;
+}
