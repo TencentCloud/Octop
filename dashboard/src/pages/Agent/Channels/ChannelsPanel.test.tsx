@@ -38,6 +38,109 @@ beforeEach(() => {
 });
 
 describe("<ChannelsPanel /> create-flow default", () => {
+  it.each([undefined, false, true])(
+    "preserves plugin switch values and defaults (%s)",
+    async (saved) => {
+      const row = { id: "a1", kind: "acme", name: "acme", enabled: true };
+      api.mockImplementation(async (url, init) => {
+        if (url.endsWith("/plugin-kinds"))
+          return [
+            {
+              kind: "acme",
+              label: "Acme",
+              icon: "",
+              intro_url: "https://example.com/plugin-config",
+              plugin_id: "acme-plugin",
+              description: "Acme description",
+              fields: [
+                {
+                  name: "stream",
+                  label: "Stream",
+                  type: "switch",
+                  defaultValue: false,
+                  legacyDefaultValue: true,
+                  helpKey: "Stream help",
+                },
+              ],
+            },
+          ];
+        if (init?.method === "PATCH") return row;
+        if (url.endsWith("/a1"))
+          return {
+            ...row,
+            config: saved === undefined ? {} : { stream: saved },
+          };
+        return [row];
+      });
+      render(<ChannelsPanel agentId="ag1" />);
+      await userEvent.click(await screen.findByText("Acme"));
+      expect(screen.queryByText("Stream help")).not.toBeInTheDocument();
+      await userEvent.hover(
+        await screen.findByRole("img", { name: "Stream: ?" }),
+      );
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
+        "Stream help",
+      );
+      expect(screen.getAllByText("Acme description")).toHaveLength(2);
+      expect(
+        screen.getByRole("link", { name: /channels.viewPluginConfig/ }),
+      ).toHaveAttribute("href", "https://example.com/plugin-config");
+      expect(
+        screen.queryByRole("link", { name: /channels.getCredentials/ }),
+      ).not.toBeInTheDocument();
+      expect(await screen.findByLabelText("Stream")).toHaveAttribute(
+        "aria-checked",
+        String(saved ?? true),
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "common.save" }),
+      );
+      await waitFor(() => {
+        const patch = api.mock.calls.find(
+          ([, init]) => init?.method === "PATCH",
+        );
+        expect(patch).toBeDefined();
+        expect(JSON.parse(String(patch![1]!.body)).config.stream).toBe(
+          saved ?? true,
+        );
+      });
+    },
+  );
+
+  it("uses plugin defaults when creating a channel", async () => {
+    api.mockImplementation(async (url, init) => {
+      if (url.endsWith("/plugin-kinds"))
+        return [
+          {
+            kind: "acme",
+            label: "Acme",
+            icon: "",
+            intro_url: "",
+            plugin_id: "acme-plugin",
+            fields: [
+              {
+                name: "stream",
+                label: "Stream",
+                type: "switch",
+                defaultValue: false,
+                legacyDefaultValue: true,
+              },
+              { name: "limit", label: "Limit", type: "text", defaultValue: 0 },
+            ],
+          },
+        ];
+      if (init?.method === "POST")
+        return { id: "a1", kind: "acme", name: "acme", enabled: true };
+      return [];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("Acme"))[0]);
+    expect(await screen.findByLabelText("Stream")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(await screen.findByLabelText("Limit")).toHaveValue("0");
+  });
   it("defaults Discord to all channels and saves without channel IDs", async () => {
     render(<ChannelsPanel agentId="ag1" />);
     await userEvent.click(

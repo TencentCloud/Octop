@@ -170,14 +170,16 @@ export interface ChannelField {
   /** Antd input type. */
   type?: "text" | "password" | "textarea" | "json" | "switch" | "select";
   options?: string[];
-  defaultValue?: string | boolean;
-  legacyDefaultValue?: string | boolean;
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
   required?: boolean;
-  /** Optional i18n key for help beneath the control. */
+  /** Optional i18n key or plain text for the label tooltip. */
   helpKey?: string;
+  /** Default for newly created channels. */
+  defaultValue?: string | number | boolean;
+  /** Value for older saved configurations missing this field. */
+  legacyDefaultValue?: string | number | boolean;
 }
 
 export const QQ_GROUP_VISIBILITIES = [
@@ -610,24 +612,57 @@ export interface PluginChannelKindInfo {
   label: string;
   icon: string;
   intro_url: string;
+  description?: string;
   fields?: {
     name: string;
     label?: string;
     type?: string;
     placeholder?: string;
     required?: boolean;
+    helpKey?: string;
+    defaultValue?: ChannelField["defaultValue"];
+    legacyDefaultValue?: ChannelField["legacyDefaultValue"];
   }[];
   plugin_id: string;
 }
 
 /** Kinds registered at runtime through ``registerPluginChannelKind``. */
 const PLUGIN_CHANNEL_KINDS: string[] = [];
+export const CHANNEL_DESCRIPTIONS: Record<string, string> = {};
+// Capture compile-time kinds before any legacy runtime catalogue injection.
+const BUILTIN_CHANNEL_KINDS = new Set<string>(Object.keys(CHANNEL_LABELS));
+const ORIGINAL_CHANNEL_METADATA = new Map<
+  string,
+  {
+    label: string;
+    labelKey: string | undefined;
+    description: string | undefined;
+    icon: string;
+    url: string | undefined;
+    fields: ChannelField[] | undefined;
+  }
+>();
 
 export function replacePluginChannelKinds(
   infos: PluginChannelKindInfo[],
 ): void {
   for (const kind of PLUGIN_CHANNEL_KINDS) {
     const key = kind as ChannelKey;
+    delete CHANNEL_DESCRIPTIONS[kind];
+    const original = ORIGINAL_CHANNEL_METADATA.get(kind);
+    if (original) {
+      CHANNEL_LABELS[key] = original.label;
+      if (original.labelKey !== undefined)
+        CHANNEL_LABEL_KEYS[key] = original.labelKey;
+      else delete (CHANNEL_LABEL_KEYS as Partial<Record<string, string>>)[kind];
+      if (original.description !== undefined)
+        CHANNEL_DESCRIPTIONS[kind] = original.description;
+      CHANNEL_ICONS[key] = original.icon;
+      CHANNEL_URLS[key] = original.url;
+      CHANNEL_FIELDS[key] = original.fields;
+      ORIGINAL_CHANNEL_METADATA.delete(kind);
+      continue;
+    }
     const index = CHANNEL_KEYS.indexOf(key);
     if (index >= 0) CHANNEL_KEYS.splice(index, 1);
     delete (CHANNEL_LABELS as Partial<Record<string, string>>)[kind];
@@ -649,7 +684,9 @@ export function isPluginChannelKind(key: string): boolean {
  *
  * Builtin constants stay compile-time; plugin kinds join the same lookup
  * tables so ChannelCard / ChannelDrawer need no per-kind code. Idempotent
- * within one catalogue snapshot; builtin kinds are never shadowed.
+ * within one catalogue snapshot; builtin kinds are never shadowed. Legacy
+ * runtime entries may be overlaid by the gateway-approved plugin catalogue
+ * and are restored when that plugin is unloaded.
  * Use replacePluginChannelKinds to apply a refreshed snapshot.
  * Returns true when the kind was added.
  */
@@ -659,12 +696,30 @@ export function registerPluginChannelKind(
   const kind = String(info?.kind ?? "")
     .trim()
     .toLowerCase();
-  if (!kind || PLUGIN_CHANNEL_KINDS.includes(kind)) return false;
-  if (CHANNEL_KEYS.includes(kind as ChannelKey)) return false;
+  if (
+    !kind ||
+    PLUGIN_CHANNEL_KINDS.includes(kind) ||
+    BUILTIN_CHANNEL_KINDS.has(kind)
+  )
+    return false;
+  if (CHANNEL_KEYS.includes(kind as ChannelKey)) {
+    const key = kind as ChannelKey;
+    ORIGINAL_CHANNEL_METADATA.set(kind, {
+      label: CHANNEL_LABELS[key],
+      labelKey: CHANNEL_LABEL_KEYS[key],
+      description: CHANNEL_DESCRIPTIONS[kind],
+      icon: CHANNEL_ICONS[key],
+      url: CHANNEL_URLS[key],
+      fields: CHANNEL_FIELDS[key],
+    });
+    delete (CHANNEL_LABEL_KEYS as Partial<Record<string, string>>)[kind];
+    delete CHANNEL_FIELDS[key];
+  }
 
   PLUGIN_CHANNEL_KINDS.push(kind);
   const typed = kind as ChannelKey;
-  CHANNEL_KEYS.push(typed);
+  if (!CHANNEL_KEYS.includes(typed)) CHANNEL_KEYS.push(typed);
+  CHANNEL_DESCRIPTIONS[kind] = String(info.description ?? "");
   // No CHANNEL_LABEL_KEYS entry on purpose: an unknown i18n key would render
   // verbatim, so the label falls back to CHANNEL_LABELS / the raw kind.
   if (info.label) {
@@ -691,6 +746,9 @@ export function registerPluginChannelKind(
             : "text",
         placeholder: f?.placeholder ? String(f.placeholder) : undefined,
         required: f?.required === true,
+        helpKey: f?.helpKey,
+        defaultValue: f?.defaultValue,
+        legacyDefaultValue: f?.legacyDefaultValue,
       }),
     );
   }

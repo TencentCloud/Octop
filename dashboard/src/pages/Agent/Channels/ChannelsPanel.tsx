@@ -188,6 +188,11 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         // signature and no start/stop churn happens behind the save.
         enabled: true,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
+        ...Object.fromEntries(
+          (CHANNEL_FIELDS[kind] ?? [])
+            .filter((field) => field.defaultValue !== undefined)
+            .map((field) => [field.name, field.defaultValue]),
+        ),
         ...(kind === "discord" ? { allow_all_channels: true } : {}),
         ...(kind === "qq"
           ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }
@@ -286,6 +291,15 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
             typeof cfg.show_tool_hints === "boolean"
               ? cfg.show_tool_hints
               : DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
+          ...Object.fromEntries(
+            (CHANNEL_FIELDS[row.kind as ChannelKey] ?? [])
+              .filter(
+                (field) =>
+                  cfg[field.name] == null &&
+                  field.legacyDefaultValue !== undefined,
+              )
+              .map((field) => [field.name, field.legacyDefaultValue]),
+          ),
           ...formCfg,
           ...(row.kind === "discord"
             ? { allow_all_channels: cfg.allow_all_channels !== false }
