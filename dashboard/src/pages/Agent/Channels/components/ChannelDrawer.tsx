@@ -368,6 +368,14 @@ function QqGroupContextPolicyFields({
     ["group_context", "activation"],
     form,
   );
+  const watchedOwnerCommandsOnly = Form.useWatch(
+    ["group_context", "owner_commands_only"],
+    form,
+  );
+  const watchedOwnerToolsOnly = Form.useWatch(
+    ["group_context", "owner_tools_only"],
+    form,
+  );
   const policy = normalizeQqGroupContextConfig(
     form.getFieldValue("group_context"),
   );
@@ -377,6 +385,14 @@ function QqGroupContextPolicyFields({
     policy.visibility) as QqGroupVisibility;
   const activation = (watchedActivation ??
     policy.activation) as QqGroupActivation;
+  const ownerCommandsOnly =
+    typeof watchedOwnerCommandsOnly === "boolean"
+      ? watchedOwnerCommandsOnly
+      : policy.owner_commands_only;
+  const ownerToolsOnly =
+    typeof watchedOwnerToolsOnly === "boolean"
+      ? watchedOwnerToolsOnly
+      : policy.owner_tools_only;
 
   const updatePolicy = (patch: Partial<QqGroupContextConfig>) => {
     form.setFieldValue("group_context", {
@@ -396,7 +412,11 @@ function QqGroupContextPolicyFields({
 
   return (
     <div className={styles.qqGroupPolicy}>
-      <div className={styles.qqGroupPolicyHeader}>
+      <div
+        className={`${styles.qqGroupPolicyHeader} ${
+          enabled ? "" : styles.qqGroupPolicyHeaderCollapsed
+        }`}
+      >
         <div>
           <div className={styles.qqGroupPolicyTitle}>
             {t("channels.qqGroupPolicyTitle")}
@@ -410,7 +430,7 @@ function QqGroupContextPolicyFields({
           valuePropName="checked"
           noStyle
         >
-          <Switch />
+          <Switch aria-label={t("channels.qqGroupContextEnabled")} />
         </Form.Item>
       </div>
 
@@ -480,8 +500,43 @@ function QqGroupContextPolicyFields({
           </div>
 
           <Form.Item
+            name={["group_context", "owner_commands_only"]}
+            label={t("channels.qqGroupOwnerCommandsOnly")}
+            tooltip={t("channels.qqGroupOwnerCommandsOnlyDesc")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name={["group_context", "owner_tools_only"]}
+            label={t("channels.qqGroupOwnerToolsOnly")}
+            tooltip={t("channels.qqGroupOwnerToolsOnlyDesc")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name={["group_context", "owner_ids"]}
+            label={t("channels.qqGroupOwnerIds")}
+            extra={
+              <div className={styles.qqGroupPolicyDescription}>
+                {t("channels.qqGroupOwnerIdsHelp")}
+              </div>
+            }
+          >
+            <Select
+              mode="tags"
+              open={false}
+              suffixIcon={null}
+              disabled={!ownerCommandsOnly && !ownerToolsOnly}
+              tokenSeparators={[",", "，", " ", "\n"]}
+              placeholder={t("channels.qqGroupOwnerIdsPlaceholder")}
+            />
+          </Form.Item>
+          <Form.Item
             name={["group_context", "clear_after_reply"]}
             label={t("channels.qqGroupClearAfterReply")}
+            className={styles.qqGroupPolicyClearAfterReply}
             tooltip={t("channels.qqGroupClearAfterReplyDesc")}
             valuePropName="checked"
           >

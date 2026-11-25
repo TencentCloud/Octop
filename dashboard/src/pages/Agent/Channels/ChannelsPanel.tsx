@@ -195,7 +195,12 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         ),
         ...(kind === "discord" ? { allow_all_channels: true } : {}),
         ...(kind === "qq"
-          ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }
+          ? {
+              group_context: {
+                ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
+                owner_tools_only: true,
+              },
+            }
           : {}),
       };
       setSecretsSet([]);

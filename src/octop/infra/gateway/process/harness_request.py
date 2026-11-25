@@ -318,6 +318,7 @@ def build_harness_request(
     auto_route: bool = False,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
+    allowed_tools: list[str] | None = None,
     message_id: str | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
@@ -340,6 +341,8 @@ def build_harness_request(
             req["configurable"] = configurable
         if model:
             req["model"] = model
+        if allowed_tools is not None:
+            req["allowed_tools"] = list(allowed_tools)
         return req
 
     payload = content if content is not None else build_content(text=text, images=images)
@@ -381,6 +384,8 @@ def build_harness_request(
         req["configurable"] = configurable
     if model:
         req["model"] = model
+    if allowed_tools is not None:
+        req["allowed_tools"] = list(allowed_tools)
     return req
 
 
