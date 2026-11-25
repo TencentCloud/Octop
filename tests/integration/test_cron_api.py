@@ -169,7 +169,10 @@ async def test_run_now_records_last_status(env: Any) -> None:
 
 
 @pytest.mark.parametrize("fresh_thread", [False, True])
-async def test_run_now_recovers_deleted_dashboard_session(env: Any, fresh_thread: bool) -> None:
+@pytest.mark.parametrize("silent_text", [False, True], ids=["agent", "silent-text"])
+async def test_run_now_handles_deleted_dashboard_session(
+    env: Any, fresh_thread: bool, silent_text: bool
+) -> None:
     c, srv, alice_auth, _bob_auth, aid = env
     harness = srv.app_runtime.agent_registry.get_agent(aid)
     harness.chunks = [{"type": "token", "content": "scheduled reminder"}]
@@ -179,8 +182,8 @@ async def test_run_now_recovers_deleted_dashboard_session(env: Any, fresh_thread
         headers=alice_auth,
         json={
             "trigger": "interval:3600",
-            "prompt": "scheduled reminder",
-            "task_type": "agent",
+            "prompt": "[SILENT]" if silent_text else "scheduled reminder",
+            "task_type": "text" if silent_text else "agent",
             "fresh_thread": fresh_thread,
         },
     )
@@ -201,6 +204,10 @@ async def test_run_now_recovers_deleted_dashboard_session(env: Any, fresh_thread
         assert r.status_code == 200, r.text
         assert r.json()["last_status"] == "ok", r.json().get("last_error")
         session = registry.get_session(job.session_key)
+        if silent_text:
+            assert session is None
+            assert not registry.list_threads_for_session(session_key=job.session_key)
+            continue
         assert session is not None
         assert session.thread_id != original.thread_id
         assert (session.agent_id, session.user_id) == (aid, job.user_id)

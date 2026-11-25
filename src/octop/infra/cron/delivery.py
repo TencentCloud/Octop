@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from octop.infra.gateway.gateway import Gateway
 
 logger = logging.getLogger(__name__)
+SILENT_MARKER = "[SILENT]"
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ class CronDeliveryService:
     async def deliver(self, command: CronDeliveryCommand) -> None:
         """Run one delivery under the target channel session lock."""
         session_key, pinned = self._target_session(command)
+        silent_text = command.task_type == "text" and command.prompt.strip() == SILENT_MARKER
         registry = self._gateway.thread_registry
         recovered_thread_id = None
         if registry.get_session(session_key) is None:
@@ -83,6 +85,9 @@ class CronDeliveryService:
                 agent_id=command.agent_id, user_id=command.user_id
             ):
                 raise self._missing_target_error(command.user_id)
+            if silent_text:
+                logger.info("cron job %s has nothing to deliver", command.cron_id)
+                return
             # Gateway.run_in_session requires the session to resolve its channel.
             recovered_thread_id = await registry.get_or_create_by_key(
                 session_key=session_key,
@@ -97,6 +102,10 @@ class CronDeliveryService:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
+            if silent_text:
+                logger.info("cron job %s has nothing to deliver", command.cron_id)
+                return
+            previous_thread_id = None
             if command.fresh_thread:
                 # Reuse the recovery thread if it is still empty when we acquire the lock.
                 recovered = (
@@ -105,6 +114,7 @@ class CronDeliveryService:
                     else None
                 )
                 if recovered is None or recovered.last_active > 0:
+                    previous_thread_id = registry.get_bound_thread_id(session_key)
                     await registry.reset_by_session_key(session_key)
             elif pinned:
                 await self._bind_pinned_thread(session_key, pinned)
@@ -116,7 +126,26 @@ class CronDeliveryService:
             elif command.task_type == "script":
                 await self._deliver_script(command, session)
             else:
-                await self._deliver_agent(command, session)
+                silent = await self._deliver_agent(command, session)
+                if silent and previous_thread_id and session.thread_id != previous_thread_id:
+                    await self._gateway.thread_registry.rebind(
+                        session_key=session_key,
+                        thread_id=previous_thread_id,
+                        agent_id=command.agent_id,
+                    )
+                    try:
+                        await self._agent_manager.delete_thread_checkpoint(
+                            command.agent_id, session.thread_id, reclaim=False
+                        )
+                    except Exception:
+                        # A failed checkpoint delete must not hide its thread.
+                        await self._gateway.thread_registry.rebind(
+                            session_key=session_key,
+                            thread_id=session.thread_id,
+                            agent_id=command.agent_id,
+                        )
+                        raise
+                    self._gateway.thread_registry.delete_thread(session.thread_id)
 
         await self._gateway.run_in_session(
             command.agent_id,
@@ -240,7 +269,7 @@ class CronDeliveryService:
         self,
         command: CronDeliveryCommand,
         session: SessionRow,
-    ) -> None:
+    ) -> bool:
         request = await self._build_agent_request(command, session)
         if command.allow_all:
             _stamp_managed_allow_all(self._agent_manager, command.agent_id, request)
@@ -248,6 +277,7 @@ class CronDeliveryService:
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
+        silent = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
@@ -283,6 +313,7 @@ class CronDeliveryService:
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
+            silent = outbound == SILENT_MARKER
         finally:
             # ``fresh_thread`` already put an empty thread on the session, so a run
             # that raised before this left a conversation with no rows at all.
@@ -297,12 +328,16 @@ class CronDeliveryService:
                 usage=usage.usage,
                 source="cron",
             )
+        if silent:
+            logger.info("cron job %s has nothing to deliver", command.cron_id)
+            return True
         await self._gateway.push_session_text(
             session,
             outbound,
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+        return False
 
     async def _build_agent_request(
         self,
