@@ -36,6 +36,7 @@ interface Props {
   /** When set, lock the form to this existing topic. */
   presetEntityId?: string;
   onClose: () => void;
+  isActive?: () => boolean;
   onSuccess?: (
     atom: AtomItem,
     entity: EntityItem,
@@ -50,6 +51,7 @@ export default function CreateAtomModal({
   presetEntityId,
   onClose,
   onSuccess,
+  isActive = () => true,
 }: Props) {
   const { t } = useTranslation();
   const [form] = Form.useForm();
@@ -85,7 +87,9 @@ export default function CreateAtomModal({
       cancelText={t("common.cancel", "取消")}
       destroyOnHidden
       onOk={async () => {
+        if (!isActive()) return;
         const values = await form.validateFields();
+        if (!isActive()) return;
         const assertion = String(values.assertion || "").trim();
         try {
           const body =
@@ -102,10 +106,12 @@ export default function CreateAtomModal({
                   kind: values.kind as AtomKind,
                 };
           const r = await memoryDashboardApi.createAtom(agentId, body);
+          if (!isActive()) return;
           message.success(t("memory.create.success", "记忆已添加"));
           onSuccess?.(r.atom, r.entity, r.created_entity);
           onClose();
         } catch (e) {
+          if (!isActive()) return;
           message.error(
             t("memory.create.failed", {
               message: (e as Error).message ?? e,

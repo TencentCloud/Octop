@@ -61,6 +61,11 @@ async def prepare_peer_dashboard_turn(
         ws_connection_id=ws_connection_id,
         user_is_admin=bool(getattr(user, "is_admin", False)),
     )
+    from octop.infra.bridge.local_workspace import file_target_metadata
+
+    extra = file_target_metadata(payload)
+    if extra:
+        inbound.metadata.update(extra)
     return PreparedPeerTurn(thread_id=prepared.thread_id, inbound=inbound)
 
 

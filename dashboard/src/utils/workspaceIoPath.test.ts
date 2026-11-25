@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentIdFromWorkspacePath,
   isHostAbsolutePath,
   stripVirtualWorkspaceRoot,
   toDockWorkspaceApiPath,
@@ -38,5 +39,19 @@ describe("workspaceIoPath", () => {
   it("rewrites legacy /outbound to relative", () => {
     expect(toWorkspaceApiPath("/outbound/a.txt")).toBe("outbound/a.txt");
     expect(toDockWorkspaceApiPath("/outbound/a.txt")).toBe("outbound/a.txt");
+  });
+
+  it("reads the agent id embedded in an agent-home path", () => {
+    expect(
+      agentIdFromWorkspacePath(
+        "/home/wally/.octop/agents/50VTYY/cat_article.md",
+      ),
+    ).toBe("50VTYY");
+    expect(
+      agentIdFromWorkspacePath(
+        "file:///home/wally/.octop/agents/ETYE0Z/outbound/a.txt",
+      ),
+    ).toBe("ETYE0Z");
+    expect(agentIdFromWorkspacePath("cat_article.md")).toBeNull();
   });
 });

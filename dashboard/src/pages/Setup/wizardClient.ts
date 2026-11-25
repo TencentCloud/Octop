@@ -17,7 +17,8 @@ export interface CreateAdminBody {
   username: string;
   display_name: string | null;
   email?: string | null;
-  password: string;
+  /** Omitted when the build runs without a password gate (see wizard_password_required). */
+  password?: string;
   /** UI locale for the initial admin (zh|en). */
   locale?: string;
 }
@@ -131,6 +132,7 @@ export const wizardApi = {
       {
         method: "POST",
         body: JSON.stringify(body),
+        headers: bearer(wizardSession.loadToken() ?? ""),
       },
     ),
 
@@ -140,6 +142,7 @@ export const wizardApi = {
       {
         method: "POST",
         body: JSON.stringify(body),
+        headers: bearer(wizardSession.loadToken() ?? ""),
       },
     ),
 

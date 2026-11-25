@@ -18,14 +18,16 @@ export function confirmDeprecateAtom({
   agentId,
   atom,
   onSuccess,
+  isActive = () => true,
 }: {
   agentId: string;
   atom: AtomItem;
   /** Callback after successful deprecation, usually to close drawer and refresh list. */
   onSuccess?: () => void;
+  isActive?: () => boolean;
 }) {
   let reason = "";
-  modal.confirm({
+  return modal.confirm({
     title: i18n.t("memory.deprecate.title"),
     content: (
       <div>
@@ -45,13 +47,16 @@ export function confirmDeprecateAtom({
     okType: "danger",
     cancelText: i18n.t("common.cancel"),
     onOk: async () => {
+      if (!isActive()) return;
       try {
         await memoryDashboardApi.deprecateAtom(agentId, atom.id, {
           reason: reason || undefined,
         });
+        if (!isActive()) return;
         message.success(i18n.t("memory.deprecate.success"));
         onSuccess?.();
       } catch (e) {
+        if (!isActive()) return;
         message.error(
           i18n.t("memory.deprecate.failed", {
             message: (e as Error).message ?? e,

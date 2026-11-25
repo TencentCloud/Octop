@@ -61,8 +61,7 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 2. Open the PR with base **`develop`** (not `main`, unless it is a release or hotfix)
 3. Add or update tests for behavior changes — CI runs on **Linux and Windows**; follow the cross-platform rules in [AGENTS.md](AGENTS.md) §7 (prefer `tmp_path` / `pathlib`, `fake_bin_path` for mocked binaries, `posix_only` for Unix-only cases)
 4. Ensure `make install-hooks` is enabled locally; run `make all` (backend) or `make check-all` (full stack) before submitting — pre-commit enforces the same gate
-5. Update `CHANGELOG.md` when user-facing behavior changes
-6. Open a PR with a clear description and test plan
+5. Open a PR with a clear description and test plan
 
 See [AGENTS.md](AGENTS.md) for module boundaries and coding conventions.
 
@@ -149,7 +148,7 @@ When using AI-assisted coding, **make sure both sides understand the same thing*
 
 ## Releases
 
-1. Cut `release/x.y.z` from latest `develop` (version bump + CHANGELOG on that branch)
+1. Cut `release/x.y.z` from latest `develop` (version bump on that branch)
 2. Open PR: `release/x.y.z` → `main` and merge when green
 3. Tag `v<version>` on **main tip** and push — GitHub Actions builds, publishes to PyPI, and creates the GitHub Release
 4. Delete `release/x.y.z`; Actions syncs `main` → `develop` (or opens `chore/sync-develop-after-*` if merge conflicts / branch protection)
@@ -207,8 +206,7 @@ make check-all        # 全栈质量门禁
 2. PR 的 base 选 **`develop`**（release / hotfix 除外）
 3. 补充测试（CI 同时跑 **Linux / Windows**，路径与假二进制遵循 [AGENTS.md](AGENTS.md) §7）
 4. 本地执行过 `make install-hooks`；提交前 `make all` 或 `make check-all` 必须绿（hooks 会强制执行）
-5. 用户可见变更时更新 `CHANGELOG.md`
-6. 提交 Pull Request
+5. 提交 Pull Request
 
 模块边界与编码规范见 [AGENTS.md](AGENTS.md)。
 
@@ -299,7 +297,7 @@ make check-all        # 全栈质量门禁
 
 ## 发版
 
-1. 从最新 `develop` 切 `release/x.y.z`（在该分支 bump 版本与 CHANGELOG）
+1. 从最新 `develop` 切 `release/x.y.z`（在该分支 bump 版本）
 2. PR：`release/x.y.z` → `main`，合并通过后
 3. 在 **main tip** 打并推送 `v<version>`，由 Actions 构建并发布
 4. 删除 `release/x.y.z`；Actions 自动 sync `main` → `develop`（冲突或分支保护时会开 `chore/sync-develop-after-*` PR）

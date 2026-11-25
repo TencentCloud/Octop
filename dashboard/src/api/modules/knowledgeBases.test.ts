@@ -5,10 +5,10 @@ const { request, requestUpload } = vi.hoisted(() => ({
   requestUpload: vi.fn(),
 }));
 
-vi.mock("../request", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../request")>()),
+vi.mock("../request", () => ({
   request,
   requestUpload,
+  bridgeAgentHeaders: () => undefined,
 }));
 
 import { knowledgeBasesApi } from "./knowledgeBases";
@@ -53,6 +53,22 @@ describe("knowledgeBasesApi", () => {
         body: JSON.stringify({ model: "BAAI/bge-small-zh-v1.5" }),
       },
     );
+  });
+
+  it("saves chunking and retrieval settings without changing the feature toggle", () => {
+    const settings = {
+      chunk_size: 1000,
+      chunk_overlap: 0,
+      retrieval_k: 5,
+      context_char_budget: 4000,
+    };
+
+    knowledgeBasesApi.setAdvancedSettings(settings);
+
+    expect(request).toHaveBeenCalledWith("/knowledge-bases/advanced-settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
   });
 
   it("requests the full ONNX catalog when expanding embedding options", () => {
@@ -104,6 +120,25 @@ describe("knowledgeBasesApi", () => {
       { method: "POST" },
       onProgress,
     );
+  });
+
+  it("sends the target base only when the move leaves the current one", () => {
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "archive");
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "archive", "kb-1");
+    knowledgeBasesApi.moveDocument("kb-1", "doc-1", "售后", "kb-2");
+
+    const bodies = request.mock.calls.map(([, init]) =>
+      JSON.parse((init as { body: string }).body),
+    );
+    expect(request).toHaveBeenCalledWith(
+      "/knowledge-bases/kb-1/documents/doc-1/move",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(bodies).toEqual([
+      { target_folder: "archive" },
+      { target_folder: "archive" },
+      { target_folder: "售后", target_kb_id: "kb-2" },
+    ]);
   });
 
   it("sends the selected folder path with the original upload", () => {

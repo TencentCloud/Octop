@@ -72,6 +72,14 @@
   }
 }
 
+/* The corner toggle already opens the side dock; drop the duplicate
+   workspace / files / terminal icons once the chat column is narrow. */
+@container chat-main (max-width: 480px) {
+  .chatFloatHideNarrow {
+    display: none;
+  }
+}
+
 .chatFloatBtnWrap {
   position: relative;
   display: inline-flex;
@@ -854,6 +862,17 @@
     background: color-mix(in srgb, var(--fn-color-brand) 14%, transparent);
     border-color: color-mix(in srgb, var(--fn-color-brand) 50%, transparent);
   }
+}
+
+.errorAuthHint {
+  align-self: center;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+}
+
+.errorConfigBtn:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .errorRetryBtn {

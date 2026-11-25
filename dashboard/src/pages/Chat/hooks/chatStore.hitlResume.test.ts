@@ -592,4 +592,39 @@ describe("resumeHitl", () => {
     ).toBe(true);
     stop();
   });
+
+  it("sends the pinned local directory with a steer", async () => {
+    const agentId = "bridge:conn:EXPERT1";
+    const threadId = "thr-local";
+    localStorage.setItem(
+      `octop.bridge.exec.thread.${agentId}.${threadId}`,
+      JSON.stringify({
+        mode: "local",
+        directory: "/data/notes",
+        workspaces: [],
+      }),
+    );
+    const sockets = installSocket();
+    await attachThread(SESSION, agentId, threadId);
+    const socket = sockets[0];
+    socket?.push({
+      type: "turn.started",
+      turn_id: "turn-1",
+      thread_id: threadId,
+    });
+    expect(
+      sendSteerWhileBusy(SESSION, "keep going", {
+        expectedTurnId: "turn-1",
+        clientPendingId: "c-local",
+      }),
+    ).toBe("ok");
+    const frames = (socket?.sent ?? []).map(
+      (raw) => JSON.parse(raw) as { type?: string; local_directory?: string },
+    );
+    const steer = frames.find(
+      (frame) => frame.type === "user_turn" && frame.local_directory,
+    );
+    expect(steer?.local_directory).toBe("/data/notes");
+    localStorage.removeItem(`octop.bridge.exec.thread.${agentId}.${threadId}`);
+  });
 });

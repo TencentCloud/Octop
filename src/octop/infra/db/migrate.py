@@ -178,7 +178,7 @@ def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
         db,
         "cron_jobs",
         "task_type",
-        "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent'))",
+        "TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent', 'script'))",
     )
     _ensure_column(
         db,
@@ -186,6 +186,144 @@ def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
         "mcp_servers",
         "TEXT NOT NULL DEFAULT '[]'",
     )
+    _ensure_column(db, "cron_jobs", "allow_all", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "cron_jobs", "script_lang", "TEXT")
+    _ensure_column(db, "cron_jobs", "script_source", "TEXT")
+    _ensure_column(db, "cron_jobs", "script_path", "TEXT")
+    _widen_cron_task_type_check(db)
+
+
+def _cell(row: Any, key: str) -> str:
+    if isinstance(row, Mapping):
+        if key in row:
+            return str(row[key])
+        return str(next(iter(row.values())))
+    return str(row[0])
+
+
+def _cron_task_check_sql(db: DatabasePool) -> str:
+    with db.connect() as conn:
+        if db.dialect == "postgresql":
+            rows = conn.execute(
+                "SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint "
+                "WHERE conrelid = 'cron_jobs'::regclass AND contype = 'c'"
+            ).fetchall()
+            return "\n".join(_cell(row, "def") for row in rows)
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'cron_jobs'"
+        ).fetchone()
+    if row is None:
+        return ""
+    return _cell(row, "sql")
+
+
+def _widen_cron_task_type_check(db: DatabasePool) -> None:
+    """Allow ``task_type='script'`` on tables created with the text/agent check."""
+    if not _table_exists(db, "cron_jobs"):
+        return
+    if db.dialect == "postgresql":
+        _widen_postgres_cron_task_check(db)
+        return
+    # Column names such as script_lang also contain the letters "script".
+    if "'script'" in _cron_task_check_sql(db):
+        return
+    _rebuild_sqlite_cron_jobs(db)
+
+
+def _widen_postgres_cron_task_check(db: DatabasePool) -> None:
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint "
+            "WHERE conrelid = 'cron_jobs'::regclass AND contype = 'c'"
+        ).fetchall()
+        has_script = False
+        for row in rows:
+            definition = _cell(row, "def")
+            if "task_type" not in definition:
+                continue
+            if "'script'" in definition:
+                has_script = True
+                continue
+            name = row["conname"] if isinstance(row, Mapping) else row[0]
+            conn.execute(f'ALTER TABLE cron_jobs DROP CONSTRAINT "{name}"')
+        if has_script:
+            return
+        conn.execute(
+            "ALTER TABLE cron_jobs ADD CONSTRAINT cron_jobs_task_type_check "
+            "CHECK (task_type IN ('text', 'agent', 'script'))"
+        )
+
+
+def _rebuild_sqlite_cron_jobs(db: DatabasePool) -> None:
+    columns = _table_columns(db, "cron_jobs")
+    select = ", ".join(name for name in _CRON_JOBS_COLUMNS if name in columns)
+    with db.transaction() as conn:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("ALTER TABLE cron_jobs RENAME TO cron_jobs_legacy")
+        conn.execute(
+            """
+            CREATE TABLE cron_jobs (
+              id              INTEGER PRIMARY KEY AUTOINCREMENT,
+              cron_id         TEXT NOT NULL UNIQUE,
+              name            TEXT NOT NULL DEFAULT '',
+              agent_id        TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+              user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              schedule_spec   TEXT NOT NULL,
+              prompt          TEXT NOT NULL,
+              session_key     TEXT NOT NULL,
+              model           TEXT,
+              fresh_thread    INTEGER NOT NULL DEFAULT 0,
+              task_type       TEXT NOT NULL DEFAULT 'agent'
+                              CHECK (task_type IN ('text', 'agent', 'script')),
+              mcp_servers     TEXT NOT NULL DEFAULT '[]',
+              allow_all       INTEGER NOT NULL DEFAULT 0,
+              script_lang     TEXT,
+              script_source   TEXT,
+              script_path     TEXT,
+              enabled         INTEGER NOT NULL DEFAULT 1,
+              last_run_at     INTEGER,
+              last_status     TEXT,
+              last_error      TEXT,
+              run_lease_owner TEXT,
+              run_lease_token TEXT,
+              run_lease_until INTEGER,
+              created_at      INTEGER NOT NULL,
+              updated_at      INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(f"INSERT INTO cron_jobs ({select}) SELECT {select} FROM cron_jobs_legacy")
+        conn.execute("DROP TABLE cron_jobs_legacy")
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+_CRON_JOBS_COLUMNS = (
+    "id",
+    "cron_id",
+    "name",
+    "agent_id",
+    "user_id",
+    "schedule_spec",
+    "prompt",
+    "session_key",
+    "model",
+    "fresh_thread",
+    "task_type",
+    "mcp_servers",
+    "allow_all",
+    "script_lang",
+    "script_source",
+    "script_path",
+    "enabled",
+    "last_run_at",
+    "last_status",
+    "last_error",
+    "run_lease_owner",
+    "run_lease_token",
+    "run_lease_until",
+    "created_at",
+    "updated_at",
+)
 
 
 def _collapse_legacy_agent_welcome_columns(db: DatabasePool) -> None:
@@ -1676,6 +1814,205 @@ def _ensure_control_blobs_schema(db: DatabasePool) -> None:
         )
 
 
+def _ensure_thread_contributed_schema(db: DatabasePool) -> None:
+    """``threads.contributed`` (v25). Idempotent for SQLite, which skips the SQL file."""
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
+
+
+def _ensure_care_push_reply_schema(db: DatabasePool) -> None:
+    """Proactive care thread/message/reply tracking on ``care_push_records``. Idempotent."""
+    if not _table_exists(db, "care_push_records"):
+        return
+    ts_type = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    _ensure_column(db, "care_push_records", "thread_id", "TEXT")
+    _ensure_column(db, "care_push_records", "message_id", "TEXT")
+    _ensure_column(db, "care_push_records", "care_text", "TEXT")
+    _ensure_column(db, "care_push_records", "status", "TEXT NOT NULL DEFAULT 'sent'")
+    _ensure_column(db, "care_push_records", "replied_at", ts_type)
+    _ensure_column(db, "care_push_records", "reply_message_id", "TEXT")
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_care_push_thread_status "
+                "ON care_push_records(thread_id, status, pushed_at)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_care_push_agent_status "
+                "ON care_push_records(agent_id, status, pushed_at)"
+            )
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_care_push_thread_status "
+            "ON care_push_records(thread_id, status, pushed_at)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_care_push_agent_status "
+            "ON care_push_records(agent_id, status, pushed_at)"
+        )
+
+
+_LOGIN_AUDIT_ACTIONS_SQL = (
+    "'auth.login', 'auth.ldap_login', 'auth.oidc_login', 'auth.passkey_login'"
+)
+
+
+def _ensure_user_last_login_schema(db: DatabasePool) -> None:
+    """``users.last_login_at`` (v25). Idempotent; fills blanks from login audit rows."""
+    if not _table_exists(db, "users"):
+        return
+    _ensure_column(db, "users", "last_login_at", "INTEGER")
+    if not _table_exists(db, "audit_log"):
+        return
+    actions = _LOGIN_AUDIT_ACTIONS_SQL
+    with db.connect() as conn:
+        conn.execute(
+            "UPDATE users SET last_login_at = ("
+            "SELECT MAX(ts) FROM audit_log "
+            "WHERE actor = users.username "
+            f"AND action IN ({actions})"
+            ") WHERE last_login_at IS NULL AND EXISTS ("
+            "SELECT 1 FROM audit_log "
+            "WHERE actor = users.username "
+            f"AND action IN ({actions})"
+            ")"
+        )
+
+
+def _ensure_thread_shares_schema(db: DatabasePool) -> None:
+    """Read-only conversation share links (v25). Idempotent."""
+    if not _table_exists(db, "threads") or not _table_exists(db, "users"):
+        return
+    if not _table_exists(db, "agents"):
+        return
+    if db.dialect == "postgresql":
+        with db.connect() as conn, conn.transaction():
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS thread_shares (
+                  id          BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+                  share_id    TEXT NOT NULL UNIQUE,
+                  thread_id   TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+                  agent_id    TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+                  created_by  BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                  created_at  BIGINT NOT NULL,
+                  revoked_at  BIGINT
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id)"
+            )
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_shares_active_thread "
+                "ON thread_shares(thread_id) WHERE revoked_at IS NULL"
+            )
+        return
+    with db.connect() as conn:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS thread_shares (
+              id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              share_id    TEXT NOT NULL UNIQUE,
+              thread_id   TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+              agent_id    TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+              created_by  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              created_at  INTEGER NOT NULL,
+              revoked_at  INTEGER
+            );
+            CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id);
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_shares_active_thread
+              ON thread_shares(thread_id) WHERE revoked_at IS NULL;
+            """
+        )
+
+
+def _ensure_invite_redemptions_schema(db: DatabasePool) -> None:
+    """Repair v26, backfill the cumulative count, and remove legacy fields."""
+    columns = _table_columns(db, "user_invites")
+    if not columns:
+        return
+    legacy_columns = ("used_at", "used_by_user_id", "revoked_at")
+    if (
+        {"enabled", "max_uses", "use_count"} <= columns
+        and columns.isdisjoint(legacy_columns)
+        and _table_exists(db, "user_invite_redemptions")
+    ):
+        return
+    identity = (
+        "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY"
+        if db.dialect == "postgresql"
+        else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    )
+    number = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    with db.transaction() as conn:
+        if db.dialect == "postgresql":
+            conn.execute("LOCK TABLE user_invites IN ACCESS EXCLUSIVE MODE")
+        # Check again under the write lock so concurrent upgrades backfill only once.
+        columns = {
+            column[0] for column in conn.execute("SELECT * FROM user_invites LIMIT 0").description
+        }
+        legacy_states = [
+            f"{column} IS NOT NULL" for column in ("used_at", "revoked_at") if column in columns
+        ]
+        missing_enabled = "enabled" not in columns
+        legacy_single_use = missing_enabled and bool(legacy_states)
+        if missing_enabled:
+            conn.execute("ALTER TABLE user_invites ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1")
+        if legacy_single_use:
+            conn.execute("UPDATE user_invites SET enabled = 0 WHERE " + " OR ".join(legacy_states))
+        if "max_uses" not in columns:
+            conn.execute(
+                "ALTER TABLE user_invites ADD COLUMN max_uses INTEGER CHECK (max_uses > 0)"
+            )
+            if legacy_single_use:
+                conn.execute("UPDATE user_invites SET max_uses = 1")
+        missing_count = "use_count" not in columns
+        if missing_count:
+            conn.execute(
+                f"ALTER TABLE user_invites ADD COLUMN use_count {number} NOT NULL DEFAULT 0 "
+                "CHECK (use_count >= 0)"
+            )
+        conn.execute(
+            f"CREATE TABLE IF NOT EXISTS user_invite_redemptions (id {identity}, "
+            f"invite_id {number} NOT NULL REFERENCES user_invites(id) ON DELETE CASCADE, "
+            f"user_id {number} NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE, "
+            f"redeemed_at {number} NOT NULL)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_invite_redemptions_invite "
+            "ON user_invite_redemptions(invite_id, redeemed_at, id)"
+        )
+        if {"used_at", "used_by_user_id"} <= columns:
+            conn.execute(
+                "INSERT INTO user_invite_redemptions(invite_id, user_id, redeemed_at) "
+                "SELECT id, used_by_user_id, used_at FROM user_invites "
+                "WHERE used_by_user_id IS NOT NULL AND used_at IS NOT NULL "
+                "ON CONFLICT(user_id) DO NOTHING"
+            )
+        if missing_count:
+            if legacy_single_use and "used_at" in columns:
+                conn.execute("UPDATE user_invites SET use_count = 1 WHERE used_at IS NOT NULL")
+            else:
+                count_sql = (
+                    "UPDATE user_invites SET use_count = ("
+                    "SELECT COUNT(*) FROM user_invite_redemptions r WHERE r.invite_id = user_invites.id"
+                    ")"
+                )
+                if "used_at" in columns:
+                    deleted_user = "used_at IS NOT NULL"
+                    if "used_by_user_id" in columns:
+                        deleted_user += " AND used_by_user_id IS NULL"
+                    count_sql += f" + CASE WHEN {deleted_user} THEN 1 ELSE 0 END"
+                conn.execute(count_sql)
+            conn.execute("UPDATE user_invites SET enabled = 0 WHERE use_count >= max_uses")
+        for column in legacy_columns:
+            if column in columns:
+                conn.execute(f"ALTER TABLE user_invites DROP COLUMN {column}")
+
+
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:
     """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
     if not _table_exists(db, "users"):
@@ -1922,6 +2259,7 @@ def _repair_legacy_schema(db: DatabasePool) -> None:
         _ensure_column(db, "threads", "reasoning_mode", "TEXT")
         _ensure_column(db, "threads", "reasoning_effort", "TEXT")
         _ensure_column(db, "threads", "artifacts", "TEXT NOT NULL DEFAULT '[]'")
+        _ensure_column(db, "threads", "contributed", "INTEGER NOT NULL DEFAULT 0")
         _ensure_thread_conversation_mode_schema(db)
     if _table_exists(db, "agents"):
         _ensure_column(db, "agents", "is_shared", "INTEGER NOT NULL DEFAULT 0")
@@ -1993,6 +2331,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
             if max_version >= 25:
                 _ensure_user_mfa_schema(db)
                 _ensure_instance_lease_schema(db)
+            if max_version >= 26:
+                _ensure_invite_redemptions_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -2044,6 +2384,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
     if max_version >= 25:
         _ensure_user_mfa_schema(db)
         _ensure_instance_lease_schema(db)
+    if max_version >= 26:
+        _ensure_invite_redemptions_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -2225,6 +2567,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     if version == 25:
         _ensure_user_mfa_schema(db)
         _ensure_instance_lease_schema(db)
+        _ensure_thread_contributed_schema(db)
+        _ensure_thread_shares_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -2435,6 +2779,14 @@ def run_migrations(db: DatabasePool) -> None:
                 else:
                     conn.execute("UPDATE _schema_version SET version = ?", (version,))
             continue
+        # Older restored databases may lack the optional invite table even when
+        # their schema watermark is current. Repair it before applying v26.
+        if version == 26:
+            _ensure_user_invites_schema(db)
+            _ensure_invite_redemptions_schema(db)
+            with db.connect() as conn:
+                conn.execute("UPDATE _schema_version SET version = ?", (version,))
+            continue
         if db.dialect == "postgresql":
             sql = path.read_text(encoding="utf-8")
             with db.connect() as conn, conn.transaction():
@@ -2478,11 +2830,16 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_knowledge_base_icon_url_schema(db)
     _ensure_bridge_icon_url_schema(db)
     _ensure_bridge_shared_schema(db)
-    # Always repair: version may already be 25 while MFA tables or lease
-    # columns were never created.
+    # Always repair: version may already be 25 while MFA tables, lease
+    # columns, share links, or last_login_at were never created.
     _ensure_user_mfa_schema(db)
+    _ensure_thread_shares_schema(db)
+    _ensure_user_last_login_schema(db)
     _ensure_instance_lease_schema(db)
     _ensure_control_blobs_schema(db)
+    _ensure_thread_contributed_schema(db)
+    _ensure_care_push_reply_schema(db)
+    _ensure_invite_redemptions_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)

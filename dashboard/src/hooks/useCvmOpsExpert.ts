@@ -11,6 +11,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { knowledgeBasesApi } from "../api/modules/knowledgeBases";
 import { request } from "../api/request";
+import { ApiResponseError } from "../api/responseError";
+import { parseApiError } from "../utils/apiError";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
 
 /** 内置专家模板 id，对应 src/octop/infra/agents/experts/library/tencent-cvm-ops。 */
@@ -89,7 +91,15 @@ export function useCvmOpsExpert(enabled: boolean) {
         // 刷新列表后优先交给 existing 分支接管；若列表里仍找不到（后端尚未
         // 幂等），允许再走一次创建——最多一次，避免旧后端下 409 → refresh
         // → 再创建的死循环。
-        if (message.includes("AGENT_NAME_TAKEN") || message.includes("409")) {
+        const parsed = parseApiError(error);
+        const status =
+          error instanceof ApiResponseError ? error.status : undefined;
+        if (
+          parsed?.code === "AGENT_NAME_TAKEN" ||
+          status === 409 ||
+          message.includes("AGENT_NAME_TAKEN") ||
+          message.includes("409")
+        ) {
           if (!conflictRetriedRef.current) {
             conflictRetriedRef.current = true;
             createdRef.current = false;
@@ -100,7 +110,7 @@ export function useCvmOpsExpert(enabled: boolean) {
         // 允许下次进入页面重试，并把原因暴露给面板，避免静默失败
         createdRef.current = false;
         setEnsureError(
-          message.includes("404")
+          status === 404 || message.includes("404")
             ? "服务端未加载该专家模板，请重启后端服务"
             : message || "专家初始化失败",
         );

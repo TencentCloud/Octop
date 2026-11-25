@@ -28,7 +28,11 @@ import {
   ResourceVisibilityGate,
 } from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
-import { isEmbeddingModel } from "../../useProviders";
+import {
+  isEmbeddingModel,
+  isRerankModel,
+  providerHasCredential,
+} from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
 import { ModelMetaTags } from "../../modelMeta";
 import { TokenCountInput } from "@/components/TokenCountInput";
@@ -129,7 +133,13 @@ export function ModelListEditor({
   const lockedPurpose =
     forcePurpose ??
     (provider.purpose === "embedding" ? "embedding" : undefined);
-  const embeddingOn = isOnnx || lockedPurpose === "embedding";
+  const embeddingService = isOnnx || lockedPurpose === "embedding";
+  const draftId = Form.useWatch("id", form) as string | undefined;
+  const draftModel = models.find((m) => m.id === editingModelId) ?? {
+    id: draftId ?? "",
+  };
+  const embeddingOn = isEmbeddingModel(draftModel, embeddingService);
+  const rerankOn = isRerankModel(draftModel);
 
   const handleToggleEnabled = (
     modelId: string,
@@ -258,7 +268,7 @@ export function ModelListEditor({
       message.warning(t("models.modelIdLabel"));
       return;
     }
-    if (!(canTest ?? !!provider.api_key)) {
+    if (!(canTest ?? providerHasCredential(provider))) {
       message.warning(t("models.testRequiresAuth"));
       return;
     }
@@ -308,8 +318,6 @@ export function ModelListEditor({
   const buildModelEntry = (values: Record<string, unknown>): ProviderModel => {
     const id = (values.id as string).trim();
     const name = (values.name as string | undefined)?.trim() || id;
-    const isOnnx = isOnnxProviderRow(provider);
-    const embedding = isOnnx || lockedPurpose === "embedding";
     const entry: ProviderModel = {
       id,
       name,
@@ -319,7 +327,11 @@ export function ModelListEditor({
     };
     entry.visibility = modelVisibility === "groups" ? "groups" : "all";
     entry.group_ids = modelVisibility === "groups" ? [...modelGroupIds] : [];
-    if (embedding) {
+    if (rerankOn) {
+      entry.task = "rerank";
+      return entry;
+    }
+    if (embeddingOn) {
       entry.embedding = true;
       entry.task = "embedding";
       return entry;
@@ -474,7 +486,7 @@ export function ModelListEditor({
 
   const isEditing = editingModelId !== null;
   const isFormVisible = adding || isEditing;
-  const hasApiKey = canTest ?? !!provider.api_key;
+  const hasApiKey = canTest ?? providerHasCredential(provider);
 
   useEffect(() => {
     if (!isFormVisible) return;
@@ -523,6 +535,7 @@ export function ModelListEditor({
             const isDownloaded = downloadedSet ? downloadedSet.has(m.id) : true;
             const isDownloading = downloadingSet.has(m.id);
             const enableLocked = requireDownload && !isDownloaded;
+            const embedding = isEmbeddingModel(m, embeddingService);
             return (
               <div
                 key={m.id}
@@ -559,12 +572,15 @@ export function ModelListEditor({
                         : t("models.notDownloaded")}
                     </span>
                   )}
-                  {(m.embedding || m.task === "embedding") && (
+                  {embedding || isRerankModel(m) ? (
                     <span className={styles.modelListItemId}>
-                      {t("models.embeddingOnlyTag")}
+                      {t(
+                        embedding
+                          ? "models.embeddingOnlyTag"
+                          : "models.rerankOnlyTag",
+                      )}
                     </span>
-                  )}
-                  {m.embedding || m.task === "embedding" ? null : (
+                  ) : (
                     <ModelMetaTags
                       includeText
                       input={m.input}
@@ -667,9 +683,20 @@ export function ModelListEditor({
               <Input placeholder={t("models.modelNamePlaceholder")} />
             </Form.Item>
 
-            {/* Purpose is fixed by tab/provider lane — no per-model toggle. */}
+            <Form.Item
+              label={t("models.modelPurpose")}
+              style={{ marginBottom: 12 }}
+            >
+              {t(
+                rerankOn
+                  ? "models.rerankOnlyTag"
+                  : embeddingOn
+                  ? "models.purposeEmbedding"
+                  : "models.purposeChat",
+              )}
+            </Form.Item>
 
-            {embeddingOn ? null : (
+            {embeddingOn || rerankOn ? null : (
               <>
                 {provider.kind !== "anthropic" &&
                   provider.kind !== "bedrock" && (

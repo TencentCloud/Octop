@@ -35,6 +35,11 @@ function notifyUpdateReady(): void {
   window.dispatchEvent(new CustomEvent("pwa:update-ready"));
 }
 
+/** True when a newer worker is waiting and the page is still on the old one. */
+export function hasPendingAppUpdate(): boolean {
+  return pendingRegistration?.waiting != null;
+}
+
 async function unregisterAllServiceWorkers(): Promise<void> {
   const regs = await navigator.serviceWorker.getRegistrations();
   await Promise.all(regs.map((r) => r.unregister()));

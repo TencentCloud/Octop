@@ -1,9 +1,18 @@
-"""Outbound HTTPS URL validation — mitigates SSRF (CWE-918)."""
+"""Outbound HTTPS URL validation — mitigates SSRF (CWE-918).
+
+Self-hosted installs can opt specific LAN targets out of the private-address
+check with ``OCTOP_SSRF_ALLOWLIST`` (comma-separated hosts, ``.suffix``
+domains or CIDRs), and let those targets use plain http with
+``OCTOP_SSRF_ALLOW_HTTP``. Allowlisted requests are still resolved and pinned
+to the validated IP, so DNS rebinding stays blocked. Unset, nothing changes.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import ipaddress
+import os
 import socket
 import typing
 from urllib.parse import urlparse, urlunparse
@@ -26,6 +35,51 @@ _LOCAL_HOSTNAMES = frozenset(
     }
 )
 _LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal")
+
+ALLOWLIST_ENV = "OCTOP_SSRF_ALLOWLIST"
+ALLOW_HTTP_ENV = "OCTOP_SSRF_ALLOW_HTTP"
+_IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
+
+
+@functools.lru_cache(maxsize=8)
+def _parse_allowlist(raw: str) -> tuple[frozenset[str], tuple[str, ...], tuple[_IPNetwork, ...]]:
+    hosts: set[str] = set()
+    suffixes: list[str] = []
+    networks: list[_IPNetwork] = []
+    for item in raw.split(","):
+        entry = item.strip().lower().rstrip(".")
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            if entry.startswith("."):
+                suffixes.append(entry)
+            else:
+                hosts.add(entry)
+    return frozenset(hosts), tuple(suffixes), tuple(networks)
+
+
+def _allowlist() -> tuple[frozenset[str], tuple[str, ...], tuple[_IPNetwork, ...]]:
+    return _parse_allowlist(os.environ.get(ALLOWLIST_ENV, ""))
+
+
+def _ip_in_allowlist(ip_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return any(addr in network for network in _allowlist()[2])
+
+
+def _host_in_allowlist(host: str) -> bool:
+    """True when the admin allowlisted ``host`` by name, suffix or (for IPs) CIDR."""
+    hosts, suffixes, _ = _allowlist()
+    return host in hosts or host.endswith(suffixes) or _ip_in_allowlist(host)
+
+
+def _allow_http() -> bool:
+    return os.environ.get(ALLOW_HTTP_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def is_private_or_local_host(host: str) -> bool:
@@ -50,15 +104,19 @@ def is_private_or_local_host(host: str) -> bool:
 
 def _parse_https_host(url: str) -> tuple[str, int | None]:
     parsed = urlparse(url)
-    if parsed.scheme != "https":
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme != "https" and not (
+        parsed.scheme == "http" and host and _allow_http() and _host_in_allowlist(host)
+    ):
         raise UnsafeOutboundUrl("only https URLs are allowed")
-    host = parsed.hostname
     if not host:
         raise UnsafeOutboundUrl("missing hostname")
-    return host.lower().rstrip("."), parsed.port
+    return host, parsed.port
 
 
-def _check_ip_not_private(ip_str: str) -> None:
+def _check_ip_not_private(ip_str: str, *, host: str = "") -> None:
+    if _ip_in_allowlist(ip_str) or (host and _host_in_allowlist(host)):
+        return
     addr = ipaddress.ip_address(ip_str)
     if (
         addr.is_private
@@ -78,8 +136,8 @@ def _check_ip_literal(host: str) -> None:
     _check_ip_not_private(host)
 
 
-def _check_resolved_ip(ip_str: str) -> None:
-    _check_ip_not_private(ip_str)
+def _check_resolved_ip(ip_str: str, *, host: str) -> None:
+    _check_ip_not_private(ip_str, host=host)
 
 
 def issuer_base_domain(issuer: str) -> str:
@@ -102,7 +160,7 @@ def host_allowed_for_issuer(host: str, issuer: str) -> bool:
 def validate_https_url(url: str, *, field: str = "url") -> str:
     """Reject non-https URLs and literal private/reserved IPs."""
     host, _ = _parse_https_host(url)
-    if host == "localhost":
+    if host == "localhost" and not _host_in_allowlist(host):
         raise UnsafeOutboundUrl(f"{field}: localhost is not allowed")
     _check_ip_literal(host)
     return url
@@ -123,11 +181,12 @@ async def _resolve_validated_ip(url: str) -> str:
     IP for the actual connection to defeat DNS-rebinding (TOCTOU).
     """
     host, port = _parse_https_host(url)
+    default_port = 80 if urlparse(url).scheme == "http" else 443
     loop = asyncio.get_running_loop()
     try:
         infos = await loop.getaddrinfo(
             host,
-            port or 443,
+            port or default_port,
             type=socket.SOCK_STREAM,
             proto=socket.IPPROTO_TCP,
         )
@@ -136,7 +195,7 @@ async def _resolve_validated_ip(url: str) -> str:
     if not infos:
         raise UnsafeOutboundUrl(f"cannot resolve hostname {host!r}")
     for info in infos:
-        _check_resolved_ip(info[4][0])
+        _check_resolved_ip(info[4][0], host=host)
     return infos[0][4][0]
 
 
@@ -215,7 +274,8 @@ async def safe_request(
     # Rebuild the request URL from validated components so the outbound call
     # does not reuse the original user-controlled string (CWE-918 / CodeQL).
     netloc = f"{host}:{port}" if port is not None else host
-    request_url = urlunparse(("https", netloc, parsed.path or "/", "", parsed.query, ""))
+    scheme = "http" if parsed.scheme == "http" else "https"
+    request_url = urlunparse((scheme, netloc, parsed.path or "/", "", parsed.query, ""))
     transport = PinnedIPTransport(host, pin_ip)
     async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
         return await client.request(method, request_url, json=json, data=data, headers=headers)

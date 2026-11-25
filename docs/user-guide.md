@@ -112,10 +112,10 @@ octop run --help
 
 ```bash
 # 构建并后台启动
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # 或手动构建后运行
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -131,9 +131,11 @@ docker run -d \
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
 | `OCTOP_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；合格则建账号；留空或不合格则走设置向导） |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
-| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
+| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载）。不设置则仍挂当前用户的 `~/.octop`，升级不用改配置、不用迁数据 |
 
 > 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
+
+多副本怎么工作、虚拟机和 Kubernetes 怎么装，见 [cluster_CN.md](cluster_CN.md)。Kubernetes 的安装参数见 [deploy/helm/octop/README_CN.md](../deploy/helm/octop/README_CN.md)。
 
 ---
 
@@ -359,7 +361,7 @@ Octop 支持两个方向的 ACP 集成：
    octop acp --agent main
    ```
 
-2. **出站** —— 在对话中把编码任务委派给外部 Agent（OpenCode、CodeBuddy、Claude Code、Codex）：
+2. **出站** —— 在对话中把编码任务委派给外部 Agent（OpenCode、CodeBuddy、Claude Code、Codex、Qwen Code）：
    - 控制台 → **ACP**：配置 Runner（按用户全局）。
    - 为 Agent 启用 `acp_runner`，然后在对话中委派。
 

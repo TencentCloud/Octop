@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { OctopAgent } from "../../../context/AgentContext";
-import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 
 /** Puts the shared pip on an expert avatar and names the owner on hover. */
@@ -28,5 +31,16 @@ export default function SharedExpertHint({
     >
       {children}
     </SharedAvatarMark>
+  );
+}
+
+/** Compact “已共享” icon beside an expert title the current user owns. */
+export function ExpertOwnerShareFlag({ agent }: { agent: OctopAgent }) {
+  return (
+    <SharedResourceBadge
+      shared={agent.is_shared === true && agent.is_owner !== false}
+      owned
+      ownerName={agent.owner_username}
+    />
   );
 }
