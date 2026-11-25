@@ -183,6 +183,16 @@ def test_format_insufficient_balance_zh() -> None:
     assert "Insufficient Balance" not in text
 
 
+def test_format_tool_call_repeat_zh_names_the_tool() -> None:
+    msg = "[tool_call_repeat]\ntool: search\ncount: 41\nlimit: 40"
+    text = format_stream_error(msg, "zh")
+    assert "search" in text
+    assert "41" in text
+    assert "40" in text
+    assert "运行配置" in text
+    assert "[tool_call_repeat]" not in text
+
+
 def test_format_recursion_limit_zh_guides_to_config() -> None:
     msg = (
         "Recursion limit of 2 reached without hitting a stop condition. "

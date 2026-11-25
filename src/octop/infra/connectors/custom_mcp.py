@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -18,9 +19,22 @@ CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_META_KEYS = frozenset({"enabled", "display_name", "default_open", "shared"})
+_META_KEYS = frozenset(
+    {
+        "enabled",
+        "display_name",
+        "default_open",
+        "shared",
+        "visibility",
+        "group_ids",
+        "avatar_icon",
+    }
+)
+_ICON = re.compile(r"[a-z0-9-]{1,32}")
+CUSTOM_MCP_AVATAR_KIND = "custom_mcp"
 _OAUTH_KEY = "oauth"
-_SECRET_KEYS = frozenset({_OAUTH_KEY})
+_OAUTH_CLIENT_KEY = "oauth_client"
+_SECRET_KEYS = frozenset({_OAUTH_KEY, _OAUTH_CLIENT_KEY})
 _HARNESS_STRIP_KEYS = _META_KEYS | _SECRET_KEYS
 _DISPLAY_NAME_MAX = 64
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
@@ -91,6 +105,41 @@ def _normalize_headers(raw: Any) -> dict[str, str]:
     return out
 
 
+_DROPPED_STDIO_ENV_KEYS = frozenset(
+    {
+        "BASH_ENV",
+        "DYLD_FRAMEWORK_PATH",
+        "DYLD_INSERT_LIBRARIES",
+        "DYLD_LIBRARY_PATH",
+        "ENV",
+        "GIT_EXTERNAL_DIFF",
+        "GIT_SSH_COMMAND",
+        "LD_AUDIT",
+        "LD_BIND_NOW",
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "NODE_OPTIONS",
+        "PERL5OPT",
+        "PS4",
+        "PYTHONINSPECT",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "RUBYOPT",
+        "SHELLOPTS",
+    }
+)
+
+
+def _dropped_stdio_env_key(key: str) -> bool:
+    upper = key.upper()
+    return upper in _DROPPED_STDIO_ENV_KEYS or upper.startswith(("LD_", "DYLD_"))
+
+
+def sanitize_stdio_env(env: dict[str, str]) -> dict[str, str]:
+    """Drop env keys that change how the child loader or interpreter starts."""
+    return {key: value for key, value in env.items() if not _dropped_stdio_env_key(key)}
+
+
 def _normalize_env(raw: Any) -> dict[str, str]:
     if raw is None:
         return {}
@@ -102,7 +151,7 @@ def _normalize_env(raw: Any) -> dict[str, str]:
         if not k:
             raise ValueError("env names must be non-empty")
         out[k] = str(value)
-    return out
+    return sanitize_stdio_env(out)
 
 
 def _normalize_args(raw: Any) -> list[str]:
@@ -169,6 +218,38 @@ def validate_mcp_http_url(url: str) -> str:
     return text
 
 
+def _normalize_oauth_client(name: str, raw: Any) -> dict[str, Any] | None:
+    """Validate a pre-registered OAuth client for servers without dynamic registration."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError(f"server {name!r}: oauth_client must be an object")
+    fields = {
+        key: str(raw.get(key) or "").strip()
+        for key in ("client_id", "scope", "authorization_endpoint", "token_endpoint")
+    }
+    secret = str(raw.get("client_secret") or "")
+    if not any(fields.values()) and not secret:
+        return None
+    if not fields["client_id"]:
+        raise ValueError(f"server {name!r}: oauth_client.client_id is required")
+    if bool(fields["authorization_endpoint"]) != bool(fields["token_endpoint"]):
+        raise ValueError(
+            f"server {name!r}: oauth_client needs both authorization_endpoint and token_endpoint"
+        )
+    for key in ("authorization_endpoint", "token_endpoint"):
+        if not fields[key]:
+            continue
+        try:
+            validate_https_url(fields[key], field=f"oauth_client.{key}")
+        except UnsafeOutboundUrl as exc:
+            raise ValueError(f"server {name!r}: {exc}") from exc
+    out: dict[str, Any] = {key: value for key, value in fields.items() if value}
+    if secret:
+        out["client_secret"] = secret
+    return out
+
+
 def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError(f"server {name!r} must be an object")
@@ -182,8 +263,8 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
     spec: dict[str, Any] = {"transport": transport, "enabled": enabled}
     if raw.get("default_open") is True:
         spec["default_open"] = True
-    if raw.get("shared") is True:
-        spec["shared"] = True
+    _apply_audience(spec, raw, name)
+    _apply_avatar(spec, raw, name)
 
     display_name = str(raw.get("display_name") or "").strip()
     if display_name:
@@ -199,6 +280,9 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         headers = _normalize_headers(raw.get("headers"))
         if headers:
             spec["headers"] = headers
+        oauth_client = _normalize_oauth_client(name, raw.get(_OAUTH_CLIENT_KEY))
+        if oauth_client:
+            spec[_OAUTH_CLIENT_KEY] = oauth_client
     else:
         command = str(raw.get("command") or "").strip()
         if not command:
@@ -216,9 +300,92 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
         if str(oauth.get("access_token") or "").strip():
             spec[_OAUTH_KEY] = dict(oauth)
         elif oauth.get("required") is True:
-            spec[_OAUTH_KEY] = {"required": True}
+            spec[_OAUTH_KEY] = _required_marker(oauth)
 
     return spec
+
+
+def _clean_group_ids(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("group_ids must be a list")
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        group_id = str(item).strip()
+        if not group_id or group_id in seen:
+            continue
+        if len(group_id) > 64:
+            raise ValueError("group id is too long")
+        seen.add(group_id)
+        out.append(group_id)
+    return out
+
+
+def _apply_audience(spec: dict[str, Any], raw: dict[str, Any], name: str) -> None:
+    """Store who may use this server. ``shared`` stays the on/off flag."""
+    visibility = str(raw.get("visibility") or "").strip()
+    if visibility in {"owner", "all", "groups"}:
+        if visibility == "owner":
+            return
+        if visibility == "all":
+            spec["shared"] = True
+            spec["visibility"] = "all"
+            return
+        group_ids = _clean_group_ids(raw.get("group_ids"))
+        if not group_ids:
+            raise ValueError(f"server {name!r}: choose at least one user group")
+        spec["shared"] = True
+        spec["visibility"] = "groups"
+        spec["group_ids"] = group_ids
+        return
+    if visibility:
+        raise ValueError(f"server {name!r}: unknown visibility")
+    if raw.get("shared") is True:
+        spec["shared"] = True
+        spec["visibility"] = "all"
+
+
+def _apply_avatar(spec: dict[str, Any], raw: dict[str, Any], name: str) -> None:
+    if "avatar_icon" not in raw or raw.get("avatar_icon") in (None, ""):
+        return
+    icon = str(raw.get("avatar_icon") or "").strip().lower()
+    if not _ICON.fullmatch(icon):
+        raise ValueError(f"server {name!r}: avatar icon is invalid")
+    spec["avatar_icon"] = icon
+
+
+def server_audience(spec: dict[str, Any]) -> tuple[str, list[str]]:
+    """Return ``(visibility, group_ids)`` for list APIs."""
+    if spec.get("shared") is not True:
+        return "owner", []
+    if spec.get("visibility") == "groups":
+        return "groups", [str(item) for item in (spec.get("group_ids") or [])]
+    return "all", []
+
+
+def shared_server_visible(
+    spec: dict[str, Any],
+    *,
+    is_admin: bool,
+    member_group_ids: set[str],
+) -> bool:
+    """Whether a non-owner may use this custom server."""
+    if spec.get("shared") is not True:
+        return False
+    if spec.get("visibility") != "groups":
+        return True
+    if is_admin:
+        return True
+    granted = {str(item).strip() for item in (spec.get("group_ids") or []) if str(item).strip()}
+    return bool(granted & member_group_ids)
+
+
+def custom_avatar_key(parent_instance_id: str, server_name: str) -> str:
+    """Stable portrait id for one custom server on its parent connector row."""
+    raw = f"{parent_instance_id}:{server_name}".encode()
+    return hashlib.sha256(raw).hexdigest()[:32]
 
 
 def server_display_name(name: str, spec: dict[str, Any] | None) -> str:
@@ -258,6 +425,12 @@ def oauth_tokens_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return dict(raw) if isinstance(raw, dict) else {}
 
 
+def oauth_client_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """Pre-registered OAuth client saved on the server, or ``{}``."""
+    raw = spec.get(_OAUTH_CLIENT_KEY)
+    return dict(raw) if isinstance(raw, dict) else {}
+
+
 def oauth_configured(spec: dict[str, Any]) -> bool:
     oauth = oauth_tokens_from_spec(spec)
     return bool(str(oauth.get("access_token") or "").strip())
@@ -270,10 +443,16 @@ def oauth_required(spec: dict[str, Any]) -> bool:
     return oauth.get("required") is True
 
 
+def _required_marker(oauth: dict[str, Any]) -> dict[str, Any]:
+    """The stored "authorize first" marker, keeping whether a token had lapsed."""
+    return {"required": True, **({"expired": True} if oauth.get("expired") is True else {})}
+
+
 def mark_oauth_reauth_required(spec: dict[str, Any]) -> dict[str, Any]:
     """Drop stale OAuth tokens and flag the dashboard to prompt re-authorization."""
     out = {k: v for k, v in spec.items() if k != _OAUTH_KEY}
-    out[_OAUTH_KEY] = {"required": True}
+    # ``expired`` tells "authorize again" apart from "never authorized".
+    out[_OAUTH_KEY] = {"required": True, "expired": True}
     return out
 
 
@@ -320,12 +499,20 @@ def build_oauth_storage(
     client_secret = tokens.get("oauth_client_secret")
     if client_secret:
         out["oauth_client_secret"] = str(client_secret)
+    token_endpoint = str(tokens.get("oauth_token_endpoint") or "").strip()
+    if token_endpoint:
+        out["oauth_token_endpoint"] = token_endpoint
     return out
 
 
 def redact_server_for_api(spec: dict[str, Any]) -> dict[str, Any]:
     """Remove secrets; expose oauth preview for the dashboard."""
-    out = {k: v for k, v in spec.items() if k != _OAUTH_KEY}
+    out = {k: v for k, v in spec.items() if k not in _SECRET_KEYS}
+    client = oauth_client_from_spec(spec)
+    if client:
+        secret = client.pop("client_secret", None)
+        client["has_client_secret"] = bool(secret)
+        out[_OAUTH_CLIENT_KEY] = client
     if oauth_configured(spec):
         oauth = oauth_tokens_from_spec(spec)
         preview: dict[str, Any] = {"configured": True}
@@ -349,7 +536,13 @@ def merge_preserved_oauth(
     new_servers: dict[str, Any],
     existing: dict[str, Any],
 ) -> dict[str, Any]:
-    """Drop client-supplied oauth blobs; keep stored tokens per server name."""
+    """Drop client-supplied oauth blobs; keep stored tokens per server name.
+
+    The OAuth client secret is never echoed to the dashboard, so an omitted
+    ``client_secret`` keeps the stored one while the ``client_id`` is unchanged.
+    Tokens belong to the client that obtained them: when the saved client
+    changes they are dropped and the server asks for authorization again.
+    """
     out: dict[str, Any] = {}
     for name, raw in new_servers.items():
         if not isinstance(raw, dict):
@@ -358,13 +551,43 @@ def merge_preserved_oauth(
         spec = dict(raw)
         spec.pop(_OAUTH_KEY, None)
         old = existing.get(name)
+        old_client = oauth_client_from_spec(old) if isinstance(old, dict) else {}
+        client = _merge_oauth_client(spec.get(_OAUTH_CLIENT_KEY), old_client)
+        if client is not None:
+            spec[_OAUTH_CLIENT_KEY] = client
         if isinstance(old, dict):
             old_oauth = old.get(_OAUTH_KEY)
+            client_changed = _comparable_oauth_client(client) != old_client
             if isinstance(old_oauth, dict) and str(old_oauth.get("access_token") or "").strip():
-                spec[_OAUTH_KEY] = dict(old_oauth)
+                spec[_OAUTH_KEY] = {"required": True} if client_changed else dict(old_oauth)
             elif isinstance(old_oauth, dict) and old_oauth.get("required") is True:
-                spec[_OAUTH_KEY] = {"required": True}
+                spec[_OAUTH_KEY] = _required_marker(old_oauth)
         out[name] = spec
+    return out
+
+
+def _merge_oauth_client(raw: Any, old_client: dict[str, Any]) -> Any:
+    if not isinstance(raw, dict):
+        return raw
+    client = {k: v for k, v in raw.items() if k != "has_client_secret"}
+    same_client = str(client.get("client_id") or "").strip() == old_client.get("client_id")
+    if "client_secret" not in client and same_client and old_client.get("client_secret"):
+        client["client_secret"] = old_client["client_secret"]
+    return client
+
+
+def _comparable_oauth_client(client: Any) -> dict[str, Any]:
+    """Shape a not-yet-normalized client like the stored one, for change detection."""
+    if not isinstance(client, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("client_id", "scope", "authorization_endpoint", "token_endpoint"):
+        value = str(client.get(key) or "").strip()
+        if value:
+            out[key] = value
+    secret = str(client.get("client_secret") or "")
+    if secret:
+        out["client_secret"] = secret
     return out
 
 
@@ -402,15 +625,22 @@ def expand_custom_instances(
     parent: Any,
     servers: dict[str, Any],
     shared_view: bool = False,
+    viewer_is_admin: bool = False,
+    member_group_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Build list-API dicts for each custom server (independent status)."""
+    groups = member_group_ids or set()
     items: list[dict[str, Any]] = []
     for name, spec in servers.items():
         if not isinstance(spec, dict):
             continue
         enabled = server_enabled(spec)
-        if shared_view and spec.get("shared") is not True:
+        if shared_view and not shared_server_visible(
+            spec, is_admin=viewer_is_admin, member_group_ids=groups
+        ):
             continue
+        visibility, group_ids = server_audience(spec)
+        icon = str(spec.get("avatar_icon") or "").strip()
         items.append(
             {
                 "instance_id": (
@@ -427,9 +657,14 @@ def expand_custom_instances(
                 "has_credentials": True,
                 "default_open": spec.get("default_open") is True,
                 "shared": spec.get("shared") is True,
+                "visibility": visibility,
+                "group_ids": group_ids,
+                "avatar_icon": icon or None,
                 "owner_user_id": parent.user_id,
                 "created_at": parent.created_at,
                 "updated_at": parent.updated_at,
+                "_avatar_parent_id": parent.instance_id,
+                "_avatar_server_name": name,
             }
         )
     items.sort(key=lambda row: str(row["display_name"]).casefold())

@@ -11,6 +11,7 @@ import {
   Terminal,
   FolderOpen,
   Activity,
+  Link2,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
 import cx from "classnames";
@@ -63,6 +64,7 @@ import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
+import LocalExecutionBar from "./components/LocalExecutionBar";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
 import ModelConfigEmpty from "./components/ModelConfigEmpty";
 import AgentProfileDrawer from "../../components/AgentProfileDrawer";
@@ -83,7 +85,8 @@ import {
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
-import { isTeamAgent } from "../../utils/teamAgent";
+import { isRemoteShadowAgent } from "../../utils/remoteExpert";
+import { isTeamAgent, teamMemberChatOption } from "../../utils/teamAgent";
 import ChatDockPanels from "./components/ChatDockPanels";
 import type { ChatDockAddTabHandlers } from "./components/ChatDockPanel";
 import { ChatFilePreviewProvider } from "./ChatFilePreviewContext";
@@ -93,7 +96,11 @@ import {
   dockTabIdForToolCall,
 } from "./ChatToolDockContext";
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
-import ChatTitleBar from "./components/ChatTitleBar";
+import ChatTitleBar, { ChatSidePanelToggle } from "./components/ChatTitleBar";
+import ShareConversationDialog from "./components/ShareConversationDialog";
+import { saveSessionShared } from "./utils/shareSession";
+import { publicShareAvailable } from "./utils/publicShareHost";
+import SessionShareMark from "./components/SessionShareMark";
 import TeamChatBadge from "./components/TeamChatBadge";
 import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
@@ -144,6 +151,15 @@ function ChatPageInner() {
   const canTerminal = userCan(user, "terminal");
   const canConfigureModels = navAllowed(user, "models");
   const chatHistoryRail = useChatHistoryRail();
+  const [shareTarget, setShareTarget] = useState<{
+    agentId: string;
+    threadId: string;
+  } | null>(null);
+  const openShare = useCallback((threadId: string, agentId?: string | null) => {
+    if (!publicShareAvailable() || !agentId || !threadId) return;
+    if (isRemoteShadowAgent({ agent_id: agentId })) return;
+    setShareTarget({ agentId, threadId });
+  }, []);
   const [browserRecording, setBrowserRecording] = useState(false);
   const [browserRecordingId, setBrowserRecordingId] = useState<string | null>(
     null,
@@ -212,11 +228,15 @@ function ChatPageInner() {
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
   );
+  // Cloud/bridge shadows already live elsewhere — no local public share URL.
+  const shareLinks =
+    publicShareAvailable() && !isRemoteShadowAgent(activeAgent ?? {});
   const agentChatReady = isAgentChatReady(activeAgent?.state, activeAgent);
   const trajectoryEnabled =
     activeAgent !== null && activeAgent.config?.enable_trajectory !== false;
-  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {});
+  const sharedExpertViewer = isSharedExpertViewer(activeAgent ?? {}, user);
   const isTeamChat = isTeamAgent(activeAgent);
+  const isManagedChat = activeAgent?.kind === "managed";
   const [agentProfileOpen, setAgentProfileOpen] = useState(false);
   const [profileAgentId, setProfileAgentId] = useState<string | null>(null);
   const profileAgent = useMemo(() => {
@@ -250,6 +270,13 @@ function ChatPageInner() {
     () => selectEnabledExperts(agents, resolvedAgentId, { pinActive: false }),
     [agents, resolvedAgentId],
   );
+
+  /**
+   * Experts the user owns that are not chat-ready. The history rail only lists
+   * agents that can chat, so it needs this to tell "you have no experts" apart
+   * from "none of yours are running" before offering the create-expert nudge.
+   */
+  const unreadyExperts = Math.max(0, agents.length - sidebarAgents.length);
 
   const {
     status: memoryMaint,
@@ -427,8 +454,12 @@ function ChatPageInner() {
     openWorkspaceTab,
     openBrowserTab,
     openTerminalTab,
+    openGitTab,
+    openGitHistoryTab,
+    openTurnDiffTab,
     toggleBrowserPanel,
     toggleWorkspacePanel,
+    toggleSidePanel,
     toggleTerminalPanel,
     openToolUiTab,
     focusToolUiTab,
@@ -516,12 +547,14 @@ function ChatPageInner() {
     if (canTerminal) {
       handlers.onOpenTerminal = openTerminalTab;
     }
+    handlers.onOpenGit = openGitTab;
     return handlers;
   }, [
     agentChatReady,
     canTerminal,
     handleOpenBrowserTab,
     openFileList,
+    openGitTab,
     openTerminalTab,
     openWorkspaceTab,
     sharedExpertViewer,
@@ -583,6 +616,7 @@ function ChatPageInner() {
     availableModels,
     modelsReady,
     activeModelRef,
+    preferredModel,
     reasoningMode,
     reasoningEffort,
     handleReasoningChange,
@@ -590,6 +624,9 @@ function ChatPageInner() {
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,
+    sessionModes,
+    sessionMode,
+    handleSessionModeChange,
     handleConnectorsChange,
     handleKnowledgeBaseIdsChange,
   } = useChatComposerResources(
@@ -600,6 +637,8 @@ function ChatPageInner() {
     composerSession?.reasoningEffort,
     composerSession?.conversationMode,
     composerSession?.hitlPolicy,
+    composerSession?.sessionMode,
+    composerSession?.owned !== false,
   );
 
   const { contextMaxTokens, contextUsedTokens } = useChatContextWindow(
@@ -608,7 +647,7 @@ function ChatPageInner() {
     selectedModel,
     availableModels,
     activeAgent?.default_model,
-    activeModelRef,
+    preferredModel || activeModelRef,
     activeAgent,
   );
 
@@ -700,10 +739,18 @@ function ChatPageInner() {
   const teamExpertOptions = useMemo(() => {
     if (!isTeamChat) return chatAgentOptionsPickable;
     const ids = new Set(activeAgent?.member_ids ?? []);
-    return chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const listed = chatAgentOptions.filter((item) => ids.has(item.agent_id));
+    const seen = new Set(listed.map((item) => item.agent_id));
+    const extras = (activeAgent?.members ?? [])
+      .filter(
+        (member) => ids.has(member.agent_id) && !seen.has(member.agent_id),
+      )
+      .map(teamMemberChatOption);
+    return [...listed, ...extras];
   }, [
     isTeamChat,
     activeAgent?.member_ids,
+    activeAgent?.members,
     chatAgentOptions,
     chatAgentOptionsPickable,
   ]);
@@ -714,8 +761,15 @@ function ChatPageInner() {
       connectors: chatConnectors,
       knowledgeBases: chatKnowledgeBases,
       agents: chatAgentOptions,
+      models: availableModels,
     }),
-    [chatSkills, chatConnectors, chatKnowledgeBases, chatAgentOptions],
+    [
+      chatSkills,
+      chatConnectors,
+      chatKnowledgeBases,
+      chatAgentOptions,
+      availableModels,
+    ],
   );
 
   const { handleSend } = useChatSend({
@@ -727,6 +781,7 @@ function ChatPageInner() {
     reasoningMode,
     reasoningEffort,
     conversationMode,
+    sessionMode,
     hitlPolicy,
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
@@ -750,6 +805,33 @@ function ChatPageInner() {
     setBrowserLastRecordingId,
   });
 
+  const sharedTurnBusy = useCallback(
+    (threadId?: string | null) => {
+      const id = threadId || activeThreadId || "";
+      if (!id) return false;
+      const session =
+        id === activeThreadId
+          ? composerSession
+          : sessions.find((item) => item.id === id);
+      if (!session?.contributed) return false;
+      return chatStore.sharedTurnBlocksSender(id, user?.id, true);
+    },
+    [activeThreadId, composerSession, sessions, user?.id],
+  );
+
+  useEffect(() => {
+    return chatStore.onSharedTurnBusy((event) => {
+      if (
+        event.sessionId &&
+        activeThreadId &&
+        event.sessionId !== activeThreadId
+      ) {
+        return;
+      }
+      antMessage.warning(t("chat.sharedTurnBusy"));
+    });
+  }, [activeThreadId, t]);
+
   // Wrap handleSend: skill-recording keywords, then pending HITL routing.
   // An open ask pause must become respond-resume (not a new turn); any other
   // pending HITL must not start a turn that would cancel the interrupt.
@@ -759,11 +841,15 @@ function ChatPageInner() {
       attachments?: ChatAttachment[],
       overrides?: ChatSendOverrides,
     ) => {
+      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
+      if (sharedTurnBusy(targetThreadId)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return;
+      }
       if (interceptUserMessage(text)) {
         // The workflow intercepted the message — don't send it to the agent
         return;
       }
-      const targetThreadId = overrides?.threadId ?? activeThreadId ?? undefined;
       const ask =
         targetThreadId && targetThreadId === activeThreadId
           ? pendingAsk
@@ -802,6 +888,7 @@ function ChatPageInner() {
       hasPendingHitlPause,
       activeThreadId,
       resumeHitl,
+      sharedTurnBusy,
       t,
     ],
   );
@@ -868,11 +955,26 @@ function ChatPageInner() {
   // commits sendSteerWhileBusy. The click always acts: the
   // server routes delivery=auto (busy → steer queue, idle → new turn); a
   // dead socket degrades to the normal send path — never a silent no-op.
+  const enqueueUnlessSharedBusy = useCallback<typeof enqueueQueued>(
+    (input) => {
+      if (sharedTurnBusy(activeThreadId)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return "empty";
+      }
+      return enqueueQueued(input);
+    },
+    [activeThreadId, enqueueQueued, sharedTurnBusy, t],
+  );
+
   const handleSteerQueued = useCallback(
     (id: string) => {
       const key = activeThreadId || "";
       const item = queuedItems.find((q) => q.id === id);
       if (!item || !key) return;
+      if (sharedTurnBusy(key)) {
+        antMessage.warning(t("chat.sharedTurnBusy"));
+        return;
+      }
       const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
       const result = chatStore.sendSteerWhileBusy(key, item.text, {
         expectedTurnId: turnId || undefined,
@@ -889,6 +991,8 @@ function ChatPageInner() {
       activeTurnId,
       queuedItems,
       removeQueued,
+      sharedTurnBusy,
+      t,
       wrappedHandleSend,
     ],
   );
@@ -1130,6 +1234,7 @@ function ChatPageInner() {
       lastUserModel,
       selectedModel,
       activeAgent?.default_model,
+      preferredModel,
       activeModelRef,
     ]);
     if (providerId == null) {
@@ -1148,6 +1253,7 @@ function ChatPageInner() {
     availableModels,
     selectedModel,
     activeAgent?.default_model,
+    preferredModel,
     activeModelRef,
     messages,
     t,
@@ -1326,6 +1432,7 @@ function ChatPageInner() {
       isSidebarResizing={isSidebarResizing}
       sidebarElRef={sidebarElRef}
       agents={sidebarAgents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
@@ -1352,6 +1459,7 @@ function ChatPageInner() {
       onRenameSession={renameSession}
       onPinSession={pinSession}
       onForkSession={handleForkSession}
+      onShareSession={shareLinks ? openShare : undefined}
       forkDisabled={sessionForkDisabled}
       forkDisabledHint={sessionForkDisabledHint}
       onSidebarOpenChange={setSidebarOpen}
@@ -1361,10 +1469,22 @@ function ChatPageInner() {
     />
   );
 
+  const sidePanelToggle = !sharedExpertViewer ? (
+    <ChatSidePanelToggle
+      open={dockOpen}
+      disabled={!agentChatReady}
+      disabledHint={t("workspace.requiresRunning")}
+      onToggle={toggleSidePanel}
+    />
+  ) : null;
+
   return (
     <ChatFilePreviewProvider
       openFilePreview={openFileAt}
+      openGitChange={(path) => openGitTab(path)}
+      openTurnDiff={openTurnDiffTab}
       openKnowledgeCitation={openKnowledgeCitation}
+      threadId={activeThreadId}
     >
       <ChatToolDockProvider
         dockOpen={dockOpen}
@@ -1382,6 +1502,10 @@ function ChatPageInner() {
             styles.chatPage,
             dockIsResizing && styles.panelResizeActive,
             dockOpen && dockMode === "bottom" && styles.chatPageWithBottomDock,
+            dockOpen &&
+              dockMode === "right" &&
+              !isMobile &&
+              styles.chatPageWithRightDock,
           )}
         >
           {/* Main chat area */}
@@ -1415,10 +1539,30 @@ function ChatPageInner() {
                     <span className={styles.mobileTitleText}>
                       {activeSessionTitle}
                     </span>
+                    <SessionShareMark
+                      contributed={activeSession?.contributed}
+                      owned={activeSession?.owned}
+                    />
                     <TeamChatBadge show={isTeamChat} />
                     <RemoteExpertHint agent={activeAgent} />
                   </div>
                 )}
+                {shareLinks &&
+                activeSession &&
+                activeSession.owned !== false &&
+                resolvedAgentId ? (
+                  <button
+                    type="button"
+                    className={styles.menuBtn}
+                    onClick={() =>
+                      openShare(activeSession.threadId, resolvedAgentId)
+                    }
+                    title={t("chat.publicShare.action", "分享链接")}
+                    aria-label={t("chat.publicShare.action", "分享链接")}
+                  >
+                    <Link2 size={18} strokeWidth={1.8} />
+                  </button>
+                ) : null}
                 {resolvedAgentId && !sharedExpertViewer && (
                   <div className={styles.mobileToolbarRight}>
                     <button
@@ -1471,20 +1615,47 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile && activeSession && activeSessionTitle && (
-              <ChatTitleBar
-                session={activeSession}
-                title={activeSessionTitle}
-                onRename={renameSession}
-                onPin={pinSession}
-                onFork={handleForkSession}
-                onDelete={handleDeleteSession}
-                forkDisabled={sessionForkDisabled}
-                forkDisabledHint={sessionForkDisabledHint}
-                isTeam={isTeamChat}
-                agent={activeAgent}
-              />
-            )}
+            {!isMobile &&
+              (activeSession && activeSessionTitle ? (
+                <ChatTitleBar
+                  session={activeSession}
+                  title={activeSessionTitle}
+                  onRename={renameSession}
+                  onPin={pinSession}
+                  onFork={handleForkSession}
+                  onDelete={handleDeleteSession}
+                  onShare={
+                    !shareLinks || activeSession.owned === false
+                      ? undefined
+                      : () => openShare(activeSession.threadId, resolvedAgentId)
+                  }
+                  onContribute={
+                    activeAgent?.is_shared && activeSession.owned !== false
+                      ? (contributed) => {
+                          if (!resolvedAgentId) return;
+                          void saveSessionShared(
+                            resolvedAgentId,
+                            activeSession.id,
+                            contributed,
+                            () => undefined,
+                            t("chat.shareFailed"),
+                          );
+                        }
+                      : undefined
+                  }
+                  forkDisabled={sessionForkDisabled}
+                  forkDisabledHint={sessionForkDisabledHint}
+                  isTeam={isTeamChat}
+                  agent={activeAgent}
+                  sideSlot={sidePanelToggle}
+                />
+              ) : (
+                /* Empty chat: same row, same bounds — the composer must not
+                   jump up before the first message exists. */
+                <div className={styles.chatTitleBarEmpty}>
+                  {sidePanelToggle}
+                </div>
+              ))}
 
             {memoryMaintVisible && memoryMaint && (
               <MemoryMaintenanceBanner
@@ -1527,6 +1698,7 @@ function ChatPageInner() {
                   agent={activeAgent}
                   noAgents={noAgents}
                   loading={agentsLoading}
+                  canConfigureModels={canConfigureModels}
                 />
               ) : showWelcome && modelsReady && availableModels.length === 0 ? (
                 <ModelConfigEmpty canConfigure={canConfigureModels} />
@@ -1540,48 +1712,48 @@ function ChatPageInner() {
                   isTeam={isTeamChat}
                 />
               ) : (
-                <ChatAgentProfileProvider
-                  canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
-                  onOpen={(agentId) => {
-                    setProfileAgentId(
-                      agentId && agentId !== resolvedAgentId ? agentId : null,
-                    );
-                    setAgentProfileOpen(true);
-                  }}
-                  isTeam={isTeamChat}
-                >
-                  <MessageList
-                    messages={messages}
-                    agentId={resolvedAgentId}
-                    composerLookups={composerLookups}
-                    loading={awaitingThreadHistory}
-                    historyHasMore={historyHasMore}
-                    historyLoadingMore={historyLoadingMore}
-                    historyRefreshing={historyRefreshing}
-                    onLoadMoreHistory={loadMoreHistory}
-                    onRefreshHistory={refreshHistory}
-                    isStreaming={isStreaming}
-                    liveSpeakers={liveSpeakers}
-                    thinkingStartedAt={thinkingStartedAt}
-                    sessionKey={activeThreadId ?? undefined}
-                    onRegenerate={handleRegenerate}
-                    onDisableStreamUsage={handleDisableStreamUsage}
-                    onEditUserMessage={handleEditUserMessage}
-                    onWithdrawSteer={handleWithdrawSteer}
-                    onForkAssistantMessage={handleForkAssistantMessage}
-                    forkDisabled={forkDisabled}
-                    forkDisabledHint={forkDisabledHint}
-                    onAcpPermissionSelect={handleAcpPermissionSelect}
-                    onHitlDecision={handleHitlDecision}
-                    onTurnRailVisibilityChange={setTurnRailVisible}
-                    onOpenBrowser={hasBrowserTool ? openBrowserTab : undefined}
-                    onEditFile={
-                      !sharedExpertViewer && panelFilePaths.length > 0
-                        ? openFileList
-                        : undefined
-                    }
-                  />
-                </ChatAgentProfileProvider>
+                <>
+                  <ChatAgentProfileProvider
+                    canOpen={Boolean(resolvedAgentId) && !sharedExpertViewer}
+                    onOpen={(agentId) => {
+                      setProfileAgentId(
+                        agentId && agentId !== resolvedAgentId ? agentId : null,
+                      );
+                      setAgentProfileOpen(true);
+                    }}
+                    isTeam={isTeamChat}
+                  >
+                    <MessageList
+                      messages={messages}
+                      agentId={resolvedAgentId}
+                      composerLookups={composerLookups}
+                      loading={awaitingThreadHistory}
+                      historyHasMore={historyHasMore}
+                      historyLoadingMore={historyLoadingMore}
+                      historyRefreshing={historyRefreshing}
+                      onLoadMoreHistory={loadMoreHistory}
+                      onRefreshHistory={refreshHistory}
+                      isStreaming={isStreaming}
+                      liveSpeakers={liveSpeakers}
+                      thinkingStartedAt={thinkingStartedAt}
+                      sessionKey={activeThreadId ?? undefined}
+                      onRegenerate={handleRegenerate}
+                      onDisableStreamUsage={handleDisableStreamUsage}
+                      onEditUserMessage={handleEditUserMessage}
+                      onWithdrawSteer={handleWithdrawSteer}
+                      onForkAssistantMessage={handleForkAssistantMessage}
+                      forkDisabled={forkDisabled}
+                      forkDisabledHint={forkDisabledHint}
+                      onAcpPermissionSelect={handleAcpPermissionSelect}
+                      onHitlDecision={handleHitlDecision}
+                      onTurnRailVisibilityChange={setTurnRailVisible}
+                      onOpenBrowser={
+                        hasBrowserTool ? openBrowserTab : undefined
+                      }
+                      onEditFile={sharedExpertViewer ? undefined : openFileList}
+                    />
+                  </ChatAgentProfileProvider>
+                </>
               )}
             </div>
 
@@ -1619,7 +1791,12 @@ function ChatPageInner() {
                         mouseEnterDelay={0.35}
                         placement="left"
                       >
-                        <span className={styles.chatFloatBtnWrap}>
+                        <span
+                          className={cx(
+                            styles.chatFloatBtnWrap,
+                            styles.chatFloatHideNarrow,
+                          )}
+                        >
                           <button
                             type="button"
                             className={styles.chatFloatBtn}
@@ -1642,7 +1819,12 @@ function ChatPageInner() {
                       mouseEnterDelay={0.35}
                       placement="left"
                     >
-                      <span className={styles.chatFloatBtnWrap}>
+                      <span
+                        className={cx(
+                          styles.chatFloatBtnWrap,
+                          styles.chatFloatHideNarrow,
+                        )}
+                      >
                         <button
                           type="button"
                           className={styles.chatFloatBtn}
@@ -1670,7 +1852,12 @@ function ChatPageInner() {
                       mouseEnterDelay={0.35}
                       placement="left"
                     >
-                      <span className={styles.chatFloatBtnWrap}>
+                      <span
+                        className={cx(
+                          styles.chatFloatBtnWrap,
+                          styles.chatFloatHideNarrow,
+                        )}
+                      >
                         <button
                           type="button"
                           className={styles.terminalFloatBtn}
@@ -1781,6 +1968,7 @@ function ChatPageInner() {
                     key={pendingAsk.messageId}
                     questions={pendingAsk.questions}
                     status="pending"
+                    docked
                     onSubmit={(answer) =>
                       handleHitlDecision(
                         pendingAsk.actions.map(() => ({
@@ -1816,7 +2004,10 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
-            {!showWelcome && modelsReady && availableModels.length === 0 ? (
+            {!showWelcome &&
+            !isManagedChat &&
+            modelsReady &&
+            availableModels.length === 0 ? (
               <div className={styles.modelConfigDock}>
                 <div className={styles.modelConfigDockInner}>
                   <Alert
@@ -1845,8 +2036,16 @@ function ChatPageInner() {
             ) : null}
             <ChatInput
               ref={chatInputRef}
+              leading={
+                activeAgent?.bridge && resolvedAgentId ? (
+                  <LocalExecutionBar
+                    agentId={resolvedAgentId}
+                    threadId={activeThreadId}
+                  />
+                ) : null
+              }
               onSend={wrappedHandleSend}
-              onQueue={enqueueQueued}
+              onQueue={enqueueUnlessSharedBusy}
               queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
@@ -1860,8 +2059,8 @@ function ChatPageInner() {
                 !agentChatReady ||
                 noAgents ||
                 memoryMaintBlocking ||
-                !modelsReady ||
-                availableModels.length === 0
+                (!isManagedChat &&
+                  (!modelsReady || availableModels.length === 0))
               }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
@@ -1875,10 +2074,16 @@ function ChatPageInner() {
               onReasoningChange={handleReasoningChange}
               conversationMode={conversationMode}
               onConversationModeChange={handleConversationModeChange}
+              sessionModes={sessionModes}
+              sessionMode={sessionMode}
+              onSessionModeChange={handleSessionModeChange}
               hitlPolicy={hitlPolicy}
               onHitlPolicyChange={
-                hitlEnabled ? handleComposerHitlPolicyChange : undefined
+                hitlEnabled || isManagedChat
+                  ? handleComposerHitlPolicyChange
+                  : undefined
               }
+              lockThreadSettings={composerSession?.owned === false}
               availableConnectors={isTeamChat ? undefined : chatConnectors}
               selectedConnectors={isTeamChat ? [] : selectedConnectors}
               onConnectorsChange={
@@ -1901,6 +2106,7 @@ function ChatPageInner() {
               availableSubagents={isTeamChat ? undefined : chatSubagents}
               agentId={resolvedAgentId}
               threadId={activeThreadId}
+              managed={isManagedChat}
               defaultModel={activeAgent?.default_model ?? null}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}
@@ -1922,6 +2128,7 @@ function ChatPageInner() {
             onSelectTab={setDockActiveTab}
             onCloseTab={closeDockTab}
             onOpenFile={openFileAt}
+            onOpenGitHistory={openGitHistoryTab}
             browserEnvironment={browserEnvironment}
             bridgeConnectionId={bridgeConnectionId}
             threadId={activeThreadId}
@@ -1951,6 +2158,14 @@ function ChatPageInner() {
               onClose={() => setTrajectoryDrawerOpen(false)}
             />
           )}
+          {shareTarget ? (
+            <ShareConversationDialog
+              open
+              agentId={shareTarget.agentId}
+              threadId={shareTarget.threadId}
+              onClose={() => setShareTarget(null)}
+            />
+          ) : null}
         </div>
       </ChatToolDockProvider>
     </ChatFilePreviewProvider>

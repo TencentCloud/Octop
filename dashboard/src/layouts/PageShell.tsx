@@ -6,7 +6,6 @@ import { useAgent } from "../context/AgentContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import {
   titleRowEndPadding,
-  DESKTOP_DRAG_REGION_CLASS,
   DESKTOP_NO_DRAG_CLASS,
 } from "../utils/desktopChrome";
 import styles from "./PageShell.module.less";
@@ -40,6 +39,8 @@ interface PageShellProps {
   agentScoped?: boolean;
   /** Include team hosts in the agent picker (memory / channels). */
   showTeams?: boolean;
+  /** Omit managed experts from the agent picker (tools / plugins / MBTI). */
+  hideManaged?: boolean;
   /** When true, the content area does not scroll; children fill remaining height. */
   fill?: boolean;
   children: React.ReactNode;
@@ -97,6 +98,7 @@ function PageShell({
   pathTabs,
   agentScoped,
   showTeams,
+  hideManaged,
   fill,
   children,
 }: PageShellProps) {
@@ -131,7 +133,6 @@ function PageShell({
 
   return (
     <div
-      className={DESKTOP_DRAG_REGION_CLASS}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -181,7 +182,7 @@ function PageShell({
 
       {agentScoped && (
         <div className={styles.agentBar}>
-          <AgentSelector showTeams={showTeams} />
+          <AgentSelector showTeams={showTeams} hideManaged={hideManaged} />
         </div>
       )}
 

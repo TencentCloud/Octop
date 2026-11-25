@@ -1,10 +1,11 @@
 import type { CSSProperties } from "react";
-import { Alert, App, Button, Input, Select, Switch } from "antd";
+import { Alert, App, Button, Input, Select, Switch, Typography } from "antd";
 import {
   Activity,
   Cable,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Trash2,
 } from "lucide-react";
@@ -12,6 +13,15 @@ import { useTranslation } from "react-i18next";
 import cx from "classnames";
 
 import type { CustomMcpTransport } from "../../../api/modules/connectors";
+import {
+  ResourceAvatar,
+  ResourceAvatarPicker,
+  CONNECTOR_AVATAR_PRESETS,
+} from "../../../components/AvatarPicker";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
 import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import {
   accentForServerName,
@@ -25,6 +35,8 @@ interface CustomMcpServerCardProps {
   probing: boolean;
   authorizing?: boolean;
   oauthAvailable?: boolean;
+  /** Probe found an authorization server that needs a pre-registered client. */
+  oauthClientRequired?: boolean;
   probeTools?: { name: string; description: string }[];
   transportOptions: { value: string; label: string }[];
   onUpdate: (key: string, patch: Partial<ServerCardState>) => void;
@@ -33,7 +45,14 @@ interface CustomMcpServerCardProps {
   onProbe: () => void;
   onAuthorize?: () => void;
   onDefaultOpenChange?: (defaultOpen: boolean) => void;
-  onSharedChange?: (shared: boolean) => void;
+  /** Drawer form: always expanded, no collapse or delete. */
+  embedded?: boolean;
+  /** Saved servers keep their technical id. */
+  nameLocked?: boolean;
+  avatarUrl?: string | null;
+  onPickAvatar?: (file: File) => void | Promise<void>;
+  onSelectAvatarPreset?: (presetId: string | null) => void | Promise<void>;
+  onRemoveAvatar?: () => void | Promise<void>;
 }
 
 export function CustomMcpServerCard({
@@ -41,6 +60,7 @@ export function CustomMcpServerCard({
   probing,
   authorizing = false,
   oauthAvailable = false,
+  oauthClientRequired = false,
   probeTools,
   transportOptions,
   onUpdate,
@@ -49,7 +69,12 @@ export function CustomMcpServerCard({
   onProbe,
   onAuthorize,
   onDefaultOpenChange,
-  onSharedChange,
+  embedded = false,
+  nameLocked = false,
+  avatarUrl,
+  onPickAvatar,
+  onSelectAvatarPreset,
+  onRemoveAvatar,
 }: CustomMcpServerCardProps) {
   const { t } = useTranslation();
   const { modal } = App.useApp();
@@ -85,7 +110,11 @@ export function CustomMcpServerCard({
     });
   };
 
-  const authPending = isHttp && oauthAvailable && !card.oauthConfigured;
+  const clientPending =
+    isHttp && oauthClientRequired && !oauthAvailable && !card.oauthConfigured;
+  const authPending =
+    isHttp && (oauthAvailable || clientPending) && !card.oauthConfigured;
+  const oauthCallbackUrl = `${window.location.origin}/api/connectors/oauth/callback`;
   const effectiveEnabled = !authPending && card.enabled;
   const showOAuthConnectLink =
     isHttp && card.collapsed && authPending && onAuthorize;
@@ -101,6 +130,7 @@ export function CustomMcpServerCard({
     <div
       className={cx(
         styles.customMcpServerCard,
+        embedded && styles.customMcpServerCardEmbedded,
         !card.collapsed && styles.customMcpServerCardOpen,
         !(card.enabled && !authPending) && styles.customMcpServerCardDisabled,
       )}
@@ -113,7 +143,16 @@ export function CustomMcpServerCard({
       <div className={styles.customMcpServerTop}>
         <div className={styles.customMcpServerIdentity}>
           <span className={styles.customMcpServerIcon}>
-            <Cable size={22} aria-hidden />
+            {card.avatarIcon || avatarUrl ? (
+              <ResourceAvatar
+                url={avatarUrl}
+                icon={card.avatarIcon || null}
+                presets={CONNECTOR_AVATAR_PRESETS}
+                className={styles.customMcpAvatarMark}
+              />
+            ) : (
+              <Cable size={22} aria-hidden />
+            )}
           </span>
           <div className={styles.customMcpServerMeta}>
             <span className={styles.customMcpServerNameRow}>
@@ -153,25 +192,31 @@ export function CustomMcpServerCard({
               size="small"
             />
           </div>
-          <Button
-            type="text"
-            size="small"
-            icon={
-              card.collapsed ? (
-                <ChevronDown size={16} />
-              ) : (
-                <ChevronUp size={16} />
-              )
-            }
-            onClick={() => onUpdate(card.key, { collapsed: !card.collapsed })}
-          />
-          <Button
-            type="text"
-            size="small"
-            danger
-            icon={<Trash2 size={16} />}
-            onClick={handleRemove}
-          />
+          {embedded ? null : (
+            <>
+              <Button
+                type="text"
+                size="small"
+                icon={
+                  card.collapsed ? (
+                    <ChevronDown size={16} />
+                  ) : (
+                    <ChevronUp size={16} />
+                  )
+                }
+                onClick={() =>
+                  onUpdate(card.key, { collapsed: !card.collapsed })
+                }
+              />
+              <Button
+                type="text"
+                size="small"
+                danger
+                icon={<Trash2 size={16} />}
+                onClick={handleRemove}
+              />
+            </>
+          )}
         </div>
       </div>
 
@@ -190,8 +235,30 @@ export function CustomMcpServerCard({
         </div>
       ) : null}
 
-      {!card.collapsed ? (
+      {!card.collapsed || embedded ? (
         <div className={styles.customMcpCardBody}>
+          {embedded && onPickAvatar && onSelectAvatarPreset ? (
+            <div className={styles.customMcpField}>
+              <label>{t("connectors.customMcp.avatar", "头像")}</label>
+              <ResourceAvatarPicker
+                imageUrl={avatarUrl}
+                presetId={card.avatarIcon || null}
+                presets={CONNECTOR_AVATAR_PRESETS}
+                previewLarge
+                renderPreview={({ displayUrl, presetId }) => (
+                  <ResourceAvatar
+                    url={displayUrl}
+                    icon={presetId}
+                    presets={CONNECTOR_AVATAR_PRESETS}
+                    large
+                  />
+                )}
+                onPick={onPickAvatar}
+                onSelectPreset={onSelectAvatarPreset}
+                onRemove={avatarUrl ? onRemoveAvatar : undefined}
+              />
+            </div>
+          ) : null}
           <div className={styles.customMcpField}>
             <label>{t("connectors.customMcp.displayName", "显示名称")}</label>
             <Input
@@ -219,14 +286,20 @@ export function CustomMcpServerCard({
             </label>
             <Input
               value={card.name}
+              disabled={nameLocked}
               onChange={(e) => onUpdate(card.key, { name: e.target.value })}
               placeholder={isHttp ? "http-server" : "stdio-server"}
             />
             <div className={styles.customMcpFieldHint}>
-              {t(
-                "connectors.customMcp.serverIdHint",
-                "技术标识，仅支持字母、数字、下划线与连字符。",
-              )}
+              {nameLocked
+                ? t(
+                    "connectors.customMcp.serverIdLocked",
+                    "已保存的服务器 ID 不能修改。",
+                  )
+                : t(
+                    "connectors.customMcp.serverIdHint",
+                    "技术标识，仅支持字母、数字、下划线与连字符。",
+                  )}
             </div>
           </div>
           <div className={styles.customMcpField}>
@@ -268,6 +341,127 @@ export function CustomMcpServerCard({
                   autoSize={{ minRows: 2, maxRows: 6 }}
                   placeholder={"Authorization: Bearer sk-..."}
                 />
+              </div>
+              <div className={styles.customMcpField}>
+                <button
+                  type="button"
+                  className={styles.customMcpSectionToggle}
+                  aria-expanded={card.oauthClientOpen}
+                  onClick={() =>
+                    onUpdate(card.key, {
+                      oauthClientOpen: !card.oauthClientOpen,
+                    })
+                  }
+                >
+                  {card.oauthClientOpen ? (
+                    <ChevronDown size={14} aria-hidden />
+                  ) : (
+                    <ChevronRight size={14} aria-hidden />
+                  )}
+                  {t(
+                    "connectors.customMcp.oauthClientTitle",
+                    "OAuth 应用凭证（可选）",
+                  )}
+                </button>
+                {card.oauthClientOpen ? (
+                  <div className={styles.customMcpSection}>
+                    <div className={styles.customMcpFieldHint}>
+                      {t(
+                        "connectors.customMcp.oauthClientHint",
+                        "授权服务器不支持自动注册客户端时，填写你在对方平台创建的 OAuth 应用，并把下面的回调地址登记到该应用：",
+                      )}{" "}
+                      <Typography.Text code copyable>
+                        {oauthCallbackUrl}
+                      </Typography.Text>
+                    </div>
+                    <div className={styles.customMcpField}>
+                      <label>Client ID</label>
+                      <Input
+                        value={card.oauthClientId}
+                        onChange={(e) =>
+                          onUpdate(card.key, { oauthClientId: e.target.value })
+                        }
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className={styles.customMcpField}>
+                      <label>Client Secret</label>
+                      <Input.Password
+                        value={card.oauthClientSecret}
+                        onChange={(e) =>
+                          onUpdate(card.key, {
+                            oauthClientSecret: e.target.value,
+                          })
+                        }
+                        autoComplete="new-password"
+                        placeholder={
+                          card.oauthClientSecretSaved
+                            ? t(
+                                "connectors.customMcp.oauthClientSecretSaved",
+                                "已保存，留空则不修改",
+                              )
+                            : t(
+                                "connectors.customMcp.oauthClientSecretPlaceholder",
+                                "公开客户端可留空",
+                              )
+                        }
+                      />
+                    </div>
+                    <div className={styles.customMcpField}>
+                      <label>Scope</label>
+                      <Input
+                        value={card.oauthScope}
+                        onChange={(e) =>
+                          onUpdate(card.key, { oauthScope: e.target.value })
+                        }
+                        placeholder={t(
+                          "connectors.customMcp.oauthScopePlaceholder",
+                          "留空则使用服务器声明的范围，多个用空格分隔",
+                        )}
+                      />
+                    </div>
+                    <div className={styles.customMcpField}>
+                      <label>
+                        {t(
+                          "connectors.customMcp.oauthAuthorizationEndpoint",
+                          "授权端点",
+                        )}
+                      </label>
+                      <Input
+                        value={card.oauthAuthorizationEndpoint}
+                        onChange={(e) =>
+                          onUpdate(card.key, {
+                            oauthAuthorizationEndpoint: e.target.value,
+                          })
+                        }
+                        placeholder="https://auth.example.com/authorize"
+                      />
+                    </div>
+                    <div className={styles.customMcpField}>
+                      <label>
+                        {t(
+                          "connectors.customMcp.oauthTokenEndpoint",
+                          "令牌端点",
+                        )}
+                      </label>
+                      <Input
+                        value={card.oauthTokenEndpoint}
+                        onChange={(e) =>
+                          onUpdate(card.key, {
+                            oauthTokenEndpoint: e.target.value,
+                          })
+                        }
+                        placeholder="https://auth.example.com/token"
+                      />
+                      <div className={styles.customMcpFieldHint}>
+                        {t(
+                          "connectors.customMcp.oauthEndpointsHint",
+                          "两个端点都留空时从 MCP 地址自动发现；服务器不提供发现信息时再填写。",
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </>
           ) : (
@@ -313,32 +507,26 @@ export function CustomMcpServerCard({
             </>
           )}
 
-          <div className={styles.customMcpField}>
-            <label>{t("connectors.shared", "是否共享")}</label>
-            <div className={styles.customMcpDefaultOpenRow}>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRow}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("connectors.defaultEnabled", "是否默认开启")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {effectiveEnabled
+                    ? t(
+                        "connectors.defaultOpenHint",
+                        "关闭时需在对话中手动勾选才会注入工具。",
+                      )
+                    : t(
+                        "connectors.customMcp.defaultOpenRequiresEnable",
+                        "需先启用连接器。",
+                      )}
+                </span>
+              </div>
               <Switch
-                checked={card.shared}
-                onChange={(checked) => {
-                  if (onSharedChange) {
-                    onSharedChange(checked);
-                    return;
-                  }
-                  onUpdate(card.key, { shared: checked });
-                }}
-              />
-              <span className={styles.customMcpFieldHint}>
-                {t(
-                  "connectors.sharedHint",
-                  "共享后其他用户可以选择使用，但不能查看或修改配置。",
-                )}
-              </span>
-            </div>
-          </div>
-
-          <div className={styles.customMcpField}>
-            <label>{t("connectors.defaultEnabled", "是否默认开启")}</label>
-            <div className={styles.customMcpDefaultOpenRow}>
-              <Switch
+                size="small"
                 checked={card.defaultOpen}
                 disabled={!effectiveEnabled}
                 onChange={(checked) => {
@@ -349,33 +537,43 @@ export function CustomMcpServerCard({
                   onUpdate(card.key, { defaultOpen: checked });
                 }}
               />
-              {!effectiveEnabled ? (
-                <span className={styles.customMcpFieldHint}>
-                  {t(
-                    "connectors.customMcp.defaultOpenRequiresEnable",
-                    "需先启用连接器。",
-                  )}
-                </span>
-              ) : !card.defaultOpen ? (
-                <span className={styles.customMcpFieldHint}>
-                  {t(
-                    "connectors.customMcp.defaultOpenHint",
-                    "开启后，你的 Dashboard、IM 与 Cron（未手动选连接器时）会默认带上此 MCP。",
-                  )}
-                </span>
-              ) : null}
             </div>
-            {effectiveEnabled && card.defaultOpen ? (
-              <Alert
-                type="warning"
-                showIcon
-                message={t(
-                  "connectors.defaultOpenWarning",
-                  "开启后默认会在你的 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
-                )}
-              />
-            ) : null}
+            <ResourceVisibilityGate allowOwner visibility={card.visibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label", "谁可以使用")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("connectors.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={card.visibility}
+                  groupIds={card.groupIds}
+                  onChange={(next) =>
+                    onUpdate(card.key, {
+                      visibility: next.visibility,
+                      groupIds:
+                        next.visibility === "groups" ? next.groupIds : [],
+                      shared: next.visibility !== "owner",
+                    })
+                  }
+                />
+              </div>
+            </ResourceVisibilityGate>
           </div>
+          {effectiveEnabled && card.defaultOpen ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                "connectors.defaultOpenWarning",
+                "开启后默认会在你的 Dashboard、IM 与 Cron（未特殊选连接器时）携带该工具（额外消耗 token）。Dashboard 可关本轮；Cron 若显式选择连接器则以选择为准。",
+              )}
+            />
+          ) : null}
 
           {isHttp && card.oauthConfigured ? (
             <Alert
@@ -415,7 +613,35 @@ export function CustomMcpServerCard({
             />
           ) : null}
 
-          {isHttp ? (
+          {clientPending ? (
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                "connectors.customMcp.probeNeedsOAuthClient",
+                "此 MCP 的授权服务器不支持自动注册客户端",
+              )}
+              description={t(
+                "connectors.customMcp.oauthClientRequiredHint",
+                "请在「OAuth 应用凭证」中填写 Client ID，然后点击「保存并授权」。",
+              )}
+              action={
+                onAuthorize ? (
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={authorizing}
+                    disabled={!card.oauthClientId.trim()}
+                    onClick={onAuthorize}
+                  >
+                    {t("connectors.customMcp.saveAndAuthorize", "保存并授权")}
+                  </Button>
+                ) : undefined
+              }
+            />
+          ) : null}
+
+          {isHttp && !embedded ? (
             <div className={styles.customMcpCardActions}>
               <Button
                 icon={<Activity size={14} />}

@@ -14,7 +14,7 @@ from octop.api.common.agent import (
     assert_agent_access_row,
     assert_agent_owner,
 )
-from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
+from octop.api.common.agent_runtime import AgentRuntimeFields, persisted_agent_settings
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
@@ -25,6 +25,7 @@ from octop.infra.agents.experts.avatar import (
     read_workspace_avatar,
     write_workspace_avatar,
 )
+from octop.infra.agents.settings.compaction import COMPACTION_CONFIG_KEY, compaction_for_api
 from octop.infra.agents.settings.profile import (
     id_list_from_row,
     parse_config_json,
@@ -87,13 +88,16 @@ class AgentPatchBody(AgentRuntimeFields):
     mcp_servers: list[str] | None = None
 
 
-def _attach_unread_counts(
+def _attach_viewer_stats(
     server: Any, user_id: int, payloads: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
+    """Unread totals and this viewer's latest chat time, one query each."""
     agent_ids = [p["agent_id"] for p in payloads]
     totals = server.services.session_repo.unread_totals_by_agent(user_id, agent_ids)
+    activity = server.services.thread_repo.latest_activity_by_agent(user_id, agent_ids)
     for payload in payloads:
         payload["unread_count"] = totals.get(payload["agent_id"], 0)
+        payload["last_active"] = activity.get(payload["agent_id"])
     return payloads
 
 
@@ -171,6 +175,16 @@ def _viewer_mcp_servers(
     return list(present(owner_id, viewer_user_id, names))
 
 
+def _same_user_id(left: Any, right: Any) -> bool:
+    """True when both ids are present and numerically equal."""
+    if left is None or right is None:
+        return False
+    try:
+        return int(left) == int(right)
+    except (TypeError, ValueError):
+        return False
+
+
 def _row_dict(
     row: Any,
     *,
@@ -183,7 +197,7 @@ def _row_dict(
     public_cfg = {
         key: value
         for key, value in strip_profile_config(cfg).items()
-        if key not in AGENT_RUNTIME_CONFIG_KEYS
+        if key not in AGENT_RUNTIME_CONFIG_KEYS and key != COMPACTION_CONFIG_KEY
     }
     packages = parse_id_list_json(row.skill_package_ids)
     if packages is None:
@@ -220,18 +234,21 @@ def _row_dict(
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
-        "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
+        "is_owner": _same_user_id(row.user_id, viewer_user_id),
         "owner_username": owner_username,
         "kind": getattr(row, "kind", None) or "expert",
         **agent_runtime_values(cfg),
+        "compaction": compaction_for_api(cfg),
     }
     if payload["kind"] == "team":
         registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
         teams = getattr(registry, "teams", None)
         if teams is not None:
             payload["member_ids"] = teams.visible_member_ids(row.agent_id)
+            payload["members"] = teams.member_summaries(row.agent_id)
         else:
             payload["member_ids"] = []
+            payload["members"] = []
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
     repos = getattr(getattr(server, "services", None), "repos", None)
@@ -260,6 +277,11 @@ async def list_agents(
     Default ``scope=mine`` returns agents owned by the authenticated user plus
     agents other users have explicitly shared.
     Holders of the ``users`` permission (and admins) may pass ``scope=all``.
+
+    Each row includes ``unread_count`` and ``last_active`` for the caller.
+    ``last_active`` is the newest ``threads.last_active`` on that user's own
+    threads (empty threads are omitted, so a never-chatted agent is ``null``).
+    A shared expert does not inherit another user's activity.
     """
     if scope == "all" and not user_has_permission(user, "users"):
         raise OctopError(
@@ -288,7 +310,7 @@ async def list_agents(
             )
             for r in rows
         ]
-        return _attach_unread_counts(server, user.id, payloads)
+        return _attach_viewer_stats(server, user.id, payloads)
 
     owned = registry.list_agents(user.id)
     shared = server.services.agent_repo.list_shared(
@@ -303,7 +325,7 @@ async def list_agents(
         owner = server.services.user_repo.get(row.user_id)
         if owner is not None:
             shared_owner_username_by_id[row.user_id] = owner.username
-    return _attach_unread_counts(
+    return _attach_viewer_stats(
         server,
         user.id,
         [
@@ -357,7 +379,7 @@ async def create_agent(
         default_model=body.default_model,
         system_prompt=body.system_prompt,
         config=body.config,
-        runtime_config=runtime_field_updates(body, exclude_unset=True),
+        runtime_config=persisted_agent_settings(body, exclude_unset=True),
         icon=body.icon,
         template_name=body.template_name,
         is_shared=body.is_shared,

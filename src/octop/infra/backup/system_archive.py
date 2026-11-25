@@ -27,16 +27,23 @@ from octop.infra.backup.chats import (
     strip_chat_tables_from_sqlite_file,
 )
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
-from octop.infra.backup.pg_dump import dump_postgres, restore_postgres
+from octop.infra.backup.pg_dump import (
+    dump_contains_table_data,
+    dump_postgres,
+    postgres_dump_data_exclusions,
+    restore_postgres,
+)
 from octop.infra.backup.snapshot import (
-    capture_jwt_secret_from_pool,
+    capture_secrets_from_pool,
     capture_users_from_pool,
     infer_owner_user_id,
     prune_users_not_in,
+    redact_secrets_from_sqlite_file,
     remap_ownership_to_user,
-    restore_jwt_secret_into_pool,
+    replace_secrets_in_pool,
     restore_sqlite_into_pool,
     snapshot_sqlite_file,
+    sqlite_file_has_secret_rows,
     upsert_users_into_pool,
 )
 from octop.infra.db.migrate import _current_version, _max_discovered_version, run_migrations
@@ -247,26 +254,22 @@ def create_system_backup(
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db_dest = root / db_arc
-            history_path = paths.root / "history_v2.sqlite"
-            history_dest = root / "history_v2.sqlite"
-            marker = history_path.with_suffix(".required")
-            if include_chats and marker.exists() and not history_path.exists():
-                raise FileNotFoundError("Required history archive is missing")
-            if include_chats and history_path.exists():
-                # Snapshot the child archive before the main thread registry.
-                # A fully consistent multi-file restore still requires quiescence.
-                snapshot_sqlite_file(history_path, history_dest)
             if pool.dialect == "postgresql":
                 dump_postgres(
                     db_config.postgresql_conninfo(),
                     db_dest,
-                    exclude_table_data=() if include_chats else CHAT_TABLES_CHILD_FIRST,
+                    exclude_table_data=postgres_dump_data_exclusions(
+                        include_chats=include_chats,
+                        chat_tables=CHAT_TABLES_CHILD_FIRST,
+                    ),
                 )
             else:
                 assert isinstance(pool, SqlitePool)
                 snapshot_sqlite_file(pool.path, db_dest)
                 if not include_chats:
                     strip_chat_tables_from_sqlite_file(db_dest)
+                # Credentials stay on this instance. The copy must not carry them.
+                redact_secrets_from_sqlite_file(db_dest)
 
             manifest_path = root / _MANIFEST_NAME
             manifest_path.write_text(manifest.to_json(), encoding="utf-8")
@@ -283,10 +286,6 @@ def create_system_backup(
             with tarfile.open(partial, mode="w:gz") as tf:
                 tf.add(manifest_path, arcname=_MANIFEST_NAME)
                 tf.add(db_dest, arcname=db_arc)
-                if history_dest.exists():
-                    tf.add(history_dest, arcname="history/history_v2.sqlite")
-                    if marker.exists():
-                        tf.add(marker, arcname="history/history_v2.required")
                 if include_config and paths.config.is_file():
                     tf.add(
                         root / _CONFIG_DIR / "config.json",
@@ -365,6 +364,93 @@ def _extract_manifest_from_dir(extracted: Path) -> BackupManifest:
     return manifest
 
 
+def _extract_named_member(archive: Path, name: str, dest: Path) -> bool:
+    """Copy one archive member to *dest*. Return False when it is absent."""
+    with tarfile.open(archive, mode="r:*") as tf:
+        try:
+            member = tf.getmember(name)
+        except KeyError:
+            return False
+        src = tf.extractfile(member)
+        if src is None:
+            return False
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with dest.open("wb") as out:
+            shutil.copyfileobj(src, out)
+    return True
+
+
+def _replace_tar_member(archive: Path, member_name: str, replacement: Path, dest: Path) -> None:
+    """Write *dest* as a copy of *archive* with one regular file replaced."""
+    with tarfile.open(archive, mode="r:*") as tin, tarfile.open(dest, mode="w:gz") as tout:
+        for member in tin.getmembers():
+            if member.name == member_name:
+                info = tarfile.TarInfo(name=member.name)
+                info.size = replacement.stat().st_size
+                info.mtime = int(replacement.stat().st_mtime)
+                info.mode = member.mode & 0o777
+                info.type = tarfile.REGTYPE
+                with replacement.open("rb") as handle:
+                    tout.addfile(info, handle)
+                continue
+            if not member.isreg():
+                tout.addfile(member)
+                continue
+            fileobj = tin.extractfile(member)
+            tout.addfile(member, fileobj)
+
+
+def prepare_backup_download(
+    archive: Path,
+    *,
+    allow_embedded_signing_key: bool,
+) -> tuple[Path, bool]:
+    """Return ``(path, ephemeral)`` safe for a backup operator to download.
+
+    New archives already omit ``secrets``. Older SQLite archives are copied
+    with those rows removed. An older PostgreSQL dump that still contains
+    ``secrets`` data is only returned when ``allow_embedded_signing_key`` is set.
+    """
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = _extract_manifest_from_dir(_peek_extracted_manifest(archive, root))
+            db_copy = root / "dbfile"
+            if not _extract_named_member(archive, manifest.db_file, db_copy):
+                raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing database file")
+            if manifest.database_driver == "postgresql":
+                if dump_contains_table_data(db_copy, "secrets") and not allow_embedded_signing_key:
+                    raise OctopError(ErrorCode.FORBIDDEN, "admin required")
+                return archive, False
+            if not sqlite_file_has_secret_rows(db_copy):
+                return archive, False
+            redact_secrets_from_sqlite_file(db_copy)
+            fd, name = tempfile.mkstemp(prefix="octop-backup-", suffix=".tar.gz")
+            os.close(fd)
+            redacted = Path(name)
+            try:
+                _replace_tar_member(archive, manifest.db_file, db_copy, redacted)
+            except Exception:
+                redacted.unlink(missing_ok=True)
+                raise
+            return redacted, True
+    except OctopError:
+        raise
+    except (tarfile.TarError, OSError, json.JSONDecodeError, ValueError, KeyError) as exc:
+        if allow_embedded_signing_key:
+            return archive, False
+        raise OctopError(ErrorCode.FORBIDDEN, "admin required") from exc
+
+
+def _peek_extracted_manifest(archive: Path, root: Path) -> Path:
+    """Extract only ``manifest.json`` so download checks do not unpack the archive."""
+    dest = root / "peek"
+    dest.mkdir(parents=True, exist_ok=True)
+    if not _extract_named_member(archive, _MANIFEST_NAME, dest / _MANIFEST_NAME):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "backup archive missing manifest.json")
+    return dest
+
+
 def _extract_archive(source: Path | bytes, dest_dir: Path) -> None:
     """Extract *source* into *dest_dir* without holding the whole archive in a dict."""
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -425,6 +511,7 @@ def restore_system_backup(
     restore_config: bool = True,
     preserve_users: bool | None = None,
     owner_user_id: int | None = None,
+    allow_legacy_history: bool = True,
 ) -> dict[str, Any]:
     """Restore database, workspaces, and optional config from a tar.gz archive.
 
@@ -439,8 +526,12 @@ def restore_system_backup(
       ``"-migrated-from-lightclaw"``).
     * ``True`` — always preserve current users + JWT secret (cross-system
       import where passwords and outstanding sessions must remain valid).
-    * ``False`` — restore the users/secrets tables as-is from the backup
-      (normal same-instance restore).
+    * ``False`` — restore the users table as-is from the backup (normal
+      same-instance restore).
+
+    ``secrets`` rows are never taken from the archive. The live instance's
+    rows are written back after the database is replaced, and a signing key is
+    seeded when this instance does not have one yet.
 
     For LightClaw migration archives, ``owner_user_id`` (typically the admin
     performing the restore) receives all imported ``user_id`` ownership. When
@@ -450,14 +541,25 @@ def restore_system_backup(
         extracted = Path(tmp) / "extracted"
         _extract_archive(source, extracted)
         manifest = _extract_manifest_from_dir(extracted)
-        if (
-            (paths.root / "history_v2.required").exists()
-            or (paths.root / "history_v2.sqlite").exists()
-            or (extracted / "history/history_v2.sqlite").exists()
-        ):
+        # Only the stopped CLI restore can install an old archive for next boot.
+        # Live restore rehydrates agents, whose timer could prune its anchors.
+        from octop.infra.history.retire_v2 import ARCHIVE_NAME, MARKER_NAME, has_history_v2
+
+        archive_history = extracted / "history" / ARCHIVE_NAME
+        archive_marker = extracted / "history" / MARKER_NAME
+        if has_history_v2(paths):
             raise OctopError(
                 ErrorCode.SLASH_BAD_ARGS,
-                "Versioned history requires a coordinated offline restore; no database was changed",
+                "Migrate the existing history v2 archive before restoring a backup",
+            )
+        if archive_marker.is_file() and not archive_history.is_file():
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS, "Backup is missing its required history v2 archive"
+            )
+        if archive_history.is_file() and not allow_legacy_history:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "Stop Octop and use the backup restore CLI for a history v2 archive",
             )
         is_migration = _is_migration_backup(manifest)
 
@@ -497,12 +599,13 @@ def restore_system_backup(
             else None
         )
 
-        # Capture current login credentials before overwriting the DB (only when needed).
+        # Secrets are instance-local. Capture them before the archive replaces
+        # the database, then write this set back afterwards.
+        saved_secrets = capture_secrets_from_pool(pool)
+        saved_jwt = next((value for key, value, _, _ in saved_secrets if key == "jwt"), None)
         saved_users: list[tuple[object, ...]] = []
-        saved_jwt: bytes | None = None
         if effective_preserve_users and pool is not None:
             saved_users = capture_users_from_pool(pool)
-            saved_jwt = capture_jwt_secret_from_pool(pool)
 
         effective_owner: int | None = None
         if is_migration:
@@ -563,14 +666,9 @@ def restore_system_backup(
                 ownership_remap = remap_ownership_to_user(pool, int(effective_owner))
             prune_users_not_in(pool, [row[0] for row in saved_users])
 
-        # Migration backups ship a foreign ``secrets`` table. Prefer the current
-        # instance's JWT secret so outstanding sessions stay valid; only seed a
-        # fresh key when this instance never had one.
-        if effective_preserve_users and pool is not None:
-            if saved_jwt is not None:
-                restore_jwt_secret_into_pool(pool, saved_jwt)
-            else:
-                SecretRepo(pool).get_or_create("jwt", lambda: os.urandom(32))
+        replace_secrets_in_pool(pool, saved_secrets)
+        if saved_jwt is None:
+            SecretRepo(pool).get_or_create("jwt", lambda: os.urandom(32))
 
         restored_workspaces = 0
         prefix = f"{_WORKSPACES_DIR}/"
@@ -633,6 +731,10 @@ def restore_system_backup(
         preserved_chat_rows, skipped_chat_rows = (
             restore_preserved_chats(pool, saved_chats) if saved_chats is not None else (0, 0)
         )
+        if archive_history.is_file():
+            shutil.copy2(archive_history, paths.root / ARCHIVE_NAME)
+            if archive_marker.is_file():
+                shutil.copy2(archive_marker, paths.root / MARKER_NAME)
         schema_version = _current_version(pool)
 
     result: dict[str, Any] = {
@@ -648,7 +750,7 @@ def restore_system_backup(
         "preserved_chat_rows": preserved_chat_rows,
         "skipped_chat_rows": skipped_chat_rows,
         "users_preserved": effective_preserve_users,
-        "jwt_preserved": bool(saved_jwt is not None and effective_preserve_users),
+        "jwt_preserved": saved_jwt is not None,
         "database_driver": archive_driver,
     }
     if ownership_remap is not None:

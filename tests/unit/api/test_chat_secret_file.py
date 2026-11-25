@@ -90,10 +90,14 @@ def _server(
     processor = MagicMock()
     processor.hitl_coordinator = hitl
     processor.iter_hitl_resume_chunks = _resume
+    thread_registry = MagicMock()
+    thread_registry.get_thread.return_value = SimpleNamespace(
+        agent_id=row.agent_id, user_id=row.user_id, contributed=False
+    )
     return SimpleNamespace(
         app_runtime=SimpleNamespace(
             agent_registry=registry,
-            gateway=SimpleNamespace(processor=processor),
+            gateway=SimpleNamespace(processor=processor, thread_registry=thread_registry),
         ),
         services=SimpleNamespace(
             sharing_repo=SimpleNamespace(can_access=lambda *_a: False),

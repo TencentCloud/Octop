@@ -108,10 +108,6 @@ vi.mock("../../../hooks/useCurrentUser", () => ({
   }),
 }));
 
-vi.mock("./CustomMcpTab", () => ({
-  CustomMcpTab: () => <div>custom-tab</div>,
-}));
-
 import ConnectorsPage from "./index";
 
 function renderPage() {
@@ -150,6 +146,9 @@ describe("ConnectorsPage category pills", () => {
     );
     expect(screen.getByText("My Notion")).toBeInTheDocument();
     expect(screen.getByText("My Maps")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "connectors.addCustom" }),
+    ).toBeInTheDocument();
 
     await user.click(
       screen.getByRole("tab", { name: "connectors.tabBuiltin" }),
@@ -164,11 +163,8 @@ describe("ConnectorsPage category pills", () => {
     expect(screen.queryByText("Notion")).not.toBeInTheDocument();
     expect(screen.queryByText("Docs")).not.toBeInTheDocument();
     expect(screen.getByText("Amap")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("tab", { name: "connectors.tabCustom" }));
     expect(
-      screen.queryByRole("button", { name: "connectors.categoryAll" }),
+      screen.queryByRole("tab", { name: "connectors.tabCustom" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("custom-tab")).toBeInTheDocument();
   });
 });

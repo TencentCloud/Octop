@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -32,6 +32,7 @@ from octop.api.deps import (
 from octop.i18n.domains.voice import realtime_error_message
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import Locale, normalize_locale, resolve_request_locale
+from octop.infra.utils.secret_fields import Secret, is_secret_field, model_secret_names
 from octop.infra.voice import realtime
 from octop.infra.voice.manager import VoiceManager
 from octop.infra.voice.presets import load_voice_presets
@@ -58,6 +59,10 @@ def _active_payload(mgr: VoiceManager) -> dict[str, Any]:
     return active
 
 
+# Tencent voice extras use secret_id, which the shared suffix list does not cover.
+_VOICE_EXTRA_SECRET_KEYS = frozenset({"secret_id"})
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     return {
         "id": r.id,
@@ -72,12 +77,27 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     }
 
 
+def _public_voice_row(r: Any) -> dict[str, Any]:
+    """Voice provider list for any signed-in user: drop stored credentials."""
+    data = _row_to_dict(r)
+    for name in model_secret_names(VoiceProviderCreateBody):
+        data[f"{name}_set"] = bool(data.get(name))
+        data[name] = None
+    extra = data.get("extra")
+    if isinstance(extra, dict):
+        data["extra"] = {
+            key: None if is_secret_field(key, extra_keys=_VOICE_EXTRA_SECRET_KEYS) else value
+            for key, value in extra.items()
+        }
+    return data
+
+
 class VoiceProviderCreateBody(BaseModel):
     name: str
     kind: str
     capability: str
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     extra_json: str | None = None
     note: str | None = None
 
@@ -86,7 +106,7 @@ class VoiceProviderPatchBody(BaseModel):
     kind: str | None = None
     capability: str | None = None
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     extra_json: str | None = None
     note: str | None = None
     enabled: bool | None = None
@@ -122,7 +142,8 @@ async def list_voice_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.voice_provider_repo.list_all()]
+    """Return voice providers. Credentials stay on the admin route."""
+    return [_public_voice_row(r) for r in server.services.voice_provider_repo.list_all()]
 
 
 @router.get("/active")

@@ -34,6 +34,18 @@ describe("EditExpertDrawerTitle", () => {
     );
   });
 
+  it("uses the edit title for a managed expert", () => {
+    render(
+      <EditExpertDrawerTitle
+        agent={{ agent_id: "01MANAGED", kind: "managed", bridge: false }}
+      />,
+    );
+    expect(screen.getByText("experts.managed.editTitle")).toBeInTheDocument();
+    expect(
+      screen.queryByText("experts.managed.createTitle"),
+    ).not.toBeInTheDocument();
+  });
+
   it("keeps the plain title for a local expert", () => {
     render(
       <EditExpertDrawerTitle agent={{ agent_id: "01LOCAL", bridge: false }} />,

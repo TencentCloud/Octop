@@ -9,12 +9,13 @@ import { Download, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
-import { isEmbeddingModel } from "../../useProviders";
+import { isEmbeddingModel, isRerankModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
+import { isMagpieProvider, magpieIntegrationExtra } from "../../magpie";
 import styles from "../../index.module.less";
 
 interface CustomProviderModalProps {
@@ -62,6 +63,7 @@ export function CustomProviderModal({
   const kind = Form.useWatch("kind", form) as string | undefined;
   const baseUrl = Form.useWatch("base_url", form) as string | undefined;
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
+  const magpieShaped = isMagpieProvider({ name, base_url: baseUrl });
   const [models, setModels] = useState<ProviderModel[]>([]);
   const canTest = !!apiKey?.trim();
   const setupStep = !apiKey?.trim()
@@ -148,12 +150,7 @@ export function CustomProviderModal({
         return;
       }
       const remote: ProviderModel[] = (result.models ?? [])
-        .filter((m) => {
-          if (!embeddingLane) return true;
-          const id = m.id.toLowerCase();
-          if (id.includes("rerank")) return false;
-          return /embed|bge-|e5-|gte-/.test(id);
-        })
+        .filter((m) => !embeddingLane || isEmbeddingModel(m))
         .map((m) => ({
           id: m.id,
           name: m.name || m.id,
@@ -208,7 +205,9 @@ export function CustomProviderModal({
         if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
         if (m.context_window != null) entry.context_window = m.context_window;
         if (m.reasoning) entry.reasoning = true;
-        if (embeddingLane || isEmbeddingModel(m)) {
+        if (isRerankModel(m)) {
+          entry.task = "rerank";
+        } else if (isEmbeddingModel(m, embeddingLane)) {
           entry.embedding = true;
           entry.task = "embedding";
         }
@@ -225,6 +224,7 @@ export function CustomProviderModal({
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
           purpose: embeddingLane ? "embedding" : "chat",
+          ...(magpieShaped ? { extra_json: magpieIntegrationExtra() } : {}),
           ...((values.kind as string) === "openai" && !embeddingLane
             ? { stream_usage: values.stream_usage === true }
             : {}),
@@ -321,9 +321,14 @@ export function CustomProviderModal({
           name="base_url"
           label="Base URL"
           extra={
-            embeddingLane
-              ? t("models.embeddingBaseUrlExtra")
-              : t("models.baseUrlExtra")
+            <>
+              <div>
+                {embeddingLane
+                  ? t("models.embeddingBaseUrlExtra")
+                  : t("models.baseUrlExtra")}
+              </div>
+              {magpieShaped ? <div>{t("models.magpieAddressHint")}</div> : null}
+            </>
           }
         >
           <Input placeholder="https://api.openai.com/v1" />

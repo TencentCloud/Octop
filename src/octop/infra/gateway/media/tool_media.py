@@ -43,7 +43,7 @@ from octop.infra.gateway.media.inbound_store import display_name_from_stored
 
 logger = logging.getLogger(__name__)
 
-_MEDIA_BLOCK_TYPES = frozenset({"image", "video", "audio", "file"})
+_MEDIA_BLOCK_TYPES = ("image", "video", "audio", "file")
 # Only these tools may push media to the user (dashboard attachments / IM).
 # write_file / read_file / browser dumps often look like media and would re-push
 # prior outbound files if every tool_result were treated as a delivery.
@@ -81,6 +81,20 @@ def tool_name_base(name: str) -> str:
 def is_media_push_tool(name: str | None) -> bool:
     """True when this tool is allowed to push files/images to the user."""
     return tool_name_base(name or "").lower() in MEDIA_PUSH_TOOL_BASES
+
+
+def _delivers_media(message: Any, *, chunk_name: str | None) -> bool:
+    """Allowlisted tool names, or the managed ``send_file_to_user`` marker.
+
+    An external ACP agent reports its own title for the MCP call. The loopback
+    result still carries ``octop_delivery`` so the file reaches the user.
+    """
+    if is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        return True
+    for block in iter_media_blocks(extract_message_content(message)):
+        if block.get("octop_delivery") == "send_file_to_user":
+            return True
+    return False
 
 
 def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | None:
@@ -761,7 +775,7 @@ async def attachment_frames_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             preview_url = block.get("preview_url")
@@ -966,7 +980,7 @@ async def media_events_from_tool_result(
 
     chunk_name = chunk.get("name") if isinstance(chunk.get("name"), str) else None
     for message in messages:
-        if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
+        if not _delivers_media(message, chunk_name=chunk_name):
             continue
         for block in iter_media_blocks(extract_message_content(message)):
             try:
@@ -980,6 +994,80 @@ async def media_events_from_tool_result(
             if part is None:
                 continue
             yield MessageEvent(type=MessageEventType.MESSAGE, content=[part])
+
+
+OUTBOUND_ATTACHMENTS_KEY = "outbound_attachments"
+
+
+def history_attachment_from_block(block: dict[str, Any]) -> dict[str, Any] | None:
+    """One dashboard history attachment. ``workspace_path`` is what refresh reloads."""
+    raw_url, mime, filename = _block_file_refs(block)
+    path = _file_block_path(block, raw_url)
+    if not path:
+        return None
+    btype = str(block.get("type") or "file")
+    if btype not in _MEDIA_BLOCK_TYPES:
+        btype = "file"
+    name = filename.strip() if isinstance(filename, str) else ""
+    item: dict[str, Any] = {
+        "type": btype,
+        "filename": name or Path(path).name or "file",
+        "workspace_path": path,
+    }
+    if mime:
+        item["media_type"] = mime
+    return item
+
+
+def history_attachments_from_message(
+    message: Any,
+    *,
+    chunk_name: str | None = None,
+) -> list[dict[str, Any]]:
+    """Structured file cards for a delivery tool. Other tools stay text-only."""
+    if not _delivers_media(message, chunk_name=chunk_name):
+        return []
+    out: list[dict[str, Any]] = []
+    for block in iter_media_blocks(extract_message_content(message)):
+        item = history_attachment_from_block(block)
+        if item is not None:
+            out.append(item)
+    return out
+
+
+def history_attachments_from_chunk(chunk: dict[str, Any]) -> list[dict[str, Any]]:
+    messages = chunk.get("messages")
+    if not isinstance(messages, list):
+        return []
+    raw_name = chunk.get("name")
+    chunk_name = raw_name if isinstance(raw_name, str) else None
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        out.extend(history_attachments_from_message(message, chunk_name=chunk_name))
+    return out
+
+
+def history_attachments_from_messages(messages: list[Any]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        out.extend(history_attachments_from_message(message))
+    return out
+
+
+def merge_history_attachments(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep the first card for each workspace path."""
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for group in groups:
+        for item in group:
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("workspace_path") or "").strip()
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            out.append(item)
+    return out
 
 
 def _workspace_media_key(raw: str) -> str | None:
@@ -1010,8 +1098,14 @@ __all__ = [
     "enrich_tool_output_string",
     "enrich_tool_result_for_dashboard",
     "enrich_tool_result_with_backend",
+    "OUTBOUND_ATTACHMENTS_KEY",
+    "history_attachment_from_block",
+    "history_attachments_from_chunk",
+    "history_attachments_from_message",
+    "history_attachments_from_messages",
     "is_media_push_tool",
     "iter_dashboard_attachment_frames",
+    "merge_history_attachments",
     "iter_media_blocks",
     "media_events_from_tool_result",
     "note_live_tool_call",

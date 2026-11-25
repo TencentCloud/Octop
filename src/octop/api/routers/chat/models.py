@@ -57,6 +57,11 @@ class ChatTurnBody(BaseModel):
         default=None,
         description="Turn permission mode: ask (read-only), plan (write plans/*.md), craft (default).",
     )
+    session_mode: str | None = Field(
+        default=None,
+        max_length=64,
+        description="ACP session mode id for a managed expert, such as plan or bypassPermissions.",
+    )
     hitl_policy: HitlSessionPolicyBody | None = Field(
         default=None,
         description="Thread-scoped tool-approval bypass for this turn (does not change global HITL).",
@@ -117,6 +122,9 @@ class ChatTurnBody(BaseModel):
             conversation_mode=payload.get("conversation_mode")
             if payload.get("conversation_mode") in ("ask", "plan", "craft")
             else None,
+            session_mode=str(payload["session_mode"]).strip()
+            if isinstance(payload.get("session_mode"), str) and str(payload["session_mode"]).strip()
+            else None,
             hitl_policy=payload.get("hitl_policy")
             if isinstance(payload.get("hitl_policy"), dict)
             else None,
@@ -152,6 +160,7 @@ class UserTurnWsFrame(BaseModel):
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    session_mode: str | None = None
     hitl_policy: HitlSessionPolicyBody | None = None
     mcp_servers: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
@@ -222,10 +231,19 @@ class ForkThreadBody(BaseModel):
 class RenameThreadBody(BaseModel):
     title: str | None = None
     pinned: bool | None = None
+    contributed: bool | None = Field(
+        default=None,
+        description="Share this conversation with other users of the expert.",
+    )
     model_ref: str | None = None
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None
     conversation_mode: Literal["ask", "plan", "craft"] | None = None
+    session_mode: str | None = Field(
+        default=None,
+        max_length=64,
+        description="ACP session mode id for a managed expert.",
+    )
     hitl_policy: HitlSessionPolicyBody | None = None
 
 

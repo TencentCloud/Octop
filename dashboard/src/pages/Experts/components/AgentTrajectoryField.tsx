@@ -15,7 +15,7 @@ export default function AgentTrajectoryField({
       valuePropName="checked"
       tooltip={t("agentConfig.enableTrajectoryTooltip")}
     >
-      <Switch disabled={disabled} />
+      <Switch size="small" disabled={disabled} />
     </Form.Item>
   );
 }

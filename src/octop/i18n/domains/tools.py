@@ -40,6 +40,8 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "call_agent",
         "call_deferred_tool",
         "acp_runner",
+        # Managed ACP permission fallback. It is not a built-in tool users toggle.
+        "external-agent",
     }
 )
 

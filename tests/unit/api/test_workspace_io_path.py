@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
-from octop.api.routers.workspace import _workspace_io_path
+from pathlib import Path
+
+import pytest
+
+from octop.api.routers.workspace import (
+    _assert_workspace_mutable,
+    _guard_workspace_read,
+    _workspace_io_path,
+)
+from octop.infra.errors import OctopError
 
 
 def test_from_workspace_false_slash_is_host_absolute() -> None:
@@ -41,3 +50,22 @@ def test_file_url_always_host_absolute() -> None:
 
 def test_default_from_workspace_is_false() -> None:
     assert _workspace_io_path("/Users/me/a.pptx") == "/Users/me/a.pptx"
+
+
+def test_mutable_host_path_stays_inside_workspace() -> None:
+    assert _assert_workspace_mutable("/etc/passwd") == "etc/passwd"
+
+
+def test_mutable_path_rejects_parent_and_file_url() -> None:
+    with pytest.raises(OctopError) as parent:
+        _assert_workspace_mutable("../octop.db")
+    assert parent.value.code.value == "FORBIDDEN"
+    with pytest.raises(OctopError):
+        _assert_workspace_mutable("file:///etc/passwd")
+
+
+def test_read_guard_rejects_parent_and_system_root(tmp_path: Path) -> None:
+    with pytest.raises(OctopError):
+        _guard_workspace_read("outbound/../../etc/passwd", tmp_path)
+    with pytest.raises(OctopError):
+        _guard_workspace_read("/etc/passwd", tmp_path)

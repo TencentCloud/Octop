@@ -7,6 +7,10 @@ import cx from "classnames";
 import SearchablePickerPanel, {
   pickerStyles,
 } from "../../../components/ChatPicker/SearchablePickerPanel";
+import {
+  CONNECTOR_AVATAR_PRESETS,
+  ResourceAvatar,
+} from "../../../components/AvatarPicker";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
 import styles from "../index.module.less";
 
@@ -15,6 +19,8 @@ export interface ChatConnectorOption {
   label: string;
   kind: string;
   default_open?: boolean;
+  avatar_icon?: string | null;
+  avatar_url?: string | null;
 }
 
 interface ConnectorPickerPopoverProps {
@@ -65,7 +71,17 @@ export default function ConnectorPickerPopover({
             )}
           >
             <span className={styles.connectorPickerAvatar}>
-              <ConnectorLogo kind={connector.kind} size={18} />
+              {connector.kind === "custom-mcp" &&
+              (connector.avatar_url || connector.avatar_icon) ? (
+                <ResourceAvatar
+                  url={connector.avatar_url}
+                  icon={connector.avatar_icon}
+                  presets={CONNECTOR_AVATAR_PRESETS}
+                  className={styles.connectorPickerFace}
+                />
+              ) : (
+                <ConnectorLogo kind={connector.kind} size={18} />
+              )}
             </span>
             <span className={pickerStyles.itemText}>
               <span className={pickerStyles.itemName}>{connector.label}</span>

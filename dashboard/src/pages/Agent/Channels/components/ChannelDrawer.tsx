@@ -144,6 +144,7 @@ interface ChannelDrawerProps {
   editing: ChannelRow | null;
   loadingConfig: boolean;
   initialValues: ChannelFormValues | undefined;
+  secretsSet?: string[];
   form: FormInstance<ChannelFormValues>;
   saving: boolean;
   onDelete?: () => void;
@@ -164,19 +165,43 @@ interface ChannelDrawerProps {
 function FormItemForField({
   field,
   disabled = false,
+  editing = false,
+  secretKept = false,
 }: {
   field: ChannelField;
+  editing?: boolean;
   disabled?: boolean;
+  /** Stored secret stays on the server; an empty field means keep it. */
+  secretKept?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
     ? t(field.label)
     : field.label;
+  const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
+  if (field.type === "select") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        initialValue={initialValue}
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <Select
+          options={field.options?.map((value) => ({
+            value,
+            label: t(`channels.telegram_option_${value}`),
+          }))}
+        />
+      </Form.Item>
+    );
+  }
   if (field.type === "switch") {
     return (
       <Form.Item
         name={field.name}
         label={label}
+        initialValue={initialValue}
         valuePropName="checked"
         extra={field.helpKey ? t(field.helpKey) : undefined}
       >
@@ -190,14 +215,15 @@ function FormItemForField({
       : field.type === "textarea" || field.type === "json"
       ? Input.TextArea
       : Input;
-  const rules: Rule[] = field.required
-    ? [
-        {
-          required: true,
-          message: t("channels.fieldRequired", { label }),
-        },
-      ]
-    : [];
+  const rules: Rule[] =
+    field.required && !(secretKept && field.type === "password")
+      ? [
+          {
+            required: true,
+            message: t("channels.fieldRequired", { label }),
+          },
+        ]
+      : [];
   if (field.type === "json") {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
@@ -214,23 +240,39 @@ function FormItemForField({
   }
   if (
     field.name === "allowed_channel_ids" ||
-    field.name === "allowed_user_ids"
+    field.name === "allowed_user_ids" ||
+    field.name === "allowed_chat_ids"
   ) {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
         try {
           normalizeChannelFieldValue(field.name, value);
         } catch {
-          throw new Error(t("channels.discordInvalidIds"));
+          throw new Error(
+            t(
+              field.name === "allowed_chat_ids"
+                ? "channels.telegramInvalidChatIds"
+                : "channels.discordInvalidIds",
+            ),
+          );
         }
       },
     });
   }
   return (
-    <Form.Item name={field.name} label={label} rules={rules}>
+    <Form.Item
+      name={field.name}
+      label={label}
+      rules={rules}
+      extra={field.helpKey ? t(field.helpKey) : undefined}
+    >
       <Input1
         disabled={disabled}
-        placeholder={field.placeholder}
+        placeholder={
+          secretKept && field.type === "password"
+            ? t("common.unchanged")
+            : field.placeholder
+        }
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }
           : {})}
@@ -523,6 +565,7 @@ export function ChannelDrawer({
   onTest,
   testing,
   agentId,
+  secretsSet = [],
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
   const allowAllDiscordChannels =
@@ -1760,7 +1803,7 @@ export function ChannelDrawer({
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <Drawer
-      width={460}
+      width={520}
       placement="right"
       title={
         <div className={styles.drawerTitle}>
@@ -1930,11 +1973,21 @@ export function ChannelDrawer({
                   style={{ marginBottom: 16 }}
                 />
               )}
+              {selectedKind === "telegram" && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("channels.telegramSetupHelp")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               {hasSchema ? (
                 fields!.map((f) => (
                   <FormItemForField
                     key={f.name}
                     field={f}
+                    editing={isEdit}
+                    secretKept={secretsSet.includes(f.name)}
                     disabled={
                       selectedKind === "discord" &&
                       f.name === "allowed_channel_ids" &&

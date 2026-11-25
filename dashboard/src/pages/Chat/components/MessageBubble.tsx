@@ -40,17 +40,25 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
+  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
 import SecretFileCard from "./SecretFileCard";
+import {
+  ConnectorAuthAction,
+  isConnectorAuthError,
+} from "./ConnectorAuthAction";
 import HitlApprovalCard from "./HitlApprovalCard";
+import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
 import {
   isTeamAgent,
   isTeamHostSpeaker as isTeamHostSpeakerId,
+  resolveSpeakerFace,
 } from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { accountDisplayName } from "../utils/accountDisplayName";
@@ -109,6 +117,8 @@ interface MessageBubbleProps {
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
+  /** Public transcripts hide this. It calls the signed-in voice API. */
+  readAloud?: boolean;
 }
 
 function formatElapsedSeconds(durationMs: number | undefined): string | null {
@@ -589,11 +599,29 @@ function MessageBubble({
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
+  readAloud = true,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
   const user = useCurrentUser();
+  const isOwnMessage =
+    message.author == null ||
+    (user != null && message.author.userId === user.id);
+  const authorName = accountDisplayName(
+    isOwnMessage
+      ? user
+      : {
+          display_name: message.author?.displayName,
+          username: message.author?.username,
+        },
+  );
+  const userAvatarUrl = isOwnMessage
+    ? user?.avatar_url
+    : message.author?.avatarUrl;
+  const userAvatarIcon = isOwnMessage
+    ? user?.avatar_icon
+    : message.author?.avatarIcon;
   const { agents, activeAgent } = useAgent();
   const isTeamRoom = isTeamAgent(activeAgent);
   const speakerId =
@@ -610,15 +638,24 @@ function MessageBubble({
   );
   const expert = useMemo(
     () =>
-      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+      resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
       (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
     [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
   );
+  const shareFace = message.speakerFace;
+  const faceName = expert?.name || shareFace?.name || undefined;
+  const faceIconUrl = expert?.icon_url || shareFace?.iconUrl || undefined;
+  const faceIconName = expert?.icon_name || shareFace?.iconName || undefined;
+  const faceColor = expert?.color || shareFace?.color || undefined;
   const avatarTooltip = isTeamHostSpeaker
-    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
-    : expert?.name;
-  const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
-  const userName = accountDisplayName(user);
+    ? t("chat.teamHostHover", {
+        name: activeAgent?.name || faceName || "",
+      })
+    : faceName;
+  const avatarProfileId = isTeamHostSpeaker
+    ? activeAgent?.agent_id
+    : speakerId || shareFace?.name;
+  const userName = authorName || accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -744,7 +781,9 @@ function MessageBubble({
     isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const isError = message.status === "error";
+  const isError =
+    message.status === "error" ||
+    (!isUser && !hasToolData && isChatStreamError(textContent));
   const errorSource = isError
     ? message.errorInfo?.message?.trim() || textContent
     : textContent;
@@ -752,6 +791,8 @@ function MessageBubble({
     ? formatChatStreamError(errorSource, t)
     : textContent;
   const errorAction = isError ? chatStreamErrorAction(errorSource) : null;
+  const connectorAuthError =
+    isError && isConnectorAuthError(message.errorInfo?.code, errorSource);
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -822,25 +863,29 @@ function MessageBubble({
     (isUser || groupPosition === "first" || groupPosition === "only") &&
     (isUser || showAvatar);
   const senderAvatar = !showSender ? null : isUser ? (
-    <MessageSender
-      name={userName}
-      avatar={
-        <ProfileAvatar
-          url={user?.avatar_url}
-          icon={user?.avatar_icon}
-          kind="user"
-          className={styles.msgUserAvatar}
-        />
-      }
-    />
-  ) : expert || avatarProfileId ? (
+    <Tooltip title={userName || undefined} mouseEnterDelay={0.35}>
+      <MessageSender
+        name={userName}
+        avatar={
+          <ProfileAvatar
+            url={userAvatarUrl}
+            icon={userAvatarIcon}
+            kind="user"
+            className={styles.msgUserAvatar}
+          />
+        }
+      />
+    </Tooltip>
+  ) : expert || shareFace || avatarProfileId ? (
     <ExpertMessageAvatar
-      name={expert?.name || avatarProfileId}
-      color={expert?.color}
-      iconName={expert?.icon_name}
-      iconUrl={expert?.icon_url}
+      name={faceName || avatarProfileId}
+      color={faceColor}
+      iconName={faceIconName}
+      iconUrl={faceIconUrl}
       tooltip={avatarTooltip}
       profileAgentId={avatarProfileId}
+      managedRunner={managedRunnerId(expert)}
+      {...incomingShareProps(expert)}
     />
   ) : null;
 
@@ -970,8 +1015,18 @@ function MessageBubble({
                     ))}
                   </div>
                 )}
-                {(errorAction || onRegenerate) && (
+                {(errorAction || onRegenerate || connectorAuthError) && (
                   <div className={styles.errorActionRow}>
+                    {connectorAuthError ? (
+                      <ConnectorAuthAction
+                        details={message.errorInfo?.details}
+                        onAuthorized={
+                          onRegenerate
+                            ? () => onRegenerate(message.id)
+                            : undefined
+                        }
+                      />
+                    ) : null}
                     {errorAction?.fix === "disable_stream_usage" &&
                     onDisableStreamUsage ? (
                       <button
@@ -1120,25 +1175,24 @@ function MessageBubble({
                   className={cx(styles.msgTime, isUser && styles.msgTimeRight)}
                 >
                   {formatMessageTime(message.timestamp, serverTimezone)}
-                  {!isUser && !isStreaming && speechText && (
-                    <>
-                      <CopyButton text={textContent} />
-                      <button
-                        className={cx(
-                          styles.msgActionBtn,
-                          speakingId === message.id &&
-                            styles.msgActionBtnActive,
-                        )}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          speak(message.id, textContent);
-                        }}
-                        title={t("voice.readAloud", "朗读")}
-                        type="button"
-                      >
-                        <Volume2 size={13} />
-                      </button>
-                    </>
+                  {!isUser && !isStreaming && textContent && (
+                    <CopyButton text={textContent} />
+                  )}
+                  {!isUser && !isStreaming && readAloud && speechText && (
+                    <button
+                      className={cx(
+                        styles.msgActionBtn,
+                        speakingId === message.id && styles.msgActionBtnActive,
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        speak(message.id, textContent);
+                      }}
+                      title={t("voice.readAloud", "朗读")}
+                      type="button"
+                    >
+                      <Volume2 size={13} />
+                    </button>
                   )}
                   {!isUser && !isStreaming && onRegenerate && (
                     <button

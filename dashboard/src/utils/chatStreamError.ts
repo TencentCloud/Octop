@@ -9,6 +9,7 @@ const _STREAM_ERROR_KEYS = [
   "stream_errors.insufficient_balance",
   "stream_errors.context_length",
   "stream_errors.recursion_limit",
+  "stream_errors.tool_call_repeat",
   "stream_errors.timeout_network",
   "stream_errors.provider_unavailable",
   "stream_errors.invalid_request",
@@ -26,6 +27,9 @@ export type StreamErrorAction = {
 };
 
 const MODEL_RETRY_FAILURE_MARK = "[model_call_failed]";
+const TOOL_CALL_REPEAT_MARK = "[tool_call_repeat]";
+const TOOL_CALL_REPEAT_RE =
+  /\[tool_call_repeat\]\s*tool:\s*(.+)\ncount:\s*(\d+)\nlimit:\s*(\d+)/i;
 const RETRY_WRAPPER_RE = /^model call failed after \d+ attempts?\s+with\s+/i;
 const TECHNICAL_DETAIL_RE = /technical detail:\s*([\s\S]+)$/i;
 const COMPLETION_USAGE_RE = /\s*-?\s*CompletionUsage\([\s\S]*\)\s*$/;
@@ -50,6 +54,10 @@ const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
       fix: "disable_stream_usage",
     },
     "stream_errors.recursion_limit": {
+      path: "/agent-config",
+      labelKey: "chat.goToAgentConfig",
+    },
+    "stream_errors.tool_call_repeat": {
       path: "/agent-config",
       labelKey: "chat.goToAgentConfig",
     },
@@ -94,11 +102,71 @@ function unwrapModelRetryMessage(message: string): string {
   return msg || normalizeMessage(message);
 }
 
+function toolCallRepeatVars(
+  message: string,
+): { tool: string; count: string; limit: string } | null {
+  const match = message.match(TOOL_CALL_REPEAT_RE);
+  if (!match?.[1] || !match[2] || !match[3]) return null;
+  return {
+    tool: match[1].trim(),
+    count: match[2],
+    limit: match[3],
+  };
+}
+
+/** Unambiguous balance / billing failures, whatever HTTP status carried them. */
+function isBalanceError(lower: string, compact: string, msg: string): boolean {
+  return (
+    lower.includes("error code: 402") ||
+    lower.includes("http 402") ||
+    // "insufficient balance", `insufficient_balance`, `InsufficientBalance`
+    compact.includes("insufficientbalance") ||
+    lower.includes("insufficient credits") ||
+    lower.includes("payment_required") ||
+    lower.includes("billing_not_active") ||
+    lower.includes("arrearage") ||
+    // Moonshot / Kimi: 429 `exceeded_current_quota_error`
+    lower.includes("exceeded_current_quota") ||
+    // Anthropic: 400 "Your credit balance is too low to access the Anthropic API"
+    lower.includes("credit balance is too low to access") ||
+    // SiliconFlow: 403 code 30001
+    lower.includes("sorry, your account balance is insufficient") ||
+    // Volcengine Ark: 403 `AccountOverdueError`
+    compact.includes("accountoverdueerror") ||
+    // DashScope: `PrepaidBillOverdue` / `PostpaidBillOverdue`
+    compact.includes("billoverdue") ||
+    msg.includes("余额不足") ||
+    msg.includes("账户余额") ||
+    msg.includes("欠费")
+  );
+}
+
+/**
+ * Throttling markers that override OpenAI-style quota wording. DashScope
+ * compatible mode answers TPM/RPM limits with `insufficient_quota` plus
+ * "Allocated quota exceeded" or a doc link ending in `#token-limit`.
+ */
+function hasThrottlingHint(lower: string, compact: string): boolean {
+  return (
+    lower.includes("rate limit") ||
+    lower.includes("rate_limit") ||
+    lower.includes("too many requests") ||
+    lower.includes("limit_requests") ||
+    lower.includes("#token-limit") ||
+    lower.includes("#rate-limit") ||
+    compact.includes("throttling") ||
+    compact.includes("allocatedquotaexceeded") ||
+    /\b(?:tokens?|requests?)\s+per\s+(?:min(?:ute)?|second)\b/.test(lower) ||
+    /\b(?:tpm|rpm|qps)\b/.test(lower)
+  );
+}
+
 /** Return a stable i18n key for known model/stream failures, else null. */
 export function classifyChatStreamError(
   message: string | null | undefined,
 ): StreamErrorKey | null {
   if (!message) return null;
+  if (toolCallRepeatVars(message)) return "stream_errors.tool_call_repeat";
   const raw = normalizeMessage(message);
   const msg = unwrapModelRetryMessage(message);
   if (!msg && !raw) return null;
@@ -120,6 +188,26 @@ export function classifyChatStreamError(
     return "stream_errors.stream_stall";
   }
 
+  // Billing failures come before the generic 429 branch: several providers
+  // answer an exhausted account with HTTP 429 (Moonshot
+  // `exceeded_current_quota_error`, Zhipu 1113 "账户已欠费"), and "wait and
+  // retry" never fixes an empty account.
+  if (isBalanceError(lower, compact, msg)) {
+    return "stream_errors.insufficient_balance";
+  }
+
+  // OpenAI reports an exhausted account as 429 `insufficient_quota`, but
+  // DashScope (Alibaba Cloud Model Studio) reuses that wording for TPM/RPM
+  // throttling — keep those a rate limit.
+  if (
+    lower.includes("insufficient_quota") ||
+    lower.includes("exceeded your current quota")
+  ) {
+    return hasThrottlingHint(lower, compact)
+      ? "stream_errors.rate_limit"
+      : "stream_errors.insufficient_balance";
+  }
+
   if (
     lower.includes("error code: 429") ||
     lower.includes("http 429") ||
@@ -128,23 +216,6 @@ export function classifyChatStreamError(
     lower.includes("too many requests")
   ) {
     return "stream_errors.rate_limit";
-  }
-
-  if (
-    lower.includes("error code: 402") ||
-    lower.includes("http 402") ||
-    lower.includes("insufficient balance") ||
-    lower.includes("insufficient_quota") ||
-    lower.includes("insufficient credits") ||
-    lower.includes("exceeded your current quota") ||
-    lower.includes("payment_required") ||
-    lower.includes("billing_not_active") ||
-    lower.includes("arrearage") ||
-    msg.includes("余额不足") ||
-    msg.includes("账户余额") ||
-    msg.includes("欠费")
-  ) {
-    return "stream_errors.insufficient_balance";
   }
 
   if (
@@ -235,6 +306,8 @@ function isModelRetryEnvelope(message: string | null | undefined): boolean {
 
 /** True only for ModelRetryMiddleware envelopes, not ordinary answers. */
 export function isChatStreamError(message: string | null | undefined): boolean {
+  if (!message) return false;
+  if (message.includes(TOOL_CALL_REPEAT_MARK)) return true;
   return isModelRetryEnvelope(message);
 }
 
@@ -246,6 +319,10 @@ export function formatChatStreamError(
   if (!message) return "";
   const key = classifyChatStreamError(message);
   const detail = unwrapModelRetryMessage(message);
+  if (key === "stream_errors.tool_call_repeat") {
+    const fields = toolCallRepeatVars(message) ?? {};
+    return t(key, { ...fields, defaultValue: message });
+  }
   if (key && key !== "stream_errors.model_call_failed") {
     return t(key, { defaultValue: message });
   }

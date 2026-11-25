@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestUpload } from "../request";
 
 export type ConnectorCategory =
   | "office"
@@ -64,13 +64,19 @@ export interface ConnectorInstance {
   group_ids?: string[];
   /** False when this instance is not usable by the current user. */
   usable?: boolean;
+  avatar_icon?: string | null;
+  avatar_url?: string | null;
   owner_user_id: number;
   owner_username?: string | null;
   owner_display_name?: string | null;
   can_manage: boolean;
+  /** Custom MCP servers using OAuth: whether the user has to authorize (again). */
+  auth_status?: ConnectorAuthStatus;
   created_at: number;
   updated_at: number;
 }
+
+export type ConnectorAuthStatus = "ok" | "required" | "expired";
 
 export interface ConnectorCredentialsPreview {
   [key: string]: unknown;
@@ -120,6 +126,8 @@ export interface ConnectorProbeResult {
   status_code?: number;
   oauth?: {
     available: boolean;
+    /** The authorization server has no dynamic registration: needs `oauth_client`. */
+    client_required?: boolean;
     issuer?: string;
     resource?: string;
   };
@@ -139,6 +147,17 @@ export interface CustomMcpOAuthPreview {
   expires_at?: number;
 }
 
+/** Pre-registered OAuth app for servers without dynamic client registration. */
+export interface CustomMcpOAuthClient {
+  client_id: string;
+  /** Write-only: omit to keep the saved secret. */
+  client_secret?: string;
+  has_client_secret?: boolean;
+  scope?: string;
+  authorization_endpoint?: string;
+  token_endpoint?: string;
+}
+
 export interface CustomMcpServerSpec {
   transport: CustomMcpTransport;
   url?: string;
@@ -152,12 +171,27 @@ export interface CustomMcpServerSpec {
   /** When true, chat composer pre-selects this MCP server. */
   default_open?: boolean;
   shared?: boolean;
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
+  avatar_icon?: string | null;
   oauth?: CustomMcpOAuthPreview;
+  oauth_client?: CustomMcpOAuthClient;
 }
 
 export type OAuthStartTarget =
   | { type: "catalog"; kind: string }
   | { type: "custom_mcp"; server_name: string };
+
+/** Result of an authorization started from the dashboard. */
+export interface OAuthPendingResult {
+  /** ``ok`` unless the user cancelled or the provider / token exchange failed. */
+  status?: "ok" | "cancelled" | "error";
+  message?: string | null;
+  kind: string;
+  tokens: Record<string, unknown>;
+  server_name?: string;
+  applied?: boolean;
+}
 
 export type CustomMcpServers = Record<string, CustomMcpServerSpec>;
 
@@ -291,12 +325,7 @@ export const connectorsApi = {
     ),
 
   oauthPending: (stateId: string) =>
-    request<{
-      kind: string;
-      tokens: Record<string, unknown>;
-      server_name?: string;
-      applied?: boolean;
-    }>(`/connectors/oauth/pending/${stateId}`),
+    request<OAuthPendingResult>(`/connectors/oauth/pending/${stateId}`),
 
   authorizeUrl: (kind: string) =>
     request<{ authorize_url: string | null }>(
@@ -405,9 +434,30 @@ export const connectorsApi = {
       body: JSON.stringify({ servers }),
     }),
 
+  uploadCustomMcpAvatar: (name: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ avatar_url: string }>(
+      `/connectors/custom-mcp/servers/${encodeURIComponent(name)}/avatar`,
+      body,
+    );
+  },
+
+  deleteCustomMcpAvatar: (name: string) =>
+    request<void>(
+      `/connectors/custom-mcp/servers/${encodeURIComponent(name)}/avatar`,
+      { method: "DELETE" },
+    ),
+
   patchCustomMcpServer: (
     name: string,
-    body: { enabled?: boolean; default_open?: boolean; shared?: boolean },
+    body: {
+      enabled?: boolean;
+      default_open?: boolean;
+      shared?: boolean;
+      visibility?: "owner" | "all" | "groups";
+      group_ids?: string[];
+    },
   ) =>
     request<{ servers: CustomMcpServers }>(
       `/connectors/custom-mcp/servers/${encodeURIComponent(name)}`,

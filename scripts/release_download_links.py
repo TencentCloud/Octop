@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-GITHUB_REPO = "TencentCloud/Octop"
+# GitHub Actions sets this for forks too; local invocation keeps the upstream default.
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "TencentCloud/Octop")
 DOWNLOAD_BASE = f"https://github.com/{GITHUB_REPO}/releases/download"
 
 
@@ -91,8 +93,12 @@ def render_download_section(raw_version: str) -> str:
     mac_intel = md_link("Intel", tag, desktop_name("darwin", "amd64", version, "dmg"))
     mac_arm_zip = md_link("Apple Silicon", tag, portable_name("darwin", "arm64", version))
     mac_intel_zip = md_link("Intel", tag, portable_name("darwin", "amd64", version))
-    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "tar.gz"))
-    linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "tar.gz"))
+    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "deb"))
+    linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "deb"))
+    linux_rpm = [
+        md_link(arch, tag, desktop_name("linux", arch, version, "rpm"))
+        for arch in ("amd64", "arm64")
+    ]
     linux64_zip = md_link("64-bit", tag, portable_name("linux", "amd64", version))
     linux_arm_zip = md_link("ARM64", tag, portable_name("linux", "arm64", version))
     return "\n".join(
@@ -100,9 +106,11 @@ def render_download_section(raw_version: str) -> str:
             "",
             "## Downloads",
             "",
+            "Desktop installers bundle the browser extra only. Desktop control, OCR, and local embedding stay on the Docker full image.",
+            "",
             "### Windows",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer",
             f"- {win64} | {win_arm}",
             "",
             "#### Portable",
@@ -110,7 +118,7 @@ def render_download_section(raw_version: str) -> str:
             "",
             "### macOS",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer",
             f"- {mac_arm} | {mac_intel}",
             "",
             "#### Portable",
@@ -118,8 +126,11 @@ def render_download_section(raw_version: str) -> str:
             "",
             "### Linux",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer (deb)",
             f"- {linux64} | {linux_arm}",
+            "",
+            "#### rpm",
+            f"- {' | '.join(linux_rpm)}",
             "",
             "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",

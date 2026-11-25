@@ -6,6 +6,7 @@ import {
   EyeOff,
   MessageSquarePlus,
   MoreVertical,
+  Pencil,
   Pin,
   PinOff,
 } from "lucide-react";
@@ -28,6 +29,8 @@ export default function ExpertNavActions({
   pinned,
   onTogglePin,
   onNewChat,
+  onEdit,
+  editingTeam = false,
   onHide,
   onUnhide,
 }: {
@@ -35,6 +38,9 @@ export default function ExpertNavActions({
   pinned: boolean;
   onTogglePin: () => void;
   onNewChat: () => void;
+  onEdit?: () => void;
+  /** Team hosts use the team editor; solo experts use the expert editor. */
+  editingTeam?: boolean;
   onHide?: () => void;
   onUnhide?: () => void;
 }) {
@@ -56,6 +62,19 @@ export default function ExpertNavActions({
       },
     },
   ];
+  if (onEdit) {
+    items.push({
+      key: "edit",
+      icon: <Pencil size={14} />,
+      label: editingTeam
+        ? t("experts.teams.editTitle")
+        : t("experts.editExpert", "编辑专家"),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onEdit();
+      },
+    });
+  }
   if (onHide) {
     items.push({
       key: "hide",

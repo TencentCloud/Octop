@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { applyUpdate } from "../../pwa";
+import { applyUpdate, hasPendingAppUpdate } from "../../pwa";
 import { updateApi } from "../../api/modules/update";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -16,14 +16,16 @@ export const PWA_UPDATE_DISMISSED_KEY = "pwa:update-dismissed";
 /**
  * Listens for the "pwa:update-ready" event (dispatched by sw-register.ts) and
  * renders a dismissible banner so the user can choose when to reload.
- * Designed to be mounted once in MainLayout.
+ * Mount once above the router so the login page sees it too. If the event
+ * fired before this component mounted, the waiting worker is checked directly.
  *
- * Only users allowed to update see the banner: applying it restarts the backend
- * service, which requires the ``update`` permission. Non-admins are not prompted.
+ * The banner is shown on every page, including login. Reloading picks up the
+ * new frontend.
+ * Restarting the backend service still requires the ``update`` permission.
  *
  * When the process is running as a system service (OCTOP_SERVICE_MODE is
- * set), clicking the update-now action also triggers a backend service restart so that
- * the new Python package takes effect alongside the new frontend bundle.
+ * set) and the user may update, clicking the action also restarts the backend
+ * so the new Python package takes effect alongside the new frontend bundle.
  */
 export default function PwaUpdatePrompt() {
   const { t } = useTranslation();
@@ -34,16 +36,23 @@ export default function PwaUpdatePrompt() {
   const canUpdate = userCan(user, "update");
 
   useEffect(() => {
-    const handler = () => {
+    let cancelled = false;
+    const show = () => {
       try {
         if (sessionStorage.getItem(PWA_UPDATE_DISMISSED_KEY)) return;
       } catch {
         // private mode / storage disabled — still allow the prompt
       }
-      setVisible(true);
+      if (!cancelled) setVisible(true);
     };
-    window.addEventListener("pwa:update-ready", handler);
-    return () => window.removeEventListener("pwa:update-ready", handler);
+    window.addEventListener("pwa:update-ready", show);
+    void hasPendingAppUpdate().then((pending) => {
+      if (pending) show();
+    });
+    return () => {
+      cancelled = true;
+      window.removeEventListener("pwa:update-ready", show);
+    };
   }, []);
 
   // Fetch service mode once so we know whether to also restart the backend.
@@ -55,13 +64,13 @@ export default function PwaUpdatePrompt() {
       .catch(() => {});
   }, [canUpdate]);
 
-  if (!canUpdate || !visible) return null;
+  if (!visible) return null;
 
   const handleUpdate = async () => {
     setVisible(false);
-    // If running as a system service, trigger backend restart first.
-    // applyUpdate() reloads once after posting SKIP_WAITING.
-    if (serviceMode) {
+    // Frontend reload is enough for everyone. Only an operator may restart
+    // the backend service that is serving this page.
+    if (canUpdate && serviceMode) {
       updateApi.restartService().catch(() => {});
     }
     await applyUpdate();

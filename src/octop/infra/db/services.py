@@ -35,6 +35,7 @@ from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.db.repos.sso import SsoRepo
 from octop.infra.db.repos.thread_messages import ThreadMessageRepo
+from octop.infra.db.repos.thread_shares import ThreadShareRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
 from octop.infra.db.repos.usage import UsageRepo
@@ -63,6 +64,7 @@ class RepoBundle:
     session_repo: SessionRepo
     thread_repo: ThreadRepo
     thread_message_repo: ThreadMessageRepo
+    thread_share_repo: ThreadShareRepo
     trajectory_event_repo: TrajectoryEventRepo
     secret_repo: SecretRepo
     audit_repo: AuditRepo
@@ -103,6 +105,7 @@ class RepoBundle:
             session_repo=SessionRepo(db),
             thread_repo=ThreadRepo(db),
             thread_message_repo=ThreadMessageRepo(db),
+            thread_share_repo=ThreadShareRepo(db),
             trajectory_event_repo=TrajectoryEventRepo(db),
             secret_repo=secret_repo,
             audit_repo=AuditRepo(db),
@@ -179,6 +182,10 @@ class SharedServices:
     @property
     def thread_message_repo(self) -> ThreadMessageRepo:
         return self.repos.thread_message_repo
+
+    @property
+    def thread_share_repo(self) -> ThreadShareRepo:
+        return self.repos.thread_share_repo
 
     @property
     def trajectory_event_repo(self) -> TrajectoryEventRepo:

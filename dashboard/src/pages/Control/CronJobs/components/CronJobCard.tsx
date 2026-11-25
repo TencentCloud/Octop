@@ -19,6 +19,7 @@ import {
   channelFromSessionKey,
   extractPromptFromJob,
   formatCronTimestamp,
+  pinnedThreadId,
 } from "../cronDisplay";
 import {
   formatTriggerText,
@@ -54,13 +55,18 @@ export function CronJobCard({
   const meta = (job.meta as Record<string, unknown> | undefined) ?? {};
   const sessionKey =
     typeof meta.octop_session_key === "string" ? meta.octop_session_key : "";
-  const channel = sessionKey
+  const pinned = pinnedThreadId(sessionKey);
+  const channel = pinned
+    ? ""
+    : sessionKey
     ? channelFromSessionKey(sessionKey)
     : Array.isArray(job.dispatch?.channel)
     ? job.dispatch.channel[0]
     : job.dispatch?.channel || "dashboard";
   const icon = CHANNEL_ICONS[channel as keyof typeof CHANNEL_ICONS];
-  const label = CHANNEL_LABEL_KEYS[channel as keyof typeof CHANNEL_LABEL_KEYS]
+  const label = pinned
+    ? t("cronJobs.form.sessionKeyHistory")
+    : CHANNEL_LABEL_KEYS[channel as keyof typeof CHANNEL_LABEL_KEYS]
     ? t(CHANNEL_LABEL_KEYS[channel as keyof typeof CHANNEL_LABEL_KEYS])
     : channel;
   const prompt = extractPromptFromJob(job);
@@ -99,7 +105,10 @@ export function CronJobCard({
     once: t("cronJobs.form.scheduleModeOnce"),
   });
 
-  const taskType = job.task_type === "text" ? "text" : "agent";
+  const taskType =
+    job.task_type === "text" || job.task_type === "script"
+      ? job.task_type
+      : "agent";
 
   const moreMenuItems: MenuProps["items"] = [
     {
@@ -159,6 +168,8 @@ export function CronJobCard({
             <Tag style={{ fontSize: 11, margin: 0 }}>
               {taskType === "text"
                 ? t("cronJobs.form.taskTypeText")
+                : taskType === "script"
+                ? t("cronJobs.form.taskTypeScriptShort")
                 : t("cronJobs.form.taskTypeAgent")}
             </Tag>
           </div>

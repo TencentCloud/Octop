@@ -71,6 +71,7 @@ def agent_execute_env_defaults(
     agent_id: str,
     workspace_dir: Path,
     cfg: dict[str, Any] | None = None,
+    user_id: int | None = None,
 ) -> dict[str, str]:
     auth_dir = agent_auth_dir(workspace_dir, cfg)
     auth_dir.mkdir(parents=True, exist_ok=True)
@@ -82,12 +83,15 @@ def agent_execute_env_defaults(
         auth_host=auth_dir,
         skills_host=skills_dir,
     )
-    return {
+    env = {
         "OCTOP_AGENT_ID": agent_id,
         "OCTOP_AUTH_DIR": auth_env,
         "OCTOP_HOME": str(paths.root),
         "OCTOP_SKILLS_DIR": skills_env,
     }
+    if user_id is not None:
+        env["OCTOP_TCCLI_PROFILE"] = f"octop-{int(user_id)}"
+    return env
 
 
 def inject_agent_execute_env(
@@ -128,6 +132,7 @@ def inject_agent_execute_env(
             agent_id=row.agent_id,
             workspace_dir=workspace_dir,
             cfg=cfg,
+            user_id=row.user_id,
         )
     )
 
@@ -137,4 +142,13 @@ def inject_agent_execute_env(
         out.setdefault("inherit_env", True)
         if not uses_scoped_workspace_default({"backend": backend}):
             extra["OCTOP_CLI_HOME"] = join_agent_facing(extra["OCTOP_AUTH_DIR"], "cli-home")
+    if kind == "docker" and "OCTOP_TCCLI_PROFILE" in extra:
+        # DockerSandbox reads ``environment``, not the local-shell ``env`` key.
+        # Set the profile after any caller-supplied values so a spec cannot
+        # point the skill at another user's tccli file.
+        environment = {
+            str(key): str(value) for key, value in dict(backend.get("environment") or {}).items()
+        }
+        environment["OCTOP_TCCLI_PROFILE"] = extra["OCTOP_TCCLI_PROFILE"]
+        out["environment"] = environment
     return out
