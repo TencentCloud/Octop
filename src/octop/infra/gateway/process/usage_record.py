@@ -389,6 +389,7 @@ class TurnMeter:
         self._finished = True
         with contextlib.suppress(Exception):
             from octop.infra.telemetry import (  # noqa: PLC0415
+                error_code,
                 exception_type,
                 record_agent_invocation,
                 record_turn_ended,
@@ -401,4 +402,5 @@ class TurnMeter:
                     source=self.source,
                     duration_s=time.perf_counter() - self.started,
                     error_type=exception_type(exc),
+                    error_code=error_code(exc),
                 )

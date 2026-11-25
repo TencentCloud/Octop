@@ -310,8 +310,9 @@ Metric names follow the OpenTelemetry GenAI semantic conventions
 | `gen_ai.invoke_agent.duration` | histogram (`s`) | Wall-clock duration of one agent turn (chat and cron), for completed and failed turns; turns paused for approval are not recorded. |
 | `octop.turn.time_to_first_token` | histogram (`s`) | Time from the start of a turn to its first visible text token (chat and cron). Turns that produce no text before they end or fail are not recorded. Octop-specific: the spec's `gen_ai.client.inference.time_to_first_chunk` is per model call, which Octop cannot see. |
 | `octop.turn.active` | up-down counter (`{turn}`) | Agent turns currently in flight. Turns paused for approval leave the count when they pause. |
+| `http.server.request.duration` | histogram (`s`) | Duration of HTTP API requests ([HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/)). Attributes: `http.request.method`, `url.scheme`, `http.route` (the route *template*, e.g. `/api/agents/{agent_id}`; omitted for unmatched paths), `http.response.status_code`, and `error.type` for 5xx. Streaming responses (chat SSE) are timed to the end of the stream; WebSocket connections are not recorded. |
 | `octop.messages` | counter (`{message}`) | Inbound messages. Attribute `octop.channel.type` (`dashboard`, `feishu`, …). |
-| `octop.stream.errors`, `octop.cron.errors` | counters (`{error}`) | Attribute `error.type`. |
+| `octop.stream.errors`, `octop.cron.errors` | counters (`{error}`) | Attributes `error.type` and, for Octop's own errors, `octop.error.code` (e.g. `TOKEN_QUOTA_EXCEEDED`). |
 | `octop.cron.runs` | counter (`{run}`) | Cron executions. |
 | `octop.agent.active` | gauge (`{agent}`) | Enabled agents. |
 
@@ -319,7 +320,7 @@ Attributes on the token metrics: `gen_ai.operation.name` (`chat`),
 `gen_ai.provider.name`, `gen_ai.request.model`, `gen_ai.response.model`, and on
 the counters `gen_ai.token.modality` (always `unknown`: Octop only sees totals).
 `gen_ai.invoke_agent.duration` carries `gen_ai.operation.name` (`invoke_agent`)
-and `error.type` on failure. Octop adds `gen_ai.agent.id`, `gen_ai.agent.name`
+and `error.type` on failure (plus `octop.error.code` for Octop's own errors). Octop adds `gen_ai.agent.id`, `gen_ai.agent.name`
 and `octop.usage.source` (`chat` / `cron`) to every GenAI metric and to the two `octop.turn.*` metrics so each expert
 can be observed on its own.
 
@@ -342,7 +343,9 @@ Notes:
   model calls are not reported on the token metrics (the turn failure shows up on
   `gen_ai.invoke_agent.duration` with `error.type`).
 - `error.type` is the exception's canonical name (`TimeoutError`,
-  `openai.AuthenticationError`, …).
+  `openai.AuthenticationError`, …). Every Octop-raised error shares one
+  `error.type` (`octop.infra.errors.OctopError`), so `octop.error.code` tells
+  them apart.
 - `gen_ai.agent.name` is the agent's current name (cached for ~30 s). Renaming
   an agent starts a new series; group dashboards by `gen_ai.agent.id` and show
   the latest name.

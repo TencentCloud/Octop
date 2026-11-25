@@ -15,7 +15,7 @@ from octop.infra.telemetry import (
     shutdown_telemetry,
 )
 from tests.support.app import octop_client, seed_cached_general_assistant
-from tests.support.auth import bootstrap_admin
+from tests.support.auth import auth_header, bootstrap_admin
 from tests.support.otel import metric_points
 
 
@@ -100,5 +100,34 @@ async def test_failed_start_leaves_telemetry_inactive(
         with pytest.raises(RuntimeError, match="exploded"):
             await srv.start()
         assert is_active() is False
+    finally:
+        shutdown_telemetry()
+
+
+async def test_real_app_records_http_requests_by_route_template(tmp_octop_home: Path) -> None:
+    shutdown_telemetry()
+    reader = InMemoryMetricReader()
+    assert init_telemetry(environ={}, reader=reader) is True
+    try:
+        async with octop_client(tmp_octop_home) as (client, srv):
+            await bootstrap_admin(client, tmp_octop_home)
+            assert srv.app_runtime is not None
+            agent_id = srv.app_runtime.agent_registry.list_rows()[0].agent_id
+            before = len(metric_points(reader, "http.server.request.duration"))
+            headers = await auth_header(client)
+            ok = await client.get(f"/api/agents/{agent_id}", headers=headers)
+            missing = await client.get("/api/agents/does-not-exist", headers=headers)
+            assert ok.status_code == 200
+            assert missing.status_code == 404
+            points = metric_points(reader, "http.server.request.duration")
+        assert len(points) > before
+        routes = {
+            (p.attributes.get("http.route"), p.attributes.get("http.response.status_code"))
+            for p in points
+        }
+        assert ("/api/agents/{agent_id}", 200) in routes
+        assert ("/api/agents/{agent_id}", 404) in routes
+        # The raw agent id must never leak into a label.
+        assert not any(agent_id in str(p.attributes) for p in points)
     finally:
         shutdown_telemetry()

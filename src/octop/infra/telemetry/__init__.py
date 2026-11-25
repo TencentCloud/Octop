@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.telemetry.errors import exception_type
+from octop.infra.telemetry.errors import error_code, exception_type
 from octop.infra.telemetry.setup import (
     bind_active_agents,
     bind_agent_repo,
@@ -12,6 +12,7 @@ from octop.infra.telemetry.setup import (
     record_agent_invocation,
     record_counter,
     record_first_token,
+    record_http_request,
     record_inference_usage,
     record_turn_ended,
     record_turn_started,
@@ -22,12 +23,14 @@ __all__ = [
     "bind_active_agents",
     "bind_agent_repo",
     "bind_provider_repo",
+    "error_code",
     "exception_type",
     "init_telemetry",
     "is_active",
     "record_agent_invocation",
     "record_counter",
     "record_first_token",
+    "record_http_request",
     "record_inference_usage",
     "record_turn_ended",
     "record_turn_started",

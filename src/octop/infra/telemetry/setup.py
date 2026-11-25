@@ -13,13 +13,18 @@ from octop.infra.telemetry.agent_names import AgentNameResolver, AgentNameSource
 from octop.infra.telemetry.instruments import (
     ATTR_AGENT_ID,
     ATTR_AGENT_NAME,
+    ATTR_ERROR_CODE,
     ATTR_ERROR_TYPE,
+    ATTR_HTTP_METHOD,
+    ATTR_HTTP_ROUTE,
+    ATTR_HTTP_STATUS,
     ATTR_OPERATION_NAME,
     ATTR_PROVIDER_NAME,
     ATTR_REQUEST_MODEL,
     ATTR_RESPONSE_MODEL,
     ATTR_SOURCE,
     ATTR_TOKEN_MODALITY,
+    ATTR_URL_SCHEME,
     COUNTER_LABELS,
     MODALITY_UNKNOWN,
     OPERATION_CHAT,
@@ -166,6 +171,7 @@ def record_agent_invocation(
     source: str,
     duration_s: float,
     error_type: str = "",
+    error_code: str = "",
 ) -> None:
     """Record one agent turn's wall-clock duration. No-op when inactive; never raises."""
     instruments = _instruments_state
@@ -175,8 +181,49 @@ def record_agent_invocation(
         attributes = _agent_attributes(agent_id, source, OPERATION_INVOKE_AGENT)
         if error_type:
             attributes[ATTR_ERROR_TYPE] = error_type
+        if error_code:
+            attributes[ATTR_ERROR_CODE] = error_code
         instruments.agent_duration.record(duration_s, attributes)
     except Exception:  # noqa: BLE001 - telemetry must never break a turn
+        return
+
+
+_HTTP_METHODS = frozenset(
+    {"CONNECT", "DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT", "TRACE"}
+)
+
+
+def record_http_request(
+    *,
+    method: str,
+    scheme: str,
+    duration_s: float,
+    route: str = "",
+    status_code: int | None = None,
+    error_type: str = "",
+) -> None:
+    """Record one HTTP server request. ``route`` is the route *template* (never the raw path).
+
+    Unknown methods collapse to ``_OTHER``; blank/unknown route, status and error are
+    omitted. No-op when inactive; never raises.
+    """
+    instruments = _instruments_state
+    if instruments is None or not duration_s >= 0:
+        return
+    try:
+        upper = method.upper()
+        attributes: dict[str, Any] = {
+            ATTR_HTTP_METHOD: upper if upper in _HTTP_METHODS else "_OTHER",
+            ATTR_URL_SCHEME: scheme or "http",
+        }
+        if route:
+            attributes[ATTR_HTTP_ROUTE] = route
+        if status_code is not None:
+            attributes[ATTR_HTTP_STATUS] = int(status_code)
+        if error_type:
+            attributes[ATTR_ERROR_TYPE] = error_type
+        instruments.http_duration.record(duration_s, attributes)
+    except Exception:  # noqa: BLE001 - telemetry must never break a request
         return
 
 

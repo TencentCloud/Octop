@@ -25,6 +25,9 @@ OPERATION_INPUT_TOKENS = "gen_ai.client.inference.operation.input_tokens"
 OPERATION_OUTPUT_TOKENS = "gen_ai.client.inference.operation.output_tokens"
 INVOKE_AGENT_DURATION = "gen_ai.invoke_agent.duration"
 
+# --- HTTP semantic conventions (stable) ---
+HTTP_SERVER_REQUEST_DURATION = "http.server.request.duration"
+
 ATTR_OPERATION_NAME = "gen_ai.operation.name"
 ATTR_PROVIDER_NAME = "gen_ai.provider.name"
 ATTR_TOKEN_MODALITY = "gen_ai.token.modality"
@@ -33,6 +36,10 @@ ATTR_RESPONSE_MODEL = "gen_ai.response.model"
 ATTR_AGENT_ID = "gen_ai.agent.id"
 ATTR_AGENT_NAME = "gen_ai.agent.name"
 ATTR_ERROR_TYPE = "error.type"
+ATTR_HTTP_METHOD = "http.request.method"
+ATTR_HTTP_ROUTE = "http.route"
+ATTR_HTTP_STATUS = "http.response.status_code"
+ATTR_URL_SCHEME = "url.scheme"
 OPERATION_CHAT = "chat"
 OPERATION_INVOKE_AGENT = "invoke_agent"
 MODALITY_UNKNOWN = "unknown"
@@ -40,6 +47,7 @@ MODALITY_UNKNOWN = "unknown"
 # --- Octop-specific (non-spec) names ---
 ATTR_SOURCE = "octop.usage.source"
 ATTR_CHANNEL_TYPE = "octop.channel.type"
+ATTR_ERROR_CODE = "octop.error.code"
 AGENTS_ACTIVE = "octop.agent.active"
 TURN_ACTIVE = "octop.turn.active"
 TURN_FIRST_TOKEN = "octop.turn.time_to_first_token"
@@ -56,6 +64,7 @@ COUNTER_NAMES: dict[str, tuple[str, str]] = {
 COUNTER_LABELS: dict[str, str] = {
     "channel_type": ATTR_CHANNEL_TYPE,
     "error_type": ATTR_ERROR_TYPE,
+    "error_code": ATTR_ERROR_CODE,
 }
 
 # Recommended bucket boundaries for ``gen_ai.invoke_agent.duration`` (seconds).
@@ -78,6 +87,24 @@ INVOKE_AGENT_DURATION_BUCKETS: list[float] = [
     21600,
     43200,
     86400,
+]
+
+# Recommended bucket boundaries for ``http.server.request.duration`` (seconds).
+HTTP_DURATION_BUCKETS: list[float] = [
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.075,
+    0.1,
+    0.25,
+    0.5,
+    0.75,
+    1,
+    2.5,
+    5,
+    7.5,
+    10,
 ]
 
 # Bucket boundaries for ``octop.turn.time_to_first_token`` (seconds).
@@ -114,6 +141,7 @@ class Instruments:
     agent_duration: Histogram
     turn_active: UpDownCounter
     turn_first_token: Histogram
+    http_duration: Histogram
     counters: dict[str, Counter]
 
 
@@ -183,6 +211,12 @@ def build_instruments(meter: Meter, active_agents: Callable[[], int]) -> Instrum
             unit="s",
             description="Time from the start of a turn to its first visible text token.",
             explicit_bucket_boundaries_advisory=FIRST_TOKEN_BUCKETS,
+        ),
+        http_duration=meter.create_histogram(
+            HTTP_SERVER_REQUEST_DURATION,
+            unit="s",
+            description="Duration of HTTP server requests.",
+            explicit_bucket_boundaries_advisory=HTTP_DURATION_BUCKETS,
         ),
         counters={
             field: meter.create_counter(name, unit=unit, description=f"Octop {field}.")

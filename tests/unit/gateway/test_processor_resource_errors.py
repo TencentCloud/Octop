@@ -97,6 +97,38 @@ async def test_turn_duration_metric_for_both_entries(entry: str, fails: bool) ->
 
 
 @pytest.mark.asyncio
+async def test_octop_error_code_reaches_stream_error_and_duration_metrics() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "hi"}
+
+    processor, msg, _ = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._user_repo.get.return_value = MagicMock(locale="en")
+    error = OctopError(ErrorCode.TOKEN_QUOTA_EXCEEDED, "over quota")
+    processor._agent_manager.stream = _raising_stream(error)
+    # Run the real error recorder (the helper replaces it with a mock).
+    processor._record_stream_error = lambda **kw: GlobalProcessor._record_stream_error(
+        processor, **kw
+    )
+    with active_telemetry() as reader:
+        _ = [frame async for frame in processor.iter_turn_chunks(msg)]
+        (duration,) = metric_points(reader, "gen_ai.invoke_agent.duration")
+        (errors,) = metric_points(reader, "octop.stream.errors")
+    assert duration.attributes["octop.error.code"] == "TOKEN_QUOTA_EXCEEDED"
+    assert errors.attributes["octop.error.code"] == "TOKEN_QUOTA_EXCEEDED"
+    assert errors.attributes["error.type"] == "octop.infra.errors.OctopError"
+
+
+def _raising_stream(exc: Exception) -> Callable[..., AsyncIterator[dict[str, Any]]]:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "hi"}
+        raise exc
+
+    return stream
+
+
+@pytest.mark.asyncio
 async def test_dashboard_turn_paused_for_approval_records_no_duration() -> None:
     async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
         yield {"type": "token", "content": "hi"}

@@ -89,6 +89,7 @@ from octop.infra.history.projection import (
     message_inputs,
 )
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
+from octop.infra.telemetry import error_code as telemetry_error_code
 from octop.infra.telemetry import exception_type
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
@@ -2088,7 +2089,11 @@ class GlobalProcessor:
     ) -> None:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
-        _M.inc("stream_errors_total", error_type=exception_type(exc))
+        _M.inc(
+            "stream_errors_total",
+            error_type=exception_type(exc),
+            error_code=telemetry_error_code(exc),
+        )
         # A failed turn has no assistant message to key checkpoints by; drop
         # its undrained captures so they never merge into the next turn's
         # window (the files stay changed on disk, visible in the git panel).
