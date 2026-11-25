@@ -46,6 +46,50 @@ def _venv_python(root: Path) -> Path:
     return root / "bin" / "python"
 
 
+def _gbk_text_child_env() -> dict[str, str]:
+    """UTF-8 mode off, child text streams encoded as GBK.
+
+    ``PYTHONIOENCODING`` selects the encoding ``print`` uses. That reproduces
+    the bytes a GBK ANSI console would emit. It does not change the Windows
+    ANSI code page, so this remains a simulation of that console.
+    """
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "0"
+    env["PYTHONIOENCODING"] = "gbk"
+    return env
+
+
+def _read_utf8_stdout(
+    python: str,
+    code: str,
+    *args: str,
+    env: dict[str, str] | None = None,
+) -> str:
+    """Decode stdout the child wrote as UTF-8 bytes.
+
+    ``print`` follows the child's text encoding. A Chinese path printed with
+    UTF-8 mode off and a GBK text encoding is not valid UTF-8.
+    """
+    result = subprocess.run(
+        [python, "-c", code, *args],
+        capture_output=True,
+        check=False,
+        env=env,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.decode("utf-8").strip()
+
+
+def _read_purelib(python: str, *, env: dict[str, str] | None = None) -> Path:
+    text = _read_utf8_stdout(
+        python,
+        "import sys, sysconfig; sys.stdout.buffer.write(sysconfig.get_path('purelib').encode('utf-8'))",
+        env=env,
+    )
+    return Path(text)
+
+
 def test_install_output_preserves_utf8_text_and_exit_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -205,7 +249,7 @@ def test_managed_upgrade_requires_critical_imports_in_that_interpreter(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     assert importlib.util.find_spec("octop_harness") is not None
-    venv = tmp_path / "venv"
+    venv = tmp_path / "中文环境" / "venv"
     created = subprocess.run(
         [sys.executable, "-m", "venv", "--without-pip", str(venv)],
         capture_output=True,
@@ -214,13 +258,11 @@ def test_managed_upgrade_requires_critical_imports_in_that_interpreter(
     )
     assert created.returncode == 0, created.stderr
     python = _venv_python(venv)
-    located = subprocess.run(
-        [str(python), "-c", "import sysconfig; print(sysconfig.get_path('purelib'))"],
-        capture_output=True,
-        check=False,
-    )
-    assert located.returncode == 0, located.stderr
-    site_packages = Path(located.stdout.decode("utf-8").strip())
+    # The child text encoding is GBK and UTF-8 mode is off. purelib is still
+    # returned as UTF-8 bytes, including the Chinese directory.
+    site_packages = _read_purelib(str(python), env=_gbk_text_child_env())
+    assert site_packages.is_relative_to(venv)
+    assert "中文环境" in str(site_packages)
     dist = site_packages / "octop-1.0.2b5.dist-info"
     dist.mkdir(parents=True)
     (dist / "METADATA").write_text("Name: octop\nVersion: 1.0.2b5\n", encoding="utf-8")
@@ -244,6 +286,37 @@ def test_managed_upgrade_requires_critical_imports_in_that_interpreter(
     )
     assert installed.success is True
     assert installed.installed_version == "1.0.2b5"
+
+
+def test_chinese_path_round_trips_when_child_text_encoding_is_gbk(tmp_path: Path) -> None:
+    """``print`` under a GBK text encoding is not UTF-8.
+
+    ``PYTHONIOENCODING=gbk`` with ``PYTHONUTF8=0`` simulates that console. The
+    lookup used for a venv purelib writes UTF-8 bytes instead, so a Chinese
+    path survives the parent decode.
+    """
+    root = tmp_path / "中文环境"
+    root.mkdir()
+    env = _gbk_text_child_env()
+    printed = subprocess.run(
+        [sys.executable, "-c", "import sys; print(sys.argv[1])", str(root)],
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    assert printed.returncode == 0, printed.stderr
+    with pytest.raises(UnicodeDecodeError):
+        printed.stdout.decode("utf-8")
+    assert "中文环境" in printed.stdout.decode("gbk")
+
+    echoed = _read_utf8_stdout(
+        sys.executable,
+        "import sys; sys.stdout.buffer.write(sys.argv[1].encode('utf-8'))",
+        str(root),
+        env=env,
+    )
+    assert echoed == str(root)
+    assert "中文环境" in echoed
 
 
 def test_subprocess_text_mode_emits_encoding_warning(tmp_path: Path) -> None:
