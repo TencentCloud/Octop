@@ -65,6 +65,27 @@ async def test_select_all_works_across_client_and_server_platforms(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("modifier", "mask"), [("metaKey", 4), ("ctrlKey", 2)])
+async def test_select_all_is_not_injected_while_shift_is_held(modifier: str, mask: int) -> None:
+    sess = _session()
+    await _handle_client_event(
+        sess,
+        {
+            "type": "keydown",
+            "key": "A",
+            "code": "KeyA",
+            "keyCode": 65,
+            modifier: True,
+            "shiftKey": True,
+        },
+    )
+    down, up = sess._internal.client.send.await_args_list
+    assert "commands" not in down.args[1]
+    assert down.args[1]["modifiers"] == mask | 8
+    assert up.args[1]["key"] == "A"
+
+
+@pytest.mark.asyncio
 async def test_empty_text_and_uncommitted_keys_are_ignored() -> None:
     sess = _session()
     for msg in [{"type": "type", "text": ""}, {"type": "keydown", "key": "Process"}]:
