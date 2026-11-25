@@ -11,7 +11,10 @@ from octop.infra.telemetry.setup import (
     is_active,
     record_agent_invocation,
     record_counter,
+    record_first_token,
     record_inference_usage,
+    record_turn_ended,
+    record_turn_started,
     shutdown_telemetry,
 )
 
@@ -24,6 +27,9 @@ __all__ = [
     "is_active",
     "record_agent_invocation",
     "record_counter",
+    "record_first_token",
     "record_inference_usage",
+    "record_turn_ended",
+    "record_turn_started",
     "shutdown_telemetry",
 ]

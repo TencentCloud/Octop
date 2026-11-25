@@ -234,10 +234,14 @@ class UsageTracker:
     _seen_snapshot: bool = field(default=False, init=False)
     request_model: str = ""
     """Model ref the turn asked for (stable, unlike the provider's response model)."""
+    meter: TurnMeter | None = None
+    """Sees every raw chunk too, so time to first token needs no extra stream hook."""
 
     def observe(self, chunk: dict[str, Any]) -> None:
         if not isinstance(chunk, dict):
             return
+        if self.meter is not None:
+            self.meter.observe(chunk)
         is_explicit = isinstance(chunk.get("usage"), dict)
         if self._has_explicit_usage and not is_explicit:
             return
@@ -332,20 +336,69 @@ def _emit_inference_usage(
         )
 
 
-def emit_turn_duration(
-    agent_id: str,
-    started: float,
-    exc: Exception | None = None,
-    *,
-    source: str = "chat",
-) -> None:
-    """Export a turn's wall-clock duration (``started`` is ``time.perf_counter()``)."""
-    with contextlib.suppress(Exception):
-        from octop.infra.telemetry import exception_type, record_agent_invocation  # noqa: PLC0415
+class TurnMeter:
+    """Per-turn telemetry: in-flight count, time to first token, and duration.
 
-        record_agent_invocation(
-            agent_id=agent_id,
-            source=source,
-            duration_s=time.perf_counter() - started,
-            error_type=exception_type(exc),
-        )
+    ``start`` and ``finish`` bracket the turn; ``finish`` is idempotent so a
+    ``finally`` block can call it as a safety net after the normal exits.
+    """
+
+    def __init__(
+        self, agent_id: str, *, started: float | None = None, source: str = "chat"
+    ) -> None:
+        self.agent_id = agent_id
+        self.source = source
+        self.started = time.perf_counter() if started is None else started
+        self._active: dict[str, str] | None = None
+        self._is_started = False
+        self._first_token_seen = False
+        self._finished = False
+
+    def start(self) -> None:
+        """Count the turn as in flight (call right before the ``try`` that ends it)."""
+        if self._is_started:
+            return
+        self._is_started = True
+        with contextlib.suppress(Exception):
+            from octop.infra.telemetry import record_turn_started  # noqa: PLC0415
+
+            self._active = record_turn_started(self.agent_id, self.source)
+
+    def observe(self, chunk: dict[str, Any]) -> None:
+        """Record time to first token on the first non-empty text chunk."""
+        if self._first_token_seen or not isinstance(chunk, dict):
+            return
+        if chunk.get("type") not in ("token", "delta"):
+            return
+        if not (chunk.get("content") or chunk.get("text")):
+            return
+        self._first_token_seen = True
+        with contextlib.suppress(Exception):
+            from octop.infra.telemetry import record_first_token  # noqa: PLC0415
+
+            record_first_token(
+                agent_id=self.agent_id,
+                source=self.source,
+                latency_s=time.perf_counter() - self.started,
+            )
+
+    def finish(self, exc: Exception | None = None, *, record_duration: bool = True) -> None:
+        """End the turn once; ``record_duration=False`` for paused or abandoned turns."""
+        if self._finished:
+            return
+        self._finished = True
+        with contextlib.suppress(Exception):
+            from octop.infra.telemetry import (  # noqa: PLC0415
+                exception_type,
+                record_agent_invocation,
+                record_turn_ended,
+            )
+
+            record_turn_ended(self._active)
+            if record_duration:
+                record_agent_invocation(
+                    agent_id=self.agent_id,
+                    source=self.source,
+                    duration_s=time.perf_counter() - self.started,
+                    error_type=exception_type(exc),
+                )

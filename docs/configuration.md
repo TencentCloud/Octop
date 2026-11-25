@@ -308,6 +308,8 @@ Metric names follow the OpenTelemetry GenAI semantic conventions
 | `gen_ai.client.inference.usage.reasoning.output_tokens` | counter (`{token}`) | Subset of the output counter spent on reasoning. |
 | `gen_ai.client.inference.operation.input_tokens` / `…output_tokens` | histograms (`{token}`) | Token distribution per model call, for percentiles. Not for totals or cost. |
 | `gen_ai.invoke_agent.duration` | histogram (`s`) | Wall-clock duration of one agent turn (chat and cron), for completed and failed turns; turns paused for approval are not recorded. |
+| `octop.turn.time_to_first_token` | histogram (`s`) | Time from the start of a turn to its first visible text token (chat and cron). Turns that produce no text before they end or fail are not recorded. Octop-specific: the spec's `gen_ai.client.inference.time_to_first_chunk` is per model call, which Octop cannot see. |
+| `octop.turn.active` | up-down counter (`{turn}`) | Agent turns currently in flight. Turns paused for approval leave the count when they pause. |
 | `octop.messages` | counter (`{message}`) | Inbound messages. Attribute `octop.channel.type` (`dashboard`, `feishu`, …). |
 | `octop.stream.errors`, `octop.cron.errors` | counters (`{error}`) | Attribute `error.type`. |
 | `octop.cron.runs` | counter (`{run}`) | Cron executions. |
@@ -318,7 +320,7 @@ Attributes on the token metrics: `gen_ai.operation.name` (`chat`),
 the counters `gen_ai.token.modality` (always `unknown`: Octop only sees totals).
 `gen_ai.invoke_agent.duration` carries `gen_ai.operation.name` (`invoke_agent`)
 and `error.type` on failure. Octop adds `gen_ai.agent.id`, `gen_ai.agent.name`
-and `octop.usage.source` (`chat` / `cron`) to every GenAI metric so each expert
+and `octop.usage.source` (`chat` / `cron`) to every GenAI metric and to the two `octop.turn.*` metrics so each expert
 can be observed on its own.
 
 Notes:

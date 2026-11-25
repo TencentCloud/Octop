@@ -5,7 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
-from opentelemetry.metrics import CallbackOptions, Counter, Histogram, Meter, Observation
+from opentelemetry.metrics import (
+    CallbackOptions,
+    Counter,
+    Histogram,
+    Meter,
+    Observation,
+    UpDownCounter,
+)
 
 # --- GenAI semantic conventions (semantic-conventions-genai v0.1.0, Development) ---
 # Keep every convention-defined name in this block.
@@ -34,6 +41,8 @@ MODALITY_UNKNOWN = "unknown"
 ATTR_SOURCE = "octop.usage.source"
 ATTR_CHANNEL_TYPE = "octop.channel.type"
 AGENTS_ACTIVE = "octop.agent.active"
+TURN_ACTIVE = "octop.turn.active"
+TURN_FIRST_TOKEN = "octop.turn.time_to_first_token"
 
 # ``Metrics`` field name -> (instrument name, unit)
 COUNTER_NAMES: dict[str, tuple[str, str]] = {
@@ -71,6 +80,9 @@ INVOKE_AGENT_DURATION_BUCKETS: list[float] = [
     86400,
 ]
 
+# Bucket boundaries for ``octop.turn.time_to_first_token`` (seconds).
+FIRST_TOKEN_BUCKETS: list[float] = [0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8, 15, 30, 60, 120]
+
 # Recommended bucket boundaries for ``gen_ai.client.inference.operation.*_tokens``.
 TOKEN_BUCKETS: list[float] = [
     1,
@@ -100,6 +112,8 @@ class Instruments:
     operation_input: Histogram
     operation_output: Histogram
     agent_duration: Histogram
+    turn_active: UpDownCounter
+    turn_first_token: Histogram
     counters: dict[str, Counter]
 
 
@@ -158,6 +172,17 @@ def build_instruments(meter: Meter, active_agents: Callable[[], int]) -> Instrum
             unit="s",
             description="The end-to-end duration of a single agent invocation (one turn).",
             explicit_bucket_boundaries_advisory=INVOKE_AGENT_DURATION_BUCKETS,
+        ),
+        turn_active=meter.create_up_down_counter(
+            TURN_ACTIVE,
+            unit="{turn}",
+            description="Agent turns currently in flight.",
+        ),
+        turn_first_token=meter.create_histogram(
+            TURN_FIRST_TOKEN,
+            unit="s",
+            description="Time from the start of a turn to its first visible text token.",
+            explicit_bucket_boundaries_advisory=FIRST_TOKEN_BUCKETS,
         ),
         counters={
             field: meter.create_counter(name, unit=unit, description=f"Octop {field}.")

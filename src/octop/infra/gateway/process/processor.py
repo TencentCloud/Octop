@@ -76,8 +76,8 @@ from octop.infra.gateway.process.stream_project import (
     project_stream,
 )
 from octop.infra.gateway.process.usage_record import (
+    TurnMeter,
     UsageTracker,
-    emit_turn_duration,
     record_turn_usage,
 )
 from octop.infra.gateway.slash.catalog import HITL_APPROVAL_COMMANDS, spec_for
@@ -1128,7 +1128,8 @@ class GlobalProcessor:
         stream_ok = False
         hitl_paused = False
         failure_saved = False
-        usage_tracker = UsageTracker(request_model=str(request.get("model") or ""))
+        meter = TurnMeter(agent_id, started=turn_started)
+        usage_tracker = UsageTracker(request_model=str(request.get("model") or ""), meter=meter)
         history_tracker = TurnHistoryTracker.from_request(request)
         self._mark_care_replied(
             agent_id=agent_id,
@@ -1136,6 +1137,7 @@ class GlobalProcessor:
             history_tracker=history_tracker,
         )
         projection_state = StreamProjectionState()
+        meter.start()
         try:
             turn_stream = project_stream(
                 self._agent_manager,
@@ -1166,7 +1168,7 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
-            emit_turn_duration(agent_id, turn_started, exc)
+            meter.finish(exc)
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
@@ -1183,7 +1185,7 @@ class GlobalProcessor:
         else:
             if stream_ok and not hitl_paused:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))
-                emit_turn_duration(agent_id, turn_started)
+                meter.finish()
                 self._touch_thread_after_turn(thread_id, msg.text)
                 self._record_turn_usage(
                     agent_id=agent_id,
@@ -1199,6 +1201,7 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
+            meter.finish(record_duration=False)
             if not failure_saved and (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
@@ -1468,7 +1471,8 @@ class GlobalProcessor:
         hitl_paused = False
         failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
-        usage_tracker = UsageTracker(request_model=str(request.get("model") or ""))
+        meter = TurnMeter(agent_id, started=turn_started)
+        usage_tracker = UsageTracker(request_model=str(request.get("model") or ""), meter=meter)
         # Align with IM stream_project: only push tool_call ids opened this
         # turn, then dedupe intra-turn replays and identical path/URL frames.
         saw_tool_call = False
@@ -1477,6 +1481,7 @@ class GlobalProcessor:
         emitted_attachment_keys: set[str] = set()
         emitted_tool_error_ids: set[str] = set()
 
+        meter.start()
         try:
             async for chunk in iter_with_session_auto_approve(
                 self._agent_manager.stream(agent_id, request),
@@ -1561,7 +1566,7 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
-            emit_turn_duration(agent_id, turn_started, exc)
+            meter.finish(exc)
             message, error_code = _stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
@@ -1578,7 +1583,8 @@ class GlobalProcessor:
             if stream_ok:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))
                 if not hitl_paused:
-                    emit_turn_duration(agent_id, turn_started)
+                    meter.finish()
+            meter.finish(record_duration=False)
             if not failure_saved and not stream_ok:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text

@@ -961,5 +961,9 @@ async def test_agent_run_records_duration_metric(fails: bool) -> None:
         else:
             await service.deliver(_command(task_type="agent", prompt="run"))
         (point,) = metric_points(reader, "gen_ai.invoke_agent.duration")
+        (first_token,) = metric_points(reader, "octop.turn.time_to_first_token")
+        in_flight = metric_points(reader, "octop.turn.active")
+    assert first_token.attributes["octop.usage.source"] == "cron"
+    assert [p.value for p in in_flight] == [0]
     assert point.attributes["octop.usage.source"] == "cron"
     assert point.attributes.get("error.type") == ("TimeoutError" if fails else None)

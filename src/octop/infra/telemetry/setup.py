@@ -180,6 +180,46 @@ def record_agent_invocation(
         return
 
 
+def record_turn_started(agent_id: str, source: str) -> dict[str, str] | None:
+    """Count one in-flight turn; return the attributes to hand back to ``record_turn_ended``.
+
+    ``None`` when telemetry is inactive. The attributes are captured once so the
+    matching decrement lands on the same series even if the agent is renamed mid-turn.
+    """
+    instruments = _instruments_state
+    if instruments is None:
+        return None
+    try:
+        attributes = _agent_attributes(agent_id, source, OPERATION_INVOKE_AGENT)
+        instruments.turn_active.add(1, attributes)
+        return attributes
+    except Exception:  # noqa: BLE001 - telemetry must never break a turn
+        return None
+
+
+def record_turn_ended(attributes: dict[str, str] | None) -> None:
+    """Undo ``record_turn_started``. No-op for ``None``; never raises."""
+    instruments = _instruments_state
+    if instruments is None or attributes is None:
+        return
+    try:
+        instruments.turn_active.add(-1, attributes)
+    except Exception:  # noqa: BLE001 - telemetry must never break a turn
+        return
+
+
+def record_first_token(*, agent_id: str, source: str, latency_s: float) -> None:
+    """Record time from turn start to the first visible text token. Never raises."""
+    instruments = _instruments_state
+    if instruments is None or not latency_s >= 0:
+        return
+    try:
+        attributes = _agent_attributes(agent_id, source, OPERATION_INVOKE_AGENT)
+        instruments.turn_first_token.record(latency_s, attributes)
+    except Exception:  # noqa: BLE001 - telemetry must never break a turn
+        return
+
+
 def record_inference_usage(
     *,
     agent_id: str,

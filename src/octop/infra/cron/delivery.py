@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -19,8 +18,8 @@ from octop.infra.db.repos.threads import ThreadRow
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import (
+    TurnMeter,
     UsageTracker,
-    emit_turn_duration,
     record_turn_usage,
 )
 from octop.infra.gateway.threads import ThreadRegistry
@@ -250,12 +249,13 @@ class CronDeliveryService:
         if command.allow_all:
             _stamp_managed_allow_all(self._agent_manager, command.agent_id, request)
         tracker = TurnHistoryTracker.from_request(request)
-        usage = UsageTracker(request_model=str(request.get("model") or ""))
-        started = time.perf_counter()
+        meter = TurnMeter(command.agent_id, source="cron")
+        usage = UsageTracker(request_model=str(request.get("model") or ""), meter=meter)
         parts: list[str] = []
         interaction_required = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
+        meter.start()
         try:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
@@ -289,15 +289,16 @@ class CronDeliveryService:
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
+            meter.finish()
         except Exception as exc:
-            emit_turn_duration(command.agent_id, started, exc, source="cron")
+            meter.finish(exc)
             raise
         finally:
+            meter.finish(record_duration=False)
             # ``fresh_thread`` already put an empty thread on the session, so a run
             # that raised before this left a conversation with no rows at all.
             self._project_best_effort(session.thread_id, tracker.inputs)
             self._remember_thread_title(session, command)
-        emit_turn_duration(command.agent_id, started, source="cron")
         if usage.usage is not None:
             record_turn_usage(
                 self._repos.usage_repo,

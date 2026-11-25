@@ -82,7 +82,11 @@ async def test_turn_duration_metric_for_both_entries(entry: str, fails: bool) ->
             _ = [event async for event in processor(msg)]
         (point,) = metric_points(reader, "gen_ai.invoke_agent.duration")
         messages = metric_points(reader, "octop.messages")
+        (first_token,) = metric_points(reader, "octop.turn.time_to_first_token")
+        in_flight = metric_points(reader, "octop.turn.active")
     assert point.count == 1
+    assert first_token.count == 1
+    assert [p.value for p in in_flight] == [0]
     assert point.attributes["gen_ai.agent.id"] == "agent-1"
     assert point.attributes["octop.usage.source"] == "chat"
     assert point.attributes["gen_ai.operation.name"] == "invoke_agent"
@@ -105,6 +109,7 @@ async def test_dashboard_turn_paused_for_approval_records_no_duration() -> None:
     with active_telemetry() as reader:
         _ = [frame async for frame in processor.iter_turn_chunks(msg)]
         assert metric_points(reader, "gen_ai.invoke_agent.duration") == []
+        assert [p.value for p in metric_points(reader, "octop.turn.active")] == [0]
 
 
 def test_stream_error_preserves_resource_error_code() -> None:
