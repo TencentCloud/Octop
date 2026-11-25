@@ -1,6 +1,6 @@
+import type { PointerEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import cx from "classnames";
 import styles from "./RailEdgeControl.module.less";
 
 interface RailEdgeControlProps {
@@ -14,6 +14,10 @@ interface RailEdgeControlProps {
   side?: "end" | "start";
   /** Optional aria / tooltip label override. */
   label?: string;
+  /** Tooltip when it carries more than the name (e.g. its accelerator). */
+  hint?: string;
+  /** Keyboard accelerator, published to AT only. */
+  shortcut?: string;
   className?: string;
   /**
    * When false, keep the hover hit-target / button but do not paint a divider
@@ -25,6 +29,14 @@ interface RailEdgeControlProps {
    * ``before`` / ``after`` sit on either side when two rails share one line.
    */
   placement?: "center" | "before" | "after";
+  /**
+   * Drag the upper stretch of the line to resize the panel. The centered
+   * toggle stays a click target.
+   */
+  onResizeStart?: (event: PointerEvent<HTMLDivElement>) => void;
+  resizeLabel?: string;
+  /** Keep the divider line without the hover toggle (nav fold lives elsewhere). */
+  showToggle?: boolean;
 }
 
 /**
@@ -36,9 +48,14 @@ export default function RailEdgeControl({
   onToggle,
   side = "end",
   label,
+  hint,
+  shortcut,
   className,
   showLine = true,
   placement = "center",
+  onResizeStart,
+  resizeLabel,
+  showToggle = true,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -49,34 +66,49 @@ export default function RailEdgeControl({
 
   return (
     <div
-      className={cx(
+      className={[
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
-        !expanded && styles.edgeCollapsed,
+        expanded ? null : styles.edgeCollapsed,
+        showToggle ? null : styles.edgeLineOnly,
         className,
-      )}
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {showLine ? <div className={styles.line} aria-hidden /> : null}
-      <button
-        type="button"
-        className={cx(
-          styles.btn,
-          placement === "before"
-            ? styles.btnBefore
-            : placement === "after"
-            ? styles.btnAfter
-            : "",
-        )}
-        onClick={onToggle}
-        aria-label={ariaLabel}
-        title={ariaLabel}
-      >
-        {expanded ? (
-          <ChevronLeft size={14} strokeWidth={2} aria-hidden />
-        ) : (
-          <ChevronRight size={14} strokeWidth={2} aria-hidden />
-        )}
-      </button>
+      {onResizeStart ? (
+        <div
+          className={styles.resizeGrip}
+          onPointerDown={onResizeStart}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={resizeLabel ?? t("chat.resizeSidebar", "调整侧栏宽度")}
+        />
+      ) : null}
+      {showToggle ? (
+        <button
+          type="button"
+          className={`${styles.btn} ${
+            placement === "before"
+              ? styles.btnBefore
+              : placement === "after"
+              ? styles.btnAfter
+              : ""
+          }`}
+          onClick={onToggle}
+          aria-label={ariaLabel}
+          aria-expanded={expanded}
+          aria-keyshortcuts={shortcut}
+          title={hint ?? ariaLabel}
+        >
+          {expanded ? (
+            <ChevronLeft size={14} strokeWidth={1.6} aria-hidden />
+          ) : (
+            <ChevronRight size={14} strokeWidth={1.6} aria-hidden />
+          )}
+        </button>
+      ) : null}
     </div>
   );
 }

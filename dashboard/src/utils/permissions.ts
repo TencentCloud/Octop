@@ -33,9 +33,10 @@ export const PERM = {
   knowledgeSettings: ["knowledge_settings"],
   knowledgeBasesPage: ["knowledge_bases", "knowledge_settings"],
   bridge: ["bridge"],
-  workbench: ["browser", "terminal"],
+  workbench: ["browser", "terminal", "cloud"],
   browser: ["browser"],
   terminal: ["terminal"],
+  cloud: ["cloud"],
   desktop: ["desktop"],
   mobile: ["mobile"],
   usersPage: [
@@ -67,7 +68,15 @@ export const PERM = {
     "security_skill_scan",
     "admin_console",
   ],
-  advancedPage: ["update", "envs", "tls", "observability", "backup", "captcha"],
+  advancedPage: [
+    "update",
+    "envs",
+    "tls",
+    "observability",
+    "backup",
+    "captcha",
+    "app_config",
+  ],
   experts: ["experts"],
   tasks: ["tasks"],
   tokenUsage: ["token_usage"],
@@ -87,7 +96,6 @@ export const PERSONALIZATION_TAB_PERMISSIONS = {
 export const CONNECTOR_TAB_PERMISSIONS = {
   enabled: "connector_enabled",
   builtin: "connector_builtin",
-  custom: "connector_custom",
 } as const;
 
 export const PLUGIN_TAB_PERMISSIONS = {
@@ -136,6 +144,7 @@ export const ADVANCED_TAB_PERMISSIONS = {
   backup: "backup",
   https: "tls",
   updates: "update",
+  config: "app_config",
   captcha: "captcha",
   // Same gate as /api/settings/webauthn (require_permission("captcha")).
   webauthn: "captcha",
@@ -298,6 +307,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     pathname.startsWith("/remote-desktop/")
   ) {
     return ["desktop", "mobile"];
+  }
+  if (pathname === "/workbench/cloud") {
+    return PERM.cloud;
   }
   if (pathname === "/workbench/terminal" || pathname === "/terminal") {
     return PERM.terminal;

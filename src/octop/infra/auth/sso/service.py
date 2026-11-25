@@ -345,6 +345,7 @@ class SsoService:
         user = self._user_manager.get_by_id(consumed["user_id"])
         if user is None:
             raise ValueError("SSO user is unavailable")
+        self._services.user_repo.touch_last_login(user.id)
         self._services.audit_repo.write(
             actor=user.username, action="auth.oidc_login", target=user.username
         )

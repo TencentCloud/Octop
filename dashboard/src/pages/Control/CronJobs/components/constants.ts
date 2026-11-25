@@ -58,8 +58,13 @@ export function buildDefaultFormValues(timezone: string) {
     _preset: "daily_9am" as const,
     prompt: "",
     task_type: "text" as const,
+    allow_all: false,
+    script_lang: "python" as const,
+    script_source: "inline" as const,
+    script_path: "",
     model: undefined,
     fresh_thread: false,
+    session_target: "latest",
     session_key: undefined,
     mcp_servers: [],
   };

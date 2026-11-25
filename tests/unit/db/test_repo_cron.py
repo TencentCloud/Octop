@@ -87,6 +87,28 @@ def test_create_with_task_type(repo: CronJobRepo, agent_id: str, user_id: int):
     assert row.task_type == "agent"
 
 
+def test_create_script_job(repo: CronJobRepo, agent_id: str, user_id: int):
+    cid = new_ulid()
+    repo.create(
+        cron_id=cid,
+        agent_id=agent_id,
+        user_id=user_id,
+        trigger="0 9 * * *",
+        prompt="print('ok')",
+        session_key=_session_key(agent_id, user_id),
+        task_type="script",
+        allow_all=True,
+        script_lang="python",
+        script_source="inline",
+    )
+    row = repo.get(cid)
+    assert row is not None
+    assert row.task_type == "script"
+    assert row.script_lang == "python"
+    assert row.allow_all == 1
+    assert row.to_public_dict()["allow_all"] is True
+
+
 def test_set_run_status(repo: CronJobRepo, agent_id: str, user_id: int):
     cid = new_ulid()
     repo.create(

@@ -48,7 +48,11 @@ vi.mock("react-i18next", async (importOriginal) => {
         }
         return key;
       },
-      i18n: { language: "zh", changeLanguage: () => Promise.resolve() },
+      i18n: {
+        language: "zh",
+        changeLanguage: () => Promise.resolve(),
+        exists: () => false,
+      },
     }),
     Trans: ({ children }: { children?: React.ReactNode }) => children,
   };

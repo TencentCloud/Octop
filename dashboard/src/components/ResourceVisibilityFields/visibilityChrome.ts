@@ -13,8 +13,9 @@ export type AudienceSnapshot = {
 };
 
 /**
- * Group names are only needed when the groups radio can appear.
- * A single account hides the picker; zero groups hides that radio.
+ * Group names are only needed when the groups radio can appear and there may
+ * be groups to list. A single account hides the picker; a known-empty catalog
+ * skips the list request.
  */
 export function needsGroupCatalog(counts: {
   userCount: number | null;
@@ -25,25 +26,20 @@ export function needsGroupCatalog(counts: {
   return true;
 }
 
+/** Groups radio is always offered once the multi-user picker is shown. */
 export function showGroupVisibilityOption(
-  audience: AudienceSnapshot,
-  visibility: ResourceVisibilityMode,
+  _audience: AudienceSnapshot,
+  _visibility: ResourceVisibilityMode,
 ): boolean {
-  if (visibility === "groups") return true;
-  if (audience.groupCount === 0) return false;
-  if (audience.groupCount != null && audience.groupCount > 0) return true;
-  if (audience.groupsLoaded) return audience.groupCountFromList > 0;
   return true;
 }
 
-/** Hide the whole picker when one account is the only audience, or when a single remaining choice would be "everyone". */
+/** Hide the whole picker when one account is the only audience. */
 export function isVisibilityControlVisible(
   audience: AudienceSnapshot,
-  opts: { allowOwner: boolean; visibility: ResourceVisibilityMode },
+  _opts: { allowOwner: boolean; visibility: ResourceVisibilityMode },
 ): boolean {
   if (audience.status !== "ready") return false;
   if (audience.userCount === 1) return false;
-  const groups = showGroupVisibilityOption(audience, opts.visibility);
-  const choices = (opts.allowOwner ? 1 : 0) + 1 + (groups ? 1 : 0);
-  return choices > 1;
+  return true;
 }

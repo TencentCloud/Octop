@@ -172,7 +172,9 @@ def build_app(server: OctopServer) -> FastAPI:
         agent_mcp,
         agent_tools,
         agents,
+        app_config,
         auth,
+        auth_device,
         auth_ldap,
         auth_mfa,
         auth_oauth,
@@ -188,11 +190,13 @@ def build_app(server: OctopServer) -> FastAPI:
         desktop,
         envs,
         experts,
+        file_checkpoints,
         health,
         i18n,
         internal_mcp,
         invites,
         knowledge_bases,
+        managed,
         mbti,
         media_generation,
         memory,
@@ -223,6 +227,7 @@ def build_app(server: OctopServer) -> FastAPI:
         users,
         voice,
         workspace,
+        workspace_git,
     )
     from octop.api.routers.decision import router as decision_router
     from octop.api.routers.filesystem import router as filesystem_router
@@ -240,6 +245,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(setup.router, "/api", ["setup"]),
             _RouterMount(auth.router, "/api/auth", ["auth"]),
             _RouterMount(auth_mfa.router, "/api/auth", ["auth"]),
+            _RouterMount(auth_device.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oidc.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oauth.router, "/api/auth", ["auth"]),
             _RouterMount(auth_ldap.router, "/api/auth", ["auth"]),
@@ -271,6 +277,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(providers.router, "/api/providers", ["providers"]),
             _RouterMount(voice.router, "/api/voice", ["voice"]),
             _RouterMount(admin.router, "/api/admin", ["admin"]),
+            _RouterMount(app_config.router, "/api", ["admin"]),
             _RouterMount(backup.router, "/api/admin", ["admin"]),
             _RouterMount(admin_providers_router, "/api/admin/providers", ["admin"]),
             _RouterMount(admin_voice_router, "/api/admin/voice/providers", ["admin"]),
@@ -290,8 +297,11 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(mbti.router, "/api", ["mbti"]),
             _RouterMount(experts.router, "/api", ["experts"]),
             _RouterMount(teams.router, "/api", ["teams"]),
+            _RouterMount(managed.router, "/api", ["agents"]),
             _RouterMount(text_assist.router, "/api", ["text-assist"]),
             _RouterMount(workspace.router, "/api", ["workspace"]),
+            _RouterMount(workspace_git.router, "/api", ["git"]),
+            _RouterMount(file_checkpoints.router, "/api", ["git"]),
             _RouterMount(agent_files.router, "/api", ["agent_files"]),
             _RouterMount(memory.router, "/api", ["memory"]),
             _RouterMount(memory_portable.router, "/api", ["memory"]),
@@ -320,6 +330,12 @@ def build_app(server: OctopServer) -> FastAPI:
                 _RouterMount(mobile.router, "/api", ["mobile"]),
             ],
         )
+
+    # Before the dashboard catch-all so extension routes and static mounts win.
+    from octop.infra.extensions import extension_hooks
+
+    for _name, configure in extension_hooks("configure_app"):
+        configure(app, server)
 
     if enable_api_docs:
 

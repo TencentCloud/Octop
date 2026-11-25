@@ -4,15 +4,42 @@
  */
 
 import { useTranslation } from "react-i18next";
+import { isFileToolName } from "../constants";
+
+/** Names the harness invents when an ACP update did not include a title. */
+export function isPlaceholderToolName(name?: string): boolean {
+  const text = name?.trim().toLowerCase();
+  return !text || text === "unknown";
+}
+
+/** Keep a real tool name. A later ``unknown`` update must not replace it.
+
+ACP file edits are stored as ``write_file`` / ``edit_file`` and then again
+under the agent title (``Write /path``). The file card only recognizes the
+native name, so that title must not replace it.
+*/
+export function preferToolName(
+  incoming?: string,
+  current?: string,
+): string | undefined {
+  const next = incoming?.trim();
+  const prev = current?.trim();
+  if (isFileToolName(prev) && !isFileToolName(next)) return prev;
+  if (!isPlaceholderToolName(next)) return next;
+  return prev || next;
+}
 
 export function useToolDisplayNames(): (name?: string) => string {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   return (name?: string) => {
-    if (!name) return t("tools.unknown", "unknown");
-    const key = `tools.${name}`;
+    const raw = name?.trim();
+    if (!raw) return t("tools.unknown", "unknown");
+    const key = `tools.${raw}`;
+    // No catalog entry: show the name the tool already used.
+    if (!i18n.exists(key)) return raw;
     const translated = t(key);
-    return translated === key ? name : translated;
+    return translated === key ? raw : translated;
   };
 }
 

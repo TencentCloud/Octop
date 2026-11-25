@@ -9,12 +9,16 @@ from typing import TYPE_CHECKING, Any
 
 from octop_harness.config import ModelConfig, ProviderConfig
 
+from octop.infra.agents.providers.headers import (
+    assemble_provider_headers,
+    session_header_for_provider,
+)
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
     is_local_runtime_provider,
+    is_rerank_model,
     is_vision_model,
 )
-from octop.infra.agents.providers.opencode_session import session_header_for_provider
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
@@ -85,6 +89,28 @@ def merge_stream_usage_extra(
     return json.dumps(extra)
 
 
+def merge_default_model_extra(extra_json: str | None, model: str | None) -> str | None:
+    """Write or clear the connection-test model inside *extra_json*.
+
+    A blank value removes ``default_model`` so the settings form can stay empty.
+    Other keys in the blob are left in place.
+    """
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    cleaned = (model or "").strip()
+    if cleaned:
+        extra["default_model"] = cleaned
+    else:
+        extra.pop("default_model", None)
+    return json.dumps(extra) if extra else None
+
+
 def merge_provider_purpose_extra(
     extra_json: str | None,
     purpose: str | None,
@@ -131,14 +157,18 @@ def resolve_provider_purpose(
 
 
 def stamp_embedding_models(models: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
-    """Force ``embedding`` / ``task`` flags on every model entry."""
+    """Mark models in an embedding service while preserving its rerankers."""
     if models is None:
         return None
     stamped: list[dict[str, Any]] = []
     for model in models:
         entry = dict(model)
-        entry["embedding"] = True
-        entry["task"] = "embedding"
+        if is_rerank_model(entry):
+            entry.pop("embedding", None)
+            entry["task"] = "rerank"
+        else:
+            entry["embedding"] = True
+            entry["task"] = "embedding"
         stamped.append(entry)
     return stamped
 
@@ -319,10 +349,17 @@ class ProviderStore:
                 continue
             extra = _provider_extra_dict(row)
             raw_headers = extra.get("headers")
-            headers = (
+            stored_headers = (
                 {str(k): str(v) for k, v in raw_headers.items()}
                 if isinstance(raw_headers, dict)
                 else {}
+            )
+            headers = assemble_provider_headers(
+                row.name,
+                stored_headers,
+                base_url=row.base_url,
+                extra=extra,
+                probe=False,
             )
             out.append(
                 ProviderConfig(
@@ -333,7 +370,7 @@ class ProviderStore:
                     name=row.name,
                     models=models,
                     headers=headers,
-                    session_header=session_header_for_provider(row.name, row.base_url),
+                    session_header=session_header_for_provider(row.name, row.base_url, extra=extra),
                     stream_usage=resolve_provider_stream_usage(
                         provider_name=row.name,
                         extra=extra,

@@ -35,6 +35,24 @@ WORKSPACE_MANIFEST_PATH = f"{DEFAULT_SYSTEM_FILES_PATH}/{MANIFEST_FILENAME}"
 # Prefer system path; keep root ``manifest.json`` readable for pre-migration agents.
 _WORKSPACE_MANIFEST_READ_PATHS = (WORKSPACE_MANIFEST_PATH, MANIFEST_FILENAME)
 
+
+def workspace_manifest_rel(workspace: Any) -> str:
+    """Manifest path under the agent's system directory, or the ``.octop`` default."""
+    prefix = str(getattr(workspace, "system_files_path", "") or "").strip().strip("/")
+    if prefix:
+        return f"{prefix}/{MANIFEST_FILENAME}"
+    return WORKSPACE_MANIFEST_PATH
+
+
+def _manifest_read_paths(workspace: Any) -> tuple[str, ...]:
+    primary = workspace_manifest_rel(workspace)
+    paths = [primary]
+    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+        if rel not in paths:
+            paths.append(rel)
+    return tuple(paths)
+
+
 # Bundled illustrated portraits live in the dashboard public assets tree.
 _BUILTIN_AVATAR_URL_TEMPLATE = "/experts/avatars/{expert_id}.svg"
 
@@ -250,7 +268,7 @@ async def seed_expert_directory(
 
 async def read_workspace_manifest_text(workspace: BackendWorkspace) -> str | None:
     """Read welcome manifest text from the agent workspace (``.octop`` then legacy root)."""
-    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+    for rel in _manifest_read_paths(workspace):
         text = await workspace.aread_text(rel)
         if text is not None and str(text).strip():
             return str(text)
@@ -259,7 +277,7 @@ async def read_workspace_manifest_text(workspace: BackendWorkspace) -> str | Non
 
 async def read_workspace_manifest_bytes(workspace: BackendWorkspace) -> bytes | None:
     """Read welcome manifest bytes from the agent workspace (``.octop`` then legacy root)."""
-    for rel in _WORKSPACE_MANIFEST_READ_PATHS:
+    for rel in _manifest_read_paths(workspace):
         raw = await workspace.adownload_bytes(rel)
         if raw is not None and raw.strip():
             return raw
@@ -424,7 +442,7 @@ async def apply_workspace_quick_prompts(
         if _quick_prompts_have_content(prompt)
     ]
     payload = json.dumps(existing, ensure_ascii=False, indent=2).encode("utf-8")
-    await workspace.aupload_many([(WORKSPACE_MANIFEST_PATH, payload)])
+    await workspace.aupload_many([(workspace_manifest_rel(workspace), payload)])
 
 
 def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str, str]]:
@@ -881,6 +899,42 @@ class ExpertCatalog:
 def default_library_root() -> Path:
     """Return the in-package library directory."""
     return Path(__file__).parent / "library"
+
+
+# Templates listed in the built-in library before the expert market replaced
+# that tab (22 cards; the blank ``default`` seed was never shown). Matching is
+# by id, not by whatever still happens to live under ``library/``.
+FEATURED_EXPERT_TEMPLATE_IDS = frozenset(
+    {
+        "ai-coding-coach",
+        "ai-safety-guardian",
+        "business-operations",
+        "clinical-learning-subscription",
+        "cowork-plugin-management",
+        "cvm-ai-doctor",
+        "cvm-cluster-doctor",
+        "design",
+        "engineering",
+        "general-assistant",
+        "karpathy-knowledge-base",
+        "meituan-living-assistant",
+        "multi-agent-orchestrator",
+        "news-trend",
+        "office-automation",
+        "ops-engineer",
+        "parenting-companion",
+        "productivity",
+        "stock-assistant",
+        "superpowers-methodology",
+        "tencentcloud-api",
+        "wechat-ops",
+    }
+)
+
+
+def featured_expert_template_ids() -> frozenset[str]:
+    """Ids of the expert templates that shipped before the remote market."""
+    return FEATURED_EXPERT_TEMPLATE_IDS
 
 
 def resolve_expert_agent_name(

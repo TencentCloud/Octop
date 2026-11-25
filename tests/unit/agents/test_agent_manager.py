@@ -51,7 +51,11 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 
 
 @pytest.fixture
-def manager(tmp_path: Path) -> AgentManager:
+def manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AgentManager:
+    from octop_harness.plugins.registry import PluginRegistry
+
+    # Other test modules can leave tools in the process-wide plugin registry.
+    monkeypatch.setattr(PluginRegistry, "_instance", None)
     paths = PathLayout(tmp_path / ".octop")
     paths.ensure_root()
     db = SqlitePool(paths.db)
@@ -255,6 +259,8 @@ def test_apply_team_host_config_forces_async_ask_agent(manager: AgentManager) ->
     assert "ask_agent" not in disabled
     assert "agent_list" not in disabled
     assert out.bootstrap_enabled is False
+    if hasattr(out, "todos_enabled"):
+        assert out.todos_enabled is False
     assert "Host dispatch" in (out.system_prompt or "") or "主持人调度" in (out.system_prompt or "")
 
 
@@ -413,6 +419,77 @@ async def test_install_team_host_dispatch_stream_skips_unknown_job_id(
 
 
 @pytest.mark.asyncio
+async def test_invoke_peer_followup_prefers_streamed_answer(manager: AgentManager) -> None:
+    from dataclasses import replace as dc_replace
+
+    from langchain_core.messages import AIMessage
+    from octop_harness.messages import extract_call_response
+
+    seen: dict[str, object] = {}
+
+    async def build_peer_request(
+        *,
+        from_agent_id: str,
+        to_agent_id: str,
+        message: str,
+        user_id: str | int,
+        source: str,
+        source_thread_id: str | None,
+        source_session_key: str | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(thread_id="t~child")
+
+    async def stream_peer(
+        request: object,
+        *,
+        room_thread_id: str,
+        speaker_id: str,
+    ) -> dict[str, object]:
+        del request, room_thread_id, speaker_id
+        return {
+            "messages": [AIMessage(content="checkpoint fragment")],
+            "stream_text": "live conclusion",
+            "team_live_streamed": True,
+        }
+
+    async def after_peer(call: object, thread_id: str, payload: dict[str, object]) -> None:
+        del call, thread_id
+        seen["fan_in"] = payload["messages"]
+
+    team = MagicMock()
+    team.enabled = True
+    team.call_peer = AsyncMock()
+    team.submit_peer = MagicMock()
+    team._invoke_peer = AsyncMock()
+    team._build_peer_request = build_peer_request
+    team._enrich_request = None
+    team._after_peer = after_peer
+    manager._harness_manager = SimpleNamespace(team=team)
+    manager._team_processor = SimpleNamespace(
+        take_team_peer_prompt=MagicMock(return_value=None),
+        stream_team_peer_to_room=stream_peer,
+    )
+    manager.get_row = MagicMock(  # type: ignore[method-assign]
+        return_value=dc_replace(_row(agent_id="host"), kind="team")
+    )
+    manager._install_team_host_dispatch()
+    _request, payload = await team._invoke_peer(
+        from_agent_id="host",
+        to_agent_id="child",
+        message="go",
+        user_id=1,
+        source="inbox",
+        source_thread_id="t",
+        source_session_key="sk",
+        job_id="job-1",
+    )
+    fan_in = seen["fan_in"]
+    assert isinstance(fan_in, list)
+    assert fan_in[0].content == "checkpoint fragment"
+    assert extract_call_response(payload) == "live conclusion"
+
+
+@pytest.mark.asyncio
 async def test_install_async_dispatch_streams_non_team_inbox(manager: AgentManager) -> None:
     seen: dict[str, object] = {}
 
@@ -494,10 +571,11 @@ async def test_install_team_host_enrich_uses_host_assignment(manager: AgentManag
     manager._install_team_host_dispatch()
     req = SimpleNamespace(thread_id="t~child", messages="我最近总失眠")
     out = await team._enrich_request("child", req)
-    assert isinstance(out.messages[0], SystemMessage)
-    assert isinstance(out.messages[1], HumanMessage)
-    assert out.messages[1].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
-    assert "团队派工" in out.messages[0].content
+    assert not any(isinstance(m, SystemMessage) for m in out.messages)
+    assert len(out.messages) == 1
+    assert isinstance(out.messages[0], HumanMessage)
+    assert out.messages[0].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
+    assert "团队派工" in out.configurable["octop_team_dispatch_briefing"]
 
 
 @pytest.mark.asyncio
@@ -930,6 +1008,16 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_keeps_opt_in_skills_off(manager: AgentManager) -> None:
+    default = manager._build_harness_config(_row(agent_id="AGT001"))
+    assert "office-documents" in default.skills_disabled
+
+    opted = manager._build_harness_config(
+        _row(agent_id="AGT001", config_json=json.dumps({"skills_enabled": ["office-documents"]}))
+    )
+    assert "office-documents" not in opted.skills_disabled
+
+
 def test_build_harness_config_softens_mcp_output_schema_errors(manager: AgentManager) -> None:
     from octop.infra.agents.middleware.mcp_output_schema import (
         McpOutputSchemaMiddleware,
@@ -1011,6 +1099,34 @@ async def test_shutdown_drains_sqlite_worker_before_returning(manager: AgentMana
         else:
             await manager.shutdown()
         await asyncio.to_thread(conn._thread.join, 5)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_waits_for_idle_reclaim_sweep(manager: AgentManager) -> None:
+    """The freelist scan uses the control-plane connection from a worker thread."""
+    entered, release = threading.Event(), threading.Event()
+
+    def slow_scan() -> int:
+        entered.set()
+        assert release.wait(5)
+        return 0
+
+    manager._queue_bloated_sqlite_stores = slow_scan  # type: ignore[method-assign]
+    manager.schedule_idle_reclaim_sweep()
+    closing = None
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        closing = asyncio.create_task(manager.shutdown())
+        await asyncio.sleep(0.05)
+        assert not closing.done()
+        release.set()
+        await asyncio.wait_for(closing, timeout=5)
+    finally:
+        release.set()
+        if closing is not None:
+            await closing
+        else:
+            await manager.shutdown()
 
 
 def test_build_harness_config_enables_bootstrap_for_expert_template(manager: AgentManager) -> None:
@@ -1556,13 +1672,18 @@ async def test_delete_stops_memory_maintenance_before_close(manager: AgentManage
 
 
 @pytest.mark.asyncio
-async def test_delete_removes_persisted_workspace_dir(
+async def test_delete_keeps_caller_workspace_and_removes_managed_dirs(
     manager: AgentManager, tmp_path: Path
 ) -> None:
+    """A workspace the caller chose stays; directories Octop allocated are removed."""
     agent_id = "AGT_DELETE_CUSTOM"
     custom = tmp_path / "custom-ws"
     custom.mkdir()
     (custom / "SOUL.md").write_text("keep", encoding="utf-8")
+    managed = manager._paths.ensure_agent_workspace(agent_id)
+    (managed / "MEMORY.md").write_text("managed", encoding="utf-8")
+    scoped = manager._paths.root / "workspaces" / agent_id
+    scoped.mkdir(parents=True)
     manager._repos.agent_repo.create(
         agent_id=agent_id,
         user_id=None,
@@ -1576,7 +1697,9 @@ async def test_delete_removes_persisted_workspace_dir(
     await manager.delete(agent_id)
 
     assert manager.get_row(agent_id) is None
-    assert not custom.exists()
+    assert (custom / "SOUL.md").read_text(encoding="utf-8") == "keep"
+    assert not managed.exists()
+    assert not scoped.exists()
 
 
 @pytest.mark.asyncio
@@ -1785,6 +1908,58 @@ def test_host_model_sdk_errors_keep_original_retry_budget(
         retry.wrap_model_call(None, handler)
     assert caught.value is error
     assert handler.call_count == cfg.model_retry_max_retries + 1
+
+
+def test_build_harness_config_applies_per_expert_retry_and_tool_cap(manager: AgentManager) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware, ToolRetryMiddleware
+
+    from octop.infra.agents.middleware.consecutive_tool_call import (
+        ConsecutiveToolCallMiddleware,
+    )
+
+    cfg = manager._build_harness_config(
+        _row(
+            config_json=json.dumps(
+                {
+                    "tool_call_run_limit": 12,
+                    "model_retry_max_retries": 4,
+                    "model_retry_initial_delay": 0.25,
+                    "tool_retry_max_retries": 1,
+                }
+            )
+        )
+    )
+    limit = next(
+        item for item in cfg.middleware or [] if isinstance(item, ConsecutiveToolCallMiddleware)
+    )
+    tool_retry = next(
+        item for item in cfg.middleware or [] if isinstance(item, ToolRetryMiddleware)
+    )
+    model_retry = next(
+        item for item in cfg.middleware or [] if isinstance(item, ModelRetryMiddleware)
+    )
+    assert limit.limit == 12
+    assert tool_retry.max_retries == 1
+    assert model_retry.max_retries == 4
+    assert model_retry.initial_delay == 0.25
+    assert not cfg.model_retry_enabled
+
+    disabled = manager._build_harness_config(
+        _row(
+            config_json=json.dumps(
+                {
+                    "tool_call_limit_enabled": False,
+                    "tool_retry_enabled": False,
+                    "model_retry_enabled": False,
+                }
+            )
+        )
+    )
+    assert not any(
+        isinstance(item, ConsecutiveToolCallMiddleware | ToolRetryMiddleware | ModelRetryMiddleware)
+        for item in (disabled.middleware or [])
+    )
+    assert not disabled.model_retry_enabled
 
 
 def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None:
@@ -2544,6 +2719,71 @@ async def test_update_config_json_cannot_move_the_workspace(
 
 
 @pytest.mark.asyncio
+async def test_update_config_json_keeps_host_root_workspace(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A chosen host-root workspace stays put after create, even if a patch names another path."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    row = await manager.create(
+        AgentCreateSpec(
+            name="wsdir-fixed-host",
+            config={
+                **_MEMORY_OFF,
+                "backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+            },
+        ),
+        defer_bootstrap=True,
+    )
+    stored = manager.get_config(row.agent_id).get("workspace_dir")
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps(
+            {**manager.get_config(row.agent_id), "workspace_dir": str(tmp_path / "elsewhere")}
+        ),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == stored
+
+
+@pytest.mark.asyncio
+async def test_update_config_json_keeps_scoped_workspace(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A scoped root keeps its workspace even if the patch names another directory."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
+    jail = tmp_path / "jail"
+    jail.mkdir()
+    row = await manager.create(
+        AgentCreateSpec(
+            name="wsdir-scoped",
+            config={
+                **_MEMORY_OFF,
+                "backend": {
+                    "type": "filesystem",
+                    "root_dir": str(jail),
+                    "virtual_mode": True,
+                },
+            },
+        ),
+        defer_bootstrap=True,
+    )
+    stored = manager.get_config(row.agent_id).get("workspace_dir")
+    await manager.update_config_json(
+        row.agent_id,
+        json.dumps(
+            {
+                **manager.get_config(row.agent_id),
+                "workspace_dir": str(tmp_path / "elsewhere"),
+            }
+        ),
+    )
+    assert manager.get_config(row.agent_id).get("workspace_dir") == stored
+
+
+@pytest.mark.asyncio
 async def test_internal_persist_can_still_set_the_workspace(manager: AgentManager) -> None:
     """The internal writer must keep writing ``workspace_dir`` (no over-pinning)."""
     from octop.infra.agents.manager import AgentCreateSpec
@@ -2850,6 +3090,37 @@ async def test_prepare_chat_mcp_reports_failure_in_caller_name(
     assert shared_name in missing
     assert "doris" not in missing
     assert "notes" in missing
+
+
+async def test_prepare_chat_mcp_stops_at_a_connector_that_lost_authorization(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = _seed_user(manager, "mcp-reauth")
+    svc = manager._connector_svc
+    svc.put_custom_servers(
+        user_id,
+        {"wiki": {"transport": "streamable_http", "url": "https://wiki.example.com/mcp"}},
+    )
+    servers = dict(svc.get_custom_servers(user_id))
+    servers["wiki"] = {**servers["wiki"], "oauth": {"required": True, "expired": True}}
+    svc._save_custom_servers(user_id, servers)
+    agent_id = manager._repos.agent_repo.create(agent_id="REAUTH", user_id=user_id, name="a")
+    agent = MagicMock()
+    # The tools are still cached on the agent from before the token lapsed.
+    agent._mcp_tool_name_set = frozenset({"wiki_search"})
+    agent._mcp_attached_user = {"wiki": user_id}
+    agent.config.mcp_server_configs = {}
+    load = AsyncMock()
+    monkeypatch.setattr(manager, "get_agent", lambda _agent_id: agent)
+    monkeypatch.setattr(manager, "_get_or_load_mcp_tools", load)
+
+    missing = await manager.prepare_chat_mcp(agent_id, ["wiki"], connector_user_id=user_id)
+
+    assert missing == ["wiki"]
+    load.assert_not_awaited()
+    blocked = await manager.connector_auth_blocked(user_id, missing)
+    assert [(b["server"], b["auth_status"]) for b in blocked] == [("wiki", "expired")]
 
 
 def test_prepare_stream_request_maps_max_iters_to_recursion_limit(

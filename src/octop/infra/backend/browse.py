@@ -23,6 +23,7 @@ from octop.infra.backend.compat import adapt_backend_protocol
 from octop.infra.backend.resolve_backend import resolve_octop_backend
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.db.repos.backends import BackendRow
+from octop.infra.utils.read_content import coerce_read_content
 
 TEXT_PREVIEW_LIMIT = 10_000_000
 PREVIEW_BYTE_LIMIT = 32 * 1024 * 1024
@@ -262,9 +263,7 @@ async def download_storage_backend_file(
 
 def _coerce_preview_text(content: str) -> str:
     # deepagents empty-file reminder is for LLM tools, not the dashboard.
-    if content == "System reminder: File exists but has empty contents":
-        return ""
-    return content
+    return coerce_read_content(content)
 
 
 async def read_storage_backend_text(row: BackendRow, path: str) -> str:

@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from octop.infra.errors import ErrorCode, OctopError
+
 
 class PermissionUser(Protocol):
     @property
@@ -145,6 +147,7 @@ PERMISSIONS: dict[str, PermissionDef] = {
     # --- control (nav.control) — page/tab labels ---
     "terminal": _p("terminal", "control", "工作台/终端", "Workbench / Terminal"),
     "browser": _p("browser", "control", "工作台/浏览器", "Workbench / Browser"),
+    "cloud": _p("cloud", "control", "工作台/云服务器", "Workbench / Cloud"),
     "desktop": _p("desktop", "control", "远程桌面", "Remote Desktop"),
     "mobile": _p("mobile", "control", "远程手机", "Remote Phone"),
     # --- admin: grouped by page, chip = tab title ---
@@ -230,6 +233,15 @@ PERMISSIONS: dict[str, PermissionDef] = {
         page="users",
         page_zh="用户",
         page_en="Users",
+    ),
+    "app_config": _p(
+        "app_config",
+        "admin",
+        "应用配置",
+        "App config",
+        page="advanced",
+        page_zh="应用设置",
+        page_en="App settings",
     ),
     "providers": _p(
         "providers",
@@ -499,6 +511,20 @@ def expand_permission_grants(keys: list[str]) -> list[str]:
             seen.add(item)
             out.append(item)
     return out
+
+
+def assert_can_assign_permissions(actor: PermissionUser, permissions: list[str]) -> None:
+    """Non-admin actors may only grant permissions they themselves hold."""
+    if actor.is_admin:
+        return
+    held = set(expand_permission_grants(list(actor.permissions or [])))
+    missing = sorted(set(expand_permission_grants(permissions)) - held)
+    if missing:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "cannot grant permissions you do not hold",
+            details={"missing": missing},
+        )
 
 
 def user_has_permission(user: PermissionUser, key: str) -> bool:

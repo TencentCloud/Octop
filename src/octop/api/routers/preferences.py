@@ -16,6 +16,7 @@ from octop.infra.users.preferences import (
     PREFERENCES_KEY_TIMEZONE,
     ModelReasoningPreference,
     get_model_reasoning_from_json,
+    get_onboarding_completed_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
     get_sidebar_nav_from_json,
@@ -75,6 +76,10 @@ class PreferencesResponse(BaseModel):
         default=None,
         description="Custom sidebar layout. Null means the user has not customized navigation.",
     )
+    onboarding_completed: bool = Field(
+        default=False,
+        description="True once the user finished or skipped the dashboard welcome guide.",
+    )
 
 
 class PatchPreferencesBody(BaseModel):
@@ -90,6 +95,10 @@ class PatchPreferencesBody(BaseModel):
         default=None,
         description="Replace the sidebar layout. Null clears it and restores the default nav.",
     )
+    onboarding_completed: bool | None = Field(
+        default=None,
+        description="Mark the welcome guide as done (`true`) or show it again (`false`).",
+    )
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> Self:
@@ -101,6 +110,7 @@ class PatchPreferencesBody(BaseModel):
                 "model_reasoning",
                 "timezone",
                 "sidebar_nav",
+                "onboarding_completed",
             }
         ):
             raise ValueError("at least one preference field is required")
@@ -134,6 +144,7 @@ def _response(row: Any) -> PreferencesResponse:
         },
         timezone=parse_preferences_json(raw).get(PREFERENCES_KEY_TIMEZONE),
         sidebar_nav=_sidebar_nav_response(raw),
+        onboarding_completed=get_onboarding_completed_from_json(raw),
     )
 
 
@@ -222,5 +233,7 @@ async def patch_preferences(
         layout = None if body.sidebar_nav is None else body.sidebar_nav.model_dump()
         merged = merge_sidebar_nav_json(row.preferences_json if row else None, layout)
         server.services.user_repo.set_preferences_json(user.id, merged)
+    if body.onboarding_completed is not None:
+        await server.user_manager.set_onboarding_completed(user.username, body.onboarding_completed)
     row = server.services.user_repo.get(user.id)
     return _response(row)

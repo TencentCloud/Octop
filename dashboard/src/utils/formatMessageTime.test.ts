@@ -3,6 +3,7 @@ import {
   calendarDaysAgo,
   formatMessageTime,
   formatServerDateTime,
+  formatServerDateTimeSeconds,
   formatServerHourMinute,
   formatServerIsoDateTime,
   formatServerYmd,
@@ -54,6 +55,21 @@ describe("formatServerIsoDateTime", () => {
 
   it("returns em dash for empty input", () => {
     expect(formatServerIsoDateTime("", "UTC")).toBe("—");
+  });
+});
+
+describe("formatServerDateTimeSeconds", () => {
+  it("renders a fixed sortable timestamp in the configured timezone", () => {
+    expect(formatServerDateTimeSeconds("2026-07-09T07:16:37Z", "UTC")).toBe(
+      "2026-07-09 07:16:37",
+    );
+    expect(
+      formatServerDateTimeSeconds("2026-07-09T07:16:37Z", "Asia/Shanghai"),
+    ).toBe("2026-07-09 15:16:37");
+  });
+
+  it("returns em dash for invalid input", () => {
+    expect(formatServerDateTimeSeconds("not-a-date", "UTC")).toBe("—");
   });
 });
 

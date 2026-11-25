@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def is_single_path_segment(name: str) -> bool:
+    """True when *name* cannot escape a parent directory on any platform."""
+    if not name or name in {".", ".."}:
+        return False
+    return "/" not in name and "\\" not in name and "\x00" not in name
+
+
 @dataclass(frozen=True)
 class PathLayout:
     root: Path
@@ -57,6 +64,9 @@ class PathLayout:
         return self.root / "users"
 
     def user_dir(self, username: str) -> Path:
+        """Per-user directory. *username* must be a single path segment."""
+        if not is_single_path_segment(username):
+            raise ValueError("username must be a single directory name")
         return self.users_dir / username
 
     @property

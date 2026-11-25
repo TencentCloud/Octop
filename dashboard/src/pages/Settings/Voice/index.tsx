@@ -60,7 +60,7 @@ export function VoiceSettingsPanel() {
     try {
       const [presetList, rows, activeVoice] = await Promise.all([
         voiceApi.getPresets(),
-        voiceApi.getProviders(),
+        voiceApi.adminListProviders().catch(() => voiceApi.getProviders()),
         voiceApi.getActive(),
       ]);
       setPresets(presetList);
@@ -390,7 +390,7 @@ export function VoiceSettingsPanel() {
         })}
         open={!!configure}
         onClose={() => setConfigure(null)}
-        width={440}
+        width={520}
         placement="right"
         destroyOnHidden
         footer={

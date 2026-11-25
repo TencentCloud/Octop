@@ -29,9 +29,68 @@ describe("diffComposerFiles", () => {
       omit_files: ["skills/demo/SKILL.md"],
     });
   });
+
+  it("does not report an empty file without a baseline as an override", () => {
+    expect(diffComposerFiles([], [{ name: "AGENTS.md", content: "" }])).toEqual(
+      {
+        file_overrides: [],
+        omit_files: [],
+      },
+    );
+  });
+
+  it("includes explicitly created empty files without overriding placeholders", () => {
+    expect(
+      diffComposerFiles(
+        [],
+        [
+          { name: "AGENTS.md", content: "" },
+          { name: "WORKFLOW.md", content: "" },
+        ],
+        new Set(["WORKFLOW.md"]),
+      ),
+    ).toEqual({
+      file_overrides: [{ name: "WORKFLOW.md", content: "" }],
+      omit_files: [],
+    });
+  });
+
+  it("reports a stub filled in by the user, and clearing a baseline file", () => {
+    expect(
+      diffComposerFiles([], [{ name: "AGENTS.md", content: "rules" }]),
+    ).toEqual({
+      file_overrides: [{ name: "AGENTS.md", content: "rules" }],
+      omit_files: [],
+    });
+    expect(
+      diffComposerFiles(
+        [{ name: "AGENTS.md", content: "rules" }],
+        [{ name: "AGENTS.md", content: "" }],
+      ),
+    ).toEqual({
+      file_overrides: [{ name: "AGENTS.md", content: "" }],
+      omit_files: [],
+    });
+  });
+
+  it("stays empty when both sides carry the same ensurePromptFiles stubs", () => {
+    expect(
+      diffComposerFiles(ensurePromptFiles([]), ensurePromptFiles([])),
+    ).toEqual({
+      file_overrides: [],
+      omit_files: [],
+    });
+  });
 });
 
 describe("composer file helpers", () => {
+  it("adds the core prompt files when the template omitted them", () => {
+    expect(ensurePromptFiles([])).toEqual([
+      { name: "SOUL.md", content: "" },
+      { name: "AGENTS.md", content: "" },
+    ]);
+  });
+
   it("adds AGENTS.md when the template omitted it", () => {
     expect(ensurePromptFiles([{ name: "SOUL.md", content: "s" }])).toEqual([
       { name: "SOUL.md", content: "s" },

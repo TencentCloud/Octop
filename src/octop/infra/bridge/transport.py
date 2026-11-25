@@ -94,6 +94,7 @@ class BridgeSession:
         on_tunnel_request: TunnelHandler | None = None,
         on_turn_frame: TurnHandler | None = None,
         on_browser_frame: BrowserHandler | None = None,
+        on_workspace_call: JsonHandler | None = None,
         on_raw: JsonHandler | None = None,
         close_transport: CloseTransport | None = None,
         peer_features: set[str] | None = None,
@@ -103,7 +104,9 @@ class BridgeSession:
         self._on_tunnel_request = on_tunnel_request
         self._on_turn_frame = on_turn_frame
         self._on_browser_frame = on_browser_frame
+        self._on_workspace_call = on_workspace_call
         self._on_raw = on_raw
+        self._workspace_waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._close_transport = close_transport
         self.peer_features = set(peer_features or ())
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
@@ -265,6 +268,27 @@ class BridgeSession:
                 return
             await self._on_turn_frame(payload)
             return
+        if msg_type == "workspace.result":
+            self._finish_workspace_result(payload)
+            return
+        if msg_type == "workspace.call":
+            if self._on_workspace_call is None:
+                await self.send_json(
+                    {
+                        "type": "workspace.result",
+                        "id": str(payload.get("id") or ""),
+                        "ok": False,
+                        "error": "workspace calls are not accepted",
+                    }
+                )
+                return
+            handler = self._on_workspace_call
+
+            async def _run_workspace() -> None:
+                await handler(payload)
+
+            self._spawn(_run_workspace(), name="bridge-workspace")
+            return
         if msg_type.startswith("browser.") and self._on_browser_frame is not None:
             await self._on_browser_frame(payload)
             return
@@ -313,6 +337,19 @@ class BridgeSession:
                         "message": str(exc)[:500],
                     }
                 )
+
+    def expect_workspace_result(self, req_id: str) -> asyncio.Future[dict[str, Any]]:
+        fut: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
+        self._workspace_waiters[req_id] = fut
+        return fut
+
+    def drop_workspace_waiter(self, req_id: str) -> None:
+        self._workspace_waiters.pop(req_id, None)
+
+    def _finish_workspace_result(self, payload: dict[str, Any]) -> None:
+        fut = self._workspace_waiters.pop(str(payload.get("id") or ""), None)
+        if fut is not None and not fut.done():
+            fut.set_result(payload)
 
     async def next_queue_item(
         self,
