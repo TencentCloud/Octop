@@ -122,11 +122,15 @@ def test_skillhub_manifest_welcome_keeps_chinese_when_summary_is_english() -> No
         summary="自动生成测试方案",
         summary_en="Generate test plans",
         scene="tech",
+        sub_scene="test-automation",
     )
 
     manifest = _expert_manifest(item, ["playwright", "pytest"])
 
-    assert manifest["id"] == "skillhub-skillset-tech-test-automation"
+    assert manifest["id"] == "tech-test-automation"
+    assert manifest["version"] == "1.0.0"
+    assert manifest["scene"] == "tech"
+    assert manifest["sub_scene"] == "test-automation"
     assert manifest["prompt_files"] == ["SOUL.md"]
     assert manifest["label"]["zh"] == "技术测试自动化专家"
     assert manifest["label"]["en"] == "Tech Test Automation Expert"
@@ -371,11 +375,12 @@ def test_fetch_skillset_uses_detail_endpoint(monkeypatch) -> None:
 
     monkeypatch.setattr(skillhub_market, "_http_json_get", fake_json_get)
 
+    monkeypatch.setenv("SKILLSET_ORIGIN", "http://sets.example:9000")
     item = skillhub_market.fetch_skillset("tech-code-review")
 
     assert item.slug == "tech-code-review"
     assert item.scene == "tech"
-    assert "/api/v1/skillsets/tech-code-review" in calls[0]
+    assert calls == ["http://sets.example:9000/api/v1/skillsets/tech-code-review"]
 
 
 def test_fetch_skillsets_uses_skillhub_pagination(monkeypatch) -> None:

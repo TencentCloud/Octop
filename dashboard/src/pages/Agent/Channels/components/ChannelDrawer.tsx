@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import type { Rule } from "antd/es/form";
 import { QRCodeSVG } from "qrcode.react";
+import cx from "classnames";
 import {
   CHANNEL_FIELDS,
   CHANNEL_ICONS,
@@ -143,6 +144,7 @@ interface ChannelDrawerProps {
   editing: ChannelRow | null;
   loadingConfig: boolean;
   initialValues: ChannelFormValues | undefined;
+  secretsSet?: string[];
   form: FormInstance<ChannelFormValues>;
   saving: boolean;
   onDelete?: () => void;
@@ -163,19 +165,43 @@ interface ChannelDrawerProps {
 function FormItemForField({
   field,
   disabled = false,
+  editing = false,
+  secretKept = false,
 }: {
   field: ChannelField;
+  editing?: boolean;
   disabled?: boolean;
+  /** Stored secret stays on the server; an empty field means keep it. */
+  secretKept?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
     ? t(field.label)
     : field.label;
+  const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
+  if (field.type === "select") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        initialValue={initialValue}
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <Select
+          options={field.options?.map((value) => ({
+            value,
+            label: t(`channels.telegram_option_${value}`),
+          }))}
+        />
+      </Form.Item>
+    );
+  }
   if (field.type === "switch") {
     return (
       <Form.Item
         name={field.name}
         label={label}
+        initialValue={initialValue}
         valuePropName="checked"
         extra={field.helpKey ? t(field.helpKey) : undefined}
       >
@@ -189,14 +215,15 @@ function FormItemForField({
       : field.type === "textarea" || field.type === "json"
       ? Input.TextArea
       : Input;
-  const rules: Rule[] = field.required
-    ? [
-        {
-          required: true,
-          message: t("channels.fieldRequired", { label }),
-        },
-      ]
-    : [];
+  const rules: Rule[] =
+    field.required && !(secretKept && field.type === "password")
+      ? [
+          {
+            required: true,
+            message: t("channels.fieldRequired", { label }),
+          },
+        ]
+      : [];
   if (field.type === "json") {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
@@ -213,23 +240,39 @@ function FormItemForField({
   }
   if (
     field.name === "allowed_channel_ids" ||
-    field.name === "allowed_user_ids"
+    field.name === "allowed_user_ids" ||
+    field.name === "allowed_chat_ids"
   ) {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
         try {
           normalizeChannelFieldValue(field.name, value);
         } catch {
-          throw new Error(t("channels.discordInvalidIds"));
+          throw new Error(
+            t(
+              field.name === "allowed_chat_ids"
+                ? "channels.telegramInvalidChatIds"
+                : "channels.discordInvalidIds",
+            ),
+          );
         }
       },
     });
   }
   return (
-    <Form.Item name={field.name} label={label} rules={rules}>
+    <Form.Item
+      name={field.name}
+      label={label}
+      rules={rules}
+      extra={field.helpKey ? t(field.helpKey) : undefined}
+    >
       <Input1
         disabled={disabled}
-        placeholder={field.placeholder}
+        placeholder={
+          secretKept && field.type === "password"
+            ? t("common.unchanged")
+            : field.placeholder
+        }
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }
           : {})}
@@ -266,9 +309,11 @@ function PolicyTagGroup<T extends string>({
         return (
           <button
             key={option.value}
-            className={`${styles.qqGroupPolicyTag} ${
-              checked ? styles.qqGroupPolicyTagChecked : ""
-            } ${option.disabled ? styles.qqGroupPolicyTagDisabled : ""}`}
+            className={cx(
+              styles.qqGroupPolicyTag,
+              checked && styles.qqGroupPolicyTagChecked,
+              option.disabled && styles.qqGroupPolicyTagDisabled,
+            )}
             type="button"
             role="radio"
             aria-checked={checked}
@@ -575,6 +620,7 @@ export function ChannelDrawer({
   onTest,
   testing,
   agentId,
+  secretsSet = [],
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
   const allowAllDiscordChannels =
@@ -586,6 +632,7 @@ export function ChannelDrawer({
   const [configMode, setConfigMode] = useState<"quick" | "manual">("quick");
   const [qrState, setQrState] = useState<QrPhase>({ phase: "idle" });
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const qrSessionRef = useRef(0);
   const autoSaveTriggeredRef = useRef(false);
   const [autoSaveFailed, setAutoSaveFailed] = useState(false);
 
@@ -600,11 +647,15 @@ export function ChannelDrawer({
   const restoringDraftRef = useRef(false);
 
   const stopPolling = useCallback(() => {
+    // Invalidate pending generation/poll requests as well as the timer.
+    qrSessionRef.current += 1;
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }, []);
+
+  useEffect(() => stopPolling, [stopPolling]);
 
   const resetQr = useCallback(() => {
     stopPolling();
@@ -648,20 +699,24 @@ export function ChannelDrawer({
   // Restore session draft after server/default values are applied.
   useEffect(() => {
     if (!open || loadingConfig || !draftScope) return;
+    if (form.getFieldValue("kind") !== selectedKind) return;
     const draft = loadFormDraft<ChannelFormValues>(draftScope);
-    if (!draft) return;
+    // Older versions saved the new kind under the previous kind's scope.
+    if (!draft || (draft.kind && draft.kind !== selectedKind)) return;
     restoringDraftRef.current = true;
     form.setFieldsValue(draft);
     if (draft.kind) setSelectedKind(draft.kind);
     restoringDraftRef.current = false;
-  }, [open, loadingConfig, draftScope, form]);
+  }, [open, loadingConfig, draftScope, form, selectedKind]);
 
   // ── QQ Bot Flow ────────────────────────────────────────────────────────
   const startQqQr = async () => {
     stopPolling();
+    const session = qrSessionRef.current;
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.qqQrcodeGenerate(agentId);
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "qq_ready",
         qrcodeUrl: res.qrcode_url,
@@ -670,6 +725,7 @@ export function ChannelDrawer({
       const timer = setInterval(async () => {
         try {
           const poll = await channelApi.qqQrcodePoll(agentId, res.qrcode_token);
+          if (session !== qrSessionRef.current) return;
           if (poll.status === "success" && poll.app_id && poll.secret) {
             stopPolling();
             setQrState({
@@ -690,6 +746,7 @@ export function ChannelDrawer({
       }, 2000);
       pollTimerRef.current = timer;
     } catch (e: unknown) {
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "error",
         reason: e instanceof Error ? e.message : String(e),
@@ -700,9 +757,11 @@ export function ChannelDrawer({
   // ── WeCom Flow ─────────────────────────────────────────────────────────
   const startWecomQr = async () => {
     stopPolling();
+    const session = qrSessionRef.current;
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.wecomQrcodeGenerate(agentId);
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "wecom_ready",
         authUrl: res.auth_url,
@@ -711,6 +770,7 @@ export function ChannelDrawer({
       const timer = setInterval(async () => {
         try {
           const poll = await channelApi.wecomQrcodePoll(agentId, res.scode);
+          if (session !== qrSessionRef.current) return;
           if (poll.status === "success" && poll.bot_id && poll.secret) {
             stopPolling();
             setQrState({
@@ -731,6 +791,7 @@ export function ChannelDrawer({
       }, 2000);
       pollTimerRef.current = timer;
     } catch (e: unknown) {
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "error",
         reason: e instanceof Error ? e.message : String(e),
@@ -741,9 +802,11 @@ export function ChannelDrawer({
   // ── WeChat Flow ─────────────────────────────────────────────────────────
   const startWeixinQr = async () => {
     stopPolling();
+    const session = qrSessionRef.current;
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.weixinQrcodeGenerate(agentId);
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "weixin_ready",
         qrcodeUrl: res.qrcode_url,
@@ -755,6 +818,7 @@ export function ChannelDrawer({
             agentId,
             res.qrcode_token,
           );
+          if (session !== qrSessionRef.current) return;
           if (poll.status === "success" && poll.token) {
             stopPolling();
             setQrState({
@@ -776,6 +840,7 @@ export function ChannelDrawer({
       }, 3000);
       pollTimerRef.current = timer;
     } catch (e: unknown) {
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "error",
         reason: e instanceof Error ? e.message : String(e),
@@ -786,9 +851,11 @@ export function ChannelDrawer({
   // ── DingTalk Flow ───────────────────────────────────────────────────────
   const startDingtalkQr = async () => {
     stopPolling();
+    const session = qrSessionRef.current;
     setQrState({ phase: "loading" });
     try {
       const res = await channelApi.dingtalkQrcodeGenerate(agentId);
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "dingtalk_ready",
         qrcodeUrl: res.qrcode_url,
@@ -804,6 +871,7 @@ export function ChannelDrawer({
               agentId,
               res.registration_id,
             );
+            if (session !== qrSessionRef.current) return;
             if (poll.status === "success" && poll.channel_id) {
               stopPolling();
               setQrState({
@@ -832,6 +900,7 @@ export function ChannelDrawer({
       );
       pollTimerRef.current = timer;
     } catch (e: unknown) {
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "error",
         reason: e instanceof Error ? e.message : String(e),
@@ -842,13 +911,16 @@ export function ChannelDrawer({
   // ── Feishu Flow ─────────────────────────────────────────────────────────
   const startFeishuCreator = async (platform: "feishu" | "lark" = "feishu") => {
     stopPolling();
+    const session = qrSessionRef.current;
     setQrState({
       phase: "feishu_creating",
       message: t("channels.feishuCreating"),
     });
     try {
       await channelApi.feishuBotCreatorStart(agentId, { platform });
+      if (session !== qrSessionRef.current) return;
     } catch (e: unknown) {
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "error",
         reason: e instanceof Error ? e.message : String(e),
@@ -858,6 +930,7 @@ export function ChannelDrawer({
     const timer = setInterval(async () => {
       try {
         const poll = await channelApi.feishuBotCreatorPoll(agentId);
+        if (session !== qrSessionRef.current) return;
         if (poll.qr_url) {
           setQrState((prev) =>
             prev.phase === "feishu_progress" || prev.phase === "feishu_done"
@@ -898,13 +971,16 @@ export function ChannelDrawer({
   // ── YuanBao Flow ────────────────────────────────────────────────────────
   const startYuanbaoCreator = async () => {
     stopPolling();
+    const session = qrSessionRef.current;
     setQrState({
       phase: "yuanbao_creating",
       message: t("channels.yuanbaoStarting"),
     });
     try {
       await channelApi.yuanbaoBotCreatorStart(agentId, {});
+      if (session !== qrSessionRef.current) return;
     } catch (e: unknown) {
+      if (session !== qrSessionRef.current) return;
       setQrState({
         phase: "error",
         reason: e instanceof Error ? e.message : String(e),
@@ -914,6 +990,7 @@ export function ChannelDrawer({
     const timer = setInterval(async () => {
       try {
         const poll = await channelApi.yuanbaoBotCreatorPoll(agentId);
+        if (session !== qrSessionRef.current) return;
         if (poll.scan_code) {
           setQrState({
             phase: "yuanbao_scan",
@@ -958,8 +1035,8 @@ export function ChannelDrawer({
     if (!open || isEdit || loadingConfig) return;
     if (configMode !== "quick" && selectedKind !== "weixin") return;
     if (qrState.phase !== "idle") return;
-    // Wait until local kind matches the card that opened the drawer.
-    if (initialValues?.kind && selectedKind !== initialValues.kind) return;
+    // Wait for open-time kind sync, while allowing later manual switches.
+    if (selectedKind !== form.getFieldValue("kind")) return;
 
     switch (selectedKind) {
       case "qq":
@@ -993,6 +1070,7 @@ export function ChannelDrawer({
     selectedKind,
     qrState.phase,
     initialValues?.kind,
+    form,
   ]);
 
   // ── Form ────────────────────────────────────────────────────────────────
@@ -1060,7 +1138,7 @@ export function ChannelDrawer({
 
   // Auto-save when QR quick-config completes — channel is usable immediately.
   useEffect(() => {
-    if (isEdit || saving || autoSaveTriggeredRef.current) return;
+    if (!open || isEdit || saving || autoSaveTriggeredRef.current) return;
 
     const s = qrState;
     let payload: {
@@ -1151,6 +1229,7 @@ export function ChannelDrawer({
     );
   }, [
     qrState,
+    open,
     isEdit,
     saving,
     submitChannel,
@@ -1205,7 +1284,7 @@ export function ChannelDrawer({
   };
 
   const handleClose = () => {
-    stopPolling();
+    resetQr();
     if (selectedKind === "feishu")
       void channelApi.feishuBotCreatorStop(agentId).catch(() => {});
     if (selectedKind === "yuanbao")
@@ -1853,7 +1932,12 @@ export function ChannelDrawer({
           initialValues={initialValues}
           onFinish={handleFinish}
           onValuesChange={(changed, all) => {
-            if (changed.kind) setSelectedKind(changed.kind as ChannelKey);
+            if (changed.kind) {
+              resetQr();
+              setSelectedKind(changed.kind as ChannelKey);
+              // A kind switch must not overwrite the outgoing kind's draft.
+              return;
+            }
             if (!restoringDraftRef.current && draftScope) {
               saveFormDraft(
                 draftScope,
@@ -1867,7 +1951,10 @@ export function ChannelDrawer({
               className={styles.configModeSwitch}
               block
               value={configMode}
-              onChange={(v) => setConfigMode(v as "quick" | "manual")}
+              onChange={(v) => {
+                resetQr();
+                setConfigMode(v as "quick" | "manual");
+              }}
               options={[
                 { label: t("channels.quickConfig"), value: "quick" },
                 { label: t("channels.manualConfig"), value: "manual" },
@@ -1941,11 +2028,21 @@ export function ChannelDrawer({
                   style={{ marginBottom: 16 }}
                 />
               )}
+              {selectedKind === "telegram" && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("channels.telegramSetupHelp")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               {hasSchema ? (
                 fields!.map((f) => (
                   <FormItemForField
                     key={f.name}
                     field={f}
+                    editing={isEdit}
+                    secretKept={secretsSet.includes(f.name)}
                     disabled={
                       selectedKind === "discord" &&
                       f.name === "allowed_channel_ids" &&

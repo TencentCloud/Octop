@@ -24,6 +24,7 @@ import { message } from "@/utils/antdMessage";
 import type { ColumnsType } from "antd/es/table";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import {
   CHAT_HISTORY_PAGE_SIZE,
@@ -36,6 +37,7 @@ import {
 } from "../../../utils/messageParser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { useMemoryRequestGate } from "./shared/useMemoryRequestGate";
 import {
   confirmDeleteConversation,
   deleteConversation,
@@ -97,9 +99,10 @@ function ConversationThreadCard({
 
   return (
     <div
-      className={`${styles.conversationCard} ${
-        selected ? styles.conversationCardSelected : ""
-      }`}
+      className={cx(
+        styles.conversationCard,
+        selected && styles.conversationCardSelected,
+      )}
     >
       <div className={styles.conversationCardHeader}>
         <span className={styles.conversationCardTitle}>{title}</span>
@@ -172,20 +175,28 @@ export default function ConversationRecords({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [cardPage, setCardPage] = useState(1);
   const [cardPageSize, setCardPageSize] = useState(THREAD_LIST_PAGE_SIZE);
+  const listGate = useMemoryRequestGate(agentId);
+  const deleteModal = useRef<ReturnType<
+    typeof confirmDeleteConversation
+  > | null>(null);
 
   const loadThreads = useCallback(async () => {
+    const isCurrent = listGate.begin();
+    if (!isCurrent) return;
     setListLoading(true);
     try {
       const list = await octopThreadsApi.list(agentId, 100);
+      if (!isCurrent()) return;
       list.sort((a, b) => b.last_active - a.last_active);
       setThreads(list);
     } catch {
+      if (!isCurrent()) return;
       setThreads([]);
       message.error(t("memory.loadFailed"));
     } finally {
-      setListLoading(false);
+      if (isCurrent()) setListLoading(false);
     }
-  }, [agentId, t]);
+  }, [agentId, t, listGate]);
 
   const resetHistoryState = useCallback(() => {
     setMessages([]);
@@ -195,13 +206,25 @@ export default function ConversationRecords({
     scrollHeightBeforePrependRef.current = null;
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    setThreads([]);
+    setListLoading(Boolean(agentId));
     setSelectedThread(null);
     setDrawerOpen(false);
     resetHistoryState();
+    setHistoryLoading(false);
+    setDeletingId(null);
     setCardPage(1);
+    return () => {
+      deleteModal.current?.destroy();
+      deleteModal.current = null;
+    };
+  }, [agentId, resetHistoryState]);
+
+  useEffect(() => {
+    if (!agentId) return;
     void loadThreads();
-  }, [agentId, loadThreads, resetHistoryState]);
+  }, [agentId, loadThreads]);
 
   const fetchThreadHistory = useCallback(
     async (threadId: string, offset: number) => {
@@ -300,7 +323,10 @@ export default function ConversationRecords({
 
   const confirmDelete = useCallback(
     (thread: OctopThread) => {
-      confirmDeleteConversation(t, async (compact) => {
+      if (!listGate.isActive()) return;
+      deleteModal.current?.destroy();
+      deleteModal.current = confirmDeleteConversation(t, async (compact) => {
+        if (!listGate.isActive()) return;
         setDeletingId(thread.thread_id);
         try {
           const deleted = await deleteConversation(
@@ -308,7 +334,9 @@ export default function ConversationRecords({
             thread.thread_id,
             compact,
             t,
+            listGate.isActive,
           );
+          if (!listGate.isActive()) return;
           if (deleted !== true) return deleted;
           if (selectedThread?.thread_id === thread.thread_id) {
             closeDrawer();
@@ -317,11 +345,11 @@ export default function ConversationRecords({
             prev.filter((row) => row.thread_id !== thread.thread_id),
           );
         } finally {
-          setDeletingId(null);
+          if (listGate.isActive()) setDeletingId(null);
         }
       });
     },
-    [agentId, closeDrawer, selectedThread?.thread_id, t],
+    [agentId, closeDrawer, selectedThread?.thread_id, t, listGate],
   );
 
   const roleLabel = (role: string) => {
@@ -521,7 +549,12 @@ export default function ConversationRecords({
               scroll={{ x: 980 }}
               locale={{ emptyText: t("memory.noConversations") }}
               pagination={{
-                defaultPageSize: THREAD_LIST_PAGE_SIZE,
+                current: cardPage,
+                pageSize: cardPageSize,
+                onChange: (page, size) => {
+                  setCardPage(size !== cardPageSize ? 1 : page);
+                  setCardPageSize(size);
+                },
                 showSizeChanger: true,
                 pageSizeOptions: THREAD_LIST_PAGE_SIZE_OPTIONS.map(String),
                 showTotal: threadPaginationTotal,
@@ -599,9 +632,10 @@ export default function ConversationRecords({
               return (
                 <div
                   key={msg.id ?? `${role}-${index}`}
-                  className={`${styles.conversationMessage} ${
-                    styles[`conversationRole_${role}`] ?? ""
-                  }`}
+                  className={cx(
+                    styles.conversationMessage,
+                    styles[`conversationRole_${role}`],
+                  )}
                 >
                   <div className={styles.conversationMessageHeader}>
                     <span className={styles.conversationMessageRole}>

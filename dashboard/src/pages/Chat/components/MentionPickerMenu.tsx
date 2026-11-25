@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { FileText, Plug } from "lucide-react";
+import cx from "classnames";
 import type { ChatConnectorOption } from "./ConnectorPickerPopover";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import type { AgentSubagentSummary } from "../../../api/modules/subagents";
@@ -10,6 +11,7 @@ import {
   type WorkspaceMentionHint,
 } from "../utils/fileMention";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
+import { incomingShareProps } from "../../../components/SharedResourceBadge";
 import styles from "../index.module.less";
 
 export type MentionAgentOption = ChatAgentOption;
@@ -203,6 +205,8 @@ export default function MentionPickerMenu({
                   color={agent?.color}
                   size={20}
                   iconSize={11}
+                  managedRunner={agent?.managed_runner}
+                  {...incomingShareProps(agent)}
                 />
               );
             }
@@ -212,9 +216,10 @@ export default function MentionPickerMenu({
               <button
                 key={mentionPickKey(item)}
                 type="button"
-                className={`${styles.mentionItem} ${
-                  active ? styles.mentionItemActive : ""
-                }`}
+                className={cx(
+                  styles.mentionItem,
+                  active && styles.mentionItemActive,
+                )}
                 onMouseEnter={() => onHover(idx)}
                 onClick={() => onSelect(item)}
               >

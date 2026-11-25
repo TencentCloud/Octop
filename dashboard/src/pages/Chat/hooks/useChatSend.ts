@@ -10,7 +10,7 @@ import {
 import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
-import { clipThreadTitle } from "../utils/threadTitle";
+import { localDirectoryMissing, pinLocalExecution } from "../localExecution";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -23,8 +23,6 @@ import { parseSkillSlugsInText } from "../utils/skillSlash";
 interface UseChatSendParams {
   resolvedAgentId: string | null | undefined;
   activeThreadId: string | null;
-  sessions: Session[];
-  messagesLength: number;
   selectedModel: string | null;
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
@@ -32,6 +30,7 @@ interface UseChatSendParams {
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
   conversationMode?: "ask" | "plan" | "craft";
+  sessionMode?: string;
   hitlPolicy?: HitlSessionPolicy;
   defaultModel?: string | null;
   sendMessage: (
@@ -49,16 +48,12 @@ interface UseChatSendParams {
     reasoningEffort?: string | null,
     conversationMode?: "ask" | "plan" | "craft" | null,
     hitlPolicy?: HitlSessionPolicy | null,
+    sessionMode?: string | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
-  renameSession: (id: string, name: string) => void;
   /** Called when auto-recording starts successfully from a pending message. */
   onAutoRecordingStarted?: (recordingId: string) => void;
   t: TFunction;
-}
-
-function deriveThreadTitle(msg: string): string {
-  return clipThreadTitle(msg);
 }
 
 /** Optional composer snapshot used when flushing a queued message. */
@@ -80,8 +75,6 @@ export type ChatSendOverrides = {
 export function useChatSend({
   resolvedAgentId,
   activeThreadId,
-  sessions,
-  messagesLength,
   selectedModel,
   selectedConnectors,
   selectedKnowledgeBaseIds,
@@ -89,11 +82,11 @@ export function useChatSend({
   reasoningMode,
   reasoningEffort,
   conversationMode = "craft",
+  sessionMode,
   hitlPolicy,
   defaultModel,
   sendMessage,
   createSession,
-  renameSession,
   onAutoRecordingStarted,
   t,
 }: UseChatSendParams) {
@@ -114,13 +107,6 @@ export function useChatSend({
 
       const trimmed = text.trim();
       if (!trimmed && !(attachments && attachments.length > 0)) return false;
-
-      const maybeRenameNewThread = (tid: string, hadMessages: boolean) => {
-        const current = sessions.find((s) => s.id === tid);
-        if (current?.name === "New Chat" && !hadMessages) {
-          renameSession(tid, deriveThreadTitle(trimmed));
-        }
-      };
 
       const mode = overrides?.conversationMode ?? conversationMode;
       const policy = overrides?.hitlPolicy ?? hitlPolicy;
@@ -157,8 +143,7 @@ export function useChatSend({
           ? overrides.modelRef
           : resolveTurnModelRef(modelSelection, defaultModel);
 
-      const runSend = (tid: string, hadMessages: boolean) => {
-        maybeRenameNewThread(tid, hadMessages);
+      const runSend = (tid: string) => {
         sendMessage(
           trimmed,
           "",
@@ -174,22 +159,23 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          sessionMode,
         );
       };
 
       const targetThreadId =
         overrides?.threadId !== undefined ? overrides.threadId : activeThreadId;
+      if (!targetThreadId && localDirectoryMissing(agent, null)) {
+        message.warning(t("chat.remoteExpert.localDirectoryRequired"));
+        return false;
+      }
 
       if (targetThreadId) {
         if (isPendingThread(targetThreadId)) {
           message.info(t("chat.creatingSession", "正在创建会话，请稍候"));
           return false;
         }
-        const hadMessages =
-          targetThreadId === activeThreadId
-            ? messagesLength > 0
-            : chatStore.getSnapshot(targetThreadId).messages.length > 0;
-        runSend(targetThreadId, hadMessages);
+        runSend(targetThreadId);
         return true;
       }
 
@@ -212,13 +198,10 @@ export function useChatSend({
           message.error(t("chat.createSessionFailed", "创建会话失败，请重试"));
           return;
         }
-        const currentSnap = chatStore.getSnapshot(PENDING_THREAD_ID);
-        const hadMessages = currentSnap.messages.length > 1;
         chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
-        // ``sessions`` in this closure predates the thread just created, so the
-        // name lookup in maybeRenameNewThread always misses here. A freshly
-        // created thread has no title yet — rename it straight away.
-        if (!hadMessages) renameSession(tid, deriveThreadTitle(trimmed));
+        pinLocalExecution(agent, tid);
+        // Title is filled by the server from an AI summary of this first
+        // message. Do not lock the raw question in as the thread name.
         if (policy) syncSessionHitlPolicy(tid, policy);
         chatStore.sendTurn(
           tid,
@@ -236,6 +219,8 @@ export function useChatSend({
           composerContext?.reasoningEffort ?? reasoningEffort,
           mode,
           policy,
+          userMsg.id,
+          sessionMode,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -243,11 +228,8 @@ export function useChatSend({
     },
     [
       activeThreadId,
-      sessions,
-      messagesLength,
       sendMessage,
       createSession,
-      renameSession,
       navigate,
       resolvedAgentId,
       selectedModel,
@@ -257,6 +239,7 @@ export function useChatSend({
       reasoningMode,
       reasoningEffort,
       conversationMode,
+      sessionMode,
       hitlPolicy,
       defaultModel,
       t,

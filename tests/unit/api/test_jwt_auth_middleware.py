@@ -17,6 +17,7 @@ from octop.api.deps import (
     maybe_sliding_renew_token,
     sign_token,
 )
+from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.server import OctopServer
 
 
@@ -26,6 +27,12 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/setup/status")
     assert is_jwt_exempt_path("/api/auth/login")
     assert is_jwt_exempt_path("/api/auth/captcha")
+    assert is_jwt_exempt_path("/api/auth/mfa/verify")
+    assert is_jwt_exempt_path("/api/auth/mfa/passkey/options")
+    assert is_jwt_exempt_path("/api/auth/passkey/status")
+    assert is_jwt_exempt_path("/api/auth/passkey/login/options")
+    assert is_jwt_exempt_path("/api/auth/passkey/login/verify")
+    assert not is_jwt_exempt_path("/api/auth/mfa/status")
     assert is_jwt_exempt_path("/api/auth/oidc/status")
     assert is_jwt_exempt_path("/api/auth/oidc/start")
     assert is_jwt_exempt_path("/api/auth/oidc/callback")
@@ -39,6 +46,8 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/docs")
     assert is_jwt_exempt_path("/api/openapi.json")
     assert is_jwt_exempt_path("/api/downloads/link/abc")
+    assert is_jwt_exempt_path("/api/shares/abc")
+    assert not is_jwt_exempt_path("/api/agents/a/threads/t/share")
     assert not is_jwt_exempt_path("/api/auth/oidc/config")
     assert not is_jwt_exempt_path("/api/auth/oauth/providers/feishu")
     assert not is_jwt_exempt_path("/api/auth/oauth/bind/start")
@@ -67,7 +76,7 @@ async def test_middleware_blocks_unauthenticated_api(client) -> None:
     await bootstrap_admin(c, home)
     r = await c.get("/api/agents")
     assert r.status_code == 401
-    assert r.json()["error"]["code"] == "AUTH_FAILED"
+    assert r.json()["error"]["code"] == "MISSING_CREDENTIALS"
 
 
 async def test_middleware_allows_login_without_token(client) -> None:
@@ -114,12 +123,13 @@ async def test_near_expiry_token_gets_sliding_renew(client) -> None:
     assert user is not None
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
-    # Remaining life (~60s) is far below default TTL/3 (~8h) → renew.
+    # Remaining life (~60s) is below two-thirds of the default TTL → renew.
     short = sign_token(
         secret,
         sub=user.id,
         uname=user.username,
         role=user.role,
+        purpose=PURPOSE_ACCESS,
         ttl_seconds=60,
     )
     r = await c.get("/api/auth/me", headers=bearer(short))
@@ -141,31 +151,74 @@ async def test_maybe_sliding_renew_helper_threshold(client) -> None:
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
     ttl = srv.services.config.access_token_ttl_seconds
-    fresh = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
+    fresh = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl,
+    )
     assert maybe_sliding_renew_token(srv, fresh, user) is None
-    short = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=60)
+    short = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=60,
+    )
     renewed = maybe_sliding_renew_token(srv, short, user)
     assert renewed is not None
     assert renewed != short
+    # Halfway through the TTL is inside the renew window (remaining < 2/3).
+    # Four-fifths remaining is still outside it.
+    halfway = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl // 2,
+    )
+    assert maybe_sliding_renew_token(srv, halfway, user) is not None
+    mostly_fresh = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=(ttl * 4) // 5,
+    )
+    assert maybe_sliding_renew_token(srv, mostly_fresh, user) is None
 
 
 async def test_middleware_localizes_auth_errors_by_accept_language(client) -> None:
     c, _srv, home = client
     await bootstrap_admin(c, home)
 
-    # Missing credentials: zh / en / no header fallback.
+    # Missing credentials: zh / en / no header fallback. Distinct from a bad password.
     r = await c.get("/api/agents", headers={"Accept-Language": "zh-CN,zh;q=0.9"})
     assert r.status_code == 401
-    assert r.json()["error"]["code"] == "AUTH_FAILED"
-    assert r.json()["error"]["message"] == "认证失败。"
+    assert r.json()["error"]["code"] == "MISSING_CREDENTIALS"
+    assert r.json()["error"]["message"] == "需要登录。"
 
     r = await c.get("/api/agents", headers={"Accept-Language": "en-US,en;q=0.9"})
     assert r.status_code == 401
-    assert r.json()["error"]["message"] == "Authentication failed."
+    assert r.json()["error"]["message"] == "Sign-in is required."
 
     r = await c.get("/api/agents")
     assert r.status_code == 401
-    assert r.json()["error"]["message"] == "认证失败。"  # no header: DEFAULT_LOCALE (zh)
+    assert r.json()["error"]["message"] == "需要登录。"  # no header: DEFAULT_LOCALE (zh)
+
+    wrong_login = await c.post(
+        "/api/login",
+        json={"username": "admin", "password": "TestPass12"},
+        headers={"Accept-Language": "zh-CN"},
+    )
+    assert wrong_login.status_code == 401
+    assert wrong_login.json()["error"]["code"] == "MISSING_CREDENTIALS"
+    assert wrong_login.json()["error"]["message"] != "认证失败。"
 
     # Invalid token follows the same localization.
     r = await c.get(
@@ -183,7 +236,12 @@ async def test_middleware_localizes_auth_errors_by_accept_language(client) -> No
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
     expired = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=-3600
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=-3600,
     )
     r = await c.get(
         "/api/agents",

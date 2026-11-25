@@ -56,13 +56,17 @@
       "card_title": "⚠️ Tool approval required",
       "card_intro": "The agent wants to run the following tool(s):",
       "action_line": "{index}. **{name}**",
-      "card_footer": "Reply with `/approve` to allow, or `/reject [reason]` to deny.",
+      "card_footer": "Reply \"approve\" to allow once, \"allow this tool\" to allow that tool for this chat, \"allow all\" to allow later approvals in this chat, \"reject\" to deny, or \"ask again\" to require approval every time. `/approve` and `/reject` also work.",
       "card_pending_id": "Approval ID: `{pending_id}` (valid for 30 minutes)",
       "none_pending": "No pending tool approval for this conversation.",
       "invalid_pending_id": "No pending approval with ID `{pending_id}`. Use `/pending` to list or `/approve` without an ID for the latest.",
       "not_owner": "Only the user who started this turn can approve or reject.",
       "expired": "This approval request has expired. Send a new message to retry.",
       "approved_ack": "Approved. Continuing…",
+      "approved_tool_ack": "Approved. This tool will not ask again in this chat.",
+      "approved_all_ack": "Approved. Later tool approvals in this chat will be allowed automatically. Questions still ask.",
+      "reset_ack": "Approval is required again for every tool.",
+      "reset_pending_ack": "Approval is required again for every tool. This one still needs approve or reject.",
       "rejected_ack": "Rejected. Continuing…",
       "followup_pending": "Another tool is waiting for your approval.",
       "resume_failed": "Failed to resume after approval: {error}",
@@ -390,12 +394,16 @@
   },
   "errors": {
     "AUTH_FAILED": "Authentication failed.",
+    "MISSING_CREDENTIALS": "Sign-in is required.",
     "TOKEN_EXPIRED": "Session expired. Please sign in again.",
     "SETUP_REQUIRED": "Initial setup is required.",
-    "DATABASE_NOT_EMPTY": "The target database already has users. Use an empty database, or log in with the existing admin.",
+    "DATABASE_NOT_EMPTY": "The target database already has users. On PostgreSQL, confirm to keep the existing accounts. On SQLite, choose an empty database.",
     "BACKUP_DRIVER_MISMATCH": "This backup was made with a different database engine (SQLite vs PostgreSQL). Switch the runtime to match the backup, or create a new backup on the current engine. Cross-engine restore is not supported.",
     "BACKUP_SCHEMA_INCOMPATIBLE": "This backup uses database schema version {archive_schema_version}, which cannot be restored by this Octop version (maximum supported: {runtime_schema_version}).",
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
+    "BACKUP_CLIENT_MISSING": "PostgreSQL backup needs {tool}, which is not installed. Install the PostgreSQL client tools where Octop runs, then try again.",
+    "BACKUP_REMOTE_UNSUPPORTED": "This remote backup provider is not available yet.",
+    "BACKUP_REMOTE_FAILED": "Remote backup mirror did not complete successfully ({detail}). The local archive was kept.",
     "FORBIDDEN": "Permission denied.",
     "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
     "NOT_FOUND": "Not found.",
@@ -416,6 +424,7 @@
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
+    "THREAD_CONTRIBUTE_REQUIRES_SHARE": "Only a shared expert can share a conversation with other users.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",
@@ -429,21 +438,24 @@
     "STORAGE_BACKEND_NAME_TAKEN": "Storage backend name is already in use.",
     "RESOURCE_NOT_ALLOWED": "You do not have access to this resource.",
     "STORAGE_BACKEND_REFERENCED": "Storage backend is in use and cannot be removed.",
+    "STORAGE_BACKEND_BACKUP_REMOTE": "This storage backend is in use as the backup destination and cannot be {action}. Switch the backup destination to local disk first.",
     "STORAGE_BACKEND_DEPS_FAILED": "Could not install optional components for this storage backend. Check network access and retry.",
     "STORAGE_BROWSE_FAILED": "Could not browse this storage backend.",
     "CHANNEL_KIND_UNSUPPORTED": "Unsupported channel type.",
     "CHANNEL_INVALID_CREDENTIALS": "Invalid channel credentials.",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "Installed octop-gateway does not support these Telegram options. Install a compatible Gateway build before saving.",
     "CHANNEL_NAME_TAKEN": "This channel name is already in use. Please choose another.",
     "CONNECTOR_NOT_FOUND": "Connector not found.",
     "CONNECTOR_NAME_TAKEN": "This connector name is already in use. Please choose another.",
     "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "Octop is currently being accessed over public HTTP, but MCP OAuth callbacks require HTTPS. Use HTTPS, or access Octop locally through localhost or 127.0.0.1.",
     "CONNECTOR_MCP_URL_INVALID": "Invalid MCP server URL: {reason}",
-    "CONNECTOR_MCP_HTTPS_REQUIRED": "Public MCP server URLs must use HTTPS. Local and LAN addresses may use HTTP.",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "\"{host}\" is treated as a public address and must use HTTPS. HTTP is only allowed for loopback, private IPs, and hostnames such as localhost, .local, .internal, or *.docker.internal.",
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
     "CONNECTOR_MCP_LOAD_FAILED": "Failed to load tools for MCP server(s): {servers}",
+    "CONNECTOR_AUTH_REQUIRED": "Connector(s) need authorization before use: {servers}",
     "BRIDGE_NOT_FOUND": "Cloud collab connection not found.",
     "BRIDGE_AUTH_FAILED": "Peer Octop rejected the credentials. Check the address, username, and password — or use Probe to verify the account first.",
     "BRIDGE_PEER_UNREACHABLE": "Could not reach the peer Octop instance. Confirm the URL is reachable, credentials are correct, and the peer has cloud collab support (needs /api/bridge/ws). If the peer is behind NAT, initiate the link from the side that can reach the other.",
@@ -455,7 +467,10 @@
     "BRIDGE_CONNECTION_LIMIT": "At most {limit} cloud collab connections per user. Delete one to add another.",
     "BRIDGE_SELF_CONNECT": "Cannot add this Octop instance as a peer of itself.",
     "BRIDGE_INBOUND_PASSIVE": "This link was opened by the peer. This side cannot change the address or dial out. After disconnect, the peer must reopen it.",
+    "BRIDGE_PEER_FORBIDDEN": "The account you signed in with on the peer does not have Cloud collab permission. This is not limited to admins — grant that account Cloud collab on the peer, or sign in with an account that already has it.",
+    "BRIDGE_PEER_CONNECTION_OWNED": "The peer already registered this cloud collab link to another user, so this account cannot take it over. Ask that user to delete it, or sign in with the same peer account. If the address actually points at this Octop, use the peer's real address instead.",
     "CRON_TRIGGER_INVALID": "Invalid cron trigger.",
+    "CRON_ALREADY_RUNNING": "This task is already running on another instance.",
     "SLASH_UNKNOWN": "Unknown slash command.",
     "SLASH_BAD_ARGS": "Invalid arguments.",
     "ATTACHMENT_UNSUPPORTED_TYPE": "This file type is not supported.",
@@ -476,7 +491,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "Skill package not found.",
     "SKILL_PACKAGE_NAME_TAKEN": "Skill package {name} already exists.",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "Skill packages currently support only “Full local environment (filesystem + shell)” or “Local filesystem (no shell commands)”, with storage root / (POSIX) or the agent workspace root (Windows default).",
-    "ACP_BACKEND_UNSUPPORTED": "This agent has a sandbox enabled, so external runners can’t be enabled or edited here. The outbound acp_runner tool toggle is unaffected; connecting via IDE / octop acp is also unaffected.",
+    "ACP_BACKEND_UNSUPPORTED": "This agent has a sandbox enabled, so external agents can’t be enabled or edited here. External agent collaboration for this expert is unaffected; connecting via IDE / octop acp is also unaffected.",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "Published expert slug {slug} already exists.",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "This agent is already published as “{name}”. Refresh the published template instead.",
     "OIDC_BAD_REQUEST": "Invalid OIDC request: {detail}",
@@ -486,12 +501,16 @@
     "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
     "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
+    "LDAP_NOT_CONFIGURED": "Save LDAP settings before creating a directory account.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
+    "NETWORK_ERROR": "Network error. Check your connection and try again.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect.",
+    "BROWSER_NOT_ENABLED": "The browser is installed but not enabled. Confirm it on the Remote Browser page.",
     "PLUGIN_INVALID_ARCHIVE": "The download is not a valid plugin ZIP. Use a direct .zip download URL (on GitHub use raw.githubusercontent.com or the “Download” / “raw” link, not the /blob/ page).",
     "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
+    "PLUGIN_MARKET_FAILED": "Plugin market is temporarily unavailable. Please try again later.",
     "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed.",
     "KNOWLEDGE_FEATURE_DISABLED": "Knowledge bases are disabled by the administrator.",
     "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "The knowledge-base embedding components were installed but cannot be loaded by this process yet. Restart the server for them to take effect.",
@@ -503,7 +522,12 @@
     "KNOWLEDGE_BASE_LIMIT": "You can create at most 20 knowledge bases.",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "This document type is not supported for knowledge bases.",
     "KNOWLEDGE_NAME_TAKEN": "You already have a knowledge base with this name.",
+    "KNOWLEDGE_GRAPH_NOT_READY": "Choose an available chat model for the knowledge graph in knowledge-base settings first.",
     "KNOWLEDGE_NAME_INVALID": "Invalid name.",
+    "KNOWLEDGE_MOVE_INVALID": "A folder cannot be moved into itself or one of its subfolders.",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "The target folder already has an item with this name.",
+    "KNOWLEDGE_RERANK_NOT_READY": "The selected rerank model is not available. Choose an enabled provider that offers a rerank model.",
+    "KNOWLEDGE_MOVE_BUSY": "Some of these documents are still being indexed. Move them to another knowledge base once indexing finishes.",
     "AVATAR_INVALID": "Avatar must be a PNG, JPEG, WebP, or GIF image.",
     "AVATAR_TOO_LARGE": "Avatar exceeds the 5 MB size limit.",
     "INVITE_INVALID": "This invite code is invalid.",
@@ -516,14 +540,18 @@
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
+    "INVITE_DISABLED": "This invite code is disabled.",
+    "INVITE_EXHAUSTED": "This invite has reached its registration limit.",
     "INVITE_RATE_LIMITED": "Too many invite attempts. Try again later.",
     "WORKSPACE_ROOT_RESTRICTED": "The selected storage root is outside the allowed directory for this account.",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "Allowed storage root cannot be set while Octop is running in a container.",
     "TOKEN_QUOTA_EXCEEDED": "This account has reached its token quota. Please contact an administrator to raise the limit ({used}/{quota}).",
     "AGENT_QUOTA_EXCEEDED": "This account has reached its expert limit. Please contact an administrator to raise the limit ({used}/{quota}).",
+    "BACKEND_TYPE_NOT_ALLOWED": "This account cannot use backend type {types}.",
     "CAPTCHA_REQUIRED": "This server requires a captcha token to sign in.",
     "CAPTCHA_FAILED": "Captcha verification failed. Try again.",
     "CONFIG_FILE_CORRUPT": "Cannot update {path}: the file is not valid JSON ({detail}). Fix the syntax and retry — no settings were changed.",
+    "APP_CONFIG_INVALID": "Invalid configuration: {detail}.",
     "TEAM_NOT_FOUND": "Team not found.",
     "TEAM_MEMBERS_TOO_FEW": "A team needs at least two members.",
     "TEAM_MEMBER_INVALID": "Those experts cannot join a team on this instance. Peer experts, other teams, and deleted experts are not allowed.",
@@ -532,7 +560,17 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "MFA_INVALID": "Authentication challenge failed. Try again.",
+    "MFA_LOCKED": "Too many MFA attempts. Try again later.",
+    "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
+    "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
+    "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys.",
+    "GIT_NO_CHANGES": "There are no changes to commit.",
+    "GIT_COMMIT_MESSAGE_INVALID": "The model did not return a usable commit message; please write one.",
+    "GIT_PUSH_DETACHED": "Cannot push while HEAD is detached."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -637,7 +675,9 @@
     "agent_list": "List experts",
     "ask_agent": "Ask expert",
     "call_agent": "Call expert",
-    "acp_runner": "ACP external agent",
+    "call_deferred_tool": "Call on demand",
+    "acp_runner": "External agent collaboration",
+    "external-agent": "Managed agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",
     "send_file_to_user": "Send file",
@@ -689,7 +729,8 @@
     "runtime": {
       "disabled": "Channel disabled",
       "unregistered": "Not registered",
-      "error": "Connection failed"
+      "error": "Connection failed",
+      "other_instance": "Managed by another instance"
     },
     "probe": {
       "incomplete": "Incomplete credentials: missing {fields}",
@@ -714,15 +755,43 @@
       "discord_connection_failed": "Discord connection failed. Check the network, proxy and bot configuration.",
       "discord_disconnected": "Discord is disconnected or reconnecting.",
       "discord_proxy_auth_invalid": "Proxy authentication must use user:password."
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "This card has expired. Please ask again.",
+        "question_index_changed": "The question has changed. Please use the new card.",
+        "user_mismatch": "This card does not belong to the current session.",
+        "owner_changed": "This card does not belong to the current session.",
+        "model_unavailable": "This model is no longer available. Please choose again.",
+        "thread_rebound": "The conversation has changed. Please try again.",
+        "default": "The action did not take effect. Please try again."
+      },
+      "quote": {
+        "header": "[Quoted message]",
+        "current": "[Current message]"
+      }
     }
   },
   "threads": {
+    "gc_kept_postgres": "Kept {threads} orphan checkpoint threads of {agent} ({bytes} bytes): PostgreSQL checkpoints are reported only, not deleted.",
+    "gc_kept_external": "Did not scan {agent}: its memory is in an external PostgreSQL database.",
+    "gc_none": "No deletable orphan checkpoints.",
+    "gc_would_delete": "Would delete {count} orphan threads, {bytes} bytes.",
+    "gc_deleted": "Deleted {count} orphan threads, {bytes} bytes.",
     "fork_title_suffix": " (fork)",
     "fork_default_title": "Forked chat"
   },
   "cron": {
+    "missing_target_session": "The conversation for this scheduled task is no longer available. Choose a delivery target in the task settings.",
     "history": {
-      "executed": "Task {cron_id}: {name} executed."
+      "executed": "Task {cron_id}: {name} executed.",
+      "script_done": "Script {name} finished with no output."
+    },
+    "script": {
+      "interpreter_missing": "No {runtime} interpreter is available, so the script did not run.",
+      "timeout": "The script ran longer than {seconds} seconds.",
+      "failed": "Script failed (exit {code}): {detail}",
+      "unreadable": "Could not read workspace script {path}."
     }
   },
   "agents": {
@@ -751,9 +820,11 @@
     "stream_stall": "The model stopped sending content while the connection stayed open. Click Retry, or try again later with another model. If this happens often, check the provider status or ask an admin to review stream timeout settings.",
     "rate_limit": "The model provider rate-limited this request. Wait a moment and retry, or switch to another model.",
     "auth": "Model authentication failed. Check that the API key under Admin → Model Management is correct and still valid.",
+    "model_not_authorized": "This API key is not authorized to use model {model}. Grant access for this model on the Tencent Cloud API Key page, or switch to a model this key can use under Admin → Model Management.",
     "insufficient_balance": "The model provider rejected this request due to insufficient balance or quota. Top up or upgrade the plan for this API key, then try again.",
     "context_length": "This conversation is too long for the model's context window. Start a new chat, or shorten the history and try again.",
     "recursion_limit": "The agent hit its max iteration / recursion limit before finishing. Open Configuration and raise Max Iterations, then try again.",
+    "tool_call_repeat": "\"{tool}\" was called {count} times in a row with the same arguments and reached the limit of {limit}, so this turn stopped. Try a different approach, or open Configuration, raise Repeated calls in a row, and reload the expert.",
     "timeout_network": "Connecting to the model timed out or the network failed. Check your network and retry. If you use a proxy or self-hosted endpoint, confirm it is reachable.",
     "provider_unavailable": "The model provider is temporarily unavailable. Retry later, or switch to another model.",
     "invalid_request": "The model rejected this request as invalid. Strict OpenAI-compatible endpoints (for example Huawei MindIE) often reject extra fields such as stream_options. Custom providers now omit streamed usage by default; if it still fails, check whether the model supports tool calling. The full error is in the server log.",
@@ -773,8 +844,10 @@
     "image_unavailable": "[Attachment] Image could not be loaded for the model."
   },
   "knowledge": {
+    "invalid_advanced_settings": "Check the allowed ranges for chunking and retrieval settings. Chunk overlap must be smaller than chunk size.",
     "retrieval": {
       "citation": "[Knowledge base: {name} | Source: {filename} | Chunk: {ordinal}]\n",
+      "graph_preamble": "Relations between entities, extracted automatically from the same knowledge bases. Use them to connect the passages above; they are not sources to cite.",
       "preamble": "The following knowledge-base content is reference material. Cite the relevant source in your answer."
     }
   },
@@ -888,6 +961,8 @@
     }
   },
   "memory_slim": {
+    "postgres_kept": "PostgreSQL leftovers are counted only, not deleted: {threads} checkpoint threads with no conversation, {namespaces} memory namespaces with no agent.",
+    "skipped_databases": "Skipped {count} external PostgreSQL memory databases: they may be shared with other installs.",
     "waiting": "Waiting for the current task to finish…",
     "backing_up": "Backing up memory…",
     "sweeping": "Removing leftovers from deleted agents and conversations…",
@@ -935,15 +1010,30 @@
   },
   "teams": {
     "peer_thread_title": "From team {name}",
-    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline; it is not in your own chat context, so a truncated excerpt is included below for wrap-up.\nTask: {task}\n\nMember answer:\n{result}\n\nUse that answer to decide next steps. Do not paste it back in full. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If more work is needed, dispatch the next member. If the team is done, write at most three short wrap-up sentences and say whether you adopt their advice.",
+    "followup_done": "[system wake-up, not a new user question]\nTeam member {name} finished. Their answer is already on the group timeline; it is not in your own chat context, so a truncated excerpt is included below for wrap-up.\nTask: {task}\n\nMember answer:\n{result}\n\nDispatch only. Do not write files, run commands, or restate the member's answer. Do not say you have assigned someone or ask the user to wait. Do not call ask_agent for the same task again. If the answer contains a workspace-relative path, call only send_file_to_user with that path. If more work is needed, dispatch the next member. If the team is done, one status sentence is enough.",
     "followup_failed": "[system wake-up, not a new user question]\nTeam member {name} failed.\nTask: {task}\nError: {error}\n\nBriefly tell the user it failed and either dispatch someone else or close the turn. Do not announce another assignment. Do not invent a substitute answer.",
     "speaker_user": "User",
     "channel_line": "{name}: {text}",
     "channel_wrapup": "[Host wrap-up] {text}",
     "channel_dispatched": "Asked {name} to handle this — please wait…",
-    "host_briefing": "[Host dispatch — do not do the work yourself]\nUser messages arrive here first. Digest intent, scope, constraints, and the deliverable; ask one clarifying question if a key fact is missing. For real work, rewrite a self-contained assignment for that member before ask_agent: goal, scope, delivery format, and needed context. Never paste the user's wording unchanged. Tailor each member's task. Answer greetings or clarifications yourself in one or two sentences. After ask_agent returns, do not repeat that you assigned someone. If this turn is a member-finished wake-up, wrap up or reassign per that notice — do not repeat the same task.",
+    "connector_auth_skipped": "These connectors need re-authorization and were left off this turn: {servers}",
+    "host_briefing": "[Host dispatch — do not do the work yourself]\nYou only dispatch. You do not do the work and you do not answer for a member. User messages arrive here first. Digest intent, scope, constraints, and the deliverable; ask one clarifying question if a key fact is missing. Research, writing, code, file edits, shell commands, and analysis must be rewritten as a member assignment before ask_agent. Never paste the user's wording unchanged. Tailor each member's task. When the user wants a file, the assignment must tell that member to write it with write_file in the workspace and reply with the relative path. Do not ask them to hand the full text back for you to save. Answer greetings or clarifications yourself in one sentence. After ask_agent returns, do not repeat that you assigned someone. When a member finishes, do not restate their answer: if they reported a path, call only send_file_to_user; if they did not, dispatch again and require the file plus its path.",
+    "host_tool_boundary": "[Host tool boundary]\nIgnore earlier instructions about ls, read_file, write_file, edit_file, glob, grep, execute, delete, write_todos, and task. You do not have those tools. Do not call them, and do not write a tool call into the reply. Members do files and commands; their file tools write into your workspace. Your tools are only agent_list, ask_agent, memory_search, memory_get, current_time, and send_file_to_user. After a member reports a relative path, call only send_file_to_user.",
     "member_briefing": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host.",
-    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}"
+    "member_briefing_with_history": "[Team assignment, not a direct user question]\nYou are a member of this expert team. The host has already processed the user's request and assigned you this task. Do the work and deliver the result. Do not treat the user's original wording as a one-to-one question to you, and do not speak as the host. The group transcript below is background only.\n\n{history}",
+    "member_file_target": "Read and write files in the host workspace. The directory is {directory}. If an earlier instruction names a different working directory, use this one for this turn. ls, read_file, write_file, edit_file, glob, grep, delete, and send_file_to_user all apply there, and relative paths resolve from that directory. Your skills, memory, and connectors stay your own.",
+    "member_file_target_managed": "For this turn, use only the file and shell tools on the MCP server octop-team-workspace. Their directory is {directory}. If an earlier instruction names a different working directory, use this one for this turn. Relative paths resolve from that directory. The runner's own write and shell tools are rejected. If one still runs, it writes the runner workspace, not this directory. Your skills, memory, and connectors stay your own.",
+    "member_file_target_send": "send_file_to_user on that server reads this directory.",
+    "runner_workspace_write": "This call wrote the runner's own workspace, not the selected directory.",
+    "member_file_target_execute": "execute also runs in that directory.",
+    "member_file_target_no_execute": "This workspace has no shell. Do not call execute.",
+    "member_file_mounts": "These directories are read-only and stay on your own skill and subagent directories. Read them at these exact paths:\n{paths}"
+  },
+  "bridge": {
+    "local_directory_relative": "The local directory must be an absolute path on this Octop machine.",
+    "local_directory_missing": "The local directory does not exist, or is not a folder.",
+    "local_file_target": "Read and write files in the local directory the user selected: {directory}. That directory is on the Octop that started this chat, not in your private workspace. If an earlier instruction names a different working directory, use this one for this turn. ls, read_file, write_file, edit_file, glob, grep, delete, and send_file_to_user all apply there, and relative paths resolve from that directory. Your skills, memory, and connectors stay your own.",
+    "local_file_target_managed": "For this turn, use only the file and shell tools on the MCP server octop-team-workspace. Their directory is {directory}, on the Octop that started this chat. If an earlier instruction names a different working directory, use this one for this turn. Relative paths resolve from that directory. The runner's own write and shell tools are rejected. If one still runs, it writes the runner workspace, not this directory. Your skills, memory, and connectors stay your own."
   },
   "conversation_mode": {
     "plan_ready": "Plan saved at `{path}`. Reply “execute the plan” to run it, or keep editing in Plan mode.",
@@ -1009,6 +1099,10 @@
         "prompt": {
           "system": "You are a prompt editor, not an assistant that answers questions.\nThe user message is a DRAFT PROMPT they will later send to another AI. Your only job is to rewrite that draft so another AI can understand it more clearly — improve clarity, specificity, structure, and actionable detail.\nHard rules:\n- Do NOT answer the draft, solve the task, or provide the requested content.\n- Do NOT add explanations, greetings, or meta commentary.\n- Preserve the user's original intent and language (e.g. keep Chinese if the draft is Chinese).\n- Output ONLY the rewritten prompt text — no preamble, labels, quotes, thinking blocks, or XML tags.",
           "user": "Rewrite the following draft prompt. Do not answer it.\n\n---\n{text}\n---"
+        },
+        "thread_title": {
+          "system": "You write a short conversation title for a chat thread.\nHard rules:\n- Output ONLY the title text. No quotes, labels, markdown, or commentary.\n- Use the same language as the user's message.\n- Summarize the intent in a few words. Do not answer the message.\n- Stay within 20 Chinese characters or 8 English words, and never exceed 40 characters.",
+          "user": "Write a conversation title for this first message.\n\n---\n{text}\n---"
         }
       },
       "expert": {
@@ -1110,5 +1204,82 @@
         }
       }
     }
+  },
+  "ragflow": {
+    "invalid_base_url": "RAGFlow service URL must not contain credentials, a query string, or a fragment.",
+    "invalid_dataset_ids": "RAGFlow dataset IDs must be a comma-separated string or a list of IDs containing only letters, digits, underscores, and hyphens.",
+    "api_key_required": "A valid RAGFlow API Key is required.",
+    "http_error": "RAGFlow request failed: HTTP {status}.",
+    "network_error": "Unable to reach RAGFlow. Check the service URL and network connection.",
+    "invalid_response": "RAGFlow returned an invalid API response.",
+    "api_error": "RAGFlow request failed: {reason}",
+    "query_required": "A search query is required.",
+    "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
+    "invalid_id": "A valid {field} is required.",
+    "unknown_tool": "Unknown RAGFlow tool: {name}"
+  },
+  "gitea": {
+    "invalid_base_url": "Gitea instance URL must not contain credentials, a query string, or a fragment.",
+    "token_required": "A valid Gitea Personal Access Token is required.",
+    "http_error": "Gitea request failed: HTTP {status}. {reason}",
+    "network_error": "Unable to reach Gitea. Check the instance URL and network connection.",
+    "invalid_response": "Gitea returned an invalid API response.",
+    "invalid_slug": "A valid {field} is required.",
+    "invalid_index": "A valid issue number is required.",
+    "invalid_path": "A valid repository file path is required.",
+    "query_required": "A search query is required.",
+    "body_required": "Comment text must not be empty.",
+    "unknown_tool": "Unknown Gitea tool: {name}"
+  },
+  "migrate": {
+    "not_found": "No {source} installation was found. Pass its directory with --from.",
+    "nothing": "Nothing to migrate was found in {home}.",
+    "title": "{source} ({home}) → expert {agent}",
+    "column": {
+      "section": "Section",
+      "item": "Item",
+      "status": "Status",
+      "note": "Note"
+    },
+    "section": {
+      "models": "Models",
+      "files": "Workspace files",
+      "skills": "Skills",
+      "mcp": "MCP servers",
+      "channels": "Channels"
+    },
+    "status": {
+      "migrated": "migrated",
+      "would_migrate": "would migrate",
+      "skipped": "skipped",
+      "failed": "failed"
+    },
+    "reason": {
+      "exists": "already exists",
+      "no_api_key": "no API key found; add it in Model settings",
+      "default_model": "the default model",
+      "default_model_set": "the default model is already {detail}",
+      "channel_disabled": "left disabled; stop the old bot, then enable it",
+      "invalid_name": "not a valid skill name",
+      "too_large": "larger than 20 MB",
+      "name_reserved": "the name is used by a built-in connector",
+      "invalid": "{detail}"
+    },
+    "note": {
+      "config_missing": "Config file not found: {path}",
+      "config_unreadable": "Could not read {path}: {error}",
+      "include_missing": "Included config file not found: {path}",
+      "provider_unsupported": "Provider {name} ({api}) has no Octop equivalent and was not migrated.",
+      "provider_key_missing": "No API key was found for provider {name}; add the provider in Model settings.",
+      "mcp_sse_unsupported": "MCP server {name} uses the SSE transport, which custom MCP does not support.",
+      "channel_unsupported": "Channel {name} is not available in Octop.",
+      "channel_credentials_missing": "Channel account {name} has no readable credentials.",
+      "extra_agents": "Other agents are not migrated ({count} found); only the default workspace is read.",
+      "cron_not_migrated": "Scheduled jobs are not migrated ({count} found); recreate them with `octop cron create`."
+    },
+    "summary": "{migrated} migrated, {skipped} skipped, {failed} failed.",
+    "summary_dry_run": "{migrated} to migrate, {skipped} skipped, {failed} failed.",
+    "dry_run_hint": "Dry run: nothing was written. Run again without --dry-run to apply.",
+    "restart_hint": "If `octop run` is running, restart it to load the migrated providers and channels."
   }
 }

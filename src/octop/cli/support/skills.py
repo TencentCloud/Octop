@@ -7,6 +7,7 @@ import json
 from typing import Any
 
 from octop.cli.repl.embedded_session import embedded_runtime
+from octop.infra.agents.builtin_skills import store_skills_disabled
 from octop.infra.agents.manager import skills_disabled_set
 from octop.infra.errors import ErrorCode, OctopError
 
@@ -42,5 +43,5 @@ def set_skill_enabled(agent_id: str, name: str, *, enabled: bool) -> None:
             disabled.discard(name)
         else:
             disabled.add(name)
-        cfg["skills_disabled"] = sorted(disabled)
+        store_skills_disabled(cfg, disabled)
         svc.agent_repo.update_config(agent_id, config_json=json.dumps(cfg))

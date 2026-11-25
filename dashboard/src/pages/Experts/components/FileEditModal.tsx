@@ -1,14 +1,12 @@
 // dashboard/src/pages/Experts/components/FileEditModal.tsx
-import { lazy, Suspense, useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Drawer, Spin } from "antd";
+import { Button, Drawer, Form, Input, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
-import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
-
-const MonacoEditor = lazy(() => import("@monaco-editor/react"));
+import styles from "./FileEditModal.module.less";
 
 interface FileEditModalProps {
   open: boolean;
@@ -20,6 +18,10 @@ interface FileEditModalProps {
   onClose: () => void;
   onSaved: () => void;
   onLocalSave?: (content: string) => void;
+  createLocalFile?: {
+    existingNames: string[];
+    onCreate: (filename: string, content: string) => void;
+  };
 }
 
 function fileEditDrawerWidth(): number {
@@ -35,16 +37,29 @@ export default function FileEditModal({
   onClose,
   onSaved,
   onLocalSave,
+  createLocalFile,
 }: FileEditModalProps) {
   const { t } = useTranslation();
-  const { isDark } = useTheme();
+  const newNameId = useId();
+  const creating = Boolean(createLocalFile);
+  const editingLocally = Boolean(onLocalSave);
+  const [newName, setNewName] = useState("");
+  const [nameError, setNameError] = useState("");
   const [value, setValue] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open || !filePath) return;
-    if (onLocalSave) {
+    if (!open) return;
+    if (creating) {
+      setNewName("");
+      setNameError("");
+      setValue("");
+      setLoading(false);
+      return;
+    }
+    if (!filePath) return;
+    if (editingLocally) {
       setValue(localValue ?? "");
       setLoading(false);
       return;
@@ -74,9 +89,28 @@ export default function FileEditModal({
     return () => {
       cancelled = true;
     };
-  }, [open, agentId, filePath, localValue, onLocalSave]);
+  }, [open, agentId, filePath, localValue, editingLocally, creating]);
 
   const handleSave = async () => {
+    if (createLocalFile) {
+      const input = newName.trim();
+      const filename = input.endsWith(".md") ? input : `${input}.md`;
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/.test(filename)) {
+        setNameError(t("experts.promptFilenameInvalid"));
+        return;
+      }
+      if (
+        createLocalFile.existingNames.some(
+          (name) => name.toLowerCase() === filename.toLowerCase(),
+        )
+      ) {
+        setNameError(t("experts.promptFilenameExists", { filename }));
+        return;
+      }
+      createLocalFile.onCreate(filename, value);
+      onClose();
+      return;
+    }
     if (!filePath) return;
     const filename = filePath.replace(/^\//, "");
     if (onLocalSave) {
@@ -108,7 +142,9 @@ export default function FileEditModal({
     }
   };
 
-  const title = filePath
+  const title = creating
+    ? t("experts.addPromptFile")
+    : filePath
     ? t("experts.editFileTitle", { filename: filePath.replace(/^\//, "") })
     : "";
 
@@ -150,6 +186,26 @@ export default function FileEditModal({
         </div>
       }
     >
+      {creating && (
+        <Form.Item
+          label={t("workspace.newFileName")}
+          htmlFor={newNameId}
+          validateStatus={nameError ? "error" : undefined}
+          help={nameError}
+          style={{ padding: "16px 20px 0" }}
+        >
+          <Input
+            id={newNameId}
+            aria-invalid={Boolean(nameError)}
+            autoFocus
+            value={newName}
+            onChange={(event) => {
+              setNewName(event.target.value);
+              setNameError("");
+            }}
+          />
+        </Form.Item>
+      )}
       {loading ? (
         <div
           style={{
@@ -163,38 +219,14 @@ export default function FileEditModal({
           <Spin />
         </div>
       ) : (
-        <Suspense
-          fallback={
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: 1,
-                minHeight: 240,
-              }}
-            >
-              <Spin tip="Loading editor…" />
-            </div>
-          }
-        >
-          <div style={{ flex: 1, minHeight: 0, height: "100%" }}>
-            <MonacoEditor
-              height="100%"
-              language="markdown"
-              theme={isDark ? "vs-dark" : "light"}
-              value={value}
-              onChange={(v) => setValue(v ?? "")}
-              options={{
-                minimap: { enabled: false },
-                wordWrap: "on",
-                fontSize: 13,
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-              }}
-            />
-          </div>
-        </Suspense>
+        <textarea
+          className={styles.editor}
+          aria-label={title}
+          value={value}
+          spellCheck={false}
+          autoFocus={!creating}
+          onChange={(event) => setValue(event.target.value)}
+        />
       )}
     </Drawer>
   );

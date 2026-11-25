@@ -2,6 +2,11 @@ import type { ReactNode } from "react";
 import { Share2 } from "lucide-react";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
+import {
+  isSharedExpertViewer,
+  type SharedExpertAccess,
+} from "../../utils/sharedExpert";
 import styles from "./SharedResourceBadge.module.less";
 
 type Props = {
@@ -14,7 +19,7 @@ type Props = {
   className?: string;
 };
 
-/** One pill for “I shared this” and “someone shared this with me”. */
+/** Compact share mark — same icon for “I shared this” and “shared with me”. */
 export function SharedResourceBadge({
   shared,
   owned,
@@ -31,19 +36,29 @@ export function SharedResourceBadge({
     : t("sharedResource.shared", "已共享");
   return (
     <span
-      className={[
-        styles.badge,
-        incoming ? styles.incoming : styles.outgoing,
+      className={cx(
+        styles.iconMark,
+        incoming ? styles.incomingIcon : styles.outgoingIcon,
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
       title={label}
+      aria-label={label}
     >
-      <Share2 size={11} aria-hidden />
-      <span className={styles.label}>{label}</span>
+      <Share2 size={12} strokeWidth={2} aria-hidden />
     </span>
   );
+}
+
+/** Props for the incoming-share pip. Owners who shared outward get no avatar mark. */
+export function incomingShareProps(
+  agent?: (SharedExpertAccess & { owner_username?: string | null }) | null,
+): { shared: boolean; owned: boolean; ownerName?: string | null } {
+  const incoming = Boolean(agent && isSharedExpertViewer(agent));
+  return {
+    shared: incoming,
+    owned: !incoming,
+    ownerName: agent?.owner_username,
+  };
 }
 
 /** Avatar with a pip when the resource was shared to the current user. */
@@ -71,7 +86,7 @@ export function SharedAvatarMark({
       defaultValue: "来自 {{name}}",
     });
   return (
-    <span className={[styles.avatarHost, className].filter(Boolean).join(" ")}>
+    <span className={cx(styles.avatarHost, className)}>
       {children}
       {incoming ? (
         <Tooltip title={tip} mouseEnterDelay={0.3}>

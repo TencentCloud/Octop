@@ -32,6 +32,7 @@ from octop.infra.users.preferences import (
     RemoteBrowserBookmark,
     get_remote_browser_bookmarks_from_json,
     merge_model_preferences_json,
+    merge_onboarding_completed_json,
     merge_preferences_json,
     validate_remote_browser_bookmarks,
 )
@@ -124,18 +125,37 @@ class UserManager:
         self,
         *,
         username: str,
-        password: str,
+        password: str | None = None,
         role: Role | str,
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
         role_name: str | None = None,
+        directory_provider_id: int | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
+        from octop.infra.utils.paths import is_single_path_segment
+
+        if not is_single_path_segment(username):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "username must be a single directory name",
+                status=400,
+            )
         loc = normalize_locale(locale)
-        validate_password_policy(password)
+        if directory_provider_id is not None:
+            # A directory reservation has no local secret. The directory bind is
+            # the only way in, so a password sent alongside it is ignored.
+            password_hash = None
+            sso_provider_id: int | None = directory_provider_id
+        else:
+            if not password:
+                raise OctopError(ErrorCode.PASSWORD_TOO_WEAK, "password is required")
+            validate_password_policy(password)
+            password_hash = hash_password(password)
+            sso_provider_id = None
         try:
             keys = validate_permission_keys(permissions or [])
         except ValueError as exc:
@@ -159,11 +179,12 @@ class UserManager:
             try:
                 uid = self._services.user_repo.create(
                     username=username,
-                    password_hash=hash_password(password),
+                    password_hash=password_hash,
                     role=role_id,
                     display_name=display_name,
                     locale=loc,
                     email=normalized_email,
+                    sso_provider_id=sso_provider_id,
                     permissions=keys,
                     role_name=role_name,
                 )
@@ -505,6 +526,7 @@ class UserManager:
                 permissions=list(row.permissions),
             )
             self._users[row.username] = user
+        self._services.user_repo.touch_last_login(row.id)
         self._services.audit_repo.write(actor=row.username, action="auth.login")
         return user
 
@@ -567,11 +589,20 @@ class UserManager:
         workspace_root_dir: Any = UNSET,
         token_quota: Any = UNSET,
         max_agents: Any = UNSET,
+        allowed_backend_types: Any = UNSET,
+        default_backend_type: Any = UNSET,
     ) -> None:
         from octop.infra.users.resource_policy import (
+            POLICY_ALLOWED_BACKEND_TYPES,
+            POLICY_DEFAULT_BACKEND_TYPE,
             POLICY_MAX_AGENTS,
             POLICY_TOKEN_QUOTA,
             POLICY_WORKSPACE_ROOT_DIR,
+            allowed_backend_types_of,
+            assert_default_backend_allowed,
+            default_backend_type_of,
+            normalize_allowed_backend_types,
+            normalize_default_backend_type,
             normalize_max_agents,
             normalize_token_quota,
             normalize_workspace_root_dir,
@@ -584,6 +615,8 @@ class UserManager:
         root_arg: Any = UNSET
         quota_arg: Any = UNSET
         max_agents_arg: Any = UNSET
+        backend_types_arg: Any = UNSET
+        default_backend_arg: Any = UNSET
         if workspace_root_dir is not UNSET:
             root_arg = normalize_workspace_root_dir(workspace_root_dir)
             updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
@@ -593,8 +626,32 @@ class UserManager:
         if max_agents is not UNSET:
             max_agents_arg = normalize_max_agents(max_agents)
             updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
+        if allowed_backend_types is not UNSET:
+            backend_types_arg = normalize_allowed_backend_types(allowed_backend_types)
+            updates[POLICY_ALLOWED_BACKEND_TYPES] = backend_types_arg
+        if default_backend_type is not UNSET:
+            default_backend_arg = normalize_default_backend_type(default_backend_type)
+            updates[POLICY_DEFAULT_BACKEND_TYPE] = default_backend_arg
         if not updates:
             return
+        if POLICY_DEFAULT_BACKEND_TYPE in updates or POLICY_ALLOWED_BACKEND_TYPES in updates:
+            if POLICY_DEFAULT_BACKEND_TYPE in updates:
+                default_value = updates[POLICY_DEFAULT_BACKEND_TYPE]
+            else:
+                default_value = default_backend_type_of(
+                    self._services.user_policy_repo.get(row.id, POLICY_DEFAULT_BACKEND_TYPE)
+                )
+            if POLICY_ALLOWED_BACKEND_TYPES in updates:
+                allowed_value = updates[POLICY_ALLOWED_BACKEND_TYPES]
+            else:
+                stored_allowed = allowed_backend_types_of(
+                    self._services.user_policy_repo.get(row.id, POLICY_ALLOWED_BACKEND_TYPES)
+                )
+                allowed_value = ",".join(stored_allowed) if stored_allowed else None
+            assert_default_backend_allowed(
+                default_value if isinstance(default_value, str) else None,
+                allowed_value if isinstance(allowed_value, str) else None,
+            )
         self._services.user_policy_repo.merge(row.id, updates)
         if workspace_root_dir is not UNSET:
             self._services.audit_repo.write(
@@ -616,6 +673,20 @@ class UserManager:
                 action="user.set_max_agents",
                 target=username,
                 payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
+        if allowed_backend_types is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_allowed_backend_types",
+                target=username,
+                payload=backend_types_arg or "",
+            )
+        if default_backend_type is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_default_backend_type",
+                target=username,
+                payload=default_backend_arg or "",
             )
 
     async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
@@ -728,6 +799,13 @@ class UserManager:
         )
         self._services.user_repo.set_preferences_json(row.id, merged)
 
+    async def set_onboarding_completed(self, username: str, completed: bool) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        merged = merge_onboarding_completed_json(row.preferences_json, completed)
+        self._services.user_repo.set_preferences_json(row.id, merged)
+
     async def disable(self, username: str) -> None:
         row = self._services.user_repo.get_by_username(username)
         if row is None:
@@ -781,14 +859,13 @@ class UserManager:
         if agent_manager is not None:
             agent_manager.assert_agents_deletable([agent.agent_id for agent in owned])
         await self._delete_foreign_checkpoints(row.id, owned_ids, agent_manager)
-        workspaces = self._owned_workspaces(owned)
         if agent_manager is not None:
             for agent in owned:
                 await agent_manager.delete(agent.agent_id)
         else:
             await asyncio.to_thread(self._purge_owned_stores, owned)
             await asyncio.to_thread(self._remove_owned_dirs, owned)
-        await asyncio.to_thread(self._remove_paths, workspaces)
+        await asyncio.to_thread(self._remove_paths, self._managed_agent_dirs(owned))
         async with self._lock:
             self._users.pop(username, None)
         await asyncio.to_thread(self._remove_user_files, row.id, row.username)
@@ -800,6 +877,7 @@ class UserManager:
         from octop.infra.agents.memory.thread_cleanup import (
             agent_config_from_row,
             delete_agent_memory_and_checkpoints,
+            runtime_memory_namespace_for,
             workspace_for_agent_row,
         )
 
@@ -811,6 +889,10 @@ class UserManager:
                 octop_config=self._services.config,
                 workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
                 paths=self._services.paths,
+                namespace=runtime_memory_namespace_for(
+                    agent.agent_id,
+                    self._services.agent_repo.list_all(include_disabled=True),
+                ),
             )
 
     def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
@@ -824,10 +906,20 @@ class UserManager:
                 agent_id=agent.agent_id,
             )
 
-    def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
-        from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row
+    def _managed_agent_dirs(self, owned: builtins.list[Any]) -> builtins.list[Path]:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import agent_host_data_dirs
 
-        return [workspace_for_agent_row(agent, paths=self._services.paths) for agent in owned]
+        found: builtins.list[Path] = []
+        for agent in owned:
+            found.extend(
+                agent_host_data_dirs(
+                    agent_config_from_row(agent),
+                    paths=self._services.paths,
+                    agent_id=agent.agent_id,
+                )
+            )
+        return found
 
     async def _delete_foreign_checkpoints(
         self,
@@ -884,4 +976,4 @@ class UserManager:
         from octop.infra.users.profile_avatar import delete_profile_avatar
 
         self._remove_paths([self._services.paths.user_dir(username)])
-        delete_profile_avatar(self._services.paths.user_avatars_dir, str(user_id))
+        delete_profile_avatar(self._services.avatars("user"), str(user_id))

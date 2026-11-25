@@ -17,7 +17,12 @@ from langchain_core.runnables import RunnableConfig
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
 from octop.infra.agents.threads.context_breakdown import usage_dict_from_message
+from octop.infra.gateway.media.tool_media import (
+    OUTBOUND_ATTACHMENTS_KEY,
+    history_attachments_from_message,
+)
 from octop.infra.gateway.process.message_keys import (
+    AUTHOR_USER_ID_KEY,
     CHECKPOINT_TS_KEY,
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
@@ -449,6 +454,7 @@ def _load_projected_thread_messages(
     *,
     user: Any,
     offset: int = 0,
+    include_tool_media: bool = True,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Read one page without touching the agent checkpoint database."""
     rows, has_more = server.services.thread_message_repo.page(
@@ -476,6 +482,8 @@ def _load_projected_thread_messages(
         )
         if entry is not None:
             out.append(entry)
+    if not include_tool_media:
+        return out, has_more
     return _enrich_history_tool_media(out, agent_id=agent_id), has_more
 
 
@@ -487,11 +495,6 @@ async def _backfill_thread_projection(
     user: Any,
 ) -> None:
     """Decode one legacy checkpoint off-request and atomically publish it."""
-    from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
-
-    archive = getattr(server.app_runtime, "history_archive", None)
-    if isinstance(archive, HistoryArchive):
-        raise ValueError("History backfill is disabled while versioned history is in use")
     repo = server.services.thread_message_repo
     registry = server.app_runtime.agent_registry
     reserve = getattr(registry, "try_begin_history_backfill", None)
@@ -918,6 +921,17 @@ def _split_string_thinking(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
+def _author_user_id(raw: Any) -> int | None:
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int) and raw > 0:
+        return raw
+    if isinstance(raw, str) and raw.isdigit():
+        value = int(raw)
+        return value if value > 0 else None
+    return None
+
+
 def _serialize_history_message(
     msg: Any,
     *,
@@ -938,11 +952,14 @@ def _serialize_history_message(
     if role == "tool":
         content = _msg_attr(msg, "content", "")
         output = _message_content(msg) if isinstance(content, list) else str(content or "")
-        if not output.strip():
+        call_id = str(_msg_attr(msg, "tool_call_id") or "")
+        # A finished tool with no text still has to stay in history. Dropping it
+        # leaves the card looking like it is still running after a reload.
+        if not output.strip() and not call_id.strip():
             return None
         result_block = {
             "type": "tool_result",
-            "id": str(_msg_attr(msg, "tool_call_id") or ""),
+            "id": call_id,
             "name": str(_msg_attr(msg, "name") or ""),
             "output": output,
         }
@@ -952,6 +969,10 @@ def _serialize_history_message(
         if _msg_attr(msg, "status") == "error":
             result_block["error_code"] = "tool_error"
         blocks = [result_block]
+        _append_history_attachments(blocks, history_attachments_from_message(msg))
+        stored = additional_kwargs.get(OUTBOUND_ATTACHMENTS_KEY)
+        if isinstance(stored, list):
+            _append_history_attachments(blocks, stored)
         entry: dict[str, Any] = {"role": "tool", "content": blocks}
         if mid:
             entry["id"] = mid
@@ -964,6 +985,9 @@ def _serialize_history_message(
     blocks = _content_blocks_from_raw(content, additional_kwargs)
     if role == "assistant":
         blocks.extend(_tool_use_blocks(_msg_attr(msg, "tool_calls")))
+        stored = additional_kwargs.get(OUTBOUND_ATTACHMENTS_KEY)
+        if isinstance(stored, list):
+            _append_history_attachments(blocks, stored)
 
     raw_att = (
         additional_kwargs.get(INBOUND_ATTACHMENTS_KEY)
@@ -1012,6 +1036,9 @@ def _serialize_history_message(
             entry["composer_context"] = raw_ctx
         if has_user_attachments:
             entry["inbound_attachments"] = raw_att
+        author_id = _author_user_id(additional_kwargs.get(AUTHOR_USER_ID_KEY))
+        if author_id is not None:
+            entry["author_user_id"] = author_id
     if additional_kwargs.get(STREAM_ERROR_FLAG):
         entry["status"] = "error"
         code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)
@@ -1030,7 +1057,37 @@ def _serialize_history_message(
         cleaned = [path.strip() for path in edited if isinstance(path, str) and path.strip()]
         if cleaned:
             entry["edited_files"] = cleaned
+    duration = additional_kwargs.get("turn_duration_ms")
+    if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0:
+        entry["duration_ms"] = int(duration)
     return _apply_history_timestamp(entry, msg, fallback_created_at)
+
+
+def _append_history_attachments(blocks: list[dict[str, Any]], attachments: list[Any]) -> None:
+    """Add file cards the dashboard reloads. Thread artifacts stay a separate list."""
+    seen = {
+        str(block.get("workspace_path") or "")
+        for block in blocks
+        if isinstance(block, dict) and block.get("workspace_path")
+    }
+    for item in attachments:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("workspace_path") or "").strip()
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        block: dict[str, Any] = {
+            "type": str(item.get("type") or "file"),
+            "workspace_path": path,
+        }
+        filename = item.get("filename")
+        if isinstance(filename, str) and filename.strip():
+            block["filename"] = filename.strip()
+        mime = item.get("media_type")
+        if isinstance(mime, str) and mime.strip():
+            block["media_type"] = mime.strip()
+        blocks.append(block)
 
 
 def _message_content(msg: Any) -> str:

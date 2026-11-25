@@ -1,3 +1,5 @@
+import cx from "classnames";
+
 import type { PanelMode } from "../../../components/BrowserWorkspace";
 import type { DisplayEnvironment } from "../../../api/types/browser";
 import type { DockTab, DockTabId } from "../hooks/useChatDockPanel";
@@ -18,6 +20,7 @@ interface ChatDockPanelsProps {
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
+  onOpenGitHistory?: () => void;
   browserEnvironment: DisplayEnvironment;
   bridgeConnectionId?: string | null;
   threadId?: string | null;
@@ -55,6 +58,7 @@ export default function ChatDockPanels({
   onSelectTab,
   onCloseTab,
   onOpenFile,
+  onOpenGitHistory,
   browserEnvironment,
   bridgeConnectionId = null,
   threadId = null,
@@ -94,6 +98,7 @@ export default function ChatDockPanels({
       onSelectTab={onSelectTab}
       onCloseTab={onCloseTab}
       onOpenFile={onOpenFile}
+      onOpenGitHistory={onOpenGitHistory}
       browserEnvironment={browserEnvironment}
       bridgeConnectionId={bridgeConnectionId}
       threadId={threadId}
@@ -110,9 +115,11 @@ export default function ChatDockPanels({
     <>
       {showBottomResizer && (
         <div
-          className={`${styles.panelResizer} ${styles.vertical} ${
-            isResizing ? styles.resizerActive : ""
-          }`}
+          className={cx(
+            styles.panelResizer,
+            styles.vertical,
+            isResizing && styles.resizerActive,
+          )}
           onPointerDown={(e) => onResizeStart(e, "vertical")}
         >
           <div className={styles.resizerHandle} />
@@ -121,9 +128,11 @@ export default function ChatDockPanels({
 
       {showSideResizer && (
         <div
-          className={`${styles.panelResizer} ${styles.horizontal} ${
-            isResizing ? styles.resizerActive : ""
-          }`}
+          className={cx(
+            styles.panelResizer,
+            styles.horizontal,
+            isResizing && styles.resizerActive,
+          )}
           onPointerDown={(e) => onResizeStart(e, "horizontal")}
         >
           <div className={styles.resizerHandle} />

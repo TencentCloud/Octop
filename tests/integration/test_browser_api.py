@@ -103,6 +103,39 @@ def test_probe_env_accepts_system_chrome() -> None:
     assert out["chrome_path"] == "/usr/bin/google-chrome"
     assert out["chrome_source"] == "system"
     assert out["playwright_chromium"] is False
+    assert out["needs_enable"] is False
+
+
+def test_probe_env_bundled_chrome_stays_disabled_until_confirm() -> None:
+    from octop.api.routers.browser import env as br
+
+    try:
+        import octop_browser  # noqa: F401
+    except ImportError:
+        return
+
+    with (
+        patch(
+            "octop_browser.cdp.launcher.find_chrome",
+            return_value="/usr/bin/chromium",
+        ),
+        patch(
+            "octop.infra.control.browser.setup.playwright_chromium_installed",
+            return_value=False,
+        ),
+        patch(
+            "octop.infra.control.browser.setup.chrome_source_for_path",
+            return_value="system",
+        ),
+        patch(
+            "octop.infra.control.browser.bundled.browser_enabled",
+            return_value=False,
+        ),
+    ):
+        out = br._probe_env()
+    assert out["browsers_ok"] is False
+    assert out["needs_enable"] is True
+    assert out["chrome_path"] == "/usr/bin/chromium"
 
 
 def test_verify_browser_binary_ok(tmp_path: Path) -> None:

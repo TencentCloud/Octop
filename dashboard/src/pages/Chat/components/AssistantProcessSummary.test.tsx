@@ -108,8 +108,37 @@ describe("thinking display preference", () => {
       answerMessage: null,
     };
     render(<AssistantProcessSummary split={split} isStreaming />);
+    const label = screen.getByText(/整理结果中|Organizing results/);
+    expect(label.nextElementSibling).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("drops the organizing hint once the answer text is visible", () => {
+    const message: ChatMessage = {
+      id: "tool-done",
+      role: "assistant",
+      content: "",
+      status: "done",
+      timestamp: Date.now(),
+      toolData: { name: "read_file", arguments: "{}", output: "ok" },
+    };
+    const split: AssistantTurnSplit = {
+      tools: [message],
+      thinkings: [],
+      processSteps: [{ kind: "tool", message }],
+      answerMessage: {
+        id: "answer",
+        role: "assistant",
+        content: "共有 47 条。",
+        status: "done",
+        timestamp: Date.now(),
+      },
+    };
+    render(<AssistantProcessSummary split={split} isStreaming />);
     expect(
-      screen.getByText(/整理结果中|Organizing results/),
+      screen.queryByText(/整理结果中|Organizing results/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/已调用 1 次工具|Called 1 tools/),
     ).toBeInTheDocument();
   });
 
@@ -185,6 +214,54 @@ describe("thinking display preference", () => {
       "aria-expanded",
       "false",
     );
+  });
+
+  it("holds a lone decision row until the reply settles", () => {
+    const split: AssistantTurnSplit = {
+      tools: [],
+      thinkings: [],
+      processSteps: [
+        {
+          kind: "decision",
+          notice: {
+            model: "laya",
+            empty: true,
+            parts: [],
+          },
+        },
+      ],
+      answerMessage: null,
+    };
+    const { rerender } = render(
+      <AssistantProcessSummary split={split} isStreaming />,
+    );
+    expect(
+      screen.queryByText(/决策模型|Decision model/),
+    ).not.toBeInTheDocument();
+    rerender(<AssistantProcessSummary split={split} isStreaming={false} />);
+    expect(screen.getByText(/决策模型|Decision model/)).toBeInTheDocument();
+  });
+
+  it("keeps a streaming decision inside the tool summary", () => {
+    const tool = runningToolSplit();
+    const split: AssistantTurnSplit = {
+      ...tool,
+      processSteps: [
+        {
+          kind: "decision",
+          notice: {
+            model: "laya",
+            empty: true,
+            parts: [],
+          },
+        },
+        ...tool.processSteps,
+      ],
+    };
+    render(<AssistantProcessSummary split={split} isStreaming />);
+    expect(screen.getByText(/正在调用工具|Calling tools/)).toBeInTheDocument();
+    expect(screen.getByText(/决策模型|Decision model/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button")).toHaveLength(2);
   });
 
   it("keeps a decision row collapsed like other tools", () => {

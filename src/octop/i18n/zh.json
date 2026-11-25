@@ -56,13 +56,17 @@
       "card_title": "⚠️ 需要工具审批",
       "card_intro": "智能体请求执行以下工具：",
       "action_line": "{index}. **{name}**",
-      "card_footer": "回复 `/approve` 批准，或 `/reject 原因` 拒绝。",
+      "card_footer": "可直接回复「批准」「同意」或「允许」只放行这一次；「放通这个工具」放通该工具；「本对话都允许」或「都不用问了」放通后续审批；「拒绝」则拒绝；「恢复每次审批」改回每次都问。也可使用 `/approve` 或 `/reject`。",
       "card_pending_id": "审批 ID：`{pending_id}`（30 分钟内有效）",
       "none_pending": "当前会话没有待审批的工具操作。",
       "invalid_pending_id": "未找到审批 ID `{pending_id}`。可用 `/pending` 查看列表，或不带 ID 使用 `/approve` 批准最新一项。",
       "not_owner": "仅发起本轮对话的用户可以批准或拒绝。",
       "expired": "审批请求已过期，请重新发送消息后再试。",
       "approved_ack": "已批准，继续执行…",
+      "approved_tool_ack": "已批准。本对话中这个工具不再询问。",
+      "approved_all_ack": "已批准。本对话后续工具审批将自动通过，提问仍会询问。",
+      "reset_ack": "已恢复为每次审批。",
+      "reset_pending_ack": "已恢复为每次审批。当前这条仍需要你批准或拒绝。",
       "rejected_ack": "已拒绝，继续处理…",
       "followup_pending": "仍有工具等待您的审批。",
       "resume_failed": "审批后恢复执行失败：{error}",
@@ -390,12 +394,16 @@
   },
   "errors": {
     "AUTH_FAILED": "认证失败。",
+    "MISSING_CREDENTIALS": "需要登录。",
     "TOKEN_EXPIRED": "登录已过期，请重新登录。",
     "SETUP_REQUIRED": "需要完成初始设置。",
-    "DATABASE_NOT_EMPTY": "目标数据库已有用户。请改用空库，或直接登录现有管理员账户。",
+    "DATABASE_NOT_EMPTY": "目标数据库已有用户。PostgreSQL 可确认后沿用现有账户；SQLite 请改用空库。",
     "BACKUP_DRIVER_MISMATCH": "该备份与当前数据库引擎不一致（SQLite 与 PostgreSQL 不能互恢）。请将运行时切回备份所用引擎后再恢复，或在当前引擎上重新备份。暂不支持跨引擎恢复。",
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {archive_schema_version}，当前 Octop 版本无法恢复（最高支持版本：{runtime_schema_version}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
+    "BACKUP_CLIENT_MISSING": "当前环境找不到 {tool}，无法备份或恢复 PostgreSQL。请在运行 Octop 的环境中安装 PostgreSQL 客户端后再试。",
+    "BACKUP_REMOTE_UNSUPPORTED": "该远端备份提供方尚未支持。",
+    "BACKUP_REMOTE_FAILED": "远端备份同步未成功（{detail}）。本地归档已保留。",
     "FORBIDDEN": "没有权限。",
     "UPDATE_TARGET_NOT_NEWER": "目标版本 {target} 必须高于已安装版本 {current}，不支持重装同版本或降级。",
     "NOT_FOUND": "未找到。",
@@ -410,14 +418,15 @@
     "SETUP_PASSWORD_WRONG": "启动密码不正确。",
     "SETUP_RATE_LIMITED": "尝试验证次数过多，请稍后再试。",
     "SETUP_TOKEN_INVALID": "向导会话无效或已过期，请重新验证启动密码。",
-    "AGENT_NOT_FOUND": "未找到 Agent。",
+    "AGENT_NOT_FOUND": "未找到专家。",
     "EXPERT_TEMPLATE_NOT_FOUND": "未找到专家模板。",
     "DEFAULT_EXPERT_FAILED": "无法创建默认专家。",
     "AGENT_NOT_RUNNING": "此专家未启用。",
     "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
     "THREAD_TURN_ACTIVE": "回复进行中，请先停止再删除。",
-    "AGENT_FAILED": "Agent 启动失败。",
-    "AGENT_BUSY": "Agent 正忙。",
+    "THREAD_CONTRIBUTE_REQUIRES_SHARE": "只有共享专家上的会话可以共享给其他用户。",
+    "AGENT_FAILED": "专家启动失败。",
+    "AGENT_BUSY": "专家正忙。",
     "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",
     "AGENT_ID_INVALID": "自定义 ID 无效：需 3-64 位字母/数字/下划线/连字符，且以字母或数字开头结尾。",
     "AGENT_ID_TAKEN": "该 ID 已被使用，请换一个 ID。",
@@ -429,21 +438,24 @@
     "STORAGE_BACKEND_NAME_TAKEN": "存储后端名称已被占用。",
     "RESOURCE_NOT_ALLOWED": "你没有使用该资源的权限。",
     "STORAGE_BACKEND_REFERENCED": "存储后端正在使用中，无法删除。",
+    "STORAGE_BACKEND_BACKUP_REMOTE": "该存储后端正被用作备份目标，无法删除、重命名、禁用或更改类型。请先在「设置 → 备份与恢复」将目标改为本地。",
     "STORAGE_BACKEND_DEPS_FAILED": "无法安装此后端所需的可选组件。请检查网络后重试。",
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "当前安装的 octop-gateway 不支持这些 Telegram 选项。请先安装兼容的 Gateway 构建再保存。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",
     "CONNECTOR_INVALID_CREDENTIALS": "连接器凭证无效。",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "当前通过公网 HTTP 访问 Octop，MCP OAuth 授权回调地址需要 HTTPS。请改用 HTTPS，或通过 localhost、127.0.0.1 在本机访问 Octop。",
     "CONNECTOR_MCP_URL_INVALID": "MCP 服务地址无效：{reason}",
-    "CONNECTOR_MCP_HTTPS_REQUIRED": "公网 MCP 服务地址必须使用 HTTPS。本机与局域网地址可以使用 HTTP。",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "「{host}」会被当作公网地址，必须使用 HTTPS。HTTP 仅适用于本机、私网 IP，以及 localhost、.local、.internal、*.docker.internal 这类主机名。",
     "CONNECTOR_KIND_UNSUPPORTED": "不支持的连接器类型。",
-    "CONNECTOR_NOT_BOUND": "连接器未绑定到此 Agent。",
+    "CONNECTOR_NOT_BOUND": "连接器未绑定到此专家。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
     "CONNECTOR_MCP_LOAD_FAILED": "无法加载 MCP 工具：{servers}",
+    "CONNECTOR_AUTH_REQUIRED": "以下连接器需要授权后才能使用：{servers}",
     "BRIDGE_NOT_FOUND": "未找到云端协同连接。",
     "BRIDGE_AUTH_FAILED": "对端 Octop 拒绝了登录凭证。请核对地址、用户名和密码；也可先点「探测」验证账号是否可用。",
     "BRIDGE_PEER_UNREACHABLE": "无法连接对端 Octop 实例。请确认：地址可访问、账号密码正确，且对端已升级到支持云端协同的版本（需开放 /api/bridge/ws）。若对端在内网，需由可达的一侧主动发起连接。",
@@ -455,7 +467,10 @@
     "BRIDGE_CONNECTION_LIMIT": "每用户最多 {limit} 条云端协同，请先删除不用的连接。",
     "BRIDGE_SELF_CONNECT": "不能把本机 Octop 添加为自己的对端。",
     "BRIDGE_INBOUND_PASSIVE": "这是对端主动接入的连接，本侧无法改地址或主动拨号。断开后需对端重新打开。",
+    "BRIDGE_PEER_FORBIDDEN": "对端登录账号没有「云端协同」权限。这项功能不限于管理员：请在对端为该账号打开云端协同权限，或改用已有该权限的账号。",
+    "BRIDGE_PEER_CONNECTION_OWNED": "对端已把这条云端协同登记在另一个用户名下，当前账号无法接管。请让原用户删除那条连接，或改用同一个对端账号。如果填写的地址其实指向本机，请改成对端的真实地址。",
     "CRON_TRIGGER_INVALID": "无效的定时触发器。",
+    "CRON_ALREADY_RUNNING": "该任务已在其他实例上运行。",
     "SLASH_UNKNOWN": "未知的斜杠指令。",
     "SLASH_BAD_ARGS": "参数无效。",
     "ATTACHMENT_UNSUPPORTED_TYPE": "不支持此文件类型。",
@@ -476,7 +491,7 @@
     "SKILL_PACKAGE_NOT_FOUND": "未找到技能包。",
     "SKILL_PACKAGE_NAME_TAKEN": "技能包 {name} 已存在。",
     "SKILL_PACKAGE_BACKEND_UNSUPPORTED": "技能包目前仅支持「本地完整环境（文件系统+指令执行）」或「本地文件系统（不能执行指令）」，且存储根目录须为 /（POSIX）或专家的工作区根目录（Windows 默认）。",
-    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部 Runner。启用向外委托（acp_runner）不受影响；通过 IDE / octop acp 接入也不受影响。",
+    "ACP_BACKEND_UNSUPPORTED": "当前专家已启用沙箱环境，不可启用或编辑外部智能体。在当前专家中启用外部智能体协作不受影响；通过 IDE / octop acp 接入也不受影响。",
     "PUBLISHED_EXPERT_SLUG_TAKEN": "已存在发布专家 slug：{slug}。",
     "PUBLISHED_EXPERT_ALREADY_EXISTS": "该专家已发布为「{name}」，请改为刷新已发布模板。",
     "OIDC_BAD_REQUEST": "OIDC 请求无效：{detail}",
@@ -486,12 +501,16 @@
     "LDAP_UNAVAILABLE": "LDAP 目录服务不可用。请检查服务器地址与绑定凭证。",
     "LDAP_USER_NOT_PROVISIONED": "该目录账号尚未创建 Octop 账号。请联系管理员创建，或开启自动创建账号。",
     "LDAP_GROUP_NOT_ALLOWED": "该目录账号不属于允许登录的用户组。请联系管理员将你加入允许登录的组。",
+    "LDAP_NOT_CONFIGURED": "请先保存 LDAP 配置，再创建目录账号。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
+    "NETWORK_ERROR": "网络异常，请检查网络连接后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。",
+    "BROWSER_NOT_ENABLED": "浏览器已安装，但尚未启用。请在远程浏览器页面确认启用。",
     "PLUGIN_INVALID_ARCHIVE": "下载内容不是有效的插件 ZIP。请使用直接的 .zip 下载地址（GitHub 请用 raw.githubusercontent.com 或 “Download/raw” 链接，不要用 /blob/ 页面地址）。",
     "PLUGIN_INSTALL_FAILED": "下载或安装插件失败：{reason}",
+    "PLUGIN_MARKET_FAILED": "插件市场暂时不可用，请稍后重试。",
     "PLUGIN_ALREADY_EXISTS": "插件 {id} 已安装。",
     "KNOWLEDGE_FEATURE_DISABLED": "管理员尚未启用知识库功能。",
     "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "知识库的向量模型或依赖已安装，但当前进程还加载不到，需要重启服务后生效。",
@@ -503,7 +522,12 @@
     "KNOWLEDGE_BASE_LIMIT": "每个用户最多可创建 20 个知识库。",
     "KNOWLEDGE_UNSUPPORTED_TYPE": "知识库不支持此文档类型。",
     "KNOWLEDGE_NAME_TAKEN": "您已有同名知识库。",
+    "KNOWLEDGE_GRAPH_NOT_READY": "请先在知识库设置中为知识图谱选择一个可用的对话模型。",
     "KNOWLEDGE_NAME_INVALID": "名称无效。",
+    "KNOWLEDGE_MOVE_INVALID": "不能把文件夹移动到它自身或其子文件夹中。",
+    "KNOWLEDGE_MOVE_NAME_TAKEN": "目标文件夹中已有同名项目。",
+    "KNOWLEDGE_RERANK_NOT_READY": "所选的重排序模型不可用，请选择已启用且提供重排序模型的供应商。",
+    "KNOWLEDGE_MOVE_BUSY": "其中有文档正在建立索引，完成后再移动到其他知识库。",
     "AVATAR_INVALID": "头像须为 PNG、JPEG、WebP 或 GIF 图片。",
     "AVATAR_TOO_LARGE": "头像超过 5 MB 大小限制。",
     "INVITE_INVALID": "邀请码无效。",
@@ -516,14 +540,18 @@
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
+    "INVITE_DISABLED": "该邀请码已停用。",
+    "INVITE_EXHAUSTED": "该邀请已达到注册人数上限。",
     "INVITE_RATE_LIMITED": "邀请尝试次数过多，请稍后再试。",
     "WORKSPACE_ROOT_RESTRICTED": "所选存储根目录超出了该账号允许的范围。",
     "WORKSPACE_ROOT_CONTAINER_UNSUPPORTED": "容器环境下不能设置「允许的存储根目录」。",
     "TOKEN_QUOTA_EXCEEDED": "该账号已达到 token 配额上限，请联系管理员提升额度（{used}/{quota}）。",
     "AGENT_QUOTA_EXCEEDED": "该账号已达到专家数量上限，请联系管理员提升额度（{used}/{quota}）。",
+    "BACKEND_TYPE_NOT_ALLOWED": "该账号不能使用这些后端类型：{types}。",
     "CAPTCHA_REQUIRED": "此服务器登录需要验证码令牌。",
     "CAPTCHA_FAILED": "验证码校验失败，请重试。",
     "CONFIG_FILE_CORRUPT": "无法更新 {path}：该文件不是合法 JSON（{detail}）。请修正语法后重试；现有配置未被改动。",
+    "APP_CONFIG_INVALID": "配置无效：{detail}。",
     "TEAM_NOT_FOUND": "未找到该团队。",
     "TEAM_MEMBERS_TOO_FEW": "团队至少需要两名成员。",
     "TEAM_MEMBER_INVALID": "所选专家无法加入本机团队。对端专家、其他团队或已删除的专家不能作为成员。",
@@ -532,7 +560,17 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
-    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
+    "MFA_INVALID": "二次验证失败，请重试。",
+    "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
+    "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
+    "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
+    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
+    "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。",
+    "GIT_NO_CHANGES": "没有可提交的更改。",
+    "GIT_COMMIT_MESSAGE_INVALID": "模型没有返回可用的提交信息，请手动填写。",
+    "GIT_PUSH_DETACHED": "当前处于 detached HEAD，无法推送。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -637,7 +675,9 @@
     "agent_list": "列出专家",
     "ask_agent": "咨询专家",
     "call_agent": "调用专家",
-    "acp_runner": "ACP 外部 Agent",
+    "call_deferred_tool": "按需调用",
+    "acp_runner": "外部智能体协作",
+    "external-agent": "托管智能体",
     "browser_use": "使用浏览器",
     "browser_control": "浏览器控制",
     "send_file_to_user": "发送文件",
@@ -689,7 +729,8 @@
     "runtime": {
       "disabled": "频道已停用",
       "unregistered": "未注册",
-      "error": "连接失败"
+      "error": "连接失败",
+      "other_instance": "由其他实例托管"
     },
     "probe": {
       "incomplete": "凭据不完整：缺少 {fields}",
@@ -714,15 +755,43 @@
       "discord_connection_failed": "Discord 连接失败，请检查网络、代理和机器人配置。",
       "discord_disconnected": "Discord 尚未连接或正在重连。",
       "discord_proxy_auth_invalid": "代理认证格式应为 user:password。"
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "这张卡片已过期，请重新提问",
+        "question_index_changed": "问题已更新，请用新卡片",
+        "user_mismatch": "该卡片不属于当前会话",
+        "owner_changed": "该卡片不属于当前会话",
+        "model_unavailable": "该模型已不可用，请重新选择",
+        "thread_rebound": "会话已切换，请重新操作",
+        "default": "操作未生效，请重试"
+      },
+      "quote": {
+        "header": "[引用消息]",
+        "current": "[当前消息]"
+      }
     }
   },
   "threads": {
+    "gc_kept_postgres": "保留了 {agent} 的 {threads} 个孤儿检查点会话（{bytes} 字节）：PostgreSQL 上的检查点只报告、不删除。",
+    "gc_kept_external": "没有扫描 {agent}：它的记忆在外部 PostgreSQL 库里。",
+    "gc_none": "没有可删除的孤儿检查点。",
+    "gc_would_delete": "将删除 {count} 个孤儿会话，共 {bytes} 字节。",
+    "gc_deleted": "已删除 {count} 个孤儿会话，共 {bytes} 字节。",
     "fork_title_suffix": "（分叉）",
     "fork_default_title": "分叉对话"
   },
   "cron": {
+    "missing_target_session": "此定时任务的会话已不可用，请在任务设置中重新选择投递目标。",
     "history": {
-      "executed": "任务{cron_id} :{name} 执行."
+      "executed": "任务{cron_id} :{name} 执行.",
+      "script_done": "脚本 {name} 已执行，没有输出。"
+    },
+    "script": {
+      "interpreter_missing": "未找到 {runtime} 解释器，无法执行脚本。",
+      "timeout": "脚本执行超过 {seconds} 秒。",
+      "failed": "脚本失败（退出码 {code}）：{detail}",
+      "unreadable": "无法读取工作区脚本 {path}。"
     }
   },
   "agents": {
@@ -751,9 +820,11 @@
     "stream_stall": "模型响应中断：连接仍在，但长时间没有新内容。请点击「重试」，或稍后更换模型再试。若经常出现，请检查供应商状态，或联系管理员排查流式超时设置。",
     "rate_limit": "模型请求过于频繁，已被限流。请稍等片刻后重试，或切换其他模型。",
     "auth": "模型服务鉴权失败。请检查「管理 → 模型」中的 API Key 是否正确、是否过期。",
+    "model_not_authorized": "当前 API Key 无权访问模型 {model}。请前往腾讯云控制台 API Key 管理页开通该模型的访问权限，或在「管理 → 模型」中切换到该 Key 可用的模型。",
     "insufficient_balance": "模型服务返回余额或额度不足。请为该 API Key 对应的账户充值或升级套餐后再试。",
     "context_length": "对话上下文过长，超出模型限制。请新开会话，或精简历史后再试。",
     "recursion_limit": "智能体已达到最大迭代次数（递归上限），任务尚未完成。请前往「运行配置」调高「最大迭代次数」后重试。",
+    "tool_call_repeat": "工具「{tool}」带着相同参数已连续调用 {count} 次，达到上限 {limit}，本轮已停止。请换一种做法，或前往「运行配置」调高「连续相同调用上限」，保存后重新加载该专家。",
     "timeout_network": "连接模型服务超时或网络异常。请检查网络后重试；若使用代理或自建服务，请确认其可达。",
     "provider_unavailable": "模型服务暂时不可用。请稍后重试，或切换其他模型。",
     "invalid_request": "模型接口拒绝了本次请求参数。华为 MindIE 等严格的 OpenAI 兼容服务通常不接受 stream_options 等扩展字段。自定义供应商现已默认关闭流式用量；若仍失败，请确认该模型是否支持工具调用。完整错误已写入服务端日志。",
@@ -773,8 +844,10 @@
     "image_unavailable": "[附件] 图片无法加载到模型。"
   },
   "knowledge": {
+    "invalid_advanced_settings": "请检查分块与检索参数的取值范围。分块重叠必须小于分块大小。",
     "retrieval": {
       "citation": "[知识库：{name}｜来源：{filename}｜片段：{ordinal}]\n",
+      "graph_preamble": "以下是从同一批知识库中自动抽取的实体关系，可用于串联上面的内容，但不要把它们当作可引用的来源。",
       "preamble": "以下知识库内容仅供参考；回答时请引用对应来源。"
     }
   },
@@ -888,6 +961,8 @@
     }
   },
   "memory_slim": {
+    "postgres_kept": "PostgreSQL 上的残留只统计、不删除：没有对应会话的检查点会话 {threads} 个，没有对应专家的记忆命名空间 {namespaces} 个。",
+    "skipped_databases": "跳过了 {count} 个外部 PostgreSQL 记忆库：它们可能和其他安装共用。",
     "waiting": "等待当前任务结束…",
     "backing_up": "正在备份记忆库…",
     "sweeping": "正在清理已删除专家和会话的残留…",
@@ -935,15 +1010,30 @@
   },
   "teams": {
     "peer_thread_title": "来自团队 {name}",
-    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已在群聊时间线上；你自己的对话上下文里没有这段，下面附带节选供收口参考。\n任务：{task}\n\n成员正文：\n{result}\n\n请依据成员正文决定下一步：不要整段复述，不要再说「已安排 / 稍等片刻 / 交给谁来回答」，不要再次 ask_agent 同一任务。若还要继续，再派下一位；若可以收工，最多三句短总结，并明确是否采纳其建议。",
+    "followup_done": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 已完成。对方正文已在群聊时间线上；你自己的对话上下文里没有这段，下面附带节选供收口参考。\n任务：{task}\n\n成员正文：\n{result}\n\n只做调度收口。不要写文件，不要跑命令，不要复述成员正文，不要再说「已安排 / 稍等」。不要再次 ask_agent 同一任务。正文里如果有工作区相对路径，只调用 send_file_to_user 把该文件发给用户。还要继续就派下一位。可以收工时只留一句状态。",
     "followup_failed": "[系统唤醒，不是新的用户问题]\n团队成员 {name} 失败。\n任务：{task}\n错误：{error}\n\n简要告知用户失败，并决定改派别人或收工。不要再说「已安排 / 稍等」，不要编造替代答案。",
     "speaker_user": "用户",
     "channel_line": "{name}: {text}",
     "channel_wrapup": "【主持人总结】{text}",
     "channel_dispatched": "已请 {name} 处理，请稍候…",
-    "host_briefing": "[主持人调度，不是让你代答]\n用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。专业工作必须改写成给该成员的任务说明书后再 ask_agent：写清目标、范围、交付格式和必要上下文，禁止原样转发用户原话。不同成员给不同任务。寒暄或澄清自己短答。ask_agent 返回后不要重复「已安排 / 稍等」。若当前是成员完成或失败的系统唤醒，按唤醒说明收口或改派，不要重复同一任务。",
+    "connector_auth_skipped": "以下连接器需要重新授权，本轮未使用：{servers}",
+    "host_briefing": "[主持人调度，不是让你代答]\n你只调度，不亲自完成工作，也不代成员作答。用户消息先到你这里。先消化意图、范围、约束和交付物；缺关键信息就先问一句，不要空派。调研、写作、编码、改文件、跑命令、分析都必须改写成任务后再 ask_agent，禁止原样转发用户原话。不同成员给不同任务。用户要文件时，任务里必须要求成员自己用 write_file 写进工作区，并在回复里给出相对路径；不要让成员把全文交回给你再保存。寒暄或澄清可以自己一句说完。ask_agent 返回后不要重复「已安排 / 稍等」。成员完成后不要复述正文：对方给出路径就只调用 send_file_to_user；没有路径就再派一次，要求对方写入文件并回报路径。",
+    "host_tool_boundary": "[主持人工具边界]\n忽略上文关于 ls、read_file、write_file、edit_file、glob、grep、execute、delete、write_todos、task 的用法。你没有这些工具，不要调用，也不要在回复里写出工具调用。文件和命令由成员完成，成员的文件工具写进你的工作区。你只有 agent_list、ask_agent、memory_search、memory_get、current_time、send_file_to_user。成员回报相对路径后，只调用 send_file_to_user。",
     "member_briefing": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。",
-    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}"
+    "member_briefing_with_history": "[团队派工，不是用户在直接问你]\n你是这个专家团队的成员。主持人已消化用户问题，并为你分配了本次任务。请按任务执行并直接给出成果；不要把用户原话当成对你的一对一提问，也不要复述或扮演主持人。下面的群聊记录只作背景。\n\n{history}",
+    "member_file_target": "本次文件读写使用主持人的工作区，目录是 {directory}。前面如果写了别的工作目录，本轮以这个目录为准。ls、read_file、write_file、edit_file、glob、grep、delete 和 send_file_to_user 都作用在这个目录，相对路径从这里解析。技能、记忆和连接器仍是你自己的。",
+    "member_file_target_managed": "这一轮的文件和命令只用 MCP 服务器 octop-team-workspace，目录是 {directory}。前面如果写了别的工作目录，本轮以这个目录为准。相对路径从这里解析。运行器自带的写文件和 shell 会被拒绝；如果仍执行了，那是运行器自己的工作区，不算这个目录。技能、记忆和连接器仍是你自己的。",
+    "member_file_target_send": "这个服务器上的 send_file_to_user 也从这里读文件。",
+    "runner_workspace_write": "这次调用写的是运行器自己的工作区，没有写到所选目录。",
+    "member_file_target_execute": "execute 也在这个目录中执行。",
+    "member_file_target_no_execute": "这个工作区不能执行命令，不要调用 execute。",
+    "member_file_mounts": "以下目录只读，仍是你自己的技能和子代理目录。请按这些路径原样读取：\n{paths}"
+  },
+  "bridge": {
+    "local_directory_relative": "本地目录必须是这台 Octop 上的绝对路径。",
+    "local_directory_missing": "本地目录不存在，或不是一个文件夹。",
+    "local_file_target": "本次文件读写使用用户指定的本地目录 {directory}。这个目录在发起对话的那台 Octop 上，不在你自己的工作区里。前面如果写了别的工作目录，本轮以这个目录为准。ls、read_file、write_file、edit_file、glob、grep、delete 和 send_file_to_user 都作用在这个目录，相对路径从这里解析。技能、记忆和连接器仍是你自己的。",
+    "local_file_target_managed": "这一轮的文件和命令只用 MCP 服务器 octop-team-workspace，目录是 {directory}，在发起对话的那台 Octop 上。前面如果写了别的工作目录，本轮以这个目录为准。相对路径从这里解析。运行器自带的写文件和 shell 会被拒绝；如果仍执行了，那是运行器自己的工作区，不算这个目录。技能、记忆和连接器仍是你自己的。"
   },
   "conversation_mode": {
     "plan_ready": "计划已写入 `{path}`。回复「按计划执行」开始执行，或继续改计划。",
@@ -1009,6 +1099,10 @@
         "prompt": {
           "system": "你是提示词编辑器，不是回答问题的助手。\n用户消息是一份稍后会发给另一个 AI 的「草稿提示词」。你的唯一任务是改写这份草稿，让另一个 AI 更容易理解——提升清晰度、具体性、结构和可执行细节。\n硬性规则：\n- 不要回答草稿、不要解题、不要提供草稿所要求的内容。\n- 不要添加解释、问候或元评论。\n- 保留用户原意和语言（例如草稿是中文则保持中文）。\n- 只输出改写后的提示词正文——不要前言、标签、引号、思考块或 XML 标签。",
           "user": "请改写以下草稿提示词。不要回答它。\n\n---\n{text}\n---"
+        },
+        "thread_title": {
+          "system": "你为聊天会话撰写简短标题。\n硬性规则：\n- 只输出标题正文。不要引号、标签、markdown 或解释。\n- 使用与用户消息相同的语言。\n- 用几个词概括意图，不要回答这条消息。\n- 中文不超过 20 个字，英文不超过 8 个词，总长度不超过 40 个字符。",
+          "user": "请为下面这条首次消息写一个会话标题。\n\n---\n{text}\n---"
         }
       },
       "expert": {
@@ -1110,5 +1204,82 @@
         }
       }
     }
+  },
+  "ragflow": {
+    "invalid_base_url": "RAGFlow 服务地址不能包含用户名、密码、查询参数或片段。",
+    "invalid_dataset_ids": "RAGFlow 知识库 ID 须为逗号分隔的字符串或 ID 列表，且只能包含字母、数字、下划线和连字符。",
+    "api_key_required": "请填写有效的 RAGFlow API Key。",
+    "http_error": "RAGFlow 请求失败：HTTP {status}。",
+    "network_error": "无法连接 RAGFlow，请检查服务地址和网络连接。",
+    "invalid_response": "RAGFlow 返回了无效的接口响应。",
+    "api_error": "RAGFlow 请求失败：{reason}",
+    "query_required": "请提供检索问题。",
+    "datasets_required": "请先通过 list_datasets 选择 dataset_ids，或配置默认知识库 ID，再进行检索。",
+    "invalid_id": "请提供有效的 {field}。",
+    "unknown_tool": "未知的 RAGFlow 工具：{name}"
+  },
+  "gitea": {
+    "invalid_base_url": "Gitea 实例地址不能包含用户名、密码、查询参数或片段。",
+    "token_required": "请填写有效的 Gitea 个人访问令牌。",
+    "http_error": "Gitea 请求失败：HTTP {status}。{reason}",
+    "network_error": "无法连接 Gitea，请检查实例地址和网络连通。",
+    "invalid_response": "Gitea 返回了无效的接口响应。",
+    "invalid_slug": "请提供有效的 {field}。",
+    "invalid_index": "请提供有效的 Issue 编号。",
+    "invalid_path": "请提供有效的仓库文件路径。",
+    "query_required": "请提供检索关键词。",
+    "body_required": "评论内容不能为空。",
+    "unknown_tool": "未知的 Gitea 工具：{name}"
+  },
+  "migrate": {
+    "not_found": "未找到 {source} 的安装目录，请用 --from 指定。",
+    "nothing": "在 {home} 中没有找到可迁移的内容。",
+    "title": "{source}（{home}）→ 专家 {agent}",
+    "column": {
+      "section": "类别",
+      "item": "项目",
+      "status": "状态",
+      "note": "说明"
+    },
+    "section": {
+      "models": "模型",
+      "files": "工作区文件",
+      "skills": "技能",
+      "mcp": "MCP 服务器",
+      "channels": "通道"
+    },
+    "status": {
+      "migrated": "已迁移",
+      "would_migrate": "将迁移",
+      "skipped": "已跳过",
+      "failed": "失败"
+    },
+    "reason": {
+      "exists": "已存在",
+      "no_api_key": "未找到 API Key，请在模型配置中补充",
+      "default_model": "作为默认模型",
+      "default_model_set": "已有默认模型 {detail}",
+      "channel_disabled": "默认不启用，停用原机器人后再开启",
+      "invalid_name": "技能名称不合法",
+      "too_large": "超过 20 MB",
+      "name_reserved": "名称与内置连接器冲突",
+      "invalid": "{detail}"
+    },
+    "note": {
+      "config_missing": "未找到配置文件：{path}",
+      "config_unreadable": "无法读取 {path}：{error}",
+      "include_missing": "未找到被引用的配置文件：{path}",
+      "provider_unsupported": "模型供应商 {name}（{api}）在 Octop 中没有对应类型，未迁移。",
+      "provider_key_missing": "未找到模型供应商 {name} 的 API Key，请在模型配置中添加该供应商。",
+      "mcp_sse_unsupported": "MCP 服务器 {name} 使用 SSE 传输，自定义 MCP 暂不支持。",
+      "channel_unsupported": "Octop 暂不支持通道 {name}。",
+      "channel_credentials_missing": "通道账号 {name} 的凭证无法读取。",
+      "extra_agents": "其他 Agent 不会迁移（发现 {count} 个），目前只读取默认工作区。",
+      "cron_not_migrated": "定时任务不会迁移（发现 {count} 个），请用 `octop cron create` 重新创建。"
+    },
+    "summary": "已迁移 {migrated} 项，跳过 {skipped} 项，失败 {failed} 项。",
+    "summary_dry_run": "将迁移 {migrated} 项，跳过 {skipped} 项，失败 {failed} 项。",
+    "dry_run_hint": "预演模式：没有写入任何内容。去掉 --dry-run 后再运行即可执行迁移。",
+    "restart_hint": "如果 `octop run` 正在运行，请重启以加载迁移的模型供应商和通道。"
   }
 }

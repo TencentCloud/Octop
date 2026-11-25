@@ -97,22 +97,43 @@ export interface WorkspaceEntry {
   is_dir?: boolean;
 }
 
-/** Config .md files at workspace root (excludes skills/ and _builtin_skills/). */
+/**
+ * Persona markdown listed under config files. Order matches the labeled
+ * badges in ``iconForName``. ``SKILL.md`` stays with skills.
+ */
+const CONFIG_MD_ORDER = [
+  "SOUL.md",
+  "IDENTITY.md",
+  "USER.md",
+  "AGENTS.md",
+  "TOOLS.md",
+  "BOOTSTRAP.md",
+  "HEARTBEAT.md",
+  "MEMORY.md",
+  "PROACTIVE.md",
+] as const;
+
+const CONFIG_MD_NAMES = new Set<string>(CONFIG_MD_ORDER);
+
+function rootConfigMdName(path: string): string | null {
+  let rel = path.replace(/\\/g, "/").trim();
+  while (rel.startsWith("/")) rel = rel.slice(1);
+  if (rel.startsWith("./")) rel = rel.slice(2);
+  if (!rel || rel.includes("/")) return null;
+  return CONFIG_MD_NAMES.has(rel) ? rel : null;
+}
+
+/** Known root config markdown only (SOUL.md, AGENTS.md, …). */
 export function filterConfigMdFiles(entries: WorkspaceEntry[]): string[] {
-  return entries
-    .filter((f) => {
-      if (f.is_dir || !f.path?.endsWith(".md")) return false;
-      const p = f.path.startsWith("/") ? f.path : `/${f.path}`;
-      return (
-        !p.startsWith("/skills/") &&
-        !p.startsWith("/_builtin_skills/") &&
-        !p.startsWith("/.octop/skills/") &&
-        !p.startsWith("/.octop/_builtin_skills/") &&
-        !p.startsWith("/.octop/agents/")
-      );
-    })
-    .map((f) => (f.path.startsWith("/") ? f.path : `/${f.path}`))
-    .sort();
+  const found = new Set<string>();
+  for (const entry of entries) {
+    if (entry.is_dir || !entry.path) continue;
+    const name = rootConfigMdName(entry.path);
+    if (name) found.add(name);
+  }
+  return CONFIG_MD_ORDER.filter((name) => found.has(name)).map(
+    (name) => `/${name}`,
+  );
 }
 
 /** List root-level config markdown files (fast tree listing, glob fallback). */

@@ -314,6 +314,75 @@ def remap_ownership_to_user(pool: DatabasePool, owner_user_id: int) -> dict[str,
     }
 
 
+def redact_secrets_from_sqlite_file(path: Path) -> None:
+    """Remove every ``secrets`` row from a snapshot file.
+
+    ``secure_delete`` overwrites the freed pages and ``VACUUM`` rewrites the
+    file so credential bytes do not remain in the copy that leaves the host.
+    """
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("PRAGMA secure_delete = ON")
+        conn.execute("DELETE FROM secrets")
+        conn.commit()
+        conn.execute("VACUUM")
+    except sqlite3.OperationalError:
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+def sqlite_file_has_secret_rows(path: Path) -> bool:
+    """Return whether a snapshot still contains any ``secrets`` row."""
+    conn = sqlite3.connect(path)
+    try:
+        row = conn.execute("SELECT 1 FROM secrets LIMIT 1").fetchone()
+    except sqlite3.OperationalError:
+        return False
+    else:
+        return row is not None
+    finally:
+        conn.close()
+
+
+def capture_secrets_from_pool(
+    pool: DatabasePool,
+) -> list[tuple[str, bytes, int, int | None]]:
+    """Copy live ``secrets`` rows before a restore overwrites the database."""
+    with pool.connect() as conn:
+        rows = conn.execute("SELECT k, v, created_at, rotated_at FROM secrets").fetchall()
+    captured: list[tuple[str, bytes, int, int | None]] = []
+    for row in rows:
+        rotated = row["rotated_at"]
+        captured.append(
+            (
+                str(row["k"]),
+                bytes(row["v"]),
+                int(row["created_at"]),
+                None if rotated is None else int(rotated),
+            )
+        )
+    return captured
+
+
+def replace_secrets_in_pool(
+    pool: DatabasePool,
+    rows: list[tuple[str, bytes, int, int | None]],
+) -> None:
+    """Replace ``secrets`` with *rows* captured from the live instance.
+
+    Archive contents are not a source for these rows. Callers that still need
+    a signing key after an empty capture seed one themselves.
+    """
+    with pool.transaction() as conn:
+        conn.execute("DELETE FROM secrets")
+        for key, value, created_at, rotated_at in rows:
+            conn.execute(
+                "INSERT INTO secrets(k, v, created_at, rotated_at) VALUES (?, ?, ?, ?)",
+                (key, value, created_at, rotated_at),
+            )
+
+
 def capture_jwt_secret_from_pool(pool: DatabasePool) -> bytes | None:
     """Return the live instance JWT secret, or ``None`` if not yet seeded."""
     with pool.connect() as conn:

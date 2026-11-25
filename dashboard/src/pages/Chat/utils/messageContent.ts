@@ -1,5 +1,5 @@
 import type { ChatMessage, DecisionNotice } from "../hooks/useChat";
-import { isBrowserToolName, isWriteToolName } from "../constants";
+import { isBrowserToolName } from "../constants";
 
 const THINKING_TAG_RE = /<(?:think|thinking)>[\s\S]*?<\/(?:think|thinking)>/gi;
 const THINKING_OPEN_RE = /<(?:think|thinking)>/i;
@@ -223,19 +223,6 @@ export function turnUsedBrowserTool(split: AssistantTurnSplit): boolean {
   return (split?.tools ?? []).some((msg) =>
     isBrowserToolName(msg.toolData?.name),
   );
-}
-
-/** True when this message is a workspace file write/edit tool call. */
-function messageUsesFileTool(msg: ChatMessage): boolean {
-  return isWriteToolName(msg.toolData?.name);
-}
-
-/** True when this assistant turn invoked a workspace file write/edit tool. */
-export function turnUsedFileTool(split: AssistantTurnSplit): boolean {
-  if ((split?.tools ?? []).some((msg) => messageUsesFileTool(msg))) {
-    return true;
-  }
-  return (split?.answerMessage?.editedFiles?.length ?? 0) > 0;
 }
 
 /** Index of the most recent assistant turn that invoked a browser tool, or -1. */

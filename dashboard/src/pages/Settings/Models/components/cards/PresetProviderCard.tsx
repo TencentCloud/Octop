@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { Card, Tag } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { ProviderRow, ProviderPreset } from "../../useProviders";
 import {
   findConfiguredProvider,
@@ -81,11 +82,11 @@ export function PresetProviderCard({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={() => setModalOpen(true)}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover} ${styles.presetCard}`
-            : `${styles.providerCard} ${styles.presetCard}`
-        }
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          styles.presetCard,
+        )}
       >
         <div className={styles.cardContent}>
           <div className={styles.cardHeader}>

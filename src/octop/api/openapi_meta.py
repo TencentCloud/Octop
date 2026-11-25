@@ -24,16 +24,16 @@ Most endpoints require a JWT bearer token:
    accepts LDAP credentials and provisions the account on first login.
 3. Send `Authorization: Bearer <access_token>` on subsequent requests.
 
-Access tokens use sliding renewal: when less than one-third of
+Access tokens use sliding renewal: when less than two-thirds of
 `access_token_ttl_seconds` remains, authenticated responses may include a fresh
 token in the `X-Octop-Access-Token` header. Clients should replace the stored
-token when present.
+token when present. Changing the password invalidates previously issued tokens.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
-`/api/auth/ldap/status`,
+`/api/auth/ldap/status`, `/api/auth/passkey/status`,
 `/api/auth/invite/validate`,
 `/api/auth/invite/redeem`, `/api/connectors/oauth/callback`,
 and `/api/internal/mcp/*`.
@@ -151,6 +151,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         ),
     },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
+    {
+        "name": "git",
+        "description": (
+            "Git view over a local agent workspace: status, diff, log and "
+            "staging operations. Only available when the workspace root has a ``.git``."
+        ),
+    },
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},
     {"name": "usage", "description": "Token usage summaries for billing and dashboards."},
     {

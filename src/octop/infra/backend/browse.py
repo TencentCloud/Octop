@@ -12,7 +12,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from octop_harness.backends import resolve_backend
 from octop_harness.backends.storage_errors import (
     ClassifiedStorageError,
     classify_probe_exception,
@@ -21,8 +20,10 @@ from octop_harness.backends.storage_errors import (
 
 from octop.infra.backend.adapter import row_to_backend_spec
 from octop.infra.backend.compat import adapt_backend_protocol
+from octop.infra.backend.resolve_backend import resolve_octop_backend
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.db.repos.backends import BackendRow
+from octop.infra.utils.read_content import coerce_read_content
 
 TEXT_PREVIEW_LIMIT = 10_000_000
 PREVIEW_BYTE_LIMIT = 32 * 1024 * 1024
@@ -58,7 +59,7 @@ def resolve_storage_backend(row: BackendRow) -> Any:
         raise ValueError("configuration incomplete")
     workspace = tempfile.mkdtemp(prefix="octop-storage-browse-")
     try:
-        backend = adapt_backend_protocol(resolve_backend(spec, workspace_dir=workspace))
+        backend = adapt_backend_protocol(resolve_octop_backend(spec, workspace_dir=workspace))
     except ValueError:
         shutil.rmtree(workspace, ignore_errors=True)
         raise
@@ -262,9 +263,7 @@ async def download_storage_backend_file(
 
 def _coerce_preview_text(content: str) -> str:
     # deepagents empty-file reminder is for LLM tools, not the dashboard.
-    if content == "System reminder: File exists but has empty contents":
-        return ""
-    return content
+    return coerce_read_content(content)
 
 
 async def read_storage_backend_text(row: BackendRow, path: str) -> str:

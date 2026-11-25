@@ -78,7 +78,10 @@ async def test_create_lists_get_patch_delete_cycle(env: Any, kind: str, config: 
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == cid
-    assert body["config"] == config
+    secrets = [key for key in ("bot_token", "app_secret", "secret") if key in config]
+    assert body["secrets_set"] == secrets
+    assert body["config"] == {key: value for key, value in config.items() if key not in secrets}
+    assert all(secret not in r.text for secret in (config.get("bot_token"),) if secret)
 
     # PATCH name + enabled
     r = await c.patch(

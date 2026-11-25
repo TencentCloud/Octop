@@ -81,7 +81,7 @@ async def test_deliver_agent_stamps_composer_on_human_message() -> None:
 
     agent_manager = MagicMock()
     agent_manager.merge_turn_mcp_servers = MagicMock(
-        side_effect=lambda _uid, explicit, apply_defaults=None, extra_defaults=None: (
+        side_effect=lambda _uid, explicit, apply_defaults=None, extra_defaults=None, agent_owner_id=None: (
             list(explicit) if explicit else None
         )
     )
@@ -143,7 +143,7 @@ async def test_deliver_agent_merges_default_open_when_empty() -> None:
     await service.deliver(_command(mcp_servers=()))
 
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        1, None, apply_defaults=True, extra_defaults=[]
+        1, None, apply_defaults=True, extra_defaults=[], agent_owner_id=None
     )
     agent_manager.prepare_chat_mcp.assert_awaited()
     gateway.push_session_text.assert_awaited()
@@ -216,7 +216,7 @@ async def test_deliver_agent_explicit_mcp_overrides_defaults() -> None:
     await service.deliver(_command(mcp_servers=("picked__1",)))
 
     agent_manager.merge_turn_mcp_servers.assert_called_once_with(
-        1, ["picked__1"], apply_defaults=False, extra_defaults=[]
+        1, ["picked__1"], apply_defaults=False, extra_defaults=[], agent_owner_id=None
     )
     gateway.push_session_text.assert_awaited()
 

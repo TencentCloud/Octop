@@ -4,6 +4,7 @@ import type { MenuProps } from "antd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
+import cx from "classnames";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
 import { ownedSoloExperts, ownedTeamAgents } from "../utils/sharedExpert";
 import {
@@ -15,6 +16,11 @@ import {
 } from "../utils/agentSelector";
 import { isTeamAgent } from "../utils/teamAgent";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
+import {
+  ManagedAvatarMark,
+  managedRunnerId,
+} from "../pages/Experts/components/ManagedAvatarMark";
+import { incomingShareProps, SharedAvatarMark } from "./SharedResourceBadge";
 import RemoteExpertHint from "../pages/Chat/components/RemoteExpertHint";
 import styles from "./AgentSelector.module.less";
 
@@ -29,6 +35,14 @@ interface AgentSelectorProps {
    * expert-only.
    */
   showTeams?: boolean;
+  /** Tools / plugins / MBTI pages do not list managed experts. */
+  hideManaged?: boolean;
+  /**
+   * 受控模式：只改这个面板自己的专家，不写入全局当前 Agent。
+   * 传入 onChange 即生效。
+   */
+  value?: string | null;
+  onChange?: (agentId: string) => void;
 }
 
 function agentAccent(agent: OctopAgent): string {
@@ -50,13 +64,17 @@ function AgentIcon({
 }) {
   const photo = Boolean(agent.icon_url?.trim());
   return (
-    <span className={className} style={style}>
-      <ExpertIcon
-        iconUrl={agent.icon_url}
-        iconName={agent.icon_name}
-        size={photo ? size : Math.max(12, Math.round(size * 0.55))}
-      />
-    </span>
+    <SharedAvatarMark {...incomingShareProps(agent)}>
+      <ManagedAvatarMark runner={managedRunnerId(agent)}>
+        <span className={className} style={style}>
+          <ExpertIcon
+            iconUrl={agent.icon_url}
+            iconName={agent.icon_name}
+            size={photo ? size : Math.max(12, Math.round(size * 0.55))}
+          />
+        </span>
+      </ManagedAvatarMark>
+    </SharedAvatarMark>
   );
 }
 
@@ -110,9 +128,10 @@ function AgentChip({
       tabIndex={measure ? -1 : undefined}
       data-chip-id={measure ? agent.agent_id : undefined}
       data-group-key={measure ? groupKey : undefined}
-      className={`${active ? styles.chipActive : styles.chip}${
-        disconnected ? ` ${styles.chipDisconnected}` : ""
-      }`}
+      className={cx(
+        active ? styles.chipActive : styles.chip,
+        disconnected && styles.chipDisconnected,
+      )}
       style={{ "--chip-accent": accent } as React.CSSProperties}
       onClick={() => onSelect(agent.agent_id)}
       title={title}
@@ -160,10 +179,25 @@ export default function AgentSelector({
   variant = "auto",
   showLabel = true,
   showTeams = false,
+  hideManaged = false,
+  value,
+  onChange,
 }: AgentSelectorProps) {
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
-  const soloSelectable = useMemo(() => ownedSoloExperts(agents), [agents]);
+  const controlled = onChange !== undefined;
+  const chosenId = controlled ? value ?? null : activeAgentId;
+  const commit = (id: string) => {
+    if (onChange) onChange(id);
+    else setActiveAgent(id);
+  };
+  const soloSelectable = useMemo(
+    () =>
+      ownedSoloExperts(agents).filter(
+        (agent) => !hideManaged || agent.kind !== "managed",
+      ),
+    [agents, hideManaged],
+  );
   const allTeams = useMemo(() => ownedTeamAgents(agents), [agents]);
   const teamSelectable = useMemo(
     () => (showTeams ? allTeams : []),
@@ -202,22 +236,26 @@ export default function AgentSelector({
     teamSelectable.length,
   );
   const labeledGroups = [...expertGroups, ...teamGroups];
-  const activeAgent = agents.find((agent) => agent.agent_id === activeAgentId);
+  const activeAgent = agents.find((agent) => agent.agent_id === chosenId);
   const activeIsHiddenTeam = Boolean(
     activeAgent && isTeamAgent(activeAgent) && !showTeams,
   );
+  const activeIsHiddenManaged = Boolean(
+    hideManaged && activeAgent?.kind === "managed",
+  );
   const useBar = variant !== "select";
-  const currentId = activeAgentId ?? selectable[0]?.agent_id;
+  const currentId =
+    chosenId ?? (controlled ? undefined : selectable[0]?.agent_id);
   const barRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
 
   useEffect(() => {
-    if (loading) return;
+    if (controlled || loading) return;
     const next = nextPickerSelection(activeAgentId, agents, selectable);
     if (next === undefined) return;
     setActiveAgent(next);
-  }, [activeAgentId, agents, loading, selectable, setActiveAgent]);
+  }, [activeAgentId, agents, controlled, loading, selectable, setActiveAgent]);
 
   useLayoutEffect(() => {
     if (!useBar) return;
@@ -251,13 +289,19 @@ export default function AgentSelector({
 
   if (loading) {
     return (
-      <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
+      <div className={cx(styles.wrap, className)} style={style}>
         <Spin size="small" />
       </div>
     );
   }
 
-  if (selectable.length === 0 && allTeams.length === 0) return null;
+  if (
+    selectable.length === 0 &&
+    allTeams.length === 0 &&
+    !activeIsHiddenManaged
+  ) {
+    return null;
+  }
 
   const disconnectedLabel = t("agentSelector.disconnected");
   const selectOptions: DefaultOptionType[] = showGroupLabels
@@ -274,6 +318,11 @@ export default function AgentSelector({
     ? t("agentSelector.teamNeedsExpert", {
         name: activeAgent?.name ?? "",
         defaultValue: "当前是团队「{{name}}」，此页请选择专家",
+      })
+    : activeIsHiddenManaged
+    ? t("agentSelector.managedNeedsExpert", {
+        name: activeAgent?.name ?? "",
+        defaultValue: "当前是托管专家「{{name}}」，此页请选择其他专家",
       })
     : soloSelectable.length === 0 && allTeams.length > 0
     ? t("agentSelector.expertsRequired", "此页需要专家")
@@ -335,7 +384,7 @@ export default function AgentSelector({
             key={agent.agent_id}
             agent={agent}
             active={agent.agent_id === currentId}
-            onSelect={setActiveAgent}
+            onSelect={commit}
             measure={measure}
             groupKey={groupKey}
           />
@@ -345,7 +394,7 @@ export default function AgentSelector({
   };
 
   return (
-    <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
+    <div className={cx(styles.wrap, className)} style={style}>
       <div className={styles.row}>
         {showLabel && !showGroupLabels ? (
           <span className={styles.label}>{heading}</span>
@@ -375,7 +424,7 @@ export default function AgentSelector({
                   menu={{
                     className: styles.moreMenu,
                     items: moreItems,
-                    onClick: ({ key }) => setActiveAgent(key),
+                    onClick: ({ key }) => commit(key),
                   }}
                 >
                   <button type="button" className={styles.moreBtn}>
@@ -396,7 +445,7 @@ export default function AgentSelector({
                 : undefined
             }
             placeholder={heading}
-            onChange={(id) => setActiveAgent(id)}
+            onChange={(id) => commit(id)}
             listHeight={360}
             popupMatchSelectWidth={320}
             optionLabelProp="label"

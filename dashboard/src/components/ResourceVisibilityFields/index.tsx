@@ -1,13 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Form, Radio, Select, Tag } from "antd";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
+import cx from "classnames";
 import {
   userGroupsApi,
   type ResourceVisibilityMode,
   type UserGroup,
 } from "../../api/modules/userGroups";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import { ResourceAvatar, ROLE_AVATAR_PRESETS } from "../AvatarPicker";
+import {
+  isVisibilityControlVisible,
+  needsGroupCatalog,
+  showGroupVisibilityOption,
+  type AudienceSnapshot,
+} from "./visibilityChrome";
 import styles from "./ResourceVisibilityFields.module.less";
 
 export type { ResourceVisibilityMode };
@@ -27,25 +37,99 @@ type FieldsProps = {
   className?: string;
 };
 
-function useGroups() {
-  const [groups, setGroups] = useState<UserGroup[]>([]);
+type AudienceState = AudienceSnapshot & {
+  groups: UserGroup[];
+  loadedAt: number;
+};
+
+/** Collapse the gate and the fields mounting back-to-back into one request. */
+const FRESH_MS = 500;
+
+let audienceState: AudienceState = {
+  status: "loading",
+  userCount: null,
+  groupCount: null,
+  groupsLoaded: false,
+  groupCountFromList: 0,
+  groups: [],
+  loadedAt: 0,
+};
+let audienceInflight: Promise<void> | null = null;
+const audienceListeners = new Set<() => void>();
+
+function publishAudience(next: AudienceState) {
+  audienceState = next;
+  audienceListeners.forEach((listener) => listener());
+}
+
+function loadAudience(): Promise<void> {
+  if (
+    audienceState.status === "ready" &&
+    Date.now() - audienceState.loadedAt < FRESH_MS
+  ) {
+    return Promise.resolve();
+  }
+  if (audienceInflight) return audienceInflight;
+  audienceInflight = (async () => {
+    const counts = await userGroupsApi.audience().then(
+      (row) => ({ ok: true as const, row }),
+      () => ({ ok: false as const, row: null }),
+    );
+    const userCount = counts.ok ? counts.row.user_count : null;
+    const groupCount = counts.ok ? counts.row.group_count : null;
+    let groups: UserGroup[] = [];
+    let groupsLoaded = false;
+    if (needsGroupCatalog({ userCount, groupCount })) {
+      try {
+        groups = await userGroupsApi.list();
+        groupsLoaded = true;
+      } catch {
+        groups = [];
+      }
+    } else {
+      groupsLoaded = true;
+    }
+    publishAudience({
+      status: "ready",
+      userCount,
+      groupCount,
+      groupsLoaded,
+      groupCountFromList: groups.length,
+      groups,
+      loadedAt: Date.now(),
+    });
+  })().finally(() => {
+    audienceInflight = null;
+  });
+  return audienceInflight;
+}
+
+function useResourceAudience(): AudienceState {
+  const [snap, setSnap] = useState(audienceState);
 
   useEffect(() => {
-    let cancelled = false;
-    userGroupsApi
-      .list()
-      .then((rows) => {
-        if (!cancelled) setGroups(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setGroups([]);
-      });
+    const sync = () => setSnap(audienceState);
+    audienceListeners.add(sync);
+    void loadAudience().then(sync);
     return () => {
-      cancelled = true;
+      audienceListeners.delete(sync);
     };
   }, []);
 
-  return groups;
+  return snap;
+}
+
+/**
+ * Whether the visibility Form.Item will render at all for this audience
+ * (e.g. a single-account instance hides it). Drawers use this to omit the
+ * whole sharing section instead of rendering an empty group.
+ */
+export function useResourceVisibilityAvailable(opts: {
+  allowOwner: boolean;
+  visibility: ResourceVisibilityMode;
+}): boolean {
+  const audience = useResourceAudience();
+  return isVisibilityControlVisible(audience, opts);
 }
 
 function GroupLabel({
@@ -80,19 +164,29 @@ export function ResourceVisibilityFields({
   className,
 }: FieldsProps) {
   const { t } = useTranslation();
-  const groups = useGroups();
+  const user = useCurrentUser();
+  const audience = useResourceAudience();
+  const groups = audience.groups;
   const byId = useMemo(
     () => new Map(groups.map((group) => [group.user_group_id, group])),
     [groups],
   );
   const disabledLabel = t("adminUsers.statusDisabled");
+  const showGroups = showGroupVisibilityOption(audience, visibility);
+  const canManageGroups = userCan(user, "user_groups");
+
+  if (!isVisibilityControlVisible(audience, { allowOwner, visibility })) {
+    return null;
+  }
 
   const radioOptions = [
     ...(allowOwner
       ? [{ value: "owner" as const, label: t("resourceVisibility.owner") }]
       : []),
     { value: "all" as const, label: t("resourceVisibility.all") },
-    { value: "groups" as const, label: t("resourceVisibility.groups") },
+    ...(showGroups
+      ? [{ value: "groups" as const, label: t("resourceVisibility.groups") }]
+      : []),
   ];
 
   const options = groups.map((group) => ({
@@ -101,7 +195,7 @@ export function ResourceVisibilityFields({
   }));
 
   return (
-    <div className={[styles.fields, className].filter(Boolean).join(" ")}>
+    <div className={cx(styles.fields, className)}>
       <Radio.Group
         className={styles.radio}
         disabled={disabled}
@@ -156,6 +250,11 @@ export function ResourceVisibilityFields({
           onChange={(ids) => onChange({ visibility, groupIds: ids })}
         />
       ) : null}
+      {visibility === "groups" && canManageGroups ? (
+        <Link className={styles.manageGroups} to="/admin/users?tab=groups">
+          {t("resourceVisibility.manageGroups")}
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -170,6 +269,8 @@ type FormItemProps = {
   label?: string;
   /** Hint under the control (e.g. skill package / connector copy). */
   extra?: string;
+  /** Hint as a "?" tooltip on the label instead of a visible line. */
+  tooltip?: string;
   className?: string;
 };
 
@@ -182,14 +283,20 @@ export function ResourceVisibilityFormItem({
   disabled,
   label,
   extra,
+  tooltip,
   className,
 }: FormItemProps) {
   const { t } = useTranslation();
+  const audience = useResourceAudience();
+  if (!isVisibilityControlVisible(audience, { allowOwner, visibility })) {
+    return null;
+  }
   return (
     <Form.Item
       label={label ?? t("resourceVisibility.label")}
       extra={extra}
-      className={[styles.formItem, className].filter(Boolean).join(" ")}
+      tooltip={tooltip}
+      className={cx(styles.formItem, className)}
       required={false}
     >
       <ResourceVisibilityFields
@@ -235,11 +342,15 @@ export function ResourceVisibilityCollapse({
   className,
 }: CollapseProps) {
   const { t } = useTranslation();
+  const audience = useResourceAudience();
   const [open, setOpen] = useState(defaultOpen || visibility === "groups");
   const restricted = visibility === "groups";
 
+  if (!isVisibilityControlVisible(audience, { allowOwner, visibility })) {
+    return null;
+  }
   return (
-    <div className={[styles.collapse, className].filter(Boolean).join(" ")}>
+    <div className={cx(styles.collapse, className)}>
       <div className={styles.collapseToggle}>
         <Button
           type="link"
@@ -268,6 +379,23 @@ export function ResourceVisibilityCollapse({
       ) : null}
     </div>
   );
+}
+
+/** Hides the surrounding label when the picker itself has nothing to choose. */
+export function ResourceVisibilityGate({
+  allowOwner,
+  visibility,
+  children,
+}: {
+  allowOwner: boolean;
+  visibility: ResourceVisibilityMode;
+  children: ReactNode;
+}) {
+  const audience = useResourceAudience();
+  if (!isVisibilityControlVisible(audience, { allowOwner, visibility })) {
+    return null;
+  }
+  return children;
 }
 
 export default ResourceVisibilityFields;

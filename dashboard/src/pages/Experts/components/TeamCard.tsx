@@ -4,10 +4,12 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown, Popconfirm, Switch, Tooltip } from "antd";
 import type { MenuProps } from "antd";
 import { message } from "@/utils/antdMessage";
+import { copyText } from "@/utils/copyText";
 
 import {
   AlertCircle,
   ChevronRight,
+  Copy,
   FolderOpen,
   MessageSquare,
   MoreHorizontal,
@@ -18,6 +20,7 @@ import {
   Users,
   Waypoints,
 } from "lucide-react";
+import cx from "classnames";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChannelCatalogDrawer from "./ChannelCatalogDrawer";
 import MemoryCatalogDrawer from "./MemoryCatalogDrawer";
@@ -25,16 +28,26 @@ import { teamsApi } from "../../../api/modules/teams";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import {
+  canManageExpert,
+  canReadAgentRuntimeStatus,
+} from "../../../utils/sharedExpert";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark, managedRunnerId } from "./ManagedAvatarMark";
 import {
   formatAgentError,
   formatAgentState,
   isAgentChatReady,
   isAgentModelConfigError,
+  shortAgentError,
 } from "../../../utils/agentError";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
-import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
+import {
+  incomingShareProps,
+  SharedAvatarMark,
+} from "../../../components/SharedResourceBadge";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import {
   expertDeleteConfirm,
@@ -75,23 +88,51 @@ interface MemberChip {
   color: string;
   iconName?: string | null;
   iconUrl?: string | null;
+  runner?: string | null;
+  shared?: boolean;
+  owned?: boolean;
+  ownerName?: string | null;
 }
 
 function resolveMembers(
   memberIds: string[] | undefined,
   experts: OctopAgent[],
+  summaries: OctopAgent["members"],
+  viewerId: number | null | undefined,
 ): MemberChip[] {
   const byId = new Map(experts.map((item) => [item.agent_id, item]));
+  const extra = new Map((summaries ?? []).map((item) => [item.agent_id, item]));
   const chips: MemberChip[] = [];
   for (const id of memberIds ?? []) {
     const expert = byId.get(id);
-    if (!expert) continue;
+    if (expert) {
+      chips.push({
+        id,
+        name: expert.name,
+        color: expert.color || "#0d9488",
+        iconName: expert.icon_name,
+        iconUrl: expert.icon_url,
+        runner: managedRunnerId(expert),
+        ...incomingShareProps(expert),
+      });
+      continue;
+    }
+    const member = extra.get(id);
+    if (!member) continue;
+    const owned =
+      viewerId != null &&
+      member.user_id != null &&
+      Number(member.user_id) === Number(viewerId);
     chips.push({
       id,
-      name: expert.name,
-      color: expert.color || "#0d9488",
-      iconName: expert.icon_name,
-      iconUrl: expert.icon_url,
+      name: member.name,
+      color: member.color || "#0d9488",
+      iconName: member.icon_name,
+      iconUrl: member.icon_url,
+      runner: member.managed_runner ?? null,
+      shared: Boolean(member.is_shared),
+      owned,
+      ownerName: null,
     });
   }
   return chips;
@@ -106,7 +147,9 @@ export const TeamCard = memo(function TeamCard({
 }: TeamCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const user = useCurrentUser();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
+  const statusReadable = canReadAgentRuntimeStatus(agent, user);
 
   const [localState, setLocalState] = useState(agent.state);
   const [localError, setLocalError] = useState(agent.last_error);
@@ -117,8 +160,8 @@ export const TeamCard = memo(function TeamCard({
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const members = useMemo(
-    () => resolveMembers(agent.member_ids, experts),
-    [agent.member_ids, experts],
+    () => resolveMembers(agent.member_ids, experts, agent.members, user?.id),
+    [agent.member_ids, agent.members, experts, user?.id],
   );
   const visibleMembers = members.slice(0, MAX_VISIBLE_MEMBERS);
   const hiddenCount = Math.max(0, members.length - visibleMembers.length);
@@ -128,9 +171,9 @@ export const TeamCard = memo(function TeamCard({
     setLocalError(agent.last_error);
   }, [agent.state, agent.last_error]);
 
-  // Poll during transient states (local agents only — bridge shadows have no runtime status).
+  // Poll during transient states. Bridge shadows and shared viewers have no readable status.
   useEffect(() => {
-    if (agent.bridge || !TRANSIENT.has(localState)) {
+    if (agent.bridge || !statusReadable || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -155,15 +198,25 @@ export const TeamCard = memo(function TeamCard({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [localState, agent.agent_id, agent.bridge, onStateChange, refreshAgents]);
+  }, [
+    localState,
+    agent.agent_id,
+    agent.bridge,
+    statusReadable,
+    onStateChange,
+    refreshAgents,
+  ]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
   const chatReady = isAgentChatReady(localState);
   const isOwner = agent.is_owner !== false;
+  const canManage = canManageExpert(agent, user);
   const deleteConfirm = expertDeleteConfirm(agent, t);
   const meta = getStateMeta(localState);
   const friendlyError = formatAgentError(localError, t);
+  const cardError = shortAgentError(localError, t);
+  const modelConfigError = isAgentModelConfigError(localError);
 
   const handleToggle = useCallback(
     async (checked: boolean) => {
@@ -228,16 +281,22 @@ export const TeamCard = memo(function TeamCard({
     navigate(`/chat/${agent.agent_id}`);
   }, [agent.agent_id, setActiveAgent, navigate]);
 
+  const copyTeamId = useCallback(async () => {
+    const ok = await copyText(agent.agent_id);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copyFailed"));
+  }, [agent.agent_id, t]);
+
   return (
     <>
-      <div className={`${styles.agentCard2} ${styles.teamCard}`}>
+      <div className={cx(styles.agentCard2, styles.teamCard)}>
         <div className={styles.agentCard2Header}>
           <SharedAvatarMark
             shared={agent.is_shared}
             owned={isOwner}
             ownerName={agent.owner_username}
           >
-            <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
+            <div className={cx(styles.agentCard2Icon, styles.teamCardIcon)}>
               <ExpertIcon
                 iconUrl={teamPortraitUrl(agent.icon_url)}
                 iconName={TEAM_ICON_NAME}
@@ -264,9 +323,26 @@ export const TeamCard = memo(function TeamCard({
                 />
               </Tooltip>
             </div>
+            <div className={styles.agentCardIdRow}>
+              <Tooltip title={t("experts.copyTeamId")}>
+                <button
+                  type="button"
+                  className={styles.agentCardId}
+                  onClick={() => void copyTeamId()}
+                >
+                  <span className={styles.agentCardIdLabel}>
+                    {t("experts.teamId")}
+                  </span>
+                  <span className={styles.agentCardIdValue}>
+                    {agent.agent_id}
+                  </span>
+                  <Copy size={11} className={styles.agentCardIdIcon} />
+                </button>
+              </Tooltip>
+            </div>
           </div>
 
-          {isOwner && (
+          {canManage && (
             <div className={styles.agentCard2HeaderActions}>
               <Switch
                 size="small"
@@ -291,23 +367,31 @@ export const TeamCard = memo(function TeamCard({
           </span>
           {visibleMembers.map((member) => (
             <Tooltip key={member.id} title={member.name}>
-              <div
-                className={styles.teamMemberAvatar}
-                style={{
-                  color: member.color,
-                  background: `${member.color}1a`,
-                }}
+              <SharedAvatarMark
+                shared={member.shared}
+                owned={member.owned ?? true}
+                ownerName={member.ownerName}
               >
-                {member.iconUrl || member.iconName ? (
-                  <ExpertIcon
-                    iconUrl={member.iconUrl}
-                    iconName={member.iconName}
-                    size={member.iconUrl ? 22 : 13}
-                  />
-                ) : (
-                  member.name.slice(0, 1)
-                )}
-              </div>
+                <ManagedAvatarMark runner={member.runner}>
+                  <div
+                    className={styles.teamMemberAvatar}
+                    style={{
+                      color: member.color,
+                      background: `${member.color}1a`,
+                    }}
+                  >
+                    {member.iconUrl || member.iconName ? (
+                      <ExpertIcon
+                        iconUrl={member.iconUrl}
+                        iconName={member.iconName}
+                        size={member.iconUrl ? 22 : 13}
+                      />
+                    ) : (
+                      member.name.slice(0, 1)
+                    )}
+                  </div>
+                </ManagedAvatarMark>
+              </SharedAvatarMark>
             </Tooltip>
           ))}
           {hiddenCount > 0 && (
@@ -326,12 +410,10 @@ export const TeamCard = memo(function TeamCard({
             >
               <div className={styles.agentCardError}>
                 <AlertCircle size={13} className={styles.agentCardErrorIcon} />
-                <span className={styles.agentCardErrorText}>
-                  {friendlyError}
-                </span>
+                <span className={styles.agentCardErrorText}>{cardError}</span>
               </div>
             </Tooltip>
-            {isAgentModelConfigError(localError) && (
+            {modelConfigError && (
               <button
                 type="button"
                 className={styles.agentCardErrorAction}
@@ -344,51 +426,53 @@ export const TeamCard = memo(function TeamCard({
         )}
 
         <div className={styles.agentCard2Footer}>
-          <Tooltip
-            title={
-              chatReady
-                ? t("pageShell.workspace.title")
-                : t("workspace.requiresRunning")
-            }
-            mouseEnterDelay={0.5}
-          >
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              disabled={!chatReady}
-              onClick={() => setWorkspaceDrawerOpen(true)}
-              aria-label={t("pageShell.workspace.title")}
-            >
-              <FolderOpen size={13} />
-            </button>
-          </Tooltip>
-
-          {isOwner && (
-            <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.agentCard2EditBtn}
-                disabled={isTransient || actionLoading}
-                onClick={() => void handleReload()}
-                aria-label={t("experts.reloadAgent")}
+          {canManage && (
+            <>
+              <Tooltip
+                title={
+                  chatReady
+                    ? t("pageShell.workspace.title")
+                    : t("workspace.requiresRunning")
+                }
+                mouseEnterDelay={0.5}
               >
-                <RefreshCw size={13} />
-              </button>
-            </Tooltip>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  disabled={!chatReady}
+                  onClick={() => setWorkspaceDrawerOpen(true)}
+                  aria-label={t("pageShell.workspace.title")}
+                >
+                  <FolderOpen size={13} />
+                </button>
+              </Tooltip>
+
+              <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  disabled={isTransient || actionLoading}
+                  onClick={() => void handleReload()}
+                  aria-label={t("experts.reloadAgent")}
+                >
+                  <RefreshCw size={13} />
+                </button>
+              </Tooltip>
+
+              <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  onClick={() => onEdit(agent.agent_id)}
+                  aria-label={t("common.edit", "Edit")}
+                >
+                  <Pencil size={13} />
+                </button>
+              </Tooltip>
+            </>
           )}
 
-          <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              onClick={() => onEdit(agent.agent_id)}
-              aria-label={t("common.edit", "Edit")}
-            >
-              <Pencil size={13} />
-            </button>
-          </Tooltip>
-
-          {isOwner ? (
+          {canManage ? (
             <Popconfirm
               title={deleteConfirm.title}
               description={deleteConfirm.description}
@@ -412,54 +496,56 @@ export const TeamCard = memo(function TeamCard({
             </Popconfirm>
           ) : null}
 
-          <Dropdown
-            menu={{
-              items: [
-                {
-                  key: "memory",
-                  icon: <Notebook size={14} />,
-                  label: t("experts.teams.memoryBtn"),
-                  onClick: () => setMemoryCatalogOpen(true),
-                },
-                {
-                  key: "channels",
-                  icon: <Waypoints size={14} />,
-                  label: t("experts.channelsBtn"),
-                  onClick: () => setChannelCatalogOpen(true),
-                },
-              ] satisfies MenuProps["items"],
-            }}
-            trigger={["click"]}
-            placement="bottomRight"
-          >
-            <Tooltip title={t("common.more")} mouseEnterDelay={0.5}>
-              <button
-                type="button"
-                className={styles.agentCard2EditBtn}
-                aria-label={t("common.more")}
-              >
-                <MoreHorizontal size={13} />
-              </button>
-            </Tooltip>
-          </Dropdown>
+          {canManage ? (
+            <Dropdown
+              menu={{
+                items: [
+                  {
+                    key: "memory",
+                    icon: <Notebook size={14} />,
+                    label: t("experts.teams.memoryBtn"),
+                    onClick: () => setMemoryCatalogOpen(true),
+                  },
+                  {
+                    key: "channels",
+                    icon: <Waypoints size={14} />,
+                    label: t("experts.channelsBtn"),
+                    onClick: () => setChannelCatalogOpen(true),
+                  },
+                ] satisfies MenuProps["items"],
+              }}
+              trigger={["click"]}
+              placement="bottomRight"
+            >
+              <Tooltip title={t("common.more")} mouseEnterDelay={0.5}>
+                <button
+                  type="button"
+                  className={styles.agentCard2EditBtn}
+                  aria-label={t("common.more")}
+                >
+                  <MoreHorizontal size={13} />
+                </button>
+              </Tooltip>
+            </Dropdown>
+          ) : null}
 
           {chatReady ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               onClick={handleOpenChat}
             >
               <MessageSquare size={13} />
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : isOwner &&
+          ) : canManage &&
             (localState === "failed" ||
               localState === "stopped" ||
               localState === "created") ? (
             <button
               type="button"
-              className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}
+              className={cx(styles.agentCard2ChatBtn, styles.teamCardChatBtn)}
               disabled={isTransient || actionLoading}
               onClick={() => void handleToggle(true)}
             >

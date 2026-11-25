@@ -18,10 +18,12 @@ import {
   Segmented,
   Space,
   Switch,
+  Tabs,
   Tag,
   Typography,
 } from "antd";
 import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   BookOpen,
@@ -35,6 +37,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
+import cx from "classnames";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
@@ -46,7 +49,7 @@ import {
   reloadPluginToolUis,
 } from "../../../plugins/toolRenderers";
 import { updateToolPluginIndex } from "../../../plugins/toolRenderers/toolPluginIndex";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, parseApiError } from "../../../utils/apiError";
 import styles from "./index.module.less";
 import { PluginIconView } from "./PluginIconView";
 import { PluginGroupTag } from "./PluginGroupTag";
@@ -88,10 +91,11 @@ export function InstalledPluginsPanel() {
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [installOpen, setInstallOpen] = useState(false);
+  const [installTab, setInstallTab] = useState<"url" | "zip">("url");
   const [installUrl, setInstallUrl] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [installing, setInstalling] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const [overwrite, setOverwrite] = useState(false);
   const [reloading, setReloading] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -126,25 +130,49 @@ export function InstalledPluginsPanel() {
     return () => window.removeEventListener(PLUGINS_CHANGED_EVENT, onChanged);
   }, [fetchPlugins]);
 
-  const handleInstall = async () => {
+  const closeInstallModal = () => {
+    setInstallOpen(false);
+    setInstallUrl("");
+    setSelectedFile(null);
+    setOverwrite(false);
+  };
+
+  const runInstall = async (force: boolean) => {
     const url = installUrl.trim();
-    if (!url) return;
+    if (installTab === "url" && !url) return;
+    if (installTab === "zip" && !selectedFile) return;
+
     setInstalling(true);
     try {
-      await pluginsApi.install(url);
+      if (installTab === "url") {
+        await pluginsApi.install(url, force);
+      } else if (selectedFile) {
+        await pluginsApi.upload(selectedFile, force);
+      }
       message.success(t("plugins.installSuccess"));
-      setInstallOpen(false);
-      setInstallUrl("");
+      closeInstallModal();
       notifyPluginsChanged();
       await fetchPlugins();
     } catch (err) {
+      const parsed = parseApiError(err);
+      if (parsed?.code === "PLUGIN_ALREADY_EXISTS" && !force) {
+        const pluginId =
+          typeof parsed.details?.id === "string" ? parsed.details.id : "";
+        modal.confirm({
+          title: t("plugins.overwriteConfirmTitle"),
+          content: t("plugins.overwriteConfirmDesc", { id: pluginId }),
+          okText: t("plugins.overwriteConfirmOk"),
+          onOk: () => runInstall(true),
+        });
+        return;
+      }
       message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
     } finally {
       setInstalling(false);
     }
   };
 
-  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelected = (event: ChangeEvent<HTMLInputElement>) => {
     const next = event.target.files?.[0] ?? null;
     event.target.value = "";
     if (!next) return;
@@ -152,17 +180,7 @@ export function InstalledPluginsPanel() {
       message.error(t("plugins.zipOnly"));
       return;
     }
-    setUploading(true);
-    try {
-      await pluginsApi.upload(next, overwrite);
-      message.success(t("plugins.installSuccess"));
-      notifyPluginsChanged();
-      await fetchPlugins();
-    } catch (err) {
-      message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
-    } finally {
-      setUploading(false);
-    }
+    setSelectedFile(next);
   };
 
   const handleReload = async () => {
@@ -385,21 +403,8 @@ export function InstalledPluginsPanel() {
               },
             ]}
           />
-          <Checkbox
-            checked={overwrite}
-            onChange={(e) => setOverwrite(e.target.checked)}
-          >
-            {t("plugins.overwriteInstall")}
-          </Checkbox>
           <Button loading={reloading} onClick={() => void handleReload()}>
             {t("plugins.reload")}
-          </Button>
-          <Button
-            icon={<Upload size={16} />}
-            loading={uploading}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {t("plugins.installFromZip")}
           </Button>
           <Button
             type="primary"
@@ -413,7 +418,9 @@ export function InstalledPluginsPanel() {
 
       {showCardView ? (
         loading ? (
-          <CardSkeleton count={3} />
+          <div className={styles.loadingSkeleton}>
+            <CardSkeleton count={3} />
+          </div>
         ) : plugins.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -440,9 +447,7 @@ export function InstalledPluginsPanel() {
               return (
                 <article
                   key={row.id}
-                  className={`${styles.card} ${
-                    enabled ? "" : styles.cardDisabled
-                  }`}
+                  className={cx(styles.card, !enabled && styles.cardDisabled)}
                 >
                   <div className={styles.cardBody}>
                     <div className={styles.cardTop}>
@@ -663,9 +668,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colPath")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.path || "—"}
                   </span>
                 </div>
@@ -673,9 +676,7 @@ export function InstalledPluginsPanel() {
                   <span className={styles.detailLabel}>
                     {t("plugins.colUi")}
                   </span>
-                  <span
-                    className={`${styles.detailValue} ${styles.detailMono}`}
-                  >
+                  <span className={cx(styles.detailValue, styles.detailMono)}>
                     {detail.ui?.entry || "—"}
                   </span>
                 </div>
@@ -704,21 +705,73 @@ export function InstalledPluginsPanel() {
       <Modal
         title={t("plugins.installTitle")}
         open={installOpen}
-        onCancel={() => setInstallOpen(false)}
-        onOk={() => void handleInstall()}
+        onCancel={closeInstallModal}
+        onOk={() => void runInstall(overwrite)}
         confirmLoading={installing}
         okText={t("plugins.install")}
+        okButtonProps={{
+          disabled: installTab === "url" ? !installUrl.trim() : !selectedFile,
+        }}
       >
-        <Space direction="vertical" style={{ width: "100%" }} size="middle">
-          <Alert type="info" showIcon message={t("plugins.installUrlHint")} />
-          <Input
-            prefix={<Package size={16} />}
-            placeholder={t("plugins.installUrlPlaceholder")}
-            value={installUrl}
-            onChange={(e) => setInstallUrl(e.target.value)}
-            onPressEnter={() => void handleInstall()}
-          />
-        </Space>
+        <Tabs
+          activeKey={installTab}
+          onChange={(key) => setInstallTab(key as "url" | "zip")}
+          items={[
+            {
+              key: "url",
+              label: t("plugins.installTabUrl"),
+              children: (
+                <Space
+                  direction="vertical"
+                  style={{ width: "100%" }}
+                  size="middle"
+                >
+                  <Alert
+                    type="info"
+                    showIcon
+                    message={t("plugins.installUrlHint")}
+                  />
+                  <Input
+                    prefix={<Package size={16} />}
+                    placeholder={t("plugins.installUrlPlaceholder")}
+                    value={installUrl}
+                    onChange={(e) => setInstallUrl(e.target.value)}
+                    onPressEnter={() => void runInstall(overwrite)}
+                  />
+                </Space>
+              ),
+            },
+            {
+              key: "zip",
+              label: t("plugins.installTabZip"),
+              children: (
+                <button
+                  type="button"
+                  className={styles.zipPicker}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <Upload size={22} />
+                  <span className={styles.zipPickerTitle}>
+                    {selectedFile
+                      ? selectedFile.name
+                      : t("plugins.selectZipFile")}
+                  </span>
+                  <span className={styles.zipPickerHint}>
+                    {t("plugins.selectZipHint")}
+                  </span>
+                </button>
+              ),
+            },
+          ]}
+        />
+        <div className={styles.installOverwriteRow}>
+          <Checkbox
+            checked={overwrite}
+            onChange={(e) => setOverwrite(e.target.checked)}
+          >
+            {t("plugins.overwriteInstall")}
+          </Checkbox>
+        </div>
       </Modal>
 
       <input
@@ -726,7 +779,7 @@ export function InstalledPluginsPanel() {
         type="file"
         accept=".zip,application/zip"
         style={{ display: "none" }}
-        onChange={(e) => void handleFileSelected(e)}
+        onChange={handleFileSelected}
       />
     </div>
   );

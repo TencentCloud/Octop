@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b1-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b7-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -160,18 +160,18 @@ Here are our mid-to-long term plans:
 - [x] **Shared resource pool** — a central pool of skills and sub-agents that any user can drop into a new expert without rebuilding from scratch.
 - [x] **Expert sharing** — publish your experts to other users in the same deployment, so good configurations are reused instead of recreated.
 - [x] **PC client** — native desktop apps for Windows / macOS / Linux alongside the web dashboard and IM channels.
+- [x] **Plugin marketplace** — live on [octop.cloud](https://octop.cloud); discover, install, and update third-party plugins from within Octop.
 
 **In progress**
 - [ ] **AgentTeams** *(Beta)* — let one coordinator autonomously schedule and orchestrate multiple experts to tackle multi-step tasks.
 - [ ] **Mobile client** *(closed beta)* — native mobile apps currently in internal testing.
+- [ ] **Managed Agents** *(Beta)* — shipped as managed experts and now in Beta: platform-hosted agent lifecycle (provision, scale, and operate) without running the full self-hosted stack yourself.
+- [ ] **Cloud–edge continuum** *(closed beta)* — cloud brain, local hands: run Octop on-device as the execution end while the cloud orchestrates and controls it.
 
 **Planned**
 - [ ] **Browser & terminal polishing** — browser skill *recording* (capture a workflow and replay it as a skill) and a more capable terminal AI assistant.
 - [ ] **Self-evolution** — automatically distill everyday conversations into reusable skills, so the assistant grows with you.
-- [ ] **Managed Agents** — platform-hosted agent lifecycle (provision, scale, and operate agents without managing the full self-hosted stack yourself).
 - [ ] **Project** — project-scoped workspaces that group agents, files, and conversations around a shared goal.
-- [ ] **Cloud–edge continuum** — run Octop locally while offloading selected tasks to the cloud, so light work stays on-device and heavier jobs use remote capacity when you need it.
-- [ ] **Plugin marketplace** — a curated market to discover, install, and update third-party plugins without leaving Octop.
 - [ ] **Conversational control plane** — deepen Octop’s own skills so chat can cover the full dashboard surface: create experts, wire channels, manage knowledge bases, and scaffold plugins end-to-end.
 
 This roadmap may shift as the community grows; treat it as indicative only.
@@ -189,19 +189,19 @@ This roadmap may shift as the community grows; treat it as indicative only.
 **macOS / Linux** — one-line installer (recommended):
 
 ```bash
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell)**:
 
 ```powershell
-irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex
+irm https://download.octop.cloud/octop/scripts/install.ps1 | iex
 ```
 
 **Windows (cmd)** — download and run, or from a cloned repo:
 
 ```bat
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.bat -o install.bat
+curl -fsSL https://download.octop.cloud/octop/scripts/install.bat -o install.bat
 install.bat
 ```
 
@@ -217,7 +217,7 @@ The installer places `octop` on your PATH via `~/.octop/bin`. Optional extras:
 
 ```bash
 # Download Playwright Chromium for browser automation (skipped if a system Chrome/Chromium is already present)
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash -s -- --extras browser
 ```
 
 See [scripts/README.md](scripts/README.md) for all install options (`--version`, `--from-source`, `--mirror`, Windows flags).
@@ -229,7 +229,9 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 | Windows | `Octop-desktop-windows-amd64-<version>.exe` (64-bit) / `Octop-desktop-windows-arm64-<version>.exe` (ARM64) — NSIS installer |
 | macOS | `Octop-desktop-darwin-arm64-<version>.dmg` (Apple Silicon) / `Octop-desktop-darwin-amd64-<version>.dmg` (Intel) |
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
-| FnOS NAS | `Octop-fnos-docker-<version>.fpk` (recommended on ARM; amd64/arm64 image) / `Octop-fnos-native-<version>.fpk` (x86_64, no Docker) / `Octop-fnos-native-arm64-<version>.fpk` (ARM64 fallback if no Docker) — install via App Center |
+| FnOS NAS | `Octop-fnos-docker-lite-<version>.fpk` (smaller image) / `Octop-fnos-docker-<version>.fpk` (full: desktop, OCR, local models) / `Octop-fnos-native-amd64-<version>.fpk` (x86_64, no Docker) / `Octop-fnos-native-arm64-<version>.fpk` (ARM64 fallback if no Docker) — install via App Center |
+
+Desktop installers bundle the `browser` extra only. Desktop control, OCR, and local embedding stay on the Docker image tag `:<version>-full`.
 
 See [desktop/README.md](desktop/README.md) for the desktop shell and [fnos/README.md](fnos/README.md) for the FnOS packaging guide.
 
@@ -276,13 +278,13 @@ Open **http://127.0.0.1:8088**. With Docker, a valid `OCTOP_DEFAULT_PASSWORD` cr
 
 ```bash
 # Build and start
-docker compose -f docker/docker-compose.yml up -d
+docker compose -f deploy/docker/docker-compose.yml up -d
 
 # China mirror when ghcr.io is unreachable (no local build)
-docker compose -f docker/docker-compose.cn.yml up -d
+docker compose -f deploy/docker/docker-compose.cn.yml up -d
 
 # Or build manually
-bash docker/docker_build.sh
+bash deploy/docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
@@ -293,6 +295,8 @@ docker run -d \
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
 
+The Helm chart for a shared PostgreSQL and multiple replicas is documented in [deploy/helm/octop/README.md](deploy/helm/octop/README.md). Install it from `oci://ghcr.io/tencentcloud/octop/charts/octop`.
+
 > **Password policy:** at least 8 characters with letters and digits.
 
 | Variable | Default | Description |
@@ -300,7 +304,7 @@ Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin
 | `OCTOP_PORT` | `8088` | HTTP listen port |
 | `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (Docker bootstrap). Valid → create admin; unset or rejected → setup wizard |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
-| `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
+| `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount). Unset keeps the invoking user's `~/.octop`; no migration on upgrade |
 
 See [`.env.example`](.env.example) for the full list.
 
@@ -349,7 +353,7 @@ To serve the dashboard under a reverse-proxy subpath (for example `https://examp
 | Local script | macOS / Linux | `bash scripts/install.sh` |
 | Local script | Windows | `scripts\install.bat` or `install.ps1` |
 | PyPI | Any | `pip install octop` (optional extras such as `local-embedding`) |
-| Docker | Any | `docker/docker-compose.yml`; China mirror: `docker/docker-compose.cn.yml` |
+| Docker | Any | `deploy/docker/docker-compose.yml`; China mirror: `deploy/docker/docker-compose.cn.yml` |
 
 All install scripts provision an isolated environment at `~/.octop/venv` and a `~/.octop/bin/octop` wrapper — they do not touch system Python.
 
@@ -429,6 +433,7 @@ Full catalog, auth kinds, and MCP modes: **[docs/connectors.md](docs/connectors.
 | `octop skills` | Enable/disable per-agent skills |
 | `octop plugin` | Install and manage third-party plugins |
 | `octop backup` | Export / restore backups |
+| `octop migrate` | Migrate an OpenClaw or Hermes Agent setup into an expert |
 | `octop clean` | Remove CLI state or wipe `~/.octop/` |
 | `octop memory list` | List running agents eligible for memory maintenance; no database changes. |
 | `octop memory slim [--agent ID]` | Back up and slim SQLite memory through the running host; uses the selected agent or prompts by number. Shows terminal and dashboard progress. [Details](docs/memory-slim.md) |
@@ -451,6 +456,7 @@ After `octop run`, open **http://127.0.0.1:8088**.
 </p>
 
 - **Chat** — real-time conversation with experts and teams
+- **Cloud** — Tencent CVM fleet overview, instance metrics, and a resident ops expert
 - **Experts** — create experts, pick templates / MBTI personas, share or publish experts, configure providers
 - **AgentTeams** *(Beta)* — coordinator + member experts for multi-step work
 - **Connectors** — OAuth apps and MCP gateways
@@ -480,7 +486,7 @@ Interactive API docs: **http://127.0.0.1:8088/api/docs** (disabled by default �
 
 The control plane can also use PostgreSQL — set `database` in `config.json`, or `OCTOP_DATABASE_*` / the first-run wizard. With PostgreSQL, agent memory reuses the same DSN by default (per-agent schema); to keep file-based memory, set `"memory": { "backend": { "type": "sqlite" } }` in the agent config. See [docs/configuration.md](docs/configuration.md) and [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md).
 
-See [docs/configuration.md](docs/configuration.md) for env vars and `config.json`.
+See [docs/configuration.md](docs/configuration.md) for env vars and `config.json`. Hosts that cannot reach the public catalog can run a private plugin and expert market; the HTTP contract is in [docs/private-market.md](docs/private-market.md). A private SkillHub-compatible skill market is [docs/skill-market.md](docs/skill-market.md) (`SKILL_MARKET_ORIGIN`).
 
 ## 🏗️ Architecture
 
@@ -516,7 +522,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-docker/        Docker Compose, entrypoint, build & deploy scripts
+deploy/        Docker (deploy/docker) and the Kubernetes Helm chart (deploy/helm/octop)
 tests/         unit/ + integration/
 ```
 
@@ -564,6 +570,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## 🔗 Related projects
 
+### Official projects
+
 | Project | Description |
 |---------|-------------|
 | [Octop Harness](https://github.com/TencentCloud/octop-harness) | Agent runtime — model routing, tools, skills, checkpointing |
@@ -571,10 +579,26 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
 | [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
+| [Octop Marketplace](https://github.com/jubaoliang/OctopMarketplace) | Marketplace for Octop |
+| [OctopBot](https://github.com/jubaoliang/OctopBot) | Mobile app for interacting with Octop on iOS and Android |
+
+### Community projects
+
+| Project | Description |
+|---------|-------------|
+| [OctopLink](https://github.com/DingXiaoWu0512/OctopLink) | Community HarmonyOS client — ArkTS app with streaming chat, workspace, memory |
 
 ## 💬 Community
 
 - **Discord** — join the English-speaking community: [discord.gg/QnWdhJxq9h](https://discord.gg/QnWdhJxq9h)
+
+### WeChat
+
+Search for **腾讯Octop** in WeChat, or scan:
+
+<p align="center">
+  <img src="docs/assets/wechat-octop.png" alt="WeChat search for 腾讯Octop" width="480" />
+</p>
 
 ### WeCom Customer Group (CN)
 

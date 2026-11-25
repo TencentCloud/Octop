@@ -23,6 +23,42 @@ _MAX_LIST_ENTRIES = 1000
 # Host paths that must not be browsed or used as workspace roots (POSIX).
 _DENIED_PREFIXES_POSIX = ("/proc", "/sys", "/dev", "/etc", "/root")
 
+# Top-level system directories. Hidden only when listing the filesystem root,
+# so a project folder named ``opt`` under home still appears. ``user`` is the
+# name people use for ``usr``. The process home is never hidden.
+_ROOT_LISTING_HIDDEN = frozenset(
+    {
+        "bin",
+        "boot",
+        "cores",
+        "dev",
+        "etc",
+        "lib",
+        "lib32",
+        "lib64",
+        "libx32",
+        "library",
+        "lost+found",
+        "media",
+        "mnt",
+        "opt",
+        "private",
+        "proc",
+        "root",
+        "run",
+        "sbin",
+        "srv",
+        "sys",
+        "system",
+        "tmp",
+        "usr",
+        "user",
+        "var",
+        "cdrom",
+        "snap",
+    }
+)
+
 _OUTSIDE_HOME_MSG = "path outside home"
 _OUTSIDE_ROOT_MSG = "path outside allowed workspace root"
 _NOT_ALLOWED_MSG = "path not allowed"
@@ -47,6 +83,25 @@ def host_fs_tree_root() -> str:
     if os.name == "posix":
         return "/"
     return host_path_text(Path(host_home_dir().anchor))
+
+
+def is_host_filesystem_root(root: Any) -> bool:
+    """True when *root* is missing or names the whole host filesystem.
+
+    POSIX uses ``/``. Windows uses a drive root such as ``C:/`` (what
+    :func:`host_fs_tree_root` returns). Empty and missing values are the same
+    sentinel: callers that omit ``root_dir`` mean the host root.
+    """
+    if root is None:
+        return True
+    text = str(root).strip()
+    if text in {"", "/", "\\"}:
+        return True
+    if os.name != "nt" or len(text) < 2 or len(text) > 3:
+        return False
+    if not text[0].isalpha() or text[1] != ":":
+        return False
+    return len(text) == 2 or text[2] in {"/", "\\"}
 
 
 def _ready_drive_roots() -> list[str]:
@@ -212,6 +267,20 @@ def assert_safe_host_path(
     return resolved
 
 
+def _hidden_root_listing(listed: Path, child: Path, resolved: Path) -> bool:
+    """True when *child* is a system directory directly under the filesystem root."""
+    if os.name != "posix":
+        return False
+    parent = listed.as_posix()
+    if parent == "/private":
+        parent = "/"
+    if parent != "/":
+        return False
+    if child.name.lower() not in _ROOT_LISTING_HIDDEN:
+        return False
+    return not is_within_host_home(resolved)
+
+
 def list_host_subdirs(
     path: str,
     *,
@@ -241,6 +310,8 @@ def list_host_subdirs(
             if not resolved.is_dir():
                 continue
             if _is_denied_host_path(resolved):
+                continue
+            if _hidden_root_listing(root, child, resolved):
                 continue
             if restrict_to_home and not is_within_host_home(resolved):
                 continue

@@ -3,13 +3,14 @@ import { createPortal } from "react-dom";
 import { Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import { Download, MonitorDown, Share, X } from "lucide-react";
+import cx from "classnames";
 import {
   subscribePwaPrompt,
   getPwaInstallSnapshot,
   triggerInstall,
   waitForInstallPrompt,
 } from "../../pwa-prompt";
-import { isDesktopShell } from "../../utils/desktopChrome";
+import { isDesktopShell } from "../../utils/desktopBridge";
 import styles from "./index.module.less";
 
 const DISMISSED_KEY = "pwa:install-dismissed";
@@ -233,9 +234,11 @@ export default function PwaInstallPrompt({
     ? t("pwa.addToHomeScreen", "添加到主屏幕")
     : t("pwa.installDesktopApp", "安装为桌面应用");
 
-  const btnClass = chatFloat
-    ? styles.installBtnChatFloat
-    : `${styles.installBtn} ${compact ? styles.installBtnCompact : ""}`;
+  const btnClass = cx(
+    chatFloat && styles.installBtnChatFloat,
+    !chatFloat && styles.installBtn,
+    !chatFloat && compact && styles.installBtnCompact,
+  );
 
   const button = (
     <button

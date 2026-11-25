@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Octop 安装脚本 (macOS / Linux)
-# 用法: bash scripts/install.sh              # 从 PyPI 安装（默认）
-#   或: bash scripts/install.sh --from-source  # 从本地源码安装
-#   或: curl -fsSL <url>/install.sh | bash   # 远程安装
+# Octop installer (macOS / Linux)
+# Usage: bash scripts/install.sh                 # install from PyPI (default)
+#    or: bash scripts/install.sh --from-source   # install from a local checkout
+#    or: curl -fsSL <url>/install.sh | bash      # remote install
 #
-# 将 Octop 安装到 ~/.octop，使用 uv 管理 Python 环境。
-# 用户无需预先安装 Python — uv 会处理一切。
-# 安装后会尽量把 octop 链接到已在 PATH 中的目录（如 /usr/local/bin），
-# 当前终端无需 source / 重开即可直接使用。
+# Installs Octop into ~/.octop and uses uv to manage the Python environment.
+# Python does not need to be installed first; uv handles that.
+# After install, octop is linked into a directory already on PATH (such as
+# /usr/local/bin) so the current terminal can run it without sourcing a profile.
 set -euo pipefail
 
-# ── 默认配置 ──────────────────────────────────────────────────────────────────
+# ── Defaults ──────────────────────────────────────────────────────────────────
 OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
 OCTOP_VENV="$OCTOP_HOME/venv"
 OCTOP_BIN="$OCTOP_HOME/bin"
@@ -38,7 +38,7 @@ FROM_SOURCE=false
 EXTRAS=""
 PYPI_MIRROR=""
 
-# ── 颜色 ─────────────────────────────────────────────────────────────────────
+# ── Colors ─────────────────────────────────────────────────────────────────────
 if [ -t 1 ]; then
     BOLD="\033[1m"
     GREEN="\033[0;32m"
@@ -54,7 +54,7 @@ warn()  { printf "${YELLOW}[octop]${RESET} %s\n" "$*"; }
 error() { printf "${RED}[octop]${RESET} %s\n" "$*" >&2; }
 die()   { error "$@"; exit 1; }
 
-# ── 解析参数 ──────────────────────────────────────────────────────────────────
+# ── Parse arguments ──────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)
@@ -116,7 +116,7 @@ EOF
     esac
 done
 
-# ── 操作系统检查 ──────────────────────────────────────────────────────────────
+# ── OS check ──────────────────────────────────────────────────────────────
 OS="$(uname -s)"
 case "$OS" in
     Linux|Darwin) ;;
@@ -125,7 +125,7 @@ esac
 
 printf "${GREEN}[octop]${RESET} Installing Octop into ${BOLD}%s${RESET}\n" "$OCTOP_HOME"
 
-# ── 步骤 1: 确保 uv 可用 ────────────────────────────────────────────────────
+# ── Step 1: ensure uv is available ────────────────────────────────────────────────────
 _install_uv_via_pip() {
     local py_bin=""
     for candidate in python3 python; do
@@ -139,7 +139,7 @@ _install_uv_via_pip() {
     local install_dir="$HOME/.local/bin"
     mkdir -p "$install_dir"
 
-    # 不使用清华/中科大镜像：部分环境拉 wheel 会 302 到 TUNA 并返回 403
+    # Skip the Tsinghua and USTC mirrors: some networks 302 wheel downloads to TUNA and get HTTP 403.
     local mirrors=(
         "https://mirrors.cloud.tencent.com/pypi/simple"
         "https://mirrors.aliyun.com/pypi/simple"
@@ -226,9 +226,9 @@ ensure_uv() {
 
 ensure_uv
 
-# ── 选择最快的 PyPI 镜像 ──────────────────────────────────────────────────────
-# 仅保留实测可用的国内源。清华 TUNA / 中科大 USTC 在部分网络下拉 wheel
-# 会 302 到 TUNA 并 403，导致 uv pip install 失败，故不再作为候选。
+# ── Pick the fastest PyPI mirror ──────────────────────────────────────────────
+# Keep only mirrors that actually work. Tsinghua TUNA and USTC 302 some wheel
+# downloads to TUNA and return 403, which makes uv pip install fail.
 _PYPI_MIRRORS=(
     "https://mirrors.cloud.tencent.com/pypi/simple"
     "https://mirrors.aliyun.com/pypi/simple"
@@ -241,7 +241,7 @@ _select_fastest_pypi_mirror() {
     info "Benchmarking PyPI mirrors..."
     for mirror in "${_PYPI_MIRRORS[@]}"; do
         local t t_ms code
-        # 同时校验 HTTP 状态：连通快但返回非 2xx 的源不可用
+        # Also check the HTTP status: a fast mirror that is not 2xx is unusable.
         code="$(curl -o /dev/null -s -w '%{http_code}' \
             --connect-timeout 3 --max-time 5 \
             "$mirror/pip/" 2>/dev/null || echo '000')"
@@ -271,8 +271,8 @@ _select_fastest_pypi_mirror() {
     _FASTEST_MIRROR="$best_mirror"
 }
 
-# 按候选镜像依次尝试 uv pip install；失败则换源，最后回退官方 PyPI。
-# 参数：包规格（可含 extras） + 额外 uv 参数（如 --prerelease=explicit）
+# Try uv pip install against each candidate mirror, then fall back to official PyPI.
+# Args: package spec (extras allowed) plus extra uv flags (for example --prerelease=explicit).
 _uv_pip_install_with_mirror_fallback() {
     local package="$1"
     shift
@@ -287,7 +287,7 @@ _uv_pip_install_with_mirror_fallback() {
             candidates+=("$m")
         fi
     done
-    candidates+=("")  # 官方 PyPI only
+    candidates+=("")  # official PyPI only
 
     local mirror
     local -a seen=()
@@ -320,9 +320,9 @@ _uv_pip_install_with_mirror_fallback() {
     return 1
 }
 
-# ── glibc / 旧发行版：部分依赖（如 tiktoken）仅提供 manylinux_2_28+ wheel ──
+# ── glibc / old distros: some deps (for example tiktoken) ship only manylinux_2_28+ wheels ──
 _glibc_major_minor() {
-    # 输出如 2.17；非 Linux / 无法检测时返回空
+    # Print a version such as 2.17. Empty when not Linux or when detection fails.
     [ "$OS" = "Linux" ] || { echo ""; return; }
     local ver
     ver="$(ldd --version 2>&1 | head -n1 | awk '{print $NF}')"
@@ -330,7 +330,7 @@ _glibc_major_minor() {
 }
 
 _glibc_too_old_for_wheels() {
-    # manylinux_2_28 要求 glibc >= 2.28（CentOS 7 = 2.17）
+    # manylinux_2_28 requires glibc >= 2.28 (CentOS 7 is 2.17).
     local ver
     ver="$(_glibc_major_minor)"
     [ -n "$ver" ] || return 1
@@ -365,7 +365,7 @@ _ensure_rustc() {
     return 1
 }
 
-# 以 root 或免密 sudo 执行包管理命令（CentOS 常用 root 登录，不可强制 sudo）
+# Run package-manager commands as root or passwordless sudo. CentOS often logs in as root, so do not require sudo.
 _sudo_nopass() {
     command -v sudo &>/dev/null && sudo -n true 2>/dev/null
 }
@@ -380,7 +380,7 @@ _run_as_root() {
     fi
 }
 
-# 当前将用于编译扩展的 Python 是否带有 Python.h（uv 自带或系统 python3-dev）
+# Whether the Python that will compile extensions has Python.h (uv's interpreter or system python3-dev).
 _python_dev_headers_ok() {
     local py=""
     if [ -x "${OCTOP_VENV:-}/bin/python" ]; then
@@ -395,8 +395,8 @@ p = sysconfig.get_path("include")
 raise SystemExit(0 if p and os.path.isfile(os.path.join(p, "Python.h")) else 1)' 2>/dev/null
 }
 
-# gcc + Python 头文件：evdev/pynput 等在无匹配 wheel 时需本地编译。
-# 注意：仅有 gcc、缺 python3-dev 时（常见于 Ubuntu 云镜像）也会失败，不可因已有 gcc 而跳过。
+# gcc plus Python headers: evdev/pynput and similar packages compile locally when no matching wheel exists.
+# gcc alone is not enough. Missing python3-dev (common on Ubuntu cloud images) still fails, so do not skip just because gcc is present.
 _ensure_c_build_tools() {
     local have_cc=0 have_pyh=0
     if command -v cc &>/dev/null || command -v gcc &>/dev/null; then
@@ -431,8 +431,8 @@ _ensure_c_build_tools() {
         have_pyh=1
     fi
     [ "$have_cc" -eq 1 ] || return 1
-    # 系统 python3-devel 可能与 uv 拉取的 Python 小版本不一致；uv 自带解释器通常自带头文件。
-    # 若仍缺失，后续源码编译可能失败，由 pip 错误提示即可。
+    # System python3-devel may not match the Python minor version uv downloaded. uv's interpreter usually ships headers.
+    # If headers are still missing, a later source build may fail and pip will report it.
     return 0
 }
 
@@ -443,7 +443,7 @@ _cxx_major() {
 }
 
 _fix_centos7_scl_repos() {
-    # CentOS 7 EOL：mirrorlist.centos.org 已失效，改用 vault
+    # CentOS 7 is EOL: mirrorlist.centos.org is dead, so use vault.centos.org.
     local f
     for f in /etc/yum.repos.d/CentOS-SCLo*.repo; do
         [ -f "$f" ] || continue
@@ -456,8 +456,8 @@ _fix_centos7_scl_repos() {
 }
 
 _ensure_modern_cxx() {
-    # playwright → greenlet、numpy 2.x 等需较新 C++；CentOS 7 自带 gcc 4.8 不够
-    # numpy>=2.5 要求 GCC >= 10.3，故优先 devtoolset-11
+    # playwright pulls greenlet, and numpy 2.x needs a newer C++ compiler. CentOS 7 ships gcc 4.8, which is not enough.
+    # numpy>=2.5 requires GCC >= 10.3, so prefer devtoolset-11.
     local major
     major="$(_cxx_major)"
     if [ -n "$major" ] && [ "$major" -ge 10 ] 2>/dev/null; then
@@ -496,7 +496,7 @@ _ensure_modern_cxx() {
         return 1
     fi
 
-    # enable 脚本会读未定义的 MANPATH；临时关闭 nounset
+    # The enable script reads an unset MANPATH; turn nounset off briefly.
     set +u
     # shellcheck disable=SC1091
     . "$enable_file"
@@ -507,13 +507,13 @@ _ensure_modern_cxx() {
     if [ -n "$major" ] && [ "$major" -ge 10 ] 2>/dev/null; then
         return 0
     fi
-    # gcc 9 仍可能编 greenlet，但编不了新版 numpy
+    # gcc 9 can still build greenlet, but not current numpy.
     warn "Current g++ major version is ${major:-?} (numpy 2.5+ needs >=10)"
     return 0
 }
 
 _ensure_old_glibc_image_libs() {
-    # Pillow 等在无 manylinux_2_28 wheel 时需源码编译，依赖 jpeg/zlib/freetype 头文件
+    # Without a manylinux_2_28 wheel, Pillow and similar packages build from source and need jpeg/zlib/freetype headers.
     info "Installing image library headers (needed to build Pillow from source)..."
     if command -v apt-get &>/dev/null; then
         _run_as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
@@ -531,7 +531,7 @@ _ensure_old_glibc_image_libs() {
 }
 
 _ensure_old_glibc_build_toolchain() {
-    # CentOS 7 / 旧 RHEL：无 manylinux_2_28 wheel 时需源码编译 Rust/C++ 扩展
+    # CentOS 7 / old RHEL: without manylinux_2_28 wheels, Rust and C++ extensions must be built from source.
     if ! _glibc_too_old_for_wheels; then
         return 0
     fi
@@ -546,7 +546,7 @@ _ensure_old_glibc_build_toolchain() {
     fi
 }
 
-# ── 步骤 2: 创建/更新虚拟环境 ────────────────────────────────────────────────
+# ── Step 2: create or update the virtualenv ────────────────────────────────────────────────
 if [ -x "$OCTOP_VENV/bin/python" ]; then
     info "Existing environment found, upgrading..."
 else
@@ -556,14 +556,14 @@ fi
 [ -x "$OCTOP_VENV/bin/python" ] || die "Failed to create the virtualenv"
 info "Python environment ready ($("$OCTOP_VENV/bin/python" --version))"
 
-# Linux 上始终确保可编译本地扩展（Ubuntu 缺 python3-dev、CentOS 缺 python3-devel 等）
+# On Linux, always make sure native extensions can be compiled (Ubuntu may lack python3-dev, CentOS python3-devel, and so on).
 if [ "$OS" = "Linux" ]; then
     _ensure_c_build_tools || warn "gcc / Python headers are incomplete; deps needing a source build may fail"
 fi
 _ensure_old_glibc_build_toolchain
 
-# ── 步骤 3: 安装 Octop ───────────────────────────────────────────────────────
-# playwright Python 包已是核心依赖；Chromium 浏览器仅在 --extras browser 时下载。
+# ── Step 3: install Octop ───────────────────────────────────────────────────────
+# The playwright Python package is a core dependency. Chromium is downloaded only with --extras browser.
 _merge_install_extras() {
     local result="browser"
     if [ -n "$EXTRAS" ]; then
@@ -620,9 +620,10 @@ prepare_console() {
     fi
 }
 
-# TEMP: mcp 2.x 移除 RequestContext，与 langchain-mcp-adapters 不兼容。
-# octop-harness>=0.9.18 已在依赖中 pin；此处在验证前再钉一次，覆盖仍拉取到
-# 旧版 harness / 镜像滞后的安装路径。待 Octop 发版跟上后可删除。
+# TEMP: mcp 2.x removed RequestContext and is incompatible with langchain-mcp-adapters.
+# octop-harness>=0.9.18 already pins this. Pin again before verification so an
+# older harness or a lagging mirror still gets a compatible mcp.
+# Remove this once an Octop release carries the pin on its own.
 _pin_mcp_compat() {
     info "Pinning mcp<2 (langchain-mcp-adapters compatibility; temporary)..."
     if ! _uv_pip_install_with_mirror_fallback "mcp>=1.27.1,<2"; then
@@ -665,8 +666,8 @@ if [ "$FROM_SOURCE" = true ]; then
         uv pip install "${REPO_DIR}${EXTRAS_SUFFIX}" --python "$OCTOP_VENV/bin/python"
     fi
 else
-    # PEP 508: extras 必须在包名与版本说明符之间（octop[browser]==x.y.z），
-    # 不能拼在版本号后面（octop==x.y.z[browser] 是非法需求串，uv/pip 解析报错）。
+    # PEP 508: extras go between the name and the version (octop[browser]==x.y.z).
+    # octop==x.y.z[browser] is an invalid requirement and uv/pip reject it.
     PACKAGE="octop${EXTRAS_SUFFIX}"
     [ -n "$VERSION" ] && PACKAGE="octop${EXTRAS_SUFFIX}==$VERSION"
 
@@ -695,9 +696,9 @@ if [ "$_CONSOLE_AVAILABLE" = 0 ]; then
     [ "$CONSOLE_CHECK" = "yes" ] && _CONSOLE_AVAILABLE=1
 fi
 
-# ── 步骤 3.4: Linux 安装 bubblewrap（局部 root_dir 下 execute jail）──────────
+# ── Step 3.4: install bubblewrap on Linux (execute jail under a local root_dir) ──
 _ensure_bubblewrap() {
-    # macOS 无可用 bwrap；仅 Linux 安装。缺失时 harness 走普通 local_shell（无目录狱）。
+    # macOS has no usable bwrap; install it only on Linux. Without it, harness uses a plain local shell and no directory jail.
     if [ "$(uname -s 2>/dev/null || echo unknown)" != "Linux" ]; then
         return 0
     fi
@@ -730,9 +731,9 @@ _ensure_bubblewrap() {
 
 _ensure_bubblewrap
 
-# ── 步骤 3.5: 安装 Playwright Chromium 及系统依赖 ─────────────────────────────
+# ── Step 3.5: install Playwright Chromium and system dependencies ─────────────────────────────
 _install_playwright_system_deps() {
-    # macOS 无需额外系统依赖
+    # macOS needs no extra system packages.
     if [ "$OS" = "Darwin" ]; then
         info "macOS: Playwright system dependencies are built in"
         return
@@ -741,13 +742,13 @@ _install_playwright_system_deps() {
     if command -v apt-get &>/dev/null || command -v apt &>/dev/null; then
         info "Detected the apt package manager (Debian/Ubuntu)..."
         info "Installing Playwright system dependencies..."
-        # 优先使用 Playwright 自带的 install-deps
+        # Prefer Playwright's own install-deps.
         if "$OCTOP_VENV/bin/python" -m playwright install-deps chromium --with-deps 2>/dev/null; then
             return
         fi
-        # 回退：手动安装（Ubuntu 24+ 部分包名为 *t64）
+        # Fallback: install packages by hand. Ubuntu 24+ renamed some of them to *t64.
         _run_as_root apt-get update 2>/dev/null || true
-        # 逐包尝试，兼容 Ubuntu 22/24 包名差异
+        # Try one package at a time so Ubuntu 22 and 24 names both work.
         local pkg
         for pkg in \
             libnss3 libxss1 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 \
@@ -820,11 +821,12 @@ _install_playwright_browsers() {
         return 1
     fi
 
-    # 镜像分层（对齐 finnie TencentOS 策略）：
-    #   1. 用户指定 PLAYWRIGHT_DOWNLOAD_HOST
-    #   2. npmmirror（国内最快）
-    #   3. 官方 CDN（失败兜底）
-    # 单源超时避免 GCS 卡住拖死整次安装；可用 PLAYWRIGHT_INSTALL_TIMEOUT 覆盖（秒）
+    # Mirror order, matching the finnie TencentOS installer:
+    #   1. PLAYWRIGHT_DOWNLOAD_HOST when the user set it
+    #   2. npmmirror (fastest from China)
+    #   3. the official CDN as the last resort
+    # A per-mirror timeout keeps a stuck GCS download from hanging the whole install.
+    # Override it with PLAYWRIGHT_INSTALL_TIMEOUT (seconds).
     local _pw_timeout="${PLAYWRIGHT_INSTALL_TIMEOUT:-600}"
     _run_playwright_chromium_install() {
         if command -v timeout &>/dev/null; then
@@ -840,7 +842,7 @@ _install_playwright_browsers() {
         _pw_hosts+=("$PLAYWRIGHT_DOWNLOAD_HOST")
     fi
     _pw_hosts+=("https://cdn.npmmirror.com/binaries/playwright")
-    _pw_hosts+=("")  # 官方：清空 PLAYWRIGHT_DOWNLOAD_HOST
+    _pw_hosts+=("")  # official CDN: clear PLAYWRIGHT_DOWNLOAD_HOST
 
     local _seen="|"
     for _h in "${_pw_hosts[@]}"; do
@@ -870,10 +872,10 @@ _install_playwright_browsers() {
     return 1
 }
 
-# 检测系统是否已安装 Chrome / Chromium。
-# GUI 系统（macOS / Windows / Linux 桌面）通常已自带，无需再下载 Playwright 自带 Chromium。
+# Detect an already installed Chrome or Chromium.
+# GUI systems (macOS, Windows, Linux desktops) usually have one, so Playwright's bundled Chromium is unnecessary.
 _detect_system_chrome() {
-    # 优先复用 octop-browser 的探测器（与运行期 launch 路径一致）
+    # Prefer octop-browser's detector so this matches the runtime launch path.
     local chrome
     chrome="$("$OCTOP_VENV/bin/python" -c '
 import sys
@@ -887,7 +889,7 @@ if p:
 ' 2>/dev/null)"
     [ -n "$chrome" ] && { echo "$chrome"; return 0; }
 
-    # 回退：常见命令
+    # Fallback: common command names.
     local candidate
     for candidate in google-chrome google-chrome-stable chromium chromium-browser chrome; do
         if command -v "$candidate" &>/dev/null; then
@@ -896,7 +898,7 @@ if p:
         fi
     done
 
-    # 回退：常见安装路径（GUI 系统）
+    # Fallback: common install paths on GUI systems.
     local p
     for p in \
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -941,12 +943,12 @@ else
     warn "playwright is not in the virtualenv, skipping Chromium; you can later run: uv pip install playwright --python $OCTOP_VENV/bin/python"
 fi
 
-# ── 步骤 4: 创建包装脚本 ─────────────────────────────────────────────────────
+# ── Step 4: create the wrapper script ─────────────────────────────────────────────────────
 mkdir -p "$OCTOP_BIN"
 
 cat > "$OCTOP_BIN/octop" << 'WRAPPER'
 #!/usr/bin/env bash
-# Octop CLI 包装脚本 — 委托给 uv 管理的环境。
+# Octop CLI wrapper. Delegates to the uv-managed environment.
 set -euo pipefail
 
 OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
@@ -964,9 +966,10 @@ WRAPPER
 chmod +x "$OCTOP_BIN/octop"
 info "Wrapper script created: $OCTOP_BIN/octop"
 
-# ── 步骤 5: 让 octop 立即可用（无需 source）──────────────────────────────────
-# 子进程无法修改父 shell 的 PATH。要让 curl|bash / bash install.sh 后立刻可用，
-# 只能把可执行文件放进「当前 PATH 里已有」的目录（常见为 /usr/local/bin）。
+# ── Step 5: make octop available immediately (no source) ─────────────────────
+# A child process cannot change the parent shell's PATH. After curl|bash or
+# bash install.sh, the binary has to land in a directory already on PATH
+# (commonly /usr/local/bin) to work in the current terminal.
 
 _can_write_dir() {
     local dir="$1"
@@ -974,7 +977,7 @@ _can_write_dir() {
 }
 
 _try_symlink() {
-    # 在 target_dir 创建指向包装脚本的 octop 符号链接。成功返回 0。
+    # Symlink the wrapper to octop in target_dir. Return 0 on success.
     local target_dir="$1"
     local link_path="$target_dir/octop"
     local src="$OCTOP_BIN/octop"
@@ -1003,7 +1006,7 @@ _link_into_existing_path() {
     local candidates=()
     case "$OS" in
         Darwin)
-            # Apple Silicon Homebrew 优先，再退回传统 /usr/local/bin
+            # Prefer Apple Silicon Homebrew, then fall back to /usr/local/bin.
             candidates=(/opt/homebrew/bin /usr/local/bin)
             ;;
         *)
@@ -1019,14 +1022,15 @@ _link_into_existing_path() {
         fi
     done
 
-    # 回退：~/.local/bin（Ubuntu/Debian 的 ~/.profile 会在目录存在时加入 PATH；
-    # 若当前会话 PATH 尚无该目录，仍无法免 source，仅作持久化兜底）
+    # Fallback: ~/.local/bin. Ubuntu/Debian ~/.profile adds that directory to PATH
+    # once it exists. If this session's PATH does not include it yet, the current
+    # shell still needs the profile block below.
     if _try_symlink "$HOME/.local/bin"; then
         LINKED_PATH="$HOME/.local/bin/octop"
         if _path_contains "$HOME/.local/bin"; then
             return 0
         fi
-        # 目录刚创建、尚未在当前 PATH 中：本会话仍依赖下方 profile / 手动 PATH
+        # The directory was just created and is not on PATH yet. This session still needs the profile block below, or a manual PATH export.
         return 1
     fi
     return 1
@@ -1040,7 +1044,7 @@ elif [ -n "$LINKED_PATH" ]; then
     info "Linked to $LINKED_PATH"
 fi
 
-# ── 步骤 6: 更新 shell / 系统 profile（新开终端持久生效）─────────────────────
+# ── Step 6: update the shell profile so new terminals keep octop on PATH ─────────────────────
 PATH_ENTRY="export PATH=\"${OCTOP_BIN}:\$PATH\""
 
 add_to_profile() {
@@ -1049,7 +1053,7 @@ add_to_profile() {
     if [ -f "$profile" ] && grep -qF "$OCTOP_BIN" "$profile" 2>/dev/null; then
         return 0
     fi
-    # 兼容旧版标记（仅含 .octop/bin 字样）
+    # Also accept the older marker that only mentions .octop/bin.
     if [ -f "$profile" ] && grep -qF '.octop/bin' "$profile" 2>/dev/null; then
         return 0
     fi
@@ -1062,7 +1066,7 @@ add_to_profile() {
 }
 
 _write_profile_d() {
-    # CentOS / Ubuntu 登录 shell 会加载 /etc/profile.d/*.sh
+    # CentOS and Ubuntu login shells load /etc/profile.d/*.sh.
     local dest="/etc/profile.d/octop.sh"
     local content="# Octop CLI
 export PATH=\"${OCTOP_BIN}:\$PATH\"
@@ -1092,7 +1096,7 @@ case "$OS" in
         add_to_profile "$HOME/.bashrc" "no-create" || true
         ;;
     Linux)
-        # CentOS/RHEL：SSH 登录读 .bash_profile；Ubuntu：登录读 .profile，交互读 .bashrc
+        # CentOS/RHEL SSH logins read .bash_profile. Ubuntu logins read .profile; interactive shells read .bashrc.
         add_to_profile "$HOME/.bashrc" "create" && UPDATED_PROFILE=true
         add_to_profile "$HOME/.bash_profile" "no-create" || true
         add_to_profile "$HOME/.profile" "no-create" || true
@@ -1113,7 +1117,7 @@ if [ -f "$OCTOP_VENV/bin/python" ] && [ -d "$OCTOP_HOME" ]; then
   "$OCTOP_VENV/bin/python" -m octop.infra.control.mobile "$CONFIG_PATH" || true
 fi
 
-# ── 完成 ──────────────────────────────────────────────────────────────────────
+# ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 printf "${GREEN}${BOLD}Octop installed successfully!${RESET}\n"
 echo ""

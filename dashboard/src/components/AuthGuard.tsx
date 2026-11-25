@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Spin } from "antd";
 import { clearAuthToken, getAuthToken } from "../api/request";
 import { authApi, type OctopUser } from "../api/modules/auth";
 import { applyUserLocale } from "../utils/locale";
 import { isNetworkFetchError } from "../utils/networkError";
 import { CurrentUserProvider } from "../hooks/useCurrentUser";
+import { useTheme } from "../context/ThemeContext";
 import BootOfflinePanel from "./BootOfflinePanel";
+import BrandLoading from "./BrandLoading";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -42,6 +43,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const [checking, setChecking] = useState(true);
   const [authed, setAuthed] = useState(false);
   const [user, setUser] = useState<OctopUser | null>(null);
+  const { bindUser } = useTheme();
+  useEffect(() => {
+    bindUser(user?.id ?? null);
+    return () => bindUser(null);
+  }, [user?.id, bindUser]);
   const [offline, setOffline] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
 
@@ -127,19 +133,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   }
 
   if (checking || !authed) {
-    return (
-      <div
-        style={{
-          height: "100dvh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--fn-bg-layout)",
-        }}
-      >
-        <Spin size="large" />
-      </div>
-    );
+    return <BrandLoading viewport />;
   }
 
   return (

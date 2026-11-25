@@ -8,11 +8,13 @@ import { App, Button, Card, Switch, Tooltip } from "antd";
 
 import { Pencil, Trash2, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../../../api/request";
 import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
 import { isOllamaProviderRow, isOnnxProviderRow } from "../../presetUtils";
 import type { ProviderRow } from "../../useProviders";
+import { providerHasCredential } from "../../useProviders";
 import { ProviderConfigModal } from "../modals/ProviderConfigModal";
 import {
   getProviderLogo,
@@ -51,7 +53,7 @@ export function ProviderCard({
   const isOnnx = isOnnxProviderRow(provider);
   const isLocalRuntime = isOllama || isOnnx;
 
-  const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
+  const hasApiKey = providerHasCredential(provider);
   /** green = ready, blue = configured but off, gray = missing credentials */
   const statusTone: "active" | "configured" | "inactive" = !hasApiKey
     ? "inactive"
@@ -146,12 +148,14 @@ export function ProviderCard({
     }
   };
 
-  // Mask api_key for display: show first 4 + last 4, mask middle.
+  // Real keys are not returned. Placeholders (onnx / ollama) may still be present.
   const maskedKey = (() => {
-    if (!provider.api_key) return null;
-    const k = provider.api_key;
-    if (k.length <= 10) return "•".repeat(k.length);
-    return `${k.slice(0, 4)}${"•".repeat(6)}${k.slice(-4)}`;
+    if (provider.api_key) {
+      const k = provider.api_key;
+      if (k.length <= 10) return "•".repeat(k.length);
+      return `${k.slice(0, 4)}${"•".repeat(6)}${k.slice(-4)}`;
+    }
+    return provider.api_key_set ? "••••••••" : null;
   })();
 
   // Try lookup by name, lowercase name, then fall back to custom logo.
@@ -229,13 +233,12 @@ export function ProviderCard({
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={() => setModalOpen(true)}
-        className={
-          isHover
-            ? `${styles.providerCard} ${styles.hover}`
-            : statusReady
-            ? `${styles.providerCard} ${styles.enabled}`
-            : `${styles.providerCard} ${styles.normal}`
-        }
+        className={cx(
+          styles.providerCard,
+          isHover && styles.hover,
+          !isHover && statusReady && styles.enabled,
+          !isHover && !statusReady && styles.normal,
+        )}
         style={provider.enabled ? undefined : { opacity: 0.85 }}
       >
         <div className={styles.cardContent}>
@@ -252,22 +255,24 @@ export function ProviderCard({
             </span>
             <div className={styles.statusContainer}>
               <span
-                className={`${styles.statusDot} ${
+                className={cx(
+                  styles.statusDot,
                   statusTone === "active"
                     ? styles.active
                     : statusTone === "configured"
                     ? styles.configured
-                    : styles.inactive
-                }`}
+                    : styles.inactive,
+                )}
               />
               <span
-                className={`${styles.statusText} ${
+                className={cx(
+                  styles.statusText,
                   statusTone === "active"
                     ? styles.enabled
                     : statusTone === "configured"
                     ? styles.configured
-                    : styles.disabled
-                }`}
+                    : styles.disabled,
+                )}
               >
                 {statusLabel}
               </span>

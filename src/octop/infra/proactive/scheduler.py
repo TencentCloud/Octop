@@ -15,10 +15,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime, time, timedelta
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from octop.infra.gateway.threads import ThreadRegistry
 
 if TYPE_CHECKING:
     from octop.infra.db.repos.agents import AgentRepo
@@ -27,7 +29,8 @@ if TYPE_CHECKING:
         ProactiveCareConfig,
         ProactiveCareConfigRepo,
     )
-    from octop.infra.db.repos.sessions import SessionRepo
+    from octop.infra.db.repos.sessions import SessionRepo, SessionRow
+    from octop.infra.db.repos.thread_messages import ThreadMessageRepo
     from octop.infra.db.repos.threads import ThreadRepo
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.proactive.service import ProactiveCareService
@@ -44,6 +47,52 @@ _PUSH_ACTIVITY_SLACK = timedelta(minutes=5)
 _BUSY_RETRY = timedelta(minutes=15)
 # Smear only the "window just opened" wake so agents don't all fire on the minute.
 _OPEN_JITTER_MINUTES = 15
+_MAX_BACKOFF_HOURS = 168  # 7 days
+
+
+def select_care_target_session(sessions: Sequence[SessionRow]) -> SessionRow | None:
+    """Choose the best DM target session for proactive care.
+
+    Priority:
+    1. Most recently updated IM direct-message session (excludes MCP / CLI / group / peer / team).
+    2. Most recently updated Dashboard direct-message session.
+    Returns ``None`` when no eligible private session exists.
+    """
+    for session in sessions:
+        if (
+            ThreadRegistry.is_im_session(session)
+            and session.chat_type == ThreadRegistry.CHAT_TYPE_DM
+        ):
+            return session
+    for session in sessions:
+        if (
+            session.channel_type == ThreadRegistry.CHANNEL_DASHBOARD
+            and session.chat_type == ThreadRegistry.CHAT_TYPE_DM
+        ):
+            return session
+    return None
+
+
+def backoff_interval_hours(
+    min_interval_hours: int,
+    max_interval_hours: int,
+    unanswered_streak: int,
+) -> tuple[int, int]:
+    """Scale the random push interval when consecutive care pushes went unanswered.
+
+    - 0 or 1 unanswered push: normal interval (1x)
+    - 2 unanswered pushes: 2x
+    - 3+ unanswered pushes: 4x (capped at ``_MAX_BACKOFF_HOURS``)
+    """
+    if unanswered_streak < 2:
+        return min_interval_hours, max_interval_hours
+    multiplier = 2 if unanswered_streak == 2 else 4
+    cap = max(_MAX_BACKOFF_HOURS, max_interval_hours)
+    scaled_min = min(min_interval_hours * multiplier, cap)
+    scaled_max = min(max_interval_hours * multiplier, cap)
+    if scaled_min > scaled_max:
+        scaled_min = scaled_max
+    return scaled_min, scaled_max
 
 
 def _parse_hhmm(hhmm: str) -> time:
@@ -286,8 +335,10 @@ class ProactiveCareScheduler:
         agent_repo: AgentRepo | None = None,
         user_repo: UserRepo | None = None,
         thread_repo: ThreadRepo | None = None,
+        thread_message_repo: ThreadMessageRepo | None = None,
         care_push_repo: CarePushRepo | None = None,
         is_agent_busy: Callable[[str], bool] | None = None,
+        has_pending_hitl: Callable[[str], bool] | None = None,
         default_timezone: str = _UTC_TZ_NAME,
     ) -> None:
         self._care_service = care_service
@@ -296,8 +347,10 @@ class ProactiveCareScheduler:
         self._agent_repo = agent_repo
         self._user_repo = user_repo
         self._thread_repo = thread_repo
+        self._thread_message_repo = thread_message_repo
         self._care_push_repo = care_push_repo
         self._is_agent_busy = is_agent_busy
+        self._has_pending_hitl = has_pending_hitl
         self._default_timezone = default_timezone
         # agent_id -> asyncio.Task
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -310,6 +363,7 @@ class ProactiveCareScheduler:
         session_repo: SessionRepo,
         care_push_repo: CarePushRepo,
         thread_repo: ThreadRepo | None = None,
+        thread_message_repo: ThreadMessageRepo | None = None,
     ) -> None:
         """Point scheduler/care persistence at a rebound control-plane pool."""
         self._config_repo = config_repo
@@ -317,7 +371,12 @@ class ProactiveCareScheduler:
         self._care_push_repo = care_push_repo
         if thread_repo is not None:
             self._thread_repo = thread_repo
-        self._care_service.replace_care_push_repo(care_push_repo)
+        if thread_message_repo is not None:
+            self._thread_message_repo = thread_message_repo
+        self._care_service.replace_care_push_repo(
+            care_push_repo,
+            thread_message_repo=thread_message_repo,
+        )
 
     async def start_all(self) -> None:
         """At system startup, register random scheduling tasks for all agents with enabled=true.
@@ -333,11 +392,21 @@ class ProactiveCareScheduler:
         """Stop creating new loops. Tests call this so leftover sleeps do not hang pytest."""
         self._suspended = True
 
+    def _agent_kind(self, agent_id: str) -> str | None:
+        repo = self._agent_repo
+        if repo is None:
+            return None
+        row = repo.get(agent_id)
+        kind = getattr(row, "kind", None) if row is not None else None
+        return kind if isinstance(kind, str) else None
+
     def ensure_scheduled(self, agent_id: str) -> None:
         """Start the loop if this agent is enabled and not already scheduled."""
         if self._suspended:
             return
         if agent_id in self._tasks:
+            return
+        if self._agent_kind(agent_id) == "managed":
             return
         cfg = self._config_repo.get(agent_id)
         if cfg.enabled:
@@ -438,12 +507,27 @@ class ProactiveCareScheduler:
             timezone_name = self._resolve_tz_for_agent(agent_id)
 
             if hold_until is None:
+                unanswered = self._consecutive_unanswered(agent_id)
+                eff_min, eff_max = backoff_interval_hours(
+                    cfg.min_interval_hours,
+                    cfg.max_interval_hours,
+                    unanswered,
+                )
+                if eff_min != cfg.min_interval_hours or eff_max != cfg.max_interval_hours:
+                    logger.info(
+                        "ProactiveCareScheduler: agent=%s applying reply backoff "
+                        "(unanswered=%d, interval=%d-%dh)",
+                        agent_id,
+                        unanswered,
+                        eff_min,
+                        eff_max,
+                    )
                 hold_until = compute_next_trigger(
                     now=now,
                     active_hours_start=cfg.active_hours_start,
                     active_hours_end=cfg.active_hours_end,
-                    min_interval_hours=cfg.min_interval_hours,
-                    max_interval_hours=cfg.max_interval_hours,
+                    min_interval_hours=eff_min,
+                    max_interval_hours=eff_max,
                     timezone_name=timezone_name,
                 )
                 wait_seconds = (hold_until - now).total_seconds()
@@ -494,20 +578,15 @@ class ProactiveCareScheduler:
                 )
                 continue
 
-            sessions = self._session_repo.list_by_agent(agent_id, limit=10)
-            if not sessions:
+            sessions = self._session_repo.list_by_agent(agent_id, limit=50)
+            target_session = select_care_target_session(sessions)
+            if target_session is None:
                 logger.info(
-                    "ProactiveCareScheduler: agent=%s has no active session, skipping this push",
+                    "ProactiveCareScheduler: agent=%s has no eligible DM session, skipping this push",
                     agent_id,
                 )
                 hold_until = None
                 continue
-
-            # Prefer an IM session (non-empty channel_id), otherwise the most recently active one.
-            target_session = next(
-                (s for s in sessions if s.channel_id),
-                sessions[0],
-            )
 
             def can_send(
                 bound_cfg: ProactiveCareConfig = cfg,
@@ -537,14 +616,18 @@ class ProactiveCareScheduler:
         timezone_name: str,
         now: datetime,
     ) -> TimingDecision:
+        last_active_at, exact_human = self._latest_activity(agent_id)
+        # Real human message timestamps from thread_messages never include our
+        # own care push or cron turns, so omit the legacy push-slack heuristic.
+        last_push_at = None if exact_human else self._latest_push(agent_id)
         return decide_send_timing(
             now=now,
             active_hours_start=cfg.active_hours_start,
             active_hours_end=cfg.active_hours_end,
             timezone_name=timezone_name,
-            last_active_at=self._latest_activity(agent_id),
-            last_push_at=self._latest_push(agent_id),
-            agent_busy=self._agent_is_busy(agent_id),
+            last_active_at=last_active_at,
+            last_push_at=last_push_at,
+            agent_busy=self._agent_is_busy(agent_id) or self._agent_has_pending_hitl(agent_id),
         )
 
     def _moment_is_good(
@@ -555,18 +638,42 @@ class ProactiveCareScheduler:
     ) -> bool:
         return self._timing_decision(agent_id, cfg, timezone_name, datetime.now(UTC)).send
 
-    def _latest_activity(self, agent_id: str) -> int | None:
+    def _latest_activity(self, agent_id: str) -> tuple[int | None, bool]:
+        if self._thread_message_repo is not None:
+            try:
+                human_ts = self._thread_message_repo.latest_human_activity(agent_id)
+                if human_ts is not None:
+                    return human_ts, True
+            except Exception:
+                logger.warning(
+                    "ProactiveCareScheduler: agent=%s failed to read human activity",
+                    agent_id,
+                    exc_info=True,
+                )
         if self._thread_repo is None:
-            return None
+            return None, False
         try:
-            return self._thread_repo.latest_user_activity(agent_id)
+            return self._thread_repo.latest_user_activity(agent_id), False
         except Exception:
             logger.warning(
                 "ProactiveCareScheduler: agent=%s failed to read last activity",
                 agent_id,
                 exc_info=True,
             )
-            return None
+            return None, False
+
+    def _consecutive_unanswered(self, agent_id: str) -> int:
+        if self._care_push_repo is None:
+            return 0
+        try:
+            return self._care_push_repo.count_consecutive_unanswered(agent_id)
+        except Exception:
+            logger.warning(
+                "ProactiveCareScheduler: agent=%s failed to read unanswered care streak",
+                agent_id,
+                exc_info=True,
+            )
+            return 0
 
     def _latest_push(self, agent_id: str) -> int | None:
         if self._care_push_repo is None:
@@ -589,6 +696,19 @@ class ProactiveCareScheduler:
         except Exception:
             logger.warning(
                 "ProactiveCareScheduler: agent=%s failed to read busy state",
+                agent_id,
+                exc_info=True,
+            )
+            return False
+
+    def _agent_has_pending_hitl(self, agent_id: str) -> bool:
+        if self._has_pending_hitl is None:
+            return False
+        try:
+            return self._has_pending_hitl(agent_id) is True
+        except Exception:
+            logger.warning(
+                "ProactiveCareScheduler: agent=%s failed to read pending HITL state",
                 agent_id,
                 exc_info=True,
             )

@@ -1,4 +1,14 @@
+import {
+  ApiResponseError,
+  readErrorBody,
+  responseError,
+} from "./responseError";
 import { getApiUrl } from "./config";
+import {
+  isLocalDesktopUser,
+  registerDeviceSession,
+  renewDesktopSession,
+} from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
@@ -110,6 +120,16 @@ export function applyRenewedAccessToken(response: Response): void {
 
 let _redirectingToSetup = false;
 
+/** Login, setup, invites, and read-only share links stay outside the app shell. */
+function isGuestShellPath(path: string): boolean {
+  return (
+    path.startsWith("/setup") ||
+    path.startsWith("/login") ||
+    path.startsWith("/invite") ||
+    /(?:^|\/)share\/[^/]+/.test(path)
+  );
+}
+
 /**
  * Hard-redirect once when the backend reports the wizard isn't done.
  * The flag prevents N parallel API calls from each issuing a navigate.
@@ -119,12 +139,7 @@ function handleSetupRequired(): void {
   if (_redirectingToSetup) return;
   // Already on a public bootstrap route — a 503 from a background prefetch
   // must not reload the page or we loop forever.
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  ) {
+  if (isGuestShellPath(window.location.pathname)) {
     return;
   }
   _redirectingToSetup = true;
@@ -163,7 +178,7 @@ async function check503ForSetupRequired(
   if (response.status !== 503) return false;
   let body: unknown = null;
   try {
-    body = await response.clone().json();
+    body = await readErrorBody(response);
   } catch {
     /* not JSON — fall through to the standard error path. */
     return false;
@@ -303,7 +318,11 @@ function buildAuthHeaders(path: string): Record<string, string> {
 let _redirectingToLogin = false;
 
 /** 401 codes that mean this Octop session is no longer valid. */
-const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+const SESSION_UNAUTHORIZED_CODES = new Set([
+  "AUTH_FAILED",
+  "MISSING_CREDENTIALS",
+  "TOKEN_EXPIRED",
+]);
 
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
@@ -311,13 +330,7 @@ const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
  */
 function handleUnauthorized(): void {
   if (_redirectingToLogin) return;
-  const path = window.location.pathname;
-  if (
-    path.startsWith("/setup") ||
-    path.startsWith("/login") ||
-    path.startsWith("/invite")
-  )
-    return;
+  if (isGuestShellPath(window.location.pathname)) return;
   _redirectingToLogin = true;
 
   const takenOver = !window.dispatchEvent(
@@ -366,7 +379,7 @@ async function throwIfUnauthorized(
   let message = "Unauthorized";
   if (path.startsWith("/setup/")) {
     try {
-      const body = (await response.clone().json()) as {
+      const body = (await readErrorBody(response)) as {
         error?: { message?: string };
       };
       if (body?.error?.message) {
@@ -379,6 +392,43 @@ async function throwIfUnauthorized(
   throw new Error(message);
 }
 
+/**
+ * Retry a 401 once with a JWT minted by the desktop shell.
+ *
+ * A desktop user has no password to type, so an expired session used to be a
+ * dead end. The shell holds a device credential and can issue a new token; on
+ * the web this returns null immediately and the caller falls through to the
+ * ordinary login redirect.
+ */
+async function retryWithDesktopSession(
+  path: string,
+  url: string,
+  options: RequestInit,
+  response: Response,
+): Promise<Response | null> {
+  if (response.status !== 401) return null;
+  // A rejected login is a credential problem, not an expired session.
+  if (path.startsWith("/auth/login") || path.startsWith("/auth/device/")) {
+    return null;
+  }
+  // Business 401s (peer login, setup guards) would only be retried in vain.
+  const code = await errorCodeOf(response);
+  if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
+  const current = getAuthToken();
+  // A password account's expired token must land on the login page. Only the
+  // desktop local user is renewed in place.
+  if (current && !isLocalDesktopUser(current)) return null;
+  const issued = await renewDesktopSession();
+  if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
+    return null;
+  }
+  setAuthToken(issued.access_token, !isSessionOnlyAuth());
+  return fetch(url, {
+    ...options,
+    headers: buildHeaders(path, options.headers),
+  });
+}
+
 export async function request<T = unknown>(
   path: string,
   options: RequestInit = {},
@@ -389,10 +439,13 @@ export async function request<T = unknown>(
 
   const headers = buildHeaders(path, options.headers);
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   });
+
+  const retried = await retryWithDesktopSession(path, url, options, response);
+  if (retried) response = retried;
 
   if (await check503ForSetupRequired(path, response)) {
     throw new SetupRequiredError();
@@ -400,6 +453,9 @@ export async function request<T = unknown>(
 
   await throwIfUnauthorized(path, response);
   applyRenewedAccessToken(response);
+  // Desktop: bind the shell's device credential the first chance we get, so the
+  // next cold start can renew instead of landing on /login.
+  if (response.ok) void registerDeviceSession(getAuthToken());
 
   if (!response.ok) {
     if (response.status === 403 && isAgentScopedPath(path)) {
@@ -407,12 +463,7 @@ export async function request<T = unknown>(
         new CustomEvent(FORBIDDEN_EVENT, { detail: { path } }),
       );
     }
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   if (response.status === 204) {
@@ -456,12 +507,7 @@ export async function requestBlob(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   const total = Number(response.headers.get("content-length")) || 0;
@@ -509,12 +555,7 @@ export async function probeAuthResource(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   try {
@@ -549,12 +590,7 @@ export async function requestStream(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   if (!response.body) {
@@ -626,11 +662,29 @@ export async function requestUpload<T = unknown>(
       );
     }
 
+    xhr.onprogress = (event) => {
+      if (xhr.status >= 400 && event.loaded > 16 * 1024) {
+        const requestId =
+          xhr.getResponseHeader("x-request-id") ??
+          xhr.getResponseHeader("x-octop-request-id");
+        reject(new ApiResponseError(xhr.status, null, requestId));
+        xhr.abort();
+      }
+    };
+
     xhr.onload = () => {
       void (async () => {
         const status = xhr.status;
         const responseText = xhr.responseText;
         const responseHeaders = new Headers();
+        for (const key of [
+          "content-type",
+          "x-request-id",
+          "x-octop-request-id",
+        ]) {
+          const value = xhr.getResponseHeader(key);
+          if (value) responseHeaders.set(key, value);
+        }
         const renewed = xhr.getResponseHeader(ACCESS_TOKEN_RESPONSE_HEADER);
         if (renewed) {
           responseHeaders.set(ACCESS_TOKEN_RESPONSE_HEADER, renewed);
@@ -655,14 +709,7 @@ export async function requestUpload<T = unknown>(
         applyRenewedAccessToken(response);
 
         if (!response.ok) {
-          // Same shape as request() so parseApiError() can read the error envelope.
-          reject(
-            new Error(
-              `Upload failed: ${status}${
-                responseText ? ` - ${responseText}` : ""
-              }`,
-            ),
-          );
+          reject(await responseError(response));
           return;
         }
 

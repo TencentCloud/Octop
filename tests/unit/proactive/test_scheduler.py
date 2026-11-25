@@ -26,9 +26,11 @@ from octop.infra.db.repos.proactive_care_config import ProactiveCareConfig, Proa
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.proactive.scheduler import (
     ProactiveCareScheduler,
+    backoff_interval_hours,
     compute_next_trigger,
     decide_send_timing,
     is_in_active_hours,
+    select_care_target_session,
 )
 from octop.infra.utils.ulid import new_ulid
 
@@ -558,6 +560,26 @@ async def test_scheduler_start_all_includes_default_on_agent(
 
 
 @pytest.mark.asyncio
+async def test_scheduler_skips_managed_agents(
+    db: SqlitePool,
+    config_repo: ProactiveCareConfigRepo,
+) -> None:
+    from octop.infra.db.repos.sessions import SessionRepo
+
+    uid = UserRepo(db).create(username="bob", password_hash="h", role="admin")
+    managed_id = new_ulid()
+    AgentRepo(db).create(agent_id=managed_id, user_id=uid, name="coder", kind="managed")
+    scheduler = ProactiveCareScheduler(
+        care_service=AsyncMock(),
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+        agent_repo=AgentRepo(db),
+    )
+    scheduler.ensure_scheduled(managed_id)
+    assert managed_id not in scheduler._tasks
+
+
+@pytest.mark.asyncio
 async def test_shutdown_cancels_long_sleep_quickly(
     agent_id: str,
     config_repo: ProactiveCareConfigRepo,
@@ -594,3 +616,187 @@ async def test_suspend_skips_new_schedules(
     scheduler.ensure_scheduled(agent_id)
     await scheduler.start_all()
     assert scheduler._tasks == {}
+
+
+# ---------------------------------------------------------------------------
+# Target session filtering, backoff, human-only idle, and HITL deferral tests
+# ---------------------------------------------------------------------------
+
+
+def _make_session_row(
+    *,
+    session_key: str,
+    channel_type: str,
+    chat_type: str = "dm",
+    channel_id: str | None = None,
+    thread_id: str = "thr_1",
+):
+    from octop.infra.db.repos.sessions import SessionRow
+
+    return SessionRow(
+        id=1,
+        session_key=session_key,
+        agent_id="a1",
+        user_id=1,
+        channel_type=channel_type,
+        chat_type=chat_type,
+        thread_id=thread_id,
+        updated_at=100,
+        channel_subject_id="u1",
+        channel_chat_type=chat_type,
+        channel_id=channel_id,
+    )
+
+
+def test_select_care_target_skips_mcp_group_peer_and_cli() -> None:
+    mcp = _make_session_row(
+        session_key="a1:mcp:1:call-1",
+        channel_type="mcp",
+        chat_type="call-1",
+        channel_id="octop-agent-mcp",
+    )
+    qq_group = _make_session_row(
+        session_key="a1:qq:g1:group",
+        channel_type="qq",
+        chat_type="group",
+        channel_id="ch_qq",
+    )
+    peer = _make_session_row(
+        session_key="a1:dashboard:1:peer:room1",
+        channel_type="dashboard",
+        chat_type="peer:room1",
+    )
+    cli = _make_session_row(
+        session_key="a1:cli:1:dm",
+        channel_type="cli",
+        chat_type="dm",
+    )
+    dash = _make_session_row(
+        session_key="a1:dashboard:1:dm",
+        channel_type="dashboard",
+        chat_type="dm",
+    )
+    im_dm = _make_session_row(
+        session_key="a1:weixin:wx1:dm",
+        channel_type="weixin",
+        chat_type="dm",
+        channel_id="ch_wx",
+    )
+
+    assert select_care_target_session([mcp, qq_group, peer, cli]) is None
+    assert select_care_target_session([mcp, qq_group, peer, dash]) is dash
+    assert select_care_target_session([mcp, qq_group, dash, im_dm]) is im_dm
+
+
+def test_backoff_interval_hours_scales_with_unanswered_streak() -> None:
+    assert backoff_interval_hours(5, 24, 0) == (5, 24)
+    assert backoff_interval_hours(5, 24, 1) == (5, 24)
+    assert backoff_interval_hours(5, 24, 2) == (10, 48)
+    assert backoff_interval_hours(5, 24, 3) == (20, 96)
+    assert backoff_interval_hours(60, 100, 4) == (168, 168)
+
+
+def test_timing_uses_real_human_activity_and_ignores_cron_and_slack_bug(
+    db: SqlitePool,
+    agent_id: str,
+    config_repo: ProactiveCareConfigRepo,
+) -> None:
+    """A human reply 1 minute after a care push must still restart the 4h idle clock."""
+    from octop.infra.db.repos.care_push import CarePushRepo
+    from octop.infra.db.repos.sessions import SessionRepo
+    from octop.infra.db.repos.thread_messages import ThreadMessageInput, ThreadMessageRepo
+    from octop.infra.db.repos.threads import ThreadRepo
+
+    now = datetime(2026, 7, 1, 15, 0, tzinfo=UTC)
+    now_s = _unix(now)
+    thread_repo = ThreadRepo(db)
+    msg_repo = ThreadMessageRepo(db)
+    care_repo = CarePushRepo(db)
+
+    thread_repo.insert(
+        thread_id="thr_idle",
+        agent_id=agent_id,
+        user_id=1,
+        channel_type="dashboard",
+        session_key=f"{agent_id}:dashboard:1:dm",
+        last_active=now_s - 60,
+    )
+    # Old real human message (6h ago), plus a recent synthetic cron prompt (10m ago),
+    # plus a recent care AI message (5m ago) -> user is STILL idle!
+    msg_repo.append_if_ready(
+        "thr_idle",
+        [
+            ThreadMessageInput(
+                message_id="u_old",
+                role="human",
+                message_json='{"type":"human","data":{"content":"old"}}',
+                created_at=now_s - 6 * 3600,
+            ),
+            ThreadMessageInput(
+                message_id="cron:01abc:human",
+                role="human",
+                message_json='{"type":"human","data":{"content":"cron"}}',
+                created_at=now_s - 600,
+            ),
+            ThreadMessageInput(
+                message_id="care:01abc:assistant",
+                role="ai",
+                message_json='{"type":"ai","data":{"content":"care"}}',
+                created_at=now_s - 300,
+            ),
+        ],
+    )
+    care_repo.insert(
+        agent_id=agent_id,
+        session_key=f"{agent_id}:dashboard:1:dm",
+        episode_ids=["ep1"],
+        pushed_at=now_s - 300,
+        thread_id="thr_idle",
+        message_id="care:01abc:assistant",
+    )
+
+    scheduler = ProactiveCareScheduler(
+        care_service=AsyncMock(),
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+        thread_repo=thread_repo,
+        thread_message_repo=msg_repo,
+        care_push_repo=care_repo,
+    )
+    cfg = config_repo.get(agent_id)
+    assert scheduler._timing_decision(agent_id, cfg, "UTC", now).send is True
+
+    # Now user replies 60s after the care push (within the old 5-minute slack window!).
+    msg_repo.append_if_ready(
+        "thr_idle",
+        [
+            ThreadMessageInput(
+                message_id="u_quick_reply",
+                role="human",
+                message_json='{"type":"human","data":{"content":"thanks!"}}',
+                created_at=now_s - 240,
+            ),
+        ],
+    )
+    decision = scheduler._timing_decision(agent_id, cfg, "UTC", now)
+    assert decision.send is False
+    assert decision.retry_at == datetime.fromtimestamp(now_s - 240, tz=UTC) + timedelta(hours=4)
+
+
+def test_timing_defers_when_agent_has_pending_hitl(
+    db: SqlitePool,
+    agent_id: str,
+    config_repo: ProactiveCareConfigRepo,
+) -> None:
+    from octop.infra.db.repos.sessions import SessionRepo
+
+    now = datetime(2026, 7, 1, 15, 0, tzinfo=UTC)
+    scheduler = ProactiveCareScheduler(
+        care_service=AsyncMock(),
+        config_repo=config_repo,
+        session_repo=SessionRepo(db),
+        has_pending_hitl=lambda aid: aid == agent_id,
+    )
+    decision = scheduler._timing_decision(agent_id, config_repo.get(agent_id), "UTC", now)
+    assert decision.send is False
+    assert decision.retry_at == now + timedelta(minutes=15)
