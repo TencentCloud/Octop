@@ -15,7 +15,7 @@ import type {
   ProviderPreset,
   ProviderRow,
 } from "../../useProviders";
-import { isEmbeddingModel } from "../../useProviders";
+import { isEmbeddingModel, isRerankModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import {
@@ -113,7 +113,9 @@ export function PresetProviderModal({
         if (meta.reasoning) entry.reasoning = true;
         if (ctx) entry.context_window = ctx;
         if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
-        if (embeddingLane || m.embedding || m.task === "embedding") {
+        if (isRerankModel(m)) {
+          entry.task = "rerank";
+        } else if (isEmbeddingModel(m, embeddingLane)) {
           entry.embedding = true;
           entry.task = "embedding";
         }
@@ -172,12 +174,9 @@ export function PresetProviderModal({
         );
         return;
       }
-      const fetched = (result.models ?? []).filter((m) => {
-        if (!embeddingLane) return true;
-        const id = m.id.toLowerCase();
-        if (id.includes("rerank")) return false;
-        return /embed|bge-|e5-|gte-/.test(id);
-      });
+      const fetched = (result.models ?? []).filter(
+        (m) => !embeddingLane || isEmbeddingModel(m),
+      );
       if (fetched.length === 0) {
         message.info(
           embeddingLane
@@ -303,13 +302,6 @@ export function PresetProviderModal({
       }
       setSaving(true);
 
-      const models = embeddingLane
-        ? draftModels.map((m) => ({
-            ...m,
-            embedding: true,
-            task: "embedding",
-          }))
-        : draftModels;
       await request<ProviderRow>("/admin/providers", {
         method: "POST",
         body: JSON.stringify({
@@ -317,7 +309,7 @@ export function PresetProviderModal({
           kind: preset.protocol,
           base_url: values.base_url?.trim() || null,
           api_key: values.api_key?.trim() || null,
-          models,
+          models: draftModels,
           purpose: embeddingLane ? "embedding" : "chat",
           ...(isMagpie ? { extra_json: magpieIntegrationExtra() } : {}),
           ...(preset.protocol === "openai" && !embeddingLane

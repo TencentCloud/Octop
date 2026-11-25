@@ -28,7 +28,7 @@ import PageShell from "../../../layouts/PageShell";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { useProviders, type ProviderRow } from "./useProviders";
-import { isEmbeddingProvider } from "./useProviders";
+import { isEmbeddingProvider, providerHasCredential } from "./useProviders";
 import {
   groupPresets,
   isLocalPreset,
@@ -380,13 +380,13 @@ export default function ModelsPage() {
         <SearchSettingsPanel />
       ) : modelCategory === "decision" ? (
         <DecisionSettingsPanel
-          openRouterKey={
+          openRouterProviderId={
             providers.find(
               (provider) =>
-                provider.api_key &&
+                providerHasCredential(provider) &&
                 (provider.name === "openrouter" ||
                   (provider.base_url ?? "").includes("openrouter.ai")),
-            )?.api_key
+            )?.id
           }
         />
       ) : modelCategory === "embedding" ? (

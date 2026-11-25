@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
+import sys
+from pathlib import Path
 from typing import Any
 
 from octop_harness.acp.models import ACPConfig, default_acp_runners
@@ -13,8 +16,30 @@ from octop.infra.db.repos.settings import SettingsRepo
 
 logger = logging.getLogger(__name__)
 
+
+def host_runner_argv(command: str, args: list[str], env: dict[str, str]) -> tuple[str, list[str]]:
+    """Launch Windows npm's npx entry point directly with Node and no command shell."""
+    if sys.platform != "win32" or Path(command).name.lower() not in {"npx", "npx.cmd"}:
+        return command, args
+    shim = shutil.which(command, path=env.get("PATH"))
+    if shim and Path(shim).suffix.lower() == ".cmd":
+        root = Path(shim).parent
+        script = root / "node_modules" / "npm" / "bin" / "npx-cli.js"
+        node = shutil.which("node", path=env.get("PATH"))
+        if node and script.is_file():
+            return node, [str(script), *args]
+    return command, args
+
+
+def runtime_acp_config(runners: dict[str, Any]) -> ACPConfig:
+    config = ACPConfig.from_dict({"runners": runners})
+    for runner in config.runners.values():
+        if runner.enabled:
+            runner.command, runner.args = host_runner_argv(runner.command, runner.args, runner.env)
+    return config
+
+
 _SETTINGS_PREFIX = "acp_runners:user:"
-_HIDDEN_RUNNERS = frozenset({"qwen_code"})
 # Until octop-harness ships these builtins, merge Octop-side defaults.
 _OCTOP_BUILTIN_RUNNERS: dict[str, dict[str, Any]] = {
     "kimi_code": {
@@ -72,8 +97,7 @@ class ACPSettingsStore:
         return _runners_response({})
 
     def save_runners(self, user_id: int, runners: dict[str, Any]) -> dict[str, Any]:
-        filtered = {k: v for k, v in runners.items() if k not in _HIDDEN_RUNNERS}
-        self._save_raw_runners(user_id, filtered)
+        self._save_raw_runners(user_id, runners)
         return self.load_runners(user_id)
 
     def _save_raw_runners(self, user_id: int, runners: dict[str, Any]) -> None:
@@ -127,11 +151,7 @@ def _runners_response(raw_runners: dict[str, Any]) -> dict[str, Any]:
         if name not in harness_names and name not in merged_raw:
             merged_raw[name] = spec
     merged = ACPConfig.from_dict({"runners": merged_raw})
-    return {
-        name: runner.to_dict()
-        for name, runner in merged.runners.items()
-        if name not in _HIDDEN_RUNNERS
-    }
+    return {name: runner.to_dict() for name, runner in merged.runners.items()}
 
 
 def _parse_config_json(raw: str | None) -> dict[str, Any]:

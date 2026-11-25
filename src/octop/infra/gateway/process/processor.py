@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal, NamedTuple
@@ -187,6 +188,7 @@ class GlobalProcessor:
         dispatcher: SlashDispatcher,
         usage_repo: Any | None = None,
         thread_message_repo: Any | None = None,
+        care_push_repo: Any | None = None,
         gateway: Any | None = None,
         hitl: HitlChannelCoordinator | None = None,
         trajectory_service: Any | None = None,
@@ -209,6 +211,7 @@ class GlobalProcessor:
         self._dispatcher = dispatcher
         self._usage_repo = usage_repo
         self._thread_message_repo = thread_message_repo
+        self._care_push_repo = care_push_repo
         self._gateway = gateway
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
@@ -237,6 +240,47 @@ class GlobalProcessor:
         """Rebind projection writes after a control-plane restore."""
         self._thread_message_repo = repo
         self.teams.replace_thread_message_repo(repo)
+
+    def replace_care_push_repo(self, repo: Any) -> None:
+        """Rebind proactive care reply tracking after a control-plane restore."""
+        self._care_push_repo = repo
+
+    def _mark_care_replied(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        history_tracker: TurnHistoryTracker,
+    ) -> None:
+        if self._care_push_repo is None:
+            return
+        reply_msg_id: str | None = None
+        for seed in history_tracker.seed_messages:
+            mid = seed.get("id") if isinstance(seed, dict) else getattr(seed, "id", None)
+            if isinstance(mid, str) and mid.strip():
+                reply_msg_id = mid.strip()
+                break
+        try:
+            updated = self._care_push_repo.mark_replied_for_thread(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                reply_message_id=reply_msg_id,
+            )
+            if updated:
+                logger.info(
+                    "ProactiveCare: marked %d record(s) replied agent=%s thread=%s reply_msg=%s",
+                    updated,
+                    agent_id,
+                    thread_id,
+                    reply_msg_id,
+                )
+        except Exception:
+            logger.warning(
+                "ProactiveCare: failed to mark reply agent=%s thread=%s",
+                agent_id,
+                thread_id,
+                exc_info=True,
+            )
 
     def _agent_trajectory_enabled(self, agent_id: str, row: Any | None = None) -> bool:
         if self._trajectory_service is None:
@@ -937,7 +981,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker, agent_id)
                 yield MessageEvent.completed()
                 return
 
@@ -1081,6 +1125,11 @@ class GlobalProcessor:
         failure_saved = False
         usage_tracker = UsageTracker()
         history_tracker = TurnHistoryTracker.from_request(request)
+        self._mark_care_replied(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            history_tracker=history_tracker,
+        )
         projection_state = StreamProjectionState()
         try:
             turn_stream = project_stream(
@@ -1135,7 +1184,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                await self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker, agent_id)
                 hint = self._plan_ready_hint(thread_id, locale)
                 if hint:
                     yield MessageEvent(
@@ -1282,7 +1331,7 @@ class GlobalProcessor:
                             thread_id=ask_record.thread_id,
                             usage=usage_tracker.usage,
                         )
-                    await self._record_turn_history(ask_record.thread_id, history_tracker)
+                    await self._record_turn_history(ask_record.thread_id, history_tracker, agent_id)
                 yield _maybe_stamp_team_host(
                     self._done_chunk(ask_record.thread_id),
                     agent_id,
@@ -1388,6 +1437,11 @@ class GlobalProcessor:
             meta=meta,
         )
         history_tracker = TurnHistoryTracker.from_request(request)
+        self._mark_care_replied(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            history_tracker=history_tracker,
+        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1525,7 +1579,7 @@ class GlobalProcessor:
                 thread_id=thread_id,
                 usage=usage_tracker.usage,
             )
-            await self._record_turn_history(thread_id, history_tracker)
+            await self._record_turn_history(thread_id, history_tracker, agent_id)
         yield _maybe_stamp_team_host(
             self._done_chunk(
                 thread_id,
@@ -1620,7 +1674,7 @@ class GlobalProcessor:
                     thread_id=thread_id,
                     usage=usage_tracker.usage,
                 )
-                await self._record_turn_history(thread_id, history_tracker)
+                await self._record_turn_history(thread_id, history_tracker, agent_id)
 
     async def _build_dashboard_request(
         self,
@@ -1751,7 +1805,7 @@ class GlobalProcessor:
         if "skills" in meta:
             request["skills"] = meta["skills"]
         self._apply_turn_hitl_policy(thread_id, meta)
-        return self._stamp_turn_conversation_mode(
+        request = self._stamp_turn_conversation_mode(
             request,
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1760,6 +1814,24 @@ class GlobalProcessor:
             mcp_servers=mcp_servers,
             locale=locale,
         )
+        from octop.infra.bridge.local_workspace import stamp_bridge_file_target
+
+        agent = None
+        raw_target = (meta or {}).get("bridge_file_target")
+        if isinstance(raw_target, dict):
+            try:
+                agent = self._agent_manager.get_agent(agent_id)
+            except Exception:
+                agent = None
+        stamp_bridge_file_target(
+            request,
+            meta,
+            locale=locale,
+            thread_id=thread_id,
+            agent=agent,
+            member_agent_id=agent_id,
+        )
+        return request
 
     def _apply_turn_hitl_policy(self, thread_id: str, meta: dict[str, Any] | None) -> None:
         raw = (meta or {}).get("hitl_policy")
@@ -1999,6 +2071,29 @@ class GlobalProcessor:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
         _M.inc("stream_errors_total")
+        # A failed turn has no assistant message to key checkpoints by; drop
+        # its undrained captures so they never merge into the next turn's
+        # window (the files stay changed on disk, visible in the git panel).
+        if agent_id and thread_id:
+            try:
+                agent = self._agent_manager.get_agent(agent_id)
+                discard = getattr(agent, "discard_file_changes", None)
+                if callable(discard):
+                    self._call_capture_api(discard, thread_id)
+                else:
+                    logger.warning(
+                        "harness has no discard_file_changes; a failed turn's "
+                        "captures may merge into the next turn (agent=%s thread=%s)",
+                        agent_id,
+                        thread_id,
+                    )
+            except Exception:  # noqa: BLE001 - best-effort, never mask the error
+                logger.warning(
+                    "failed to discard file checkpoints for agent=%s thread=%s",
+                    agent_id,
+                    thread_id,
+                    exc_info=True,
+                )
         log_turn_failure(
             "stream",
             detail=str(exc),
@@ -2165,7 +2260,17 @@ class GlobalProcessor:
         self._touch_thread_after_turn(thread_id, title_source)
         await self._record_turn_history(thread_id, tracker)
 
-    async def _record_turn_history(self, thread_id: str, tracker: TurnHistoryTracker) -> None:
+    async def _record_turn_history(
+        self,
+        thread_id: str,
+        tracker: TurnHistoryTracker,
+        agent_id: str | None = None,
+    ) -> None:
+        if agent_id is None:
+            row = self._thread_registry.get_thread(thread_id)
+            agent_id = getattr(row, "agent_id", None)
+        if agent_id:
+            await self._record_file_checkpoints(agent_id, thread_id, tracker)
         if self._thread_message_repo is None:
             return
         try:
@@ -2175,6 +2280,79 @@ class GlobalProcessor:
             # successful model response into a failed chat turn.
             logger.warning(
                 "failed to append thread history projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    def _call_capture_api(self, fn: Any, thread_id: str) -> Any:
+        """Call a harness capture hook, honoring its arity.
+
+        The hook lives in the external harness package; inspect its signature
+        instead of catching TypeError around the call, which would also trap
+        unrelated TypeErrors and double-drain the buffer.
+        """
+        params: Mapping[str, inspect.Parameter] | None
+        try:
+            params = inspect.signature(fn).parameters
+        except (TypeError, ValueError):
+            params = None
+        call_mode = "scopeless"
+        if params is not None:
+            for param in params.values():
+                if param.kind is inspect.Parameter.VAR_POSITIONAL:
+                    call_mode = "positional"
+                    break
+                if param.name == "thread_id" and param.kind is not inspect.Parameter.VAR_KEYWORD:
+                    call_mode = (
+                        "keyword" if param.kind is inspect.Parameter.KEYWORD_ONLY else "positional"
+                    )
+                    break
+        if call_mode == "positional":
+            return fn(thread_id)
+        if call_mode == "keyword":
+            return fn(thread_id=thread_id)
+        logger.debug(
+            "harness capture hook has no thread_id parameter; calling scopeless for thread=%s",
+            thread_id,
+        )
+        return fn()
+
+    async def _record_file_checkpoints(
+        self, agent_id: str, thread_id: str, tracker: TurnHistoryTracker
+    ) -> None:
+        """Drain harness write checkpoints and persist them for this turn.
+
+        Best-effort: checkpoint capture must never fail a successful turn.
+        """
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+            pop = getattr(agent, "pop_file_changes", None)
+            if pop is None:
+                return
+            changes = self._call_capture_api(pop, thread_id)
+            if not changes:
+                return
+            # tracker.inputs yields ThreadMessageInput rows, not LangChain
+            # messages; the key is the last assistant-role projection row id.
+            message_id = None
+            for m in reversed(tracker.inputs):
+                role = getattr(m, "role", None)
+                if role in ("human", "user"):
+                    # Reversed scan: past the user row is the previous turn.
+                    break
+                if role in ("ai", "assistant") and getattr(m, "message_id", None):
+                    message_id = m.message_id
+                    break
+            if not message_id:
+                return
+            from octop.infra.agents.file_checkpoints import save_checkpoints
+            from octop.infra.utils.paths import PathLayout
+
+            save_checkpoints(PathLayout.from_env().root, agent_id, thread_id, message_id, changes)
+        except Exception:
+            logger.warning(
+                "failed to persist file checkpoints for agent=%s thread=%s",
+                agent_id,
                 thread_id,
                 exc_info=True,
             )

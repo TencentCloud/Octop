@@ -7,7 +7,17 @@ from contextlib import suppress
 from dataclasses import asdict
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -15,10 +25,9 @@ from octop.api.common.content_disposition import content_disposition
 from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import DEFAULT_MAX_UPLOAD_MB, MAX_MAX_UPLOAD_MB, upload_mb_to_bytes
+from octop.i18n import tr
 from octop.infra.agents.providers.model_flags import (
     is_chat_eligible_model,
-    is_embedding_model,
-    is_onnx_local_provider,
     is_vision_model,
 )
 from octop.infra.agents.providers.onnx_catalog import (
@@ -49,15 +58,16 @@ from octop.infra.knowledge.graph_extract import (
     set_graph_settings,
 )
 from octop.infra.knowledge.jobs import enqueue_index_document, reindex_all_documents
+from octop.infra.knowledge.model_options import remote_models
 from octop.infra.knowledge.ocr import (
     ensure_ocr_deps_async,
     get_ocr_capability,
     set_ocr_settings,
     validate_ocr_settings,
 )
+from octop.infra.knowledge.params import set_advanced_settings
 from octop.infra.knowledge.rerank import (
     get_rerank_capability,
-    rerank_models,
     set_rerank_settings,
 )
 from octop.infra.knowledge.service import (
@@ -81,6 +91,19 @@ def _kb_avatars(server: OctopServer) -> Any:
 
 
 _TEXT_DOC_MAX_LENGTH = upload_mb_to_bytes(MAX_MAX_UPLOAD_MB)
+
+
+class KnowledgeAdvancedSettings(BaseModel):
+    chunk_size: int = Field(
+        strict=True, description="Maximum characters per indexed chunk (100–8000)."
+    )
+    chunk_overlap: int = Field(
+        strict=True, description="Characters shared by neighboring chunks, below the chunk size."
+    )
+    retrieval_k: int = Field(strict=True, description="Default maximum retrieved passages (1–20).")
+    context_char_budget: int = Field(
+        strict=True, description="Character budget for retrieved passage content (500–50000)."
+    )
 
 
 class FeatureBody(BaseModel):
@@ -504,6 +527,41 @@ async def capability(
     return _capability_payload(server)
 
 
+@router.put(
+    "/advanced-settings",
+    summary="Update knowledge indexing and retrieval settings",
+    description=(
+        "Applies instance-wide. Chunk size and overlap apply on the next indexing run. "
+        "Retrieval defaults apply on the next search."
+    ),
+)
+def put_advanced_settings(
+    body: KnowledgeAdvancedSettings,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    _user: User = Depends(require_permission("knowledge_settings")),
+) -> KnowledgeAdvancedSettings:
+    assert server.services is not None
+    repo = server.services.settings_repo
+    updates: dict[str, str] = {}
+    try:
+        set_advanced_settings(
+            repo.get,
+            updates.__setitem__,
+            chunk_size=body.chunk_size,
+            chunk_overlap=body.chunk_overlap,
+            retrieval_k=body.retrieval_k,
+            context_char_budget=body.context_char_budget,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=tr("knowledge.invalid_advanced_settings", resolve_request_locale(request)),
+        ) from exc
+    repo.set_many(updates)
+    return body
+
+
 @router.get("/embedding-options", summary="List knowledge embedding backend options")
 async def embedding_options(
     all_onnx: bool = Query(
@@ -516,20 +574,7 @@ async def embedding_options(
     assert server.services is not None
     remote = []
     for provider in server.services.provider_repo.list_all():
-        if is_onnx_local_provider(
-            provider.name, provider_api_key=getattr(provider, "api_key", None)
-        ):
-            continue
-        models = [
-            {"id": str(model["id"]), "name": str(model.get("name") or model["id"])}
-            for model in provider.get_models()
-            if str(model.get("id") or "").strip()
-            and is_embedding_model(
-                model,
-                provider_name=provider.name,
-                provider_api_key=getattr(provider, "api_key", None),
-            )
-        ]
+        models = remote_models(provider, "embedding")
         if models:
             remote.append(
                 {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}
@@ -580,7 +625,7 @@ async def rerank_options(
     assert server.services is not None
     providers = []
     for provider in server.services.provider_repo.list_all():
-        models = rerank_models(provider) if provider.enabled else []
+        models = remote_models(provider, "rerank")
         if models:
             providers.append(
                 {"provider_id": str(provider.id), "provider_name": provider.name, "models": models}

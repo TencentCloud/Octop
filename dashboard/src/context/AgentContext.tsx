@@ -79,6 +79,18 @@ export interface OctopAgent extends AgentRuntimeApiFields {
   kind?: "expert" | "team" | string;
   /** Member agent ids when ``kind === "team"``. */
   member_ids?: string[];
+  /** Roster display rows. Includes members the viewer cannot open alone. */
+  members?: Array<{
+    agent_id: string;
+    name: string;
+    color?: string | null;
+    icon_name?: string | null;
+    icon_url?: string | null;
+    kind?: string | null;
+    is_shared?: boolean;
+    user_id?: number | null;
+    managed_runner?: string | null;
+  }>;
   welcome_message?: string | null;
   /** True when this row is a remote shadow expert via cloud collab. */
   bridge?: boolean;
@@ -158,6 +170,21 @@ function sameMemberIds(left?: string[], right?: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+function sameTeamMembers(
+  left?: OctopAgent["members"],
+  right?: OctopAgent["members"],
+): boolean {
+  const a = left ?? [];
+  const b = right ?? [];
+  return (
+    a.length === b.length &&
+    a.every(
+      (item, index) =>
+        item.agent_id === b[index]?.agent_id && item.name === b[index]?.name,
+    )
+  );
+}
+
 /** True when a silent agent refresh would not change chat composer defaults. */
 export function agentsSnapshotEqual(
   prev: OctopAgent[],
@@ -181,12 +208,15 @@ export function agentsSnapshotEqual(
         a.kind === b.kind &&
         a.bridge === b.bridge &&
         a.is_owner === b.is_owner &&
+        a.is_shared === b.is_shared &&
+        a.visibility === b.visibility &&
         a.bridge_connection_id === b.bridge_connection_id &&
         a.bridge_connection_name === b.bridge_connection_name &&
         a.bridge_disconnected === b.bridge_disconnected &&
         a.bridge_inbound === b.bridge_inbound &&
         a.default_model === b.default_model &&
         sameMemberIds(a.member_ids, b.member_ids) &&
+        sameTeamMembers(a.members, b.members) &&
         sameMemberIds(a.knowledge_base_ids, b.knowledge_base_ids) &&
         sameMemberIds(a.mcp_servers, b.mcp_servers)
       );

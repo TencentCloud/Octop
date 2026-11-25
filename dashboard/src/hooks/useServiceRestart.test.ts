@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
-import { hasProcessRestarted, useServiceRestart } from "./useServiceRestart";
+import { ApiResponseError } from "../api/responseError";
+import {
+  hasProcessRestarted,
+  shouldPollAfterRestartError,
+  useServiceRestart,
+} from "./useServiceRestart";
 
 const probeHealth = vi.fn();
 const restartService = vi.fn();
@@ -30,6 +35,26 @@ describe("hasProcessRestarted", () => {
     expect(hasProcessRestarted(undefined, 200)).toBe(false);
     expect(hasProcessRestarted(100, undefined)).toBe(false);
     expect(hasProcessRestarted(100, 100)).toBe(false);
+  });
+});
+
+describe("shouldPollAfterRestartError", () => {
+  it.each([502, 503, 504])("polls after HTTP %i", (status) => {
+    expect(
+      shouldPollAfterRestartError(new ApiResponseError(status, null, null)),
+    ).toBe(true);
+  });
+
+  it.each([400, 403, 409, 500])("does not poll after HTTP %i", (status) => {
+    expect(
+      shouldPollAfterRestartError(new ApiResponseError(status, null, null)),
+    ).toBe(false);
+  });
+
+  it("keeps polling for network errors without an HTTP response", () => {
+    expect(shouldPollAfterRestartError(new Error("Failed to fetch"))).toBe(
+      true,
+    );
   });
 });
 

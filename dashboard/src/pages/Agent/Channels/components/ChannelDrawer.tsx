@@ -144,6 +144,7 @@ interface ChannelDrawerProps {
   editing: ChannelRow | null;
   loadingConfig: boolean;
   initialValues: ChannelFormValues | undefined;
+  secretsSet?: string[];
   form: FormInstance<ChannelFormValues>;
   saving: boolean;
   onDelete?: () => void;
@@ -165,10 +166,13 @@ function FormItemForField({
   field,
   disabled = false,
   editing = false,
+  secretKept = false,
 }: {
   field: ChannelField;
   editing?: boolean;
   disabled?: boolean;
+  /** Stored secret stays on the server; an empty field means keep it. */
+  secretKept?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
@@ -211,14 +215,15 @@ function FormItemForField({
       : field.type === "textarea" || field.type === "json"
       ? Input.TextArea
       : Input;
-  const rules: Rule[] = field.required
-    ? [
-        {
-          required: true,
-          message: t("channels.fieldRequired", { label }),
-        },
-      ]
-    : [];
+  const rules: Rule[] =
+    field.required && !(secretKept && field.type === "password")
+      ? [
+          {
+            required: true,
+            message: t("channels.fieldRequired", { label }),
+          },
+        ]
+      : [];
   if (field.type === "json") {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
@@ -263,7 +268,11 @@ function FormItemForField({
     >
       <Input1
         disabled={disabled}
-        placeholder={field.placeholder}
+        placeholder={
+          secretKept && field.type === "password"
+            ? t("common.unchanged")
+            : field.placeholder
+        }
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }
           : {})}
@@ -556,6 +565,7 @@ export function ChannelDrawer({
   onTest,
   testing,
   agentId,
+  secretsSet = [],
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
   const allowAllDiscordChannels =
@@ -1793,7 +1803,7 @@ export function ChannelDrawer({
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <Drawer
-      width={460}
+      width={520}
       placement="right"
       title={
         <div className={styles.drawerTitle}>
@@ -1977,6 +1987,7 @@ export function ChannelDrawer({
                     key={f.name}
                     field={f}
                     editing={isEdit}
+                    secretKept={secretsSet.includes(f.name)}
                     disabled={
                       selectedKind === "discord" &&
                       f.name === "allowed_channel_ids" &&

@@ -9,6 +9,7 @@ import pytest
 from octop.infra.agents.workspace.dir import (
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
+    agent_host_data_dirs,
     apply_explicit_workspace_dir,
     default_agent_workspace_dir,
     default_workspace_parent_dir,
@@ -21,6 +22,24 @@ from octop.infra.agents.workspace.dir import (
 )
 from octop.infra.utils.host_dirs import host_path_text
 from octop.infra.utils.paths import PathLayout
+
+
+def test_chat_agent_default_uses_the_remote_id_and_a_scoped_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from octop.infra.agents.workspace.dir import (
+        default_workspace_for_chat_agent,
+        workspace_folder_id,
+    )
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    assert workspace_folder_id("bridge:conn:EXPERT1") == "EXPERT1"
+    assert default_workspace_for_chat_agent("bridge:conn:EXPERT1") == host_path_text(
+        tmp_path / "agents" / "EXPERT1"
+    )
+    root = tmp_path / "jail"
+    scoped = default_workspace_for_chat_agent("bridge:conn:EXPERT1", root_dir=str(root))
+    assert scoped == host_path_text(root / ".octop" / "workspaces" / "EXPERT1")
 
 
 def test_default_workspace_parent_dir_follows_octop_home(
@@ -213,3 +232,16 @@ def test_apply_explicit_workspace_dir_keeps_host_root_only() -> None:
     blank = {"backend": {"type": "local_shell", "root_dir": "/"}}
     apply_explicit_workspace_dir(blank, "  ")
     assert "workspace_dir" not in blank
+
+
+def test_agent_host_data_dirs_skips_caller_workspace(tmp_path: Path) -> None:
+    paths = PathLayout(tmp_path / ".octop")
+    chosen = tmp_path / "important"
+    chosen.mkdir()
+    cfg = {
+        "backend": {"type": "local_shell", "root_dir": "/", "virtual_mode": True},
+        "workspace_dir": str(chosen),
+    }
+    removed = agent_host_data_dirs(cfg, paths=paths, agent_id="ag1")
+    assert chosen.resolve() not in removed
+    assert paths.agent_workspace("ag1").resolve() in removed

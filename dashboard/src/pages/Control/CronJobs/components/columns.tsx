@@ -212,13 +212,18 @@ export const createColumns = (
       key: "task_type",
       width: 180,
       render: (_: unknown, record: CronJob) => {
-        const taskType = record.task_type === "text" ? "text" : "agent";
+        const taskType =
+          record.task_type === "text" || record.task_type === "script"
+            ? record.task_type
+            : "agent";
+        const label =
+          taskType === "text"
+            ? handlers.t("cronJobs.form.taskTypeText")
+            : taskType === "script"
+            ? handlers.t("cronJobs.form.taskTypeScriptShort")
+            : handlers.t("cronJobs.form.taskTypeAgent");
         return (
-          <Tag style={{ fontSize: 11, whiteSpace: "nowrap" }}>
-            {taskType === "text"
-              ? handlers.t("cronJobs.form.taskTypeText")
-              : handlers.t("cronJobs.form.taskTypeAgent")}
-          </Tag>
+          <Tag style={{ fontSize: 11, whiteSpace: "nowrap" }}>{label}</Tag>
         );
       },
     },

@@ -1089,7 +1089,7 @@ export default function SkillPackagesPage() {
         )}
         open={packageDrawerOpen}
         onClose={() => setPackageDrawerOpen(false)}
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         destroyOnHidden
         className={styles.packageDrawer}
         footer={

@@ -202,6 +202,42 @@ describe("<ChannelsPanel /> create-flow default", () => {
     expectBefore(displaySettings, groupPolicy);
   });
 
+  it("edits a CLI-created QQ channel whose secret is stored as client_secret", async () => {
+    const row = {
+      id: "qq-channel-2",
+      kind: "qq",
+      name: "qq",
+      enabled: true,
+    };
+    api.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/qq-channel-2")) {
+        return {
+          ...row,
+          config: { app_id: "1905353226" },
+          secrets_set: ["client_secret"],
+        };
+      }
+      return [row];
+    });
+
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+
+    const appSecret = await screen.findByLabelText(/App Secret/i);
+    expect(appSecret).toHaveAttribute("placeholder", "common.unchanged");
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      const config = JSON.parse(String(patch![1]!.body)).config;
+      expect(config).toMatchObject({ app_id: "1905353226" });
+      expect(config).not.toHaveProperty("secret");
+      expect(config).not.toHaveProperty("client_secret");
+    });
+  });
+
   async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
     // Telegram is collapsed behind "更多通道" until expanded.

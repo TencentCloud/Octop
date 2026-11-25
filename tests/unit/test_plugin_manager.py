@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from octop_harness.plugins import PluginRegistry
 
+from octop.infra.agents.plugins import manager as plugin_manager_module
 from octop.infra.agents.plugins.manager import (
     PluginManager,
     normalize_plugin_download_url,
@@ -104,21 +105,9 @@ def test_install_url_rejects_non_zip(tmp_path: Path, monkeypatch: pytest.MonkeyP
     config_path.write_text("{}", encoding="utf-8")
     mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
 
-    class FakeResponse:
-        headers: dict[str, str] = {}
-
-        def __enter__(self) -> FakeResponse:
-            return self
-
-        def __exit__(self, *args: Any) -> None:
-            pass
-
-        def read(self, _size: int) -> bytes:
-            return b"<!DOCTYPE html><html>blob page</html>"
-
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager.urllib.request.urlopen",
-        lambda *args, **kwargs: FakeResponse(),
+        "octop.infra.agents.plugins.installation.urllib.request.urlopen",
+        lambda *args, **kwargs: io.BytesIO(b"<!DOCTYPE html><html>blob page</html>"),
     )
     with pytest.raises(OctopError) as excinfo:
         mgr.install_url("https://example.com/not-a-plugin.zip")
@@ -154,7 +143,7 @@ def test_install_url_accepts_valid_zip(tmp_path: Path, monkeypatch: pytest.Monke
             return chunk
 
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager.urllib.request.urlopen",
+        "octop.infra.agents.plugins.installation.urllib.request.urlopen",
         lambda *args, **kwargs: FakeResponse(),
     )
     loaded = mgr.install_url("https://example.com/echo-tool.zip", force=True)
@@ -206,22 +195,10 @@ def test_install_url_rejects_download_over_limit(
     config_path.write_text("{}", encoding="utf-8")
     mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
 
-    class FakeResponse:
-        headers: dict[str, str] = {}
-
-        def __enter__(self) -> FakeResponse:
-            return self
-
-        def __exit__(self, *args: Any) -> None:
-            pass
-
-        def read(self, _size: int) -> bytes:
-            return b"x" * 8
-
     monkeypatch.setattr("octop.infra.agents.plugins.manager._MAX_PLUGIN_ARCHIVE_BYTES", 4)
     monkeypatch.setattr(
         "octop.infra.agents.plugins.manager.urllib.request.urlopen",
-        lambda *args, **kwargs: FakeResponse(),
+        lambda *args, **kwargs: io.BytesIO(b"x" * 8),
     )
     with pytest.raises(OctopError, match="download exceeds"):
         mgr.install_url("https://example.com/plugin.zip")
@@ -237,6 +214,34 @@ def test_install_archive_rejects_non_zip(tmp_path: Path) -> None:
         mgr.install_archive(archive)
     assert excinfo.value.code is ErrorCode.PLUGIN_INVALID_ARCHIVE
     assert excinfo.value.status == 400
+
+
+def test_install_archive_limits_actual_extracted_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    archive = tmp_path / "oversized.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("echo-tool/plugin.yaml", "")
+        zf.writestr("echo-tool/payload.bin", "x")
+
+    original_open = zipfile.ZipFile.open
+
+    def oversized_member(self, name, *args, **kwargs):  # type: ignore[no-untyped-def]
+        member = name.filename if isinstance(name, zipfile.ZipInfo) else name
+        if member == "echo-tool/payload.bin":
+            return io.BytesIO(b"x" * 32)
+        return original_open(self, name, *args, **kwargs)
+
+    monkeypatch.setattr(plugin_manager_module, "MAX_EXTRACTED_BYTES", 16)
+    monkeypatch.setattr(zipfile.ZipFile, "open", oversized_member)
+
+    with pytest.raises(OctopError) as excinfo:
+        mgr.install_archive(archive)
+
+    assert excinfo.value.code is ErrorCode.PLUGIN_INVALID_ARCHIVE
 
 
 def test_install_path_already_exists(tmp_path: Path) -> None:
