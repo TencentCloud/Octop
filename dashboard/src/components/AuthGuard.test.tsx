@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
@@ -74,7 +74,7 @@ describe("AuthGuard offline boot", () => {
       useEffect(() => {
         navigate("/b");
       }, [navigate]);
-      return <div>protected-shell</div>;
+      return null;
     }
 
     render(
@@ -82,20 +82,13 @@ describe("AuthGuard offline boot", () => {
         <AuthGuard>
           <Routes>
             <Route path="/a" element={<NavProbe />} />
-            <Route path="/b" element={<div>protected-shell</div>} />
+            <Route path="/b" element={<div>destination-shell</div>} />
           </Routes>
         </AuthGuard>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
-    });
-    // Give route-driven navigate identity churn a tick; gate must not re-run.
-    await waitFor(() => {
-      expect(screen.getByText("protected-shell")).toBeInTheDocument();
-    });
+    expect(await screen.findByText("destination-shell")).toBeInTheDocument();
     expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     expect(authApi.me).toHaveBeenCalledTimes(1);
   });
