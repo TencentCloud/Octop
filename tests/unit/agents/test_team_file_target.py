@@ -17,6 +17,7 @@ from octop.infra.agents.acp.team_workspace_mcp import (
 from octop.infra.agents.acp.turn import attach_managed_turn
 from octop.infra.agents.middleware.team_file_target import TeamFileTargetMiddleware
 from octop.infra.agents.teams.file_target import (
+    BRIDGE_TARGET_KEY,
     CAPABILITIES_KEY,
     DIR_KEY,
     EXECUTE_KEY,
@@ -24,6 +25,7 @@ from octop.infra.agents.teams.file_target import (
     MEMBER_KEY,
     MOUNTS_KEY,
     activate_file_target,
+    bind_turn_file_target,
     deepagents_directories,
     file_target_opt_out,
     install_file_redirect,
@@ -166,6 +168,102 @@ def test_runner_write_is_denied_and_not_reported_as_the_selected_directory() -> 
         return_value={"configurable": {}},
     ):
         assert adapter.is_hard_blocked(write) is False
+
+
+def test_runner_shell_stays_on_the_initiator_after_the_prompt_context_ends() -> None:
+    """The runner permission loop does not share the turn's LangGraph config."""
+    from octop_harness.acp.client import ACPHostedClient
+    from octop_harness.acp.models import ACPRunnerConfig
+    from octop_harness.acp.permissions import ACPPermissionAdapter
+
+    client = ACPHostedClient(
+        runner_name="codebuddy",
+        runner_config=ACPRunnerConfig(),
+        cwd="/tmp/runner",
+    )
+    shell = {"kind": "other", "title": "Run command", "rawInput": {"command": "pwd"}}
+    local = {
+        "kind": "execute",
+        "title": "octop-team-workspace execute",
+        "rawInput": {"command": "pwd"},
+    }
+    stamped = {
+        "configurable": {
+            BRIDGE_TARGET_KEY: "tok",
+            DIR_KEY: "/data",
+            EXECUTE_KEY: "1",
+            "locale": "zh",
+        }
+    }
+    request = {"configurable": stamped["configurable"]}
+    with (
+        bind_turn_file_target(request),
+        patch(
+            "octop.infra.agents.teams.file_target_guard.get_config",
+            return_value=stamped,
+        ),
+    ):
+        client.start_prompt(lambda *_args: None)
+    with patch(
+        "octop.infra.agents.teams.file_target_guard.get_config",
+        return_value={"configurable": {}},
+    ):
+        adapter = client._permission_adapter
+        assert isinstance(adapter, ACPPermissionAdapter)
+        assert adapter.is_hard_blocked(shell) is True
+        assert adapter.is_hard_blocked(local) is False
+
+
+@pytest.mark.asyncio
+async def test_execute_follows_the_turn_directory_when_tool_config_drops_it() -> None:
+    clear_local_workspace_state()
+    seen: list[dict[str, Any]] = []
+    target = SimpleNamespace(
+        bridge_file_target=True,
+        token="tok",
+        directory="/data",
+        execute=True,
+    )
+
+    async def call_text(op: str, args: dict[str, Any]) -> str:
+        seen.append({"op": op, "args": args})
+        return "pwd\n[exit code 0]"
+
+    target.call_text = call_text
+    register_peer_target("tok", session=object(), directory="/data", execute=True)
+    replace_peer_target("tok", target)
+    mw = TeamFileTargetMiddleware(
+        agent_id="child",
+        lookup=lambda _agent_id: SimpleNamespace(backend=object(), workspace=object()),
+    )
+
+    async def handler(request: Any) -> str:
+        result = await request.tool.ainvoke(request.tool_call)
+        return str(getattr(result, "content", result))
+
+    request = _request("execute", {"command": "pwd"})
+    request.override = lambda **kwargs: SimpleNamespace(
+        tool=kwargs["tool"], tool_call=kwargs.get("tool_call", request.tool_call)
+    )
+    payload = {
+        "configurable": {
+            BRIDGE_TARGET_KEY: "tok",
+            DIR_KEY: "/data",
+            EXECUTE_KEY: "1",
+            CAPABILITIES_KEY: {"file": True, "execute": True},
+        }
+    }
+    with (
+        bind_turn_file_target(payload),
+        patch(
+            "octop.infra.agents.middleware.team_file_target.get_config",
+            return_value={"configurable": {"thread_id": "thr"}},
+        ),
+    ):
+        result = await mw.awrap_tool_call(request, handler)
+    assert result == "pwd\n[exit code 0]"
+    assert seen == [{"op": "execute", "args": {"command": "pwd"}}]
+    clear_local_workspace_state()
 
 
 def test_workspace_relative_resolves_against_the_target_directory() -> None:
