@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from octop.infra.backend.resolver import backend_spec_supports_execution
-from octop.infra.backend.shell_output import decode_child_output
+from octop.infra.utils.child_output import decode_child_output
 from octop.infra.utils.ulid import new_ulid
 
 SCRIPT_TIMEOUT_SECONDS = 120
