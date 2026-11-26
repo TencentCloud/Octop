@@ -42,6 +42,13 @@ from octop.infra.agents.security.hitl_session import (
     thread_id_from_request,
 )
 from octop.infra.agents.settings.acp import ACPSettingsStore, runtime_acp_config
+from octop.infra.agents.settings.cls_observability import (
+    ClsAgentApplication,
+    ClsObservabilitySettings,
+    ClsObservabilitySettingsStore,
+    env_cls_enabled,
+    env_cls_harness_config,
+)
 from octop.infra.agents.settings.compaction import (
     COMPACTION_CONFIG_KEY,
     apply_compaction_update,
@@ -603,6 +610,10 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
+        self._cls_observability = ClsObservabilitySettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
         self._decision = DecisionSettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
@@ -640,6 +651,10 @@ class AgentManager:
         self._repos = repos
         self._config = config
         self._langfuse = LangfuseSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._cls_observability = ClsObservabilitySettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
@@ -694,7 +709,7 @@ class AgentManager:
         providers = self._providers.build_harness_configs()
         self._harness_manager = HarnessAgentManager(
             providers=providers,
-            langfuse=self._langfuse.harness_config(),
+            langfuse=self._resolve_observability_harness_config(),
             team_processor=self._team_processor,
             file_logging=False,
         )
@@ -812,6 +827,35 @@ class AgentManager:
     @property
     def langfuse(self) -> LangfuseSettingsStore:
         return self._langfuse
+
+    @property
+    def cls_observability(self) -> ClsObservabilitySettingsStore:
+        return self._cls_observability
+
+    def active_observability_backend(self) -> str:
+        """Return which tracing backend is currently active: cls | langfuse | cls_env | none."""
+        if self._cls_observability.load().configured:
+            return "cls"
+        if self._langfuse.load().configured:
+            return "langfuse"
+        if env_cls_enabled():
+            return "cls_env"
+        return "none"
+
+    def _resolve_observability_harness_config(self) -> Any | None:
+        cls_cfg = self._cls_observability.harness_config()
+        if cls_cfg is not None:
+            return cls_cfg
+        if self._langfuse.load().configured:
+            return self._langfuse.harness_config()
+        env_cfg = env_cls_harness_config()
+        if env_cfg is not None:
+            return env_cfg
+        return self._langfuse.harness_config()
+
+    def _sync_observability_to_harness(self) -> None:
+        if self._harness_manager is not None:
+            self._harness_manager.set_langfuse(self._resolve_observability_harness_config())
 
     @property
     def decision(self) -> DecisionSettingsStore:
@@ -3014,9 +3058,71 @@ class AgentManager:
             host=host,
             secret_key=secret_key,
         )
-        if self._harness_manager is not None:
-            self._harness_manager.set_langfuse(self._langfuse.harness_config())
+        if enabled and self._cls_observability.load().enabled:
+            self._repos.settings_repo.set("observability_cls_enabled", "false")
+        self._sync_observability_to_harness()
         return view
+
+    async def save_cls(
+        self,
+        *,
+        enabled: bool,
+        region: str,
+        topic_id: str = "",
+        application_id: str = "",
+        application_name: str = "octop",
+        access_type: str = "Langfuse",
+        use_internal_endpoint: bool = False,
+        mask_content: bool = False,
+        secret_id: str | None = None,
+        secret_key: str | None = None,
+        auto_create_app: bool = False,
+        logset_id: str | None = None,
+        reuse_existing: bool = True,
+    ) -> tuple[ClsObservabilitySettings, ClsAgentApplication | None]:
+        """Persist Tencent Cloud CLS observability settings and hot-update the harness runtime.
+
+        When ``enabled=True``, ``auto_create_app=True``, and ``topic_id`` is empty,
+        automatically creates (or reuses) a CLS AgentObs application via
+        ``CreateAgentApplication`` using the customer's SecretId/SecretKey.
+        """
+        resolved_topic = topic_id.strip()
+        resolved_app_id = application_id.strip()
+        resolved_app_name = application_name.strip() or "octop"
+        resolved_access_type = access_type.strip() or "Langfuse"
+        provisioned_app: ClsAgentApplication | None = None
+
+        if enabled and auto_create_app and not resolved_topic:
+            provisioned_app = await self._cls_observability.create_application(
+                region=region,
+                application_name=resolved_app_name,
+                access_type=resolved_access_type,
+                logset_id=logset_id,
+                reuse_existing=reuse_existing,
+                secret_id=secret_id,
+                secret_key=secret_key,
+            )
+            resolved_topic = provisioned_app.topic_id
+            resolved_app_id = provisioned_app.application_id
+            resolved_app_name = provisioned_app.application_name
+            resolved_access_type = provisioned_app.access_type
+
+        view = self._cls_observability.save(
+            enabled=enabled,
+            region=region,
+            topic_id=resolved_topic,
+            application_id=resolved_app_id,
+            application_name=resolved_app_name,
+            access_type=resolved_access_type,
+            use_internal_endpoint=use_internal_endpoint,
+            mask_content=mask_content,
+            secret_id=secret_id,
+            secret_key=secret_key,
+        )
+        if enabled and self._langfuse.load().enabled:
+            self._repos.settings_repo.set("observability_langfuse_enabled", "false")
+        self._sync_observability_to_harness()
+        return view, provisioned_app
 
     async def save_decision(
         self,
