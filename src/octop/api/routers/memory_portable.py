@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -201,8 +201,8 @@ async def adopt_agent_memory(
     pkg_file: UploadFile = File(..., description=".hmpkg 文件"),
     target_host: str = Form(default="agent", description="目标宿主"),
     target_namespace: str | None = Form(default=None),
-    on_conflict: str = Form(default="skip"),
-    host_rewrite: str = Form(default="keep"),
+    on_conflict: Literal["skip", "replace", "raise"] = Form(default="skip"),
+    host_rewrite: Literal["keep", "target"] = Form(default="keep"),
     dry_run: bool = Form(default=False),
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
