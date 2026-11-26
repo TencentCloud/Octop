@@ -10,7 +10,7 @@ from html import escape
 from typing import Any, Literal
 from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -29,7 +29,9 @@ from octop.infra.connectors.catalog import (
     list_catalog,
 )
 from octop.infra.connectors.custom_mcp import (
+    CUSTOM_MCP_AVATAR_KIND,
     CUSTOM_MCP_KIND,
+    custom_avatar_key,
     is_custom_mcp_kind,
     oauth_client_from_spec,
     oauth_configured,
@@ -179,11 +181,18 @@ class CustomMcpServerPatchBody(BaseModel):
     enabled: bool | None = None
     default_open: bool | None = None
     shared: bool | None = None
+    visibility: Literal["owner", "all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
     @model_validator(mode="after")
     def _require_one_field(self) -> CustomMcpServerPatchBody:
-        if self.enabled is None and self.default_open is None and self.shared is None:
-            raise ValueError("provide enabled, default_open and/or shared")
+        if (
+            self.enabled is None
+            and self.default_open is None
+            and self.shared is None
+            and self.visibility is None
+        ):
+            raise ValueError("provide enabled, default_open, shared and/or visibility")
         return self
 
 
@@ -418,6 +427,49 @@ def _validate_connector_visibility(
     if visibility is None:
         return
     GroupAccess(server.services.repos).validate_visibility(visibility, group_ids)
+
+
+def _validate_custom_server_map(server: Any, servers: dict[str, Any]) -> None:
+    for raw in servers.values():
+        if not isinstance(raw, dict) or raw.get("visibility") is None:
+            continue
+        group_ids = raw.get("group_ids")
+        _validate_connector_visibility(
+            server,
+            visibility=str(raw.get("visibility")),
+            group_ids=group_ids if isinstance(group_ids, list) else None,
+        )
+
+
+def _custom_parent_id(server: Any, user_id: int) -> str | None:
+    parent = server.services.repos.connector_repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
+    if parent is None:
+        return None
+    return str(parent.instance_id)
+
+
+def _forget_custom_avatars(server: Any, parent_id: str, names: set[str]) -> None:
+    from octop.infra.users.profile_avatar import delete_profile_avatar
+
+    store = server.services.avatars(CUSTOM_MCP_AVATAR_KIND)
+    for name in names:
+        delete_profile_avatar(store, custom_avatar_key(parent_id, name))
+
+
+def _attach_custom_avatars(server: Any, rows: list[dict[str, Any]]) -> None:
+    from octop.infra.users.profile_avatar import profile_avatar_url
+
+    store = server.services.avatars(CUSTOM_MCP_AVATAR_KIND)
+    for item in rows:
+        parent_id = item.pop("_avatar_parent_id", None)
+        server_name = item.pop("_avatar_server_name", None)
+        if not parent_id or not server_name:
+            continue
+        key = custom_avatar_key(str(parent_id), str(server_name))
+        api = f"/api/connectors/custom-mcp/avatars/{key}"
+        url = profile_avatar_url(store, key, api)
+        if url:
+            item["avatar_url"] = url
 
 
 async def _prepare_credentials(
@@ -699,6 +751,7 @@ async def list_instances(
                     shared=bool(item.get("shared")),
                 )
             )
+    _attach_custom_avatars(server, rows)
     return rows
 
 
@@ -720,6 +773,9 @@ async def put_custom_mcp(
 ) -> dict[str, Any]:
     """Replace the user's custom MCP servers document and reload agents."""
     svc = _connector_service(server)
+    parent_id = _custom_parent_id(server, user.id)
+    before = set(svc.get_custom_servers(user.id))
+    _validate_custom_server_map(server, body.servers)
     try:
         servers = svc.put_custom_servers(user.id, body.servers)
     except ConnectorNameTakenError as exc:
@@ -732,6 +788,8 @@ async def put_custom_mcp(
         target=CUSTOM_MCP_KIND,
         payload=str(len(servers)),
     )
+    if parent_id is not None:
+        _forget_custom_avatars(server, parent_id, before - set(servers))
     _schedule_connector_reload(
         server,
         user.id,
@@ -752,8 +810,10 @@ async def patch_custom_mcp_server(
     user: Any = Depends(require_permission("connector_custom")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Update ``enabled`` and/or ``default_open`` for one custom MCP server."""
+    """Update ``enabled``, ``default_open``, or who may use one custom MCP server."""
     svc = _connector_service(server)
+    if body.visibility is not None:
+        _validate_connector_visibility(server, visibility=body.visibility, group_ids=body.group_ids)
     try:
         servers = svc.patch_custom_server(
             user.id,
@@ -761,6 +821,8 @@ async def patch_custom_mcp_server(
             enabled=body.enabled,
             default_open=body.default_open,
             shared=body.shared,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
         )
     except KeyError as exc:
         raise OctopError(
@@ -806,6 +868,87 @@ async def test_custom_mcp(
         except KeyError:
             pass
     return result
+
+
+def _custom_avatar_visible(server: Any, user_id: int, avatar_key: str) -> bool:
+    for item in _connector_service(server).list_instances_for_api(user_id):
+        parent_id = item.get("_avatar_parent_id")
+        server_name = item.get("_avatar_server_name")
+        if not parent_id or not server_name:
+            continue
+        if custom_avatar_key(str(parent_id), str(server_name)) == avatar_key:
+            return True
+    return False
+
+
+@router.post(
+    "/connectors/custom-mcp/servers/{server_name}/avatar",
+    status_code=201,
+    summary="Upload a custom connector portrait",
+)
+async def upload_custom_mcp_avatar(
+    server_name: str,
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(require_permission("connector_custom")),
+    server: Any = Depends(get_server),
+) -> dict[str, str]:
+    """Store an uploaded image for one of the current user's custom connectors."""
+    from octop.infra.users.profile_avatar import profile_avatar_url, write_profile_avatar
+
+    svc = _connector_service(server)
+    if server_name not in svc.get_custom_servers(user.id):
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        )
+    parent_id = _custom_parent_id(server, user.id)
+    if parent_id is None:
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        )
+    key = custom_avatar_key(parent_id, server_name)
+    store = server.services.avatars(CUSTOM_MCP_AVATAR_KIND)
+    write_profile_avatar(store, key, await file.read())
+    api = f"/api/connectors/custom-mcp/avatars/{key}"
+    return {"avatar_url": profile_avatar_url(store, key, api) or api}
+
+
+@router.delete(
+    "/connectors/custom-mcp/servers/{server_name}/avatar",
+    status_code=204,
+    summary="Delete a custom connector portrait",
+)
+async def delete_custom_mcp_avatar(
+    server_name: str,
+    user: Any = Depends(require_permission("connector_custom")),
+    server: Any = Depends(get_server),
+) -> None:
+    """Remove the uploaded image. A preset icon, if set, stays on the server spec."""
+    svc = _connector_service(server)
+    if server_name not in svc.get_custom_servers(user.id):
+        raise OctopError(
+            ErrorCode.CONNECTOR_NOT_FOUND, f"custom MCP server {server_name!r} not found"
+        )
+    parent_id = _custom_parent_id(server, user.id)
+    if parent_id is None:
+        return
+    _forget_custom_avatars(server, parent_id, {server_name})
+
+
+@router.get(
+    "/connectors/custom-mcp/avatars/{avatar_key}",
+    summary="Read a custom connector portrait",
+)
+async def get_custom_mcp_avatar(
+    avatar_key: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Any:
+    """Return the portrait when this user can see that custom connector."""
+    from octop.infra.users.profile_avatar import avatar_response
+
+    if not _custom_avatar_visible(server, user.id, avatar_key):
+        raise OctopError(ErrorCode.NOT_FOUND, "avatar not uploaded")
+    return avatar_response(server.services.avatars(CUSTOM_MCP_AVATAR_KIND), avatar_key)
 
 
 @router.get("/connector-instances/{instance_id}", summary="Get connector instance")
@@ -1086,11 +1229,14 @@ async def delete_instance(
         servers = dict(svc.get_custom_servers(custom_user_id))
         if synthetic_name not in servers:
             raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
+        parent_id = _custom_parent_id(server, custom_user_id)
         del servers[synthetic_name]
         try:
             svc.put_custom_servers(custom_user_id, servers)
         except ValueError as exc:
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
+        if parent_id is not None:
+            _forget_custom_avatars(server, parent_id, {synthetic_name})
         server.services.audit_repo.write(
             actor=user.username,
             action="connector.custom_mcp.delete_server",

@@ -121,7 +121,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "voice", "description": "Speech-to-text and text-to-speech provider configuration."},
     {
         "name": "observability",
-        "description": "LLM observability integrations (Langfuse tracing).",
+        "description": "LLM observability integrations (Langfuse and Tencent Cloud CLS AgentObs tracing).",
     },
     {
         "name": "tls",

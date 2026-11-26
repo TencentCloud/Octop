@@ -29,6 +29,21 @@ function renderEditor(models: ProviderModel[]) {
 }
 
 describe("ModelListEditor", () => {
+  it("labels embedding and rerank models imported from a mixed catalog", () => {
+    renderEditor([
+      {
+        id: "BAAI/bge-large-zh-v1.5",
+        name: "Large",
+        enabled: true,
+        embedding: true,
+      },
+      { id: "BAAI/bge-m3", name: "M3", enabled: true },
+      { id: "BAAI/bge-reranker-v2-m3", name: "Reranker", enabled: true },
+    ]);
+    expect(screen.getAllByText("models.embeddingOnlyTag")).toHaveLength(2);
+    expect(screen.getByText("models.rerankOnlyTag")).toBeInTheDocument();
+  });
+
   it("shows protocol fallback after selecting Responses", async () => {
     const user = userEvent.setup();
     HTMLElement.prototype.scrollIntoView = vi.fn();

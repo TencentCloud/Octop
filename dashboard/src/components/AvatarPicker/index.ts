@@ -27,3 +27,4 @@ export {
   BRIDGE_AVATAR_PRESETS,
   DEFAULT_BRIDGE_AVATAR_ICON,
 } from "./presets/bridge";
+export { CONNECTOR_AVATAR_PRESETS } from "./presets/connector";

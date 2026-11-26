@@ -240,6 +240,9 @@ def test_merge_provider_purpose_and_stamp_embedding_models() -> None:
     assert merge_provider_purpose_extra('{"purpose": "chat"}', None) == '{"purpose": "chat"}'
     stamped = stamp_embedding_models([{"id": "emb-1", "name": "Emb"}])
     assert stamped == [{"id": "emb-1", "name": "Emb", "embedding": True, "task": "embedding"}]
+    assert stamp_embedding_models([{"id": "rank-1", "task": "rerank"}]) == [
+        {"id": "rank-1", "task": "rerank"}
+    ]
     assert (
         resolve_provider_purpose(
             provider_name="Embed API",

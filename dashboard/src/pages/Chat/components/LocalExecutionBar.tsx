@@ -49,7 +49,9 @@ export default function LocalExecutionBar({
   const [modeOpen, setModeOpen] = useState(false);
   const [dirOpen, setDirOpen] = useState(false);
   const [adding, setAdding] = useState(false);
-  const addPanelRef = useRef<HTMLDivElement>(null);
+  /** Tree dropdown is portaled to ``document.body``, so it sits outside the popover. */
+  const directoryTreeOpen = useRef(false);
+  const fetchedBrowseAgent = useRef<string | null>(null);
   const [browse, setBrowse] = useState<{
     agentId: string;
     roots: string[];
@@ -65,11 +67,12 @@ export default function LocalExecutionBar({
   const home = browse?.home ?? null;
 
   useEffect(() => {
-    if (locked || !local || browse?.agentId === agentId) return;
+    if (locked || !local || fetchedBrowseAgent.current === agentId) return;
     let cancelled = false;
     fetchFilesystemDefaults(agentId)
       .then((defaults) => {
         if (cancelled) return;
+        fetchedBrowseAgent.current = agentId;
         const next = defaults.browse_roots?.length
           ? defaults.browse_roots
           : [defaults.tree_root || HOST_FS_ROOT];
@@ -80,14 +83,14 @@ export default function LocalExecutionBar({
         });
       })
       .catch(() => {
-        if (!cancelled) {
-          setBrowse({ agentId, roots: [HOST_FS_ROOT], home: null });
-        }
+        if (cancelled) return;
+        fetchedBrowseAgent.current = agentId;
+        setBrowse({ agentId, roots: [HOST_FS_ROOT], home: null });
       });
     return () => {
       cancelled = true;
     };
-  }, [agentId, local, browse, locked]);
+  }, [agentId, local, locked]);
 
   useEffect(() => {
     if (locked || !local || !home) return;
@@ -221,20 +224,25 @@ export default function LocalExecutionBar({
           placement="topLeft"
           open={dirOpen}
           onOpenChange={(next) => {
+            // The tree popup lives on document.body. A click inside it is
+            // outside this popover; closing here unmounts the tree mid-align
+            // and the two popups chase each other until the tab freezes.
+            if (!next && directoryTreeOpen.current) return;
             setDirOpen(next);
             if (!next) setAdding(false);
           }}
           overlayClassName={styles.modelPopover}
           content={
             adding && browse ? (
-              <div className={styles.workspaceAdd} ref={addPanelRef}>
+              <div className={styles.workspaceAdd}>
                 <RootDirSelect
                   manage
                   treeRoots={browse.roots}
                   placeholder={t("chat.remoteExpert.executionDirectory")}
-                  getPopupContainer={(node) =>
-                    addPanelRef.current ?? node.parentElement ?? document.body
-                  }
+                  getPopupContainer={() => document.body}
+                  onDropdownOpenChange={(next) => {
+                    directoryTreeOpen.current = next;
+                  }}
                   onChange={(path) => {
                     if (home && samePath(path, home)) {
                       selectDirectory(home);

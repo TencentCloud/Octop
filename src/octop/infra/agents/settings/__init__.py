@@ -1,6 +1,17 @@
 """Agent-scoped settings: stores, profile columns, runtime knobs, tool catalog."""
 
 from octop.infra.agents.settings.acp import ACPSettingsStore
+from octop.infra.agents.settings.cls_observability import (
+    ClsAgentApplication,
+    ClsObservabilitySettings,
+    ClsObservabilitySettingsStore,
+    create_agent_application,
+    ensure_agent_application,
+    env_cls_enabled,
+    env_cls_harness_config,
+    list_agent_applications,
+    verify_cls_connection,
+)
 from octop.infra.agents.settings.langfuse import (
     LangfuseSettings,
     LangfuseSettingsStore,
@@ -17,6 +28,9 @@ from octop.infra.agents.settings.media_generation import (
 
 __all__ = [
     "ACPSettingsStore",
+    "ClsAgentApplication",
+    "ClsObservabilitySettings",
+    "ClsObservabilitySettingsStore",
     "MEDIA_PROVIDER_PRESETS",
     "LangfuseSettings",
     "LangfuseSettingsStore",
@@ -25,5 +39,11 @@ __all__ = [
     "MediaProviderName",
     "MediaProviderSettings",
     "MediaProviderUpdate",
+    "create_agent_application",
+    "ensure_agent_application",
+    "env_cls_enabled",
+    "env_cls_harness_config",
+    "list_agent_applications",
+    "verify_cls_connection",
     "verify_langfuse_credentials",
 ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -18,7 +19,19 @@ CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
 
 _SERVER_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-_META_KEYS = frozenset({"enabled", "display_name", "default_open", "shared"})
+_META_KEYS = frozenset(
+    {
+        "enabled",
+        "display_name",
+        "default_open",
+        "shared",
+        "visibility",
+        "group_ids",
+        "avatar_icon",
+    }
+)
+_ICON = re.compile(r"[a-z0-9-]{1,32}")
+CUSTOM_MCP_AVATAR_KIND = "custom_mcp"
 _OAUTH_KEY = "oauth"
 _OAUTH_CLIENT_KEY = "oauth_client"
 _SECRET_KEYS = frozenset({_OAUTH_KEY, _OAUTH_CLIENT_KEY})
@@ -250,8 +263,8 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
     spec: dict[str, Any] = {"transport": transport, "enabled": enabled}
     if raw.get("default_open") is True:
         spec["default_open"] = True
-    if raw.get("shared") is True:
-        spec["shared"] = True
+    _apply_audience(spec, raw, name)
+    _apply_avatar(spec, raw, name)
 
     display_name = str(raw.get("display_name") or "").strip()
     if display_name:
@@ -290,6 +303,89 @@ def normalize_server_spec(name: str, raw: Any) -> dict[str, Any]:
             spec[_OAUTH_KEY] = _required_marker(oauth)
 
     return spec
+
+
+def _clean_group_ids(raw: Any) -> list[str]:
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("group_ids must be a list")
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        group_id = str(item).strip()
+        if not group_id or group_id in seen:
+            continue
+        if len(group_id) > 64:
+            raise ValueError("group id is too long")
+        seen.add(group_id)
+        out.append(group_id)
+    return out
+
+
+def _apply_audience(spec: dict[str, Any], raw: dict[str, Any], name: str) -> None:
+    """Store who may use this server. ``shared`` stays the on/off flag."""
+    visibility = str(raw.get("visibility") or "").strip()
+    if visibility in {"owner", "all", "groups"}:
+        if visibility == "owner":
+            return
+        if visibility == "all":
+            spec["shared"] = True
+            spec["visibility"] = "all"
+            return
+        group_ids = _clean_group_ids(raw.get("group_ids"))
+        if not group_ids:
+            raise ValueError(f"server {name!r}: choose at least one user group")
+        spec["shared"] = True
+        spec["visibility"] = "groups"
+        spec["group_ids"] = group_ids
+        return
+    if visibility:
+        raise ValueError(f"server {name!r}: unknown visibility")
+    if raw.get("shared") is True:
+        spec["shared"] = True
+        spec["visibility"] = "all"
+
+
+def _apply_avatar(spec: dict[str, Any], raw: dict[str, Any], name: str) -> None:
+    if "avatar_icon" not in raw or raw.get("avatar_icon") in (None, ""):
+        return
+    icon = str(raw.get("avatar_icon") or "").strip().lower()
+    if not _ICON.fullmatch(icon):
+        raise ValueError(f"server {name!r}: avatar icon is invalid")
+    spec["avatar_icon"] = icon
+
+
+def server_audience(spec: dict[str, Any]) -> tuple[str, list[str]]:
+    """Return ``(visibility, group_ids)`` for list APIs."""
+    if spec.get("shared") is not True:
+        return "owner", []
+    if spec.get("visibility") == "groups":
+        return "groups", [str(item) for item in (spec.get("group_ids") or [])]
+    return "all", []
+
+
+def shared_server_visible(
+    spec: dict[str, Any],
+    *,
+    is_admin: bool,
+    member_group_ids: set[str],
+) -> bool:
+    """Whether a non-owner may use this custom server."""
+    if spec.get("shared") is not True:
+        return False
+    if spec.get("visibility") != "groups":
+        return True
+    if is_admin:
+        return True
+    granted = {str(item).strip() for item in (spec.get("group_ids") or []) if str(item).strip()}
+    return bool(granted & member_group_ids)
+
+
+def custom_avatar_key(parent_instance_id: str, server_name: str) -> str:
+    """Stable portrait id for one custom server on its parent connector row."""
+    raw = f"{parent_instance_id}:{server_name}".encode()
+    return hashlib.sha256(raw).hexdigest()[:32]
 
 
 def server_display_name(name: str, spec: dict[str, Any] | None) -> str:
@@ -529,15 +625,22 @@ def expand_custom_instances(
     parent: Any,
     servers: dict[str, Any],
     shared_view: bool = False,
+    viewer_is_admin: bool = False,
+    member_group_ids: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Build list-API dicts for each custom server (independent status)."""
+    groups = member_group_ids or set()
     items: list[dict[str, Any]] = []
     for name, spec in servers.items():
         if not isinstance(spec, dict):
             continue
         enabled = server_enabled(spec)
-        if shared_view and spec.get("shared") is not True:
+        if shared_view and not shared_server_visible(
+            spec, is_admin=viewer_is_admin, member_group_ids=groups
+        ):
             continue
+        visibility, group_ids = server_audience(spec)
+        icon = str(spec.get("avatar_icon") or "").strip()
         items.append(
             {
                 "instance_id": (
@@ -554,9 +657,14 @@ def expand_custom_instances(
                 "has_credentials": True,
                 "default_open": spec.get("default_open") is True,
                 "shared": spec.get("shared") is True,
+                "visibility": visibility,
+                "group_ids": group_ids,
+                "avatar_icon": icon or None,
                 "owner_user_id": parent.user_id,
                 "created_at": parent.created_at,
                 "updated_at": parent.updated_at,
+                "_avatar_parent_id": parent.instance_id,
+                "_avatar_server_name": name,
             }
         )
     items.sort(key=lambda row: str(row["display_name"]).casefold())
