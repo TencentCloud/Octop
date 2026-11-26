@@ -170,10 +170,11 @@ cubeSandbox:
   apiUrl: http://cubeapi.cube-system.svc.cluster.local:3000
   proxyNodeIP: ""
   proxyPortHTTP: ""
-  existingSecret: octop-cubesandbox
+  existingSecret: ""
 ```
 
-Create the `octop-cubesandbox` Secret in the release namespace with these keys.
+Set `existingSecret` to the name of a Secret created in the release namespace. It
+must contain these keys.
 
 | Key | Purpose |
 | --- | --- |

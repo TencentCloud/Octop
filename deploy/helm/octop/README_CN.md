@@ -170,10 +170,10 @@ cubeSandbox:
   apiUrl: http://cubeapi.cube-system.svc.cluster.local:3000
   proxyNodeIP: ""
   proxyPortHTTP: ""
-  existingSecret: octop-cubesandbox
+  existingSecret: ""
 ```
 
-在 release 命名空间创建 `octop-cubesandbox` Secret，包含以下键：
+将 `existingSecret` 设置为 release 命名空间中预先创建的 Secret 名称，并包含以下键：
 
 | 键 | 用途 |
 | --- | --- |
