@@ -10,6 +10,25 @@ described in [Chat (WebSocket)](#chat-websocket).
 
 ## Authentication
 
+For external Codex memory extraction, the dashboard publishes with
+`PUT /api/memory-mcp/tokens/{token_id}/codex-model?space_id=...&apply=true` using the signed-in user's
+space management session. An opted-in hook calls `POST /api/memory-mcp/codex-config` with its own writable
+Memory bearer token. An empty request object fetches the published mode and revision. Sending
+`applied_revision` acknowledges the matching revision. Terminal status and completed model runs remain separate.
+
+`POST /api/memory-mcp/codex-review` accepts the terminal's captured event IDs and reviews up to three
+independently updateable facts per turn. Each proposed fact carries a standalone assertion and an exact
+quote from its owning user event. Temporary directives and informational questions are skipped.
+A repeated fact appends evidence to the original record. An explicit, evidenced change supersedes the
+previous confirmed value and retains its history. An uncertain change creates a conflict for review. A successful nonempty response includes `candidate_ids` and the first
+`candidate_id` for older uploaders. An empty review returns `status: skipped`. Review credentials and
+existing completed-turn receipts retain their original scope.
+
+For a dashboard build paired with an unreleased hook, place the matching harness wheel in the dashboard's public
+assets and set `VITE_CODEX_HARNESS_WHEEL` to its same-origin path with a SHA-256 URL fragment at build time.
+The Codex setup instructions then use this wheel and enable panel sync. Builds using the pinned installer
+continue to provide manual setup.
+
 | Header | Value |
 |--------|-------|
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |

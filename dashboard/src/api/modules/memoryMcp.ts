@@ -93,19 +93,54 @@ function toCreated(raw: TokenCreatedWire): MemoryMcpTokenCreated {
   return { token: row, plaintext: token };
 }
 
+export type ExtractionMode = "codex" | "octop" | "server";
+
+export interface SavedCodexModel {
+  model: string | null;
+  mode?: ExtractionMode;
+  mode_since?: string | null;
+  published_at?: string | null;
+}
+
+export interface TerminalObservation {
+  mode: ExtractionMode;
+  timestamp: string;
+}
+
+export interface CodexStatus {
+  acknowledgement?: { revision: string; timestamp: string } | null;
+  observed: TerminalObservation | null;
+  last_run: (TerminalObservation & { model: string | null }) | null;
+}
+
 export const memoryMcpApi = {
+  getCodexStatus: (tokenId: string, space: string) =>
+    request<CodexStatus>(
+      `/memory-mcp/tokens/${encodeURIComponent(
+        tokenId,
+      )}/codex-status?${new URLSearchParams({ space_id: space })}`,
+    ),
   getCodexModel: (tokenId: string, space: string) =>
-    request<{ model: string | null }>(
+    request<SavedCodexModel>(
       `/memory-mcp/tokens/${encodeURIComponent(
         tokenId,
       )}/codex-model?${new URLSearchParams({ space_id: space })}`,
     ),
-  setCodexModel: (tokenId: string, space: string, model: string | null) =>
-    request<{ model: string | null }>(
+  setCodexModel: (
+    tokenId: string,
+    space: string,
+    model: string | null,
+    mode?: ExtractionMode,
+    apply = false,
+  ) =>
+    request<SavedCodexModel>(
       `/memory-mcp/tokens/${encodeURIComponent(
         tokenId,
-      )}/codex-model?${new URLSearchParams({ space_id: space })}`,
-      { method: "PUT", body: JSON.stringify({ model }) },
+      )}/codex-model?${new URLSearchParams({
+        space_id: space,
+        ...(apply && { apply: "true" }),
+      })}`,
+      { method: "PUT", body: JSON.stringify({ model, mode }) },
     ),
   list: (spaceId?: string) =>
     request<MemoryMcpToken[]>(

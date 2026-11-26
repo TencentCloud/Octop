@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Input, Select, Typography } from "antd";
-import { ArrowRight, Copy, Terminal } from "lucide-react";
+import { Alert, Button, Input, Select, Tag, Typography } from "antd";
+import { ArrowRight, Copy, RefreshCw, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   memoryMcpApi,
   type MemoryMcpToken,
+  type CodexStatus,
 } from "../../../api/modules/memoryMcp";
 import { providerApi } from "../../../api/modules/provider";
 import {
@@ -12,6 +13,9 @@ import {
   modelOptionValue,
 } from "../../../utils/modelOptions";
 import { message } from "@/utils/antdMessage";
+
+import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 
 import styles from "./MemorySettings.module.less";
 
@@ -32,7 +36,14 @@ export default function CodexModelSetup({
 }: Props) {
   const { t } = useTranslation();
   const [choice, setChoice] = useState("codex");
-  const [initialChoice, setInitialChoice] = useState("codex");
+  const [savedChoice, setSavedChoice] = useState("codex");
+  const [publishedAt, setPublishedAt] = useState<string | null>(null);
+  const timeZone = useServerTimezone();
+  const [modeSince, setModeSince] = useState<string | null>(null);
+  const [status, setStatus] = useState<CodexStatus | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const [readingStatus, setReadingStatus] = useState(false);
+  const [statusRequest, refreshStatus] = useState(0);
   const [models, setModels] = useState<{ label: string; value: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -64,8 +75,11 @@ export default function CodexModelSetup({
       .getCodexModel(token.token_id, space)
       .then((saved) => {
         if (!active) return;
-        setChoice(saved.model ?? "codex");
-        setInitialChoice(saved.model ?? "codex");
+        const value = saved.model ?? saved.mode ?? "codex";
+        setChoice(value);
+        setSavedChoice(value);
+        setPublishedAt(saved.published_at ?? null);
+        setModeSince(saved.mode_since ?? null);
       })
       .catch(() => {
         if (active) setLoadError(true);
@@ -78,26 +92,79 @@ export default function CodexModelSetup({
     };
   }, [space, token.token_id, writable, attempt]);
 
-  const select = async (next: string) => {
-    if (space && (next.includes("/") || choice.includes("/"))) {
-      setBusy(true);
-      try {
-        await memoryMcpApi.setCodexModel(
-          token.token_id,
-          space,
-          next.includes("/") ? next : null,
-        );
-      } catch {
-        message.error(t("memory.mcp.modelSaveError", "未能保存提取模型"));
-        return;
-      } finally {
-        setBusy(false);
-      }
+  useEffect(() => {
+    if (view !== "model" || !writable || !space) return;
+    let active = true;
+    setReadingStatus(true);
+    memoryMcpApi
+      .getCodexStatus(token.token_id, space)
+      .then((result) => {
+        if (active) {
+          setStatus(result);
+          setStatusError(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setStatus(null);
+          setStatusError(true);
+        }
+      })
+      .finally(() => {
+        if (active) setReadingStatus(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [view, token.token_id, space, writable, statusRequest]);
+
+  const save = async (next: string, publish = false) => {
+    if (!space) {
+      // Older create responses can omit the space; keep their local setup choices usable.
+      if (view === "onboarding" && !next.includes("/")) setChoice(next);
+      return;
     }
-    setChoice(next);
+    setBusy(true);
+    try {
+      const saved = await memoryMcpApi.setCodexModel(
+        token.token_id,
+        space,
+        next.includes("/") ? next : null,
+        next === "server" ? "server" : undefined,
+        publish,
+      );
+      setChoice(next);
+      setSavedChoice(next);
+      setPublishedAt(saved.published_at ?? null);
+      setModeSince(saved.mode_since ?? null);
+      refreshStatus((n) => n + 1);
+    } catch {
+      message.error(t("memory.mcp.modelSaveError", "未能保存提取模型"));
+    } finally {
+      setBusy(false);
+    }
   };
-  const mode = (value: string) => (value.includes("/") ? "octop" : value);
-  const needsSetup = mode(initialChoice) !== mode(choice);
+  const desiredMode = savedChoice.includes("/") ? "octop" : savedChoice;
+  const dirty = choice !== savedChoice;
+  const observed = status?.observed;
+  const acknowledged =
+    !!publishedAt && status?.acknowledgement?.revision === publishedAt;
+  const confirmed = publishedAt
+    ? acknowledged
+    : observed?.mode === desiredMode &&
+      (!modeSince || Date.parse(observed.timestamp) >= Date.parse(modeSince));
+  useEffect(() => {
+    if (view !== "model" || !publishedAt || acknowledged || readingStatus)
+      return;
+    const timer = window.setTimeout(() => refreshStatus((n) => n + 1), 5000);
+    return () => window.clearTimeout(timer);
+  }, [view, publishedAt, acknowledged, readingStatus]);
+  const modeLabel = (mode: string) =>
+    mode === "codex"
+      ? t("memory.mcp.modeCodex", "Codex 会话复核")
+      : mode === "server"
+      ? t("memory.mcp.modeServer", "Memory 服务端提取")
+      : t("memory.mcp.modeOctop", "Octop 委托复核");
   const title = t("memory.mcp.codexPromptLabel", "Codex 接入提示词");
   const text =
     view === "model" || busy || loadError ? "" : prompt(token, choice);
@@ -112,6 +179,9 @@ export default function CodexModelSetup({
               {token.name}
             </Typography.Text>
           )}
+          <Typography.Text>
+            {t("memory.mcp.desiredModel", "期望的提取模型")}
+          </Typography.Text>
           <Select
             aria-label={t("memory.mcp.extractionSource", "记忆提取模型")}
             className={styles.codexSelect}
@@ -120,7 +190,9 @@ export default function CodexModelSetup({
             value={choice}
             loading={busy}
             disabled={busy || loadError}
-            onChange={(value) => void select(value)}
+            onChange={(value) =>
+              view === "model" ? setChoice(value) : void save(value)
+            }
             options={[
               {
                 value: "codex",
@@ -146,22 +218,113 @@ export default function CodexModelSetup({
               },
             ]}
           />
+          {view === "model" && (
+            <>
+              <Typography.Text type="secondary">
+                {t(
+                  "memory.mcp.applyScope",
+                  "更换提取模型后，先点击「应用到终端」。已启用面板同步的 Codex 会在下一轮对话结束时自动应用新配置。",
+                )}
+              </Typography.Text>
+              <Button
+                type="primary"
+                loading={busy}
+                disabled={loadError || !space || (!!publishedAt && !dirty)}
+                onClick={() => void save(choice, true)}
+              >
+                {t("memory.mcp.publishMode", "应用到终端")}
+              </Button>
+            </>
+          )}
           {view === "model" && !busy && !loadError && (
-            <Typography.Text type="secondary" role="status">
-              {needsSetup
-                ? t(
-                    "memory.mcp.modelSwitchHint",
-                    "切换提取方式后，请在本机 Codex 应用配置。",
-                  )
-                : choice.includes("/")
-                ? t(
-                    "memory.mcp.octopModelHint",
-                    "更换 Octop 模型后，下次提取生效。",
-                  )
-                : t(
-                    "memory.mcp.codexModelHint",
-                    "每轮结束后，由当前会话模型额外复核一次。",
-                  )}
+            <section
+              className={styles.codexStatus}
+              aria-label={t("memory.mcp.terminalStatus", "终端应用状态")}
+            >
+              <div className={styles.codexStatusHeading}>
+                <Typography.Text strong>
+                  {t("memory.mcp.terminalStatus", "终端应用状态")}
+                </Typography.Text>
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label={t("memory.mcp.refreshStatus", "刷新终端状态")}
+                  icon={<RefreshCw size={14} />}
+                  loading={readingStatus}
+                  onClick={() => refreshStatus((n) => n + 1)}
+                />
+              </div>
+              <div role="status">
+                <Tag
+                  color={
+                    confirmed && !dirty && !statusError
+                      ? "green"
+                      : statusError
+                      ? undefined
+                      : "orange"
+                  }
+                >
+                  {statusError
+                    ? t("memory.mcp.statusUnavailable", "状态暂不可用")
+                    : readingStatus && !status
+                    ? t("common.loading", "加载中")
+                    : dirty
+                    ? t("memory.mcp.unpublishedChoice", "所选配置尚未应用")
+                    : confirmed
+                    ? t("memory.mcp.appliedMode", "终端已确认")
+                    : !publishedAt
+                    ? t("memory.mcp.unpublishedChoice", "所选配置尚未应用")
+                    : t("memory.mcp.pendingMode", "等待终端确认")}
+                </Tag>
+                {observed && (
+                  <span>
+                    {t("memory.mcp.reportedMode", "最近运行方式：{{mode}}", {
+                      mode: modeLabel(observed.mode),
+                    })}
+                  </span>
+                )}
+              </div>
+              {observed && (
+                <Typography.Text type="secondary">
+                  {t("memory.mcp.lastModeReport", "最近上报 {{time}}", {
+                    time: formatServerIsoDateTime(observed.timestamp, timeZone),
+                  })}
+                </Typography.Text>
+              )}
+              <div className={styles.codexLastRun}>
+                <Typography.Text strong>
+                  {t("memory.mcp.lastTerminalRun", "最近实际提取模型")}
+                </Typography.Text>
+                {status?.last_run ? (
+                  <>
+                    <Typography.Text>
+                      {status.last_run.model || modeLabel(status.last_run.mode)}
+                    </Typography.Text>
+                    <Typography.Text type="secondary">
+                      {formatServerIsoDateTime(
+                        status.last_run.timestamp,
+                        timeZone,
+                      )}
+                    </Typography.Text>
+                  </>
+                ) : (
+                  <Typography.Text type="secondary">
+                    {statusError
+                      ? t("memory.mcp.statusUnavailable", "状态暂不可用")
+                      : readingStatus
+                      ? t("common.loading", "加载中")
+                      : t("memory.mcp.noTerminalRun", "暂无该凭据的执行记录")}
+                  </Typography.Text>
+                )}
+              </div>
+            </section>
+          )}
+          {view === "model" && (
+            <Typography.Text type="secondary">
+              {t(
+                "memory.mcp.manualSetupHint",
+                "如果本机尚未启用面板同步，发布后请重新点击「配置本机 Codex」，复制指令并在本机 Codex 对话中执行。",
+              )}
             </Typography.Text>
           )}
         </div>
@@ -183,7 +346,7 @@ export default function CodexModelSetup({
           type="link"
           className={styles.codexConfigure}
           onClick={onConfigure}
-          disabled={busy || loadError}
+          disabled={busy || loadError || dirty}
         >
           {t("memory.mcp.configureCodex", "配置本机 Codex")}{" "}
           <ArrowRight size={14} aria-hidden />

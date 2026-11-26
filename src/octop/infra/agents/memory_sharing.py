@@ -190,6 +190,15 @@ def list_tokens_in(user_id: int, space_id: str) -> dict[str, Any]:
     )
 
 
+def codex_status(user_id: int, space_id: str, token_id: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "GET",
+        f"/api/admin/spaces/{_space_segment(space_id)}/tokens/{quote(token_id, safe='')}/codex-status",
+        session=session.token,
+    )
+
+
 def create_token_in(
     user_id: int, space_id: str, client_name: str, scopes: list[str]
 ) -> dict[str, Any]:

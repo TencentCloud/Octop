@@ -3,7 +3,7 @@
  *
  * What we cover:
  *   - mount → listCandidates without a status filter (All) by default
- *   - row renders title + verbatim_quote + subject_name
+ *   - row shows the memory statement; opening the draft reveals its evidence
  *   - clicking the promote button opens the Popconfirm, confirming
  *     fires promoteCandidate and re-loads the list
  *   - clicking the reject button opens the Modal, submitting calls
@@ -40,12 +40,13 @@ beforeEach(() => {
 });
 
 describe("<CandidatesReview />", () => {
-  it("loads all candidates by default and renders title + quote", async () => {
+  it("shows the assertion in the list and the exact quote in the detail drawer", async () => {
     api.listCandidates.mockResolvedValue(
       listCandidatesResp([
         makeCandidate({
           id: "cand-1",
           title: "咖啡偏好",
+          assertion: "用户每天喝美式咖啡。",
           verbatim_quote: "我每天必须喝美式",
           subject_name: "用户",
         }),
@@ -62,8 +63,10 @@ describe("<CandidatesReview />", () => {
       offset: 0,
       limit: 20,
     });
-    // verbatim quote and subject_name render in the meta line
-    expect(screen.getByText(/每天必须喝美式/)).toBeInTheDocument();
+    expect(screen.getByText("用户每天喝美式咖啡。")).toBeVisible();
+    expect(screen.queryByText(/每天必须喝美式/)).toBeNull();
+    await userEvent.click(screen.getByText("咖啡偏好"));
+    expect(await screen.findByText(/每天必须喝美式/)).toBeVisible();
   });
 
   it("promotes a candidate via Popconfirm and re-loads", async () => {

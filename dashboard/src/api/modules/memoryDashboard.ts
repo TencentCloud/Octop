@@ -40,6 +40,7 @@ export type Importance = "low" | "medium" | "high";
 export type Confidence = "low" | "medium" | "high";
 
 export interface AtomItem {
+  raw_event_ids?: string[];
   id: string;
   entity_id: string;
   candidate_id: string;
@@ -235,6 +236,7 @@ export type CandidateStatus =
   | "rejected";
 
 export interface CandidateItem {
+  payload?: { evidence_quotes?: Record<string, string> };
   id: string;
   raw_event_ids: string[];
   candidate_type: AtomKind;

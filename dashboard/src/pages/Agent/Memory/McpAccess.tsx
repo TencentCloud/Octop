@@ -53,7 +53,7 @@ import styles from "./MemorySettings.module.less";
 const MCP_SETUP_DOCS_URL =
   "https://github.com/TencentCloud/octop-memory/blob/main/plugins/harness/AI-SETUP.md";
 // The installer entry point and the Python package it fetches must use the same revision.
-const CODEX_HARNESS_REF = "7260dbaa0e3442fa8a03bf123668f414401d2be6";
+const CODEX_HARNESS_REF = "44c581e698d8c1d8c91659391fe14c1234dc27f0";
 const MCP_INSTALL_BASE_URL = `https://raw.githubusercontent.com/TencentCloud/octop-memory/${CODEX_HARNESS_REF}/plugins/harness`;
 
 interface CreateFormValues {
@@ -376,6 +376,9 @@ export default function McpAccess() {
       "安装后按文档里的验证步骤检查召回与上报，并把结果告诉我。",
     ].join("\n");
 
+  const syncWheel = import.meta.env.VITE_CODEX_HARNESS_WHEEL as
+    | string
+    | undefined;
   const buildCodexPrompt = (token: MemoryMcpToken, codexExtraction: string) =>
     [
       t(
@@ -383,26 +386,42 @@ export default function McpAccess() {
         "请帮我在本机为 Codex 接入 Octop Memory，使用 MCP 地址 {{endpoint}}。",
         { endpoint: mcpEndpoint(token.mcp_url) },
       ),
-      t(
-        "memory.mcp.codexPromptInstall",
-        "下载并检查官方安装脚本后执行安装。macOS / Linux 使用 {{shellInstaller}}，传入 --url 和 --terminals codex。Windows PowerShell 使用 {{windowsInstaller}}，传入 -Url 和 -Terminals codex。",
-        {
-          shellInstaller: `${MCP_INSTALL_BASE_URL}/install.sh`,
-          windowsInstaller: `${MCP_INSTALL_BASE_URL}/install.ps1`,
-        },
-      ),
-      t(
-        "memory.mcp.codexInstallerRef",
-        "运行安装器时设置 OCTOP_MEMORY_REF={{ref}}。",
-        { ref: CODEX_HARNESS_REF },
-      ),
+      syncWheel
+        ? t(
+            "memory.mcp.codexSyncInstaller",
+            "在临时 Python 环境安装此实例提供的安装包 {{wheel}}。运行 octop-memory-harness install --url {{endpoint}} --terminals codex，沿用当前安装范围。",
+            {
+              wheel: new URL(syncWheel, origin).href,
+              endpoint: mcpEndpoint(token.mcp_url),
+            },
+          )
+        : t(
+            "memory.mcp.codexPromptInstall",
+            "下载并检查官方安装脚本后执行安装。macOS / Linux 使用 {{shellInstaller}}，传入 --url 和 --terminals codex。Windows PowerShell 使用 {{windowsInstaller}}，传入 -Url 和 -Terminals codex。",
+            {
+              shellInstaller: `${MCP_INSTALL_BASE_URL}/install.sh`,
+              windowsInstaller: `${MCP_INSTALL_BASE_URL}/install.ps1`,
+            },
+          ),
+      !syncWheel &&
+        t(
+          "memory.mcp.codexInstallerRef",
+          "运行安装器时设置 OCTOP_MEMORY_REF={{ref}}。",
+          { ref: CODEX_HARNESS_REF },
+        ),
       t(
         "memory.mcp.codexPromptToken",
         "请让我在本机终端以隐藏输入的方式提供本次 Token，通过 OCTOP_MEMORY_TOKEN 传给安装器。仅在我确认接入同一个记忆空间时，才复用同一地址已有的本机凭据。请将 Token 明文留在本机，避免写入对话、命令文本或日志。",
       ),
       token.scopes?.includes("write")
         ? [
-            codexExtraction === "codex"
+            syncWheel
+              ? t(
+                  "memory.mcp.enablePanelSync",
+                  "启用面板同步：安装前设置 OCTOP_CODEX_PANEL_SYNC=1 和 OCTOP_CODEX_REVIEW_URL={{url}}。升级时沿用本机当前提取方式。首次安装才设置 OCTOP_CODEX_EXTRACTION=codex。检查 codexPanelSync 已开启，之后用面板的「应用到终端」发布选择。",
+                  { url: origin + "/api/memory-mcp/codex-review" },
+                )
+              : codexExtraction === "codex"
               ? t(
                   "memory.mcp.codexExtractPrompt",
                   "安装前设置 OCTOP_CODEX_EXTRACTION=codex。安装完成后，在发起安装的当前 Codex 对话中，查找本次安装所注册的 MCP 服务下的 memory_propose（包括按需加载的工具）。找到后报告“当前对话已加载 memory_propose”，验证时无需写入候选。仅检查配置文件、服务端工具目录或新开的 Codex 进程，无法确认本对话已加载。若本对话找不到它，报告“已配置，当前对话待重载”，提示打开命令菜单（Mac 按 ⌘K，Windows/Linux 按 Ctrl+K），搜索 MCP，进入 MCP 设置，点击“服务器”标题旁的重启图标。使用 CLI 时退出并恢复原会话。回到同一对话再次检查；若仍不可用，报告实际错误。",
@@ -424,7 +443,9 @@ export default function McpAccess() {
               "memory.mcp.codexPromptReadWrite",
               "这个 Token 有读写权限。请核对自动召回和会话上报 hooks 已配置，确认 Codex 能发现 memory_get 和 memory_save。用只读操作验证连接，避免写入测试记忆。",
             ),
-          ].join("\n")
+          ]
+            .filter(Boolean)
+            .join("\n")
         : t(
             "memory.mcp.codexPromptReadOnly",
             "这个 Token 只有读取权限。请在运行安装器前设置 OCTOP_CODEX_READ_ONLY=1，核对自动召回已配置，并验证 Codex 能使用 memory_get。",
@@ -433,7 +454,9 @@ export default function McpAccess() {
         "memory.mcp.codexPromptResult",
         "完成后请报告验证结果，以及还需我在 Codex 界面完成的重启或 hook 信任操作。",
       ),
-    ].join("\n\n");
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
   const buildInstallPowerShell = (plaintext: string, mcpUrl?: string) =>
     `irm https://raw.githubusercontent.com/TencentCloud/octop-memory/main/plugins/harness/install.ps1 -OutFile install.ps1; .\\install.ps1 -Url ${mcpEndpoint(

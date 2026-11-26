@@ -329,6 +329,21 @@ def revoke_token(
 class CodexModelChoice(BaseModel):
     model: str | None = Field(default=None, min_length=1, max_length=512)
 
+    mode: Literal["codex", "octop", "server"] | None = None
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> CodexModelChoice:
+        if self.mode is None:
+            self.mode = "octop" if self.model else "codex"
+        if (self.mode == "octop") != bool(self.model):
+            raise ValueError("Only Octop extraction takes a model reference")
+        return self
+
+
+class SavedCodexModel(CodexModelChoice):
+    mode_since: str | None = None
+    published_at: str | None = None
+
 
 def _require_writable_token(user: User, token_id: str, space_id: str) -> None:
     records = memory_sharing.list_tokens_in(user.id, space_id)
@@ -350,11 +365,11 @@ def get_codex_model(
     space_id: str,
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
-) -> CodexModelChoice:
+) -> SavedCodexModel:
     _require_writable_token(user, token_id, space_id)
     assert server.services is not None
     saved = server.services.settings_repo.get(codex_memory_review.binding_key(token_id, space_id))
-    return CodexModelChoice(model=json.loads(saved)["model"] if saved else None)
+    return SavedCodexModel.model_validate(json.loads(saved) if saved else {"model": None})
 
 
 @router.put("/{token_id}/codex-model")
@@ -362,17 +377,47 @@ def set_codex_model(
     token_id: str,
     space_id: str,
     body: CodexModelChoice,
+    apply: bool = False,
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
-) -> CodexModelChoice:
+) -> SavedCodexModel:
     _require_writable_token(user, token_id, space_id)
     assert server.services is not None
     key = codex_memory_review.binding_key(token_id, space_id)
-    if body.model is None:
-        server.services.settings_repo.delete(key)
-    else:
+    if body.model is not None:
         codex_memory_review.check_model(server, user, body.model)
-        server.services.settings_repo.set(
-            key, json.dumps({"model": body.model, "user_id": user.id})
-        )
-    return body
+    settings = server.services.settings_repo
+    previous = SavedCodexModel.model_validate(json.loads(settings.get(key) or '{"model":null}'))
+    since = previous.mode_since if previous.mode == body.mode else datetime.now(UTC).isoformat()
+    same_choice = (previous.mode, previous.model) == (body.mode, body.model)
+    published = previous.published_at if same_choice else None
+    if apply and not published:
+        published = datetime.now(UTC).isoformat()
+    saved = SavedCodexModel(**body.model_dump(), mode_since=since, published_at=published)
+    settings.set(key, json.dumps({**saved.model_dump(), "user_id": user.id}))
+    return saved
+
+
+@router.get("/{token_id}/codex-status", summary="Observed terminal mode and last completed review")
+def get_codex_status(
+    token_id: str,
+    space_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_writable_token(user, token_id, space_id)
+    assert server.services is not None
+    status = memory_sharing.codex_status(user.id, space_id, token_id)
+    key = codex_memory_review.binding_key(token_id, space_id)
+    status["acknowledgement"] = json.loads(
+        server.services.settings_repo.get(key + ".ack") or "null"
+    )
+    delegated = server.services.settings_repo.get(key + ".last_run")
+    if delegated:
+        run = json.loads(delegated)
+        last = status.get("last_run")
+        if not last or datetime.fromisoformat(run["timestamp"]) > datetime.fromisoformat(
+            last["timestamp"]
+        ):
+            status["last_run"] = run
+    return status

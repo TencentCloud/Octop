@@ -10,6 +10,7 @@ vi.mock("../../../api/modules/memoryMcp", () => ({
     revoke: vi.fn(),
     rotate: vi.fn(),
     getCodexModel: vi.fn(),
+    getCodexStatus: vi.fn(),
     setCodexModel: vi.fn(),
   },
 }));
@@ -140,6 +141,12 @@ function expandButtons(container: HTMLElement): HTMLElement[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  api.getCodexModel.mockResolvedValue({ model: null, mode: "codex" });
+  api.getCodexStatus.mockResolvedValue({ observed: null, last_run: null });
+  api.setCodexModel.mockImplementation(async (_id, _space, model, mode) => ({
+    model,
+    mode,
+  }));
   api.list.mockResolvedValue([activeToken]);
   vi.mocked(memorySharingApi.status).mockResolvedValue({ connected: true });
   vi.mocked(memorySharingApi.spaces).mockResolvedValue({ spaces: [] });
@@ -155,7 +162,10 @@ describe("<McpAccess />", () => {
       { ...activeToken, scopes: ["read", "write"], space_id: "work" },
     ]);
     api.getCodexModel.mockResolvedValue({ model: null });
-    api.setCodexModel.mockResolvedValue({ model: "lab/review" });
+    api.setCodexModel.mockResolvedValue({
+      model: "lab/review",
+      published_at: "2026-11-25T03:00:00Z",
+    });
     const user = userEvent.setup();
     render(<McpAccess />);
     await user.click(
@@ -165,22 +175,42 @@ describe("<McpAccess />", () => {
       await screen.findByRole("combobox", { name: "记忆提取模型" }),
     );
     await user.click(await screen.findByTitle("lab / Review"));
+    expect(api.setCodexModel).not.toHaveBeenCalled();
+    expect(await screen.findByText("所选配置尚未应用")).toBeVisible();
+    expect(screen.getByText(/先点击「应用到终端」/)).toBeVisible();
+    expect(
+      screen.getByText(/发布后请重新点击「配置本机 Codex」/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "配置本机 Codex" }),
+    ).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "应用到终端" }));
     expect(api.setCodexModel).toHaveBeenCalledWith(
       "tok_1",
       "work",
       "lab/review",
+      undefined,
+      true,
     );
     expect(
       screen.queryByRole("textbox", { name: "Codex 接入提示词" }),
     ).toBeNull();
     expect(screen.queryByText("查看完整指令")).toBeNull();
     expect(screen.queryByRole("button", { name: "复制提示词" })).toBeNull();
+    expect(await screen.findByText("等待终端确认")).toBeVisible();
     expect(
-      await screen.findByText("切换提取方式后，请在本机 Codex 应用配置。"),
-    ).toBeVisible();
+      screen.getByRole("button", { name: "配置本机 Codex" }),
+    ).toBeEnabled();
     await user.click(screen.getByRole("combobox", { name: "记忆提取模型" }));
     await user.click(await screen.findByTitle("跟随当前 Codex 会话"));
-    expect(api.setCodexModel).toHaveBeenCalledWith("tok_1", "work", null);
+    await user.click(screen.getByRole("button", { name: "应用到终端" }));
+    expect(api.setCodexModel).toHaveBeenCalledWith(
+      "tok_1",
+      "work",
+      null,
+      undefined,
+      true,
+    );
   });
 
   it("keeps setup instructions separate when switching between Octop models", async () => {
@@ -188,6 +218,14 @@ describe("<McpAccess />", () => {
       { ...activeToken, scopes: ["read", "write"], space_id: "work" },
     ]);
     api.getCodexModel.mockResolvedValue({ model: "lab/review" });
+    api.getCodexStatus.mockResolvedValue({
+      observed: { mode: "octop", timestamp: "2026-11-25T03:00:00Z" },
+      last_run: {
+        mode: "octop",
+        model: "lab/review",
+        timestamp: "2026-11-25T03:00:00Z",
+      },
+    });
     const user = userEvent.setup();
     render(<McpAccess />);
     await user.click(
@@ -196,14 +234,15 @@ describe("<McpAccess />", () => {
     await waitFor(() => expect(screen.getByText("lab / Review")).toBeVisible());
     await user.click(screen.getByRole("combobox", { name: "记忆提取模型" }));
     await user.click(await screen.findByTitle("lab / Small"));
+    await user.click(screen.getByRole("button", { name: "应用到终端" }));
     expect(api.setCodexModel).toHaveBeenCalledWith(
       "tok_1",
       "work",
       "lab/small",
+      undefined,
+      true,
     );
-    expect(
-      await screen.findByText("更换 Octop 模型后，下次提取生效。"),
-    ).toBeVisible();
+    expect(await screen.findByText("终端已确认")).toBeVisible();
     expect(screen.queryByRole("button", { name: "复制提示词" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "配置本机 Codex" }));
     expect(
@@ -223,6 +262,86 @@ describe("<McpAccess />", () => {
     expect(prompt.value).toContain("lab/small");
     expect(prompt.value).toContain("/api/memory-mcp/codex-review");
     expect(api.rotate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a saved model pending on reopen until the credential reports the new mode", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, space_id: "work", scopes: ["read", "write"] },
+    ]);
+    api.getCodexModel.mockResolvedValue({
+      model: "lab/review",
+      mode_since: "2026-11-25T03:00:00Z",
+      published_at: "2026-11-25T03:00:00Z",
+    });
+    const oldRun = {
+      mode: "codex" as const,
+      model: "astra",
+      timestamp: "2026-11-25T02:00:00Z",
+    };
+    api.getCodexStatus.mockResolvedValue({
+      observed: oldRun,
+      last_run: oldRun,
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await user.click(
+      await screen.findByRole("button", { name: "Codex 提取模型" }),
+    );
+    await waitFor(() => expect(screen.getByText("等待终端确认")).toBeVisible());
+    expect(await screen.findByText("astra")).toBeVisible();
+    api.getCodexStatus.mockResolvedValue({
+      observed: { mode: "octop", timestamp: "2026-11-25T01:00:00Z" },
+      last_run: oldRun,
+    });
+    await user.click(screen.getByRole("button", { name: "刷新终端状态" }));
+    expect(
+      await screen.findByText(/最近运行方式：Octop 委托复核/),
+    ).toBeVisible();
+    expect(screen.getByText("等待终端确认")).toBeVisible();
+    api.getCodexStatus.mockResolvedValue({
+      observed: { mode: "octop", timestamp: "2026-11-25T04:00:00Z" },
+      acknowledgement: {
+        revision: "2026-11-25T03:00:00Z",
+        timestamp: "2026-11-25T04:00:00Z",
+      },
+      last_run: oldRun,
+    });
+    await user.click(screen.getByRole("button", { name: "刷新终端状态" }));
+    expect(await screen.findByText("终端已确认")).toBeVisible();
+    expect(screen.getByText("astra")).toBeVisible();
+  });
+
+  it("uses the paired hook installer and preserves the local mode until published", async () => {
+    vi.stubEnv(
+      "VITE_CODEX_HARNESS_WHEEL",
+      "/assets/test/installer.whl#sha256=test",
+    );
+    try {
+      api.list.mockResolvedValue([
+        { ...activeToken, space_id: "work", scopes: ["read", "write"] },
+      ]);
+      api.getCodexModel.mockResolvedValue({ model: "lab/review" });
+      const user = userEvent.setup();
+      render(<McpAccess />);
+      await user.click(
+        await screen.findByRole("button", { name: "Codex 提取模型" }),
+      );
+      await user.click(
+        await screen.findByRole("button", { name: "配置本机 Codex" }),
+      );
+      await user.click(await screen.findByText("查看完整指令"));
+      const prompt = (
+        await screen.findByRole<HTMLTextAreaElement>("textbox", {
+          name: "Codex 接入提示词",
+        })
+      ).value;
+      expect(prompt).toContain("installer.whl#sha256=test");
+      expect(prompt).toContain("OCTOP_CODEX_PANEL_SYNC=1");
+      expect(prompt).not.toContain("OCTOP_CODEX_EXTRACTION=octop");
+      expect(api.setCodexModel).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("shows the connected MCP address before the first token is created", async () => {

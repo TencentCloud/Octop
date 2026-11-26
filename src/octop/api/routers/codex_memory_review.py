@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, Field
 
 from octop.api.deps import extract_raw_token, get_server
-from octop.infra.agents.codex_memory_review import review_turn
+from octop.infra.agents.codex_memory_review import review_turn, sync_terminal
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
@@ -25,16 +25,33 @@ class ReviewTurn(BaseModel):
     )
 
 
+class TerminalSync(BaseModel):
+    applied_revision: str | None = Field(default=None, max_length=64)
+
+
+def _memory_token(authorization: str = Header(default="")) -> str:
+    token = extract_raw_token(authorization=authorization)
+    if not token or not token.startswith("omcp_"):
+        raise OctopError(ErrorCode.AUTH_FAILED, "A Memory space token is required")
+    return token
+
+
+@router.post(
+    "/memory-mcp/codex-config", summary="Pull or acknowledge this terminal's published mode"
+)
+def terminal_config(
+    body: TerminalSync, token: str = Depends(_memory_token), server: Any = Depends(get_server)
+) -> dict[str, Any]:
+    return sync_terminal(server, token, body.applied_revision)
+
+
 @router.post(
     "/memory-mcp/codex-review",
     summary="Review a captured Codex turn using the selected Octop model",
 )
 async def review(
-    body: ReviewTurn, authorization: str = Header(default=""), server: Any = Depends(get_server)
+    body: ReviewTurn, token: str = Depends(_memory_token), server: Any = Depends(get_server)
 ) -> dict[str, Any]:
-    token = extract_raw_token(authorization=authorization)
-    if not token or not token.startswith("omcp_"):
-        raise OctopError(ErrorCode.AUTH_FAILED, "A Memory space token is required")
     lock = _locks.setdefault((body.session_id, body.turn_id), asyncio.Lock())
     async with lock:
         return await asyncio.to_thread(
