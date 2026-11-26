@@ -9,6 +9,8 @@ import weixinIcon from "../../../../assets/channels/weixin.svg";
 import octopIcon from "../../../../assets/channels/octop.svg";
 import consoleIcon from "../../../../assets/channels/console.svg";
 import telegramIcon from "../../../../assets/channels/telegram.svg";
+import slackIcon from "../../../../assets/channels/slack.svg";
+import whatsappIcon from "../../../../assets/channels/whatsapp.svg";
 import mqttIcon from "../../../../assets/channels/mqtt.png";
 import xiaoyiIcon from "../../../../assets/channels/xiaoyi.png";
 
@@ -23,6 +25,8 @@ export type ChannelKey =
   | "qq"
   | "weixin"
   | "discord"
+  | "slack"
+  | "whatsapp"
   | "yuanbao"
   | "xiaoyi"
   | "mqtt"
@@ -44,12 +48,19 @@ export const CHANNEL_KEYS: ChannelKey[] = [
   "dingtalk",
   "telegram",
   "discord",
+  "slack",
+  "whatsapp",
   "xiaoyi",
   "mqtt",
 ];
 
 /** Overseas / less-common kinds hidden behind "更多通道" until expanded. */
-const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>(["telegram", "discord"]);
+const COLLAPSED_CHANNEL_KEYS = new Set<ChannelKey>([
+  "telegram",
+  "discord",
+  "slack",
+  "whatsapp",
+]);
 
 export function isCollapsedChannelKey(key: ChannelKey): boolean {
   return COLLAPSED_CHANNEL_KEYS.has(key);
@@ -83,6 +94,8 @@ export const CHANNEL_LABEL_KEYS: Record<ChannelKey, string> = {
   qq: "channels.label_qq",
   weixin: "channels.label_weixin",
   discord: "channels.label_discord",
+  slack: "channels.label_slack",
+  whatsapp: "channels.label_whatsapp",
   yuanbao: "channels.label_yuanbao",
   xiaoyi: "channels.label_xiaoyi",
   mqtt: "channels.label_mqtt",
@@ -101,6 +114,8 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   yuanbao: "元宝",
   dingtalk: "钉钉",
   discord: "Discord",
+  slack: "Slack",
+  whatsapp: "WhatsApp",
   xiaoyi: "小艺",
   mqtt: "MQTT",
   telegram: "Telegram",
@@ -116,6 +131,8 @@ export const CHANNEL_ICONS: Record<ChannelKey, string> = {
   qq: qqIcon,
   weixin: weixinIcon,
   discord: discordIcon,
+  slack: slackIcon,
+  whatsapp: whatsappIcon,
   yuanbao: yuanbaoIcon,
   xiaoyi: xiaoyiIcon,
   mqtt: mqttIcon,
@@ -137,6 +154,8 @@ export const CHANNEL_COLORS: Record<ChannelKey, string> = {
   xiaoyi: "#CF0A2C",
   mqtt: "#7C3AED",
   discord: "#5865F2",
+  slack: "#4A154B",
+  whatsapp: "#25D366",
   dashboard: "#6366F1",
   agentchat: "#64748B",
   octopbot: "#10B981",
@@ -155,6 +174,9 @@ export const CHANNEL_URLS: Partial<Record<ChannelKey, string>> = {
   dingtalk: "https://open-dev.dingtalk.com/",
   qq: "https://q.qq.com/qqbot/openclaw/",
   discord: "https://discord.com/developers/applications",
+  slack: "https://api.slack.com/apps",
+  whatsapp:
+    "https://developers.facebook.com/documentation/business-messaging/whatsapp/get-started",
   yuanbao: "https://yuanbao.tencent.com/bot",
   wecom: "https://work.weixin.qq.com/wework_admin/frame#/aiHelper/create",
   telegram: "https://t.me/BotFather",
@@ -170,6 +192,8 @@ export interface ChannelField {
   /** Antd input type. */
   type?: "text" | "password" | "textarea" | "json" | "switch" | "select";
   options?: string[];
+  /** Optional i18n key prefix for select option labels (defaults to Telegram option prefix). */
+  optionLabelPrefix?: string;
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
@@ -377,6 +401,132 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
       label: "HTTP Proxy Auth",
       type: "password",
       placeholder: "user:password",
+    },
+  ],
+  slack: [
+    {
+      name: "bot_token",
+      label: "Bot Token",
+      type: "password",
+      placeholder: "xoxb-...",
+      required: true,
+    },
+    {
+      name: "app_token",
+      label: "App-Level Token (Socket Mode)",
+      type: "password",
+      placeholder: "xapp-...",
+    },
+    {
+      name: "signing_secret",
+      label: "Signing Secret",
+      type: "password",
+    },
+    {
+      name: "reply_in_thread",
+      label: "channels.slackReplyInThread",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "reply_broadcast",
+      label: "channels.slackReplyBroadcast",
+      type: "select",
+      options: ["off", "first", "all"],
+      optionLabelPrefix: "channels.slackReplyBroadcastOption_",
+      defaultValue: "first",
+      legacyDefaultValue: "first",
+      helpKey: "channels.slackReplyBroadcastHelp",
+    },
+    {
+      name: "thread_follow_up",
+      label: "channels.slackThreadFollowUp",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+      helpKey: "channels.slackThreadFollowUpHelp",
+    },
+    {
+      name: "fetch_thread_context",
+      label: "channels.slackFetchThreadContext",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+      helpKey: "channels.slackFetchThreadContextHelp",
+    },
+    {
+      name: "thread_isolation",
+      label: "channels.telegram_topic_isolation",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "http_proxy",
+      label: "HTTP Proxy",
+      placeholder: "http://127.0.0.1:18118",
+    },
+  ],
+  whatsapp: [
+    {
+      name: "provider",
+      label: "channels.whatsappProvider",
+      type: "select",
+      options: ["cloud", "waha", "evolution"],
+      defaultValue: "cloud",
+      legacyDefaultValue: "cloud",
+      helpKey: "channels.whatsappProviderHelp",
+    },
+    {
+      name: "access_token",
+      label: "Access Token (Cloud API)",
+      type: "password",
+      placeholder: "EAAB...",
+    },
+    {
+      name: "phone_number_id",
+      label: "Phone Number ID (Cloud API)",
+      placeholder: "109876543210",
+    },
+    {
+      name: "verify_token",
+      label: "Webhook Verify Token",
+      type: "password",
+    },
+    {
+      name: "app_secret",
+      label: "App Secret (Cloud API)",
+      type: "password",
+    },
+    {
+      name: "bridge_url",
+      label: "channels.whatsappBridgeUrl",
+      placeholder: "http://127.0.0.1:3000",
+    },
+    {
+      name: "bridge_api_key",
+      label: "channels.whatsappBridgeApiKey",
+      type: "password",
+    },
+    {
+      name: "session_name",
+      label: "channels.whatsappSessionName",
+      placeholder: "default",
+      defaultValue: "default",
+      legacyDefaultValue: "default",
+    },
+    {
+      name: "reply_to_message",
+      label: "channels.telegram_reply_to_message",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "http_proxy",
+      label: "HTTP Proxy",
+      placeholder: "http://127.0.0.1:18118",
     },
   ],
   yuanbao: [
@@ -622,6 +772,24 @@ export function hasRequiredCredentials(
   key: ChannelKey,
   config: Record<string, unknown> | undefined,
 ): boolean {
+  if (key === "whatsapp") {
+    if (!config) return false;
+    const provider = String(config.provider ?? "")
+      .trim()
+      .toLowerCase();
+    const hasBridge = String(config.bridge_url ?? "").trim() !== "";
+    if (
+      provider === "waha" ||
+      provider === "evolution" ||
+      (hasBridge && !String(config.phone_number_id ?? "").trim())
+    ) {
+      return hasBridge;
+    }
+    return (
+      String(config.access_token ?? "").trim() !== "" &&
+      String(config.phone_number_id ?? "").trim() !== ""
+    );
+  }
   const required = REQUIRED_CREDENTIALS[key];
   if (!required || required.length === 0) return true;
   if (!config) return false;

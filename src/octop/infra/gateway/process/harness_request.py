@@ -195,7 +195,15 @@ async def build_content_from_message(
     # control text intact and add quoted context only to the model's user turn.
     # Telegram replies may refer to another expert, topic, or an older message
     # outside the current history. Keep their context even when we sent it.
-    if msg.channel_type in ("telegram", "qq"):
+    if msg.channel_type in (
+        "telegram",
+        "qq",
+        "discord",
+        "slack",
+        "whatsapp",
+        "feishu",
+        "wecom",
+    ):
         quote = msg.metadata.get("reply_quote_text") or (
             None
             if msg.channel_type == "qq" and msg.metadata.get("reply_to_is_own_bot")

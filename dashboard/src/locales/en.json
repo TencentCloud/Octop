@@ -3268,7 +3268,22 @@
     "discordAllowAllChannelsHelp": "On by default; no channel IDs needed. Turn off to restrict access to the channels listed below. Mention the bot to get a reply.",
     "discordSetupHelp": "Enable Message Content Intent on the Discord Bot page and invite the bot to your server. All server text channels the bot can access are allowed by default; mention the bot to get a reply. DMs only accept the user IDs listed below; leave empty to disable DMs.",
     "telegramAllowedUsers": "Allowed Telegram user IDs (comma or newline separated)",
-    "telegramAllowedUsersHelp": "Only these numeric user IDs can talk to the bot, in private chats and groups. Leave empty to let anyone who finds the bot use it."
+    "telegramAllowedUsersHelp": "Only these numeric user IDs can talk to the bot, in private chats and groups. Leave empty to let anyone who finds the bot use it.",
+    "slackReplyInThread": "Reply inside threads in channels",
+    "slackReplyBroadcast": "Also send thread replies to channel",
+    "slackReplyBroadcastHelp": "Controls Slack reply_broadcast (Also send to channel) when replying inside a thread. 'First reply only' keeps the initial answer visible in the main channel without flooding it during follow-ups.",
+    "slackReplyBroadcastOption_off": "Off (thread only)",
+    "slackReplyBroadcastOption_first": "First reply only",
+    "slackReplyBroadcastOption_all": "All thread replies",
+    "slackThreadFollowUp": "Auto follow-up in participated threads",
+    "slackThreadFollowUpHelp": "Once the bot is mentioned or replies in a thread, subsequent messages in that thread trigger the bot without repeating @mention (unless another user is explicitly mentioned).",
+    "slackFetchThreadContext": "Fetch thread history on first entry",
+    "slackFetchThreadContextHelp": "Automatically fetch recent messages via conversations.replies when entering an existing thread for the first time (requires channels:history / groups:history; degrades gracefully if unavailable).",
+    "whatsappProvider": "Connection mode",
+    "whatsappProviderHelp": "Use official Meta WhatsApp Business Cloud API, or a self-hosted WAHA / Evolution API QR bridge for personal numbers.",
+    "whatsappBridgeUrl": "QR Bridge URL (WAHA / Evolution)",
+    "whatsappBridgeApiKey": "Bridge API Key",
+    "whatsappSessionName": "Bridge Session / Instance Name"
   },
   "tokenUsage": {
     "title": "Token Usage Analytics",
