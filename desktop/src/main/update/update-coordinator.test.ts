@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  channelHeadNeedsPlatformAsset,
   channelHeadTag,
   manifestFromDownloadsResponse,
   selectRelease,
@@ -29,7 +30,48 @@ test("platformAssetKey maps platform+arch", () => {
   assert.equal(platformAssetKey("darwin", "x64"), "mac_intel");
   assert.equal(platformAssetKey("win32", "arm64"), "win_arm");
   assert.equal(platformAssetKey("win32", "x64"), "win_x64");
-  assert.equal(platformAssetKey("linux", "x64"), null);
+  assert.equal(platformAssetKey("linux", "x64"), "linux_x64");
+  assert.equal(platformAssetKey("linux", "arm64"), "linux_arm");
+  assert.equal(platformAssetKey("freebsd", "x64"), null);
+});
+
+test("selectRelease picks a Linux asset", () => {
+  const linuxStable = {
+    tag: "v1.0.3",
+    releasesUrl: "https://github.com/x/releases",
+    assets: {
+      linux_x64: {
+        name: "Octop-desktop-linux-amd64-1.0.3.deb",
+        ext: "deb",
+        url: "https://download.octop.cloud/Octop-desktop-linux-amd64-1.0.3.deb",
+      },
+    },
+  };
+
+  const selection = selectRelease({ client: { stable: linuxStable } }, "1.0.2", "linux_x64", true);
+
+  assert.equal(selection?.tag, "v1.0.3");
+  assert.equal(selection?.asset.ext, "deb");
+});
+
+test("channel head without a platform asset is reported separately", () => {
+  const manifest = { client: { stable } }; // stable carries mac_arm only
+  assert.equal(
+    channelHeadNeedsPlatformAsset(manifest, "1.0.1", "linux_x64", true),
+    true,
+  );
+  assert.equal(
+    channelHeadNeedsPlatformAsset(manifest, "1.0.1", "mac_arm", true),
+    false,
+  );
+  assert.equal(
+    channelHeadNeedsPlatformAsset(manifest, "1.0.2", "linux_x64", true),
+    false,
+  );
+  assert.equal(
+    channelHeadNeedsPlatformAsset({ client: { stable, beta } }, "1.0.1", "mac_arm", false),
+    false,
+  );
 });
 
 test("channel head stays on stable when stableOnly and beta is higher", () => {

@@ -16,7 +16,9 @@ export interface DownloadAsset {
 export interface ChannelRelease {
   tag: string;
   releasesUrl: string;
-  assets: Partial<Record<"mac_arm" | "mac_intel" | "win_x64" | "win_arm", DownloadAsset>>;
+  assets: Partial<
+    Record<"mac_arm" | "mac_intel" | "win_x64" | "win_arm" | "linux_x64" | "linux_arm", DownloadAsset>
+  >;
 }
 
 export interface DownloadManifest {
@@ -44,12 +46,13 @@ export function manifestFromDownloadsResponse(body: unknown): DownloadManifest {
   return { client: data.client as DownloadManifest["client"] };
 }
 
-export type PlatformKey = "mac_arm" | "mac_intel" | "win_x64" | "win_arm";
+export type PlatformKey = "mac_arm" | "mac_intel" | "win_x64" | "win_arm" | "linux_x64" | "linux_arm";
 
 export function platformAssetKey(platform: NodeJS.Platform, arch: string): PlatformKey | null {
   if (platform === "darwin") return arch === "arm64" ? "mac_arm" : "mac_intel";
   if (platform === "win32") return arch === "arm64" ? "win_arm" : "win_x64";
-  return null; // Linux is not in the current manifest keys (§6.1).
+  if (platform === "linux") return arch === "arm64" ? "linux_arm" : "linux_x64";
+  return null;
 }
 
 export interface SelectedRelease {
@@ -137,4 +140,28 @@ export function selectRelease(
   if (!best) return null;
   const asset = best.assets[platform]!;
   return { tag: best.tag, asset, releasesUrl: best.releasesUrl };
+}
+
+/**
+ * True when the channel head is newer than ``currentVersion`` but has no usable
+ * asset for this platform. The shell must not report "already up to date" in
+ * that case: on Linux the stable channel can lag behind the beta builds (#3087).
+ */
+export function channelHeadNeedsPlatformAsset(
+  manifest: DownloadManifest,
+  currentVersion: string,
+  platform: PlatformKey | null,
+  stableOnly: boolean,
+): boolean {
+  const client = manifest.client;
+  if (!client) return false;
+  const candidates: ChannelRelease[] = [];
+  if (client.stable) candidates.push(client.stable);
+  if (!stableOnly && client.beta) candidates.push(client.beta);
+  const heads = candidates.filter((release) => parseVersion(release.tag));
+  heads.sort((a, b) => compareVersions(b.tag, a.tag));
+  const head = heads[0];
+  if (!head || !isNewer(head.tag, currentVersion)) return false;
+  const asset = platform ? head.assets[platform] : undefined;
+  return !asset || !isValidAssetUrl(asset.url);
 }

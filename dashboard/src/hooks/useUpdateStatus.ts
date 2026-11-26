@@ -35,6 +35,7 @@ function statusFromShell(res: DesktopUpdateCheckResult): UpdateStatus {
     source: null,
     last_check_time: new Date().toISOString(),
     release_notes: null,
+    platform_asset_missing: res.noAssetForPlatform ?? false,
   };
 }
 

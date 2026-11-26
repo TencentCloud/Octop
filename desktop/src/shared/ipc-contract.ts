@@ -27,6 +27,8 @@ export interface UpdateCheckResult {
   status: "update-available" | "up-to-date" | "error";
   currentVersion: string;
   latestVersion: string | null;
+  /** Channel head is newer but has no installable asset for this platform. */
+  noAssetForPlatform?: boolean;
   error: string | null;
 }
 

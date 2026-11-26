@@ -4487,6 +4487,7 @@
       "restartFailed": "Restart request failed. Check the service and try again.",
       "releaseNotes": "Release Notes",
       "shellManaged": "The desktop client is updated by its shell, which detects, downloads and installs the shell, frontend and bundled Python runtime as one release.",
+      "noPlatformAsset": "The selected channel has a newer release, but no package for this platform yet. On Linux, turn off \"Stable only\" to get beta builds.",
       "updateModalTitle": "New Version Available",
       "guideTitle": "Update by install method",
       "guideIntro": "If the one-click upgrade on the left is unavailable, pick the commands for your install method. Restart after upgrading; data stays in ~/.octop (or OCTOP_HOME).",
