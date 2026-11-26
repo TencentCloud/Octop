@@ -46,9 +46,13 @@ jobs:
   # environment. Build the wheel, install it with pip, and verify the
   # published console command from an empty environment.
   command-install:
-    name: Command install
-    runs-on: ubuntu-latest
+    name: Command install (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -59,7 +63,8 @@ jobs:
       - name: Build wheel
         run: uv build --wheel
 
-      - name: Install the wheel with pip
+      - name: Install the wheel with pip (Linux)
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           uv venv --no-project --python 3.12 --seed /tmp/octop-install
@@ -71,8 +76,27 @@ jobs:
           /tmp/octop-install/bin/python -m pip install --upgrade pip
           /tmp/octop-install/bin/python -m pip install "${wheels[0]}"
 
-      - name: Verify the installed command
+      - name: Install the wheel with pip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          uv venv --no-project --python 3.12 --seed .octop-install
+          $wheels = @(Get-ChildItem -Path dist -Filter "octop-*.whl")
+          if ($wheels.Count -ne 1) {
+            throw "expected one wheel, found: $($wheels.Name -join ', ')"
+          }
+          .\.octop-install\Scripts\python.exe -m pip install --upgrade pip
+          .\.octop-install\Scripts\python.exe -m pip install $wheels[0].FullName
+
+      - name: Verify the installed command (Linux)
+        if: runner.os == 'Linux'
         run: /tmp/octop-install/bin/octop --help
+
+      - name: Verify the installed command (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\.octop-install\Scripts\octop.exe --help
 
   helm:
     name: Helm chart
