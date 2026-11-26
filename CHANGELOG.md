@@ -26,6 +26,7 @@
 - 会话可以生成只读分享链接。打开后能看到对话、思考和工具调用；用 localhost 或 127.0.0.1 打开时不提供分享
 - ACP 协作新增内置 Qwen Code Runner（`qwen --acp`），含主机探测、安装脚本与托管专家会话模式
 - 新增内置 Gitea 连接器：填写自建实例地址与个人访问令牌（按用户加密保存）后，智能体可浏览仓库、查询 Issue 与评论、查看 PR、读取文件并发表评论。
+- 对话列表支持勾选多个会话后批量删除，覆盖经典侧栏与简洁布局；全选范围为当前列表，删除前确认，部分失败保留选中以便重试（#1272）。
 
 ### 修复
 - 修复 SQLite 损坏时的报错与恢复闭环：`format_stream_error` 不再将 `database disk image is malformed` 误显示为「模型调用失败」；`memory/storage/restore` 支持恢复已损坏的 `memory.sqlite` 并识别自动裁剪备份 `memory.sqlite.pre-prune.bak`；为控制面与知识库 SQLite 补齐 `busy_timeout` / WAL 及关机 checkpoint，并延长飞牛原生 FPK 停服等待时间且在 btrfs 首次建目录时尝试 `chattr +C`（#2998）。
