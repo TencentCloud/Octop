@@ -169,12 +169,21 @@ describe("history failures", () => {
         id: "local-user",
         role: "user",
         content: "继续做",
-        timestamp: Date.now(),
+        timestamp: 5_000,
       });
     });
+    // Stored history carries timestamps. A stored row without one would be
+    // read as this turn's answer and placed after the question.
     resolveHistory({
       thread_id: thread,
-      messages: [{ id: "old", role: "assistant", content: "之前的回复" }],
+      messages: [
+        {
+          id: "old",
+          role: "assistant",
+          content: "之前的回复",
+          timestamp: 1_000,
+        },
+      ],
       has_more: false,
     });
     await act(async () => {

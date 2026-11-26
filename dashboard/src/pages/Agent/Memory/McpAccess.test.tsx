@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 vi.mock("../../../api/modules/memoryMcp", () => ({
@@ -9,11 +9,34 @@ vi.mock("../../../api/modules/memoryMcp", () => ({
     update: vi.fn(),
     revoke: vi.fn(),
     rotate: vi.fn(),
+    getCodexModel: vi.fn(),
+    getCodexStatus: vi.fn(),
+    setCodexModel: vi.fn(),
+  },
+}));
+
+vi.mock("../../../api/modules/provider", () => ({
+  providerApi: {
+    listResolvedModels: vi.fn().mockResolvedValue([
+      { provider_name: "lab", model: "review", name: "Review" },
+      { provider_name: "lab", model: "small", name: "Small" },
+    ]),
+  },
+}));
+
+vi.mock("../../../api/modules/memorySharing", () => ({
+  memorySharingApi: {
+    status: vi.fn(),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    spaces: vi.fn(),
+    binding: vi.fn(),
+    bind: vi.fn(),
   },
 }));
 
 vi.mock("../../../utils/antdMessage", () => ({
-  message: { success: vi.fn(), error: vi.fn() },
+  message: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
 vi.mock("../../../hooks/useServerTimezone", () => ({
@@ -48,32 +71,23 @@ import {
   memoryMcpApi,
   type MemoryMcpToken,
 } from "../../../api/modules/memoryMcp";
+import { memorySharingApi } from "../../../api/modules/memorySharing";
 import { message } from "../../../utils/antdMessage";
 import { copyText } from "../../../utils/copyText";
-import { formatServerIsoDateTime } from "../../../utils/formatMessageTime";
 import McpAccess from "./McpAccess";
 
 const api = vi.mocked(memoryMcpApi, true);
 const copyMock = vi.mocked(copyText);
 
-/** The MCP client config a row copies (expert header for unbound tokens). */
-function clientConfig(
-  plaintext: string,
-  expertIds: string[] | null = null,
-): string {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${plaintext}`,
-  };
-  if (!expertIds || expertIds.length !== 1) {
-    headers["X-Octop-Agent-Id"] = "<专家 ID>";
-  }
+/** Memory resolves a token's space from its bearer credential. */
+function clientConfig(url = `${window.location.origin}/mcp/`): string {
   return JSON.stringify(
     {
       mcpServers: {
         "octop-memory": {
           type: "http",
-          url: `${window.location.origin}/mcp/memory/`,
-          headers,
+          url,
+          headers: { Authorization: "Bearer <TOKEN>" },
         },
       },
     },
@@ -90,42 +104,250 @@ const activeToken: MemoryMcpToken = {
   created_at: "2026-11-09T08:00:00Z",
   last_used_at: null,
   revoked_at: null,
-  disabled_clients: null,
   client_stats: null,
 };
 
-/** Two clients reported through ``X-Octop-Client``; both currently allowed. */
-const clientToken: MemoryMcpToken = {
-  ...activeToken,
-  token_id: "tok_clients",
-  name: "claude@laptop",
-  client_stats: {
-    "claude-code": {
-      first_seen: "2026-11-09T10:00:00Z",
-      last_seen: "2026-11-10T09:30:00Z",
-      count: 42,
-    },
-    codex: {
-      first_seen: "2026-11-09T11:00:00Z",
-      last_seen: "2026-11-09T12:00:00Z",
-      count: 3,
-    },
-  },
-};
-
-/** antd's expand toggle renders as a button with a locale aria-label. */
-function expandButtons(container: HTMLElement): HTMLElement[] {
-  return Array.from(
-    container.querySelectorAll<HTMLElement>(".ant-table-row-expand-icon"),
-  );
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
+  api.getCodexModel.mockResolvedValue({ model: null, mode: "codex" });
+  api.getCodexStatus.mockResolvedValue({ observed: null, last_run: null });
+  api.setCodexModel.mockImplementation(async (_id, _space, model, mode) => ({
+    model,
+    mode,
+  }));
   api.list.mockResolvedValue([activeToken]);
+  vi.mocked(memorySharingApi.status).mockResolvedValue({ connected: true });
+  vi.mocked(memorySharingApi.spaces).mockResolvedValue({ spaces: [] });
+  vi.mocked(memorySharingApi.binding).mockResolvedValue({
+    agent_id: "agent_b",
+    space_id: null,
+  });
 });
 
 describe("<McpAccess />", () => {
+  it("loads and saves an existing Codex token's Octop extraction model", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, scopes: ["read", "write"], space_id: "work" },
+    ]);
+    api.getCodexModel.mockResolvedValue({ model: null });
+    api.setCodexModel.mockResolvedValue({
+      model: "lab/review",
+      published_at: "2026-11-25T03:00:00Z",
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await user.click(
+      await screen.findByRole("button", { name: "Codex 提取模型" }),
+    );
+    await user.click(
+      await screen.findByRole("combobox", { name: "记忆提取模型" }),
+    );
+    await user.click(await screen.findByTitle("lab / Review"));
+    expect(api.setCodexModel).not.toHaveBeenCalled();
+    expect(await screen.findByText("所选配置尚未应用")).toBeVisible();
+    expect(screen.getByText(/先点击「应用到终端」/)).toBeVisible();
+    expect(
+      screen.getByText(/发布后请重新点击「配置本机 Codex」/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "配置本机 Codex" }),
+    ).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "应用到终端" }));
+    expect(api.setCodexModel).toHaveBeenCalledWith(
+      "tok_1",
+      "work",
+      "lab/review",
+      undefined,
+      true,
+    );
+    expect(
+      screen.queryByRole("textbox", { name: "Codex 接入提示词" }),
+    ).toBeNull();
+    expect(screen.queryByText("查看完整指令")).toBeNull();
+    expect(screen.queryByRole("button", { name: "复制提示词" })).toBeNull();
+    expect(await screen.findByText("等待终端确认")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "配置本机 Codex" }),
+    ).toBeEnabled();
+    await user.click(screen.getByRole("combobox", { name: "记忆提取模型" }));
+    await user.click(await screen.findByTitle("跟随当前 Codex 会话"));
+    await user.click(screen.getByRole("button", { name: "应用到终端" }));
+    expect(api.setCodexModel).toHaveBeenCalledWith(
+      "tok_1",
+      "work",
+      null,
+      undefined,
+      true,
+    );
+  });
+
+  it("keeps setup instructions separate when switching between Octop models", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, scopes: ["read", "write"], space_id: "work" },
+    ]);
+    api.getCodexModel.mockResolvedValue({ model: "lab/review" });
+    api.getCodexStatus.mockResolvedValue({
+      observed: { mode: "octop", timestamp: "2026-11-25T03:00:00Z" },
+      last_run: {
+        mode: "octop",
+        model: "lab/review",
+        timestamp: "2026-11-25T03:00:00Z",
+      },
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await user.click(
+      await screen.findByRole("button", { name: "Codex 提取模型" }),
+    );
+    await waitFor(() => expect(screen.getByText("lab / Review")).toBeVisible());
+    await user.click(screen.getByRole("combobox", { name: "记忆提取模型" }));
+    await user.click(await screen.findByTitle("lab / Small"));
+    await user.click(screen.getByRole("button", { name: "应用到终端" }));
+    expect(api.setCodexModel).toHaveBeenCalledWith(
+      "tok_1",
+      "work",
+      "lab/small",
+      undefined,
+      true,
+    );
+    expect(await screen.findByText("终端已确认")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "复制提示词" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "配置本机 Codex" }));
+    expect(
+      await screen.findByRole("dialog", { name: "配置本机 Codex" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("combobox", { name: "记忆提取模型" })).toBeNull();
+    const details = screen.getByText("查看完整指令");
+    expect(details.closest("details")).not.toHaveAttribute("open");
+    await user.click(screen.getByRole("button", { name: "复制提示词" }));
+    expect(copyMock).toHaveBeenCalledWith(
+      expect.stringContaining("OCTOP_CODEX_PANEL_SYNC=1"),
+    );
+    await user.click(details);
+    const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "Codex 接入提示词",
+    });
+    expect(prompt.value).toContain("v1.0.7");
+    expect(prompt.value).toContain("/api/memory-mcp/codex-review");
+    expect(api.rotate).not.toHaveBeenCalled();
+  });
+
+  it("keeps a saved model pending on reopen until the credential reports the new mode", async () => {
+    api.list.mockResolvedValue([
+      { ...activeToken, space_id: "work", scopes: ["read", "write"] },
+    ]);
+    api.getCodexModel.mockResolvedValue({
+      model: "lab/review",
+      mode_since: "2026-11-25T03:00:00Z",
+      published_at: "2026-11-25T03:00:00Z",
+    });
+    const oldRun = {
+      mode: "codex" as const,
+      model: "astra",
+      timestamp: "2026-11-25T02:00:00Z",
+    };
+    api.getCodexStatus.mockResolvedValue({
+      observed: oldRun,
+      last_run: oldRun,
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await user.click(
+      await screen.findByRole("button", { name: "Codex 提取模型" }),
+    );
+    await waitFor(() => expect(screen.getByText("等待终端确认")).toBeVisible());
+    expect(await screen.findByText("astra")).toBeVisible();
+    api.getCodexStatus.mockResolvedValue({
+      observed: { mode: "octop", timestamp: "2026-11-25T01:00:00Z" },
+      last_run: oldRun,
+    });
+    await user.click(screen.getByRole("button", { name: "刷新终端状态" }));
+    expect(
+      await screen.findByText(/最近运行方式：Octop 委托复核/),
+    ).toBeVisible();
+    expect(screen.getByText("等待终端确认")).toBeVisible();
+    api.getCodexStatus.mockResolvedValue({
+      observed: { mode: "octop", timestamp: "2026-11-25T04:00:00Z" },
+      acknowledgement: {
+        revision: "2026-11-25T03:00:00Z",
+        timestamp: "2026-11-25T04:00:00Z",
+      },
+      last_run: oldRun,
+    });
+    await user.click(screen.getByRole("button", { name: "刷新终端状态" }));
+    expect(await screen.findByText("终端已确认")).toBeVisible();
+    expect(screen.getByText("astra")).toBeVisible();
+  });
+
+  it("uses the paired hook installer and preserves the local mode until published", async () => {
+    vi.stubEnv(
+      "VITE_CODEX_HARNESS_WHEEL",
+      "/assets/test/installer.whl#sha256=test",
+    );
+    try {
+      api.list.mockResolvedValue([
+        { ...activeToken, space_id: "work", scopes: ["read", "write"] },
+      ]);
+      api.getCodexModel.mockResolvedValue({ model: "lab/review" });
+      const user = userEvent.setup();
+      render(<McpAccess />);
+      await user.click(
+        await screen.findByRole("button", { name: "Codex 提取模型" }),
+      );
+      await user.click(
+        await screen.findByRole("button", { name: "配置本机 Codex" }),
+      );
+      await user.click(await screen.findByText("查看完整指令"));
+      const prompt = (
+        await screen.findByRole<HTMLTextAreaElement>("textbox", {
+          name: "Codex 接入提示词",
+        })
+      ).value;
+      expect(prompt).toContain("installer.whl#sha256=test");
+      expect(prompt).toContain("OCTOP_CODEX_PANEL_SYNC=1");
+      expect(prompt).not.toContain("OCTOP_CODEX_EXTRACTION=octop");
+      expect(api.setCodexModel).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("shows the connected MCP address before the first token is created", async () => {
+    api.list.mockResolvedValue([]);
+    vi.mocked(memorySharingApi.status).mockResolvedValue({
+      connected: true,
+      base_url: "http://127.0.0.1:8088",
+    });
+
+    render(<McpAccess />);
+
+    expect(await screen.findByText(/127\.0\.0\.1:8088\/mcp\//)).toBeVisible();
+  });
+
+  it("replaces the active management authorization without disconnecting first", async () => {
+    vi.mocked(memorySharingApi.connect).mockResolvedValue({
+      connected: true,
+      space_id: "project-alpha",
+    });
+    vi.mocked(memorySharingApi.spaces).mockResolvedValue({
+      spaces: [{ space_id: "project-alpha" }],
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+
+    await user.click(await screen.findByRole("button", { name: "更换授权" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "一次性授权码" }),
+      "mcode_test",
+    );
+    await user.click(screen.getByRole("button", { name: /^连\s*接$/ }));
+
+    expect(memorySharingApi.connect).toHaveBeenCalledWith("mcode_test");
+    expect(memorySharingApi.disconnect).not.toHaveBeenCalled();
+    expect(await screen.findByText("当前空间：project-alpha")).toBeVisible();
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith("project-alpha"));
+  });
+
   it("renders the token hint, unscoped experts and active status", async () => {
     render(<McpAccess />);
 
@@ -182,14 +404,105 @@ describe("<McpAccess />", () => {
       expect(api.create).toHaveBeenCalledWith({
         name: "claude@laptop",
         expert_ids: ["agent_a"],
+        scopes: ["read", "write"],
       }),
     );
     expect(
       await screen.findByDisplayValue("omcp_live_plaintext_value"),
     ).toBeInTheDocument();
     expect(screen.getByText(/只显示这一次/)).toBeInTheDocument();
+    for (const [name, marker] of [
+      ["macOS / Linux", "read -rs"],
+      ["Windows", "Read-Host"],
+      ["交给 AI", "Token"],
+      ["手动配置", "<TOKEN>"],
+    ]) {
+      await user.click(screen.getByRole("tab", { name }));
+      const panel = screen.getByRole("tabpanel", { name });
+      const command =
+        within(panel).getByRole<HTMLTextAreaElement>("textbox").value;
+      expect(command).toContain(marker);
+      expect(command).not.toContain("omcp_live_plaintext_value");
+      await user.click(within(panel).getByRole("button", { name: "复制命令" }));
+      expect(copyMock).toHaveBeenLastCalledWith(command);
+    }
     // The list is refreshed after a successful create.
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+  });
+
+  it("signs a read-only client token for the selected space without binding the expert", async () => {
+    vi.mocked(memorySharingApi.spaces).mockResolvedValue({
+      spaces: [{ space_id: "project-alpha", display_name: "Alpha" }],
+    });
+    api.create.mockResolvedValue({
+      token: {
+        ...activeToken,
+        name: "codex-alpha",
+        space_id: "project-alpha",
+        scopes: ["read"],
+        mcp_url: "https://memory.example/mcp/",
+      },
+      plaintext: "omcp_scoped_token",
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+    await user.click(screen.getByRole("combobox", { name: "管理空间" }));
+    await user.click(await screen.findByTitle("Alpha · project-alpha"));
+
+    await waitFor(() => expect(api.list).toHaveBeenCalledWith("project-alpha"));
+    expect(memorySharingApi.bind).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /创建 Token/ }));
+    await user.type(
+      await screen.findByRole("textbox", { name: "名称" }),
+      "codex-alpha",
+    );
+    await user.click(screen.getByRole("combobox", { name: "权限" }));
+    await user.click(await screen.findByTitle("只读"));
+    await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
+
+    await waitFor(() =>
+      expect(api.create).toHaveBeenCalledWith({
+        name: "codex-alpha",
+        space_id: "project-alpha",
+        scopes: ["read"],
+      }),
+    );
+    await user.click(await screen.findByRole("tab", { name: "手动配置" }));
+    const manualConfig = await screen.findByRole("tabpanel", {
+      name: "手动配置",
+    });
+    expect(within(manualConfig).getByRole("textbox")).toHaveValue(
+      clientConfig("https://memory.example/mcp/"),
+    );
+  });
+
+  it("binds the current expert separately from the client list", async () => {
+    vi.mocked(memorySharingApi.spaces).mockResolvedValue({
+      spaces: [{ space_id: "project-alpha", display_name: "Alpha" }],
+    });
+    vi.mocked(memorySharingApi.bind).mockResolvedValue({
+      agent_id: "agent_b",
+      space_id: "project-alpha",
+      has_credential: true,
+    });
+    const user = userEvent.setup();
+    render(<McpAccess />);
+    await screen.findByText("codex@macbook");
+    await user.click(screen.getByRole("combobox", { name: "管理空间" }));
+    await user.click(await screen.findByTitle("Alpha · project-alpha"));
+    await user.click(screen.getByRole("button", { name: "绑定当前专家" }));
+
+    expect(memorySharingApi.bind).toHaveBeenCalledWith(
+      "agent_b",
+      "project-alpha",
+    );
+    expect(
+      await screen.findByText(/当前专家：专家乙.*已绑定 project-alpha/),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "重新授权当前专家" }));
+    expect(memorySharingApi.bind).toHaveBeenCalledTimes(2);
+    expect(api.create).not.toHaveBeenCalled();
   });
 
   it("switches the reporting expert via PATCH and refreshes the list", async () => {
@@ -240,87 +553,87 @@ describe("<McpAccess />", () => {
     expect(screen.getByRole("button", { name: /切换专家/ })).toBeDisabled();
   });
 
-  it("copies a token's setup command straight away while its plaintext is cached", async () => {
-    const freshToken: MemoryMcpToken = {
-      ...activeToken,
-      token_id: "tok_2",
-      name: "claude@laptop",
-    };
-    api.list.mockResolvedValue([activeToken, freshToken]);
-    api.create.mockResolvedValue({
-      token: freshToken,
-      plaintext: "omcp_live_plaintext_value",
-    });
+  it.each([
+    { scopes: ["read", "write"], expected: "memory_save" },
+    { scopes: ["read"], expected: "OCTOP_CODEX_READ_ONLY=1" },
+  ])(
+    "copies a Codex setup prompt for token scopes $scopes",
+    async ({ scopes, expected }) => {
+      const endpoint = "https://memory.example.com/mcp/";
+      const plaintext = "omcp_test_prompt_secret";
+      api.create.mockResolvedValue({
+        token: { ...activeToken, mcp_url: endpoint, scopes },
+        plaintext,
+      });
+      const user = userEvent.setup();
+      render(<McpAccess />);
+
+      await screen.findByText("codex@macbook");
+      await user.click(screen.getByRole("button", { name: /创建 Token/ }));
+      await user.type(
+        await screen.findByRole("textbox", { name: "名称" }),
+        "Codex",
+      );
+      await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
+      await user.click(
+        await screen.findByRole("tab", { name: "Codex 接入提示词" }),
+      );
+
+      await user.click(screen.getByText("查看完整指令"));
+      const prompt = screen.getByRole<HTMLTextAreaElement>("textbox", {
+        name: "Codex 接入提示词",
+      }).value;
+      expect(prompt).toContain(endpoint);
+      expect(prompt).toContain("--terminals codex");
+      expect(prompt).toContain("OCTOP_MEMORY_TOKEN");
+      expect(prompt).toContain("memory_get");
+      expect(prompt).toContain(expected);
+      if (!scopes.includes("write"))
+        expect(prompt).not.toContain("memory_save");
+      expect(prompt).not.toContain(plaintext);
+
+      await user.click(screen.getByRole("button", { name: "复制提示词" }));
+      expect(copyMock).toHaveBeenCalledWith(prompt);
+      if (scopes.includes("write")) {
+        expect(prompt).toContain("OCTOP_CODEX_EXTRACTION=codex");
+        expect(prompt).toContain("OCTOP_CODEX_PANEL_SYNC=1");
+        expect(prompt).toContain("/api/memory-mcp/codex-review");
+      } else {
+        expect(prompt).not.toContain("memory_propose");
+        expect(
+          screen.queryByRole("combobox", { name: "记忆提取模型" }),
+        ).toBeNull();
+      }
+    },
+  );
+
+  it("copies setup without needing or rotating the token", async () => {
     const user = userEvent.setup();
     render(<McpAccess />);
-    await screen.findByText("codex@macbook");
-
-    // Creating a token is what puts the plaintext in the session cache.
-    await user.click(screen.getByRole("button", { name: /创建 Token/ }));
-    await user.type(
-      await screen.findByRole("textbox", { name: "名称" }),
-      "claude@laptop",
-    );
-    await user.click(screen.getByRole("button", { name: /^创\s*建$/ }));
-    await screen.findByDisplayValue("omcp_live_plaintext_value");
-    await user.click(screen.getByRole("button", { name: "我已保存，关闭" }));
-
-    // The second row (claude@laptop) is the one with a cached plaintext.
-    const commandButtons = await screen.findAllByRole("button", {
-      name: /接入配置/,
-    });
-    await user.click(commandButtons[1]);
-
-    await waitFor(() =>
-      expect(copyMock).toHaveBeenCalledWith(
-        clientConfig("omcp_live_plaintext_value"),
-      ),
-    );
-    expect(message.success).toHaveBeenCalledWith("已复制");
-    // No modal and no regeneration: the plaintext was still known.
+    await user.click(await screen.findByRole("button", { name: "接入配置" }));
+    expect(copyMock).toHaveBeenCalledWith(clientConfig());
     expect(api.rotate).not.toHaveBeenCalled();
-    expect(
-      screen.queryByText(/明文只在创建时显示一次/),
-    ).not.toBeInTheDocument();
   });
 
-  it("regenerates the token before copying when the plaintext is unknown", async () => {
+  it("rotates only after confirmation and shows the new token once", async () => {
+    api.list.mockResolvedValue([{ ...activeToken, space_id: "work" }]);
     api.rotate.mockResolvedValue({
-      token: { ...activeToken, token_hint: "omcp_…new0" },
+      token: activeToken,
       plaintext: "omcp_rotated_secret",
     });
     const user = userEvent.setup();
     render(<McpAccess />);
-    await screen.findByText("codex@macbook");
-
-    await user.click(screen.getByRole("button", { name: /接入配置/ }));
-    expect(
-      await screen.findByText(/明文只在创建时显示一次/),
-    ).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "轮换 Token" }));
     expect(api.rotate).not.toHaveBeenCalled();
-
-    await user.click(screen.getByRole("button", { name: /重新生成并复制/ }));
-
-    await waitFor(() => expect(api.rotate).toHaveBeenCalledWith("tok_1"));
-    await waitFor(() =>
-      expect(copyMock).toHaveBeenCalledWith(
-        clientConfig("omcp_rotated_secret"),
-      ),
-    );
-    // The new config stays on screen so it can be copied again.
-    await waitFor(() => {
-      const areas = Array.from(document.querySelectorAll("textarea"));
-      expect(
-        areas.some(
-          (area) => area.value === clientConfig("omcp_rotated_secret"),
-        ),
-      ).toBe(true);
-    });
-    expect(screen.getByText(/旧 Token 已失效/)).toBeInTheDocument();
-
-    // Closing the modal refreshes the list (token_hint changed server-side).
+    await user.click(screen.getByRole("button", { name: "确认轮换" }));
+    expect(
+      await screen.findByDisplayValue("omcp_rotated_secret"),
+    ).toBeVisible();
+    expect(api.rotate).toHaveBeenCalledWith("tok_1", "work");
+    expect(copyMock).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: /关\s*闭/ }));
     await waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    expect(screen.queryByDisplayValue("omcp_rotated_secret")).toBeNull();
   });
 
   it("disables the setup-command action of a revoked token", async () => {

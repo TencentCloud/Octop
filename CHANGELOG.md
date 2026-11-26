@@ -13,6 +13,7 @@
 ## [Unreleased]
 
 ### 新增
+- 可观测设置新增腾讯云 CLS（AgentObs）接入：支持填写腾讯云 SecretId / SecretKey 通过 Langfuse SDK（OTLP/HTTP Basic Auth）直接上报 Trace，支持自动调用 `CreateAgentApplication` 创建/复用 CLS 应用获取 Topic ID，也支持拉取或直接填写已有应用的 Topic ID，并提供内网接入点、内容脱敏及连通性校验。
 - 知识库设置新增「分块与检索」标签页，可配置分块大小、分块重叠、默认检索条数和上下文字符预算。
 - 用户管理支持创建限次邀请链接。链接在注册满员后自动停用，管理员也可以提前停用并查看已注册的用户。邀请管理 API 移除了 `used_at`、`used_by_user_id` 和 `revoked_at`，可通过注册记录和邀请状态查看使用情况。
 - 自托管可用环境变量放行内网出站目标：`OCTOP_SSRF_ALLOWLIST`（主机名、`.后缀` 或 CIDR）让语音服务、OAuth MCP 发现与令牌请求等指向内网服务，`OCTOP_SSRF_ALLOW_HTTP` 允许这些目标走 http；仍做 DNS 解析并固定连接 IP 防重绑定，不配置时行为不变（#2016）
@@ -36,7 +37,7 @@
 ## [1.0.3b7] - 2026-11-17
 
 ### 新增
-- 专家记忆新增 MCP Server（`/mcp/memory`）：外部 Agent / Bot 用用户级 token 检索、写入、采集专家记忆；token 可按客户端命名、限定专家范围并单独吊销，外部写入默认进入审核队列；并提供 Claude Code / Kiro / DSH / Codex / Cursor 一键接入（DSH 走原生插件，支持项目级安装与 Windows PowerShell）；MCP token 直接绑定上报专家、可在面板切换，客户端只带 token 即可
+- 共享记忆接入独立的 octop-memory 1.0.7 服务。面板按空间管理终端凭据，安装时在终端隐藏输入 Token。Codex 可以跟随聊天模型提取，也可在面板选择 HY4 等模型并应用到终端，分别查看终端回执和实际运行结果。
 - 工作台「云服务器」页的地域筛选器改为控制台风格下拉面板：按大区分组展示各地域并标注节点数量，只有有节点的地域才显示红点，同时记住最近访问的地域
 - 托管专家可选会话模式，并能使用连接器、知识库、专家回调和已启用的插件
 - 云服务器页的地域筛选改为按大区分组的下拉面板

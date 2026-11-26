@@ -104,6 +104,48 @@ def test_apply_plugin_channels_registers_kind() -> None:
     assert applied[0].to_dict()["fields"] == [{"name": "token", "label": "Token"}]
 
 
+@pytest.mark.parametrize("description", ["Connect Acme conversations", ""])
+def test_real_registry_exposes_manifest_description(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, description: str
+) -> None:
+    import json
+
+    from octop_harness.plugins.loader import load_plugin_dir
+    from octop_harness.plugins.registry import PluginRegistry
+
+    from octop.infra.gateway.plugin_channels import apply_plugin_channels, plugin_channel_kinds
+
+    monkeypatch.setattr(PluginRegistry, "_instance", None)
+    registry = PluginRegistry()
+    fields = [{"name": "stream", "type": "switch", "defaultValue": False, "helpKey": "Help"}]
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    plugin = tmp_path / "plugin"
+    plugin.mkdir()
+    (plugin / "plugin.yaml").write_text(
+        "id: acme-plugin\nversion: 1.0.0\nname: Acme\nkind: channel\nentry: main.py\n"
+        + "description: "
+        + json.dumps(description)
+        + "\n",
+        encoding="utf-8",
+    )
+    (plugin / "main.py").write_text(
+        "class Channel: pass\n"
+        "def setup(ctx):\n"
+        "    ctx.channel('acme', Channel, label='Acme', fields=" + repr(fields) + ")\n",
+        encoding="utf-8",
+    )
+    loaded = load_plugin_dir(plugin, install_deps=False)
+    assert loaded.manifest.description == description
+    applied = apply_plugin_channels(
+        registry=registry, register=_RecordingGateway(), unregister=lambda *args, **kwargs: None
+    )
+    assert applied[0].to_dict()["description"] == description
+    assert plugin_channel_kinds(registry=registry)[0].to_dict() == applied[0].to_dict()
+    assert applied[0].to_dict()["fields"] == fields
+    registry.unregister("acme-plugin")
+    assert plugin_channel_kinds(registry=registry) == []
+
+
 def test_apply_is_idempotent_and_first_wins() -> None:
     from octop.infra.gateway.plugin_channels import apply_plugin_channels
 

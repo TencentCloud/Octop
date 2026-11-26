@@ -4,9 +4,23 @@ import { request } from "../request";
 
 export interface SharingSession {
   connected: boolean;
+  base_url?: string;
   space_id?: string;
   scopes?: string[];
   expires_at?: string;
+}
+
+export interface SharingSpace {
+  space_id: string;
+  display_name?: string;
+}
+
+export interface SharingBinding {
+  agent_id: string;
+  space_id: string | null;
+  has_credential?: boolean;
+  can_manage?: boolean;
+  previous_token_revoked?: boolean;
 }
 
 export interface SharingToken {
@@ -46,6 +60,8 @@ export const memorySharingApi = {
   disconnect: () =>
     request<SharingSession>("/memory-sharing/session", { method: "DELETE" }),
 
+  spaces: () => request<{ spaces: SharingSpace[] }>("/memory-sharing/spaces"),
+
   tokens: () => request<{ tokens: SharingToken[] }>("/memory-sharing/tokens"),
 
   createToken: (clientName: string, scopes: string[]) =>
@@ -70,12 +86,12 @@ export const memorySharingApi = {
     request<{ clients: SharingClient[] }>("/memory-sharing/clients"),
 
   binding: (agentId: string) =>
-    request<{ agent_id: string; space_id: string | null }>(
+    request<SharingBinding>(
       `/memory-sharing/binding/${encodeURIComponent(agentId)}`,
     ),
 
-  bind: (agentId: string, spaceId: string) =>
-    request<{ agent_id: string; space_id: string }>("/memory-sharing/binding", {
+  bind: (agentId: string, spaceId: string | null) =>
+    request<SharingBinding>("/memory-sharing/binding", {
       method: "POST",
       body: JSON.stringify({ agent_id: agentId, space_id: spaceId }),
     }),

@@ -1,22 +1,19 @@
-"""终端接入：兼容旧 ``/memory-mcp/tokens`` 形态，底层走 octop-memory。
-
-旧面板的交互保持不变（一个 token 绑定一个专家、按客户端统计/启停、
-接入配置、切换专家、撤销），只是 token 真正保存在独立记忆服务里。
-"""
+"""Manage shared Memory credentials through the existing Octop token API."""
 
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, overload
+from typing import Any, Literal, overload
 
 from fastapi import APIRouter, Depends, status
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from octop.api.common.agent import assert_agent_access_row
 from octop.api.deps import current_user, get_server, require_permission
-from octop.api.routers.memory_sharing import require_loaded_session
-from octop.infra.agents import memory_sharing
+from octop.api.routers.memory_sharing import memory_client_base, require_loaded_session
+from octop.infra.agents import codex_memory_review, memory_sharing
 from octop.infra.agents.memory_default_space import default_space_for
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
@@ -30,12 +27,35 @@ router = APIRouter(
     ],
 )
 
-SCOPES = ["read", "write", "review"]
+_LEGACY_SCOPES = ("read", "write", "review")
 
 
 class TokenCreateBody(BaseModel):
     name: str = Field(min_length=1, max_length=64)
     expert_ids: list[str] | None = None
+    space_id: str | None = Field(default=None, min_length=1, max_length=128)
+    scopes: list[Literal["read", "write"]] | None = Field(default=None, max_length=2)
+
+    @field_validator("name")
+    @classmethod
+    def _client_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("client name is required")
+        return name
+
+    @model_validator(mode="after")
+    def _scope_and_target(self) -> TokenCreateBody:
+        if self.space_id is not None:
+            if self.expert_ids:
+                raise ValueError("choose a space or a default expert, not both")
+            if self.scopes is None:
+                raise ValueError("choose read-only or read/write access")
+        if self.scopes is not None and (
+            "read" not in self.scopes or len(set(self.scopes)) != len(self.scopes)
+        ):
+            raise ValueError("choose read-only or read/write access")
+        return self
 
 
 class TokenPatchBody(BaseModel):
@@ -53,6 +73,8 @@ class TokenOut(BaseModel):
     token_id: str
     name: str
     expert_ids: list[str] | None = None
+    space_id: str | None = None
+    scopes: list[str] = Field(default_factory=list)
     client_stats: dict[str, dict[str, Any]] | None = None
     token_hint: str
     created_at: str
@@ -69,12 +91,14 @@ class TokenRevoked(BaseModel):
     revoked: bool
 
 
-def _require_session(user: User) -> None:
-    if memory_sharing.get_session(int(user.id)) is None:
+def _require_session(user: User) -> memory_sharing.SharingSession:
+    session = memory_sharing.get_session(int(user.id))
+    if session is None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
-            "还没有连接记忆空间：请在「共享记忆」里用一次性码连接（--all 可管理全部专家）",
+            "请在「共享记忆」里用一次性码连接记忆空间",
         )
+    return session
 
 
 def _experts(server: OctopServer, user: User) -> list[dict[str, Any]]:
@@ -119,34 +143,36 @@ def _expert_by_space(experts: list[dict[str, Any]], space_id: str) -> dict[str, 
     return next((item for item in experts if item["space_id"] == space_id), None)
 
 
-def _mcp_url() -> str:
-    return f"{memory_sharing.service_url()}/mcp/"
-
-
 @overload
-def _to_out(token: dict[str, Any], experts: list[dict[str, Any]]) -> TokenOut: ...
+def _to_out(token: dict[str, Any], experts: list[dict[str, Any]], client_base: str) -> TokenOut: ...
 
 
 @overload
 def _to_out(
-    token: dict[str, Any], experts: list[dict[str, Any]], *, plaintext: str
+    token: dict[str, Any], experts: list[dict[str, Any]], client_base: str, *, plaintext: str
 ) -> TokenCreated: ...
 
 
 def _to_out(
-    token: dict[str, Any], experts: list[dict[str, Any]], *, plaintext: str | None = None
+    token: dict[str, Any],
+    experts: list[dict[str, Any]],
+    client_base: str,
+    *,
+    plaintext: str | None = None,
 ) -> TokenOut:
     expert = _expert_by_space(experts, str(token.get("space_id") or ""))
     data: dict[str, Any] = {
         "token_id": token["token_id"],
         "name": token.get("client_name") or "",
         "expert_ids": [expert["agent_id"]] if expert else None,
+        "space_id": token.get("space_id"),
+        "scopes": token.get("scopes") or [],
         "client_stats": token.get("client_stats") or None,
         "token_hint": token.get("token_hint") or "",
         "created_at": token.get("created_at") or "",
         "last_used_at": token.get("last_used_at"),
         "revoked_at": token.get("revoked_at"),
-        "mcp_url": _mcp_url(),
+        "mcp_url": f"{client_base}/mcp/",
     }
     if plaintext is not None:
         return TokenCreated(**data, token=plaintext)
@@ -169,21 +195,36 @@ def _space_for_expert(user: User, experts: list[dict[str, Any]], agent_id: str) 
     return expert
 
 
+def _legacy_space_ids(
+    experts: list[dict[str, Any]], session: memory_sharing.SharingSession
+) -> list[str]:
+    return list(
+        dict.fromkeys(
+            item["space_id"] for item in experts if session.space_id in {"*", item["space_id"]}
+        )
+    )
+
+
 @router.get("", response_model=list[TokenOut], summary="List memory MCP tokens")
 def list_tokens(
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
+    client_base: str = Depends(memory_client_base),
+    space_id: str | None = None,
 ) -> list[TokenOut]:
-    _require_session(user)
-    experts = _experts(server, user)
+    session = _require_session(user)
+    experts = _experts(server, user) if space_id is None else []
+    spaces = [space_id] if space_id is not None else _legacy_space_ids(experts, session)
     out: list[TokenOut] = []
-    for space_id in {item["space_id"] for item in experts}:
+    for space in spaces:
         try:
-            payload = memory_sharing.list_tokens_in(int(user.id), space_id)
-        except OctopError:
-            continue
+            payload = memory_sharing.list_tokens_in(int(user.id), space)
+        except OctopError as exc:
+            if space_id is None and exc.code == ErrorCode.NOT_FOUND:
+                continue
+            raise
         for token in payload.get("tokens", []):
-            out.append(_to_out(token, experts))
+            out.append(_to_out(token, experts, client_base))
     out.sort(key=lambda item: item.created_at, reverse=True)
     return out
 
@@ -193,24 +234,30 @@ def create_token(
     body: TokenCreateBody,
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
+    client_base: str = Depends(memory_client_base),
 ) -> TokenCreated:
     _require_session(user)
-    experts = _experts(server, user)
-    agent_id = (body.expert_ids or [""])[0]
-    if not agent_id and experts:
-        agent_id = experts[0]["agent_id"]
-    if not agent_id:
-        raise OctopError(ErrorCode.AGENT_FAILED, "请选择一个绑定专家")
-    expert = _space_for_expert(user, experts, agent_id)
-    created = memory_sharing.create_token_in(
-        int(user.id), expert["space_id"], body.name.strip(), SCOPES
-    )
-    payload = memory_sharing.list_tokens_in(int(user.id), expert["space_id"])
-    row = next(
-        (item for item in payload.get("tokens", []) if item["token_id"] == created["token_id"]),
-        created,
-    )
-    return _to_out(row, experts, plaintext=created["token"])
+    experts: list[dict[str, Any]] = []
+    space_id = body.space_id
+    if space_id is None:
+        experts = _experts(server, user)
+        agent_id = (body.expert_ids or [""])[0]
+        if not agent_id and experts:
+            agent_id = experts[0]["agent_id"]
+        if not agent_id:
+            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "请选择一个绑定专家")
+        space_id = _space_for_expert(user, experts, agent_id)["space_id"]
+    scopes: list[str] = list(body.scopes) if body.scopes is not None else list(_LEGACY_SCOPES)
+    created = memory_sharing.create_token_in(int(user.id), space_id, body.name, scopes)
+    # #59's create response omits row metadata. Keep the one-time secret in
+    # the HTTP response even if a separate list request would have failed.
+    row = {
+        "space_id": space_id,
+        "scopes": scopes,
+        "created_at": datetime.now(UTC).isoformat(),
+        **created,
+    }
+    return _to_out(row, experts, client_base, plaintext=created["token"])
 
 
 @router.patch("/{token_id}", response_model=TokenOut)
@@ -219,6 +266,7 @@ def patch_token(
     body: TokenPatchBody,
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
+    client_base: str = Depends(memory_client_base),
 ) -> TokenOut:
     _require_session(user)
     experts = _experts(server, user)
@@ -236,7 +284,7 @@ def patch_token(
         client_name=body.name,
         space_id=space_id,
     )
-    return _to_out(updated, experts)
+    return _to_out(updated, experts, client_base)
 
 
 @router.post("/{token_id}/rotate", response_model=TokenCreated)
@@ -244,16 +292,29 @@ def rotate_token(
     token_id: str,
     user: User = Depends(current_user),
     server: OctopServer = Depends(get_server),
+    client_base: str = Depends(memory_client_base),
+    space_id: str | None = None,
 ) -> TokenCreated:
-    _require_session(user)
-    experts = _experts(server, user)
-    rotated = memory_sharing.rotate_token(int(user.id), token_id)
-    for space in {item["space_id"] for item in experts}:
-        payload = memory_sharing.list_tokens_in(int(user.id), space)
+    session = _require_session(user)
+    experts = _experts(server, user) if space_id is None else []
+    spaces = [space_id] if space_id is not None else _legacy_space_ids(experts, session)
+    for space in spaces:
+        try:
+            payload = memory_sharing.list_tokens_in(int(user.id), space)
+        except OctopError as exc:
+            if space_id is None and exc.code == ErrorCode.NOT_FOUND:
+                continue
+            raise
         for token in payload.get("tokens", []):
             if token["token_id"] == token_id:
-                return _to_out(token, experts, plaintext=rotated["token"])
-    raise OctopError(ErrorCode.NOT_FOUND, "token not found after rotate")
+                # Validate the display metadata before invalidating the old credential.
+                current = _to_out(token, experts, client_base)
+                rotated = memory_sharing.rotate_token(int(user.id), token_id)
+                return TokenCreated(
+                    **(current.model_dump() | {"token_hint": rotated["token_hint"]}),
+                    token=rotated["token"],
+                )
+    raise OctopError(ErrorCode.NOT_FOUND, "token not found in the requested memory space")
 
 
 @router.delete("/{token_id}", response_model=TokenRevoked)
@@ -264,3 +325,100 @@ def revoke_token(
     _require_session(user)
     result = memory_sharing.revoke_token(int(user.id), token_id)
     return TokenRevoked(revoked=bool(result.get("revoked")))
+
+
+class CodexModelChoice(BaseModel):
+    model: str | None = Field(default=None, min_length=1, max_length=512)
+
+    mode: Literal["codex", "octop", "server"] | None = None
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> CodexModelChoice:
+        if self.mode is None:
+            self.mode = "octop" if self.model else "codex"
+        if (self.mode == "octop") != bool(self.model):
+            raise ValueError("Only Octop extraction takes a model reference")
+        return self
+
+
+class SavedCodexModel(CodexModelChoice):
+    mode_since: str | None = None
+    published_at: str | None = None
+
+
+def _require_writable_token(user: User, token_id: str, space_id: str) -> None:
+    records = memory_sharing.list_tokens_in(user.id, space_id)
+    if not any(
+        t["token_id"] == token_id
+        and not t.get("revoked_at")
+        and "write" in t.get("scopes", [])
+        and "read" in t.get("scopes", [])
+        for t in records.get("tokens", [])
+    ):
+        raise OctopError(
+            ErrorCode.FORBIDDEN, "An active read/write token in this space is required"
+        )
+
+
+@router.get("/{token_id}/codex-model")
+def get_codex_model(
+    token_id: str,
+    space_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> SavedCodexModel:
+    _require_writable_token(user, token_id, space_id)
+    assert server.services is not None
+    saved = server.services.settings_repo.get(codex_memory_review.binding_key(token_id, space_id))
+    return SavedCodexModel.model_validate(json.loads(saved) if saved else {"model": None})
+
+
+@router.put("/{token_id}/codex-model")
+def set_codex_model(
+    token_id: str,
+    space_id: str,
+    body: CodexModelChoice,
+    apply: bool = False,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> SavedCodexModel:
+    _require_writable_token(user, token_id, space_id)
+    assert server.services is not None
+    key = codex_memory_review.binding_key(token_id, space_id)
+    if body.model is not None:
+        codex_memory_review.check_model(server, user, body.model)
+    settings = server.services.settings_repo
+    previous = SavedCodexModel.model_validate(json.loads(settings.get(key) or '{"model":null}'))
+    since = previous.mode_since if previous.mode == body.mode else datetime.now(UTC).isoformat()
+    same_choice = (previous.mode, previous.model) == (body.mode, body.model)
+    published = previous.published_at if same_choice else None
+    if apply and not published:
+        published = datetime.now(UTC).isoformat()
+    saved = SavedCodexModel(**body.model_dump(), mode_since=since, published_at=published)
+    settings.set(key, json.dumps({**saved.model_dump(), "user_id": user.id}))
+    return saved
+
+
+@router.get("/{token_id}/codex-status", summary="Observed terminal mode and last completed review")
+def get_codex_status(
+    token_id: str,
+    space_id: str,
+    user: User = Depends(current_user),
+    server: OctopServer = Depends(get_server),
+) -> dict[str, Any]:
+    _require_writable_token(user, token_id, space_id)
+    assert server.services is not None
+    status = memory_sharing.codex_status(user.id, space_id, token_id)
+    key = codex_memory_review.binding_key(token_id, space_id)
+    status["acknowledgement"] = json.loads(
+        server.services.settings_repo.get(key + ".ack") or "null"
+    )
+    delegated = server.services.settings_repo.get(key + ".last_run")
+    if delegated:
+        run = json.loads(delegated)
+        last = status.get("last_run")
+        if not last or datetime.fromisoformat(run["timestamp"]) > datetime.fromisoformat(
+            last["timestamp"]
+        ):
+            status["last_run"] = run
+    return status

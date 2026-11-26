@@ -107,7 +107,6 @@ export const NAV_PERMISSIONS = {
   experts: PERM.experts,
   tasks: PERM.tasks,
   "token-usage": PERM.tokenUsage,
-  tokens: PERM.memory,
   personalization: PERM.personalization,
   channels: PERM.channels,
   connectors: PERM.connectors,

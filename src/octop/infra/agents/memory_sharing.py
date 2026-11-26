@@ -13,6 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -111,6 +112,8 @@ def _upstream_error(response: httpx.Response) -> OctopError:
             str(detail),
             details={"status": status},
         )
+    if status in (400, 422):
+        return OctopError(ErrorCode.SLASH_BAD_ARGS, str(detail), details={"status": status})
     return OctopError(
         ErrorCode.INTERNAL_ERROR,
         f"memory service rejected the request: {detail}",
@@ -182,7 +185,18 @@ def list_spaces(user_id: int) -> dict[str, Any]:
 
 def list_tokens_in(user_id: int, space_id: str) -> dict[str, Any]:
     session = _session_or_fail(user_id)
-    return _request("GET", f"/api/admin/spaces/{space_id}/tokens", session=session.token)
+    return _request(
+        "GET", f"/api/admin/spaces/{_space_segment(space_id)}/tokens", session=session.token
+    )
+
+
+def codex_status(user_id: int, space_id: str, token_id: str) -> dict[str, Any]:
+    session = _session_or_fail(user_id)
+    return _request(
+        "GET",
+        f"/api/admin/spaces/{_space_segment(space_id)}/tokens/{quote(token_id, safe='')}/codex-status",
+        session=session.token,
+    )
 
 
 def create_token_in(
@@ -191,10 +205,16 @@ def create_token_in(
     session = _session_or_fail(user_id)
     return _request(
         "POST",
-        f"/api/admin/spaces/{space_id}/tokens",
+        f"/api/admin/spaces/{_space_segment(space_id)}/tokens",
         session=session.token,
         body={"client_name": client_name, "scopes": scopes},
     )
+
+
+def _space_segment(space_id: str) -> str:
+    if not space_id.strip() or space_id in {"*", ".", ".."} or "/" in space_id:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "invalid memory space ID")
+    return quote(space_id, safe="")
 
 
 def ensure_space(

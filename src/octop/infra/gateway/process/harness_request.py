@@ -195,7 +195,15 @@ async def build_content_from_message(
     # control text intact and add quoted context only to the model's user turn.
     # Telegram replies may refer to another expert, topic, or an older message
     # outside the current history. Keep their context even when we sent it.
-    if msg.channel_type in ("telegram", "qq"):
+    if msg.channel_type in (
+        "telegram",
+        "qq",
+        "discord",
+        "slack",
+        "whatsapp",
+        "feishu",
+        "wecom",
+    ):
         quote = msg.metadata.get("reply_quote_text") or (
             None
             if msg.channel_type == "qq" and msg.metadata.get("reply_to_is_own_bot")
@@ -318,6 +326,7 @@ def build_harness_request(
     auto_route: bool = False,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
+    allowed_tools: list[str] | None = None,
     message_id: str | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
@@ -340,6 +349,8 @@ def build_harness_request(
             req["configurable"] = configurable
         if model:
             req["model"] = model
+        if allowed_tools is not None:
+            req["allowed_tools"] = list(allowed_tools)
         return req
 
     payload = content if content is not None else build_content(text=text, images=images)
@@ -381,6 +392,8 @@ def build_harness_request(
         req["configurable"] = configurable
     if model:
         req["model"] = model
+    if allowed_tools is not None:
+        req["allowed_tools"] = list(allowed_tools)
     return req
 
 

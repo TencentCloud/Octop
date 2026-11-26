@@ -215,6 +215,52 @@ def test_runner_shell_stays_on_the_initiator_after_the_prompt_context_ends() -> 
 
 
 @pytest.mark.asyncio
+async def test_bound_runner_shell_is_denied_without_waiting_for_a_card() -> None:
+    """A managed runner never shows the permission card, so waiting hangs the turn."""
+    import asyncio
+
+    from octop_harness.acp.client import ACPHostedClient
+    from octop_harness.acp.models import ACPRunnerConfig
+
+    client = ACPHostedClient(
+        runner_name="codebuddy",
+        runner_config=ACPRunnerConfig(),
+        cwd="/tmp/runner",
+    )
+    shell = {"kind": "other", "title": "Run command", "rawInput": {"command": "pwd"}}
+    stamped = {
+        "configurable": {
+            BRIDGE_TARGET_KEY: "tok",
+            DIR_KEY: "/data",
+            EXECUTE_KEY: "1",
+            "locale": "zh",
+        }
+    }
+
+    async def drop_directory_and_wait(_payload: dict[str, Any], _is_last: bool) -> None:
+        client._octop_target_directory = ""
+        adapter = client._permission_adapter
+        adapter._octop_target_directory = ""
+        await asyncio.Event().wait()
+
+    with (
+        bind_turn_file_target({"configurable": stamped["configurable"]}),
+        patch(
+            "octop.infra.agents.teams.file_target_guard.get_config",
+            return_value=stamped,
+        ),
+    ):
+        client.start_prompt(drop_directory_and_wait)
+    with patch(
+        "octop.infra.agents.teams.file_target_guard.get_config",
+        return_value={"configurable": {}},
+    ):
+        denied = await asyncio.wait_for(client.request_permission([], "sess", shell), timeout=1)
+    assert getattr(denied.outcome, "outcome", None) == "cancelled"
+    assert client._permission_future is None
+
+
+@pytest.mark.asyncio
 async def test_execute_follows_the_turn_directory_when_tool_config_drops_it() -> None:
     clear_local_workspace_state()
     seen: list[dict[str, Any]] = []

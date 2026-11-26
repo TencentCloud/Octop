@@ -33,12 +33,16 @@ export default function LineageStrip({ agentId, atom }: Props) {
   const { t } = useTranslation();
   const [rawEvent, setRawEvent] = useState<RawEventShape | null>(null);
   const [correction, setCorrection] = useState<JournalItem | null>(null);
+  const [additionalQuotes, setAdditionalQuotes] = useState<[string, string][]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setRawEvent(null);
+    setAdditionalQuotes([]);
     setCorrection(null);
 
     (async () => {
@@ -70,6 +74,13 @@ export default function LineageStrip({ agentId, atom }: Props) {
         if (cancelled) return;
         setCorrection(correctionResult?.items[0] ?? null);
         const eventId = cand?.quote_event_id;
+        setAdditionalQuotes(
+          Object.entries(cand?.payload?.evidence_quotes ?? {}).filter(
+            ([id]) =>
+              id !== eventId &&
+              (!atom.raw_event_ids || atom.raw_event_ids.includes(id)),
+          ),
+        );
         if (eventId && typeof memoryDashboardApi.getRawEvent === "function") {
           const ev = (await memoryDashboardApi
             .getRawEvent(agentId, eventId)
@@ -85,7 +96,7 @@ export default function LineageStrip({ agentId, atom }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [agentId, atom.id, atom.candidate_id]);
+  }, [agentId, atom.id, atom.candidate_id, atom.raw_event_ids]);
 
   if (loading) {
     return (
@@ -150,6 +161,11 @@ export default function LineageStrip({ agentId, atom }: Props) {
             {t("memory.lineage.noOriginalContext", "没有可展示的原始来源")}
           </div>
         )}
+        {additionalQuotes.map(([id, quote]) => (
+          <Typography.Paragraph type="secondary" key={id}>
+            “{quote}”
+          </Typography.Paragraph>
+        ))}
       </div>
     </div>
   );

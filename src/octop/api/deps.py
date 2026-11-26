@@ -48,9 +48,13 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/downloads/link/",
     # Read-only conversation links: the unguessable token is the credential.
     "/api/shares/",
+    # External IM platform webhooks (verified by channel signature / verify_token).
+    "/api/channels/webhook/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
+    "/api/memory-mcp/codex-review",  # Checks live Memory credential and per-token model grant.
+    "/api/memory-mcp/codex-config",  # Authenticated through the live Memory space token.
     "/api/auth/login",
     # Desktop shells renew an expired session here; the device token is the
     # credential and the router enforces shell-flag + loopback + digest match.

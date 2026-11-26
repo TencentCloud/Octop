@@ -231,7 +231,9 @@ def test_channels_map_accounts_and_report_what_cannot_move(tmp_path: Path) -> No
                 "feishu": {"accounts": {"main": {"appId": "cli_x", "appSecret": "s"}}},
                 "qqbot": {"appId": "q", "clientSecret": {"source": "file", "id": "/x"}},
                 "wecom": {"botId": "b", "secret": "w"},
-                "slack": {"botToken": "xoxb"},
+                "slack": {"botToken": "xoxb", "appToken": "xapp"},
+                "whatsapp": {"bridgeUrl": "http://127.0.0.1:3000"},
+                "matrix": {"accessToken": "syt_123"},
             }
         },
     )
@@ -242,8 +244,10 @@ def test_channels_map_accounts_and_report_what_cannot_move(tmp_path: Path) -> No
         ("telegram", "telegram-alerts", {"bot_token": "t-alerts"}),
         ("feishu", "feishu-main", {"app_id": "cli_x", "app_secret": "s"}),
         ("wecom", "wecom", {"bot_id": "b", "secret": "w"}),
+        ("slack", "slack", {"bot_token": "xoxb", "app_token": "xapp"}),
+        ("whatsapp", "whatsapp", {"provider": "waha", "bridge_url": "http://127.0.0.1:3000"}),
     ]
-    assert _notes(plan) == [("channel_unsupported", {"name": "slack"})]
+    assert _notes(plan) == [("channel_unsupported", {"name": "matrix"})]
 
 
 def test_extra_agents_and_cron_jobs_are_reported(tmp_path: Path) -> None:
