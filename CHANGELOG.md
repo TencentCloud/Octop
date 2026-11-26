@@ -13,6 +13,7 @@
 ## [Unreleased]
 
 ### 新增
+- 可观测设置新增腾讯云 CLS（AgentObs）接入：支持填写腾讯云 SecretId / SecretKey 通过 Langfuse SDK（OTLP/HTTP Basic Auth）直接上报 Trace，支持自动调用 `CreateAgentApplication` 创建/复用 CLS 应用获取 Topic ID，也支持拉取或直接填写已有应用的 Topic ID，并提供内网接入点、内容脱敏及连通性校验。
 - 知识库设置新增「分块与检索」标签页，可配置分块大小、分块重叠、默认检索条数和上下文字符预算。
 - 用户管理支持创建限次邀请链接。链接在注册满员后自动停用，管理员也可以提前停用并查看已注册的用户。邀请管理 API 移除了 `used_at`、`used_by_user_id` 和 `revoked_at`，可通过注册记录和邀请状态查看使用情况。
 - 自托管可用环境变量放行内网出站目标：`OCTOP_SSRF_ALLOWLIST`（主机名、`.后缀` 或 CIDR）让语音服务、OAuth MCP 发现与令牌请求等指向内网服务，`OCTOP_SSRF_ALLOW_HTTP` 允许这些目标走 http；仍做 DNS 解析并固定连接 IP 防重绑定，不配置时行为不变（#2016）
