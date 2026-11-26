@@ -1,0 +1,538 @@
+/* ── Shared expert drawer redesign styles ─────────────────────────
+ * Scope: `.expertDrawer` is applied to the antd Drawer root/className of
+ * the four expert drawers (edit / create / managed / team). All font-size
+ * tokens and overrides live under this scope so other pages (Agent/Config,
+ * AgentProfileDrawer, InstalledPluginsPanel) are unaffected.
+ *
+ * Section headings use the body size with stronger weight and color.
+ * ────────────────────────────────────────────────────────────────── */
+
+.expertDrawer {
+  --ed-fs-body: 14px;
+  --ed-fs-aux: 12px;
+  --ed-space-field: 20px;
+  --ed-space-section: 32px;
+  --ed-space-title: 12px;
+
+  /* The form and sections own the drawer's vertical and horizontal padding. */
+  :global(.octop-drawer-body),
+  :global(.ant-drawer-body) {
+    padding: 0;
+  }
+
+  :global(.octop-form-item-extra),
+  :global(.ant-form-item-extra) {
+    min-height: unset;
+    margin-top: 4px;
+    font-size: var(--ed-fs-aux);
+    line-height: 1.5;
+    color: var(--fn-text-tertiary);
+  }
+
+  :global(.octop-form-item-explain-error),
+  :global(.ant-form-item-explain-error) {
+    font-size: var(--ed-fs-aux);
+    line-height: 1.5;
+  }
+
+  /* Field labels use secondary text and medium weight. */
+  :global(.octop-form-item-label > label),
+  :global(.ant-form-item-label > label) {
+    font-weight: 500;
+    color: var(--fn-text-secondary);
+  }
+
+  /* In-group rhythm: 20px between fields (antd default 24), tighter than
+   * the 32px between groups. */
+  :global(.octop-form-item),
+  :global(.ant-form-item) {
+    margin-bottom: var(--ed-space-field);
+  }
+
+  /* Field labels with an inline action link (ExpertFieldLabel): make the
+   * label box full-width so the link's margin-left:auto reaches the right
+   * edge, and keep it on the label's text baseline. */
+  :global(.octop-form-item-label),
+  :global(.ant-form-item-label) {
+    display: flex;
+    align-items: baseline;
+    width: 100%;
+
+    > label {
+      flex: 1;
+      min-width: 0;
+      margin-inline-end: 0;
+      width: 100%;
+
+      &::after {
+        content: none;
+      }
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  :global(:root) {
+    --octop-expert-drawer-width: 100vw;
+  }
+
+  .expertDrawer {
+    --ed-fs-body: 15px;
+    --ed-fs-aux: 13px;
+  }
+}
+
+.section {
+  padding-inline: 24px;
+
+  &:not(:first-child) {
+    padding-top: 16px;
+    margin-top: 4px;
+  }
+}
+
+/* Compact section (More-settings block): less air above than content groups —
+ * it sits after workspace/sharing so a full 16+4 rhythm feels detached. */
+.sectionCompact {
+  padding-inline: 24px;
+
+  &:not(:first-child) {
+    padding-top: 8px;
+    margin-top: 0;
+  }
+}
+
+.sectionTitle {
+  margin: 0 0 var(--ed-space-title);
+  color: var(--fn-text-primary);
+  font-size: var(--ed-fs-body);
+  font-weight: 600;
+}
+
+.sectionAction {
+  margin-bottom: 8px;
+}
+
+.sectionBody {
+  min-width: 0;
+}
+
+.formArea {
+  padding-top: 20px;
+  padding-bottom: 24px;
+}
+
+/* ── Collapsible block (children stay mounted) ──────────────────── */
+
+.collapsible {
+  margin-top: 0;
+
+  /* 5px between sibling collapsibles (more settings / page config / runtime params) */
+  & + & {
+    margin-top: 5px;
+  }
+}
+
+.collapsibleToggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-primary);
+  font-size: var(--ed-fs-body);
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-color-brand);
+  }
+
+  &[aria-expanded="true"] {
+    margin-bottom: 8px;
+    /* Expanded state reads as focused: brand color while the block is open */
+    color: var(--fn-color-brand);
+  }
+}
+
+/* Prominent variant: fully identical to the regular toggle — the three
+ * peer groups (more settings / page config / runtime params) must render pixel-equal. */
+.collapsibleProminentToggle {
+  composes: collapsibleToggle;
+}
+
+.collapsibleTitle {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Chevron pinned to the right edge: the full row is the hit area and
+ * the affordance reads as "expand this row" (per review). */
+.collapsibleIcon {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: inline-flex;
+  color: var(--fn-text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.collapsibleIconOpen {
+  transform: rotate(180deg);
+}
+
+.collapsibleBody {
+  padding-bottom: 4px;
+}
+
+/* ── Resource row (config files / skills / subagents lists) ─────── */
+
+.row {
+  --ed-row-action-width: calc(var(--ed-fs-aux) * 3.5);
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  background: var(--fn-bg-primary);
+  border: 1px solid var(--fn-card-border-normal);
+  border-radius: var(--fn-radius-md);
+  overflow: hidden;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+
+  &:hover {
+    border-color: var(--fn-color-brand);
+    box-shadow: var(--fn-shadow-sm);
+  }
+}
+
+.rowMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.row:has(.rowActions, .rowMenu) .rowMain {
+  padding-inline-end: 8px;
+}
+
+.rowIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--fn-radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.rowIconImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.rowMeta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rowLabel {
+  font-size: var(--ed-fs-body);
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Secondary description line: regular weight — only the primary label
+ * carries weight on a row (review: no bold on the description). */
+.rowDescription {
+  font-size: var(--ed-fs-aux);
+  font-weight: 400;
+  color: var(--fn-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowPath {
+  font-size: var(--ed-fs-aux);
+  color: var(--fn-text-quaternary);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowHint {
+  font-size: var(--ed-fs-aux);
+  color: var(--fn-color-brand);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.rowMenu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ed-row-action-width);
+  flex-shrink: 0;
+  border: none;
+  border-left: 1px solid var(--fn-card-border-normal);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+    background: var(--fn-bg-secondary);
+  }
+}
+
+/* Inline actions (1–2 items): plain quiet text buttons, no divider
+   lines between them or the row body (review). */
+.rowActions {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.rowActionsSingle {
+  composes: rowActions;
+  width: var(--ed-row-action-width);
+  justify-content: center;
+}
+
+.rowActionButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 3px;
+  height: auto;
+  font-size: var(--ed-fs-aux);
+}
+
+.rowList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rowEmpty {
+  padding: 8px 0;
+  font-size: var(--ed-fs-aux);
+  color: var(--fn-text-tertiary);
+}
+
+/* ── File preview list (create / managed / team inline previews) ── */
+
+.previewHint {
+  margin: 0 0 8px;
+  color: var(--fn-text-tertiary);
+  font-size: var(--ed-fs-aux);
+  line-height: 1.5;
+}
+
+.previewList {
+  :global(.octop-collapse-header-text),
+  :global(.ant-collapse-header-text) {
+    min-width: 0;
+  }
+}
+
+.previewLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.previewLabelText {
+  font-weight: 500;
+  font-size: var(--ed-fs-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewLabelPath {
+  color: var(--fn-text-tertiary);
+  font-size: var(--ed-fs-aux);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewContent {
+  max-height: 200px;
+  margin: 0;
+  overflow-y: auto;
+  font-size: var(--ed-fs-aux);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Shared hint paragraph (replaces inline 12px styles) ────────── */
+
+.hint {
+  margin: 0 0 8px;
+  color: var(--fn-text-tertiary);
+  font-size: var(--ed-fs-aux);
+  line-height: 1.5;
+}
+
+.hintTight {
+  composes: hint;
+  margin: -8px 0 12px;
+}
+
+.hintStacked {
+  composes: hint;
+  margin-top: 4px;
+}
+
+.warning {
+  composes: hint;
+  margin: 4px 0 0;
+  color: var(--fn-text-warning, #d48806);
+}
+
+.subgroupTitle {
+  margin-bottom: 4px;
+  font-size: var(--ed-fs-body);
+  font-weight: 500;
+  color: var(--fn-text-primary);
+}
+
+/* ── Field-group label row (lists inside a section) ─────────────── */
+
+.fieldLabel {
+  display: flex;
+  align-items: baseline;
+  width: 100%;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fieldLabelText {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fieldLabelHelp {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: help;
+}
+
+.fieldLabelAction {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0;
+  height: auto;
+  font-size: var(--ed-fs-aux);
+  font-weight: 400;
+  line-height: inherit;
+  color: var(--fn-text-tertiary);
+  transition: color 0.15s;
+
+  &:hover {
+    color: var(--fn-color-brand);
+  }
+}
+
+.assistField {
+  position: relative;
+
+  :global(.octop-form-item-label),
+  :global(.ant-form-item-label) {
+    padding-inline-end: 100px;
+  }
+}
+
+.assistFieldAction {
+  position: absolute;
+  inset-block-start: -2px;
+  inset-inline-end: 0;
+}
+
+.configEntry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  text-align: start;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--fn-color-brand);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  > svg {
+    flex-shrink: 0;
+  }
+}
+
+.configEntryText {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.configEntryTitle {
+  color: var(--fn-text-primary);
+  font-size: var(--ed-fs-body);
+  font-weight: 600;
+}
+
+.configSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--ed-fs-aux);
+}
+
+.configBody {
+  padding: 20px 24px 24px;
+}

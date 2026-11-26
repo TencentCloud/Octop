@@ -78,6 +78,16 @@ def test_content_from_parts_text_and_image():
     assert payload[1]["image_url"]["url"] == "http://x"
 
 
+@pytest.mark.parametrize("messages", [None, [{"role": "user", "content": "hello"}]])
+def test_tool_ceiling_is_preserved_in_both_request_paths(
+    messages: list[dict[str, object]] | None,
+) -> None:
+    request = build_harness_request(
+        thread_id="t", user_id=1, source="test", text="hello", messages=messages, allowed_tools=[]
+    )
+    assert request["allowed_tools"] == []
+
+
 def test_build_harness_request_with_messages_override():
     req = build_harness_request(
         thread_id="t1",

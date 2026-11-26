@@ -17,11 +17,14 @@ class SettingsRepo:
         return r["value"] if r else None
 
     def set(self, key: str, value: str) -> None:
+        self.set_many({key: value})
+
+    def set_many(self, values: dict[str, str]) -> None:
         with self._db.transaction() as conn:
-            conn.execute(
+            conn.executemany(
                 "INSERT INTO settings(key, value) VALUES(?, ?)"
                 " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, value),
+                list(values.items()),
             )
 
     def delete(self, key: str) -> None:

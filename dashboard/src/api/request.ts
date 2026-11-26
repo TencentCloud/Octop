@@ -1,3 +1,8 @@
+import {
+  ApiResponseError,
+  readErrorBody,
+  responseError,
+} from "./responseError";
 import { getApiUrl } from "./config";
 import {
   isLocalDesktopUser,
@@ -173,7 +178,7 @@ async function check503ForSetupRequired(
   if (response.status !== 503) return false;
   let body: unknown = null;
   try {
-    body = await response.clone().json();
+    body = await readErrorBody(response);
   } catch {
     /* not JSON — fall through to the standard error path. */
     return false;
@@ -313,7 +318,11 @@ function buildAuthHeaders(path: string): Record<string, string> {
 let _redirectingToLogin = false;
 
 /** 401 codes that mean this Octop session is no longer valid. */
-const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+const SESSION_UNAUTHORIZED_CODES = new Set([
+  "AUTH_FAILED",
+  "MISSING_CREDENTIALS",
+  "TOKEN_EXPIRED",
+]);
 
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
@@ -370,7 +379,7 @@ async function throwIfUnauthorized(
   let message = "Unauthorized";
   if (path.startsWith("/setup/")) {
     try {
-      const body = (await response.clone().json()) as {
+      const body = (await readErrorBody(response)) as {
         error?: { message?: string };
       };
       if (body?.error?.message) {
@@ -454,12 +463,7 @@ export async function request<T = unknown>(
         new CustomEvent(FORBIDDEN_EVENT, { detail: { path } }),
       );
     }
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   if (response.status === 204) {
@@ -503,12 +507,7 @@ export async function requestBlob(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   const total = Number(response.headers.get("content-length")) || 0;
@@ -556,12 +555,7 @@ export async function probeAuthResource(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   try {
@@ -596,12 +590,7 @@ export async function requestStream(
   applyRenewedAccessToken(response);
 
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(
-      `Request failed: ${response.status} ${response.statusText}${
-        text ? ` - ${text}` : ""
-      }`,
-    );
+    throw await responseError(response);
   }
 
   if (!response.body) {
@@ -673,11 +662,29 @@ export async function requestUpload<T = unknown>(
       );
     }
 
+    xhr.onprogress = (event) => {
+      if (xhr.status >= 400 && event.loaded > 16 * 1024) {
+        const requestId =
+          xhr.getResponseHeader("x-request-id") ??
+          xhr.getResponseHeader("x-octop-request-id");
+        reject(new ApiResponseError(xhr.status, null, requestId));
+        xhr.abort();
+      }
+    };
+
     xhr.onload = () => {
       void (async () => {
         const status = xhr.status;
         const responseText = xhr.responseText;
         const responseHeaders = new Headers();
+        for (const key of [
+          "content-type",
+          "x-request-id",
+          "x-octop-request-id",
+        ]) {
+          const value = xhr.getResponseHeader(key);
+          if (value) responseHeaders.set(key, value);
+        }
         const renewed = xhr.getResponseHeader(ACCESS_TOKEN_RESPONSE_HEADER);
         if (renewed) {
           responseHeaders.set(ACCESS_TOKEN_RESPONSE_HEADER, renewed);
@@ -702,14 +709,7 @@ export async function requestUpload<T = unknown>(
         applyRenewedAccessToken(response);
 
         if (!response.ok) {
-          // Same shape as request() so parseApiError() can read the error envelope.
-          reject(
-            new Error(
-              `Upload failed: ${status}${
-                responseText ? ` - ${responseText}` : ""
-              }`,
-            ),
-          );
+          reject(await responseError(response));
           return;
         }
 

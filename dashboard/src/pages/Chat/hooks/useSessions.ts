@@ -361,6 +361,10 @@ async function fetchSessionsPage(
   const hasMore = rows.length > limit;
   const sessions = sortSessions(
     rows.slice(0, limit).map((row) => toSession({ ...row, agent_id: agentId })),
+  ).map((session) =>
+    chatStore.hostWorkDelegated(session.id)
+      ? { ...session, turnActive: false }
+      : session,
   );
   return { sessions, hasMore };
 }

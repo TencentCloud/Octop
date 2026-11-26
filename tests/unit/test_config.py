@@ -133,6 +133,21 @@ def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     assert cfg.backup.remote_backend_id == 9
 
 
+def test_public_base_url_from_file_and_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text(json.dumps({"public_base_url": "https://octop.example:8674/"}))
+    cfg = load_config(cfg_path)
+    assert cfg.public_base_url == "https://octop.example:8674"
+
+    monkeypatch.setenv("OCTOP_PUBLIC_BASE_URL", "https://override.example")
+    assert load_config(cfg_path).public_base_url == "https://override.example"
+    monkeypatch.delenv("OCTOP_PUBLIC_BASE_URL")
+
+    cfg_path.write_text(json.dumps({"public_base_url": "https://octop.example/api"}))
+    with pytest.raises(ValueError, match="origin without a path"):
+        load_config(cfg_path)
+
+
 def test_loads_existing(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"port": 9000, "log_level": "debug"}))

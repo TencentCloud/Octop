@@ -295,6 +295,33 @@ async def test_disable_then_enable_toggles_listing(env: Any) -> None:
     assert fr["enabled"] is True
 
 
+async def test_office_documents_enable_records_the_opt_in(env: Any) -> None:
+    # Default-off is checked against the real harness build in test_agent_manager;
+    # the fake agent here starts with an empty disabled set.
+    c, srv, auth, aid = env
+    registry = srv.app_runtime.agent_registry
+
+    async def office_enabled() -> bool:
+        rows = (await c.get(f"/api/agents/{aid}/skills", headers=auth)).json()
+        return bool(next(row for row in rows if row["slug"] == "office-documents")["enabled"])
+
+    r = await c.post(f"/api/agents/{aid}/skills/office-documents/disable", headers=auth)
+    assert r.status_code == 204
+    assert await office_enabled() is False
+    assert "skills_enabled" not in registry.get_config(aid)
+    assert "office-documents" not in registry.get_config(aid)["skills_disabled"]
+
+    r = await c.post(f"/api/agents/{aid}/skills/office-documents/enable", headers=auth)
+    assert r.status_code == 204
+    assert await office_enabled() is True
+    assert registry.get_config(aid)["skills_enabled"] == ["office-documents"]
+
+    r = await c.post(f"/api/agents/{aid}/skills/office-documents/disable", headers=auth)
+    assert r.status_code == 204
+    assert await office_enabled() is False
+    assert "skills_enabled" not in registry.get_config(aid)
+
+
 # --- soft delete -----------------------------------------------------------
 
 

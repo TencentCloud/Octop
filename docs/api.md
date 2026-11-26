@@ -10,6 +10,27 @@ described in [Chat (WebSocket)](#chat-websocket).
 
 ## Authentication
 
+For external Codex memory extraction, the dashboard publishes with
+`PUT /api/memory-mcp/tokens/{token_id}/codex-model?space_id=...&apply=true` using the signed-in user's
+space management session. An opted-in hook calls `POST /api/memory-mcp/codex-config` with its own writable
+Memory bearer token. An empty request object fetches the published mode and revision. Sending
+`applied_revision` acknowledges the matching revision. Terminal status and completed model runs remain separate.
+
+`POST /api/memory-mcp/codex-review` accepts the terminal's captured event IDs and reviews up to three
+independently updateable facts per turn. Each proposed fact carries a standalone assertion and an exact
+quote from its owning user event. Temporary directives and informational questions are skipped.
+A repeated fact appends evidence to the original record. An explicit, evidenced change supersedes the
+previous confirmed value and retains its history. An uncertain change creates a conflict for review. A successful nonempty response includes `candidate_ids` and the first
+`candidate_id` for older uploaders. An empty review returns `status: skipped`. Review credentials and
+existing completed-turn receipts retain their original scope.
+
+The dashboard pins the terminal installer to the octop-memory v1.0.7 release. Writable Codex
+installations opt in with `OCTOP_CODEX_PANEL_SYNC=1` and the dashboard's review URL. A build
+can also supply a matching same-origin wheel with `VITE_CODEX_HARNESS_WHEEL` and a SHA-256
+fragment. Installation commands prompt for a token locally, and manual JSON contains a
+`<TOKEN>` placeholder. Copying setup leaves the current credential active. Explicit rotation
+first resolves the token in the managed space, then returns its replacement once.
+
 | Header | Value |
 |--------|-------|
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |

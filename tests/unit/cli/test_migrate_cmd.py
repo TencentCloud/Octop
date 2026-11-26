@@ -81,7 +81,7 @@ def _openclaw_home(tmp_path: Path) -> Path:
           } } },
           agents: { defaults: { model: "proxy/m1" } },
           mcp: { servers: { fetch: { command: "uvx" }, legacy: { url: "https://x.example.com/sse" } } },
-          channels: { telegram: { botToken: "tg" }, slack: { botToken: "xoxb" } },
+          channels: { telegram: { botToken: "tg" }, slack: { botToken: "xoxb" }, matrix: { accessToken: "syt" } },
         }""",
         encoding="utf-8",
     )
@@ -111,15 +111,16 @@ def test_openclaw_migration_writes_and_reports(
     )
 
     assert result.exit_code == 0, result.output
-    assert "6 migrated, 0 skipped, 0 failed." in result.output
+    assert "7 migrated, 0 skipped, 0 failed." in result.output
     assert "MCP server legacy uses the SSE transport" in result.output
-    assert "Channel slack is not available in Octop." in result.output
+    assert "Channel matrix is not available in Octop." in result.output
     assert "restart it to load" in result.output
     assert "sk-proxy" not in result.output
     assert services.settings_repo.get_active_model() == ("proxy", "m1")
     assert sorted(workspace.files) == ["SOUL.md", "skills/weekly-report/SKILL.md"]
-    [channel] = services.channel_repo.list_by_agent(AGENT)
-    assert bool(channel.enabled) is False
+    channels = services.channel_repo.list_by_agent(AGENT)
+    assert sorted(c.kind for c in channels) == ["slack", "telegram"]
+    assert all(bool(c.enabled) is False for c in channels)
 
 
 def test_dry_run_writes_nothing(tmp_path: Path, runtime: tuple[SharedServices, _Workspace]) -> None:
@@ -139,7 +140,7 @@ def test_dry_run_writes_nothing(tmp_path: Path, runtime: tuple[SharedServices, _
     )
     assert result.exit_code == 0, result.output
     assert "would migrate" in result.output
-    assert "6 to migrate, 0 skipped, 0 failed." in result.output
+    assert "7 to migrate, 0 skipped, 0 failed." in result.output
     assert "nothing was written" in result.output
     assert workspace.files == {}
     assert services.provider_repo.list_all() == []

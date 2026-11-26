@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import type { AggregationColor } from "antd/es/color-picker/color";
 import cx from "classnames";
 import {
-  DEFAULT_CUSTOM_COLOR,
   DEFAULT_PALETTE,
   PALETTE_SWATCH,
   VALID_PALETTES,
@@ -35,7 +34,11 @@ export default function ExpertColorPicker({
   const curated = isCurated(resolved);
 
   return (
-    <div className={styles.picker} role="group" aria-label={t("experts.color")}>
+    <div
+      className={cx(styles.picker, styles.expertPicker)}
+      role="group"
+      aria-label={t("experts.color")}
+    >
       {VALID_PALETTES.map((key) => {
         const active = resolved === key;
         const label = t(`header.palette.${key}`);
@@ -79,9 +82,6 @@ export default function ExpertColorPicker({
           </ColorPicker>
         </span>
       </Tooltip>
-      {!curated && resolved !== DEFAULT_CUSTOM_COLOR && (
-        <span className={styles.customHex}>{resolved.toUpperCase()}</span>
-      )}
     </div>
   );
 }

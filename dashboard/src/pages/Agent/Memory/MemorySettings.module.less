@@ -245,6 +245,86 @@
   overflow-wrap: anywhere;
 }
 
+/* 接入端开关：固定占位宽度，避免在 grid 里被压缩或撑开列宽 */
+.clientSwitch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 44px;
+  max-width: 44px;
+  overflow: hidden;
+}
+
+.codexSettings,
+.codexField {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 0;
+}
+
+.codexSettings {
+  padding-top: 8px;
+  gap: 16px;
+}
+
+.codexToken {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.codexSelect {
+  width: 100%;
+}
+
+.codexConfigure,
+.codexCopy {
+  align-self: flex-start;
+}
+
+.codexConfigure {
+  padding-inline: 0;
+}
+
+.codexInstructions {
+  color: var(--fn-text-secondary);
+
+  summary {
+    cursor: pointer;
+    width: fit-content;
+  }
+
+  textarea {
+    margin-top: 8px;
+    font-family: monospace;
+    font-size: 12px;
+  }
+}
+
+.codexStatus {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--ant-color-border-secondary, #d9d9d9);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+.codexStatusHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.codexLastRun {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--ant-color-border-secondary, #d9d9d9);
+}
+
 .overrideHeader {
   display: flex;
   align-items: center;

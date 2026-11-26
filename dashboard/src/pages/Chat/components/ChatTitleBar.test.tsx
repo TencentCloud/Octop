@@ -121,7 +121,7 @@ describe("ChatTitleBar", () => {
     expect(container.querySelector(".octop-desktop-drag")).toBeNull();
   });
 
-  it("shows the expert shared flag beside an owner's contributed title", () => {
+  it("shows a compact share icon beside an owner's contributed title", () => {
     render(
       <ChatTitleBar
         session={{ ...session, contributed: true, owned: true }}
@@ -134,8 +134,10 @@ describe("ChatTitleBar", () => {
     );
 
     const heading = screen.getByRole("heading", { name: "Weekly recap" });
-    const badge = screen.getByTitle(/sharedResource\.shared|已共享|Shared/);
+    const badge = screen.getByLabelText(/sharedResource\.shared|已共享|Shared/);
     const more = screen.getByRole("button", { name: "更多" });
+    expect(badge.querySelector("svg")).not.toBeNull();
+    expect(badge).not.toHaveTextContent(/已共享|Shared|sharedResource/);
     expect(heading.compareDocumentPosition(badge)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

@@ -307,6 +307,7 @@ class AppRuntime:
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
             thread_repo=services.repos.thread_repo,
+            thread_message_repo=services.repos.thread_message_repo,
         )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
@@ -329,6 +330,7 @@ class OctopServer:
         self._started_at: int | None = None
         self.instance_id = uuid.uuid4().hex
         self._serve_background = True
+        self._started_extensions: tuple[str, ...] = ()
         self._sso_service: SsoService | None = None
         self._ldap_service: LdapAuthService | None = None
         self._ldap_bind_throttle: LdapBindThrottle | None = None
@@ -450,14 +452,7 @@ class OctopServer:
             logger.info("control-plane database deferred until setup wizard chooses a backend")
             return
 
-        db = open_database(config, self.paths)
-        run_migrations(db)
-        self.services = build_shared_services(db=db, paths=self.paths, config=config)
-        from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
-
-        boot_from_services(self.services.settings_repo, self.services.secret_repo)
-        self._ensure_jwt_secret()
-        await self._boot_runtime(config)
+        await self._open_control_plane(config)
         self._started = True
         assert self.user_manager is not None
         self._emit_wizard_password(user_count=self.user_manager.count())
@@ -473,22 +468,32 @@ class OctopServer:
             return
         config = load_config(self.paths.config)
         self.config = config
-        db = open_database(config, self.paths)
-        try:
-            run_migrations(db)
-        except Exception:
-            db.close()
-            raise
-        self.services = build_shared_services(db=db, paths=self.paths, config=config)
-        from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
-
-        boot_from_services(self.services.settings_repo, self.services.secret_repo)
-        self._ensure_jwt_secret()
-        await self._boot_runtime(config)
+        await self._open_control_plane(config)
         logger.info(
             "control-plane database bound driver=%s",
             config.database.driver,
         )
+
+    async def _open_control_plane(self, config: OctopConfig) -> None:
+        """Open the DB and boot the runtime; on failure, undo it so a retry starts clean."""
+        db = open_database(config, self.paths)
+        try:
+            run_migrations(db)
+            self.services = build_shared_services(db=db, paths=self.paths, config=config)
+            from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
+
+            boot_from_services(self.services.settings_repo, self.services.secret_repo)
+            self._ensure_jwt_secret()
+            await self._boot_runtime(config)
+        except Exception:
+            if self.services is None:
+                db.close()
+            else:
+                try:
+                    await self._teardown_runtime()
+                except Exception:
+                    logger.exception("cleanup after a failed control-plane boot failed")
+            raise
 
     async def _boot_runtime(self, config: OctopConfig) -> None:
         assert self.services is not None
@@ -608,6 +613,7 @@ class OctopServer:
             gateway=gateway,
             care_push_repo=self.services.repos.care_push_repo,
             agent_manager=registry,
+            thread_message_repo=self.services.repos.thread_message_repo,
             timezone=config.default_timezone,
         )
         proactive_scheduler = ProactiveCareScheduler(
@@ -617,8 +623,10 @@ class OctopServer:
             agent_repo=self.services.repos.agent_repo,
             user_repo=self.services.repos.user_repo,
             thread_repo=self.services.repos.thread_repo,
+            thread_message_repo=self.services.repos.thread_message_repo,
             care_push_repo=self.services.repos.care_push_repo,
             is_agent_busy=registry.is_agent_active,
+            has_pending_hitl=gateway.processor.hitl_coordinator.store.has_pending_for_agent,
             default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)
@@ -708,6 +716,10 @@ class OctopServer:
 
         seal_setup_wizard_if_installed(self)
 
+        from octop.infra.extensions import run_startup_hooks  # noqa: PLC0415
+
+        self._started_extensions = await run_startup_hooks(self)
+
     async def refresh_plugin_channels(self) -> None:
         """Reconcile only changed kinds and report registration failures to callers."""
         from octop.infra.errors import ErrorCode, OctopError
@@ -795,6 +807,19 @@ class OctopServer:
         if not self._started:
             return
         try:
+            await self._teardown_runtime()
+        finally:
+            self._started = False
+            logger.info("octop server stopped")
+
+    async def _teardown_runtime(self) -> None:
+        """Stop extensions and the runtime, close the DB, and clear both handles."""
+        try:
+            started, self._started_extensions = self._started_extensions, ()
+            if started:
+                from octop.infra.extensions import run_shutdown_hooks  # noqa: PLC0415
+
+                await run_shutdown_hooks(self, started)
             from octop.infra.connectors.gateway import agently_auth
 
             await agently_auth.close()
@@ -813,8 +838,6 @@ class OctopServer:
                 self.services.db.close()
             self.services = None
             self.app_runtime = None
-            self._started = False
-            logger.info("octop server stopped")
 
     # ----- helpers -----
 

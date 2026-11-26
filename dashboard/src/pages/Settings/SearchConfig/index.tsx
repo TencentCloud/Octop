@@ -206,7 +206,7 @@ function ConfigureDrawer({
       })}
       open={open}
       onClose={onClose}
-      width={440}
+      width={520}
       placement="right"
       destroyOnHidden
       footer={

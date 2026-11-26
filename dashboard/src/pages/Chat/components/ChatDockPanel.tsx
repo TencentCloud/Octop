@@ -15,6 +15,7 @@ import {
   Check,
   FilePen,
   FolderOpen,
+  GitBranch,
   Globe,
   Plus,
   Puzzle,
@@ -39,6 +40,9 @@ import styles from "../index.module.less";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import ChatDockFileList from "./ChatDockFileList";
 import FilePanelContent from "./FilePanelContent";
+import ChatGitPanel from "./ChatGitPanel";
+import GitHistoryPanelContent from "./GitHistoryPanelContent";
+import TurnDiffPanelContent from "./TurnDiffPanelContent";
 import KnowledgeCitationPanelContent from "./KnowledgeCitationPanelContent";
 import ChatDockToolUiContent from "./ChatDockToolUiContent";
 
@@ -49,11 +53,12 @@ export type ChatDockAddTabHandlers = {
   onOpenBrowser?: () => void;
   onOpenTerminal?: () => void;
   onOpenFiles?: () => void;
+  onOpenGit?: () => void;
   workspaceDisabled?: boolean;
   workspaceDisabledHint?: string;
 };
 
-type AddTabKey = "workspace" | "files" | "browser" | "terminal";
+type AddTabKey = "workspace" | "files" | "browser" | "terminal" | "git";
 
 interface ChatDockPanelProps {
   mode: PanelMode;
@@ -68,6 +73,8 @@ interface ChatDockPanelProps {
   onSelectTab: (id: DockTabId) => void;
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
+  /** Open the commit graph tab from the git panel tools card. */
+  onOpenGitHistory?: () => void;
   browserEnvironment?: DisplayEnvironment;
   /** When set, Chat dock browser talks to the peer harness via Bridge. */
   bridgeConnectionId?: string | null;
@@ -137,6 +144,14 @@ const DockAddTabButton: React.FC<{
         extra: check("terminal"),
       });
     }
+    if (addTab.onOpenGit) {
+      next.push({
+        key: "git",
+        label: t("git.title", "Git 变更"),
+        icon: <GitBranch size={14} />,
+        extra: check("git"),
+      });
+    }
     return next;
   }, [addTab, openTabs, t]);
 
@@ -147,6 +162,7 @@ const DockAddTabButton: React.FC<{
         files: addTab.onOpenFiles,
         browser: addTab.onOpenBrowser,
         terminal: addTab.onOpenTerminal,
+        git: addTab.onOpenGit,
       };
       openers[key as AddTabKey]?.();
     },
@@ -202,6 +218,7 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
   onSelectTab,
   onCloseTab,
   onOpenFile,
+  onOpenGitHistory,
   browserEnvironment = "desktop",
   bridgeConnectionId = null,
   threadId = null,
@@ -413,6 +430,16 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
                 <Terminal size={16} strokeWidth={2} aria-hidden />
                 <span>{t("chat.dockTerminalTitle", "终端")}</span>
               </>
+            ) : tab.kind === "git" ? (
+              <>
+                <GitBranch size={16} strokeWidth={2} aria-hidden />
+                <span>{t("git.title", "Git 变更")}</span>
+              </>
+            ) : tab.kind === "gitHistory" ? (
+              <>
+                <GitBranch size={16} strokeWidth={2} aria-hidden />
+                <span>{t("git.history.title", "提交历史")}</span>
+              </>
             ) : tab.kind === "toolUi" ? (
               <>
                 <Puzzle size={16} strokeWidth={2} aria-hidden />
@@ -427,6 +454,13 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
                 <BookOpen size={16} strokeWidth={2} aria-hidden />
                 <span title={tab.citation.filename}>
                   {tab.citation.filename || t("chat.citationPreview")}
+                </span>
+              </>
+            ) : tab.kind === "turnDiff" ? (
+              <>
+                <GitBranch size={16} strokeWidth={2} aria-hidden />
+                <span title={tab.displayPath}>
+                  {dockFileBasename(tab.displayPath)}
                 </span>
               </>
             ) : (
@@ -563,6 +597,32 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
           );
         })}
 
+        {openTabs
+          .filter(
+            (tab): tab is Extract<DockTab, { kind: "turnDiff" }> =>
+              tab.kind === "turnDiff",
+          )
+          .map((tab) => {
+            const isActive =
+              activeTab?.kind === "turnDiff" && activeTab.id === tab.id;
+            return (
+              <div
+                key={tab.id}
+                className={styles.dockTabBody}
+                hidden={!isActive}
+                style={{ display: isActive ? "flex" : "none" }}
+              >
+                <TurnDiffPanelContent
+                  agentId={tab.agentId}
+                  threadId={tab.threadId}
+                  messageId={tab.messageId}
+                  path={tab.path}
+                  displayPath={tab.displayPath}
+                />
+              </div>
+            );
+          })}
+
         {mountedKnowledgeTabs.map((tab) => {
           const isActive =
             activeTab?.kind === "knowledge" && activeTab.id === tab.id;
@@ -595,6 +655,39 @@ const ChatDockPanel: React.FC<ChatDockPanelProps> = ({
               onClose={() => onCloseTab("workspace")}
               embedded
             />
+          </div>
+        )}
+
+        {openTabs.some((t) => t.kind === "git") && (
+          <div
+            className={styles.dockTabBody}
+            hidden={activeTab?.kind !== "git"}
+            style={{
+              display: activeTab?.kind === "git" ? "flex" : "none",
+            }}
+          >
+            <ChatGitPanel
+              agentId={agentId}
+              streaming={!!isStreamingTurn}
+              focusPath={
+                openTabs.find((t) => t.kind === "git")?.focusPath ?? null
+              }
+              focusSeq={openTabs.find((t) => t.kind === "git")?.focusSeq ?? 0}
+              onOpenFile={(path) => onOpenFile(path, agentId)}
+              onOpenHistory={onOpenGitHistory}
+            />
+          </div>
+        )}
+
+        {openTabs.some((t) => t.kind === "gitHistory") && (
+          <div
+            className={styles.dockTabBody}
+            hidden={activeTab?.kind !== "gitHistory"}
+            style={{
+              display: activeTab?.kind === "gitHistory" ? "flex" : "none",
+            }}
+          >
+            <GitHistoryPanelContent agentId={agentId} />
           </div>
         )}
 

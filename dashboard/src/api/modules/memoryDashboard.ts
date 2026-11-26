@@ -40,6 +40,7 @@ export type Importance = "low" | "medium" | "high";
 export type Confidence = "low" | "medium" | "high";
 
 export interface AtomItem {
+  raw_event_ids?: string[];
   id: string;
   entity_id: string;
   candidate_id: string;
@@ -263,6 +264,7 @@ export type CandidateStatus =
   | "rejected";
 
 export interface CandidateItem {
+  payload?: { evidence_quotes?: Record<string, string> };
   id: string;
   raw_event_ids: string[];
   candidate_type: AtomKind;
@@ -328,6 +330,13 @@ export interface LastExtractRun {
   failure_reason?: string | null;
 }
 
+export interface CodexReviewRun {
+  timestamp: string;
+  status: "captured" | "finished_without_proposal" | "proposed";
+  model?: string | null;
+  proposals: number;
+}
+
 export interface StatsCounts {
   raw_events: number;
   atoms: number;
@@ -339,6 +348,7 @@ export interface StatsCounts {
   entities_delta_7d: number;
   episodes_delta_7d: number;
   last_extract_run?: LastExtractRun | null;
+  last_codex_review?: CodexReviewRun | null;
 }
 
 export interface StatsAtomKindsResponse {

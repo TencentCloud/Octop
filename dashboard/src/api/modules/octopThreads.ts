@@ -179,7 +179,13 @@ export interface PublicShareMessage {
   content: unknown;
   timestamp?: number;
   author_name?: string;
+  /** Preset portrait key; public pages never get signed-in ``/api/`` avatars. */
+  author_avatar_icon?: string;
+  author_avatar_url?: string;
   speaker_name?: string;
+  speaker_icon_url?: string;
+  speaker_icon_name?: string;
+  speaker_color?: string;
   decision?: unknown;
 }
 

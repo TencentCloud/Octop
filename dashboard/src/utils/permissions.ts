@@ -97,7 +97,6 @@ export const PERSONALIZATION_TAB_PERMISSIONS = {
 export const CONNECTOR_TAB_PERMISSIONS = {
   enabled: "connector_enabled",
   builtin: "connector_builtin",
-  custom: "connector_custom",
 } as const;
 
 export const PLUGIN_TAB_PERMISSIONS = {
@@ -248,6 +247,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   }
   if (pathname.startsWith("/admin/")) {
     return "admin";
+  }
+  if (pathname === "/tokens" || pathname.startsWith("/tokens/")) {
+    return PERM.memory;
   }
   if (pathname === "/channels" || pathname.startsWith("/channels/")) {
     return PERM.channels;

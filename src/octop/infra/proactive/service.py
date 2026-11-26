@@ -6,28 +6,37 @@ Procedural flow (bypasses the LangGraph ReAct loop):
 3. Use EpisodePicker to select the Top-3 most care-worthy episodes.
 4. Read the agent's SOUL.md and embed it into the LLM system prompt.
 5. Call a lightweight LLM to generate a care message (<=200 chars).
-6. Push to the current session via Gateway.push_text_from_session.
-7. Write a dedup record to care_push_records after a successful push.
+6. Under the session lock, bind the latest active thread, append a single
+   AIMessage to the harness checkpoint and thread_messages projection, push
+   over the session transport, and (for dashboard) send the toast notification.
+7. Write push + reply-tracking records to care_push_records after delivery.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from octop.i18n.loader import tr as i18n_tr
+from octop.infra.db.repos.threads import ThreadRow
+from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.history.projection import message_inputs
 from octop.infra.proactive.picker import EpisodePicker
 from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import normalize_locale
+from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.db.repos.care_push import CarePushRepo
+    from octop.infra.db.repos.sessions import SessionRow
+    from octop.infra.db.repos.thread_messages import ThreadMessageRepo
     from octop.infra.gateway.gateway import Gateway
 
 logger = logging.getLogger(__name__)
@@ -81,6 +90,14 @@ def _format_episodes_for_prompt(episodes: list[Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _DeliveredCare:
+    """Delivery coordinates recorded after persisting and pushing a care message."""
+
+    thread_id: str
+    message_id: str
+
+
 class ProactiveCareService:
     """Proactive care push service.
 
@@ -89,8 +106,9 @@ class ProactiveCareService:
 
     Args:
         gateway: Gateway instance used to push messages.
-        care_push_repo: CarePushRepo instance used for dedup records.
+        care_push_repo: CarePushRepo instance used for dedup and reply tracking.
         agent_manager: AgentManager instance used to obtain HarnessAgent and Memory.
+        thread_message_repo: Optional ThreadMessageRepo for dashboard history projection.
     """
 
     def __init__(
@@ -99,11 +117,13 @@ class ProactiveCareService:
         gateway: Gateway,
         care_push_repo: CarePushRepo,
         agent_manager: AgentManager,
+        thread_message_repo: ThreadMessageRepo | None = None,
         timezone: str = "Asia/Shanghai",
     ) -> None:
         self._gateway = gateway
         self._care_push_repo = care_push_repo
         self._agent_manager = agent_manager
+        self._thread_message_repo = thread_message_repo
         self._timezone = timezone or "Asia/Shanghai"
         self._picker = EpisodePicker(
             top_k=3,
@@ -111,9 +131,110 @@ class ProactiveCareService:
             fallback_days=_FALLBACK_WINDOW_DAYS,
         )
 
-    def replace_care_push_repo(self, care_push_repo: CarePushRepo) -> None:
-        """Point dedup storage at a rebound control-plane pool."""
+    def replace_care_push_repo(
+        self,
+        care_push_repo: CarePushRepo,
+        thread_message_repo: ThreadMessageRepo | None = None,
+    ) -> None:
+        """Point dedup and history projection storage at a rebound control-plane pool."""
         self._care_push_repo = care_push_repo
+        if thread_message_repo is not None:
+            self._thread_message_repo = thread_message_repo
+
+    async def _bind_latest_thread(self, session_key: str) -> None:
+        """Point *session_key* at its latest active conversation, skipping blank threads."""
+        registry = self._gateway.thread_registry
+        latest = registry.latest_active_thread(session_key=session_key)
+        if not isinstance(latest, ThreadRow):
+            return
+        if registry.get_bound_thread_id(session_key) == latest.thread_id:
+            return
+        session = registry.get_session(session_key)
+        if session is None:
+            return
+        await registry.rebind(
+            session_key=session_key,
+            thread_id=latest.thread_id,
+            agent_id=session.agent_id,
+            acting_user_id=session.user_id,
+        )
+
+    def _project_best_effort(self, thread_id: str, appended: list[Any]) -> None:
+        if self._thread_message_repo is None or not appended:
+            return
+        try:
+            self._thread_message_repo.append_if_ready(
+                thread_id,
+                message_inputs(appended, dedupe_missing_ids=True),
+            )
+        except Exception:
+            logger.warning(
+                "ProactiveCareService: failed to append history projection thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    async def _notify_best_effort(
+        self,
+        session: SessionRow,
+        agent_id: str,
+        text: str,
+    ) -> None:
+        if session.channel_type != ThreadRegistry.CHANNEL_DASHBOARD:
+            return
+        try:
+            await self._gateway.notify_dashboard_push(session, agent_id, text)
+        except Exception:
+            logger.warning(
+                "ProactiveCareService: failed to send dashboard notification thread=%s",
+                session.thread_id,
+                exc_info=True,
+            )
+
+    async def _deliver(
+        self,
+        agent_id: str,
+        session_key: str,
+        care_text: str,
+        *,
+        can_send: Callable[[], bool] | None = None,
+    ) -> _DeliveredCare | None:
+        """Persist a single AIMessage to checkpoint + projection, then push it.
+
+        ``Gateway.push_text_from_session`` is transport-only; persisting here
+        keeps dashboard history, unread badges, and next-turn agent context in
+        sync across both dashboard and IM sessions.
+        """
+        delivered: _DeliveredCare | None = None
+
+        async def _locked() -> None:
+            nonlocal delivered
+            if can_send is not None and not can_send():
+                logger.info(
+                    "ProactiveCareService: user activity changed before locked delivery, "
+                    "discarding agent=%s",
+                    agent_id,
+                )
+                return
+            await self._bind_latest_thread(session_key)
+            session = self._gateway.require_session(agent_id, session_key)
+            message_id = f"care:{new_ulid()}:assistant"
+            harness = self._agent_manager.get_agent(agent_id)
+            appended = await harness.aappend_messages(
+                session.thread_id,
+                [AIMessage(content=care_text, id=message_id)],
+            )
+            self._project_best_effort(session.thread_id, appended)
+            await self._gateway.push_session_text(
+                session,
+                care_text,
+                title_source=care_text,
+            )
+            await self._notify_best_effort(session, agent_id, care_text)
+            delivered = _DeliveredCare(thread_id=session.thread_id, message_id=message_id)
+
+        await self._gateway.run_in_session(agent_id, session_key, _locked)
+        return delivered
 
     async def run(
         self,
@@ -257,7 +378,7 @@ class ProactiveCareService:
             logger.warning("ProactiveCareService: LLM call failed agent=%s: %s", agent_id, exc)
             return  # do not push, do not write a record
 
-        # 7. Push the message directly without invoking the agent.
+        # 7. Persist and push the message directly without invoking the agent.
         if can_send is not None and not can_send():
             logger.info(
                 "ProactiveCareService: user activity changed during generation, discarding agent=%s",
@@ -265,7 +386,12 @@ class ProactiveCareService:
             )
             return
         try:
-            await self._gateway.push_text_from_session(agent_id, session_key, care_text)
+            delivered = await self._deliver(
+                agent_id,
+                session_key,
+                care_text,
+                can_send=can_send,
+            )
         except Exception as exc:
             logger.warning(
                 "ProactiveCareService: push failed agent=%s session=%s: %s",
@@ -275,13 +401,19 @@ class ProactiveCareService:
             )
             return  # do not write a record
 
-        # 8. Write the dedup record (only after a successful push)
+        if delivered is None:
+            return
+
+        # 8. Write dedup + reply-tracking records (only after a successful push)
         episode_ids = [ep.id for ep in pick_result.episodes]
         try:
             self._care_push_repo.insert(
                 agent_id=agent_id,
                 session_key=session_key,
                 episode_ids=episode_ids,
+                thread_id=delivered.thread_id,
+                message_id=delivered.message_id,
+                care_text=care_text,
             )
         except Exception as exc:
             # A failed write does not affect the push result; just log it
@@ -290,9 +422,10 @@ class ProactiveCareService:
             )
 
         logger.info(
-            "ProactiveCareService: push succeeded agent=%s session=%s episodes=%d window_days=%d",
+            "ProactiveCareService: push succeeded agent=%s session=%s thread=%s episodes=%d window_days=%d",
             agent_id,
             session_key,
+            delivered.thread_id,
             len(episode_ids),
             pick_result.window_days,
         )

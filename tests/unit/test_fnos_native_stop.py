@@ -111,11 +111,15 @@ def test_native_main_stop_releases_listen_port() -> None:
     ]
     assert "exit 1" in abort_fn
     assert 'printf "%s" "$octop_pid" > "${PID_FILE}"' in text
+    assert 'STOP_WAIT_ROUNDS="${OCTOP_STOP_WAIT_ROUNDS:-100}"' in text
     helpers = COMMON_SH.read_text(encoding="utf-8")
     assert "pgrep -P" in helpers
     assert "ss -ltnp" in helpers
     assert "pgrep -f -- 'octop.cli.main run'" in helpers
     assert "OCTOP_INSTALL_MODE=fpk-native" in helpers
+    assert 'wait_rounds="${OCTOP_PORT_FREE_WAIT_ROUNDS:-50}"' in helpers
+    launcher = (FNOS_NATIVE / "app" / "bin" / "octop").read_text(encoding="utf-8")
+    assert 'chattr +C "$OCTOP_HOME"' in launcher
 
 
 def test_native_manifest_does_not_block_start_on_stale_port() -> None:

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from octop.api.common.agent import assert_agent_owner
+from octop.api.common.agent import (
+    apply_agent_audience,
+    assert_agent_access_row,
+    assert_agent_owner,
+)
 from octop.api.deps import current_user, get_server
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.agents.teams import (
@@ -18,6 +22,7 @@ from octop.infra.agents.teams import (
     team_icon_url,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import GroupAccess
 
 router = APIRouter()
 
@@ -43,6 +48,15 @@ class TeamCreateBody(BaseModel):
             "local_shell or filesystem rooted at the filesystem root."
         ),
     )
+    is_shared: bool = False
+    visibility: Literal["owner", "all", "groups"] | None = Field(
+        default=None,
+        description="Who may chat with this team. Overrides is_shared when set.",
+    )
+    group_ids: list[str] = Field(
+        default_factory=list,
+        description="User group ids when visibility is groups",
+    )
 
 
 class TeamPatchBody(BaseModel):
@@ -54,6 +68,15 @@ class TeamPatchBody(BaseModel):
     icon_url: str | None = None
     welcome_message: str | None = None
     member_ids: list[str] | None = None
+    is_shared: bool | None = None
+    visibility: Literal["owner", "all", "groups"] | None = Field(
+        default=None,
+        description="Who may chat with this team. Overrides is_shared when set.",
+    )
+    group_ids: list[str] | None = Field(
+        default=None,
+        description="User group ids when visibility is groups",
+    )
 
 
 def _teams(server: Any) -> Any:
@@ -61,21 +84,39 @@ def _teams(server: Any) -> Any:
     return server.app_runtime.agent_registry.teams
 
 
-def _require_owned_team(server: Any, user: Any, team_id: str) -> Any:
+def _load_team_row(server: Any, team_id: str) -> Any:
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(team_id)
     if row is None or not is_team_agent(row):
         raise OctopError(ErrorCode.TEAM_NOT_FOUND, f"team {team_id!r} not found")
+    return row
+
+
+def _require_visible_team(server: Any, user: Any, team_id: str) -> Any:
+    row = _load_team_row(server, team_id)
+    assert_agent_access_row(row, user, repos=server.services.repos)
+    return row
+
+
+def _require_owned_team(server: Any, user: Any, team_id: str) -> Any:
+    row = _require_visible_team(server, user, team_id)
     assert_agent_owner(row, user)
     return row
 
 
-@router.get("/teams", summary="List my expert teams")
+def _validate_team_audience(server: Any, body: TeamCreateBody | TeamPatchBody) -> None:
+    if body.visibility is None:
+        return
+    GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
+
+
+@router.get("/teams", summary="List expert teams I can use")
 async def list_teams(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return cast(list[dict[str, Any]], _teams(server).list_for_user(user.id))
+    """Owned teams, plus teams other users have shared with the caller."""
+    return cast(list[dict[str, Any]], _teams(server).list_visible(user))
 
 
 @router.post("/teams", summary="Create an expert team")
@@ -85,6 +126,7 @@ async def create_team(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     teams = _teams(server)
+    _validate_team_audience(server, body)
     member_ids = teams.validate_member_ids(user, body.member_ids)
     assert server.app_runtime is not None
     from octop.infra.agents.workspace.dir import apply_explicit_workspace_dir  # noqa: PLC0415
@@ -112,10 +154,16 @@ async def create_team(
         mcp_servers=[],
     )
     row = await server.app_runtime.agent_registry.create(spec)
-    return cast(
-        dict[str, Any],
-        teams.team_payload(server.app_runtime.agent_registry.get_row(row.agent_id) or row),
-    )
+    if body.visibility is not None or body.is_shared:
+        row = await apply_agent_audience(
+            server,
+            row.agent_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.is_shared,
+        )
+    saved = server.app_runtime.agent_registry.get_row(row.agent_id) or row
+    return cast(dict[str, Any], teams.team_payload(saved, viewer_user_id=user.id))
 
 
 @router.get("/teams/template", summary="Preview default team workspace files")
@@ -141,8 +189,8 @@ async def get_team(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    row = _require_owned_team(server, user, team_id)
-    return cast(dict[str, Any], _teams(server).team_payload(row))
+    row = _require_visible_team(server, user, team_id)
+    return cast(dict[str, Any], _teams(server).team_payload(row, viewer_user_id=user.id))
 
 
 @router.patch("/teams/{team_id}", summary="Update an expert team")
@@ -153,6 +201,7 @@ async def patch_team(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _require_owned_team(server, user, team_id)
+    _validate_team_audience(server, body)
     teams = _teams(server)
     assert server.app_runtime is not None
     roster_changed = False
@@ -180,10 +229,18 @@ async def patch_team(
         await server.app_runtime.agent_registry.update(team_id, **updates)
     if roster_changed:
         await server.app_runtime.agent_registry.reload(team_id)
+    if "visibility" in body.model_fields_set or "is_shared" in body.model_fields_set:
+        await apply_agent_audience(
+            server,
+            team_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.is_shared,
+        )
     row = server.app_runtime.agent_registry.get_row(team_id)
     if row is None:
         raise OctopError(ErrorCode.TEAM_NOT_FOUND, f"team {team_id!r} not found")
-    return cast(dict[str, Any], teams.team_payload(row))
+    return cast(dict[str, Any], teams.team_payload(row, viewer_user_id=user.id))
 
 
 @router.delete("/teams/{team_id}", status_code=204, summary="Delete an expert team")

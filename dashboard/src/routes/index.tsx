@@ -86,6 +86,7 @@ export const pathToKey: Record<string, string> = {
   "/subagents": "personalization",
   "/mbti": "personalization",
   "/memory": "personalization",
+  "/tokens": "personalization",
   // Admin
   "/admin/models": "models",
   // Admin
@@ -214,6 +215,10 @@ export const routeConfigs: RouteConfig[] = [
   {
     path: "/memory",
     element: <RedirectPreserveSearch to="/personalization/memory" />,
+  },
+  {
+    path: "/tokens",
+    element: <RedirectPreserveSearch to="/personalization/memory/mcp" />,
   },
   { path: "/workspace", element: <Navigate to="/experts" replace /> },
 

@@ -1,7 +1,11 @@
 import { useTranslation } from "react-i18next";
 import { useElapsedSince } from "../../../hooks/useElapsedSeconds";
 import { useAgent } from "../../../context/AgentContext";
-import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
+import {
+  isTeamAgent,
+  isTeamHostSpeaker,
+  resolveSpeakerFace,
+} from "../../../utils/teamAgent";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { managedRunnerId } from "../../Experts/components/ManagedAvatarMark";
 import { incomingShareProps } from "../../../components/SharedResourceBadge";
@@ -42,7 +46,7 @@ function GeneratingAvatar({ agentId }: { agentId?: string | null }) {
     activeAgent?.agent_id,
   );
   const expert =
-    (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+    resolveSpeakerFace(agents, activeAgent?.members, speakerId) ||
     (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
   const avatarProfileId = hostSpeaker
     ? activeAgent?.agent_id

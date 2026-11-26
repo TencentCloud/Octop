@@ -144,6 +144,7 @@ describe("projectChatAgentOption", () => {
       bridge_connection_icon: null,
       bridge_disconnected: false,
       bridge_inbound: false,
+      managed_runner: null,
     });
   });
 

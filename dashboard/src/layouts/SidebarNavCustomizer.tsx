@@ -137,7 +137,7 @@ export default function SidebarNavCustomizer({
       title={t("nav.customizeTitle")}
       open={open}
       onClose={onClose}
-      width={420}
+      width={520}
       destroyOnClose
       extra={
         <Button icon={<Plus size={14} />} onClick={addGroup}>

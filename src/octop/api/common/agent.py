@@ -5,14 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from octop.infra.errors import ErrorCode, OctopError
-
-
-def agent_is_shared(row: Any) -> bool:
-    return int(getattr(row, "is_shared", 0) or 0) == 1
-
-
-def user_owns_agent(row: Any, user: Any) -> bool:
-    return row.user_id is not None and row.user_id == user.id
+from octop.infra.users.access import (
+    agent_is_shared as agent_is_shared,  # re-exported for routers/tests
+)
+from octop.infra.users.access import (
+    user_may_access_agent,
+)
+from octop.infra.users.access import (
+    user_owns_agent as user_owns_agent,  # re-exported for routers/tests
+)
 
 
 def assert_agent_owner(row: Any, user: Any) -> None:
@@ -24,17 +25,7 @@ def assert_agent_owner(row: Any, user: Any) -> None:
 
 
 def _user_may_access(row: Any, user: Any, *, repos: Any | None = None) -> bool:
-    if user.is_admin:
-        return True
-    if row.user_id is not None and row.user_id == user.id:
-        return True
-    if not agent_is_shared(row):
-        return False
-    if repos is None:
-        return True
-    from octop.infra.users.groups import expert_visible_to  # noqa: PLC0415
-
-    return expert_visible_to(repos, row, user_id=user.id, is_admin=False)
+    return user_may_access_agent(row, user, repos=repos)
 
 
 def assert_agent_access_row(row: Any, user: Any, *, repos: Any | None = None) -> None:

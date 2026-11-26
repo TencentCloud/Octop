@@ -14,6 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from octop.infra.errors import ErrorCode, OctopError
+
 
 class PermissionUser(Protocol):
     @property
@@ -510,6 +512,20 @@ def expand_permission_grants(keys: list[str]) -> list[str]:
             seen.add(item)
             out.append(item)
     return out
+
+
+def assert_can_assign_permissions(actor: PermissionUser, permissions: list[str]) -> None:
+    """Non-admin actors may only grant permissions they themselves hold."""
+    if actor.is_admin:
+        return
+    held = set(expand_permission_grants(list(actor.permissions or [])))
+    missing = sorted(set(expand_permission_grants(permissions)) - held)
+    if missing:
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "cannot grant permissions you do not hold",
+            details={"missing": missing},
+        )
 
 
 def user_has_permission(user: PermissionUser, key: str) -> bool:

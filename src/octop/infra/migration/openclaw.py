@@ -51,10 +51,22 @@ _API_KINDS = {
 _CHANNELS: dict[str, tuple[str, dict[str, str]]] = {
     "telegram": ("telegram", {"botToken": "bot_token"}),
     "discord": ("discord", {"token": "bot_token"}),
+    "slack": ("slack", {"botToken": "bot_token"}),
+    "whatsapp": ("whatsapp", {"accessToken": "access_token", "phoneNumberId": "phone_number_id"}),
     "feishu": ("feishu", {"appId": "app_id", "appSecret": "app_secret"}),
     "qqbot": ("qq", {"appId": "app_id", "clientSecret": "client_secret"}),
     "wecom": ("wecom", {"botId": "bot_id", "secret": "secret"}),
     "dingtalk": ("dingtalk", {"clientId": "client_id", "clientSecret": "client_secret"}),
+}
+_OPTIONAL_CHANNEL_FIELDS: dict[str, dict[str, str]] = {
+    "slack": {"appToken": "app_token", "signingSecret": "signing_secret"},
+    "whatsapp": {
+        "verifyToken": "verify_token",
+        "appSecret": "app_secret",
+        "bridgeUrl": "bridge_url",
+        "bridgeApiKey": "bridge_api_key",
+        "sessionName": "session_name",
+    },
 }
 _ENV_REF = re.compile(r"(\$?)\$\{([A-Z_][A-Z0-9_]*)\}")
 _MAX_INCLUDE_DEPTH = 10
@@ -305,10 +317,19 @@ def _read_channels(plan: MigrationPlan, config: dict[str, Any], resolve: Any) ->
         seen: list[dict[str, Any]] = []
         for account_id, account in accounts.items():
             credentials = {dest: resolve(account.get(src)) for src, dest in fields.items()}
+            if channel == "whatsapp" and not all(credentials.values()):
+                bridge_url = resolve(account.get("bridgeUrl") or account.get("bridge_url"))
+                if bridge_url:
+                    provider = resolve(account.get("provider")) or "waha"
+                    credentials = {"provider": provider, "bridge_url": bridge_url}
             if not all(credentials.values()):
                 if account_id:
                     plan.note("channel_credentials_missing", name=f"{channel}:{account_id}")
                 continue
+            for opt_src, opt_dest in _OPTIONAL_CHANNEL_FIELDS.get(channel, {}).items():
+                opt_val = resolve(account.get(opt_src))
+                if opt_val and opt_dest not in credentials:
+                    credentials[opt_dest] = opt_val
             if credentials in seen:  # an account that only inherits the default one
                 continue
             seen.append(credentials)

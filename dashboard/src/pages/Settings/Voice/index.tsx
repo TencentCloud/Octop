@@ -390,7 +390,7 @@ export function VoiceSettingsPanel() {
         })}
         open={!!configure}
         onClose={() => setConfigure(null)}
-        width={440}
+        width={520}
         placement="right"
         destroyOnHidden
         footer={

@@ -158,6 +158,39 @@ helm upgrade octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 
 A rolling update starts a new Pod before stopping an old one. The old Pod releases channel and cron leases on exit. A new Pod claims them on the next reconcile. A page stuck to the old Pod disconnects. A refresh lands on a live replica.
 
+## Use CubeSandbox workspaces
+
+Deploy CubeSandbox, prepare a template in the READY state, and make sure each Octop Pod can reach CubeAPI and the sandbox data plane. Use an Octop release that includes CubeSandbox support. The standard image for that release includes the native SDK.
+
+Set the CubeAPI URL in your Helm values override. If the Pods cannot reach the data plane through the sandbox domain, set `proxyNodeIP` to a CubeProxy IP the Pods can reach. Set `proxyPortHTTP` if the HTTP data plane uses a custom port, such as a forwarded port on an SSH tunnel.
+
+```yaml
+cubeSandbox:
+  enabled: true
+  apiUrl: http://cubeapi.cube-system.svc.cluster.local:3000
+  proxyNodeIP: ""
+  proxyPortHTTP: ""
+  existingSecret: ""
+```
+
+Set `existingSecret` to the name of a Secret created in the release namespace. It
+must contain these keys.
+
+| Key | Purpose |
+| --- | --- |
+| `lock-dsn` | Required. PostgreSQL connection string shared by all replicas. It can point to the Octop database. |
+| `api-key` | Required when CubeAPI authentication is enabled. |
+| `workspace-backup` | Optional. Object storage backend configuration as JSON, with a `type` field. Enables file recovery when a sandbox is recreated. |
+
+Save the overrides as `my-values.yaml` and install or upgrade using the published chart version that includes CubeSandbox support.
+
+```sh
+helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
+  --version "REPLACE_WITH_CHART_VERSION" -n octop -f my-values.yaml
+```
+
+In the admin console, add a CubeSandbox backend, enter the template ID, and run the connectivity test. Assign the backend to an expert, then access that expert's workspace from two different Pods to verify that both replicas reuse the same sandbox. Restart the Octop Pods after updating the Secret so they pick up the new values.
+
 ## Managed PostgreSQL
 
 Leave the extension to the database operator (`CREATE EXTENSION vector`). The chart then skips its own database:

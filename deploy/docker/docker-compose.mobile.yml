@@ -35,7 +35,8 @@ services:
     privileged: true
     network_mode: host
     volumes:
-      - ${OCTOP_DATA:-~/.octop}:/data/.octop
+      # 默认仍是宿主机 ~/.octop（${HOME}，未设置时 /root）。不要写字面 ~。
+      - ${OCTOP_DATA:-${HOME:-/root}/.octop}:/data/.octop
       - /var/run/docker.sock:/var/run/docker.sock
       - /dev/binderfs:/dev/binderfs
       - ${OCTOP_PLATFORM_TOOLS:-../.tools/platform-tools}:/opt/android-sdk/platform-tools:ro
@@ -51,3 +52,4 @@ services:
       - OCTOP_ENABLE_MOBILE=${OCTOP_ENABLE_MOBILE:-1}
       - ANDROID_HOME=/opt/android-sdk
       - ANDROID_SDK_ROOT=/opt/android-sdk
+

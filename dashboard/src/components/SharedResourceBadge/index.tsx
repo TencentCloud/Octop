@@ -19,7 +19,7 @@ type Props = {
   className?: string;
 };
 
-/** One pill for “I shared this” and “someone shared this with me”. */
+/** Compact share mark — same icon for “I shared this” and “shared with me”. */
 export function SharedResourceBadge({
   shared,
   owned,
@@ -37,14 +37,14 @@ export function SharedResourceBadge({
   return (
     <span
       className={cx(
-        styles.badge,
-        incoming ? styles.incoming : styles.outgoing,
+        styles.iconMark,
+        incoming ? styles.incomingIcon : styles.outgoingIcon,
         className,
       )}
       title={label}
+      aria-label={label}
     >
-      <Share2 size={11} aria-hidden />
-      <span className={styles.label}>{label}</span>
+      <Share2 size={12} strokeWidth={2} aria-hidden />
     </span>
   );
 }

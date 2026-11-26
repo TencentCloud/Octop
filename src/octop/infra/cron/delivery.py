@@ -76,19 +76,41 @@ class CronDeliveryService:
     async def deliver(self, command: CronDeliveryCommand) -> None:
         """Run one delivery under the target channel session lock."""
         session_key, pinned = self._target_session(command)
+        registry = self._gateway.thread_registry
+        recovered_thread_id = None
+        if registry.get_session(session_key) is None:
+            if session_key != ThreadRegistry.dashboard_key(
+                agent_id=command.agent_id, user_id=command.user_id
+            ):
+                raise self._missing_target_error(command.user_id)
+            # Gateway.run_in_session requires the session to resolve its channel.
+            recovered_thread_id = await registry.get_or_create_by_key(
+                session_key=session_key,
+                agent_id=command.agent_id,
+                user_id=command.user_id,
+                channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
+            )
 
         async def _locked() -> None:
-            if command.fresh_thread:
-                await self._gateway.thread_registry.reset_by_session_key(session_key)
-            elif pinned:
-                await self._bind_pinned_thread(session_key, pinned)
-            else:
-                await self._bind_latest_thread(session_key)
             session = self._gateway.require_session(command.agent_id, session_key)
             if session.user_id != command.user_id:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
+            if command.fresh_thread:
+                # Reuse the recovery thread if it is still empty when we acquire the lock.
+                recovered = (
+                    registry.get_thread(session.thread_id)
+                    if session.thread_id == recovered_thread_id
+                    else None
+                )
+                if recovered is None or recovered.last_active > 0:
+                    await registry.reset_by_session_key(session_key)
+            elif pinned:
+                await self._bind_pinned_thread(session_key, pinned)
+            else:
+                await self._bind_latest_thread(session_key)
+            session = self._gateway.require_session(command.agent_id, session_key)
             if command.task_type == "text":
                 await self._publish_fixed(command, session, command.prompt)
             elif command.task_type == "script":
@@ -359,8 +381,12 @@ class CronDeliveryService:
             or row.agent_id != command.agent_id
             or row.user_id != command.user_id
         ):
-            raise ValueError(f"thread {pinned!r} is not available for this job")
+            raise self._missing_target_error(command.user_id)
         return row.session_key, pinned
+
+    def _missing_target_error(self, user_id: int) -> ValueError:
+        locale = resolve_user_locale(user_repo=self._repos.user_repo, user_id=user_id)
+        return ValueError(tr("cron.missing_target_session", locale))
 
     async def _bind_pinned_thread(self, session_key: str, thread_id: str) -> None:
         """Point the channel at the historical conversation chosen for this job."""
