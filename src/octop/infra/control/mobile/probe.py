@@ -52,6 +52,42 @@ def kvm_available() -> bool:
     return Path("/dev/kvm").exists()
 
 
+def physical_device_available() -> bool:
+    """True when adb lists a real device (USB or wireless), not an emulator.
+
+    Container endpoints on localhost are skipped: they are the redroid/emulator
+    backend, not a phone the user plugged in. A device in the ``unauthorized``
+    state still counts: the phone is attached and only needs the USB-debug
+    prompt accepted (#3084).
+    """
+    from octop.infra.control.mobile.adb import (  # noqa: PLC0415
+        find_adb,
+        is_emulator_device,
+        list_device_states,
+    )
+
+    adb = find_adb()
+    if not adb:
+        return False
+    try:
+        states = list_device_states(adb=adb)
+    except Exception:
+        return False
+    for device, state in states.items():
+        if device.startswith(("127.0.0.1:", "localhost:")):
+            continue
+        if state == "unauthorized":
+            return True
+        if state != "device":
+            continue
+        try:
+            if not is_emulator_device(device, adb=adb):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def probe_host_capability(*, probed_at: str | None = None) -> MobileProbeResult:
     """Detect whether this host can run Remote Android and which backend applies."""
     when = probed_at or utc_now_iso()
@@ -59,6 +95,11 @@ def probe_host_capability(*, probed_at: str | None = None) -> MobileProbeResult:
     if system in {"Darwin", "Windows"}:
         return MobileProbeResult(True, "physical", "", when)
     if system == "Linux":
+        # A physical phone must win over KVM/binder, otherwise a Linux desktop
+        # with virtualization enabled is always classified as an emulator host
+        # and the connected device is ignored (#3084).
+        if physical_device_available():
+            return MobileProbeResult(True, "physical", "", when)
         if linux_binder_available():
             return MobileProbeResult(True, "redroid", "", when)
         if kvm_available():

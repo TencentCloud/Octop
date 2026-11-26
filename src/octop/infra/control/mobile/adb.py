@@ -66,6 +66,39 @@ def list_devices(*, adb: str | None = None) -> list[str]:
     return devices
 
 
+def list_device_states(*, adb: str | None = None) -> dict[str, str]:
+    """Map each attached serial to its adb state (``device``, ``unauthorized``...).
+
+    Unlike :func:`list_devices`, this keeps devices that are not usable yet, so
+    callers can tell "a phone is attached but waiting for the USB-debug prompt"
+    from "no phone at all".
+    """
+    exe = adb or find_adb()
+    if not exe:
+        return {}
+    try:
+        proc = subprocess.run(
+            [exe, "devices"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if proc.returncode != 0:
+        return {}
+    states: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("List of devices"):
+            continue
+        parts = stripped.split()
+        if len(parts) >= 2:
+            states[parts[0]] = parts[1]
+    return states
+
+
 def adb_connect(
     hostport: str = "127.0.0.1:5555",
     *,
