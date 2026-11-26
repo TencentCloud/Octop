@@ -39,6 +39,7 @@ import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import BackendFlag from "./BackendFlag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
+import { ManagedAvatarMark } from "./ManagedAvatarMark";
 import {
   isAgentChatReady,
   formatAgentState,
@@ -49,8 +50,13 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
-import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import {
+  incomingShareProps,
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
+import {
+  canManageExpert,
   canReadAgentRuntimeStatus,
   isSharedExpertViewer,
 } from "../../../utils/sharedExpert";
@@ -309,19 +315,30 @@ export default function AgentExpertsTable({
       fixed: isMobile ? undefined : "left",
       render: (name: string, row) => (
         <div className={styles.tableNameCell}>
-          <span
-            className={styles.tableIcon}
-            style={{
-              color: row.color || "#6366f1",
-              background: `${row.color || "#6366f1"}1a`,
-            }}
-          >
-            <ExpertIcon
-              iconUrl={row.icon_url}
-              iconName={row.icon_name}
-              size={row.icon_url ? 28 : 16}
-            />
-          </span>
+          <SharedAvatarMark {...incomingShareProps(row)}>
+            <ManagedAvatarMark
+              runner={
+                row.kind === "managed" &&
+                typeof row.config?.managed_runner === "string"
+                  ? row.config.managed_runner
+                  : null
+              }
+            >
+              <span
+                className={styles.tableIcon}
+                style={{
+                  color: row.color || "#6366f1",
+                  background: `${row.color || "#6366f1"}1a`,
+                }}
+              >
+                <ExpertIcon
+                  iconUrl={row.icon_url}
+                  iconName={row.icon_name}
+                  size={row.icon_url ? 28 : 16}
+                />
+              </span>
+            </ManagedAvatarMark>
+          </SharedAvatarMark>
           <span className={styles.tableNameText}>{name}</span>
           <SharedResourceBadge
             shared={row.is_shared}
@@ -359,7 +376,7 @@ export default function AgentExpertsTable({
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
         const switchChecked = state === "running" || state === "starting";
-        const isOwner = row.is_owner !== false;
+        const canManage = canManageExpert(row, user);
         const friendlyError =
           state === "failed" && row.last_error
             ? formatAgentError(row.last_error, t)
@@ -373,7 +390,7 @@ export default function AgentExpertsTable({
               >
                 {formatAgentState(state, t)}
               </Tag>
-              {isOwner && (
+              {canManage && (
                 <Switch
                   size="small"
                   checked={switchChecked}
@@ -429,16 +446,19 @@ export default function AgentExpertsTable({
       title: t("experts.table.persona", "人格"),
       dataIndex: "persona_mbti",
       width: 120,
-      render: (value: string | null, row) => (
-        <MbtiPersonaTag
-          value={value}
-          onClick={
-            row.is_owner !== false
-              ? () => openMbtiCatalog(row.agent_id)
-              : undefined
-          }
-        />
-      ),
+      render: (value: string | null, row) =>
+        row.kind === "managed" ? (
+          "—"
+        ) : (
+          <MbtiPersonaTag
+            value={value}
+            onClick={
+              canManageExpert(row, user)
+                ? () => openMbtiCatalog(row.agent_id)
+                : undefined
+            }
+          />
+        ),
     },
     {
       title: t("experts.table.actions", "操作"),
@@ -449,11 +469,11 @@ export default function AgentExpertsTable({
         const state = localStates[row.agent_id] ?? row.state;
         const isTransient = TRANSIENT.has(state);
         const chatReady = isAgentChatReady(state);
-        const isOwner = row.is_owner !== false;
+        const canManage = canManageExpert(row, user);
         const deleteConfirm = expertDeleteConfirm(row, t);
         return (
           <div className={styles.tableActions}>
-            {isOwner && (
+            {canManage && (
               <>
                 <Tooltip
                   title={
@@ -525,6 +545,7 @@ export default function AgentExpertsTable({
                 )}
                 <AgentMoreActions
                   buttonClassName={styles.tableActionBtn}
+                  managed={row.kind === "managed"}
                   onSkills={() => setSkillCatalogAgentId(row.agent_id)}
                   onSubagents={() => openSubagentCatalog(row.agent_id)}
                   onTools={() => setToolSettingsAgentId(row.agent_id)}
@@ -545,7 +566,7 @@ export default function AgentExpertsTable({
                 {t("experts.openChat", "对话")}
                 <ChevronRight size={13} />
               </button>
-            ) : isOwner &&
+            ) : canManage &&
               (state === "failed" ||
                 state === "stopped" ||
                 state === "created") ? (
@@ -595,6 +616,10 @@ export default function AgentExpertsTable({
       />
       <ToolCatalogDrawer
         agentId={toolSettingsAgentId ?? ""}
+        managed={
+          agents.find((row) => row.agent_id === toolSettingsAgentId)?.kind ===
+          "managed"
+        }
         open={toolSettingsAgentId !== null}
         onClose={() => setToolSettingsAgentId(null)}
       />

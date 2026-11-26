@@ -52,8 +52,9 @@
     box-shadow: 0 0 0 0
       color-mix(in srgb, var(--fn-color-brand) 45%, transparent);
   }
+  // Stays inside the tour's 6px spotlight gap, so the mask never clips it.
   70% {
-    box-shadow: 0 0 0 10px
+    box-shadow: 0 0 0 5px
       color-mix(in srgb, var(--fn-color-brand) 0%, transparent);
   }
   100% {
@@ -87,8 +88,11 @@
 
 .mascot {
   width: 112px;
-  height: 112px;
+  height: auto;
+  aspect-ratio: 352 / 320;
   object-fit: contain;
+  // The peek artwork has empty pixels under the character.
+  margin-bottom: -16px;
   user-select: none;
   animation:
     pop 0.5s @ease-pop both,
@@ -109,6 +113,7 @@
   font-size: 14px;
   line-height: 22px;
   color: var(--fn-text-secondary);
+  text-wrap: pretty;
   animation: fadeUp 0.45s @ease-out 0.14s both;
 }
 
@@ -224,9 +229,12 @@
 
 /* ---------- tour card ---------- */
 
-.tour {
+/* rootClassName also lands on the mask, so size only the card. */
+.tour:global(.octop-tour) {
   width: min(360px, calc(100vw - 32px));
+}
 
+.tour {
   :global(.octop-tour-content) {
     width: 100%;
   }
@@ -337,6 +345,8 @@
 
   > :first-child {
     margin-right: auto;
+    // Line the "Skip" text up with the card content, not its button padding.
+    margin-left: -7px;
   }
 }
 

@@ -295,6 +295,19 @@ class HitlPendingStore:
                 out.add(tid)
         return frozenset(out)
 
+    def has_pending_for_agent(self, agent_id: str) -> bool:
+        """Whether *agent_id* has any live pending HITL pause across all users."""
+        self._gc()
+        now = time.time()
+        for record in self._records.values():
+            if record.status != "pending":
+                continue
+            if now - record.created_at > self.ttl_seconds:
+                continue
+            if record.agent_id == agent_id or record.resume_agent_id == agent_id:
+                return True
+        return False
+
     def expire_pending_for_thread(
         self,
         thread_id: str,

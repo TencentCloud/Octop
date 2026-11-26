@@ -360,6 +360,16 @@ async def test_get_expert_includes_file_contents(env: Any) -> None:
     assert isinstance(first["content"], str) and first["content"]
 
 
+async def test_get_default_prompt_files_returns_workspace_seed_content(env: Any) -> None:
+    c, _srv, auth = env
+    response = await c.get("/api/experts/default-prompt-files", headers=auth)
+    assert response.status_code == 200
+    files = {file["name"]: file["content"] for file in response.json()}
+    assert all(files.get(name) for name in ("AGENTS.md", "USER.md", "BOOTSTRAP.md", "MEMORY.md"))
+    assert "{{BOOTSTRAP_MARKER}}" not in files["BOOTSTRAP.md"]
+    assert ".octop/.bootstrapped" in files["BOOTSTRAP.md"]
+
+
 async def test_get_expert_file_contents_limited_to_preview_paths(env: Any) -> None:
     c, _srv, auth = env
     r = await c.get("/api/experts/general-assistant", headers=auth)

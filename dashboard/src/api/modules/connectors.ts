@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestUpload } from "../request";
 
 export type ConnectorCategory =
   | "office"
@@ -64,6 +64,8 @@ export interface ConnectorInstance {
   group_ids?: string[];
   /** False when this instance is not usable by the current user. */
   usable?: boolean;
+  avatar_icon?: string | null;
+  avatar_url?: string | null;
   owner_user_id: number;
   owner_username?: string | null;
   owner_display_name?: string | null;
@@ -169,6 +171,9 @@ export interface CustomMcpServerSpec {
   /** When true, chat composer pre-selects this MCP server. */
   default_open?: boolean;
   shared?: boolean;
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
+  avatar_icon?: string | null;
   oauth?: CustomMcpOAuthPreview;
   oauth_client?: CustomMcpOAuthClient;
 }
@@ -435,9 +440,30 @@ export const connectorsApi = {
       body: JSON.stringify({ servers }),
     }),
 
+  uploadCustomMcpAvatar: (name: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ avatar_url: string }>(
+      `/connectors/custom-mcp/servers/${encodeURIComponent(name)}/avatar`,
+      body,
+    );
+  },
+
+  deleteCustomMcpAvatar: (name: string) =>
+    request<void>(
+      `/connectors/custom-mcp/servers/${encodeURIComponent(name)}/avatar`,
+      { method: "DELETE" },
+    ),
+
   patchCustomMcpServer: (
     name: string,
-    body: { enabled?: boolean; default_open?: boolean; shared?: boolean },
+    body: {
+      enabled?: boolean;
+      default_open?: boolean;
+      shared?: boolean;
+      visibility?: "owner" | "all" | "groups";
+      group_ids?: string[];
+    },
   ) =>
     request<{ servers: CustomMcpServers }>(
       `/connectors/custom-mcp/servers/${encodeURIComponent(name)}`,

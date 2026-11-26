@@ -1,3 +1,4 @@
+import { ApiResponseError } from "../api/responseError";
 import type { TFunction } from "i18next";
 
 export interface ParsedApiError {
@@ -8,6 +9,7 @@ export interface ParsedApiError {
 
 /** Parse Octop API error envelope from a thrown request() Error. */
 export function parseApiError(error: unknown): ParsedApiError | null {
+  if (error instanceof ApiResponseError) return error.apiError;
   if (!(error instanceof Error)) return null;
   const raw = error.message;
   const jsonStart = raw.indexOf("{");
@@ -55,6 +57,7 @@ const NOT_FOUND_ERROR_CODES = new Set([
 
 /** True when a failed ``request`` / ``requestBlob`` looks like HTTP 404 / NOT_FOUND. */
 export function isNotFoundApiError(error: unknown): boolean {
+  if (error instanceof ApiResponseError && error.status === 404) return true;
   const parsed = parseApiError(error);
   if (parsed?.code && NOT_FOUND_ERROR_CODES.has(parsed.code)) return true;
   const msg = error instanceof Error ? error.message : String(error ?? "");

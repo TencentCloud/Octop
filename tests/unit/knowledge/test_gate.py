@@ -91,8 +91,10 @@ def test_assert_knowledge_usable_distinguishes_disabled_from_prerequisites(
         gate.assert_knowledge_usable(settings.get)
 
 
+@pytest.mark.parametrize("model_enabled", [True, False])
 def test_remote_capability_requires_enabled_embedding_provider(
     monkeypatch: pytest.MonkeyPatch,
+    model_enabled: bool,
 ) -> None:
     provider = type(
         "Provider",
@@ -102,7 +104,7 @@ def test_remote_capability_requires_enabled_embedding_provider(
             "api_key": "key",
             "base_url": "https://example.test/v1",
             "name": "Remote",
-            "get_models": lambda self: [{"id": "embed-1", "embedding": True}],
+            "get_models": lambda self: [{"id": "embed-1", "enabled": model_enabled}],
         },
     )()
     monkeypatch.setattr(gate, "_provider_for_settings", lambda _repo, _id: provider)
@@ -117,8 +119,8 @@ def test_remote_capability_requires_enabled_embedding_provider(
 
     assert capability["backend"] == "remote"
     assert capability["provider_id"] == "7"
-    assert capability["prerequisites_ok"] is True
-    assert capability["checks"]["provider_ready"] is True
+    assert capability["prerequisites_ok"] is model_enabled
+    assert capability["checks"]["provider_ready"] is model_enabled
 
 
 def test_warns_when_enabled_local_embedding_deps_are_missing(

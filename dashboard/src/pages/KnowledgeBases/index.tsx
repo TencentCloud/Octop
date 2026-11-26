@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -64,6 +65,7 @@ import {
   Settings,
   Signpost,
   Trash2,
+  Waypoints,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -77,9 +79,11 @@ import {
   DEFAULT_KNOWLEDGE_LIMITS,
   knowledgeBasesApi,
   type KnowledgeBase,
+  type KnowledgeAdvancedSettings,
   type KnowledgeCapability,
   type KnowledgeRerankOptions,
   type KnowledgeDocument,
+  type KnowledgeGraphOptions,
   type KnowledgeOnnxModel,
 } from "../../api/modules/knowledgeBases";
 import {
@@ -88,6 +92,7 @@ import {
   ResourceAvatarPicker,
   avatarPickerStyles,
 } from "../../components/AvatarPicker";
+import BetaBadge from "../../components/BetaBadge";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import DocumentPreviewCore from "../../components/DocumentPreviewCore";
 import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
@@ -152,6 +157,9 @@ import {
 import TextDocumentEditorModal, {
   type TextDocumentFormat,
 } from "./TextDocumentEditorModal";
+import { KnowledgeAdvancedSettingsForm } from "./KnowledgeAdvancedSettingsForm";
+import KnowledgeGraphModal from "./KnowledgeGraphModal";
+import { KnowledgeSettingsDrawer } from "./KnowledgeSettingsDrawer";
 import styles from "./index.module.less";
 
 type BaseFormValues = {
@@ -348,6 +356,9 @@ export default function KnowledgeBasesPage() {
   const [baseDrawerOpen, setBaseDrawerOpen] = useState(false);
   const [editingBaseId, setEditingBaseId] = useState<string | null>(null);
   const [featureModalOpen, setFeatureModalOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("general");
+  const [advancedSettingsSaving, setAdvancedSettingsSaving] = useState(false);
+  const advancedSettingsFormId = useId();
   const [onnxProbe, setOnnxProbe] = useState<{
     ok: boolean;
     latency_ms?: number | null;
@@ -367,6 +378,13 @@ export default function KnowledgeBasesPage() {
   const [ocrBackend, setOcrBackend] = useState<"onnx" | "remote">("onnx");
   const [ocrModel, setOcrModel] = useState<string>();
   const [ocrProviderId, setOcrProviderId] = useState<string>();
+  const [graphEnabledDraft, setGraphEnabledDraft] = useState(false);
+  const [graphProviderId, setGraphProviderId] = useState<string>();
+  const [graphModel, setGraphModel] = useState<string>();
+  const [graphProviders, setGraphProviders] = useState<
+    KnowledgeGraphOptions["remote"]
+  >([]);
+  const [graphOpen, setGraphOpen] = useState(false);
   const [ocrRemoteProviders, setOcrRemoteProviders] = useState<
     {
       provider_id: string;
@@ -958,6 +976,15 @@ export default function KnowledgeBasesPage() {
     }
   }, [t]);
 
+  const loadGraphOptions = useCallback(async () => {
+    try {
+      const options = await knowledgeBasesApi.getGraphOptions();
+      setGraphProviders(options.remote);
+    } catch (error) {
+      message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
+    }
+  }, [message, t]);
+
   const stopOnnxDownloadWatch = useCallback(() => {
     if (onnxDownloadTimer.current) {
       clearInterval(onnxDownloadTimer.current);
@@ -1357,7 +1384,6 @@ export default function KnowledgeBasesPage() {
       setFeatureSaving(true);
       try {
         setCapability(await knowledgeBasesApi.setFeature({ enabled: false }));
-        setFeatureModalOpen(false);
         message.success(t("knowledgeBases.featureDisabled"));
       } catch (error) {
         message.error(
@@ -1379,6 +1405,9 @@ export default function KnowledgeBasesPage() {
       return;
     }
     if (rerankEnabledDraft && (!rerankProviderId || !rerankModel)) {
+      return;
+    }
+    if (graphEnabledDraft && (!graphProviderId || !graphModel)) {
       return;
     }
     if (
@@ -1425,9 +1454,11 @@ export default function KnowledgeBasesPage() {
         rerank_enabled: rerankEnabledDraft,
         rerank_provider_id: rerankProviderId ?? "",
         rerank_model: rerankModel ?? "",
+        graph_enabled: graphEnabledDraft,
+        graph_provider_id: graphProviderId ?? "",
+        graph_model: graphModel ?? "",
       });
       setCapability(next);
-      setFeatureModalOpen(false);
       message.success(t("knowledgeBases.featureEnabled"));
     } catch (error) {
       message.error(
@@ -1438,7 +1469,29 @@ export default function KnowledgeBasesPage() {
     }
   };
 
+  const saveAdvancedSettings = async (settings: KnowledgeAdvancedSettings) => {
+    setAdvancedSettingsSaving(true);
+    try {
+      const saved = await knowledgeBasesApi.setAdvancedSettings(settings);
+      setCapability((current) =>
+        current ? { ...current, ...saved } : current,
+      );
+      message.success(t("knowledgeBases.advancedSettingsSaved"));
+    } catch (error) {
+      message.error(
+        apiErrorMessage(
+          error,
+          t("knowledgeBases.advancedSettingsSaveFailed"),
+          t,
+        ),
+      );
+    } finally {
+      setAdvancedSettingsSaving(false);
+    }
+  };
+
   const openSettings = () => {
+    setSettingsTab("general");
     const selectedModel = capability?.selected_model || undefined;
     const selectedBackend = capability?.backend ?? "onnx";
     onnxExpandedRef.current = false;
@@ -1454,6 +1507,9 @@ export default function KnowledgeBasesPage() {
     setRerankEnabledDraft(Boolean(capability?.rerank?.enabled));
     setRerankProviderId(capability?.rerank?.provider_id || undefined);
     setRerankModel(capability?.rerank?.model || undefined);
+    setGraphEnabledDraft(Boolean(capability?.graph?.enabled));
+    setGraphProviderId(capability?.graph?.provider_id || undefined);
+    setGraphModel(capability?.graph?.model || undefined);
     setFeatureModalOpen(true);
     void (async () => {
       const options = await loadEmbeddingOptions(false);
@@ -1467,6 +1523,7 @@ export default function KnowledgeBasesPage() {
     })();
     void loadOcrOptions();
     void loadRerankOptions();
+    void loadGraphOptions();
     void knowledgeBasesApi.getOnnxDownloadStatus().then((state) => {
       if (state.status === "downloading" || state.status === "loading") {
         const modelId = state.model_name;
@@ -2730,6 +2787,19 @@ export default function KnowledgeBasesPage() {
                           void uploadDocuments(event.target.files)
                         }
                       />
+                      {capability?.graph?.enabled ? (
+                        <Button
+                          icon={<Waypoints size={14} />}
+                          onClick={() => setGraphOpen(true)}
+                        >
+                          <span className={styles.graphOpenLabel}>
+                            {t("knowledgeBases.graphOpen")}
+                            <BetaBadge
+                              tooltip={t("knowledgeBases.graphBetaTooltip")}
+                            />
+                          </span>
+                        </Button>
+                      ) : null}
                       {canWriteSelected ? (
                         <Button
                           icon={<FolderPlus size={14} />}
@@ -3710,7 +3780,7 @@ export default function KnowledgeBasesPage() {
         placement="right"
         open={baseDrawerOpen}
         onClose={() => setBaseDrawerOpen(false)}
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         destroyOnHidden
         className={styles.baseDrawer}
         footer={
@@ -3911,7 +3981,7 @@ export default function KnowledgeBasesPage() {
         </Form>
       </Drawer>
 
-      <Drawer
+      <KnowledgeSettingsDrawer
         title={t("knowledgeBases.settingsTitle")}
         placement="right"
         width={isMobile ? "100%" : 520}
@@ -3926,30 +3996,60 @@ export default function KnowledgeBasesPage() {
             <Button onClick={() => setFeatureModalOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button
-              type="primary"
-              loading={featureSaving}
-              disabled={
-                featureEnabledDraft
-                  ? !featureModel ||
-                    (featureBackend === "remote" && !featureProviderId) ||
-                    (ocrEnabledDraft &&
-                      ocrBackend === "remote" &&
-                      (!ocrProviderId || !ocrModel)) ||
-                    (rerankEnabledDraft &&
-                      (!rerankProviderId || !rerankModel)) ||
-                    (featureBackend === "onnx" &&
-                      !catalog.find((model) => model.id === featureModel)
-                        ?.downloaded) ||
-                    featureOptionsLoading ||
-                    onnxDownloading
-                  : false
-              }
-              onClick={() => void saveFeature()}
-            >
-              {t("common.save")}
-            </Button>
+            {settingsTab === "advanced" ? (
+              <Button
+                type="primary"
+                htmlType="submit"
+                form={advancedSettingsFormId}
+                loading={advancedSettingsSaving}
+                disabled={!capability}
+              >
+                {t("common.save")}
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                loading={featureSaving}
+                disabled={
+                  featureEnabledDraft
+                    ? !featureModel ||
+                      (featureBackend === "remote" && !featureProviderId) ||
+                      (ocrEnabledDraft &&
+                        ocrBackend === "remote" &&
+                        (!ocrProviderId || !ocrModel)) ||
+                      (rerankEnabledDraft &&
+                        (!rerankProviderId || !rerankModel)) ||
+                      (graphEnabledDraft &&
+                        (!graphProviderId || !graphModel)) ||
+                      (featureBackend === "onnx" &&
+                        !catalog.find((model) => model.id === featureModel)
+                          ?.downloaded) ||
+                      featureOptionsLoading ||
+                      onnxDownloading
+                    : false
+                }
+                onClick={() => void saveFeature()}
+              >
+                {t("common.save")}
+              </Button>
+            )}
           </div>
+        }
+        tab={settingsTab}
+        onTabChange={(key) => {
+          if (!featureSaving && !advancedSettingsSaving) setSettingsTab(key);
+        }}
+        advanced={
+          capability ? (
+            <KnowledgeAdvancedSettingsForm
+              id={advancedSettingsFormId}
+              initialValues={capability}
+              saving={advancedSettingsSaving}
+              onSave={saveAdvancedSettings}
+            />
+          ) : (
+            <Spin />
+          )
         }
       >
         <div className={styles.formOptions}>
@@ -4032,12 +4132,9 @@ export default function KnowledgeBasesPage() {
                     (remoteProviders.find(
                       (provider) => provider.provider_id === featureProviderId,
                     )?.models.length ?? 0) === 0 ? (
-                      <Typography.Text
-                        type="secondary"
-                        className={styles.settingsHint}
-                      >
+                      <span className={styles.settingsHint}>
                         {t("knowledgeBases.noModels")}
-                      </Typography.Text>
+                      </span>
                     ) : null}
                   </div>
                 </div>
@@ -4101,12 +4198,9 @@ export default function KnowledgeBasesPage() {
                     );
                   })}
                   {catalog.length === 0 ? (
-                    <Typography.Text
-                      type="secondary"
-                      className={styles.settingsHint}
-                    >
+                    <span className={styles.settingsHint}>
                       {t("knowledgeBases.noModels")}
-                    </Typography.Text>
+                    </span>
                   ) : null}
                   {catalog.length > 0 && !onnxExpanded ? (
                     <Button
@@ -4168,27 +4262,29 @@ export default function KnowledgeBasesPage() {
                   </div>
                 </div>
               ) : null}
-              <Typography.Text type="secondary" className={styles.settingsHint}>
+              <span className={styles.settingsHint}>
                 {t("knowledgeBases.enableDescription")}
-              </Typography.Text>
+              </span>
               <Typography.Link onClick={() => navigate("/admin/models")}>
                 {t("knowledgeBases.manageModels")}
               </Typography.Link>
               <div className={styles.ocrSettings}>
-                <div className={styles.formOptionRow}>
-                  <div className={styles.formOptionCopy}>
-                    <span className={styles.switchLabel}>
-                      {t("knowledgeBases.ocrTitle")}
-                    </span>
-                    <span className={styles.formOptionHint}>
-                      {t("knowledgeBases.ocrDescription")}
-                    </span>
+                <div className={styles.formOptions}>
+                  <div className={styles.formOptionRow}>
+                    <div className={styles.formOptionCopy}>
+                      <span className={styles.switchLabel}>
+                        {t("knowledgeBases.ocrTitle")}
+                      </span>
+                      <span className={styles.formOptionHint}>
+                        {t("knowledgeBases.ocrDescription")}
+                      </span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={ocrEnabledDraft}
+                      onChange={setOcrEnabledDraft}
+                    />
                   </div>
-                  <Switch
-                    size="small"
-                    checked={ocrEnabledDraft}
-                    onChange={setOcrEnabledDraft}
-                  />
                 </div>
                 {ocrEnabledDraft ? (
                   <div className={styles.featureFields}>
@@ -4267,20 +4363,22 @@ export default function KnowledgeBasesPage() {
                 ) : null}
               </div>
               <div className={styles.ocrSettings}>
-                <div className={styles.formOptionRow}>
-                  <div className={styles.formOptionCopy}>
-                    <span className={styles.switchLabel}>
-                      {t("knowledgeBases.rerankTitle")}
-                    </span>
-                    <span className={styles.formOptionHint}>
-                      {t("knowledgeBases.rerankDescription")}
-                    </span>
+                <div className={styles.formOptions}>
+                  <div className={styles.formOptionRow}>
+                    <div className={styles.formOptionCopy}>
+                      <span className={styles.switchLabel}>
+                        {t("knowledgeBases.rerankTitle")}
+                      </span>
+                      <span className={styles.formOptionHint}>
+                        {t("knowledgeBases.rerankDescription")}
+                      </span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={rerankEnabledDraft}
+                      onChange={setRerankEnabledDraft}
+                    />
                   </div>
-                  <Switch
-                    size="small"
-                    checked={rerankEnabledDraft}
-                    onChange={setRerankEnabledDraft}
-                  />
                 </div>
                 {rerankEnabledDraft ? (
                   <div className={styles.featureFields}>
@@ -4318,10 +4416,94 @@ export default function KnowledgeBasesPage() {
                   </div>
                 ) : null}
               </div>
+              <div className={styles.ocrSettings}>
+                <div className={styles.formOptions}>
+                  <div className={styles.formOptionRow}>
+                    <div className={styles.formOptionCopy}>
+                      <span className={styles.switchLabel}>
+                        {t("knowledgeBases.graphSettingsTitle")}
+                      </span>
+                      <span className={styles.formOptionHint}>
+                        {t("knowledgeBases.graphSettingsDescription")}
+                      </span>
+                    </div>
+                    <Switch
+                      size="small"
+                      checked={graphEnabledDraft}
+                      onChange={setGraphEnabledDraft}
+                    />
+                  </div>
+                </div>
+                {graphEnabledDraft ? (
+                  <div className={styles.featureFields}>
+                    <div className={styles.settingsFieldLabel}>
+                      {t("knowledgeBases.graphModelLabel")}
+                    </div>
+                    <Select
+                      value={graphProviderId}
+                      onChange={(id) => {
+                        setGraphProviderId(id);
+                        setGraphModel(undefined);
+                      }}
+                      placeholder={t("knowledgeBases.selectProvider")}
+                      options={graphProviders.map((provider) => ({
+                        value: provider.provider_id,
+                        label: provider.provider_name,
+                      }))}
+                      notFoundContent={t("knowledgeBases.graphNoProviders")}
+                    />
+                    <div className={styles.onnxModelList}>
+                      {(
+                        graphProviders.find(
+                          (provider) =>
+                            provider.provider_id === graphProviderId,
+                        )?.models ?? []
+                      ).map((model) => (
+                        <button
+                          key={model.id}
+                          type="button"
+                          className={cx(
+                            styles.onnxModelItem,
+                            graphModel === model.id &&
+                              styles.onnxModelItemActive,
+                          )}
+                          aria-pressed={graphModel === model.id}
+                          onClick={() => setGraphModel(model.id)}
+                        >
+                          <span className={styles.onnxModelName}>
+                            {model.name}
+                          </span>
+                        </button>
+                      ))}
+                      {graphProviderId &&
+                      (graphProviders.find(
+                        (provider) => provider.provider_id === graphProviderId,
+                      )?.models.length ?? 0) === 0 ? (
+                        <span className={styles.settingsHint}>
+                          {t("knowledgeBases.graphNoModels")}
+                        </span>
+                      ) : null}
+                    </div>
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message={t("knowledgeBases.graphSettingsPrivacy")}
+                    />
+                  </div>
+                ) : null}
+              </div>
             </div>
           </Spin>
         ) : null}
-      </Drawer>
+      </KnowledgeSettingsDrawer>
+      <KnowledgeGraphModal
+        open={graphOpen}
+        kbId={selected?.id ?? null}
+        kbName={selected?.name ?? ""}
+        canWrite={canWriteSelected}
+        canBuild={Boolean(capability?.graph?.usable)}
+        onClose={() => setGraphOpen(false)}
+      />
       <Modal
         open={downloadProgressOpen}
         title={t("models.localDownloadProgressTitle")}
@@ -4342,9 +4524,9 @@ export default function KnowledgeBasesPage() {
           {downloadProgressLabel || downloadProgressModel}
         </div>
         <Progress percent={downloadProgress} status="active" />
-        <Typography.Text type="secondary" className={styles.settingsHint}>
+        <span className={styles.settingsHint}>
           {t("models.localDownloadBackgroundHint")}
-        </Typography.Text>
+        </span>
       </Modal>
     </PageShell>
   );

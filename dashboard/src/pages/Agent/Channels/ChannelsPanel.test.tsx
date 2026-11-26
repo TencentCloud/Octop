@@ -12,6 +12,7 @@
  *   - saving a new channel sends exactly one POST (no PATCH churn)
  */
 
+import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -38,6 +39,109 @@ beforeEach(() => {
 });
 
 describe("<ChannelsPanel /> create-flow default", () => {
+  it.each([undefined, false, true])(
+    "preserves plugin switch values and defaults (%s)",
+    async (saved) => {
+      const row = { id: "a1", kind: "acme", name: "acme", enabled: true };
+      api.mockImplementation(async (url, init) => {
+        if (url.endsWith("/plugin-kinds"))
+          return [
+            {
+              kind: "acme",
+              label: "Acme",
+              icon: "",
+              intro_url: "https://example.com/plugin-config",
+              plugin_id: "acme-plugin",
+              description: "Acme description",
+              fields: [
+                {
+                  name: "stream",
+                  label: "Stream",
+                  type: "switch",
+                  defaultValue: false,
+                  legacyDefaultValue: true,
+                  helpKey: "Stream help",
+                },
+              ],
+            },
+          ];
+        if (init?.method === "PATCH") return row;
+        if (url.endsWith("/a1"))
+          return {
+            ...row,
+            config: saved === undefined ? {} : { stream: saved },
+          };
+        return [row];
+      });
+      render(<ChannelsPanel agentId="ag1" />);
+      await userEvent.click(await screen.findByText("Acme"));
+      expect(screen.queryByText("Stream help")).not.toBeInTheDocument();
+      await userEvent.hover(
+        await screen.findByRole("img", { name: "Stream: ?" }),
+      );
+      expect(await screen.findByRole("tooltip")).toHaveTextContent(
+        "Stream help",
+      );
+      expect(screen.getAllByText("Acme description")).toHaveLength(2);
+      expect(
+        screen.getByRole("link", { name: /channels.viewPluginConfig/ }),
+      ).toHaveAttribute("href", "https://example.com/plugin-config");
+      expect(
+        screen.queryByRole("link", { name: /channels.getCredentials/ }),
+      ).not.toBeInTheDocument();
+      expect(await screen.findByLabelText("Stream")).toHaveAttribute(
+        "aria-checked",
+        String(saved ?? true),
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: "common.save" }),
+      );
+      await waitFor(() => {
+        const patch = api.mock.calls.find(
+          ([, init]) => init?.method === "PATCH",
+        );
+        expect(patch).toBeDefined();
+        expect(JSON.parse(String(patch![1]!.body)).config.stream).toBe(
+          saved ?? true,
+        );
+      });
+    },
+  );
+
+  it("uses plugin defaults when creating a channel", async () => {
+    api.mockImplementation(async (url, init) => {
+      if (url.endsWith("/plugin-kinds"))
+        return [
+          {
+            kind: "acme",
+            label: "Acme",
+            icon: "",
+            intro_url: "",
+            plugin_id: "acme-plugin",
+            fields: [
+              {
+                name: "stream",
+                label: "Stream",
+                type: "switch",
+                defaultValue: false,
+                legacyDefaultValue: true,
+              },
+              { name: "limit", label: "Limit", type: "text", defaultValue: 0 },
+            ],
+          },
+        ];
+      if (init?.method === "POST")
+        return { id: "a1", kind: "acme", name: "acme", enabled: true };
+      return [];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("Acme"))[0]);
+    expect(await screen.findByLabelText("Stream")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(await screen.findByLabelText("Limit")).toHaveValue("0");
+  });
   it("defaults Discord to all channels and saves without channel IDs", async () => {
     render(<ChannelsPanel agentId="ag1" />);
     await userEvent.click(
@@ -202,6 +306,173 @@ describe("<ChannelsPanel /> create-flow default", () => {
     expectBefore(displaySettings, groupPolicy);
   });
 
+  async function openQqEditDrawer(groupContext?: Record<string, unknown>) {
+    const row = { id: "qq-policy", kind: "qq", name: "qq", enabled: true };
+    api.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/qq-policy")) {
+        return {
+          ...row,
+          config: {
+            app_id: "offline-app",
+            secret: "offline-secret",
+            group_context: groupContext,
+          },
+        };
+      }
+      return [row];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+  }
+
+  it.each([undefined, true, false])(
+    "round-trips QQ command protection %s and the owner allowlist",
+    async (ownerOnly) => {
+      await openQqEditDrawer({
+        enabled: true,
+        owner_ids: ["owner-1"],
+        ...(ownerOnly === undefined ? {} : { owner_commands_only: ownerOnly }),
+      });
+      const toggle = await screen.findByLabelText(
+        "channels.qqGroupOwnerCommandsOnly",
+      );
+      await waitFor(() => {
+        expect(toggle.getAttribute("aria-checked")).toBe(
+          String(ownerOnly ?? true),
+        );
+        expect(screen.getByText("owner-1")).toBeInTheDocument();
+      });
+      const owners = screen.getByRole("combobox", {
+        name: "channels.qqGroupOwnerIds",
+      });
+      if (ownerOnly === false) expect(owners).toBeDisabled();
+      else expect(owners).toBeEnabled();
+      await userEvent.click(
+        screen.getByRole("button", { name: "common.save" }),
+      );
+      await waitFor(() => {
+        const patch = api.mock.calls.find(
+          ([, init]) => init?.method === "PATCH",
+        );
+        expect(patch).toBeDefined();
+        expect(
+          JSON.parse(String(patch![1]!.body)).config.group_context,
+        ).toMatchObject({
+          enabled: true,
+          owner_commands_only: ownerOnly ?? true,
+          owner_ids: ["owner-1"],
+        });
+      });
+    },
+  );
+
+  it("keeps the shared allowlist enabled when only tool protection is on", async () => {
+    await openQqEditDrawer({
+      enabled: true,
+      owner_commands_only: false,
+      owner_tools_only: true,
+      owner_ids: ["owner-1"],
+    });
+    const owners = await screen.findByRole("combobox", {
+      name: "channels.qqGroupOwnerIds",
+    });
+    expect(owners).toBeEnabled();
+    await userEvent.click(
+      screen.getByLabelText("channels.qqGroupOwnerToolsOnly"),
+    );
+    expect(owners).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(
+        JSON.parse(String(patch![1]!.body)).config.group_context,
+      ).toMatchObject({
+        owner_commands_only: false,
+        owner_tools_only: false,
+        owner_ids: ["owner-1"],
+      });
+    });
+  });
+
+  it("enables tool protection for new QQ channels", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+    expect(
+      await screen.findByLabelText("channels.qqGroupOwnerToolsOnly"),
+    ).toBeChecked();
+  });
+
+  it("hides QQ command controls while group context is off", async () => {
+    await openQqEditDrawer({ enabled: false, owner_ids: ["stored-owner"] });
+    expect(
+      screen.queryByLabelText("channels.qqGroupOwnerCommandsOnly"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("channels.qqGroupOwnerToolsOnly"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "channels.qqGroupOwnerIds" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByLabelText("channels.qqGroupContextEnabled"),
+    );
+    const toggle = await screen.findByLabelText(
+      "channels.qqGroupOwnerCommandsOnly",
+    );
+    expect(toggle).toBeChecked();
+    expect(await screen.findByText("stored-owner")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(
+        JSON.parse(String(patch![1]!.body)).config.group_context,
+      ).toMatchObject({
+        enabled: true,
+        owner_commands_only: true,
+        owner_ids: ["stored-owner"],
+      });
+    });
+  });
+
+  it("edits a CLI-created QQ channel whose secret is stored as client_secret", async () => {
+    const row = {
+      id: "qq-channel-2",
+      kind: "qq",
+      name: "qq",
+      enabled: true,
+    };
+    api.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/qq-channel-2")) {
+        return {
+          ...row,
+          config: { app_id: "1905353226" },
+          secrets_set: ["client_secret"],
+        };
+      }
+      return [row];
+    });
+
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+
+    const appSecret = await screen.findByLabelText(/App Secret/i);
+    expect(appSecret).toHaveAttribute("placeholder", "common.unchanged");
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      const config = JSON.parse(String(patch![1]!.body)).config;
+      expect(config).toMatchObject({ app_id: "1905353226" });
+      expect(config).not.toHaveProperty("secret");
+      expect(config).not.toHaveProperty("client_secret");
+    });
+  });
+
   async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
     // Telegram is collapsed behind "更多通道" until expanded.
@@ -253,12 +524,30 @@ describe("<ChannelsPanel /> create-flow default", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       kind: "telegram",
       name: "telegram",
-      config: expect.objectContaining({ bot_token: "123456:ABC-token" }),
+      config: expect.objectContaining({
+        bot_token: "123456:ABC-token",
+        group_activation: "always",
+        topic_isolation: false,
+        edited_messages: false,
+        streaming_mode: "off",
+        allow_unaddressed_commands: true,
+        reply_to_message: true,
+        status_reactions: false,
+        disable_notification: false,
+        protect_content: false,
+        link_preview: true,
+        command_menu: false,
+        albums: false,
+        audio_as_voice: false,
+      }),
     });
   });
 
   it("saves Telegram allowed user IDs as a deduplicated list", async () => {
     await openTelegramCreateDrawer();
+    expect(
+      screen.getByText("channels.telegramAllowedUsersHelp"),
+    ).toBeInTheDocument();
 
     await userEvent.type(
       await screen.findByLabelText(/Bot Token/i),
@@ -307,3 +596,48 @@ describe("<ChannelsPanel /> create-flow default", () => {
     });
   });
 });
+
+it.each([undefined, false, true])(
+  "preserves Telegram legacy activation and boolean %s on edit",
+  async (enabled) => {
+    const row = { id: "t1", kind: "telegram", name: "telegram", enabled: true };
+    api.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/t1"))
+        return {
+          ...row,
+          config: {
+            bot_token: "fake",
+            allowed_chat_ids: ["-100123"],
+            allowed_user_ids: ["42"],
+            ...(enabled === undefined
+              ? {}
+              : { topic_isolation: enabled, edited_messages: enabled }),
+          },
+        };
+      return [row];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click(
+      (await screen.findAllByText("channels.label_telegram"))[0],
+    );
+    expect(
+      await screen.findByLabelText("channels.telegram_topic_isolation"),
+    ).toHaveAttribute("aria-checked", String(enabled ?? false));
+    expect(
+      screen.getByLabelText("channels.telegram_allowed_chat_ids"),
+    ).toHaveValue("-100123");
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch![1]!.body)).config).toMatchObject({
+        group_activation: "always",
+        topic_isolation: enabled ?? false,
+        edited_messages: enabled ?? false,
+        allowed_chat_ids: ["-100123"],
+        allowed_user_ids: ["42"],
+      });
+    });
+  },
+);

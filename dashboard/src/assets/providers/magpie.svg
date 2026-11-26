@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="magpie-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="magpie-wing" x1="20" y1="16" x2="48" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="magpie-tail" x1="14" y1="36" x2="28" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <!-- Background badge -->
+  <rect width="64" height="64" rx="14" fill="url(#magpie-bg)"/>
+  
+  <!-- Magpie silhouette: streamlined stylized bird in flight -->
+  <!-- Tail feathers -->
+  <path d="M12 50C16 48 20 44 24 38L18 36L12 50Z" fill="url(#magpie-tail)"/>
+  <path d="M15 52C20 49 23 43 27 36L22 34L15 52Z" fill="#1E40AF" opacity="0.6"/>
+
+  <!-- Body / Belly (Crisp white patch characteristic of a magpie) -->
+  <path d="M24 37C25 32 29 28 35 28C33 34 30 38 24 37Z" fill="#F8FAFC"/>
+
+  <!-- Wing feathers (Vibrant blue plumage) -->
+  <path d="M26 31C32 24 41 18 51 14C47 22 41 31 32 35C29 36 27 34 26 31Z" fill="url(#magpie-wing)"/>
+  <path d="M29 32C35 27 42 22 49 19C45 25 40 31 33 34L29 32Z" fill="#93C5FD" opacity="0.4"/>
+
+  <!-- Head & Beak -->
+  <path d="M36 27C37 24 40 21 44 21C45 21 46 22 46 22L51 22C50 24 48 25 46 26C44 28 41 29 36 27Z" fill="#F8FAFC"/>
+  <path d="M46 22L52 23L47 25L46 22Z" fill="#38BDF8"/>
+
+  <!-- Eye accent -->
+  <circle cx="43.5" cy="23.5" r="1" fill="#0F172A"/>
+</svg>

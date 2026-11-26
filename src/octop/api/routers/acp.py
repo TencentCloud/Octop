@@ -10,19 +10,30 @@ import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import current_user, get_server, require_admin
+from octop.infra.agents.settings.acp_host import acp_host_ask, acp_host_status
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 _BUILTIN_RUNNERS = frozenset(
-    {"opencode", "codebuddy", "claude_code", "codex", "kimi_code", "cursor_cli", "pi"}
+    {
+        "opencode",
+        "codebuddy",
+        "claude_code",
+        "codex",
+        "kimi_code",
+        "cursor_cli",
+        "pi",
+        "qwen_code",
+    }
 )
 _ALLOWED_PARSE_MODES = frozenset({"call_title", "update_detail", "call_detail"})
 _DEFAULT_STDIO_BUFFER = 50 * 1024 * 1024
@@ -51,6 +62,13 @@ class ACPConfigBody(BaseModel):
         default=None,
         description="Optional; updates the user's global runner definitions",
     )
+
+
+class ACPHostBody(BaseModel):
+    runner: str = ""
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
 
 
 class ACPAgentToolBody(BaseModel):
@@ -155,6 +173,22 @@ async def get_global_acp_runners(
     return {"runners": registry.acp_settings.load_runners(user.id)}
 
 
+@router.get("/acp/session-modes", summary="Session modes for one ACP runner")
+async def acp_session_modes(
+    runner: str,
+    _user: Any = Depends(current_user),
+) -> dict[str, Any]:
+    """Modes this underlying agent documents for ``session/set_mode``.
+
+    The list follows the runner. An empty list means Octop has no catalog for
+    it, and the chat keeps that agent's own default.
+    """
+    from octop.infra.agents.acp.session_modes import session_modes
+
+    rows = session_modes(runner)
+    return {"runner": runner.strip(), "modes": [row.to_dict() for row in rows]}
+
+
 @router.put("/acp", summary="Update global ACP runners")
 async def put_global_acp_runners(
     body: ACPRunnersBody,
@@ -167,6 +201,66 @@ async def put_global_acp_runners(
     saved = registry.acp_settings.save_runners(user.id, runners)
     _schedule_reload_user_agents(server, user.id)
     return {"runners": saved}
+
+
+@router.post("/acp/probe", summary="Probe an ACP runner on this host")
+async def probe_acp_runner(
+    body: ACPHostBody,
+    request: Request,
+    _: Any = Depends(require_admin()),
+) -> dict[str, Any]:
+    """Check that the runner command exists and answers ACP initialize.
+
+    Does not install anything. ``install_script`` and ``agent_prompt`` match
+    the operating system of the machine running Octop.
+    """
+    return await acp_host_status(
+        runner=body.runner,
+        command=body.command,
+        args=body.args,
+        env=body.env,
+        attempt_install=False,
+        locale=resolve_request_locale(request),
+    )
+
+
+@router.post("/acp/ask", summary="Send a probe prompt to an ACP runner")
+async def ask_acp_runner(
+    body: ACPHostBody,
+    _: Any = Depends(require_admin()),
+) -> dict[str, Any]:
+    """Start the runner, send ``who are you?``, and return the reply text.
+
+    The process is closed after this one turn. A missing command does not
+    raise; the body reports ``ok: false``.
+    """
+    return await acp_host_ask(
+        runner=body.runner,
+        command=body.command,
+        args=body.args,
+        env=body.env,
+    )
+
+
+@router.post("/acp/install", summary="Best-effort install an ACP runner on this host")
+async def install_acp_runner(
+    body: ACPHostBody,
+    request: Request,
+    _: Any = Depends(require_admin()),
+) -> dict[str, Any]:
+    """Install a built-in runner when this host can do it without a password.
+
+    Never fails the HTTP call for a missing installer. The response uses the
+    same shape as the probe, including the manual script and Octop prompt.
+    """
+    return await acp_host_status(
+        runner=body.runner,
+        command=body.command,
+        args=body.args,
+        env=body.env,
+        attempt_install=True,
+        locale=resolve_request_locale(request),
+    )
 
 
 @router.get("/acp/{runner_name}", summary="Get global ACP runner")

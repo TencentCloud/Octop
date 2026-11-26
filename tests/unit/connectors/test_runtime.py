@@ -196,3 +196,122 @@ async def test_discovery_only_passes_configured_environment(monkeypatch, configu
     monkeypatch.setattr(stdio, "stdio_client", transport)
     monkeypatch.setattr(stdio, "ClientSession", session)
     assert await runtime.build_tools(user_id=7, instance=instance("i"), agent_id="a") == []
+
+
+@pytest.mark.asyncio
+async def test_shared_expert_authorization_rechecked(monkeypatch):
+    from octop.infra.users import groups
+
+    row = SimpleNamespace(user_id=1, agent_id="a", is_shared=1)
+    repos = SimpleNamespace(
+        agent_repo=SimpleNamespace(get=lambda _: row),
+        user_repo=SimpleNamespace(get=lambda _: SimpleNamespace(role="user")),
+    )
+    allowed = MagicMock(side_effect=lambda *a, **k: row.is_shared == 1)
+    monkeypatch.setattr(groups, "expert_visible_to", allowed)
+    runtime = StdioRuntime(None, repos)
+    assert await runtime.expert_accessible(2, "a")
+    allowed.assert_called_once_with(repos, row, user_id=2, is_admin=False)
+    row.is_shared = 0
+    assert not await runtime.expert_accessible(2, "a")
+
+
+@pytest.mark.asyncio
+async def test_shared_stdio_alias_uses_viewer_visibility(factory):
+    own = {"transport": "stdio", "command": "viewer-cli"}
+    shared = {"transport": "stdio", "command": "owner-cli"}
+    service = service_for([])
+    service.custom_harness_configs = lambda _: {"tool": own, "custom__owner__tool": shared}
+    service.shared_custom_harness_aliases = lambda _: {"custom__owner__tool": "tool"}
+    loader = StdioMCPTools(service, object())
+    agent = SimpleNamespace(_mcp_tool_name_set=frozenset(), _mcp_tools=[])
+
+    def replace(tools):
+        agent._mcp_tools = tools
+        agent._mcp_tool_name_set = frozenset(t.name for t in tools)
+
+    agent.replace_mcp_tools = MagicMock(side_effect=replace)
+    agent.append_mcp_tools = lambda tools: replace([*agent._mcp_tools, *tools])
+    factory.return_value.build_tools = AsyncMock(return_value=[SimpleNamespace(name="tool_x")])
+    await loader.prepare_tools(
+        agent,
+        agent_id="a",
+        user_id=2,
+        names=["tool"],
+        custom_configs={"tool": shared},
+        load_user={"tool": 1},
+    )
+    assert (
+        factory.return_value.build_tools.call_args.kwargs["instance"].instance_id
+        == "custom:custom__owner__tool"
+    )
+    factory.return_value.build_tools.reset_mock()
+    # Removing the viewer-visible shared name must prevent discovery, even if
+    # the caller still has an old owner-backed spec and same-named own server.
+    service.custom_harness_configs = lambda _: {"tool": own}
+    await loader.prepare_tools(
+        agent,
+        agent_id="a",
+        user_id=2,
+        names=["tool"],
+        custom_configs={"tool": shared},
+        load_user={"tool": 1},
+    )
+    factory.return_value.build_tools.assert_not_awaited()
+    await loader.prepare_tools(
+        agent,
+        agent_id="a",
+        user_id=2,
+        names=["tool"],
+        custom_configs={"tool": own},
+        load_user={"tool": 2},
+    )
+    assert (
+        factory.return_value.build_tools.call_args.kwargs["instance"].instance_id == "custom:tool"
+    )
+
+    agent.replace_mcp_tools.assert_called_once_with([])
+    assert len(agent._mcp_tools) == 1
+    assert agent._mcp_attached_user["tool"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("design", [False, True])
+async def test_nonowner_calls_own_connector_through_shared_expert(monkeypatch, design):
+    from contextlib import asynccontextmanager
+
+    from langchain_core.tools import ToolException
+    from mcp import types
+
+    from octop.infra.connectors import open_design, stdio
+
+    row = SimpleNamespace(user_id=1, agent_id="a", is_shared=1)
+    repos = SimpleNamespace(
+        agent_repo=SimpleNamespace(get=lambda _: row),
+        user_repo=SimpleNamespace(get=lambda _: SimpleNamespace(role="user")),
+        user_group_repo=MagicMock(),
+        user_group_member_repo=MagicMock(),
+        resource_group_grant_repo=SimpleNamespace(group_ids=lambda *a: set()),
+        settings_repo=SimpleNamespace(get=lambda _: None, set=lambda *a: None),
+    )
+    service = service_for([instance("i")])
+    service.decrypt = lambda _: {"command": sys.executable, "args": [], "env": {}}
+    runtime = (open_design.OpenDesignRuntime if design else StdioRuntime)(service, repos)
+    module = open_design if design else stdio
+    monkeypatch.setattr(
+        module, "get_config", lambda: {"configurable": {"user": "2", "thread_id": "t"}}
+    )
+    result = types.CallToolResult(content=[])
+    client = SimpleNamespace(call_tool=AsyncMock(return_value=result))
+
+    @asynccontextmanager
+    async def session(*args, **kwargs):
+        assert args[:4] == (2, "i", "a", "t")
+        yield client
+
+    monkeypatch.setattr(runtime, "session", session)
+    assert await runtime.call(2, "i", "a", "list_files", {"project": "p"}) == result
+    row.is_shared = 0
+    with pytest.raises(ToolException):
+        await runtime.call(2, "i", "a", "list_files", {"project": "p"})
+    assert client.call_tool.await_count == 1

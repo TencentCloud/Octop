@@ -6,10 +6,10 @@ import asyncio
 import json
 import logging
 from types import SimpleNamespace
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.providers.codex_apply import (
@@ -25,6 +25,7 @@ from octop.infra.agents.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.magpie import MAGPIE_DEFAULT_BASE_URL, discover_local_magpie
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
@@ -48,6 +49,7 @@ from octop.infra.agents.providers.store import (
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess, model_resource_key
 from octop.infra.utils.locale import resolve_request_locale
+from octop.infra.utils.secret_fields import Secret, coalesce_secret, model_secret_names
 from octop.infra.utils.ulid import new_ulid
 
 logger = logging.getLogger(__name__)
@@ -59,7 +61,7 @@ class ProviderCreateBody(BaseModel):
     name: str
     kind: str
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     extra_json: str | None = None
     stream_usage: bool | None = None
     purpose: Literal["chat", "embedding"] | None = None
@@ -70,7 +72,7 @@ class ProviderCreateBody(BaseModel):
 class ProviderPatchBody(BaseModel):
     kind: str | None = None
     base_url: str | None = None
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     extra_json: str | None = None
     stream_usage: bool | None = None
     purpose: Literal["chat", "embedding"] | None = None
@@ -232,21 +234,23 @@ class ProviderTestBody(BaseModel):
 class ProviderTestDraftBody(BaseModel):
     name: str
     kind: str
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     base_url: str | None = None
     model_id: str
     api_mode: Literal["chat_completions", "responses"] = "chat_completions"
     api_fallback: Literal["none", "chat_completions"] = "none"
     extra_json: str | None = None
     embedding: bool = False
+    provider_id: int | None = None
 
 
 class ProviderFetchModelsBody(BaseModel):
     kind: str
-    api_key: str | None = None
+    api_key: Annotated[str | None, Secret()] = None
     base_url: str | None = None
     extra_json: str | None = None
     name: str | None = None
+    provider_id: int | None = None
 
 
 def _is_codex_base_url(base_url: str | None) -> bool:
@@ -275,6 +279,39 @@ def _saved_default_model(extra: dict[str, Any]) -> str | None:
     return cleaned or None
 
 
+# Local runtime rows store these placeholders, not credentials.
+_PUBLIC_PLACEHOLDER_KEYS = frozenset({"onnx", "ollama"})
+
+
+def _public_row(r: Any) -> dict[str, Any]:
+    """Provider payload for any caller: never include a real API key."""
+    data = _row_to_dict(r)
+    for name in model_secret_names(ProviderCreateBody):
+        raw = data.get(name)
+        text = raw.strip() if isinstance(raw, str) else ""
+        data[f"{name}_set"] = bool(text)
+        if text.lower() not in _PUBLIC_PLACEHOLDER_KEYS:
+            data[name] = None
+    return data
+
+
+def _resolve_provider_secret(
+    server: Any,
+    *,
+    typed: str | None,
+    provider_id: int | None,
+) -> str:
+    """Use the typed key, or the stored key when the client left it blank."""
+    stored: str | None = None
+    if provider_id is not None:
+        row = server.services.provider_repo.get(provider_id)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
+        stored = row.api_key
+    resolved = coalesce_secret(typed, stored)
+    return resolved or ""
+
+
 def _row_to_dict(r: Any) -> dict[str, Any]:
     models: list[dict[str, Any]] = []
     for stored in r.get_models():
@@ -285,7 +322,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning_config"] = capability
         models.append(model)
     extra = parse_provider_extra(r)
-    return {
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
@@ -303,6 +340,10 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             models=models,
         ),
     }
+    integration = extra.get("integration")
+    if isinstance(integration, str) and integration.strip():
+        payload["integration"] = integration.strip()
+    return payload
 
 
 @router.get("/presets")
@@ -363,13 +404,55 @@ async def list_providers(
     _: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all providers. Read-only for regular users."""
-    return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
+    """Return all providers. Stored API keys are omitted for every caller."""
+    return [_public_row(r) for r in server.services.provider_repo.list_all()]
 
 
 # ── Admin endpoints ─────────────────────────────────────────────────────────
 
 admin_router = APIRouter()
+
+
+class MagpieDiscoveryResponse(BaseModel):
+    available: bool = Field(
+        description="True when this Octop server reached a local Magpie hello response."
+    )
+    base_url: str = Field(description="OpenAI-compatible base URL of the probed local Magpie.")
+    version: str | None = Field(
+        default=None,
+        description="Magpie version from /api/hello. Empty when discovery did not succeed.",
+    )
+
+
+def _extra_dict(raw: str | None) -> dict[str, Any]:
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+@admin_router.get(
+    "/magpie/discovery",
+    summary="Discover local Magpie",
+    description=(
+        "Read-only probe of Magpie on the Octop server host at the default "
+        "loopback address. Failures return available=false and do not include "
+        "the upstream body. This route has no URL parameter."
+    ),
+    response_model=MagpieDiscoveryResponse,
+)
+async def admin_discover_magpie(
+    _: Any = Depends(require_permission("providers")),
+) -> MagpieDiscoveryResponse:
+    found = await discover_local_magpie()
+    return MagpieDiscoveryResponse(
+        available=found.available,
+        base_url=found.base_url or MAGPIE_DEFAULT_BASE_URL,
+        version=found.version,
+    )
 
 
 @admin_router.get("")
@@ -378,7 +461,7 @@ async def admin_list_providers(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     return [
-        _annotate_provider_models(server, _row_to_dict(row))
+        _annotate_provider_models(server, _public_row(row))
         for row in server.services.provider_repo.list_all()
     ]
 
@@ -415,7 +498,7 @@ async def admin_create_provider(
     )
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
-    return _annotate_provider_models(server, _row_to_dict(server.services.provider_repo.get(pid)))
+    return _annotate_provider_models(server, _public_row(server.services.provider_repo.get(pid)))
 
 
 @admin_router.patch("/{provider_id}")
@@ -444,7 +527,7 @@ async def admin_patch_provider(
     if server.app_runtime and _patch_requires_provider_rehydrate(body):
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
     return _annotate_provider_models(
-        server, _row_to_dict(server.services.provider_repo.get(provider_id))
+        server, _public_row(server.services.provider_repo.get(provider_id))
     )
 
 
@@ -485,9 +568,14 @@ async def admin_test_provider_draft(
     body: ProviderTestDraftBody,
     request: Request,
     _: Any = Depends(require_permission("providers")),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Probe connectivity for a provider draft before it is saved."""
-    api_key = (body.api_key or "").strip()
+    """Probe connectivity for a provider draft before it is saved.
+
+    A blank ``api_key`` reuses the key stored for ``provider_id``. The stored
+    key is not included in the response.
+    """
+    api_key = _resolve_provider_secret(server, typed=body.api_key, provider_id=body.provider_id)
     if not api_key:
         return {"ok": False, "error": "api_key is required"}
     model_id = body.model_id.strip()
@@ -519,14 +607,19 @@ async def admin_fetch_provider_models(
     body: ProviderFetchModelsBody,
     request: Request,
     _: Any = Depends(require_permission("providers")),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Fetch remote model ids via OpenAI-compatible ``GET /models`` (openai kind only)."""
+    """Fetch remote model ids via OpenAI-compatible ``GET /models`` (openai kind only).
+
+    A blank ``api_key`` reuses the key stored for ``provider_id``. The stored
+    key is not included in the response.
+    """
     if body.kind != "openai":
         return {
             "ok": False,
             "error": "fetch models is only supported for openai-compatible providers",
         }
-    api_key = (body.api_key or "").strip()
+    api_key = _resolve_provider_secret(server, typed=body.api_key, provider_id=body.provider_id)
     if not api_key:
         return {"ok": False, "error": "api_key is required"}
     draft = SimpleNamespace(extra_json=body.extra_json)
@@ -536,6 +629,7 @@ async def admin_fetch_provider_models(
         extra_headers=provider_headers(draft) or None,
         locale=resolve_request_locale(request),
         provider_name=(body.name or "").strip() or None,
+        extra=_extra_dict(body.extra_json),
     )
 
 

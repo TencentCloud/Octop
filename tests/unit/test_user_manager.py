@@ -59,6 +59,22 @@ async def test_authenticate_success(manager: UserManager):
     assert user.username == "a"
 
 
+async def test_authenticate_records_last_login(manager: UserManager):
+    await manager.create(username="a", password="TestPass12", role=Role.USER)
+    before = manager._services.user_repo.get_by_username("a")
+    assert before is not None
+    assert before.last_login_at is None
+    assert await manager.authenticate("a", "wrong-password") is None
+    untouched = manager._services.user_repo.get_by_username("a")
+    assert untouched is not None
+    assert untouched.last_login_at is None
+    assert await manager.authenticate("a", "TestPass12") is not None
+    after = manager._services.user_repo.get_by_username("a")
+    assert after is not None
+    assert after.last_login_at is not None
+    assert after.last_login_at > 0
+
+
 async def test_authenticate_by_email(manager: UserManager):
     await manager.create(
         username="alice",

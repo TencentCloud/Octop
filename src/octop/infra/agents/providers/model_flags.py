@@ -103,12 +103,13 @@ def is_rerank_model(model: dict[str, Any]) -> bool:
 def is_embedding_model(
     model: dict[str, Any],
     *,
+    embedding_service: bool = False,
     provider_name: str | None = None,
     provider_api_key: str | None = None,
 ) -> bool:
     """True when *model* is embedding-only (not for chat / auto-route).
 
-    Explicit flags win:
+    Embedding flags for non-rerank models:
     - ``embedding: true``
     - ``task: "embedding"``
 
@@ -125,13 +126,13 @@ def is_embedding_model(
     Legacy fallback: models under the ONNX local provider are treated as
     embedding-only even if the flag was missing.
     """
-    if model.get("embedding") is True:
+    if is_rerank_model(model):
+        return False
+    if embedding_service or model.get("embedding") is True:
         return True
     task = str(model.get("task") or "").strip().lower()
     if task == "embedding":
         return True
-    if is_rerank_model(model):
-        return False
     model_id = str(model.get("id") or "").strip().lower()
     if model_id and any(hint in model_id for hint in _EMBEDDING_NAME_HINTS):
         return True

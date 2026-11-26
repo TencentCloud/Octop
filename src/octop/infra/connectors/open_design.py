@@ -174,8 +174,7 @@ class OpenDesignRuntime(StdioRuntime):
         )
         if not any(i.instance_id == instance_id and i.kind == "open-design" for i in instances):
             raise ToolException(tr("connector.open_design.context_required", locale))
-        row = await asyncio.to_thread(self._repos.agent_repo.get, agent_id)
-        if row is None or row.user_id not in (None, user_id):
+        if not await self.expert_accessible(user_id, agent_id):
             raise ToolException(tr("connector.open_design.context_required", locale))
         creds = await asyncio.to_thread(self._service.decrypt, instance_id)
         spec = overlay_stdio_spec_env(connection_spec(creds), self._env)

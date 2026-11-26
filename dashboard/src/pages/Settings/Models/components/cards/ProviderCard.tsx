@@ -14,6 +14,7 @@ import { ollamaModelApi } from "../../../../../api/modules/ollamaModel";
 import { onnxModelApi } from "../../../../../api/modules/onnxModel";
 import { isOllamaProviderRow, isOnnxProviderRow } from "../../presetUtils";
 import type { ProviderRow } from "../../useProviders";
+import { providerHasCredential } from "../../useProviders";
 import { ProviderConfigModal } from "../modals/ProviderConfigModal";
 import {
   getProviderLogo,
@@ -52,7 +53,7 @@ export function ProviderCard({
   const isOnnx = isOnnxProviderRow(provider);
   const isLocalRuntime = isOllama || isOnnx;
 
-  const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
+  const hasApiKey = providerHasCredential(provider);
   /** green = ready, blue = configured but off, gray = missing credentials */
   const statusTone: "active" | "configured" | "inactive" = !hasApiKey
     ? "inactive"
@@ -147,12 +148,14 @@ export function ProviderCard({
     }
   };
 
-  // Mask api_key for display: show first 4 + last 4, mask middle.
+  // Real keys are not returned. Placeholders (onnx / ollama) may still be present.
   const maskedKey = (() => {
-    if (!provider.api_key) return null;
-    const k = provider.api_key;
-    if (k.length <= 10) return "•".repeat(k.length);
-    return `${k.slice(0, 4)}${"•".repeat(6)}${k.slice(-4)}`;
+    if (provider.api_key) {
+      const k = provider.api_key;
+      if (k.length <= 10) return "•".repeat(k.length);
+      return `${k.slice(0, 4)}${"•".repeat(6)}${k.slice(-4)}`;
+    }
+    return provider.api_key_set ? "••••••••" : null;
   })();
 
   // Try lookup by name, lowercase name, then fall back to custom logo.

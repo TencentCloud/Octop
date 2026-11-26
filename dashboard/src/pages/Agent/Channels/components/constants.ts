@@ -168,13 +168,18 @@ export interface ChannelField {
   /** Visible label (Chinese; falls back when no i18n key). */
   label: string;
   /** Antd input type. */
-  type?: "text" | "password" | "textarea" | "json" | "switch";
+  type?: "text" | "password" | "textarea" | "json" | "switch" | "select";
+  options?: string[];
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
   required?: boolean;
-  /** Optional i18n key for help beneath the control. */
+  /** Optional i18n key or plain text for the label tooltip. */
   helpKey?: string;
+  /** Default for newly created channels. */
+  defaultValue?: string | number | boolean;
+  /** Value for older saved configurations missing this field. */
+  legacyDefaultValue?: string | number | boolean;
 }
 
 export const QQ_GROUP_VISIBILITIES = [
@@ -195,9 +200,12 @@ export interface QqGroupContextConfig {
   history_limit: number;
   history_ttl_seconds: number;
   clear_after_reply: boolean;
+  owner_commands_only: boolean;
+  owner_tools_only: boolean;
+  owner_ids: string[];
   groups?: Record<
     string,
-    Record<string, string | number | boolean | null | undefined>
+    Record<string, string | string[] | number | boolean | null | undefined>
   >;
 }
 
@@ -209,6 +217,9 @@ export const DEFAULT_QQ_GROUP_CONTEXT_CONFIG: QqGroupContextConfig = {
   history_limit: 10,
   history_ttl_seconds: 300,
   clear_after_reply: true,
+  owner_commands_only: true,
+  owner_tools_only: false,
+  owner_ids: [],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -240,6 +251,12 @@ export function normalizeQqGroupContextConfig(
     parsed.activation === "always" ? "always" : ("mention" as const);
   const rawLimit = Number(parsed.history_limit);
   const rawTtl = Number(parsed.history_ttl_seconds);
+  const rawOwnerIds =
+    typeof parsed.owner_ids === "string"
+      ? parsed.owner_ids.split(/[\s,，]+/u)
+      : Array.isArray(parsed.owner_ids)
+      ? parsed.owner_ids
+      : [];
 
   return {
     ...parsed,
@@ -265,6 +282,22 @@ export function normalizeQqGroupContextConfig(
       typeof parsed.clear_after_reply === "boolean"
         ? parsed.clear_after_reply
         : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.clear_after_reply,
+    owner_commands_only:
+      typeof parsed.owner_commands_only === "boolean"
+        ? parsed.owner_commands_only
+        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.owner_commands_only,
+    owner_tools_only:
+      typeof parsed.owner_tools_only === "boolean"
+        ? parsed.owner_tools_only
+        : false,
+    owner_ids: [
+      ...new Set(
+        rawOwnerIds
+          .filter((id): id is string => typeof id === "string")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ],
   };
 }
 
@@ -401,10 +434,110 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   telegram: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
     {
+      name: "group_activation",
+      label: "channels.telegram_group_activation",
+      type: "select",
+      defaultValue: "always",
+      legacyDefaultValue: "always",
+      options: ["always", "mention", "mention_or_reply"],
+      helpKey: "channels.telegram_group_activationHelp",
+    },
+    {
       name: "allowed_user_ids",
       label: "channels.telegramAllowedUsers",
       type: "textarea",
       helpKey: "channels.telegramAllowedUsersHelp",
+    },
+    {
+      name: "allowed_chat_ids",
+      label: "channels.telegram_allowed_chat_ids",
+      type: "textarea",
+    },
+    {
+      name: "allow_unaddressed_commands",
+      label: "channels.telegram_allow_unaddressed_commands",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "topic_isolation",
+      label: "channels.telegram_topic_isolation",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+      helpKey: "channels.telegram_topic_isolationHelp",
+    },
+    {
+      name: "reply_to_message",
+      label: "channels.telegram_reply_to_message",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "edited_messages",
+      label: "channels.telegram_edited_messages",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "streaming_mode",
+      label: "channels.telegram_streaming_mode",
+      type: "select",
+      defaultValue: "off",
+      legacyDefaultValue: "off",
+      options: ["off", "auto", "edit", "draft"],
+    },
+    {
+      name: "status_reactions",
+      label: "channels.telegram_status_reactions",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "disable_notification",
+      label: "channels.telegram_disable_notification",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "protect_content",
+      label: "channels.telegram_protect_content",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "link_preview",
+      label: "channels.telegram_link_preview",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "command_menu",
+      label: "channels.telegram_command_menu",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "albums",
+      label: "channels.telegram_albums",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "audio_as_voice",
+      label: "channels.telegram_audio_as_voice",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
     },
     {
       name: "http_proxy",
@@ -448,15 +581,26 @@ export function normalizeChannelFieldValue(
   fieldName: string,
   value: unknown,
 ): unknown {
-  if (fieldName === "allowed_channel_ids" || fieldName === "allowed_user_ids") {
+  if (
+    ["allowed_channel_ids", "allowed_user_ids", "allowed_chat_ids"].includes(
+      fieldName,
+    )
+  ) {
     const entries = Array.isArray(value)
       ? value
       : String(value ?? "")
           .trim()
           .split(/[,\s]+/)
           .filter(Boolean);
-    if (entries.some((entry) => !/^\d+$/.test(String(entry)))) {
-      throw new Error("Invalid Discord ID");
+    if (
+      entries.some(
+        (entry) =>
+          !(fieldName === "allowed_chat_ids" ? /^-?\d+$/ : /^\d+$/).test(
+            String(entry),
+          ),
+      )
+    ) {
+      throw new Error("Invalid channel ID");
     }
     return [...new Set(entries.map(String))];
   }
@@ -496,24 +640,57 @@ export interface PluginChannelKindInfo {
   label: string;
   icon: string;
   intro_url: string;
+  description?: string;
   fields?: {
     name: string;
     label?: string;
     type?: string;
     placeholder?: string;
     required?: boolean;
+    helpKey?: string;
+    defaultValue?: ChannelField["defaultValue"];
+    legacyDefaultValue?: ChannelField["legacyDefaultValue"];
   }[];
   plugin_id: string;
 }
 
 /** Kinds registered at runtime through ``registerPluginChannelKind``. */
 const PLUGIN_CHANNEL_KINDS: string[] = [];
+export const CHANNEL_DESCRIPTIONS: Record<string, string> = {};
+// Capture compile-time kinds before any legacy runtime catalogue injection.
+const BUILTIN_CHANNEL_KINDS = new Set<string>(Object.keys(CHANNEL_LABELS));
+const ORIGINAL_CHANNEL_METADATA = new Map<
+  string,
+  {
+    label: string;
+    labelKey: string | undefined;
+    description: string | undefined;
+    icon: string;
+    url: string | undefined;
+    fields: ChannelField[] | undefined;
+  }
+>();
 
 export function replacePluginChannelKinds(
   infos: PluginChannelKindInfo[],
 ): void {
   for (const kind of PLUGIN_CHANNEL_KINDS) {
     const key = kind as ChannelKey;
+    delete CHANNEL_DESCRIPTIONS[kind];
+    const original = ORIGINAL_CHANNEL_METADATA.get(kind);
+    if (original) {
+      CHANNEL_LABELS[key] = original.label;
+      if (original.labelKey !== undefined)
+        CHANNEL_LABEL_KEYS[key] = original.labelKey;
+      else delete (CHANNEL_LABEL_KEYS as Partial<Record<string, string>>)[kind];
+      if (original.description !== undefined)
+        CHANNEL_DESCRIPTIONS[kind] = original.description;
+      CHANNEL_ICONS[key] = original.icon;
+      CHANNEL_URLS[key] = original.url;
+      CHANNEL_FIELDS[key] = original.fields;
+      ORIGINAL_CHANNEL_METADATA.delete(kind);
+      continue;
+    }
     const index = CHANNEL_KEYS.indexOf(key);
     if (index >= 0) CHANNEL_KEYS.splice(index, 1);
     delete (CHANNEL_LABELS as Partial<Record<string, string>>)[kind];
@@ -535,7 +712,9 @@ export function isPluginChannelKind(key: string): boolean {
  *
  * Builtin constants stay compile-time; plugin kinds join the same lookup
  * tables so ChannelCard / ChannelDrawer need no per-kind code. Idempotent
- * within one catalogue snapshot; builtin kinds are never shadowed.
+ * within one catalogue snapshot; builtin kinds are never shadowed. Legacy
+ * runtime entries may be overlaid by the gateway-approved plugin catalogue
+ * and are restored when that plugin is unloaded.
  * Use replacePluginChannelKinds to apply a refreshed snapshot.
  * Returns true when the kind was added.
  */
@@ -545,12 +724,30 @@ export function registerPluginChannelKind(
   const kind = String(info?.kind ?? "")
     .trim()
     .toLowerCase();
-  if (!kind || PLUGIN_CHANNEL_KINDS.includes(kind)) return false;
-  if (CHANNEL_KEYS.includes(kind as ChannelKey)) return false;
+  if (
+    !kind ||
+    PLUGIN_CHANNEL_KINDS.includes(kind) ||
+    BUILTIN_CHANNEL_KINDS.has(kind)
+  )
+    return false;
+  if (CHANNEL_KEYS.includes(kind as ChannelKey)) {
+    const key = kind as ChannelKey;
+    ORIGINAL_CHANNEL_METADATA.set(kind, {
+      label: CHANNEL_LABELS[key],
+      labelKey: CHANNEL_LABEL_KEYS[key],
+      description: CHANNEL_DESCRIPTIONS[kind],
+      icon: CHANNEL_ICONS[key],
+      url: CHANNEL_URLS[key],
+      fields: CHANNEL_FIELDS[key],
+    });
+    delete (CHANNEL_LABEL_KEYS as Partial<Record<string, string>>)[kind];
+    delete CHANNEL_FIELDS[key];
+  }
 
   PLUGIN_CHANNEL_KINDS.push(kind);
   const typed = kind as ChannelKey;
-  CHANNEL_KEYS.push(typed);
+  if (!CHANNEL_KEYS.includes(typed)) CHANNEL_KEYS.push(typed);
+  CHANNEL_DESCRIPTIONS[kind] = String(info.description ?? "");
   // No CHANNEL_LABEL_KEYS entry on purpose: an unknown i18n key would render
   // verbatim, so the label falls back to CHANNEL_LABELS / the raw kind.
   if (info.label) {
@@ -577,6 +774,9 @@ export function registerPluginChannelKind(
             : "text",
         placeholder: f?.placeholder ? String(f.placeholder) : undefined,
         required: f?.required === true,
+        helpKey: f?.helpKey,
+        defaultValue: f?.defaultValue,
+        legacyDefaultValue: f?.legacyDefaultValue,
       }),
     );
   }

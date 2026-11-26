@@ -148,18 +148,32 @@ class StdioRuntime:
             for definition in definitions
         ]
 
+    async def expert_accessible(self, user_id: int, agent_id: str) -> bool:
+        from octop.infra.users.groups import expert_visible_to
+
+        def allowed() -> bool:
+            row = self._repos.agent_repo.get(agent_id)
+            if row is None:
+                return False
+            if row.user_id in (None, user_id):
+                return True
+            user = self._repos.user_repo.get(user_id)
+            return user is not None and expert_visible_to(
+                self._repos, row, user_id=user_id, is_admin=user.role == "admin"
+            )
+
+        return await asyncio.to_thread(allowed)
+
     async def call(
         self, user_id: int, instance_id: str, agent_id: str, name: str, args: dict[str, Any]
     ) -> Any:
         config = get_config().get("configurable") or {}
         locale = str(config.get("locale") or "en")
         thread_id = str(config.get("thread_id") or "")
-        row = await asyncio.to_thread(self._repos.agent_repo.get, agent_id)
         if (
             not thread_id
             or str(config.get("user") or "") != str(user_id)
-            or row is None
-            or row.user_id not in (None, user_id)
+            or not await self.expert_accessible(user_id, agent_id)
         ):
             raise ToolException(tr("connector.stdio.context_required", locale))
         spec = await self._spec(user_id, instance_id)

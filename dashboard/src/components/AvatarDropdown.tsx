@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, type ReactNode } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  type ReactNode,
+  type SyntheticEvent,
+} from "react";
 import {
   Drawer,
   Form,
@@ -39,6 +45,7 @@ import { apiErrorMessage } from "../utils/apiError";
 import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
 import { useUserRole } from "../hooks/useUserRole";
 import { useIsMobile } from "../hooks/useIsMobile";
+import AppVersionBadge from "./AppVersionBadge";
 import ThemeSwitcher from "./ThemeSwitcher";
 import PaletteSwitcher from "./PaletteSwitcher";
 import type { OctopUser } from "../api/modules/auth";
@@ -689,28 +696,52 @@ export default function AvatarDropdown({
     </div>
   );
 
+  const stopUpgradeEvent = (event: SyntheticEvent) => {
+    event.stopPropagation();
+  };
+
   return (
     <>
-      <Popover
-        content={menuContent}
-        trigger="click"
-        open={menuOpen}
-        onOpenChange={setMenuOpen}
-        placement="topLeft"
-        arrow={false}
-        overlayClassName={styles.menuPopover}
-        destroyOnHidden
-        getPopupContainer={() => document.body}
+      <div
+        className={cx(
+          placement === "sidebar" && styles.accountRow,
+          placement === "sidebar" && compact && styles.accountRowCompact,
+        )}
       >
-        {triggerButton}
-      </Popover>
+        <Popover
+          content={menuContent}
+          trigger="click"
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          placement="topLeft"
+          arrow={false}
+          overlayClassName={styles.menuPopover}
+          destroyOnHidden
+          getPopupContainer={() => document.body}
+        >
+          {triggerButton}
+        </Popover>
+        {placement === "sidebar" ? (
+          <div
+            className={cx(
+              styles.accountUpgrade,
+              compact && styles.accountUpgradeCompact,
+            )}
+            onClick={stopUpgradeEvent}
+            onMouseDown={stopUpgradeEvent}
+            onPointerDown={stopUpgradeEvent}
+          >
+            <AppVersionBadge isMobile={isMobile} />
+          </div>
+        ) : null}
+      </div>
 
       <Drawer
         title={t("account.settings")}
         open={settingsOpen}
         onClose={closeSettings}
         placement="right"
-        width={isMobile ? "100%" : 480}
+        width={isMobile ? "100%" : 520}
         destroyOnHidden
         className={styles.settingsDrawer}
         footer={

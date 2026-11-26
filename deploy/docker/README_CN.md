@@ -91,13 +91,14 @@ Compose 可在 `deploy/docker/.env` 中配置上述变量。注意：`.env` 只�
 
 ### 数据持久化
 
-- Compose 默认将宿主机 `~/.octop` 挂载到容器 `/data/.octop`
+- Compose 把当前用户的 `~/.octop` 挂到容器 `/data/.octop`。已有安装不用改配置、不用迁数据，升级后仍是这个目录
+- compose 文件写的是 `${HOME}/.octop`（`HOME` 未设置时为 `/root/.octop`）。字面 `~` 在 `HOME` 缺失时不会被 Compose 展开，会挂到 compose 文件旁一个空的 `~` 目录
 - `docker run` 示例使用命名卷 `octop-data`
 - 首次启动：`OCTOP_DEFAULT_PASSWORD` 合格则执行 `octop init` 并写入 `credential.txt`；未设置或不合格则不建管理员，向导口令写入 `/data/.octop/octop-login.txt`，打开页面完成设置（容器不会因弱密码退出）。
 
 ### Kubernetes
 
-多副本、共用 PostgreSQL（含 pgvector）和统一入口的清单在 [../k8s/README_CN.md](../k8s/README_CN.md)。
+多副本、共用 PostgreSQL（含 pgvector）和统一入口的 Helm chart 在 [../helm/octop/README_CN.md](../helm/octop/README_CN.md)。
 
 ### 健康检查
 

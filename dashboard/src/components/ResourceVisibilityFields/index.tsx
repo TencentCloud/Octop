@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, Form, Radio, Select, Tag } from "antd";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 import cx from "classnames";
 import {
   userGroupsApi,
   type ResourceVisibilityMode,
   type UserGroup,
 } from "../../api/modules/userGroups";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { userCan } from "../../utils/permissions";
 import { ResourceAvatar, ROLE_AVATAR_PRESETS } from "../AvatarPicker";
 import {
   isVisibilityControlVisible,
@@ -116,6 +119,19 @@ function useResourceAudience(): AudienceState {
   return snap;
 }
 
+/**
+ * Whether the visibility Form.Item will render at all for this audience
+ * (e.g. a single-account instance hides it). Drawers use this to omit the
+ * whole sharing section instead of rendering an empty group.
+ */
+export function useResourceVisibilityAvailable(opts: {
+  allowOwner: boolean;
+  visibility: ResourceVisibilityMode;
+}): boolean {
+  const audience = useResourceAudience();
+  return isVisibilityControlVisible(audience, opts);
+}
+
 function GroupLabel({
   group,
   disabledLabel,
@@ -148,6 +164,7 @@ export function ResourceVisibilityFields({
   className,
 }: FieldsProps) {
   const { t } = useTranslation();
+  const user = useCurrentUser();
   const audience = useResourceAudience();
   const groups = audience.groups;
   const byId = useMemo(
@@ -156,6 +173,7 @@ export function ResourceVisibilityFields({
   );
   const disabledLabel = t("adminUsers.statusDisabled");
   const showGroups = showGroupVisibilityOption(audience, visibility);
+  const canManageGroups = userCan(user, "user_groups");
 
   if (!isVisibilityControlVisible(audience, { allowOwner, visibility })) {
     return null;
@@ -232,6 +250,11 @@ export function ResourceVisibilityFields({
           onChange={(ids) => onChange({ visibility, groupIds: ids })}
         />
       ) : null}
+      {visibility === "groups" && canManageGroups ? (
+        <Link className={styles.manageGroups} to="/admin/users?tab=groups">
+          {t("resourceVisibility.manageGroups")}
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -246,6 +269,8 @@ type FormItemProps = {
   label?: string;
   /** Hint under the control (e.g. skill package / connector copy). */
   extra?: string;
+  /** Hint as a "?" tooltip on the label instead of a visible line. */
+  tooltip?: string;
   className?: string;
 };
 
@@ -258,6 +283,7 @@ export function ResourceVisibilityFormItem({
   disabled,
   label,
   extra,
+  tooltip,
   className,
 }: FormItemProps) {
   const { t } = useTranslation();
@@ -269,6 +295,7 @@ export function ResourceVisibilityFormItem({
     <Form.Item
       label={label ?? t("resourceVisibility.label")}
       extra={extra}
+      tooltip={tooltip}
       className={cx(styles.formItem, className)}
       required={false}
     >

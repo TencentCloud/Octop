@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b5-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b7-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -162,18 +162,18 @@ Octop 支持两个方向的 ACP 集成：
 - [x] **资源共享池** — 构建技能 / 子智能体共享池，用户在创建专家时可直接取用，无需从零搭建。
 - [x] **专家共享** — 支持用户将自有专家共享给其他用户使用，沉淀优秀配置、避免重复造轮子。
 - [x] **PC 端客户端** — Windows / macOS / Linux 原生桌面应用已发布，可与 Web 控制台、IM 通道并行使用。
+- [x] **插件市场** — 已上线官网 [octop.cloud](https://octop.cloud)，可在 Octop 内发现、安装与更新第三方插件。
 
 **进行中**
 - [ ] **AgentTeams** *（Beta）* — 支持协调者自主调度、编排多位专家，协同完成复杂多步骤任务。
 - [ ] **移动端客户端** *（内测中）* — 原生移动端应用，目前处于内部测试阶段。
+- [ ] **Managed Agents** *（Beta）* — 已通过托管专家落地，进入 Beta：平台托管 Agent 生命周期（开通、伸缩与运维），无需自行维护完整自托管栈。
+- [ ] **云边端一体** *（内测中）* — 云端大脑管控本地手脚：本地运行 Octop 作为执行端，由云端统一调度与管控。
 
 **规划中**
 - [ ] **浏览器与终端能力补全** — 增强浏览器技能*录制*（把操作流程录制为可复用技能），并完善终端 AI 助手能力。
 - [ ] **自进化能力** — 将日常对话自动沉淀为技能，让助手随使用不断成长。
-- [ ] **Managed Agents** — 平台托管的 Agent 生命周期（开通、伸缩与运维），无需自行维护完整自托管栈。
 - [ ] **Project** — 以项目为边界组织 Agent、文件与会话，围绕同一目标协作。
-- [ ] **云边端一体** — 本地运行 Octop，同时可将选定任务调度到云端执行：轻量工作留在本地，重活按需上云。
-- [ ] **插件市场** — 搭建插件市场，支持在 Octop 内发现、安装与更新第三方插件。
 - [ ] **对话式控制面** — 完善 Octop 自身 Skill，让对话即可覆盖当前控制台的完整能力：创建专家、配置通道、管理知识库，并支持开发插件。
 
 规划会随社区发展动态调整，以上仅供参考。
@@ -297,7 +297,7 @@ docker run -d \
 
 打开 `http://localhost:8088`。`OCTOP_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.octop/octop-login.txt`）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
 
-共用 PostgreSQL、多副本的 Kubernetes 清单在 [deploy/k8s/README_CN.md](deploy/k8s/README_CN.md)。
+共用 PostgreSQL、多副本的 Kubernetes 安装说明在 [deploy/helm/octop/README_CN.md](deploy/helm/octop/README_CN.md)。安装地址是 `oci://ghcr.io/tencentcloud/octop/charts/octop`。
 
 > **密码策略：** 至少 8 位，且同时包含字母和数字。
 
@@ -306,7 +306,7 @@ docker run -d \
 | `OCTOP_PORT` | `8088` | HTTP 监听端口 |
 | `OCTOP_DEFAULT_PASSWORD` | _(未设置)_ | 首次运行管理员密码（Docker 引导）。合格则建账号；未设置或不合格则走设置向导 |
 | `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
-| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
+| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载）。不设置则仍挂当前用户的 `~/.octop`，升级不用改配置、不用迁数据 |
 
 完整变量列表见 [`.env.example`](.env.example)。
 
@@ -518,7 +518,7 @@ src/octop/
 
 dashboard/     前端源码（Vite）— 在此编辑，运行 make build-frontend
 
-deploy/        Docker（deploy/docker）与 Kubernetes（deploy/k8s）
+deploy/        Docker（deploy/docker）与 Kubernetes Helm chart（deploy/helm/octop）
 tests/         unit/ + integration/
 ```
 
@@ -567,12 +567,23 @@ cd dashboard && npx tsc -b
 
 ## 🔗 相关项目
 
+### 官方项目
+
 | 项目 | 描述 |
 |------|------|
 | [Octop Harness](https://github.com/TencentCloud/octop-harness) | Agent 运行时 — 模型路由、工具、Skill、检查点 |
 | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | 多平台 IM 通道桥接 |
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
+| [Octop Pet](https://github.com/jubaoliang/OctopPet) | Octop 桌面宠物 |
+| [Octop Marketplace](https://github.com/jubaoliang/OctopMarketplace) | Octop 项目市场 |
+| [OctopBot](https://github.com/jubaoliang/OctopBot) | 面向 iOS 和 Android 的移动客户端，可随时与 Octop 交互 |
+
+### 社区项目
+
+| 项目 | 描述 |
+|------|------|
+| [OctopLink](https://github.com/DingXiaoWu0512/OctopLink) | 社区鸿蒙原生客户端 — ArkTS 应用，支持流式对话、工作区、记忆 |
 
 ## 💬 社区
 

@@ -18,7 +18,7 @@ function ready(patch: Partial<AudienceSnapshot> = {}): AudienceSnapshot {
 }
 
 describe("needsGroupCatalog", () => {
-  it("skips the catalog when the picker or the groups radio cannot appear", () => {
+  it("skips the catalog when the picker cannot appear or groups are empty", () => {
     expect(needsGroupCatalog({ userCount: 1, groupCount: 4 })).toBe(false);
     expect(needsGroupCatalog({ userCount: 3, groupCount: 0 })).toBe(false);
   });
@@ -30,34 +30,13 @@ describe("needsGroupCatalog", () => {
 });
 
 describe("showGroupVisibilityOption", () => {
-  it("hides the group choice when there are no groups", () => {
-    expect(showGroupVisibilityOption(ready(), "owner")).toBe(false);
-    expect(showGroupVisibilityOption(ready(), "all")).toBe(false);
-  });
-
-  it("keeps the group choice when the resource is already limited to groups", () => {
+  it("always shows the group choice once the picker is visible", () => {
+    expect(showGroupVisibilityOption(ready(), "owner")).toBe(true);
+    expect(showGroupVisibilityOption(ready(), "all")).toBe(true);
     expect(showGroupVisibilityOption(ready(), "groups")).toBe(true);
-  });
-
-  it("shows the group choice when groups exist", () => {
     expect(showGroupVisibilityOption(ready({ groupCount: 2 }), "all")).toBe(
       true,
     );
-  });
-
-  it("falls back to the catalog when the count is unknown", () => {
-    expect(
-      showGroupVisibilityOption(
-        ready({ groupCount: null, groupsLoaded: true, groupCountFromList: 0 }),
-        "all",
-      ),
-    ).toBe(false);
-    expect(
-      showGroupVisibilityOption(
-        ready({ groupCount: null, groupsLoaded: false, groupCountFromList: 0 }),
-        "all",
-      ),
-    ).toBe(true);
   });
 });
 
@@ -80,25 +59,22 @@ describe("isVisibilityControlVisible", () => {
     ).toBe(false);
   });
 
-  it("keeps owner and everyone when several accounts have no groups", () => {
+  it("keeps the picker when several accounts have no groups", () => {
     expect(
       isVisibilityControlVisible(ready(), {
         allowOwner: true,
         visibility: "owner",
       }),
     ).toBe(true);
-  });
-
-  it("hides an everyone-only picker when there are no groups", () => {
     expect(
       isVisibilityControlVisible(ready(), {
         allowOwner: false,
         visibility: "all",
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("keeps a groups-only picker that is already restricted", () => {
+  it("keeps a groups-restricted picker", () => {
     expect(
       isVisibilityControlVisible(ready(), {
         allowOwner: false,

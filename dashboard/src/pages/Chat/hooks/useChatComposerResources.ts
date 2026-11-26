@@ -12,6 +12,8 @@ import type { ResolvedModel } from "../../../api/types";
 import { CONNECTORS_CHANGED_EVENT } from "../../Agent/Connectors/customMcpUtils";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useAgent } from "../../../context/AgentContext";
+import { useAcpSessionModes } from "../../../hooks/useAcpSessionModes";
+import { isUnattendedSessionMode } from "../../../api/modules/acp";
 import { activeModelToRef } from "./useChatContextWindow";
 import {
   hasSavedConnectors,
@@ -31,6 +33,7 @@ import {
   isPendingThread,
   syncSessionConversationMode,
   syncSessionHitlPolicy,
+  syncSessionMode,
 } from "./useSessions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import * as chatStore from "./chatStore";
@@ -69,6 +72,7 @@ export function useChatComposerResources(
   stickyReasoningEffort?: string | null,
   stickyConversationMode?: ConversationMode | null,
   stickyHitlPolicy?: HitlSessionPolicy | null,
+  stickySessionMode?: string | null,
   persistThreadSettings = true,
 ) {
   const user = useCurrentUser();
@@ -78,6 +82,19 @@ export function useChatComposerResources(
   const expertDefaultMode = parseConversationMode(
     expert?.config?.conversation_mode,
   );
+  const expertYolo =
+    expert?.kind === "managed" &&
+    expert.config?.managed_permission_mode === "yolo";
+  const managedRunner =
+    expert?.kind === "managed" &&
+    typeof expert.config?.managed_runner === "string"
+      ? expert.config.managed_runner
+      : "";
+  const sessionModes = useAcpSessionModes(managedRunner);
+  const pinnedSessionMode =
+    typeof expert?.config?.managed_session_mode === "string"
+      ? expert.config.managed_session_mode.trim()
+      : "";
   const teamHost = isTeamAgent(expert);
   const bridgeConnectionId =
     expert?.bridge && expert.bridge_connection_id
@@ -140,6 +157,7 @@ export function useChatComposerResources(
   const [hitlPolicy, setHitlPolicy] = useState<HitlSessionPolicy>(
     DEFAULT_HITL_SESSION_POLICY,
   );
+  const [sessionMode, setSessionMode] = useState("");
   const [conversationOverrides, setConversationOverrides] = useState<
     Record<
       string,
@@ -230,10 +248,36 @@ export function useChatComposerResources(
   useEffect(() => {
     setHitlPolicy(
       isNewSession
-        ? DEFAULT_HITL_SESSION_POLICY
+        ? expertYolo
+          ? { mode: "allow_all" }
+          : DEFAULT_HITL_SESSION_POLICY
         : parseHitlSessionPolicy(stickyHitlPolicy),
     );
-  }, [isNewSession, stickyHitlPolicy, activeThreadId]);
+  }, [isNewSession, stickyHitlPolicy, activeThreadId, expertYolo]);
+
+  const expertSessionMode =
+    pinnedSessionMode ||
+    (expertYolo
+      ? sessionModes.find((mode) => isUnattendedSessionMode(mode.id))?.id ?? ""
+      : "") ||
+    sessionModes[0]?.id ||
+    "";
+
+  useEffect(() => {
+    if (expert?.kind !== "managed") {
+      setSessionMode("");
+      return;
+    }
+    const sticky =
+      !isNewSession && stickySessionMode ? stickySessionMode.trim() : "";
+    setSessionMode(sticky || expertSessionMode);
+  }, [
+    expert?.kind,
+    isNewSession,
+    stickySessionMode,
+    activeThreadId,
+    expertSessionMode,
+  ]);
 
   useEffect(() => {
     if (agentsLoading) return;
@@ -303,6 +347,8 @@ export function useChatComposerResources(
                     }`
                   : i.display_name,
               kind: i.kind,
+              avatar_icon: i.avatar_icon,
+              avatar_url: i.avatar_url,
               default_open: remoteBridge
                 ? i.default_open === true
                 : i.default_open === true && i.owner_user_id === currentUserId,
@@ -670,6 +716,28 @@ export function useChatComposerResources(
     [activeThreadId, persistThreadSettings, resolvedAgentId],
   );
 
+  const handleSessionModeChange = useCallback(
+    (modeId: string) => {
+      const next = modeId.trim();
+      if (!next) return;
+      setSessionMode(next);
+      if (activeThreadId) {
+        syncSessionMode(activeThreadId, next);
+      }
+      if (
+        persistThreadSettings &&
+        resolvedAgentId &&
+        activeThreadId &&
+        !isPendingThread(activeThreadId)
+      ) {
+        void octopThreadsApi.patch(resolvedAgentId, activeThreadId, {
+          session_mode: next,
+        });
+      }
+    },
+    [activeThreadId, persistThreadSettings, resolvedAgentId],
+  );
+
   return {
     selectedModel,
     setSelectedModel: handleModelChange,
@@ -680,6 +748,9 @@ export function useChatComposerResources(
     handleConversationModeChange,
     hitlPolicy,
     handleHitlPolicyChange,
+    sessionModes,
+    sessionMode,
+    handleSessionModeChange,
     selectedConnectors,
     selectedKnowledgeBaseIds,
     chatConnectors,

@@ -99,6 +99,37 @@ describe("normalizeQqGroupContextConfig", () => {
     });
   });
 
+  it("protects legacy group configs and preserves explicit opt-out", () => {
+    expect(normalizeQqGroupContextConfig({ enabled: false })).toMatchObject({
+      enabled: false,
+      owner_commands_only: true,
+      owner_tools_only: false,
+      owner_ids: [],
+    });
+    expect(
+      normalizeQqGroupContextConfig({ owner_commands_only: false }),
+    ).toMatchObject({ owner_commands_only: false });
+    expect(
+      normalizeQqGroupContextConfig({ owner_tools_only: true }),
+    ).toMatchObject({ owner_tools_only: true });
+    expect(
+      normalizeQqGroupContextConfig({ owner_tools_only: false }),
+    ).toMatchObject({ owner_tools_only: false });
+  });
+
+  it("normalizes owner IDs without losing per-group authorization overrides", () => {
+    const groups = { "group-1": { owner_ids: ["group-owner"] } };
+    expect(
+      normalizeQqGroupContextConfig({
+        owner_ids: [" owner-1 ", "owner-2", "owner-1", "", 123],
+        groups,
+      }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"], groups });
+    expect(
+      normalizeQqGroupContextConfig({ owner_ids: "owner-1, owner-2\nowner-1" }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"] });
+  });
+
   it("forces mention-only visibility to discard passive history", () => {
     expect(
       normalizeQqGroupContextConfig({
@@ -131,6 +162,53 @@ describe("normalizeQqGroupContextConfig", () => {
       history_limit: 25,
       groups,
     });
+  });
+});
+
+describe("Telegram configuration", () => {
+  it("exposes typed activation and streaming choices with Gateway defaults", () => {
+    const fields = CHANNEL_FIELDS.telegram!;
+    expect(fields.find((f) => f.name === "group_activation")).toMatchObject({
+      type: "select",
+      options: ["always", "mention", "mention_or_reply"],
+      defaultValue: "always",
+      legacyDefaultValue: "always",
+    });
+    expect(fields.find((f) => f.name === "topic_isolation")).toMatchObject({
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    });
+    expect(fields.find((f) => f.name === "edited_messages")?.defaultValue).toBe(
+      false,
+    );
+    expect(fields.find((f) => f.name === "streaming_mode")?.options).toEqual([
+      "off",
+      "auto",
+      "edit",
+      "draft",
+    ]);
+  });
+
+  it("serializes signed chat IDs as exact strings without weakening user ID validation", () => {
+    expect(
+      normalizeChannelFieldValue(
+        "allowed_chat_ids",
+        "-1001234567890123456,42 -1001234567890123456",
+      ),
+    ).toEqual(["-1001234567890123456", "42"]);
+    expect(normalizeChannelFieldValue("allowed_chat_ids", "")).toEqual([]);
+    expect(
+      normalizeChannelFieldValue("allowed_chat_ids", [-100123, "42"]),
+    ).toEqual(["-100123", "42"]);
+    for (const invalid of ["@group", "1.2", "-", "1e3"]) {
+      expect(() =>
+        normalizeChannelFieldValue("allowed_chat_ids", invalid),
+      ).toThrow();
+    }
+    expect(() =>
+      normalizeChannelFieldValue("allowed_user_ids", "-42"),
+    ).toThrow();
   });
 });
 

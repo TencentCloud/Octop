@@ -129,7 +129,14 @@ class StdioMCPTools:
             await runtime.close(user_id=user_id, agent_id=agent_id)
 
     async def prepare_tools(
-        self, agent: Any, *, agent_id: str, user_id: int | None, names: list[str]
+        self,
+        agent: Any,
+        *,
+        agent_id: str,
+        user_id: int | None,
+        names: list[str],
+        custom_configs: dict[str, Any] | None = None,
+        load_user: dict[str, int] | None = None,
     ) -> None:
         import logging
         from types import SimpleNamespace
@@ -155,19 +162,38 @@ class StdioMCPTools:
             if entry and entry.mcp_mode == "stdio" and instance.mcp_server_name in names:
                 selected.append(instance)
         custom = await asyncio.to_thread(self._service.custom_harness_configs, user_id)
+        resolved = custom if custom_configs is None else custom_configs
         for name in names:
-            spec = custom.get(name)
-            if isinstance(spec, dict) and spec.get("transport") == "stdio":
+            spec = resolved.get(name)
+            source_name = name
+            owner = (load_user or {}).get(name, user_id)
+            if owner != user_id:
+                aliases = await asyncio.to_thread(
+                    self._service.shared_custom_harness_aliases, owner
+                )
+                source_name = next((long for long, short in aliases.items() if short == name), "")
+            visible_spec = custom.get(source_name)
+            if (
+                isinstance(spec, dict)
+                and spec.get("transport") == "stdio"
+                and isinstance(visible_spec, dict)
+                and fingerprint_mcp_spec(spec) == fingerprint_mcp_spec(visible_spec)
+            ):
                 selected.append(
                     SimpleNamespace(
-                        instance_id=f"custom:{name}",
+                        instance_id=f"custom:{source_name}",
                         kind="custom-mcp",
                         mcp_server_name=name,
                     )
                 )
         for instance in selected:
             prefix = f"{instance.mcp_server_name}_"
-            if any(t.startswith(prefix) for t in getattr(agent, "_mcp_tool_name_set", frozenset())):
+            sources = getattr(agent, "_stdio_mcp_sources", {})
+            source = (user_id, instance.instance_id)
+            loaded = any(
+                t.startswith(prefix) for t in getattr(agent, "_mcp_tool_name_set", frozenset())
+            )
+            if loaded and sources.get(instance.mcp_server_name) == source:
                 continue
             try:
                 runtime = self.runtime_for(instance.kind)
@@ -175,7 +201,19 @@ class StdioMCPTools:
                 tools = await runtime.build_tools(
                     user_id=user_id, instance=instance, agent_id=agent_id
                 )
+                if loaded:
+                    agent.replace_mcp_tools(
+                        [t for t in agent._mcp_tools if not t.name.startswith(prefix)]
+                    )
                 agent.append_mcp_tools(tools)
+                agent._stdio_mcp_sources = {**sources, instance.mcp_server_name: source}
+                attached = getattr(agent, "_mcp_attached_user", {})
+                agent._mcp_attached_user = {
+                    **attached,
+                    instance.mcp_server_name: (load_user or {}).get(
+                        instance.mcp_server_name, user_id
+                    ),
+                }
             except (Exception, BaseExceptionGroup):
                 logging.getLogger(__name__).warning(
                     "Stdio tool discovery failed for instance %s", instance.instance_id

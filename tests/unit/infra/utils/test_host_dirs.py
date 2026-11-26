@@ -180,6 +180,43 @@ def test_list_host_subdirs_includes_root_home_when_denied_prefix(
 
 
 @posix_only
+def test_list_host_subdirs_hides_system_directories_at_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+
+    names = {item["name"] for item in list_host_subdirs("/")}
+    for banned in (
+        "bin",
+        "boot",
+        "etc",
+        "lib",
+        "lib64",
+        "media",
+        "mnt",
+        "opt",
+        "sbin",
+        "srv",
+        "usr",
+        "tmp",
+        "user",
+        "var",
+    ):
+        assert banned not in names
+    if Path("/home").is_dir():
+        assert "home" in names
+
+
+def test_list_host_subdirs_keeps_system_names_under_other_parents(tmp_path: Path) -> None:
+    (tmp_path / "opt").mkdir()
+    (tmp_path / "notes").mkdir()
+    names = {item["name"] for item in list_host_subdirs(str(tmp_path))}
+    assert names == {"notes", "opt"}
+
+
+@posix_only
 def test_list_host_subdirs_hides_root_when_not_home(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

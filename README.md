@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b5-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.3b7-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -160,18 +160,18 @@ Here are our mid-to-long term plans:
 - [x] **Shared resource pool** — a central pool of skills and sub-agents that any user can drop into a new expert without rebuilding from scratch.
 - [x] **Expert sharing** — publish your experts to other users in the same deployment, so good configurations are reused instead of recreated.
 - [x] **PC client** — native desktop apps for Windows / macOS / Linux alongside the web dashboard and IM channels.
+- [x] **Plugin marketplace** — live on [octop.cloud](https://octop.cloud); discover, install, and update third-party plugins from within Octop.
 
 **In progress**
 - [ ] **AgentTeams** *(Beta)* — let one coordinator autonomously schedule and orchestrate multiple experts to tackle multi-step tasks.
 - [ ] **Mobile client** *(closed beta)* — native mobile apps currently in internal testing.
+- [ ] **Managed Agents** *(Beta)* — shipped as managed experts and now in Beta: platform-hosted agent lifecycle (provision, scale, and operate) without running the full self-hosted stack yourself.
+- [ ] **Cloud–edge continuum** *(closed beta)* — cloud brain, local hands: run Octop on-device as the execution end while the cloud orchestrates and controls it.
 
 **Planned**
 - [ ] **Browser & terminal polishing** — browser skill *recording* (capture a workflow and replay it as a skill) and a more capable terminal AI assistant.
 - [ ] **Self-evolution** — automatically distill everyday conversations into reusable skills, so the assistant grows with you.
-- [ ] **Managed Agents** — platform-hosted agent lifecycle (provision, scale, and operate agents without managing the full self-hosted stack yourself).
 - [ ] **Project** — project-scoped workspaces that group agents, files, and conversations around a shared goal.
-- [ ] **Cloud–edge continuum** — run Octop locally while offloading selected tasks to the cloud, so light work stays on-device and heavier jobs use remote capacity when you need it.
-- [ ] **Plugin marketplace** — a curated market to discover, install, and update third-party plugins without leaving Octop.
 - [ ] **Conversational control plane** — deepen Octop’s own skills so chat can cover the full dashboard surface: create experts, wire channels, manage knowledge bases, and scaffold plugins end-to-end.
 
 This roadmap may shift as the community grows; treat it as indicative only.
@@ -295,7 +295,7 @@ docker run -d \
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
 
-Kubernetes manifests for a shared PostgreSQL and multiple replicas are in [deploy/k8s/README.md](deploy/k8s/README.md).
+The Helm chart for a shared PostgreSQL and multiple replicas is documented in [deploy/helm/octop/README.md](deploy/helm/octop/README.md). Install it from `oci://ghcr.io/tencentcloud/octop/charts/octop`.
 
 > **Password policy:** at least 8 characters with letters and digits.
 
@@ -304,7 +304,7 @@ Kubernetes manifests for a shared PostgreSQL and multiple replicas are in [deplo
 | `OCTOP_PORT` | `8088` | HTTP listen port |
 | `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (Docker bootstrap). Valid → create admin; unset or rejected → setup wizard |
 | `OCTOP_ADMIN_USERNAME` | `admin` | First-run admin username |
-| `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
+| `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount). Unset keeps the invoking user's `~/.octop`; no migration on upgrade |
 
 See [`.env.example`](.env.example) for the full list.
 
@@ -522,7 +522,7 @@ src/octop/
 
 dashboard/     frontend source (Vite) — edit here, run make build-frontend
 
-deploy/        Docker (deploy/docker) and Kubernetes (deploy/k8s)
+deploy/        Docker (deploy/docker) and the Kubernetes Helm chart (deploy/helm/octop)
 tests/         unit/ + integration/
 ```
 
@@ -570,6 +570,8 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## 🔗 Related projects
 
+### Official projects
+
 | Project | Description |
 |---------|-------------|
 | [Octop Harness](https://github.com/TencentCloud/octop-harness) | Agent runtime — model routing, tools, skills, checkpointing |
@@ -577,6 +579,14 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
 | [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
+| [Octop Marketplace](https://github.com/jubaoliang/OctopMarketplace) | Marketplace for Octop |
+| [OctopBot](https://github.com/jubaoliang/OctopBot) | Mobile app for interacting with Octop on iOS and Android |
+
+### Community projects
+
+| Project | Description |
+|---------|-------------|
+| [OctopLink](https://github.com/DingXiaoWu0512/OctopLink) | Community HarmonyOS client — ArkTS app with streaming chat, workspace, memory |
 
 ## 💬 Community
 
