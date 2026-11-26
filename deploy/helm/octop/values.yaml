@@ -5,7 +5,7 @@
 #   octop-admin  username, password     console login; used only on first init
 #   octop-pg     user, password, database   PostgreSQL login, not the console password
 #   octop-tls    TLS secret when ingress.tls.enabled (default)
-# See README_CN.md "要准备什么" for the full list.
+# See README.md "What you set" for the full list.
 
 replicaCount: 2
 

@@ -1,53 +1,60 @@
-# 安装样例。复制后改域名、镜像和资源，再：
+# Install sample. Copy it, change the hostname, image, and resources, then:
 #   helm upgrade --install octop oci://ghcr.io/tencentcloud/octop/charts/octop \
 #     --version 1.0.3-b7 -n octop -f my-values.yaml
 #
-# 口令不要写在这个文件里。安装前另建 Secret，见 secrets.example.yaml。
-#   octop-admin  username / password     控制台账号，只在第一次初始化时创建
-#   octop-pg     user / password / database   PostgreSQL 账号，不是控制台密码
-#   octop-tls    域名证书。ingress.tls.enabled 为 true 时必须已存在
+# Do not put passwords in this file. Create Secrets before install. See secrets.example.yaml.
+#   octop-admin  username / password     console login; used only on first init
+#   octop-pg     user / password / database   PostgreSQL login, not the console password
+#   octop-tls    hostname certificate. Required when ingress.tls.enabled is true
 
-# 副本数。没有 HPA，改数量就改这里再 upgrade。
+# Replica count. There is no HPA. Change this value and upgrade.
 replicaCount: 2
 
 image:
   repository: ghcr.io/tencentcloud/octop
-  # 留空则用 chart 的 appVersion。请写成仓库里真实存在的版本。
-  # 精简版没有虚拟桌面、本地向量和 OCR。那些能力用 <版本>-full，并打开下面的 shm。
+  # Empty uses the chart appVersion. Set a tag that exists in the registry.
+  # The lite image has no virtual desktop, local embeddings, or OCR. Those need
+  # a <version>-full tag and shm below.
   tag: "1.0.3b7"
   pullPolicy: IfNotPresent
 
-# 完整版镜像需要约 1Gi 的 /dev/shm。精简版保持 false。
+# The full image needs about 1Gi of /dev/shm. Leave this false for the lite image.
 shm:
   enabled: false
   sizeLimit: 1Gi
 
 config:
-  # 控制台时间和定时任务使用这个时区。
+  # Console time and cron use this timezone.
   timezone: Asia/Shanghai
-  # 留空则使用 https://<ingress.host>。有多个来源时写成逗号分隔的完整地址。
+  # Empty becomes https://<ingress.host>. For several origins, use a
+  # comma-separated list of full URLs.
   corsOrigins: ""
 
-# Secret 名字。内容仍要事先 kubectl create，chart 不会生成口令。
+# Secret names. Create them with kubectl first. The chart does not render passwords.
 secrets:
   database: octop-pg
   admin: octop-admin
 
-# 使用已部署的 CubeSandbox。选择包含 CubeSandbox 支持的 Octop 发布版本。
+# Use an already deployed CubeSandbox. Pick an Octop release that includes
+# CubeSandbox support. Credentials stay in a Secret created beforehand. This
+# field is only that Secret's name and stays empty by default. See the README
+# for an example name.
 cubeSandbox:
   enabled: false
   apiUrl: ""
   proxyNodeIP: ""
   proxyPortHTTP: ""
-  existingSecret: octop-cubesandbox
+  existingSecret: ""
 
 service:
   port: 8088
 
 ingress:
-  # 没有域名或入口不是 Ingress NGINX 时设为 false，再用 kubectl port-forward。
+  # Set false when there is no hostname, or the ingress class is not NGINX,
+  # then use kubectl port-forward.
   enabled: true
-  # MicroK8s 自带 Traefik 时常见类名是 public，并要换掉下面的 nginx 注解。
+  # MicroK8s Traefik often uses the class name public. Replace the nginx
+  # annotations below when you do.
   className: nginx
   host: octop.example.com
   tls:
@@ -76,8 +83,8 @@ resources:
     cpu: "2"
     memory: 4Gi
 
-# 自带 pgvector。改用托管库时 enabled 设为 false，并填写下面的 database.host。
-# 托管库要预先允许 CREATE EXTENSION vector。
+# Bundled pgvector. Set enabled to false and set database.host below for a
+# managed database. The managed database must already allow CREATE EXTENSION vector.
 postgresql:
   enabled: true
   image:
@@ -86,7 +93,7 @@ postgresql:
     pullPolicy: IfNotPresent
   persistence:
     size: 20Gi
-    # 空字符串使用集群默认 StorageClass。
+    # An empty string uses the cluster default StorageClass.
     storageClass: ""
   resources:
     requests:
@@ -96,11 +103,12 @@ postgresql:
       cpu: "2"
       memory: 2Gi
 
-# 只在 postgresql.enabled 为 false 时使用 host。
+# host is used only when postgresql.enabled is false.
 database:
   host: ""
   port: 5432
 
-# 一般留空。发布名是 octop 时，资源名就是 octop、octop-pgvector。
+# Usually leave these empty. With release name octop, resource names are octop
+# and octop-pgvector.
 nameOverride: ""
 fullnameOverride: ""
