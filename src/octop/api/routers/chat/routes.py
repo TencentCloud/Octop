@@ -39,6 +39,25 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def workspace_welcome_payload(
+    manifest: dict[str, Any] | None,
+    catalog: Any,
+) -> dict[str, Any]:
+    """Quick cards for an expert's workspace manifest.
+
+    A manifest that says nothing about cards gets the catalog's defaults. One
+    that carries a ``quick_prompts`` list, even an empty one, is its author's
+    decision and is used as it stands: an expert set up with no cards keeps
+    showing none.
+    """
+    if manifest is None:
+        return default_welcome_payload(catalog)
+    welcome = welcome_payload_from_manifest_data(manifest)
+    if welcome_payload_has_content(welcome) or isinstance(manifest.get("quick_prompts"), list):
+        return welcome
+    return default_welcome_payload(catalog)
+
+
 @router.get("/agents/{agent_id}/chat/welcome", summary="Chat welcome quick cards")
 async def get_chat_welcome(
     agent_id: str,
@@ -50,6 +69,7 @@ async def get_chat_welcome(
     Resolution order:
     1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
     2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
+       A manifest with a ``quick_prompts`` list, even an empty one, is final.
     3. Default quick cards (``general-assistant`` or a small built-in set).
 
     Team hosts keep the team intro and show members' own quick cards — the host
@@ -65,18 +85,11 @@ async def get_chat_welcome(
         return {**team_payload, "task_examples": None}
 
     workspace = registry.workspace_for_agent(agent_id)
-    payload: dict[str, Any] | None = None
-    parsed_examples = None
+    manifest = None
     if workspace is not None:
         manifest = await read_workspace_manifest_data(workspace)
-        if manifest is not None:
-            welcome = welcome_payload_from_manifest_data(manifest)
-            if welcome_payload_has_content(welcome):
-                payload = welcome
-            parsed_examples = parse_task_examples(manifest)
-
-    if payload is None:
-        payload = default_welcome_payload(catalog)
+    payload = workspace_welcome_payload(manifest, catalog)
+    parsed_examples = parse_task_examples(manifest) if manifest is not None else None
 
     db_welcome = welcome_from_row(row) if row is not None else None
     if db_welcome is not None:
