@@ -1195,13 +1195,12 @@ async def whatsapp_bridge_qrcode_generate(
     from octop_gateway.channels.whatsapp import fetch_whatsapp_bridge_qr  # noqa: PLC0415
 
     try:
-        res = await fetch_whatsapp_bridge_qr(
+        return await fetch_whatsapp_bridge_qr(
             body.bridge_url,
             provider=body.provider,
             session_name=body.session_name,
             api_key=body.bridge_api_key,
         )
-        return cast(dict[str, Any], res)
     except Exception as exc:
         logger.warning("Failed to fetch WhatsApp bridge QR code for agent %s: %s", agent_id, exc)
         raise HTTPException(
@@ -1222,13 +1221,12 @@ async def whatsapp_bridge_qrcode_poll(
     from octop_gateway.channels.whatsapp import check_whatsapp_bridge_status  # noqa: PLC0415
 
     try:
-        res = await check_whatsapp_bridge_status(
+        return await check_whatsapp_bridge_status(
             body.bridge_url,
             provider=body.provider,
             session_name=body.session_name,
             api_key=body.bridge_api_key,
         )
-        return cast(dict[str, Any], res)
     except Exception as exc:
         logger.warning("Failed to poll WhatsApp bridge status for agent %s: %s", agent_id, exc)
         raise HTTPException(

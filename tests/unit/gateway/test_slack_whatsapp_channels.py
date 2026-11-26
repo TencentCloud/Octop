@@ -61,12 +61,8 @@ async def test_quote_context_injected_for_new_and_enhanced_channels(channel_type
 
 @pytest.mark.asyncio
 async def test_slack_and_whatsapp_gateway_registration_and_webhooks(tmp_path, monkeypatch) -> None:
-    slack_mod = pytest.importorskip("octop_gateway.channels.slack")
-    wa_mod = pytest.importorskip("octop_gateway.channels.whatsapp")
-    SlackChannel = slack_mod.SlackChannel
-    SlackConfig = slack_mod.SlackConfig
-    WhatsAppChannel = wa_mod.WhatsAppChannel
-    WhatsAppConfig = wa_mod.WhatsAppConfig
+    from octop_gateway.channels.slack import SlackChannel, SlackConfig
+    from octop_gateway.channels.whatsapp import WhatsAppChannel, WhatsAppConfig
     from octop_gateway.manager import ChannelManager
     from octop_gateway.media import FileSystemMediaBackend
 
@@ -236,9 +232,7 @@ async def test_whatsapp_webhook_route_enforces_account_binding_and_rejects_norma
 ) -> None:
     """Route-level regression test: missing/mismatched accounts and pre-normalized payloads are rejected before
     identity updates, deduplication, or enqueueing across Cloud API, WAHA, and Evolution API."""
-    wa_mod = pytest.importorskip("octop_gateway.channels.whatsapp")
-    WhatsAppChannel = wa_mod.WhatsAppChannel
-    WhatsAppConfig = wa_mod.WhatsAppConfig
+    from octop_gateway.channels.whatsapp import WhatsAppChannel, WhatsAppConfig
 
     async def processor(msg):
         yield MessageEvent.completed()
