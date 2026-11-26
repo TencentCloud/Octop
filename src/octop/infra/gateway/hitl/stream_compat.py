@@ -60,6 +60,20 @@ def merge_hitl_projection(
     return events
 
 
+def _unseen_interrupts(interrupts: Any, seen: set[str]) -> list[Any]:
+    if not isinstance(interrupts, (list, tuple)):
+        interrupts = (interrupts,) if interrupts else ()
+    out = []
+    for item in interrupts:
+        interrupt_id = item.get("id") if isinstance(item, dict) else getattr(item, "id", None)
+        if isinstance(interrupt_id, str) and interrupt_id:
+            if interrupt_id in seen:
+                continue
+            seen.add(interrupt_id)
+        out.append(item)
+    return out
+
+
 def install_harness_hitl_compat() -> None:
     """Patch harness stream projection so v2 interrupts become ``hitl_required``."""
     global _INSTALLED
@@ -70,6 +84,27 @@ def install_harness_hitl_compat() -> None:
     original = LangGraphProtocol._project_chunk
 
     def _project_chunk(self: Any, chunk: Any, splitter: Any) -> list[dict[str, Any]]:
+        if isinstance(chunk, dict):
+            # ThinkSplitter is created per stream/resume, never shared across turns.
+            seen: set[str] | None = getattr(splitter, "_octop_seen_hitl_ids", None)
+            if seen is None:
+                seen = set()
+                splitter._octop_seen_hitl_ids = seen
+            data = chunk.get("data")
+            if (
+                chunk.get("type") == "updates"
+                and isinstance(data, dict)
+                and "__interrupt__" in data
+            ):
+                chunk = {
+                    **chunk,
+                    "data": {
+                        **data,
+                        "__interrupt__": _unseen_interrupts(data["__interrupt__"], seen),
+                    },
+                }
+            if chunk.get("interrupts"):
+                chunk = {**chunk, "interrupts": _unseen_interrupts(chunk["interrupts"], seen)}
         events = original(self, chunk, splitter)
         if isinstance(chunk, dict):
             events = merge_hitl_projection(events, chunk.get("interrupts"))

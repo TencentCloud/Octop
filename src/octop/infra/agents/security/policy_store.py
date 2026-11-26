@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import replace
 from typing import Any
 
 from octop_harness.security.models import SecurityPolicy
 
+from octop.infra.agents.secret_file.paths import REQUEST_SECRET_FILE_TOOL
 from octop.infra.db.repos.settings import SettingsRepo
 
 logger = logging.getLogger(__name__)
@@ -21,6 +23,19 @@ def _default_policy() -> SecurityPolicy:
     data["hitl"]["enabled"] = False
     data["tool_guard"] = {"enabled": True, "mode": "warn"}
     return SecurityPolicy.from_dict(data)
+
+
+def without_secret_file_approval(policy: SecurityPolicy) -> SecurityPolicy:
+    """The credential tool is answered only by its dedicated input channel."""
+    tools = policy.hitl.tools
+    if tools == "default" or REQUEST_SECRET_FILE_TOOL not in tools:
+        return policy
+    return replace(
+        policy,
+        hitl=replace(
+            policy.hitl, tools=[name for name in tools if name != REQUEST_SECRET_FILE_TOOL]
+        ),
+    )
 
 
 class SecuritySettingsStore:
@@ -50,7 +65,7 @@ class SecuritySettingsStore:
         return resolved
 
     def harness_policy(self) -> SecurityPolicy:
-        return self.load()
+        return without_secret_file_approval(self.load())
 
 
 def tool_execution_may_pause(policy: SecurityPolicy) -> bool:

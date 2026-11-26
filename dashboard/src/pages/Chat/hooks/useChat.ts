@@ -13,6 +13,7 @@ import type {
 } from "../../../api/types";
 import type { HitlSessionPolicy } from "../../../api/types/hitl";
 import type { ThreadArtifact } from "../../../api/modules/octopThreads";
+import i18n from "../../../i18n";
 import * as chatStore from "./chatStore";
 import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
@@ -1469,6 +1470,38 @@ export function useChat(
     [agentId, stableSessionId, refreshHistory],
   );
 
+  /**
+   * Submit/cancel a `request_secret_file` card. Resolves to `null` once the
+   * server accepted (stream started), or the error message for card retry.
+   */
+  const submitSecret = useCallback(
+    async (
+      pendingId: string,
+      content: string,
+      action: "submit" | "cancel",
+    ): Promise<string | null> => {
+      const threadId = stableSessionId !== "__empty__" ? stableSessionId : "";
+      if (!agentId || !threadId) return i18n.t("chat.secretCard.chatNotReady");
+      let failure = i18n.t("chat.secretCard.submitFailed");
+      const ok = await chatStore.submitSecretFile(
+        stableSessionId,
+        agentId,
+        threadId,
+        pendingId,
+        content,
+        action,
+        (message) => {
+          failure = message;
+        },
+        () => {
+          void refreshHistory(threadId);
+        },
+      );
+      return ok ? null : failure;
+    },
+    [agentId, stableSessionId, refreshHistory],
+  );
+
   return {
     messages,
     isStreaming,
@@ -1493,5 +1526,6 @@ export function useChat(
     retryHistory,
     clearMessages,
     resumeHitl,
+    submitSecret,
   };
 }

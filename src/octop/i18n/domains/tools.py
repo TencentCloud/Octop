@@ -18,6 +18,8 @@ HITL_TOOL_EXCLUDE: frozenset[str] = frozenset(
         "write_todos",
         # Its own HITL channel — approving an approval prompt makes no sense.
         "ask_user_question",
+        # Dedicated secret card — bypassing it would skip the secure fill-in.
+        "request_secret_file",
         # Memory
         "memory_search",
         "memory_get",
