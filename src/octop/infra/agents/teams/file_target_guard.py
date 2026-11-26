@@ -259,6 +259,37 @@ def _install_runner_block() -> None:
     except ImportError:
         logger.debug("ACP client is not installed", exc_info=True)
         return
+    request_permission = ACPHostedClient.request_permission
+    if not getattr(request_permission, "_octop_runner_files", False):
+
+        async def request_permission_guard(
+            self: Any,
+            options: list[Any],
+            session_id: str,
+            tool_call: Any,
+            **kwargs: Any,
+        ) -> Any:
+            # Deny before any await. The hosted client emits a permission card
+            # and then checks again; a managed runner never renders that card,
+            # so falling through waits forever and the chat stays on Generating.
+            if _bound_directory(self):
+                payload = _payload(tool_call)
+                kind = str(payload.get("kind") or "")
+                blocked_tool = writes_member_workspace(
+                    _label(payload),
+                    kind,
+                    command=_command_text(payload),
+                )
+                if blocked_tool:
+                    adapter = getattr(self, "_permission_adapter", None)
+                    cancel = getattr(adapter, "cancelled_response", None)
+                    if callable(cancel):
+                        return cancel()
+            return await request_permission(self, options, session_id, tool_call, **kwargs)
+
+        request_permission_guard._octop_runner_files = True  # type: ignore[attr-defined]
+        ACPHostedClient.request_permission = request_permission_guard  # type: ignore[method-assign]
+
     blocked = ACPPermissionAdapter.is_hard_blocked
     if not getattr(blocked, "_octop_runner_files", False):
 
