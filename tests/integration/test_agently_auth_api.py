@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
+from octop.infra.connectors.crypto import encrypt_credentials
 from octop.infra.connectors.gateway import agently_auth
+from octop.infra.connectors.gateway.adapters import dingtalk_cli
 from tests.support.auth import create_user
+from tests.support.fakes import fake_bin_path
 
 
-async def test_agently_auth_owner_routes_and_isolation(env_with_agent, monkeypatch):
+@pytest.mark.parametrize("kind", ["agently-cli", "dingtalk-cli"])
+async def test_agently_auth_owner_routes_and_isolation(env_with_agent, monkeypatch, kind):
     client, _, admin, _ = env_with_agent
     owner = await create_user(client, admin, username="mail-owner", permissions=[])
     stranger = await create_user(client, admin, username="mail-stranger", permissions=[])
@@ -16,7 +23,7 @@ async def test_agently_auth_owner_routes_and_isolation(env_with_agent, monkeypat
         "/api/connector-instances",
         headers=owner,
         json={
-            "kind": "agently-cli",
+            "kind": kind,
             "display_name": "Mail",
             "credentials": {"cli_config_key": "victim"},
         },
@@ -113,3 +120,69 @@ async def test_dingtalk_cli_device_auth_and_delete_revokes(env_with_agent, monke
     assert authorize.await_args.kwargs["kind"] == "dingtalk-cli"
     gone = await client.get(f"/api/connector-instances/{instance_id}", headers=auth)
     assert gone.status_code == 404
+
+
+@pytest.mark.parametrize("legacy_keys", [("same", "same"), ("a/b", "a?b")])
+async def test_dingtalk_legacy_keys_cannot_merge_instance_auth(
+    env_with_agent, monkeypatch, legacy_keys
+):
+    client, server, admin, _ = env_with_agent
+    authorize = AsyncMock(
+        return_value={
+            "status": "idle",
+            "verification_url": None,
+            "user_code": None,
+            "expires_at": None,
+            "error": None,
+        }
+    )
+    monkeypatch.setattr(agently_auth, "authorize", authorize)
+    keys = []
+    for index, legacy_key in enumerate(legacy_keys):
+        owner = await create_user(client, admin, username=f"ding-owner-{index}", permissions=[])
+        created = await client.post(
+            "/api/connector-instances",
+            headers=owner,
+            json={"kind": "dingtalk-cli", "display_name": "DingTalk", "credentials": {}},
+        )
+        assert created.status_code == 201, created.text
+        instance_id = created.json()["instance_id"]
+        # Model rows saved before the fix, including caller-selected/colliding keys.
+        blob = encrypt_credentials(
+            server.services.secret_repo,
+            {"cli_config_key": legacy_key, "instance_id": "forged"},
+        )
+        server.services.repos.connector_repo.upsert_credentials(
+            instance_id=instance_id, blob=blob, expires_at=None
+        )
+        status = await client.get(
+            f"/api/connector-instances/{instance_id}/agently-auth/status", headers=owner
+        )
+        assert status.status_code == 200, status.text
+        creds = authorize.await_args.args[0]
+        assert creds["cli_config_key"] == creds["instance_id"] == instance_id
+        keys.append(agently_auth._key("dingtalk-cli", creds))
+    assert keys[0] != keys[1]
+
+
+async def test_dingtalk_windows_reports_platform_and_allows_deletion(env_with_agent, monkeypatch):
+    client, _, auth, _ = env_with_agent
+    monkeypatch.setattr(dingtalk_cli, "sys", SimpleNamespace(platform="win32"))
+    monkeypatch.setattr(agently_auth, "resolve_binary", lambda _: fake_bin_path("dws"))
+    created = await client.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={"kind": "dingtalk-cli", "display_name": "DingTalk", "credentials": {}},
+    )
+    assert created.status_code == 201, created.text
+    instance_id = created.json()["instance_id"]
+    base = f"/api/connector-instances/{instance_id}"
+    for action in ("start", "status", "refresh", "logout"):
+        method = client.get if action == "status" else client.post
+        result = await method(f"{base}/agently-auth/{action}", headers=auth)
+        assert result.status_code == 200, result.text
+        assert result.json()["status"] == "error"
+        assert "Windows" in result.json()["error"]
+    deleted = await client.delete(base, headers=auth)
+    assert deleted.status_code == 204, deleted.text
+    assert (await client.get(base, headers=auth)).status_code == 404
