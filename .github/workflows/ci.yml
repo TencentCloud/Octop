@@ -39,7 +39,7 @@ jobs:
         run: make typecheck
 
       - name: Test
-        run: make test
+        run: make test PYTEST_JOBS=logical
 
   dashboard:
     name: Dashboard
@@ -173,7 +173,7 @@ jobs:
         run: make typecheck
 
       - name: Test
-        run: make test
+        run: make test PYTEST_JOBS=logical
 
   live-tests:
     name: "Live tests (real credentials)"
