@@ -140,4 +140,19 @@ describe("knowledgeBasesApi", () => {
       { target_folder: "售后", target_kb_id: "kb-2" },
     ]);
   });
+
+  it("sends the selected folder path with the original upload", () => {
+    const file = new File(["original\r\n"], "notes.md", {
+      type: "text/markdown",
+    });
+    knowledgeBasesApi.uploadDocument(
+      "kb-1",
+      file,
+      "existing/folder/sub/notes.md",
+    );
+
+    const body = requestUpload.mock.calls[0][1] as FormData;
+    expect(body.get("upload")).toBe(file);
+    expect(body.get("path")).toBe("existing/folder/sub/notes.md");
+  });
 });
