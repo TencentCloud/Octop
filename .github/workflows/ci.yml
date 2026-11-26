@@ -41,6 +41,39 @@ jobs:
       - name: Test
         run: make test
 
+  # `make install` follows uv.lock. A merged PR can still fail
+  # `pip install octop` when dependency ranges resolve differently in a clean
+  # environment. Build the wheel, install it with pip, and verify the
+  # published console command from an empty environment.
+  command-install:
+    name: Command install
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: uv build --wheel
+
+      - name: Install the wheel with pip
+        run: |
+          set -euo pipefail
+          uv venv --no-project --python 3.12 --seed /tmp/octop-install
+          wheels=(dist/octop-*.whl)
+          if [ "${#wheels[@]}" -ne 1 ]; then
+            echo "expected one wheel, found: ${wheels[*]}"
+            exit 1
+          fi
+          /tmp/octop-install/bin/python -m pip install --upgrade pip
+          /tmp/octop-install/bin/python -m pip install "${wheels[0]}"
+
+      - name: Verify the installed command
+        run: /tmp/octop-install/bin/octop --help
+
   helm:
     name: Helm chart
     runs-on: ubuntu-latest
