@@ -33,6 +33,7 @@ from octop.infra.agents.acp import (
 )
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
+from octop.infra.agents.memory_shared_access import shared_memory_tools
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
@@ -4946,6 +4947,9 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
+        merged_tools.extend(
+            shared_memory_tools(row, self._repos.secret_repo, self._repos.agent_repo.get)
+        )
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")

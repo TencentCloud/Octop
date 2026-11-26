@@ -111,6 +111,13 @@ describe("pathPermissionKeys", () => {
     expect([...PERM.advancedPage]).not.toContain("knowledge_settings");
   });
 
+  it("keeps terminal access under Memory permissions and Personalization", () => {
+    for (const path of ["/personalization/memory/mcp", "/tokens"]) {
+      expect(pathPermissionKeys(path)).toEqual([...PERM.memory]);
+      expect(resolveSelectedKey(path)).toBe("personalization");
+    }
+  });
+
   it("canAccessPath respects holder permissions", () => {
     const user = { role: "user", permissions: ["desktop"] };
     expect(canAccessPath(user, "/remote-desktop")).toBe(true);

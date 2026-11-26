@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useMatch, useNavigate } from "react-router-dom";
 import { Alert, Button, Empty } from "antd";
 import {
   Bot,
@@ -62,8 +62,10 @@ const TAB_ICONS = {
 
 export default function PersonalizationPage() {
   const { t } = useTranslation();
-  const isMobile = useIsMobile();
+  const location = useLocation();
   const navigate = useNavigate();
+  const mcpAccessActive = Boolean(useMatch("/personalization/memory/mcp"));
+  const isMobile = useIsMobile();
   const user = useCurrentUser();
   const { activeAgentId, agents, loading } = useAgent();
   // Personalization edits the selected expert, so it must be one the user
@@ -88,6 +90,18 @@ export default function PersonalizationPage() {
     defaultTab,
     isAllowed,
   });
+
+  const mcpAccess = {
+    active: mcpAccessActive,
+    onChange: (active: boolean) =>
+      navigate({
+        pathname: active
+          ? "/personalization/memory/mcp"
+          : "/personalization/memory",
+        search: location.search,
+        hash: location.hash,
+      }),
+  };
 
   const pathTabs = useMemo(
     () => ({
@@ -137,7 +151,7 @@ export default function PersonalizationPage() {
       node
     );
 
-  if (!loading && ownedAgents.length === 0) {
+  if (!loading && ownedAgents.length === 0 && !mcpAccessActive) {
     return (
       <PageShell
         title={pageTitle}
@@ -291,10 +305,14 @@ export default function PersonalizationPage() {
             aria-hidden={activeTab !== "memory"}
           >
             {isMobile ? (
-              <MemoryPanel agentId={agentId} fill={false} />
+              <MemoryPanel
+                agentId={agentId}
+                fill={false}
+                mcpAccess={mcpAccess}
+              />
             ) : (
               <div className={pageShellStyles.fillChild}>
-                <MemoryPanel agentId={agentId} fill />
+                <MemoryPanel agentId={agentId} fill mcpAccess={mcpAccess} />
               </div>
             )}
           </div>

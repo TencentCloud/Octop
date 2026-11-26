@@ -459,7 +459,10 @@ function PipelineCard({
         </span>
         <small>{hint}</small>
       </div>
-      <LastExtractionStatus run={counts.last_extract_run} />
+      <LastExtractionStatus
+        run={counts.last_extract_run}
+        codex={counts.last_codex_review}
+      />
       <div className={styles.pipelineRow}>
         <PipelineStage
           label={t("memory.pipeline.stageRaw", "对话记忆")}

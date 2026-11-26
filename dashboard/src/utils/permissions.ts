@@ -243,6 +243,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   if (pathname.startsWith("/admin/")) {
     return "admin";
   }
+  if (pathname === "/tokens" || pathname.startsWith("/tokens/")) {
+    return PERM.memory;
+  }
   if (pathname === "/channels" || pathname.startsWith("/channels/")) {
     return PERM.channels;
   }
