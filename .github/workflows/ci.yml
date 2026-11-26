@@ -41,6 +41,32 @@ jobs:
       - name: Test
         run: make test
 
+  dashboard:
+    name: Dashboard
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          # Same Node as deploy/docker/Dockerfile and release.yml.
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc -b
+
+      - name: Test
+        run: npm test
+
   # `make install` follows uv.lock. A merged PR can still fail
   # `pip install octop` when dependency ranges resolve differently in a clean
   # environment. Build the wheel, install it with pip, and verify the
