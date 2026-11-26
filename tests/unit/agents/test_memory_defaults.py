@@ -151,6 +151,40 @@ def test_memory_extract_settings_applies_global_defaults_to_fresh_agent(
     }
 
 
+@pytest.mark.parametrize(
+    ("memory", "expected"),
+    [
+        ({}, {"thinking": {"type": "disabled"}}),
+        (
+            {"aux_model": "provider/hy4", "extract_thinking": "off"},
+            {"thinking": {"type": "disabled"}},
+        ),
+        ({"extract_thinking": "on"}, None),
+        (
+            {"extract_extra_body": {"thinking": {"type": "enabled"}}},
+            {"thinking": {"type": "enabled"}},
+        ),
+    ],
+)
+def test_memory_uses_provider_thinking_switch_for_resolved_model(
+    memory: dict[str, Any], expected: dict[str, Any] | None
+) -> None:
+    from octop.infra.agents.providers.reasoning import reasoning_capability
+
+    def capability(ref: str) -> dict[str, Any] | None:
+        assert ref == memory.get("aux_model", "global/hy4")
+        return reasoning_capability(
+            {"id": "hy4", "reasoning_config": {"adapter": "thinking", "toggle": True}}
+        )
+
+    result = _memory_extract_settings(
+        {"memory": memory},
+        global_defaults=GlobalMemoryDefaults(aux_model="global/hy4"),
+        reasoning_for_ref=capability,
+    )
+    assert result.get("memory_aux_extra_body") == expected
+
+
 def test_memory_extract_settings_drops_extra_body_when_inherited_global_model_is_stale() -> None:
     glob = GlobalMemoryDefaults(aux_model="deleted/model")
     settings = _memory_extract_settings(

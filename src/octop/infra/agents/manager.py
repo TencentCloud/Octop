@@ -37,6 +37,7 @@ from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.memory_shared_access import shared_memory_tools
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.providers.reasoning import reasoning_request_parameters
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -295,6 +296,7 @@ def _memory_extract_settings(
     *,
     supported_fields: frozenset[str] = _HARNESS_AGENT_CONFIG_FIELDS,
     is_ref_usable: Callable[[str], bool] | None = None,
+    reasoning_for_ref: Callable[[str], dict[str, Any] | None] | None = None,
     global_defaults: GlobalMemoryDefaults | None = None,
 ) -> dict[str, Any]:
     """Extract the ``memory`` config section into HarnessAgentConfig kwargs.
@@ -311,6 +313,19 @@ def _memory_extract_settings(
     out: dict[str, Any] = _memory_aux_model_settings(
         effective.effective_aux_model, supported_fields, is_ref_usable
     )
+    ref = out.get("memory_aux_light_model")
+    if (
+        ref
+        and reasoning_for_ref is not None
+        and "memory_aux_extra_body" in supported_fields
+        and mem.get("extract_thinking", "auto") in ("auto", "off")
+    ):
+        capability = reasoning_for_ref(ref)
+        if capability and capability.get("toggle"):
+            # Models such as HY4 can spend the entire extraction budget on thinking.
+            options = reasoning_request_parameters(capability, mode="disabled", effort=None)
+            if provider_body := options.get("extra_body"):
+                out["memory_aux_extra_body"] = provider_body
     if _supports_memory_extract_rules(supported_fields):
         if effective.effective_keep_rules:
             out["memory_extract_keep_rules"] = effective.effective_keep_rules
@@ -387,7 +402,7 @@ def _memory_extract_settings(
         and extra_body
         and (not has_aux_override or "memory_aux_light_model" in out)
     ):
-        out["memory_aux_extra_body"] = dict(extra_body)
+        out["memory_aux_extra_body"] = {**out.get("memory_aux_extra_body", {}), **extra_body}
 
     # octop-harness 0.9.5 predates the interval trigger fields. Keep
     # hot reload working against that release and approximate interval mode
@@ -4805,6 +4820,7 @@ class AgentManager:
         memory_settings = _memory_extract_settings(
             cfg,
             is_ref_usable=self._providers.is_model_ref_usable,
+            reasoning_for_ref=self._providers.get_model_reasoning_capability,
             global_defaults=self.get_global_memory_defaults(),
         )
         if memory_settings.get("memory_enabled") is not True:
@@ -5218,6 +5234,7 @@ class AgentManager:
             **_memory_extract_settings(
                 cfg,
                 is_ref_usable=self._providers.is_model_ref_usable,
+                reasoning_for_ref=self._providers.get_model_reasoning_capability,
                 global_defaults=self.get_global_memory_defaults(),
             ),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
