@@ -7846,7 +7846,12 @@
     "noDescription": "No description",
     "noToolsListed": "No tools loaded",
     "hasUi": "Chat UI",
-    "hasConfig": "Configurable"
+    "hasConfig": "Configurable",
+    "configTitle": "Configures",
+    "configHint": "Defaults this plugin sets when it is installed or enabled. Values an admin has already changed are kept; settings in config.json apply after a restart.",
+    "configPresets": "Provider presets",
+    "configProviders": "Providers",
+    "configDefaultModel": "Default model"
   },
   "slash": {
     "fallback": {

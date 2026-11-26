@@ -206,6 +206,81 @@ def _read_plugin_yaml(plugin_dir: Path) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+_BUILTIN_CAPABILITIES = ("tool", "skill", "hook", "channel")
+
+
+def _config_summary(plugin_dir: Path) -> dict[str, Any] | None:
+    from octop.infra.agents.plugins.plugin_config import parse_plugin_config  # noqa: PLC0415
+
+    try:
+        cfg = parse_plugin_config(plugin_dir)
+    except OctopError:
+        return None
+    return cfg.summary() if cfg is not None else None
+
+
+def parse_plugin_capabilities(plugin_dir: Path) -> tuple[str, ...]:
+    """Capabilities ``plugin.yaml`` declares; a manifest without the list has just its ``kind``."""
+    data = _read_plugin_yaml(plugin_dir)
+    raw = data.get("capabilities")
+    if isinstance(raw, list) and raw:
+        out: list[str] = []
+        for item in raw:
+            name = str(item).strip().lower()
+            if name and name not in out:
+                out.append(name)
+        return tuple(out)
+    return (str(data.get("kind") or "tool").strip().lower(),)
+
+
+def check_plugin_compatible(plugin_dir: Path) -> None:
+    """Refuse a plugin that needs a capability or an Octop version this server lacks.
+
+    Also validates the ``config`` section of plugins that declare it.
+    """
+    from octop.infra.agents.plugins.plugin_config import (  # noqa: PLC0415
+        CONFIG_CAPABILITY,
+        parse_plugin_config,
+    )
+
+    capabilities = parse_plugin_capabilities(plugin_dir)
+    supported = (*_BUILTIN_CAPABILITIES, CONFIG_CAPABILITY)
+    unknown = [name for name in capabilities if name not in supported]
+    if unknown:
+        raise OctopError(
+            ErrorCode.PLUGIN_INVALID_ARCHIVE,
+            f"unsupported plugin capabilities: {', '.join(unknown)}",
+            details={"capabilities": unknown},
+        )
+    harness_kinds = [name for name in capabilities if name in _BUILTIN_CAPABILITIES]
+    if len(harness_kinds) > 1 and not hasattr(PluginManifest, "has"):
+        raise OctopError(
+            ErrorCode.PLUGIN_INVALID_ARCHIVE,
+            "this plugin declares several capabilities; upgrade octop-harness to load it",
+        )
+    parse_plugin_config(plugin_dir)
+    spec = _read_plugin_yaml(plugin_dir).get("octop")
+    if spec is None:
+        return
+    from importlib.metadata import version as dist_version  # noqa: PLC0415
+
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet  # noqa: PLC0415
+
+    try:
+        wanted = SpecifierSet(str(spec))
+    except InvalidSpecifier as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INVALID_ARCHIVE, f"invalid octop version requirement: {spec!r}"
+        ) from exc
+    current = dist_version("octop")
+    if not wanted.contains(current, prereleases=True):
+        raise OctopError(
+            ErrorCode.PLUGIN_INVALID_ARCHIVE,
+            f"plugin requires Octop {wanted}, this server runs {current}",
+            details={"requires": str(wanted), "current": current},
+        )
+
+
 def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
     """Return ``{entry, manifest}`` relative paths when ``plugin.yaml`` declares ``ui``.
 
@@ -729,6 +804,11 @@ class PluginManager:
             if enabled.get(manifest.id, True) is False:
                 continue
             try:
+                check_plugin_compatible(plugin_dir)
+            except OctopError as exc:
+                logger.error("skip plugin %s: %s", manifest.id, exc.message)
+                continue
+            try:
                 fingerprint = (
                     _channel_fingerprint(plugin_dir) if str(manifest.kind) == "channel" else ""
                 )
@@ -754,6 +834,7 @@ class PluginManager:
         for plugin_id, is_on in enabled.items():
             if not is_on:
                 unload_plugin(plugin_id)
+        self.sync_plugin_presets()
         return [p for p in loaded if enabled.get(p.manifest.id, True) is not False]
 
     def load_missing(self, *, install_deps: bool = False) -> list[LoadedPlugin]:
@@ -777,6 +858,11 @@ class PluginManager:
             if PluginRegistry().get(manifest.id) is not None:
                 continue
             try:
+                check_plugin_compatible(plugin_dir)
+            except OctopError as exc:
+                logger.error("skip plugin %s: %s", manifest.id, exc.message)
+                continue
+            try:
                 newly.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
                 logger.info(
                     "loaded missing plugin %s v%s",
@@ -790,7 +876,36 @@ class PluginManager:
                     exc,
                     exc_info=True,
                 )
+        self.sync_plugin_presets()
         return newly
+
+    def plugin_configs(self) -> list[Any]:
+        """``PluginConfig`` of every loaded plugin that declares the ``config`` capability."""
+        from octop.infra.agents.plugins.plugin_config import parse_plugin_config  # noqa: PLC0415
+
+        out: list[Any] = []
+        for plugin in PluginRegistry().list_plugins():
+            plugin_dir = self.plugin_dir(plugin.manifest.id)
+            if plugin_dir is None:
+                continue
+            try:
+                cfg = parse_plugin_config(plugin_dir)
+            except OctopError as exc:
+                logger.error("plugin %s: %s", plugin.manifest.id, exc.message)
+                continue
+            if cfg is not None:
+                out.append(cfg)
+        return out
+
+    def sync_plugin_presets(self) -> None:
+        """Publish the provider presets of loaded plugins; withdraw the rest."""
+        from octop.infra.agents.plugins.plugin_config import (  # noqa: PLC0415
+            replace_plugin_presets,
+        )
+
+        replace_plugin_presets(
+            {cfg.plugin_id: cfg.provider_presets for cfg in self.plugin_configs()}
+        )
 
     @staticmethod
     def _channel_registration_error(plugin_id: str) -> str | None:
@@ -851,6 +966,8 @@ class PluginManager:
                     "enabled": enabled_map.get(manifest.id, True),
                     "ui": ui_meta,
                     "tools": tools_meta,
+                    "capabilities": list(parse_plugin_capabilities(plugin_dir)),
+                    "config": _config_summary(plugin_dir),
                 },
             )
         return out
@@ -897,6 +1014,7 @@ class PluginManager:
                         if path.is_dir() and (path / "SKILL.md").is_file()
                     }
             unload_plugin(plugin_id)
+        self.sync_plugin_presets()
 
         for item in self.list_installed():
             if item.get("id") == plugin_id:
@@ -983,6 +1101,7 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"plugin version {manifest.version!r} does not match {expect_version!r}",
             )
+        check_plugin_compatible(source)
 
         with self._install_guard:
             lock = self._install_locks.setdefault(manifest.id, threading.Lock())
@@ -1024,6 +1143,7 @@ class PluginManager:
                         enabled = self.global_enabled_map().get(manifest.id, True)
                         if not enabled:
                             unload_plugin(manifest.id)
+                        self.sync_plugin_presets()
                         self._persist_plugin_tree(manifest.id)
                         if persist_enabled:
                             self._set_enabled_flag(manifest.id, enabled)
@@ -1199,6 +1319,7 @@ class PluginManager:
         if self._control_files is not None:
             self._control_files.delete_owner(ControlFileRepo.PLUGIN, plugin_id)
             self._bump_plugin_revision()
+        self.sync_plugin_presets()
 
     def plugin_skill_names(self, plugin_id: str) -> set[str]:
         """Return skill directory names registered by one loaded plugin."""

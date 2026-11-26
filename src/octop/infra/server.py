@@ -435,6 +435,11 @@ class OctopServer:
         self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
         self._apply_plugin_channels()
+        # Setting defaults from plugins (``config`` capability) go into config.json
+        # before anything reads the config, so a bundled plugin applies on first boot.
+        if self.apply_plugin_settings():
+            config = load_config(self.paths.config)
+            self.config = config
 
         import time  # noqa: PLC0415
 
@@ -527,6 +532,7 @@ class OctopServer:
         )
         self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
+        self.apply_plugin_models()
 
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             configure_browser_idle_timeout,
@@ -719,6 +725,29 @@ class OctopServer:
         from octop.infra.extensions import run_startup_hooks  # noqa: PLC0415
 
         self._started_extensions = await run_startup_hooks(self)
+
+    def apply_plugin_models(self) -> list[str]:
+        """Create providers and the default model that loaded plugins carry (once per version)."""
+        if self.services is None or self.plugin_manager is None:
+            return []
+        from octop.infra.agents.plugins.plugin_config import apply_plugin_models  # noqa: PLC0415
+        from octop.infra.agents.providers.presets import load_provider_presets  # noqa: PLC0415
+
+        return apply_plugin_models(
+            self.paths.config,
+            self.plugin_manager.plugin_configs(),
+            provider_repo=self.services.provider_repo,
+            settings_repo=self.services.settings_repo,
+            presets_by_id=lambda: {str(p.get("id")): p for p in load_provider_presets()},
+        )
+
+    def apply_plugin_settings(self) -> list[str]:
+        """Write loaded plugins' setting defaults to config.json; they apply after a restart."""
+        if self.plugin_manager is None:
+            return []
+        from octop.infra.agents.plugins.plugin_config import apply_plugin_settings  # noqa: PLC0415
+
+        return apply_plugin_settings(self.paths.config, self.plugin_manager.plugin_configs())
 
     async def refresh_plugin_channels(self) -> None:
         """Reconcile only changed kinds and report registration failures to callers."""

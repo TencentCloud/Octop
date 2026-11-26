@@ -7846,7 +7846,12 @@
     "noDescription": "暂无描述",
     "noToolsListed": "暂无已加载工具",
     "hasUi": "聊天 UI",
-    "hasConfig": "可配置"
+    "hasConfig": "可配置",
+    "configTitle": "会配置",
+    "configHint": "安装或启用时写入的默认值。管理员改过的值不会被覆盖；config.json 里的设置重启后生效。",
+    "configPresets": "模型供应商预设",
+    "configProviders": "模型供应商",
+    "configDefaultModel": "默认模型"
   },
   "slash": {
     "fallback": {

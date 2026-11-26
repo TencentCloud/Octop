@@ -101,6 +101,12 @@ def _plugin_manager(server: OctopServer) -> PluginManager:
     return mgr
 
 
+def _apply_plugin_config(server: OctopServer) -> None:
+    """Apply what newly loaded plugins carry under ``config`` (each plugin version once)."""
+    server.apply_plugin_settings()
+    server.apply_plugin_models()
+
+
 @router.get("", summary="List installed plugins")
 async def list_plugins(
     server: OctopServer = Depends(get_server),
@@ -124,6 +130,7 @@ async def reload_plugins(
     mgr = _plugin_manager(server)
     await mgr.prepare_reload()
     loaded = mgr.load_installed(install_deps=False)
+    _apply_plugin_config(server)
     if server.app_runtime is not None:
         await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
@@ -157,6 +164,7 @@ async def install_plugin(
             f"plugin install failed: {exc}",
             details={"reason": str(exc)},
         ) from exc
+    _apply_plugin_config(server)
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
         await server.refresh_plugin_channels()
@@ -209,6 +217,7 @@ async def upload_plugin(
             f"plugin install failed: {exc}",
             details={"reason": str(exc)},
         ) from exc
+    _apply_plugin_config(server)
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
         await server.refresh_plugin_channels()
@@ -269,6 +278,7 @@ async def install_market_plugin(
             details={"reason": str(exc)},
         ) from exc
     # install_from_market already loads the plugin into the process registry.
+    _apply_plugin_config(server)
     if server.app_runtime is not None:
         await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
@@ -347,6 +357,8 @@ async def patch_plugin(
     item: dict[str, Any] | None = None
     if body.enabled is not None:
         item = mgr.set_enabled(plugin_id, body.enabled)
+        if body.enabled:
+            _apply_plugin_config(server)
         if server.app_runtime is not None:
             await server.refresh_plugin_channels()
             await server.app_runtime.agent_registry.reload_all()

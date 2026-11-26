@@ -78,6 +78,9 @@ requires:
 | `name` | 否 | 显示名。缺省用 `id` |
 | `description` | 否 | 简介。缺省为空 |
 | `kind` | 否 | `tool`、`skill`、`hook`、`channel` 之一。缺省 `tool`。大小写不敏感 |
+| `capabilities` | 否 | 能力列表，一个插件可以声明多项，见下文「能力」。不写时等于 `[kind]` |
+| `config` | 否 | 声明了 `config` 能力时必填：插件带的系统配置，见下文「系统配置」 |
+| `octop` | 否 | 要求的 Octop 版本，例如 `">=1.4"`。不满足就拒绝安装，启动时也跳过加载 |
 | `entry` | 否 | 相对插件根的 Python 文件。缺省 `main.py`。文件必须存在，并定义 `setup(ctx)` |
 | `requires` | 否 | pip 依赖字符串列表。加载时安装；同目录的 `requirements.txt` 也会安装 |
 | `icon` | 否 | 卡片图标，见下文 |
@@ -90,7 +93,7 @@ requires:
 
 `entry` 会被当成 Python 模块加载。模块里要有可调用的 `setup(ctx)`。`ctx.plugin_id` 就是清单里的 `id`，`ctx.source_path` 是插件根目录。
 
-`setup` 里只能调用和 `kind` 对应的注册方法：
+`setup` 里只能调用声明过的能力（`capabilities`，没写时就是 `kind`）对应的注册方法：
 
 | `kind` | 在 `setup` 里调用 | 作用 |
 |---|---|---|
@@ -115,6 +118,49 @@ async def city_weather(city: str) -> str:
 def setup(ctx: PluginContext) -> None:
     ctx.tool("city_weather", city_weather, description="查询城市天气")
 ```
+
+## 能力
+
+`capabilities` 列出插件要用的能力，可以写多项：
+
+| 能力 | 作用 |
+|---|---|
+| `tool`、`skill`、`hook`、`channel` | 同上表；列出哪几项，`setup` 里就能调用哪几项的注册方法 |
+| `config` | 在 `plugin.yaml` 里带系统配置，不需要代码 |
+
+同时声明多项内置能力，要求 octop-harness 支持 `capabilities`；不支持时安装会提示升级。没写 `kind` 时，列表里第一个内置能力作为展示用的类型。声明了 Octop 不认识的能力，安装会被拒绝。
+
+## 系统配置
+
+声明 `config` 能力的插件可以带这些配置：
+
+```yaml
+id: acme-cloud
+version: 1.0.0
+capabilities: [config]
+config:
+  provider_presets:              # 模型供应商预设，和内置预设格式相同
+    - id: acme
+      name: Acme Cloud
+      base_url: https://api.acme.example/v1
+      protocol: openai
+      models:
+        - { id: acme-large, name: Acme Large, enabled: true, input: [text] }
+  providers:                     # 按预设建好供应商，不带密钥
+    - { preset: acme, name: acme }
+  default_model: acme/acme-large # 实例还没有默认模型时设为默认
+  settings:                      # 只允许下列 config.json 键
+    default_timezone: Asia/Shanghai
+```
+
+- `provider_presets` 排在模型供应商列表最前；和 Octop 自带预设同 id 的会被忽略。插件停用或卸载后，预设随之消失。
+- `providers` 在同名供应商不存在时才创建，不写入 API Key，由管理员在模型设置里补上。
+- `default_model` 只在实例还没有默认模型时设置。
+- `settings` 只接受 `default_timezone`、`max_upload_mb`、`browser_idle_timeout_minutes`、`public_base_url`，而且只在该键还是 Octop 默认值时写入 `config.json`，重启后生效。数据库、TLS、登录安全等设置插件不能改。
+
+插件给的是默认值，管理员说了算。每个插件版本只应用一次（记在 `config.json` 的 `plugins.<id>` 下），管理员之后的修改不会被插件覆盖，卸载插件也不会回滚这些设置。安装、启用、重新加载插件，以及 Octop 启动时，都会应用；随安装包预装的插件，首次启动就生效。
+
+只带配置的插件仍需要入口文件：`main.py` 里写一个空的 `def setup(ctx): pass` 即可。
 
 ## 图标
 
