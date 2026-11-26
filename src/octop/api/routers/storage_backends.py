@@ -7,6 +7,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
@@ -343,7 +344,7 @@ async def probe_storage_backend_config(
         from octop.infra.backend.probe import probe_webdav_backend
 
         return await probe_webdav_backend(row)
-    return probe_storage_backend(row)
+    return await run_in_threadpool(probe_storage_backend, row)
 
 
 def _storage_browse_octop_error(exc: BaseException) -> OctopError:
@@ -473,7 +474,7 @@ async def test_storage_backend(
 
     if (row.kind or "").lower() == "webdav":
         return await probe_webdav_backend(row)
-    return probe_storage_backend(row)
+    return await run_in_threadpool(probe_storage_backend, row)
 
 
 user_router = APIRouter()

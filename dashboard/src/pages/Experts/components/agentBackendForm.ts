@@ -18,6 +18,7 @@ export const BACKEND_POLICY_TYPES = [
   "postgres",
   "docker",
   "opensandbox",
+  "cubesandbox",
 ] as const;
 
 /** Storage kind ``shell`` is the same policy type as builtin ``local_shell``. */
@@ -45,6 +46,7 @@ const BACKEND_POLICY_LABEL_KEYS: Record<
   postgres: "storage.kindPostgres",
   docker: "storage.kindDocker",
   opensandbox: "storage.kindOpensandbox",
+  cubesandbox: "storage.kindCubesandbox",
 };
 
 export function backendPolicyTypeLabel(

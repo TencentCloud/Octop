@@ -7,6 +7,7 @@ import filesystem from "./filesystem.svg";
 import shell from "./shell.svg";
 import docker from "./docker.svg";
 import opensandbox from "./opensandbox.svg";
+import cubesandbox from "./cubesandbox.svg";
 import postgres from "./postgres.svg";
 import custom from "./custom.svg";
 
@@ -20,6 +21,7 @@ export const STORAGE_LOGOS: Record<string, string> = {
   shell,
   docker,
   opensandbox,
+  cubesandbox,
   postgres,
   custom,
 };

@@ -911,6 +911,19 @@ wheels = [
 ]
 
 [[package]]
+name = "cubesandbox"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/0a/571c88406b1471303f04989a780fe564d400589edba49b245d216cab3dcd/cubesandbox-0.8.0.tar.gz", hash = "sha256:1bcec73025e7ec9049a1802fc7cc9ebc61b647d5c68a627aa5d0268ac8447901", size = 88215, upload-time = "2026-11-12T15:19:34.409Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/ec/7658c4335afe6e6c5f0978f0ef10b71eb227666890b81e2b10f50e533740/cubesandbox-0.8.0-py3-none-any.whl", hash = "sha256:09347450164e537b8a9acc07f3b2152791ef300a66e45d74b10c161d7020cc02", size = 55273, upload-time = "2026-11-12T15:19:33.286Z" },
+]
+
+[[package]]
 name = "deepagents"
 version = "0.7.35"
 source = { registry = "https://pypi.org/simple" }
@@ -2611,7 +2624,7 @@ dependencies = [
     { name = "mcp" },
     { name = "octop-browser" },
     { name = "octop-gateway" },
-    { name = "octop-harness", extra = ["all"] },
+    { name = "octop-harness", extra = ["all", "cubesandbox-native", "remote-backends"] },
     { name = "octop-memory" },
     { name = "openpyxl" },
     { name = "packaging" },
@@ -2712,7 +2725,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.5" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.12" },
+    { name = "octop-harness", extras = ["all", "cubesandbox-native", "remote-backends"], specifier = ">=1.0.13" },
     { name = "octop-memory", specifier = ">=1.0.7" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2809,7 +2822,7 @@ wheels = [
 
 [[package]]
 name = "octop-harness"
-version = "1.0.12"
+version = "1.0.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2827,9 +2840,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/1e/57016dda0b838d09759110f65ee525846ff6bef9ede50b164b7efe8673e9/octop_harness-1.0.12.tar.gz", hash = "sha256:190b3e39d3842f5e2c531525f92443068fd535d7575ae22828534f8f1cf32479", size = 1061637, upload-time = "2026-11-26T04:05:12.728Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/99/4ac00a27fbefd6d5b82814e7570733423ff27e73d3bd1430844b69a09689/octop_harness-1.0.13.tar.gz", hash = "sha256:5b9262c0054d94b458b3e03c833cd870bb85d16521a19ee63b33f9d513cdafd8", size = 1064107, upload-time = "2026-11-26T13:04:05.734Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/ca/b909fb7ba7db30ec8ab19fd6ad88e223e4f8b2027f79437af3b1829defb0/octop_harness-1.0.12-py3-none-any.whl", hash = "sha256:05b551da11f8c944b5827d841afc4b424a9cdff637913fd977756c3eb6f76d6f", size = 1263894, upload-time = "2026-11-26T04:05:11.434Z" },
+    { url = "https://files.pythonhosted.org/packages/88/93/dcff063388524d7e374a16c9b38ff546b24229fdff26d96c783f8669e9c5/octop_harness-1.0.13-py3-none-any.whl", hash = "sha256:96d55c25e77e6ff25755d611021ff600c2a53f50a8e5ebe9c9eb3453c36501f9", size = 1265887, upload-time = "2026-11-26T13:04:04.263Z" },
 ]
 
 [package.optional-dependencies]
@@ -2850,6 +2863,13 @@ all = [
     { name = "psutil" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pynput" },
+]
+cubesandbox-native = [
+    { name = "cubesandbox" },
+]
+remote-backends = [
+    { name = "deepagents-backends" },
+    { name = "psycopg", extra = ["binary"] },
 ]
 
 [[package]]
