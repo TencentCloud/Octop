@@ -75,7 +75,11 @@ from octop.infra.gateway.process.stream_project import (
     enrich_tool_stream_chunk,
     project_stream,
 )
-from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
+from octop.infra.gateway.process.usage_record import (
+    TurnMeter,
+    UsageTracker,
+    record_turn_usage,
+)
 from octop.infra.gateway.slash.catalog import HITL_APPROVAL_COMMANDS, spec_for
 from octop.infra.gateway.slash.ctx import SlashCtx, build_slash_ctx
 from octop.infra.gateway.slash.parser import parse_slash
@@ -85,6 +89,8 @@ from octop.infra.history.projection import (
     message_inputs,
 )
 from octop.infra.history.trajectory.settings import agent_trajectory_enabled
+from octop.infra.telemetry import error_code as telemetry_error_code
+from octop.infra.telemetry import exception_type
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
@@ -906,7 +912,7 @@ class GlobalProcessor:
     async def __call__(self, msg: InboundMessage) -> AsyncIterator[MessageEvent]:
         from octop.infra.metrics import METRICS  # noqa: PLC0415
 
-        METRICS.inc("messages_total")
+        METRICS.inc("messages_total", channel_type=msg.channel_type)
 
         agent_id = msg.tenant_id or ""
         if not agent_id:
@@ -1124,7 +1130,8 @@ class GlobalProcessor:
         stream_ok = False
         hitl_paused = False
         failure_saved = False
-        usage_tracker = UsageTracker()
+        meter = TurnMeter(agent_id, started=turn_started)
+        usage_tracker = UsageTracker(request_model=str(request.get("model") or ""), meter=meter)
         history_tracker = TurnHistoryTracker.from_request(request)
         self._mark_care_replied(
             agent_id=agent_id,
@@ -1132,6 +1139,7 @@ class GlobalProcessor:
             history_tracker=history_tracker,
         )
         projection_state = StreamProjectionState()
+        meter.start()
         try:
             turn_stream = project_stream(
                 self._agent_manager,
@@ -1162,6 +1170,7 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
+            meter.finish(exc)
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
@@ -1178,6 +1187,7 @@ class GlobalProcessor:
         else:
             if stream_ok and not hitl_paused:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))
+                meter.finish()
                 self._touch_thread_after_turn(thread_id, msg.text)
                 self._record_turn_usage(
                     agent_id=agent_id,
@@ -1193,6 +1203,7 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
+            meter.finish(record_duration=False)
             if not failure_saved and (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
@@ -1223,7 +1234,7 @@ class GlobalProcessor:
         """
         from octop.infra.metrics import METRICS  # noqa: PLC0415
 
-        METRICS.inc("messages_total")
+        METRICS.inc("messages_total", channel_type=msg.channel_type)
 
         agent_id = msg.tenant_id or ""
         if not agent_id:
@@ -1459,9 +1470,11 @@ class GlobalProcessor:
         )
 
         stream_ok = False
+        hitl_paused = False
         failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
-        usage_tracker = UsageTracker()
+        meter = TurnMeter(agent_id, started=turn_started)
+        usage_tracker = UsageTracker(request_model=str(request.get("model") or ""), meter=meter)
         # Align with IM stream_project: only push tool_call ids opened this
         # turn, then dedupe intra-turn replays and identical path/URL frames.
         saw_tool_call = False
@@ -1470,6 +1483,7 @@ class GlobalProcessor:
         emitted_attachment_keys: set[str] = set()
         emitted_tool_error_ids: set[str] = set()
 
+        meter.start()
         try:
             async for chunk in iter_with_session_auto_approve(
                 self._agent_manager.stream(agent_id, request),
@@ -1488,6 +1502,7 @@ class GlobalProcessor:
                     enabled=traj_on,
                 )
                 if chunk.get("type") == "hitl_required":
+                    hitl_paused = True
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
                         from octop.infra.gateway.hitl.coordinator import HitlStreamContext
@@ -1553,6 +1568,7 @@ class GlobalProcessor:
             await self._record_stream_error(
                 user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
             )
+            meter.finish(exc)
             message, error_code = _stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
@@ -1568,6 +1584,9 @@ class GlobalProcessor:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if stream_ok:
                 history_tracker.note_turn_duration(_elapsed_ms(turn_started))
+                if not hitl_paused:
+                    meter.finish()
+            meter.finish(record_duration=False)
             if not failure_saved and not stream_ok:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
@@ -2072,7 +2091,11 @@ class GlobalProcessor:
     ) -> None:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
-        _M.inc("stream_errors_total")
+        _M.inc(
+            "stream_errors_total",
+            error_type=exception_type(exc),
+            error_code=telemetry_error_code(exc),
+        )
         # A failed turn has no assistant message to key checkpoints by; drop
         # its undrained captures so they never merge into the next turn's
         # window (the files stay changed on disk, visible in the git panel).

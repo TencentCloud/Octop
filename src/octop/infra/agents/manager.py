@@ -130,6 +130,7 @@ def _model_retry_on_failure(
     from octop.i18n.domains.stream import exception_display_message, model_retry_failure_prompt
     from octop.infra.agents.security.hitl_session import current_hitl_thread_id
     from octop.infra.metrics import METRICS
+    from octop.infra.telemetry import error_code, exception_type
     from octop.infra.utils.turn_failure import current_turn_model, log_turn_failure
 
     thread_id = current_hitl_thread_id() or ""
@@ -151,7 +152,7 @@ def _model_retry_on_failure(
         exc=exc,
         level=logging.ERROR,
     )
-    METRICS.inc("stream_errors_total")
+    METRICS.inc("stream_errors_total", error_type=exception_type(exc), error_code=error_code(exc))
     return model_retry_failure_prompt(exc, "en")
 
 

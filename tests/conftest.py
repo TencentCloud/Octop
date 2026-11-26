@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,13 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         module = _module_path(item.nodeid)
         if module in _SLOW_TEST_MODULES or module.startswith("tests/integration/"):
             item.add_marker(pytest.mark.slow)
+
+
+@pytest.fixture(autouse=True)
+def _scrub_otel_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A developer shell with ``OTEL_*`` set must not make tests export metrics."""
+    for key in [k for k in os.environ if k.startswith("OTEL_")]:
+        monkeypatch.delenv(key)
 
 
 @pytest.fixture(scope="session")

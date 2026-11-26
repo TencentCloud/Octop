@@ -939,3 +939,31 @@ async def test_telegram_cron_reloads_topic_routing_from_persisted_session(tmp_pa
     assert subject.metadata["channel_id"] == "telegram-bot"
     assert "message_id" not in subject.metadata
     db.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fails", [False, True])
+async def test_agent_run_records_duration_metric(fails: bool) -> None:
+    from tests.support.otel import active_telemetry, metric_points
+
+    store, _repo = _policy_store()
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "token", "content": "done"}
+        if fails:
+            raise TimeoutError("slow")
+
+    service, _gateway = _agent_delivery(_stream, store=store)
+    with active_telemetry() as reader:
+        if fails:
+            with pytest.raises(TimeoutError):
+                await service.deliver(_command(task_type="agent", prompt="run"))
+        else:
+            await service.deliver(_command(task_type="agent", prompt="run"))
+        (point,) = metric_points(reader, "gen_ai.invoke_agent.duration")
+        (first_token,) = metric_points(reader, "octop.turn.time_to_first_token")
+        in_flight = metric_points(reader, "octop.turn.active")
+    assert first_token.attributes["octop.usage.source"] == "cron"
+    assert [p.value for p in in_flight] == [0]
+    assert point.attributes["octop.usage.source"] == "cron"
+    assert point.attributes.get("error.type") == ("TimeoutError" if fails else None)

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from octop_gateway.models import ChannelSubject, InboundMessage, TextContent
+from tests.support.otel import active_telemetry, metric_points
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.process.processor import GlobalProcessor, _stream_error
@@ -57,6 +58,90 @@ async def test_auth_exception_is_displayed_as_failure_and_kept_out_of_checkpoint
     assert failures == [stream_error_message(AUTH, "zh")]
     processor._agent_manager.append_thread_messages.assert_not_called()
     assert appended  # The v1 projection retains the failed turn for display.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["dashboard", "im"])
+@pytest.mark.parametrize("fails", [False, True])
+async def test_turn_duration_metric_for_both_entries(entry: str, fails: bool) -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "hi"}
+        if fails:
+            raise TimeoutError("slow upstream")
+
+    processor, msg, _ = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._user_repo.get.return_value = MagicMock(locale="en")
+    with active_telemetry() as reader:
+        if entry == "dashboard":
+            _ = [frame async for frame in processor.iter_turn_chunks(msg)]
+        else:
+            msg.channel_id = "feishu-test"
+            msg.channel_type = "feishu"
+            _ = [event async for event in processor(msg)]
+        (point,) = metric_points(reader, "gen_ai.invoke_agent.duration")
+        messages = metric_points(reader, "octop.messages")
+        (first_token,) = metric_points(reader, "octop.turn.time_to_first_token")
+        in_flight = metric_points(reader, "octop.turn.active")
+    assert point.count == 1
+    assert first_token.count == 1
+    assert [p.value for p in in_flight] == [0]
+    assert point.attributes["gen_ai.agent.id"] == "agent-1"
+    assert point.attributes["octop.usage.source"] == "chat"
+    assert point.attributes["gen_ai.operation.name"] == "invoke_agent"
+    assert point.attributes.get("error.type") == ("TimeoutError" if fails else None)
+    assert {p.attributes["octop.channel.type"] for p in messages} == {
+        "dashboard" if entry == "dashboard" else "feishu"
+    }
+
+
+@pytest.mark.asyncio
+async def test_octop_error_code_reaches_stream_error_and_duration_metrics() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "hi"}
+
+    processor, msg, _ = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._user_repo.get.return_value = MagicMock(locale="en")
+    error = OctopError(ErrorCode.TOKEN_QUOTA_EXCEEDED, "over quota")
+    processor._agent_manager.stream = _raising_stream(error)
+    # Run the real error recorder (the helper replaces it with a mock).
+    processor._record_stream_error = lambda **kw: GlobalProcessor._record_stream_error(
+        processor, **kw
+    )
+    with active_telemetry() as reader:
+        _ = [frame async for frame in processor.iter_turn_chunks(msg)]
+        (duration,) = metric_points(reader, "gen_ai.invoke_agent.duration")
+        (errors,) = metric_points(reader, "octop.stream.errors")
+    assert duration.attributes["octop.error.code"] == "TOKEN_QUOTA_EXCEEDED"
+    assert errors.attributes["octop.error.code"] == "TOKEN_QUOTA_EXCEEDED"
+    assert errors.attributes["error.type"] == "octop.infra.errors.OctopError"
+
+
+def _raising_stream(exc: Exception) -> Callable[..., AsyncIterator[dict[str, Any]]]:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "hi"}
+        raise exc
+
+    return stream
+
+
+@pytest.mark.asyncio
+async def test_dashboard_turn_paused_for_approval_records_no_duration() -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "content": "hi"}
+        yield {"type": "hitl_required"}
+
+    processor, msg, _ = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._user_repo.get.return_value = MagicMock(locale="en")
+    with active_telemetry() as reader:
+        _ = [frame async for frame in processor.iter_turn_chunks(msg)]
+        assert metric_points(reader, "gen_ai.invoke_agent.duration") == []
+        assert [p.value for p in metric_points(reader, "octop.turn.active")] == [0]
 
 
 def test_stream_error_preserves_resource_error_code() -> None:
