@@ -103,6 +103,24 @@ export interface ListRawEventsBody {
 }
 
 export type ExtractTriggerMode = "idle" | "interval";
+export type MemoryOverrideMode = "inherit" | "custom";
+
+export interface GlobalMemoryDefaults {
+  aux_model: string | null;
+  aux_model_usable?: boolean;
+  extract_keep_rules: string;
+  extract_skip_rules: string;
+  supported_call_options?: string[];
+  affected_agent_count?: number;
+}
+
+export interface EffectiveMemoryExtractConfig {
+  aux_model: string | null;
+  aux_model_configured?: string | null;
+  aux_model_usable?: boolean;
+  extract_keep_rules: string;
+  extract_skip_rules: string;
+}
 
 export interface ExtractConfig {
   /** Missing on older Octop API processes; absence keeps the historical enabled default. */
@@ -111,11 +129,21 @@ export interface ExtractConfig {
   extract_trigger_mode: ExtractTriggerMode;
   extract_idle_seconds: number;
   extract_interval_seconds: number;
+  /** Whether extraction model inherits global defaults or uses an expert override. */
+  aux_model_mode?: MemoryOverrideMode;
   /**
    * "provider/model" ref used for extraction / promotion. null/absent = AUTO
    * (follow the chat model); send "" to reset back to AUTO.
    */
   aux_model?: string | null;
+  /** Whether memory keep/skip rules inherit global defaults or use an expert override. */
+  extract_rules_mode?: MemoryOverrideMode;
+  extract_keep_rules?: string;
+  extract_skip_rules?: string;
+  /** Read-only global default summary for display in the expert settings UI. */
+  global_defaults?: GlobalMemoryDefaults;
+  /** Read-only effective values resolved from expert override + global defaults. */
+  effective?: EffectiveMemoryExtractConfig;
   /**
    * Read timeout (seconds) for light memory calls (extraction). null/absent =
    * harness default (120s); send 0 to reset back to the default.
@@ -746,6 +774,23 @@ export const memoryDashboardApi = {
 
   putExtractConfig: (aid: string, body: Partial<ExtractConfig>) =>
     request<ExtractConfig>(`${base(aid)}/extract-config`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  // global default memory settings (Admin → Memory)
+  getGlobalMemoryDefaults: () =>
+    request<GlobalMemoryDefaults>("/settings/memory-defaults"),
+
+  putGlobalMemoryDefaults: (
+    body: Partial<
+      Pick<
+        GlobalMemoryDefaults,
+        "aux_model" | "extract_keep_rules" | "extract_skip_rules"
+      >
+    >,
+  ) =>
+    request<GlobalMemoryDefaults>("/settings/memory-defaults", {
       method: "PUT",
       body: JSON.stringify(body),
     }),

@@ -59,6 +59,7 @@ export const PERM = {
     "search",
   ],
   storage: ["storage_backends"],
+  memoryDefaults: ["memory_defaults"],
   plugins: ["plugins", "plugin_market"],
   securityPage: [
     "security_hitl",
@@ -119,6 +120,7 @@ export const NAV_PERMISSIONS = {
   acp: "admin",
   "admin-users": PERM.usersPage,
   models: PERM.modelsPage,
+  "admin-memory": PERM.memoryDefaults,
   "admin-storage": PERM.storage,
   "admin-plugins": PERM.plugins,
   "admin-security": PERM.securityPage,
@@ -217,6 +219,9 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     pathname.startsWith("/admin/voice")
   ) {
     return PERM.modelsPage;
+  }
+  if (pathname.startsWith("/admin/memory")) {
+    return PERM.memoryDefaults;
   }
   if (pathname.startsWith("/admin/backend")) {
     return PERM.storage;

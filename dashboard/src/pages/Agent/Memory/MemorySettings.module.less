@@ -324,3 +324,78 @@
   margin-top: 4px;
   border-top: 1px solid var(--ant-color-border-secondary, #d9d9d9);
 }
+
+.overrideHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inheritSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px dashed var(--fn-border-primary);
+  border-radius: 10px;
+  background: var(
+    --fn-bg-subtle,
+    color-mix(in srgb, var(--fn-bg-elevated) 60%, transparent)
+  );
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.inheritRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inheritRuleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inheritRuleLabel {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.inheritRuleText {
+  color: var(--fn-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ruleField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ruleFieldLabel {
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ruleFieldHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.customControlsRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
