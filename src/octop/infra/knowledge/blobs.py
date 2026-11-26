@@ -7,6 +7,7 @@ the source of truth; the local file is refreshed from it on read.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +19,11 @@ from octop.infra.knowledge.files import (
     delete_document_file,
     delete_knowledge_base_files,
     document_path,
+    recalculated_document_path,
     write_document,
 )
 from octop.infra.knowledge.plane import postgres_database
+from octop.infra.knowledge.spreadsheets import SPREADSHEET_SUFFIXES
 
 
 class KnowledgeBlobs:
@@ -87,8 +90,26 @@ class KnowledgeBlobs:
             return payload
         return document_path(kb_id, doc_id, filename).read_bytes()
 
+    def ensure_recalculated_local(self, kb_id: str, doc_id: str) -> Path:
+        return self.ensure_local(kb_id, f"{doc_id}.recalculated", "copy.xlsx")
+
+    def store_recalculated(self, kb_id: str, doc_id: str, source: Path) -> None:
+        if self._backend is not None:
+            self.write(kb_id, f"{doc_id}.recalculated", "copy.xlsx", source.read_bytes())
+        else:
+            dest = recalculated_document_path(kb_id, doc_id)
+            if dest != source:
+                shutil.copyfile(source, dest)
+
+    def delete_recalculated(self, kb_id: str, doc_id: str) -> None:
+        recalculated_document_path(kb_id, doc_id).unlink(missing_ok=True)
+        if self._backend is not None:
+            self._backend.delete_object(self._key(kb_id, f"{doc_id}.recalculated", "copy.xlsx"))
+
     def delete(self, kb_id: str, doc_id: str, filename: str) -> None:
         delete_document_file(kb_id, doc_id, filename)
+        if Path(filename).suffix.lower() in SPREADSHEET_SUFFIXES:
+            self.delete_recalculated(kb_id, doc_id)
         backend = self._backend
         if backend is not None:
             backend.delete_object(self._key(kb_id, doc_id, filename))

@@ -29,6 +29,7 @@ from octop.infra.knowledge.ocr import (
 from octop.infra.knowledge.parse import parse_document
 from octop.infra.knowledge.plane import open_knowledge_index, postgres_database
 from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path_parent
+from octop.infra.knowledge.spreadsheets import SPREADSHEET_SUFFIXES, spreadsheet_preview_path
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +199,10 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        path = self._blobs().ensure_local(kb_id, doc_id, document.filename)
+        blobs = self._blobs()
+        path = blobs.ensure_local(kb_id, doc_id, document.filename)
+        if path.suffix in SPREADSHEET_SUFFIXES:
+            path = spreadsheet_preview_path(path, blobs, kb_id, doc_id, document.status)
         text = parse_document(path, ocr=optional_ocr_extractor(self._services))
         if len(text) > _MAX_PREVIEW_CHARS:
             text = text[:_MAX_PREVIEW_CHARS]
@@ -226,9 +230,15 @@ class KnowledgeService:
         }
 
     def resolve_document_file(
-        self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        actor_user_id: int,
+        is_admin: bool = False,
+        for_preview: bool = False,
     ) -> tuple[Path, str, str]:
-        """Return ``(path, filename, content_type)`` for the on-disk original.
+        """Return ``(path, filename, content_type)`` for the original or the recalculated preview copy.
 
         Raises ``LookupError`` when the document row is missing and
         ``FileNotFoundError`` when the original bytes are gone from disk.
@@ -239,9 +249,18 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.is_dir:
             raise LookupError("knowledge document not found")
-        path = self._blobs().ensure_local(kb_id, doc_id, document.filename)
+        blobs = self._blobs()
+        path = blobs.ensure_local(kb_id, doc_id, document.filename)
         if not path.is_file():
             raise FileNotFoundError("knowledge document original file not found")
+        if for_preview and path.suffix in SPREADSHEET_SUFFIXES:
+            preview = spreadsheet_preview_path(path, blobs, kb_id, doc_id, document.status)
+            if preview != path:
+                return (
+                    preview,
+                    Path(document.filename).with_suffix(".xlsx").name,
+                    _EXT_TO_CONTENT_TYPE[".xlsx"],
+                )
         return path, document.filename, document.content_type
 
     def document_has_original(self, document: KnowledgeDocumentRow) -> bool:
@@ -542,6 +561,10 @@ class KnowledgeService:
                     else []
                 )
                 if chunks:
+                    if Path(row.filename).suffix.lower() in SPREADSHEET_SUFFIXES:
+                        derived = blobs.ensure_recalculated_local(source.id, row.id)
+                        if derived.is_file():
+                            blobs.store_recalculated(dest.id, row.id, derived)
                     dest_index.replace_doc_chunks(
                         row.id,
                         [text for text, _, _ in chunks],
