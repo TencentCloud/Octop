@@ -911,6 +911,19 @@ wheels = [
 ]
 
 [[package]]
+name = "cubesandbox"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3a/0a/571c88406b1471303f04989a780fe564d400589edba49b245d216cab3dcd/cubesandbox-0.8.0.tar.gz", hash = "sha256:1bcec73025e7ec9049a1802fc7cc9ebc61b647d5c68a627aa5d0268ac8447901", size = 88215, upload-time = "2026-11-12T15:19:34.409Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/ec/7658c4335afe6e6c5f0978f0ef10b71eb227666890b81e2b10f50e533740/cubesandbox-0.8.0-py3-none-any.whl", hash = "sha256:09347450164e537b8a9acc07f3b2152791ef300a66e45d74b10c161d7020cc02", size = 55273, upload-time = "2026-11-12T15:19:33.286Z" },
+]
+
+[[package]]
 name = "deepagents"
 version = "0.7.35"
 source = { registry = "https://pypi.org/simple" }
@@ -2611,7 +2624,7 @@ dependencies = [
     { name = "mcp" },
     { name = "octop-browser" },
     { name = "octop-gateway" },
-    { name = "octop-harness", extra = ["all"] },
+    { name = "octop-harness", extra = ["all", "cubesandbox-native", "remote-backends"] },
     { name = "octop-memory" },
     { name = "openpyxl" },
     { name = "packaging" },
@@ -2712,7 +2725,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.5" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.12" },
+    { name = "octop-harness", extras = ["all", "cubesandbox-native", "remote-backends"], specifier = ">=1.0.12" },
     { name = "octop-memory", specifier = ">=1.0.6" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2850,6 +2863,13 @@ all = [
     { name = "psutil" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pynput" },
+]
+cubesandbox-native = [
+    { name = "cubesandbox" },
+]
+remote-backends = [
+    { name = "deepagents-backends" },
+    { name = "psycopg", extra = ["binary"] },
 ]
 
 [[package]]
