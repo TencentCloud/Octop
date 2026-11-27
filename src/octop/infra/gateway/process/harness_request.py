@@ -30,6 +30,76 @@ from octop.infra.utils.anydoc_convert import (
 from octop.infra.utils.locale import Locale, normalize_locale
 
 
+def _image_part_signature(part: ImageContent) -> str:
+    return part.local_path or part.url or part.data or ""
+
+
+def _collect_group_context_images(
+    msg: InboundMessage,
+    *,
+    existing_images: Sequence[ImageContent],
+    max_count: int,
+) -> list[tuple[int, int, ImageContent]]:
+    """Select recent unique images from ``group_context`` within remaining vision quota."""
+    remaining = max(0, max_count - len(existing_images))
+    if remaining <= 0 or msg.group_context is None or not msg.group_context.messages:
+        return []
+    seen = {sig for part in existing_images if (sig := _image_part_signature(part))}
+    candidates: list[tuple[int, int, ImageContent]] = []
+    for msg_idx, item in enumerate(msg.group_context.messages):
+        for part_idx, part in enumerate(item.content):
+            if isinstance(part, ImageContent) and _image_part_signature(part):
+                candidates.append((msg_idx, part_idx, part))
+    selected: list[tuple[int, int, ImageContent]] = []
+    for msg_idx, part_idx, part in reversed(candidates):
+        if len(selected) >= remaining:
+            break
+        sig = _image_part_signature(part)
+        if sig in seen:
+            continue
+        seen.add(sig)
+        selected.append((msg_idx, part_idx, part))
+    selected.reverse()
+    return selected
+
+
+def _group_message_segments(
+    item: Any,
+    *,
+    msg_idx: int,
+    workspace: Any,
+    locale: str | Locale,
+    promoted_bg_parts: set[tuple[int, int]] | None,
+) -> list[str]:
+    remaining_parts: list[ContentPart] = []
+    has_promoted = False
+    for part_idx, part in enumerate(item.content):
+        if (
+            promoted_bg_parts
+            and isinstance(part, ImageContent)
+            and (msg_idx, part_idx) in promoted_bg_parts
+        ):
+            has_promoted = True
+            continue
+        remaining_parts.append(part)
+    base_text = item.text or ""
+    if has_promoted:
+        language = normalize_locale(str(locale))
+        marker = "[图片]" if language == "zh" else "[image]"
+        if "[图片]" not in base_text and "[image]" not in base_text.lower():
+            base_text = f"{base_text} {marker}".strip() if base_text else marker
+    segments = [base_text] if base_text else []
+    segments.extend(
+        hints_from_content_parts(
+            remaining_parts,
+            workspace=workspace,
+            locale=locale,
+            skip_vision_images=False,
+        )
+    )
+    return segments
+
+
 def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
     if isinstance(media_backend, AgentBackedMediaBackend):
         return media_backend._workspace
@@ -70,6 +140,7 @@ def _group_turn_text(
     *,
     workspace: Any = None,
     locale: str | Locale = "en",
+    promoted_bg_parts: set[tuple[int, int]] | None = None,
 ) -> str:
     """Render short-lived group context without creating durable fake turns."""
     context = msg.group_context
@@ -103,16 +174,14 @@ def _group_turn_text(
     lines: list[str] = []
     if context.messages:
         lines.append(context_header)
-        for item in context.messages:
+        for msg_idx, item in enumerate(context.messages):
             label = sender_label(item.sender_id, item.sender_name)
-            segments = [item.text] if item.text else []
-            segments.extend(
-                hints_from_content_parts(
-                    item.content,
-                    workspace=workspace,
-                    locale=locale,
-                    skip_vision_images=False,
-                )
+            segments = _group_message_segments(
+                item,
+                msg_idx=msg_idx,
+                workspace=workspace,
+                locale=locale,
+                promoted_bg_parts=promoted_bg_parts,
             )
             for segment in segments:
                 segment_lines = segment.splitlines() or [""]
@@ -172,6 +241,7 @@ async def build_content_from_message(
         )
 
     image_blocks: list[dict[str, Any]] = []
+    promoted_sigs: set[str] = set()
     for part in vision_parts:
         block = await materialize_image_part(
             part,
@@ -188,6 +258,37 @@ async def build_content_from_message(
                 file_hints.append(text)
             continue
         image_blocks.append(block)
+        sig = _image_part_signature(part)
+        if sig:
+            promoted_sigs.add(sig)
+
+    promoted_bg_parts: set[tuple[int, int]] = set()
+    for msg_idx, part_idx, bg_part in _collect_group_context_images(
+        msg,
+        existing_images=vision_parts,
+        max_count=VISION_MAX_COUNT,
+    ):
+        block = await materialize_image_part(
+            bg_part,
+            media_backend=media_backend,
+            workspace=workspace,
+            locale=locale,
+        )
+        if block is None or block.get("type") == "text":
+            continue
+        image_blocks.append(block)
+        promoted_bg_parts.add((msg_idx, part_idx))
+        sig = _image_part_signature(bg_part)
+        if sig:
+            promoted_sigs.add(sig)
+    if promoted_sigs and msg.group_context is not None:
+        for msg_idx, item in enumerate(msg.group_context.messages):
+            for part_idx, ctx_part in enumerate(item.content):
+                if (
+                    isinstance(ctx_part, ImageContent)
+                    and _image_part_signature(ctx_part) in promoted_sigs
+                ):
+                    promoted_bg_parts.add((msg_idx, part_idx))
 
     extracted = await _extracted_document_texts(msg, media_backend=media_backend, locale=locale)
     current_text = "\n\n".join(part for part in [msg.text or "", *file_hints, *extracted] if part)
@@ -211,8 +312,13 @@ async def build_content_from_message(
         )
         if isinstance(quote, str) and quote:
             current_text = telegram_quote_prompt(quote, locale) + current_text
-    combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
-
+    combined_text = _group_turn_text(
+        msg,
+        current_text,
+        workspace=workspace,
+        locale=locale,
+        promoted_bg_parts=promoted_bg_parts or None,
+    )
     if not image_blocks:
         return combined_text or attachment_empty_message(locale)
 
